@@ -1,4 +1,4 @@
-# Gigit Cloud infrastructure (IaC)
+# Reference Cloud infrastructure (IaC)
 
 This repository declares infrastructure of Gigit cloud as a code using [Terraform](https://www.terraform.io/).
 
@@ -14,7 +14,7 @@ This repository declares infrastructure of Gigit cloud as a code using [Terrafor
     terraform init
 ```
 
-Make sure your AWS CLI is configured for accessing `gigit-terraform-state` bucket, which hosts Terraform configuration.
+Make sure your AWS CLI is configured for accessing `project-terraform-state` bucket, which hosts Terraform configuration.
 
 2. Run and save terraform plan:
 
@@ -27,3 +27,5 @@ Make sure your AWS CLI is configured for accessing `gigit-terraform-state` bucke
 ```sh
     terraform apply -out=plan.out
 ```
+
+

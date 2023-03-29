@@ -1,8 +1,15 @@
+locals {
+  project = "instagram"
+  region  = "ap-southeast-2"
+  env     = "dev"
+  domain  = "instagram.madappgang.com.au"
+}
+
 terraform {
   backend "s3" {
-    bucket = "muzos-terraform-state-dev"
-    key    = "dev.tfstate"
-    region = "eu-central-1"
+    bucket = "${local.project}-terraform-state-dev"
+    key    = "${local.env}.tfstate"
+    region = local.region 
   }
 
   required_providers {
@@ -31,17 +38,17 @@ data "aws_subnets" "all" {
 module "workloads" {
   source = "./../../modules/workloads"
 
-  project    = "muzos"
-  env        = "dev"
-  domain     = "muzos.madappgang.com"
+  project    = local.project
+  env        = local.env 
+  domain     = local.domain 
   vpc_id     = data.aws_vpc.default.id
   subnet_ids = data.aws_subnets.all.ids
 }
 
 module "cognito" {
   source            = "./../../modules/cognito"
-  project           = "muzos"
-  env               = "dev"
-  domain            = "muzos.madappgang.com"
+  project           = local.env
+  env               = local.env
+  domain            = local.domain
   enable_web_client = false
 }
