@@ -28,4 +28,8 @@ Make sure your AWS CLI is configured for accessing `project-terraform-state` buc
     terraform apply -out=plan.out
 ```
 
+## Architecture
+
+![Architecture diagram](./docs/images/architecture.png)
+
 
