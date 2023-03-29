@@ -7,9 +7,9 @@ locals {
 
 terraform {
   backend "s3" {
-    bucket = "${local.project}-terraform-state-dev"
-    key    = "${local.env}.tfstate"
-    region = local.region 
+    bucket = "instagram-terraform-state-dev"
+    key    = "state.tfstate"
+    region = ap-southeast-2 
   }
 
   required_providers {
