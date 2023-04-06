@@ -1,0 +1,58 @@
+---
+name: Deploy to Amazon ECS
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  AWS_REGION: us-east-1
+  AWS_ACCOUNT_ID: 862728225363
+  ECR_REPOSITORY: 862728225363.dkr.ecr.us-east-1.amazonaws.com/cabin_backend
+  ECS_CLUSTER: cabin_cluster_dev
+  ECS_SERVICE: backend_service_dev
+  ECS_TASK: backend
+
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/GithubActionsRole
+          role-session-name: samplerolesession
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: |
+            ${{ env.ECR_REPOSITORY }}
+          tags: |
+            type=sha
+            latest
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: ./nodejs/.
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+      - name: Deploy to Amazon ECS
+        run: |
+          LATEST_TASK_DEFINITON_REVISION=$(aws ecs describe-task-definition --task-definition ${{ env.ECS_TASK }} | jq '.taskDefinition.revision')
+          aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE }} --task-definition ${{ env.ECS_TASK }}:$LATEST_TASK_DEFINITON_REVISION  --force-new-deployment

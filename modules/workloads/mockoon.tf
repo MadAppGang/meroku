@@ -77,7 +77,7 @@ resource "aws_ecs_service" "mockoon" {
 resource "aws_ecs_task_definition" "mockoon" {
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  family                   = "backend"
+  family                   = "mockoon"
   cpu                      = 256
   memory                   = 512
   execution_role_arn       = aws_iam_role.mockoon_task_execution.arn

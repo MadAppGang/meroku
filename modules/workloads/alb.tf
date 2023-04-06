@@ -1,6 +1,5 @@
-resource "aws_route53_zone" "domain" {
+data "aws_route53_zone" "domain" {
   name  = var.domain
-  count = var.env == "prod" ? 1 : 0
 }
 
 resource "aws_lb" "alb" {

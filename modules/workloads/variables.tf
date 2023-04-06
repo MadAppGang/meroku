@@ -1,3 +1,7 @@
+locals {
+  aws_account_id = data.aws_caller_identity.current.account_id  
+}
+
 variable "env" {
   type = string
 }
@@ -26,7 +30,7 @@ variable "mockoon_image_port" {
 }
 
 variable "private_dns_name" {
-  default = "chubby.private"
+  default = "instagram.private"
   type    = string
 }
 

@@ -41,6 +41,7 @@ module "workloads" {
   project    = local.project
   env        = local.env 
   domain     = local.domain 
+  private_dns_name = "${local.project}.private"
   vpc_id     = data.aws_vpc.default.id
   subnet_ids = data.aws_subnets.all.ids
 }
