@@ -58,7 +58,11 @@ variable "ecr_repository_policy" {
                 "ecr:DeleteRepository",
                 "ecr:BatchDeleteImage",
                 "ecr:SetRepositoryPolicy",
-                "ecr:DeleteRepositoryPolicy"
+                "ecr:DeleteRepositoryPolicy",
+                "ssmmessages:CreateControlChannel",
+                "ssmmessages:CreateDataChannel",
+                "ssmmessages:OpenControlChannel",
+                "ssmmessages:OpenDataChannel"
             ]
         }
     ]
@@ -67,7 +71,7 @@ EOF
 }
 
 variable "domain" {
-  default = "chubbydog.com"
+  default = "instagram.madappgang.com"
 }
 
 variable "ecr_url" {

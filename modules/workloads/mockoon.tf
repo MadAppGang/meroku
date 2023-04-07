@@ -92,7 +92,9 @@ resource "aws_ecs_task_definition" "mockoon" {
       { "name" : "PORT", "value" : tostring(var.mockoon_image_port) },
     ]
     essential = true
-
+    linuxParameters = {
+      initProcessEnabled = true
+    }
     logConfiguration = {
       logDriver = "awslogs"
       options = {
@@ -162,12 +164,12 @@ resource "aws_iam_role" "mockoon_task_execution" {
 
 
 resource "aws_iam_role_policy_attachment" "mockoon_task_execution" {
-  role       = aws_iam_role.backend_task_execution.name
+  role       = aws_iam_role.mockoon_task_execution.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
 resource "aws_iam_role_policy_attachment" "mockoon_task_cloudwatch" {
-  role       = aws_iam_role.backend_task.name
+  role       = aws_iam_role.mockoon_task.name
   policy_arn = "arn:aws:iam::aws:policy/CloudWatchFullAccess"
 }
 

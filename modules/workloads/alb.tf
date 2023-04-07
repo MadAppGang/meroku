@@ -68,11 +68,18 @@ resource "aws_lb_listener_rule" "api" {
 
 resource "aws_lb_listener_rule" "mockoon" {
   listener_arn = aws_alb_listener.https.arn
-  priority     = 110
+  priority     = 90
 
   action {
     type             = "forward"
     target_group_arn = aws_alb_target_group.mockoon.arn
+  }
+
+  
+  condition {
+    host_header {
+      values = ["api.${var.env == "prod" ? "" : format("%s.", var.env)}${var.domain}"]
+    }
   }
 
   condition {
