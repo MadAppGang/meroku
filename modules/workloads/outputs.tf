@@ -5,3 +5,7 @@ output "alb_dns_name" {
 output "backend_ecr_repo_url" {
   value = join("", aws_ecr_repository.backend.*.repository_url)
 }
+
+output "ecr_cluster" {
+  value = aws_ecs_cluster.main 
+}

@@ -59,3 +59,11 @@ module "postgres" {
   project = local.project
   env = local.env
 }
+
+module "task" {
+  source = "../../modules/ecs_task"
+  project = local.project
+  env = local.env
+  task = "notify-something"
+  # cluster = module.workloads.ecr_cluster.arn
+}

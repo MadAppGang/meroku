@@ -13,12 +13,6 @@ resource "aws_ecr_repository_policy" "backend" {
   count      = var.env == "dev" ? 1 : 0
 }
 
-resource "aws_ecr_lifecycle_policy" "backend" {
-  repository = join("", aws_ecr_repository.backend.*.name)
-  policy     = var.ecr_lifecycle_policy
-  count      = var.env == "dev" ? 1 : 0
-}
-
 
 resource "aws_alb_target_group" "backend" {
   name                 = "backend-tg-${var.env}"
