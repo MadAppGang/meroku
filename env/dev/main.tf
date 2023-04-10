@@ -53,3 +53,9 @@ module "cognito" {
   domain            = local.domain
   enable_web_client = false
 }
+
+module "postgres" {
+  source = "./../../modules/postgres"
+  project = local.project
+  env = local.env
+}
