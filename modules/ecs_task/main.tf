@@ -15,14 +15,19 @@ resource "aws_scheduler_schedule" "scheduler" {
   schedule_expression = var.schedule
 
   target {
-    arn = "arn:aws:scheduler:::aws-sdk:ecs:RunTask"
+    arn = var.cluster 
     role_arn = aws_iam_role.task_execution.arn
    
     ecs_parameters {
-      task_defenition_arn = aws_ecs_task_definition.task.arn
+      task_definition_arn = aws_ecs_task_definition.task.arn
       enable_execute_command = true
       launch_type = "FARGATE"
       
+      network_configuration {
+        assign_public_ip = false
+        security_groups = [aws_security_group.task.id] 
+        subnets = var.subnet_ids 
+      } 
     }
   }
 }
@@ -57,7 +62,7 @@ resource "aws_ecs_task_definition" "task" {
     name   = "${var.project}_container_${var.task}_${var.env}"
     cpu    = 256
     memory = 512
-    image  = "${var.env == "dev" ? join("", aws_ecr_repository.${var.task}.*.repository_url) : var.ecr_url}:latest"
+    image  = "${var.env == "dev" ? join("", aws_ecr_repository.task.*.repository_url) : var.ecr_url}:latest"
     environment = [
       { "name" : "TEST", "value" : tostring(1000) },
     ]

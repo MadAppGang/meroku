@@ -13,9 +13,27 @@ variable "task" {
 }
 
 variable "ecr_url" {
+  type  = string
+  default = ""
+}
+
+# https://docs.aws.amazon.com/scheduler/latest/UserGuide/schedule-types.html?icmpid=docs_console_unmapped#rate-based
+variable "schedule" {
+  type = string
+  default = "rate(1 days)"
+}
+
+variable "subnet_ids" {
+  type = list(string)
+}
+
+variable "vpc_id" {
   type = string
 }
 
+variable "cluster" {
+  type = string
+}
 
 variable "ecr_repository_policy" {
   type    = string
@@ -29,7 +47,7 @@ variable "ecr_repository_policy" {
             "Principal": "*",
             "Action": [
                 "ecr:GetDownloadUrlForLayer",
-                "ecr:BatchGetImage",
+                "ecr:BatchGetImage", 
                 "ecr:BatchCheckLayerAvailability",
                 "ecr:PutImage",
                 "ecr:InitiateLayerUpload",

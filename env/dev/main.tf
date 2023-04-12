@@ -60,10 +60,16 @@ module "postgres" {
   env = local.env
 }
 
+# scheduled taask
+# https://docs.aws.amazon.com/scheduler/latest/UserGuide/setting-up.html#setting-up-execution-role
 module "task" {
   source = "../../modules/ecs_task"
   project = local.project
   env = local.env
   task = "notify-something"
-  # cluster = module.workloads.ecr_cluster.arn
+  subnet_ids = data.aws_subnets.all.ids
+  vpc_id     = data.aws_vpc.default.id
+  cluster = module.workloads.ecr_cluster.arn
+# https://docs.aws.amazon.com/scheduler/latest/UserGuide/schedule-types.html?icmpid=docs_console_unmapped#rate-based
+  schedule = "rate(1 minutes)"
 }
