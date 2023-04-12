@@ -73,3 +73,20 @@ module "task" {
 # https://docs.aws.amazon.com/scheduler/latest/UserGuide/schedule-types.html?icmpid=docs_console_unmapped#rate-based
   schedule = "rate(1 minutes)"
 }
+
+
+
+module "event_bus_task" {
+  source  = "../../modules/event_bridge_task"
+  # https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-events.html
+  detail_types = ["Do something"]
+  sources =  ["service1"]
+  rule_name= "hug_all"
+  project = local.project
+  env = local.env
+  task = "event_processing_task"
+  subnet_ids = data.aws_subnets.all.ids
+  vpc_id     = data.aws_vpc.default.id
+  cluster = module.workloads.ecr_cluster.arn
+}
+
