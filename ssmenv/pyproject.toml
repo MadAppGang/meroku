@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "ssmenv"
+version = "1.0.0"
+description = "Export parameter store variables as env variables"
+authors = ["Jack Rudenko <i@madappgang.com>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+boto3 = "^1.26.136"
+typer = "^0.9.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
