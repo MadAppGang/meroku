@@ -26,12 +26,17 @@ variable "backend_image_port" {
 
 variable "mockoon_image_port" {
   default = 80
-  type = number
+  type    = number
 }
 
 variable "private_dns_name" {
   default = "instagram.private"
   type    = string
+}
+
+
+variable "backend_health_endpoint" {
+  default = "/health/live"
 }
 
 variable "ecr_repository_policy" {
@@ -78,6 +83,18 @@ variable "ecr_url" {
   default = ""
 }
 
+variable "db_endpoint" {
+  default = ""
+}
+
+variable "db_user" {
+  default = ""
+}
+
+variable "db_name" {
+  default = ""
+}
+
 variable "ecr_lifecycle_policy" {
   type    = string
   default = <<EOF
@@ -110,4 +127,36 @@ variable "ecr_lifecycle_policy" {
     ]
 }
 EOF
+}
+
+
+locals {
+
+
+  backend_env = concat([
+    for k, v in nonsensitive(jsondecode(data.aws_ssm_parameter.backend_env.value)) : {
+      name  = k
+      value = v
+    }
+  ], [
+    { "name" : "DATABASE_PASSWORD", "value" : nonsensitive(data.aws_ssm_parameter.postgres_password.value) },
+    { "name" : "DATABASE_HOST", "value" : var.db_endpoint },
+    { "name" : "DATABASE_USERNAME", "value" : var.db_user },
+    { "name" : "PORT", "value" : tostring(var.backend_image_port) },
+    { "name" : "DATABASE_NAME", "value" : var.db_name },
+    { "name" : "AWS_S3_BUCKET", "value" : "${var.project}-images-${var.env}"},
+    { "name" : "AWS_REGION", "value": data.aws_region.current.name },
+    { "name" : "URL", "value": "https://api.${var.env}.${var.domain}" },
+    { "name" : "PROXY", "value": "true" },
+  ])
+}
+
+
+data "aws_ssm_parameter" "postgres_password" {
+  name = "/${var.env}/${var.project}/postgres_password"
+}
+
+
+data "aws_ssm_parameter" "backend_env" {
+  name = "/${var.env}/${var.project}/backend_env"
 }

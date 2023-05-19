@@ -9,8 +9,8 @@ on:
 env:
   AWS_REGION: us-east-1
   AWS_ACCOUNT_ID: 862728225363
-  ECR_REPOSITORY: 862728225363.dkr.ecr.us-east-1.amazonaws.com/cabin_backend
-  ECS_CLUSTER: cabin_cluster_dev
+  ECR_REPOSITORY: 862728225363.dkr.ecr.us-east-1.amazonaws.com/instagram_backend
+  ECS_CLUSTER: instagram_cluster_dev
   ECS_SERVICE: backend_service_dev
   ECS_TASK: backend
 

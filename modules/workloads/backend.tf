@@ -23,8 +23,8 @@ resource "aws_alb_target_group" "backend" {
   deregistration_delay = 30
 
   health_check {
-    path     = "/health/live"
-    matcher  = "200"
+    path     = var.backend_health_endpoint
+    matcher  = "200-299"
     interval = 30
   }
 }
@@ -32,7 +32,7 @@ resource "aws_alb_target_group" "backend" {
 resource "aws_ecs_service" "backend" {
   name                               = "backend_service_${var.env}"
   cluster                            = aws_ecs_cluster.main.id
-  task_definition                    = aws_ecs_task_definition.backend.arn
+  task_definition                    = "${aws_ecs_task_definition.backend.family}:${max(aws_ecs_task_definition.backend.revision, data.aws_ecs_task_definition.backend.revision)}"
   desired_count                      = 1
   deployment_minimum_healthy_percent = 50
   launch_type                        = "FARGATE"
@@ -82,10 +82,7 @@ resource "aws_ecs_task_definition" "backend" {
     cpu    = 256
     memory = 512
     image  = "${var.env == "dev" ? join("", aws_ecr_repository.backend.*.repository_url) : var.ecr_url}:latest"
-    environment = [
-      { "name" : "PORT", "value" : tostring(var.backend_image_port) },
-      { "name" : "MONGO_URI", "value" : nonsensitive(data.aws_ssm_parameter.mongo_uri.value) },
-    ]
+    environment = local.backend_env
     essential = true
 
     logConfiguration = {
@@ -110,10 +107,8 @@ resource "aws_ecs_task_definition" "backend" {
   }
 }
 
-
-
-data "aws_ssm_parameter" "mongo_uri" {
-  name = "/${var.env}/ecs/${var.project}-backend/credentials/mongo-uri"
+data "aws_ecs_task_definition" "backend" {
+  task_definition = aws_ecs_task_definition.backend.family
 }
 
 
@@ -200,6 +195,30 @@ EOF
   }
 }
 
+resource "aws_iam_policy" "send_emails" {
+  name   = "SendSESEmails"
+  policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+      {
+          "Effect": "Allow",
+          "Action": [
+              "ses:SendEmail",
+              "ses:SendRawEmail"       
+           ],
+          "Resource": "*"
+      }
+  ]
+}
+EOF
+
+  tags = {
+    terraform = "true"
+    env       = var.env
+  }
+}
+
 resource "aws_iam_role_policy_attachment" "backend_task_execution" {
   role       = aws_iam_role.backend_task_execution.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
@@ -215,3 +234,7 @@ resource "aws_iam_role_policy_attachment" "backend_task_images_bucket" {
   policy_arn = aws_iam_policy.full_access_to_images_bucket.arn
 }
 
+resource "aws_iam_role_policy_attachment" "backend_task_ses" {
+  role       = aws_iam_role.backend_task.name
+  policy_arn = aws_iam_policy.send_emails.arn
+}
