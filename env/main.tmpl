@@ -1,0 +1,118 @@
+terraform {
+  backend "s3" {
+    bucket = {{ .vars.state_bucket | quote }}
+    key    = "state.tfstate"
+    region = {{ .vars.region | quote }}
+  }
+
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 4.25"
+    }
+  }
+
+  required_version = ">= 1.2.6"
+}
+
+data "aws_vpc" "default" {
+  default = true
+}
+
+data "aws_subnets" "all" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.default.id]
+  }
+}
+
+{{if .vars.setup_domain}} 
+module "domain" {
+  source = "./../../modules/domain"
+  domain = {{ .vars.domain | quote }}
+}
+{{end}}
+
+{{if .vars.setup_postgres}} 
+module "postgres" {
+  source = "./../../modules/postgres"
+  project = {{ .vars.project | quote }}
+  env = {{ .vars.env | quote }}
+  vpc_id     = data.aws_vpc.default.id
+  db_name = {{ .vars.pg_db_name | quote }} 
+  username = {{ .vars.pg_username | quote }} 
+}
+{{end}}
+
+module "workloads" {
+  source = "./../../modules/workloads"
+
+  project    = {{ .vars.project | quote }}
+  env        = {{ .vars.env | quote}} 
+  domain     = {{ .vars.domain | quote}}
+  setup_domain = {{ .vars.setup_domain | quote}}
+  private_dns_name = "{{  .vars.project }}.private"
+  vpc_id     = data.aws_vpc.default.id
+  subnet_ids = data.aws_subnets.all.ids
+  {{if .vars.setup_postgres}}
+  db_endpoint = module.postgres.endpoint
+  db_user = {{ .vars.pg_username | quote}}
+  db_name = {{ .vars.pg_db_name | quote}}
+  {{end}}
+  backend_health_endpoint = {{ .vars.health_endpoint | quote }}
+}
+
+
+{{if .vars.setup_cognito }} 
+module "cognito" {
+  source            = "./../../modules/cognito"
+  project           = {{ .vars.project | quote }}
+  env               = {{ .vars.env | quote }}
+  domain            = {{ .vars.domain | quote }}
+  enable_web_client = {{ .vars.enable_web_client | quote }}
+}
+{{end}}
+
+{{ range .vars.scheduled_tasks }}
+# scheduled task
+# https://docs.aws.amazon.com/scheduler/latest/UserGuide/setting-up.html#setting-up-execution-role
+module "task" {
+  source = "../../modules/ecs_task"
+  project = {{ $.vars.project | quote }}
+  env = {{ $.vars.env | quote }}
+  task = {{ .name | quote }}
+  subnet_ids = data.aws_subnets.all.ids
+  vpc_id     = data.aws_vpc.default.id
+  cluster = module.workloads.ecr_cluster.arn
+# https://docs.aws.amazon.com/scheduler/latest/UserGuide/schedule-types.html?icmpid=docs_console_unmapped#rate-based
+  schedule = {{ .schedule | quote }}
+}
+{{ end }}
+
+
+{{ range .vars.event_tasks }}
+module "event_bus_task" {
+  source  = "../../modules/event_bridge_task"
+  # https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-events.html
+  detail_types =[{{range $i, $v := .detail_types}}{{if $i}} ,{{end}}{{$v | quote }}{{end}}]
+  sources =  [{{range $i, $v := .sources}}{{if $i}} ,{{end}}{{$v | quote }}{{end}}]
+  rule_name = {{ .rule_name | quote }}
+  project = {{ $.vars.project | quote }}
+  env =  {{ $.vars.env | quote }}
+  task = {{ .name | quote }}
+  subnet_ids = data.aws_subnets.all.ids
+  vpc_id     = data.aws_vpc.default.id
+  cluster = module.workloads.ecr_cluster.arn
+}
+{{ end }}
+
+
+{{if .vars.setup_ses }} 
+module "ses" {
+  source = "./../../modules/ses"
+  domain = {{ or .vars.ses_domain .vars.domain | quote }}
+  env     = {{ .vars.env | quote }}
+  test_emails = [{{range $i, $v := .vars.ses_test_emails}}{{if $i}} ,{{end}}{{$v | quote }}{{end}}]
+}
+{{ end }}
+

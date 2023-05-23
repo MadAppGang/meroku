@@ -6,26 +6,53 @@ This repository declares infrastructure of Gigit cloud as a code using [Terrafor
 
 - Terraform v1.2.6
 - AWS credentials for accessing Terraform state (hosted in S3 bucket)
+- gomplate, use your local dependency management system for it, for mac: `brew install gomplate`
+- GNU Make (should be part of any system by default). Optional, you can run command from makefile directly in terminal.
 
-1. Init Terraform:
+1. Copy everything from `project_reference` folder to your local repo. Those content is your project specific data and depends on your project only. All other data is updatable and a subject to be changed.
+   
+2. Copy `architecture` repo to `architecture` subfolder of your project. You can just copy it, or you can make a [git submodule](https://git-scm.com/book/en/v2/Git-Tools-Submodules)
+
+The final structure should looks like that:
+```
+./Makefile
+./dev.yaml
+./prod.yaml
+./architecture/ <- this folder could be replaced by new updated version 
+    ./docs
+    ./env
+    ....
+```
+
+3. Edit `dev.yaml` file and run make comand:
 
 ```sh
-    cd infra
+    make dev
+```
+
+or 
+
+```sh
+    gomplate -c vars=dev.yaml -f ./architecture/env/main.tmpl   -o ./architecture/env/dev/main.tf
+```
+
+4. Init Terraform:
+
+```sh
+    cd env/dev
     terraform init
 ```
 
-Make sure your AWS CLI is configured for accessing `project-terraform-state` bucket, which hosts Terraform configuration.
-
-2. Run and save terraform plan:
+5. Run and save terraform plan:
 
 ```sh
-    terraform plan -out=plan.out
+    terraform plan
 ```
 
-3. Apply when you're happy with the plan:
+6. Apply when you're happy with the plan:
 
 ```sh
-    terraform apply -out=plan.out
+    terraform apply
 ```
 
 ## Architecture

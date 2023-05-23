@@ -30,7 +30,6 @@ variable "mockoon_image_port" {
 }
 
 variable "private_dns_name" {
-  default = "instagram.private"
   type    = string
 }
 
@@ -76,7 +75,7 @@ EOF
 }
 
 variable "domain" {
-  default = "instagram.madappgang.com"
+  type    = string
 }
 
 variable "ecr_url" {

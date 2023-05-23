@@ -1,0 +1,47 @@
+project: instagram
+region: ap-southeast-2
+env: dev
+state_bucket: instagram-terraform-state-dev
+
+# setup backend, always deployed
+health_endpoint: "/_health"
+
+# Route53 domain management
+setup_domain: true
+domain: instagram.madappgang.com.au
+
+# setup postgres
+setup_postgres: true
+pg_db_name: instagram
+pg_username: dbadmin
+
+# setup cognito
+setup_cognito: true
+enable_web_client: false
+
+# setup scheduled tasks
+scheduled_tasks:
+  - name: task1
+    schedule: rate(1 minutes)
+  - name: task2
+    schedule: rate(1 hours)
+
+# setup event processing tasks
+event_tasks:
+  - name: event_task1
+    rule_name: hug_all
+    sources: 
+      - service1
+      - service2
+    detail_types:
+      - SERVICE_DEPLOYMENT_COMPLETED
+      - SERVICE_DEPLOYMENT_FAILED
+      - SERVICE_DEPLOYMENT_IN_PROGRESS
+
+# setup AWS SES
+setup_ses: true
+#optional, if ses uses different domain
+ses_domain:
+ses_test_emails:
+  - i@madappgang.com
+  - ivan.holiak@madappgang.com
