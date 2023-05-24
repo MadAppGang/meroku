@@ -2,14 +2,19 @@
 
 This repository declares infrastructure of Gigit cloud as a code using [Terraform](https://www.terraform.io/).
 
+## TODO
+
+TODO
+ - [ ] connect prod to dev ECR https://aws.amazon.com/blogs/containers/sharing-amazon-ecr-repositories-with-multiple-accounts-using-aws-organizations/
+ - [ ] setup code pipeline to deploy to ECS https://docs.aws.amazon.com/codepipeline/latest/userguide/tutorials-ecs-ecr-codedeploy.html
+
+
 ## Dependencies
 
 - Terraform v1.2.6
 - AWS credentials for accessing Terraform state (hosted in S3 bucket)
 - gomplate, use your local dependency management system for it, for mac: `brew install gomplate`
 - GNU Make (should be part of any system by default). Optional, you can run command from makefile directly in terminal.
-
-
 
 
 1. Copy two file to your root repo location:
