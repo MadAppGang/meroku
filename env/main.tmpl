@@ -30,6 +30,7 @@ data "aws_subnets" "all" {
 module "domain" {
   source = "{{ .vars.modules }}/domain"
   domain = {{ .vars.domain | quote }}
+  env = {{ .vars.env | quote }}
 }
 {{end}}
 
