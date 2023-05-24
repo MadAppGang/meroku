@@ -12,13 +12,6 @@ resource "aws_lb" "alb" {
   enable_deletion_protection = false
 }
 
-data "aws_acm_certificate" "amazon_issued_domain" {
-  domain      = "*.${var.env == "prod" ? "" : format("%s.", var.env)}${var.domain}"
-  types       = ["AMAZON_ISSUED"]
-  most_recent = true
-}
-
-
 resource "aws_alb_listener" "http" {
   load_balancer_arn = aws_lb.alb.id
   port              = 80
@@ -41,7 +34,7 @@ resource "aws_alb_listener" "https" {
   protocol          = "HTTPS"
 
   ssl_policy      = "ELBSecurityPolicy-2016-08"
-  certificate_arn = data.aws_acm_certificate.amazon_issued_domain.arn
+  certificate_arn = var.certificate_arn
 
   default_action {
     target_group_arn = aws_alb_target_group.backend.id

@@ -38,6 +38,14 @@ variable "backend_health_endpoint" {
   default = "/health/live"
 }
 
+variable "zone_id" {
+  type = string
+}
+variable "certificate_arn" {
+  type = string
+}
+
+
 variable "ecr_repository_policy" {
   type    = string
   default = <<EOF

@@ -6,12 +6,9 @@ resource "aws_ses_domain_dkim" "dkim" {
   domain = aws_ses_domain_identity.domain.domain
 }
 
-data "aws_route53_zone" "domain" {
-  name = var.domain
-}
 
 resource "aws_route53_record" "domain_amazonses_verification_record" {
-  zone_id = data.aws_route53_zone.domain.zone_id
+  zone_id = var.zone_id
   name    = "_amazonses.${var.env}.${var.domain}"
   type    = "TXT"
   ttl     = "600"
@@ -20,7 +17,7 @@ resource "aws_route53_record" "domain_amazonses_verification_record" {
 
 resource "aws_route53_record" "domain_amazonses_dkim_record" {
   count   = 3
-  zone_id = data.aws_route53_zone.domain.zone_id
+  zone_id = var.zone_id
   name    = "${element(aws_ses_domain_dkim.dkim.dkim_tokens, count.index)}._domainkey.${var.domain}"
   type    = "CNAME"
   ttl     = "3600"

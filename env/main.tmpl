@@ -32,6 +32,15 @@ module "domain" {
   domain = {{ .vars.domain | quote }}
   env = {{ .vars.env | quote }}
 }
+{{else}}
+data "aws_route53_zone" "domain" {
+  name  = var.domain
+}
+data "aws_acm_certificate" "domain" {
+  domain      = "*.${var.env == "prod" ? "" : format("%s.", var.env)}${var.domain}"
+  types       = ["AMAZON_ISSUED"]
+  most_recent = true
+}
 {{end}}
 
 {{if .vars.setup_postgres}} 
@@ -60,6 +69,14 @@ module "workloads" {
   db_name = {{ .vars.pg_db_name | quote}}
   {{end}}
   backend_health_endpoint = {{ .vars.health_endpoint | quote }}
+  {{if .vars.setup_domain}} 
+  zone_id = moumoduledle.domain.zone_id
+  certificate_arn = module.domain.certificate_arn
+  {{else}}
+  zone_id = data.aws_route53_zone.domain.zone_id
+  certificate_arn = data.aws_acm_certificate.arn
+  {{end}}
+
 }
 
 
@@ -113,6 +130,11 @@ module "ses" {
   domain = {{ or .vars.ses_domain .vars.domain | quote }}
   env     = {{ .vars.env | quote }}
   test_emails = [{{range $i, $v := .vars.ses_test_emails}}{{if $i}} ,{{end}}{{$v | quote }}{{end}}]
+  {{if .vars.setup_domain}} 
+  zone_id = moudule.domain.zone_id
+  {{else}}
+  zone_id = data.aws_route53_zone.domain.zone_id
+  {{end}}
 }
 {{ end }}
 
