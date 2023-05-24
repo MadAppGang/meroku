@@ -35,12 +35,15 @@ prod:
 version:
 	cat ./architecture/version.txt
 
-tdp:
-	cd env/dev/
-	terraform init
-	terraform plan
+devplan:
+	cd env/dev/ && terraform init && terraform plan
 
-tpp:
-	cd env/prod/
-	terraform init
-	terraform plan
+prodplan:
+	cd env/prod/ && terraform init && terraform plan
+
+devapply:
+	cd env/dev/ && terraform init && terraform apply
+
+prodapply:
+	cd env/prod/ && terraform init && terraform apply
+
