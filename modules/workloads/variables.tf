@@ -10,6 +10,11 @@ variable "project" {
   type = string
 }
 
+variable "image_bucket_postfix" {
+  default = ""
+}
+
+
 variable "vpc_id" {
   type = string
 }

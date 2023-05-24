@@ -76,6 +76,11 @@ or
 | devapply | apply dev terraform plan | 
 | prodapply | apply prod terraform plan |
 
+## Env variables management
+Backend, and every task are using env variables from AWS Parameter Store (SMM). One parameter store per value.
+
+When you need to populate initial values from JSON file, please use 
+
 
 ## Architecture
 

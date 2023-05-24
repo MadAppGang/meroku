@@ -145,10 +145,17 @@ resource "aws_cloudwatch_log_group" "backend" {
 }
 
 resource "aws_s3_bucket" "images" {
-  bucket = "${var.project}-images-${var.env}"
+  bucket = "${var.project}-images-${var.env}${var.image_bucket_postfix}"
   tags = {
     terraform = "true"
     env       = var.env
+  }
+}
+
+resource "aws_s3_bucket_ownership_controls" "images" {
+  bucket = aws_s3_bucket.images.id
+  rule {
+    object_ownership = "ObjectWriter"
   }
 }
 
@@ -156,7 +163,7 @@ resource "aws_s3_bucket" "images" {
 resource "aws_s3_bucket_acl" "images" {
   bucket = aws_s3_bucket.images.id
   acl    = "private"
-
+  depends_on = [aws_s3_bucket_ownership_controls.images]
 }
 
 resource "aws_iam_role" "backend_task" {

@@ -10,6 +10,7 @@ health_endpoint: "/_health"
 # Route53 domain management
 setup_domain: true
 domain: instagram.madappgang.com.au
+image_bucket_postfix: "-new"
 
 # setup postgres
 setup_postgres: true
