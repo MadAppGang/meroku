@@ -9,51 +9,73 @@ This repository declares infrastructure of Gigit cloud as a code using [Terrafor
 - gomplate, use your local dependency management system for it, for mac: `brew install gomplate`
 - GNU Make (should be part of any system by default). Optional, you can run command from makefile directly in terminal.
 
-1. Copy everything from `project_reference` folder to your local repo. Those content is your project specific data and depends on your project only. All other data is updatable and a subject to be changed.
+1. Copy two file to your root repo location:
+
+```bash
+    curl https://raw.githubusercontent.com/MadAppGang/architecture/main/project/Makefile -o Makefile
+    curl https://raw.githubusercontent.com/MadAppGang/architecture/main/project/dev.yaml -o dev.yaml
+```
+
+2. Init new data:
    
-2. Copy `architecture` repo to `architecture` subfolder of your project. You can just copy it, or you can make a [git submodule](https://git-scm.com/book/en/v2/Git-Tools-Submodules)
-
-The final structure should looks like that:
+```bash
+    make init
 ```
-./Makefile
-./dev.yaml
-./prod.yaml
-./architecture/ <- this folder could be replaced by new updated version 
-    ./docs
-    ./env
-    ....
-```
+   
 
-3. Edit `dev.yaml` file and run make comand:
+3. Edit `dev.yaml` file and run generate your terraform data:
 
-```sh
+```bash
     make dev
 ```
 
 or 
 
 ```sh
-    gomplate -c vars=dev.yaml -f ./architecture/env/main.tmpl   -o ./architecture/env/dev/main.tf
+    gomplate -c vars=dev.yaml -f ./architecture/env/main.tmpl   -o ./env/dev/main.tf
 ```
 
 4. Init Terraform:
+
+
+```bash
+    make devplan
+```
+
+or
 
 ```sh
     cd env/dev
     terraform init
 ```
 
-5. Run and save terraform plan:
+5. Apply the plan when you're happy with it:
 
-```sh
-    terraform plan
+
+```bash
+    make devapply
 ```
 
-6. Apply when you're happy with the plan:
+or
 
-```sh
+```bash
     terraform apply
 ```
+
+## Makefile commands
+
+| command | description |
+| ---- | ------ |
+| clean | remove all the data |
+| update | apply new version of architecture |
+| version | show current architecture version |
+| dev | generate dev terraform env |
+| prod | generate prod terraform env |
+| devplan | show dev terraform plan |
+| prodplan | show prod terraform plan |
+| devapply | apply dev terraform plan | 
+| prodapply | apply prod terraform plan |
+
 
 ## Architecture
 

@@ -1,10 +1,10 @@
 resource "aws_route53_zone" "domain" {
-  name       = "*.${var.env == "prod" ? "" : format("%s.", var.env)}${var.domain}"
+  name = "${var.env == "prod" ? "app" : format("%s.", var.env)}${var.domain}"
 }
 
 
 resource "aws_acm_certificate" "domain" {
-  domain_name            = "*.${var.env == "prod" ? "" : format("%s.", var.env)}${var.domain}"
+  domain_name       = "*.${var.env == "prod" ? "app" : format("%s.", var.env)}${var.domain}"
   validation_method = "DNS"
   lifecycle {
     create_before_destroy = true
