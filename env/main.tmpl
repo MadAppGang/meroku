@@ -70,7 +70,7 @@ module "workloads" {
   {{end}}
   backend_health_endpoint = {{ .vars.health_endpoint | quote }}
   {{if .vars.setup_domain}} 
-  zone_id = moumoduledle.domain.zone_id
+  zone_id = module.domain.zone_id
   certificate_arn = module.domain.certificate_arn
   {{else}}
   zone_id = data.aws_route53_zone.domain.zone_id
@@ -131,7 +131,7 @@ module "ses" {
   env     = {{ .vars.env | quote }}
   test_emails = [{{range $i, $v := .vars.ses_test_emails}}{{if $i}} ,{{end}}{{$v | quote }}{{end}}]
   {{if .vars.setup_domain}} 
-  zone_id = moudule.domain.zone_id
+  zone_id = module.domain.zone_id
   {{else}}
   zone_id = data.aws_route53_zone.domain.zone_id
   {{end}}
