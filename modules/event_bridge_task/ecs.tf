@@ -31,9 +31,7 @@ resource "aws_ecs_task_definition" "task" {
     cpu    = 256
     memory = 512
     image  = "${var.env == "dev" ? join("", aws_ecr_repository.task.*.repository_url) : var.ecr_url}:latest"
-    environment = [
-      { "name" : "TEST", "value" : tostring(1000) },
-    ]
+    secrets     = local.task_env_ssm
     essential = true
 
     logConfiguration = {

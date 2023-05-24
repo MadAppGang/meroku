@@ -82,7 +82,7 @@ resource "aws_ecs_task_definition" "backend" {
     cpu    = 256
     memory = 512
     image  = "${var.env == "dev" ? join("", aws_ecr_repository.backend.*.repository_url) : var.ecr_url}:latest"
-    environment = local.backend_env
+    secrets     = local.backend_env_ssm
     essential = true
 
     logConfiguration = {
@@ -237,4 +237,23 @@ resource "aws_iam_role_policy_attachment" "backend_task_images_bucket" {
 resource "aws_iam_role_policy_attachment" "backend_task_ses" {
   role       = aws_iam_role.backend_task.name
   policy_arn = aws_iam_policy.send_emails.arn
+}
+
+
+// SSM IAM access policy
+resource "aws_iam_role_policy_attachment" "ssm_parameter_access" {
+  role       = aws_iam_role.backend_task.name
+  policy_arn = aws_iam_policy.ssm_parameter_access.arn
+}
+
+resource "aws_iam_policy" "ssm_parameter_access" {
+  name   = "BackendSSMAccessPolicy"
+  policy = data.aws_iam_policy_document.ssm_parameter_access.json
+}
+
+data "aws_iam_policy_document" "ssm_parameter_access" {
+  statement {
+    actions   = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
+    resources = ["arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:/${var.env}/${var.project}/backend/*"]
+  }
 }
