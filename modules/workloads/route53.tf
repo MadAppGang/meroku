@@ -36,7 +36,7 @@ resource "aws_service_discovery_service" "mockoon" {
 }
 
 
-data "aws_route53_record" "api" {
+resource "aws_route53_record" "api" {
   zone_id = data.aws_route53_zone.domain.zone_id
   name = "api.${var.env}.${var.domain}"
   type = "CNAME"
