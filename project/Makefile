@@ -1,21 +1,26 @@
 
+.PHONY: clean
 
-init: ./env/dev ./env/prod
-	mkdir env
-	mkdir env/dev
-	mdkir env/prod
-	cp ./architecture/env/output.tf env/dev
-	cp ./architecture/env/output.tf env/prod
+clean:
+	rm -rf env
+	rm -rf architecture
+
+.PHONY: init
+init:
+	mkdir -p env/dev
+	mkdir -p env/prod
+	git clone --depth=1 --branch=main https://github.com/MadAppGang/architecture.git ./architecture
+	rm -rf ./architecture/.git
+	cp -rf ./architecture/env/outputs.tf env/dev
+	cp -rf ./architecture/env/outputs.tf env/prod
 
 .PHONY: update
 update: 
 	rm -rf ./architecture
-	rm env/dev/output.tf
-	rm env/prod/output.tf
 	git clone --depth=1 --branch=main https://github.com/MadAppGang/architecture.git ./architecture
 	rm -rf ./architecture/.git
-	cp ./architecture/env/output.tf env/dev
-	cp ./architecture/env/output.tf env/prod
+	cp -rf ./architecture/env/outputs.tf env/dev
+	cp -rf ./architecture/env/outputs.tf env/prod
 
 .PHONY: dev
 dev: 
