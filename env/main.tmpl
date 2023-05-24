@@ -28,14 +28,14 @@ data "aws_subnets" "all" {
 
 {{if .vars.setup_domain}} 
 module "domain" {
-  source = "./../../modules/domain"
+  source = "{{ .vars.modules }}/domain"
   domain = {{ .vars.domain | quote }}
 }
 {{end}}
 
 {{if .vars.setup_postgres}} 
 module "postgres" {
-  source = "./../../modules/postgres"
+  source = "{{ .vars.modules }}/postgres"
   project = {{ .vars.project | quote }}
   env = {{ .vars.env | quote }}
   vpc_id     = data.aws_vpc.default.id
@@ -45,7 +45,7 @@ module "postgres" {
 {{end}}
 
 module "workloads" {
-  source = "./../../modules/workloads"
+  source = "{{ .vars.modules }}/workloads"
 
   project    = {{ .vars.project | quote }}
   env        = {{ .vars.env | quote}} 
@@ -64,7 +64,7 @@ module "workloads" {
 
 {{if .vars.setup_cognito }} 
 module "cognito" {
-  source            = "./../../modules/cognito"
+  source            = "{{ .vars.modules }}/cognito"
   project           = {{ .vars.project | quote }}
   env               = {{ .vars.env | quote }}
   domain            = {{ .vars.domain | quote }}
@@ -76,7 +76,7 @@ module "cognito" {
 # scheduled task
 # https://docs.aws.amazon.com/scheduler/latest/UserGuide/setting-up.html#setting-up-execution-role
 module "task" {
-  source = "../../modules/ecs_task"
+  source = "{{ .vars.modules }}/ecs_task"
   project = {{ $.vars.project | quote }}
   env = {{ $.vars.env | quote }}
   task = {{ .name | quote }}
@@ -91,7 +91,7 @@ module "task" {
 
 {{ range .vars.event_tasks }}
 module "event_bus_task" {
-  source  = "../../modules/event_bridge_task"
+  source  = "{{ .vars.modules }}/event_bridge_task"
   # https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-events.html
   detail_types =[{{range $i, $v := .detail_types}}{{if $i}} ,{{end}}{{$v | quote }}{{end}}]
   sources =  [{{range $i, $v := .sources}}{{if $i}} ,{{end}}{{$v | quote }}{{end}}]
@@ -108,7 +108,7 @@ module "event_bus_task" {
 
 {{if .vars.setup_ses }} 
 module "ses" {
-  source = "./../../modules/ses"
+  source = "{{ .vars.modules }}/ses"
   domain = {{ or .vars.ses_domain .vars.domain | quote }}
   env     = {{ .vars.env | quote }}
   test_emails = [{{range $i, $v := .vars.ses_test_emails}}{{if $i}} ,{{end}}{{$v | quote }}{{end}}]

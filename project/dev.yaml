@@ -2,6 +2,7 @@ project: instagram
 region: ap-southeast-2
 env: dev
 state_bucket: instagram-terraform-state-dev
+modules: ../../architecture/modules
 
 # setup backend, always deployed
 health_endpoint: "/_health"
