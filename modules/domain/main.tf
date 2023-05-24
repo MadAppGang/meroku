@@ -1,6 +1,5 @@
 resource "aws_route53_zone" "domain" {
   name       = "*.${var.env == "prod" ? "" : format("%s.", var.env)}${var.domain}"
-  private_zone = false
 }
 
 
@@ -28,7 +27,7 @@ resource "aws_route53_record" "domain" {
   records         = [each.value.record]
   ttl             = 60
   type            = each.value.type
-  zone_id         = data.aws_route53_zone.domain.zone_id
+  zone_id         = aws_route53_zone.domain.zone_id
 }
 
 resource "aws_acm_certificate_validation" "domain" {
