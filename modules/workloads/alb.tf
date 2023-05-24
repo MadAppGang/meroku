@@ -1,7 +1,3 @@
-data "aws_route53_zone" "domain" {
-  name  = var.domain
-}
-
 resource "aws_lb" "alb" {
   name               = "${var.project}-alb-${var.env}"
   internal           = false
