@@ -29,3 +29,13 @@ prod:
 .PHONY: versions
 version:
 	cat ./architecture/version.txt
+
+tdp:
+	cd env/dev/
+	terraform init
+	terraform plan
+
+tpp:
+	cd env/prod/
+	terraform init
+	terraform plan
