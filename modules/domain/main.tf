@@ -1,4 +1,4 @@
-data "aws_route53_zone" "domain" {
+resource "aws_route53_zone" "domain" {
   name       = "*.${var.env == "prod" ? "" : format("%s.", var.env)}${var.domain}"
   private_zone = false
 }
