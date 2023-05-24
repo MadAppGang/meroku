@@ -9,6 +9,9 @@ This repository declares infrastructure of Gigit cloud as a code using [Terrafor
 - gomplate, use your local dependency management system for it, for mac: `brew install gomplate`
 - GNU Make (should be part of any system by default). Optional, you can run command from makefile directly in terminal.
 
+
+
+
 1. Copy two file to your root repo location:
 
 ```bash
@@ -35,10 +38,19 @@ or
     gomplate -c vars=dev.yaml -f ./architecture/env/main.tmpl   -o ./env/dev/main.tf
 ```
 
-4. Init Terraform:
-
+If you set up on a new AWS account, you need to create state bucket first:
 
 ```bash
+export AWS_PROFILE=projectdev
+aws s3 mb s3://instagram-terraform-state-dev
+```
+
+4. Init Terraform:
+
+Wnsure uou are using the proper AWS_PROFILE first.
+
+```bash
+    export AWS_PROFILE=projectdev
     make devplan
 ```
 

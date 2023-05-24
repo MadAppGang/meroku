@@ -6,11 +6,11 @@ modules: ../../architecture/modules
 
 # setup backend, always deployed
 health_endpoint: "/_health"
+image_bucket_postfix: "-new"
 
 # Route53 domain management
 setup_domain: true
 domain: instagram.madappgang.com.au
-image_bucket_postfix: "-new"
 
 # setup postgres
 setup_postgres: true
