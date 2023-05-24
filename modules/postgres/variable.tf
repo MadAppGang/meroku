@@ -44,3 +44,9 @@ resource "aws_ssm_parameter" "postgres_password" {
   value = random_password.postgres.result
 }
 
+// propagade the result to backend env
+resource "aws_ssm_parameter" "postgres_password_backend" {
+  name = "/${var.env}/${var.project}/backend/postgres_password"
+  type = "SecureString"
+  value = random_password.postgres.result
+}
