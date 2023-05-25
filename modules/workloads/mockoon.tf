@@ -67,7 +67,7 @@ resource "aws_ecs_task_definition" "mockoon" {
     name   = "${var.project}_mockoon_${var.env}"
     cpu    = 256
     memory = 512
-    image  = "${var.env == "dev" ? join("", aws_ecr_repository.mockoon.*.repository_url) : var.ecr_url}:latest"
+    image  = "${var.env == "dev" ? join("", aws_ecr_repository.mockoon.*.repository_url) : var.mockoon_ecr_url}:latest"
     environment = [
       { "name" : "PORT", "value" : tostring(var.mockoon_image_port) },
     ]

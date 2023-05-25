@@ -59,6 +59,11 @@ variable "ecr_url" {
   default = ""
 }
 
+variable "mockoon_ecr_url" {
+  default = ""
+}
+
+
 variable "db_endpoint" {
   default = ""
 }
