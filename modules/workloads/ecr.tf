@@ -22,12 +22,6 @@ resource "aws_ecr_lifecycle_policy" "mockoon" {
   count      = var.env == "dev" ? 1 : 0
 }
 
-resource "aws_ecr_repository_policy" "mockoon_external" {
-  repository = join("", aws_ecr_repository.mockoon.*.name)
-  policy     = data.aws_iam_policy_document.external_read_ecr_policy.json
-  count      = var.env == "dev" ? 1 : 0
-}
-
 // backend 
 resource "aws_ecr_repository" "backend" {
   name  = "${var.project}_backend"
@@ -41,12 +35,6 @@ resource "aws_ecr_repository" "backend" {
 resource "aws_ecr_repository_policy" "backend" {
   repository = join("", aws_ecr_repository.backend.*.name)
   policy     = data.aws_iam_policy_document.default_ecr_policy.json
-  count      = var.env == "dev" ? 1 : 0
-}
-
-resource "aws_ecr_repository_policy" "backend_external" {
-  repository = join("", aws_ecr_repository.backend.*.name)
-  policy     = data.aws_iam_policy_document.external_read_ecr_policy.json
   count      = var.env == "dev" ? 1 : 0
 }
 
@@ -80,10 +68,7 @@ data "aws_iam_policy_document" "default_ecr_policy" {
       "ssmmessages:OpenDataChannel"
     ]
   }
-}
 
-
-data "aws_iam_policy_document" "external_read_ecr_policy" {
   statement {
     sid = "External read ECR policy"
     principals {
@@ -104,4 +89,6 @@ data "aws_iam_policy_document" "external_read_ecr_policy" {
     }
   }
 }
+
+
 

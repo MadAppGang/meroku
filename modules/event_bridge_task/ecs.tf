@@ -16,12 +16,6 @@ resource "aws_ecr_repository_policy" "task" {
   count      = var.env == "dev" ? 1 : 0
 }
 
-resource "aws_ecr_repository_policy" "task_external" {
-  repository = join("", aws_ecr_repository.task.*.name)
-  policy     = data.aws_iam_policy_document.external_read_ecr_policy.json
-  count      = var.env == "dev" ? 1 : 0
-}
-
 resource "aws_ecs_task_definition" "task" {
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
