@@ -56,7 +56,7 @@ prodplan:
 devapply:
 	cd env/dev/; \
 	terraform init; \
-	terraform plan; \
+	terraform apply; \
 	echo "Setting ECR repos values for prod ..."; \
 	${sc} "s/ecr_account_id:.*/ecr_account_id: `terraform output -raw account_id`/g; s/ecr_account_region:.*/ecr_account_region: `terraform output -raw region`/g" ../../prod.yaml 
 
