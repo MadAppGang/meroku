@@ -1,23 +1,3 @@
-resource "aws_ecr_repository" "mockoon" {
-  name  = "${var.project}_mockoon"
-  count = var.env == "dev" ? 1 : 0
-
-  tags = {
-    terraform = "true"
-  }
-}
-
-resource "aws_ecr_repository_policy" "mockoon" {
-  repository = join("", aws_ecr_repository.mockoon.*.name)
-  policy     = var.ecr_repository_policy
-  count      = var.env == "dev" ? 1 : 0
-}
-
-resource "aws_ecr_lifecycle_policy" "mockoon" {
-  repository = join("", aws_ecr_repository.mockoon.*.name)
-  policy     = var.ecr_lifecycle_policy
-  count      = var.env == "dev" ? 1 : 0
-}
 
 
 resource "aws_alb_target_group" "mockoon" {

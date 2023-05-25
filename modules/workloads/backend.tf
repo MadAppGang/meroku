@@ -1,17 +1,3 @@
-resource "aws_ecr_repository" "backend" {
-  name  = "${var.project}_backend"
-  count = var.env == "dev" ? 1 : 0
-
-  tags = {
-    terraform = "true"
-  }
-}
-
-resource "aws_ecr_repository_policy" "backend" {
-  repository = join("", aws_ecr_repository.backend.*.name)
-  policy     = var.ecr_repository_policy
-  count      = var.env == "dev" ? 1 : 0
-}
 
 
 resource "aws_alb_target_group" "backend" {

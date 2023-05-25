@@ -44,7 +44,13 @@ resource "aws_ecr_repository" "task" {
 
 resource "aws_ecr_repository_policy" "task" {
   repository = join("", aws_ecr_repository.task.*.name)
-  policy     = var.ecr_repository_policy
+  policy     = data.aws_iam_policy_document.default_ecr_policy.json
+  count      = var.env == "dev" ? 1 : 0
+}
+
+resource "aws_ecr_repository_policy" "task_external" {
+  repository = join("", aws_ecr_repository.task.*.name)
+  policy     = data.aws_iam_policy_document.external_read_ecr_policy.json
   count      = var.env == "dev" ? 1 : 0
 }
 
