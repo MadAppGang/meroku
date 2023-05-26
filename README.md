@@ -20,8 +20,8 @@ TODO
 1. Copy two file to your root repo location:
 
 ```bash
-    curl https://raw.githubusercontent.com/MadAppGang/architecture/main/project/Makefile -o Makefile
-    curl https://raw.githubusercontent.com/MadAppGang/architecture/main/project/dev.yaml -o dev.yaml
+    curl https://raw.githubusercontent.com/MadAppGang/infrastructure/main/project/Makefile -o Makefile
+    curl https://raw.githubusercontent.com/MadAppGang/infrastructure/main/project/dev.yaml -o dev.yaml
 ```
 
 2. Init new data:
@@ -40,7 +40,7 @@ TODO
 or 
 
 ```sh
-    gomplate -c vars=dev.yaml -f ./architecture/env/main.tmpl   -o ./env/dev/main.tf
+    gomplate -c vars=dev.yaml -f ./infrastructure/env/main.tmpl   -o ./env/dev/main.tf
 ```
 
 If you set up on a new AWS account, you need to create state bucket first:
@@ -84,8 +84,8 @@ or
 | command | description |
 | ---- | ------ |
 | clean | remove all the data |
-| update | apply new version of architecture |
-| version | show current architecture version |
+| update | apply new version of infrastructure |
+| version | show current infrastructure version |
 | dev | generate dev terraform env |
 | prod | generate prod terraform env |
 | devplan | show dev terraform plan |
