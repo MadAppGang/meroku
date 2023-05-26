@@ -4,7 +4,7 @@ data "archive_file" "ci_lambda" {
   output_path = "./ci_lambda.zip"
 }
 
-data "aws_s3_bucket" "lambda_bucket" {
+resource "aws_s3_bucket" "lambda_bucket" {
   bucket = "${var.project}-ci_lambda-${var.env}${var.image_bucket_postfix}"
 }
 
