@@ -68,6 +68,7 @@ module "workloads" {
   private_dns_name = "{{  .vars.project }}.private"
   vpc_id     = data.aws_vpc.default.id
   subnet_ids = data.aws_subnets.all.ids
+  lambda_path = "{{ .vars.modules }}/workloads/ci_lambda/main"
   slack_deployment_webhook = {{ .vars.slack_deployment_webhook | quote }}
   image_bucket_postfix = {{ .vars.image_bucket_postfix | quote }}
   {{if .vars.setup_postgres}}

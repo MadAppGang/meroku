@@ -14,6 +14,12 @@ variable "image_bucket_postfix" {
   default = ""
 }
 
+variable "lambda_path" {
+  type = string
+  default = "../../architecture/modules/workloads/ci_lambda/main"
+}
+
+
 variable "slack_deployment_webhook" {
   default = ""
 }

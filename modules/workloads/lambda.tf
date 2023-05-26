@@ -1,7 +1,7 @@
 
 data "archive_file" "lambda" {
   type        = "zip"
-  source_file = "./ci_lambda/main"
+  source_file = var.lambda_path
   output_path = "ci_lambda.zip"
 }
 
@@ -32,15 +32,16 @@ resource "aws_iam_role_policy_attachment" "lambda_basic_esecution" {
 
 
 resource "aws_lambda_function" "lambda_deploy" {
-  filename      = "ci_lambda.zip"
-  function_name = "ci_lambda"
-  role          = aws_iam_role.lambda_deploy_iam.arn
+  filename         = "ci_lambda.zip"
+  function_name    = "ci_lambda"
+  handler          = "main"
+  role             = aws_iam_role.lambda_deploy_iam.arn
   source_code_hash = data.archive_file.lambda.output_base64sha256
-  runtime = "go1.x"
+  runtime          = "go1.x"
 
   environment {
     variables = {
-      PROJECT_NAME = var.project
+      PROJECT_NAME      = var.project
       SLACK_WEBHOOK_URL = var.slack_deployment_webhook
     }
   }
