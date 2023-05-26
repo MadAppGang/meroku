@@ -14,6 +14,9 @@ variable "image_bucket_postfix" {
   default = ""
 }
 
+variable "slack_deployment_webhook" {
+  default = ""
+}
 
 variable "vpc_id" {
   type = string

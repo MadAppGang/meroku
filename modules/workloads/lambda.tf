@@ -32,7 +32,12 @@ resource "aws_lambda_function" "ci_lambda" {
 
   handler = "index.handler"
   runtime = "nodejs18.x"
-
+  environment {
+    variables = {
+      PROJECT_NAME = var.project
+      SLACK_WEBHOOK_URL = var.slack_deployment_webhook
+    }
+  }
   role = "role_arn"
 
   source_code_hash = data.archive_file.ci_lambda.output_base64sha256

@@ -5,6 +5,7 @@ state_bucket: instagram-terraform-state-dev
 modules: ../../architecture/modules
 ecr_account_id:
 ecr_account_region:
+slack_deployment_webhook: 
 
 # setup backend, always deployed
 health_endpoint: "/_health"
