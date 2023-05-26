@@ -109,7 +109,7 @@ When you need to populate initial values from JSON file, please use
 All services by default should respond status `200` on GET handler with path `/health/love`. If it is not responding with status 200, the application load balancer will consider the service unhealthy and redeploy it. 
 
 
-## Remote dubug
+## Remote debug
 
 [You can use Amazon ECS Exec](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/ecs-exec.html) to  execute command remotely in terminal.
 
@@ -132,3 +132,10 @@ You can use a [usefull script](https://github.com/aws-containers/amazon-ecs-exec
 
 
 
+## Send events to Event Bridge 
+
+You can test events by sending them event bus using CLI. The same command is used to send it ot deploy from Github Aciton.
+
+```bash
+aws events put-events --entries "Source=github,Detail=\"{}\",DetailType=TESTING,EventBusName=default"
+```

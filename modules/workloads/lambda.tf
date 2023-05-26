@@ -72,7 +72,7 @@ resource "aws_iam_role_policy_attachment" "lambda_ecs" {
   policy_arn = aws_iam_policy.lambda_ecs.arn
 }
 
-# Event Bus For ECR
+# Eventbus For ECR
 resource "aws_cloudwatch_event_rule" "ecr_event" {
     name = "ecr_events_cicd"
     description = "Emmit ECR event on new image push"
@@ -97,3 +97,4 @@ resource "aws_lambda_permission" "ecr_event_call_deploy_lambda" {
   principal = "events.amazonaws.com"
   source_arn = aws_cloudwatch_event_rule.ecr_event.arn
 }
+
