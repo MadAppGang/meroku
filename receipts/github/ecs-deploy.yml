@@ -8,11 +8,9 @@ on:
 
 env:
   AWS_REGION: us-east-1
-  AWS_ACCOUNT_ID: 862728225363
-  ECR_REPOSITORY: 862728225363.dkr.ecr.us-east-1.amazonaws.com/instagram_backend
-  ECS_CLUSTER: instagram_cluster_dev
-  ECS_SERVICE: backend_service_dev
-  ECS_TASK: backend
+  AWS_ACCOUNT_ID: 798135304365
+  ECR_REPOSITORY: 798135304365.dkr.ecr.us-east-1.amazonaws.com/chubby_backend
+
 
 permissions:
   id-token: write
@@ -52,7 +50,3 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-      - name: Deploy to Amazon ECS
-        run: |
-          LATEST_TASK_DEFINITON_REVISION=$(aws ecs describe-task-definition --task-definition ${{ env.ECS_TASK }} | jq '.taskDefinition.revision')
-          aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE }} --task-definition ${{ env.ECS_TASK }}:$LATEST_TASK_DEFINITON_REVISION  --force-new-deployment
