@@ -22,7 +22,7 @@ data "aws_ssm_parameters_by_path" "backend" {
 locals {
   backend_env_ssm = [
     for i in range(length(data.aws_ssm_parameters_by_path.backend.names)) : {
-      name      = reverse(split("/", data.aws_ssm_parameters_by_path.backend.names[i]))[0]
+      name      = upper(reverse(split("/", data.aws_ssm_parameters_by_path.backend.names[i]))[0])
       valueFrom = data.aws_ssm_parameters_by_path.backend.names[i]
     }
   ]
