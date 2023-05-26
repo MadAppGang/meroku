@@ -77,7 +77,10 @@ func processECREvent(srv Service, ctx context.Context, e events.CloudWatchEvent)
 		return "", fmt.Errorf("unable to update ECS service: %v", err)
 	}
 
-	return fmt.Sprintf("Processed ECR event and updated ECS service: %s with the latest task definition", e.ID), nil
+	result := fmt.Sprintf("Processed ECR event and updated ECS service: %s with the latest task definition", e.ID)
+	fmt.Println(result)
+
+	return result, nil
 }
 
 func getServiceNameFromRepoName(str string) (string, error) {
