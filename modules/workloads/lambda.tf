@@ -1,49 +1,48 @@
-data "archive_file" "ci_lambda" {
+
+data "archive_file" "lambda" {
   type        = "zip"
-  source_dir  = "./ci_lambda/main"
-  output_path = "./ci_lambda.zip"
+  source_file = "./ci_lambda/main"
+  output_path = "ci_lambda.zip"
 }
 
-resource "aws_s3_bucket" "lambda_bucket" {
-  bucket = "${var.project}-ci_lambda-${var.env}${var.image_bucket_postfix}"
-}
 
-resource "aws_s3_bucket_ownership_controls" "lambda_bucket" {
-  bucket = aws_s3_bucket.lambda_bucket.id
-  rule {
-    object_ownership = "ObjectWriter"
+data "aws_iam_policy_document" "lambda_deploy_assume_role" {
+  statement {
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["lambda.amazonaws.com"]
+    }
+
+    actions = ["sts:AssumeRole"]
   }
 }
 
-resource "aws_s3_bucket_acl" "lambda_bucket" {
-  bucket = aws_s3_bucket.lambda_bucket.id
-  acl    = "private"
-  depends_on = [aws_s3_bucket_ownership_controls.lambda_bucket]
+resource "aws_iam_role" "lambda_deploy_iam" {
+  name               = "lambda_deploy_iam"
+  assume_role_policy = data.aws_iam_policy_document.lambda_deploy_assume_role.json
 }
 
 
-resource "aws_s3_bucket_object" "object" {
-  bucket = aws_s3_bucket.lambda_bucket.id
-  key    = "ci_lambda.zip"
-  source = data.archive_file.ci_lambda.output_path
-  acl    = "private"
+resource "aws_iam_role_policy_attachment" "lambda_basic_esecution" {
+  role       = aws_iam_role.lambda_deploy_iam.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-resource "aws_lambda_function" "ci_lambda" {
-  function_name = "${var.project}-ci_lambda"
 
-  s3_bucket     = aws_s3_bucket.lambda_bucket.id
-  s3_key        = aws_s3_bucket_object.object.key
+resource "aws_lambda_function" "lambda_deploy" {
+  filename      = "ci_lambda.zip"
+  function_name = "ci_lambda"
+  role          = aws_iam_role.lambda_deploy_iam.arn
+  source_code_hash = data.archive_file.lambda.output_base64sha256
+  runtime = "go1.x"
 
-  handler = "index.handler"
-  runtime = "nodejs18.x"
   environment {
     variables = {
       PROJECT_NAME = var.project
       SLACK_WEBHOOK_URL = var.slack_deployment_webhook
     }
   }
-  role = "role_arn"
-
-  source_code_hash = data.archive_file.ci_lambda.output_base64sha256
 }
+
