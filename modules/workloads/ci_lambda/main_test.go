@@ -11,7 +11,9 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-type MockService struct{}
+type MockService struct {
+	usi *ecs.UpdateServiceInput
+}
 
 func (s *MockService) ListTaskDefinitions(input *ecs.ListTaskDefinitionsInput) (*ecs.ListTaskDefinitionsOutput, error) {
 	return &ecs.ListTaskDefinitionsOutput{
@@ -22,10 +24,12 @@ func (s *MockService) ListTaskDefinitions(input *ecs.ListTaskDefinitionsInput) (
 }
 
 func (s *MockService) UpdateService(input *ecs.UpdateServiceInput) (*ecs.UpdateServiceOutput, error) {
+	s.usi = input
 	return &ecs.UpdateServiceOutput{}, nil
 }
 
 func Test_handleRequestECR(t *testing.T) {
+	ProjectName = "chubby"
 	var e events.CloudWatchEvent
 	err := json.Unmarshal([]byte(ecr_event), &e)
 	assert.NoError(t, err)
@@ -37,6 +41,11 @@ func Test_handleRequestECR(t *testing.T) {
 	result, err := handler(context.TODO(), e)
 	assert.NoError(t, err)
 	assert.Contains(t, result, "Processed ECR event and updated ECS service:")
+
+	assert.NotNil(t, srv.usi)
+	assert.Equal(t, "backend_service_dev", *srv.usi.Service)
+	assert.Equal(t, "chubby_cluster_dev", *srv.usi.Cluster)
+	assert.Equal(t, "arn:aws:ecs:us-east-1:798135304365:task-definition/backend:3", *srv.usi.TaskDefinition)
 }
 
 const ecr_event = `
@@ -54,7 +63,7 @@ const ecr_event = `
   "detail": {
     "action-type": "PUSH",
     "result": "SUCCESS",
-    "repository-name": "my-repo",
+    "repository-name": "chubby_backend",
     "image-tag": "latest",
     "image-digest": "sha256:0123456789abcdef0123456789abcdef",
     "actor": "012345678912"

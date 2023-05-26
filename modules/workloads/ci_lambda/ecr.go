@@ -63,6 +63,7 @@ func processECREvent(srv Service, ctx context.Context, e events.CloudWatchEvent)
 		return "", fmt.Errorf("unable to extract service name from arn: %s", latestTaskDefinition)
 	}
 	clusterName := fmt.Sprintf("%s_cluster_dev", ProjectName)
+	serviceName = fmt.Sprintf("%s_service_dev", serviceName)
 
 	// Updating the ECS service with the latest task definition revision
 	_, err = srv.UpdateService(&ecs.UpdateServiceInput{
