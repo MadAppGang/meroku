@@ -47,3 +47,20 @@ resource "aws_lambda_function" "lambda_deploy" {
   }
 }
 
+
+
+data "aws_iam_policy_document" "lambda" {
+    statement {
+            effect = "Allow"
+            actions = [
+                "ecs:DescribeTaskDefinition",
+                "ecs:ListTaskDefinitions",
+                "ecs:UpdateService",
+            ]
+            resources = ["*"]
+  }
+}
+resource "aws_iam_role_policy_attachment" "lambda_ecs" {
+  role       = aws_iam_role.lambda_deploy_iam.name
+  policy_arn = aws_iam_policy_document.lambda.arn
+}
