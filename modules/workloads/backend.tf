@@ -23,9 +23,6 @@ resource "aws_ecs_service" "backend" {
   deployment_minimum_healthy_percent = 50
   launch_type                        = "FARGATE"
   scheduling_strategy                = "REPLICA"
-  deployment_controller {
-    type = "CODE_DEPLOY"
-  }
 
   network_configuration {
     security_groups  = [aws_security_group.backend.id]
