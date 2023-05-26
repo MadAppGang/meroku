@@ -6,10 +6,6 @@ data "archive_file" "ci_lambda" {
 
 data "aws_s3_bucket" "lambda_bucket" {
   bucket = "${var.project}-ci_lambda-${var.env}${var.image_bucket_postfix}"
-  tags = {
-    terraform = "true"
-    env       = var.env
-  }
 }
 
 resource "aws_s3_bucket_ownership_controls" "lambda_bucket" {
