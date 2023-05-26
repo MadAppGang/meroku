@@ -235,7 +235,7 @@ resource "aws_iam_role_policy_attachment" "backend_task_ses" {
 
 // SSM IAM access policy
 resource "aws_iam_role_policy_attachment" "ssm_parameter_access" {
-  role       = aws_iam_role.backend_task.name
+  role       = aws_iam_role.backend_task_execution
   policy_arn = aws_iam_policy.ssm_parameter_access.arn
 }
 
