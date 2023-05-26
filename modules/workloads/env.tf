@@ -29,12 +29,7 @@ locals {
 }
 
 locals {
-  backend_env = concat([
-    for k, v in nonsensitive(jsondecode(data.aws_ssm_parameter.backend_env.value)) : {
-      name  = k
-      value = v
-    }
-  ], [
+  backend_env = [
     { "name" : "PG_DATABASE_HOST", "value" : var.db_endpoint },
     { "name" : "PG_DATABASE_USERNAME", "value" : var.db_user },
     { "name" : "PORT", "value" : tostring(var.backend_image_port) },
@@ -43,5 +38,5 @@ locals {
     { "name" : "AWS_REGION", "value": data.aws_region.current.name },
     { "name" : "URL", "value": "https://api.${var.env == "prod" ? "app" : var.env}.${var.domain}" },
     { "name" : "PROXY", "value": "true" },
-  ])
+  ]
 }
