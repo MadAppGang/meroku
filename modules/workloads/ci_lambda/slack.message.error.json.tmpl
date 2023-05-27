@@ -1,12 +1,13 @@
 {
-    "text": "Service {{.Service}} deployed successfully.",
-    "blocks": [
-    	{
-    		"type": "section",
-    		"text": {
-    			"type": "mrkdwn",
-    			"text": "No aciton required, congratulations: 🫱🏻‍🫲🏾"
-    		}
-    	},
-    ]
+	"text": "🚨 Error deploying service: {{.Service}} 🚨",
+		"blocks": [
+			{
+							"type": "section",
+							"text": {
+											"type": "mrkdwn",
+											"text": "🚨 Error deploying service: {{.Service}} 🚨. Error {{ .Reason }}"
+							}
+			},
+		]
 }
+

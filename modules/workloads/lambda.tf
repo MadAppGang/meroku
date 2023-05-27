@@ -77,9 +77,15 @@ resource "aws_cloudwatch_event_rule" "ecr_event" {
     name = "ecr_events_cicd"
     description = "Emmit ECR event on new image push"
     event_pattern = jsonencode({
-      source = ["aws.ecr"]
-      detail-type = ["ECR Image Action"]
-      "detail": { "action-type": ["PUSH"] }
+      source = [
+        "aws.ecr",
+        "aws.ecs"
+      ]
+      detail-type = [
+        "ECR Image Action",
+        "ECS Deployment State Change",
+        "ECS Service Action"
+      ]
     })
 }
 

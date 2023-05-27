@@ -9,7 +9,7 @@ For pod deployment, it listens for event `gihub.action.production` only, which s
 The service is here in prebuild state as a binary for target platform, ready to be used by terraform. If you want to rebuild it, use the following command:
 
 ```bash
-  GOOS=linux GOARCH=amd64 go build -o main 
+GOOS=linux GOARCH=amd64 go build -o main 
 ```
 
 

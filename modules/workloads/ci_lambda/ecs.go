@@ -18,18 +18,40 @@ var errorTmpl, _ = template.New("error").Parse(errorJson)
 
 //go:embed slack.message.success.json.tmpl
 var successJson string
-var successTmpl, _ = template.New("success").Parse(errorJson)
+var successTmpl, _ = template.New("success").Parse(successJson)
+
+//go:embed slack.message.info.json.tmpl
+var infoJson string
+var infoTmpl, _ = template.New("info").Parse(infoJson)
 
 type ECSServiceDeployEvent struct {
-	EventType    string `json:"eventType"`
-	EventName    string `json:"eventName"`
-	Reason       string `json:"reason"`
-	DeploymentID string `json:"deploymentId"`
+	EventType    ECSEventType `json:"eventType"` // INFO or
+	EventName    ECSEventName `json:"eventName"`
+	Reason       string       `json:"reason"`
+	DeploymentID string       `json:"deploymentId"`
 }
 
+type (
+	ECSEventType string
+	ECSEventName string
+)
+
+const (
+	ECSEventTypeError                             ECSEventType = "ERROR"
+	ECSEventTypeInfo                              ECSEventType = "INFO"
+	ECSEventTypeWarn                              ECSEventType = "WARN"
+	ECSEventNameInProgress                        ECSEventName = "SERVICE_DEPLOYMENT_IN_PROGRESS"
+	ECSEventNameCompleted                         ECSEventName = "SERVICE_DEPLOYMENT_COMPLETED"
+	ECSEventNameFailed                            ECSEventName = "SERVICE_DEPLOYMENT_FAILED"
+	ECSEventNameServiceSteady                     ECSEventName = "SERVICE_STEADY_STATE"        // service got to desired capacity state, and consider green
+	ECSEventNameServiceTaskImpaired               ECSEventName = "SERVICE_TASK_START_IMPAIRED" // The service is unable to consistently start tasks successfully.
+	ECSEventNameServiceDiscoveryInstanceUnhealthy ECSEventName = "SERVICE_DISCOVERY_INSTANCE_UNHEALTHY"
+)
+
 type templateData struct {
-	Service string
-	Reason  string
+	Service   string
+	Reason    string
+	StateName string
 }
 
 func processECSEvent(srv Service, ctx context.Context, e events.CloudWatchEvent) (string, error) {
@@ -47,23 +69,23 @@ func processECSEvent(srv Service, ctx context.Context, e events.CloudWatchEvent)
 	if len(e.Resources) > 0 {
 		resource = e.Resources[0]
 	}
-	fmt.Printf("New ECS deployment event: %s with resource: %s.\n", detail.EventType, resource)
-
-	if detail.EventType != "SERVICE_DEPLOYMENT_COMPLETED" &&
-		detail.EventType != "SERVICE_DEPLOYMENT_FAILED" {
-		return "", fmt.Errorf("skipping event type: %s", detail.EventType)
-	}
+	fmt.Printf("New ECS deployment event type: %s, with name: %s with resource: %s.\n", detail.EventType, detail.EventName, resource)
 
 	data := templateData{
-		Service: resource,
-		Reason:  detail.Reason,
+		Service:   resource,
+		Reason:    detail.Reason,
+		StateName: string(detail.EventName),
 	}
 
 	var payload bytes.Buffer
-
-	t := successTmpl
-	if detail.EventType == "SERVICE_DEPLOYMENT_FAILED" {
+	var t *template.Template
+	switch detail.EventName {
+	case ECSEventNameFailed:
 		t = errorTmpl
+	case ECSEventNameCompleted:
+		t = successTmpl
+	default:
+		t = infoTmpl
 	}
 
 	if err := t.Execute(&payload, data); err != nil {
@@ -75,9 +97,39 @@ func processECSEvent(srv Service, ctx context.Context, e events.CloudWatchEvent)
 		return "", err
 	}
 
-	if req.Response.StatusCode < 200 || req.Response.StatusCode > 299 {
-		return "", fmt.Errorf("could not send slack message: %s", req.Response.Status)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return "", fmt.Errorf("could not send slack message: %s", resp.Status)
 	}
 
-	return fmt.Sprintf("sent slack message for %s", detail.EventType), nil
+	result := fmt.Sprintf("sent slack message for %s and %s.", detail.EventType, detail.EventName)
+	fmt.Println(result)
+
+	return result, nil
 }
+
+// Service steady state
+// {
+//     "version": "0",
+//     "id": "af3c496d-f4a8-65d1-70f4-a69d52e9b584",
+//     "detail-type": "ECS Service Action",
+//     "source": "aws.ecs",
+//     "account": "111122223333",
+//     "time": "2019-11-19T19:27:22Z",
+//     "region": "us-west-2",
+//     "resources": [
+//         "arn:aws:ecs:us-west-2:111122223333:service/default/servicetest"
+//     ],
+//     "detail": {
+//         "eventType": "INFO",
+//         "eventName": "SERVICE_STEADY_STATE",
+//         "clusterArn": "arn:aws:ecs:us-west-2:111122223333:cluster/default",
+//         "createdAt": "2019-11-19T19:27:22.695Z"
+//     }
+// }
