@@ -43,6 +43,7 @@ resource "aws_lambda_function" "lambda_deploy" {
     variables = {
       PROJECT_NAME      = var.project
       SLACK_WEBHOOK_URL = var.slack_deployment_webhook
+      PROJECT_ENV       = var.env
     }
   }
 }
@@ -50,15 +51,15 @@ resource "aws_lambda_function" "lambda_deploy" {
 
 
 data "aws_iam_policy_document" "lambda_ecs" {
-    statement {
-            effect = "Allow"
-            actions = [
-                "ecs:DescribeTaskDefinition",
-                "ecs:ListTaskDefinitions",
-                "ecs:UpdateService",
-                "iam:PassRole"
-            ]
-            resources = ["*"]
+  statement {
+    effect = "Allow"
+    actions = [
+      "ecs:DescribeTaskDefinition",
+      "ecs:ListTaskDefinitions",
+      "ecs:UpdateService",
+      "iam:PassRole"
+    ]
+    resources = ["*"]
   }
 }
 
@@ -74,19 +75,21 @@ resource "aws_iam_role_policy_attachment" "lambda_ecs" {
 
 # Eventbus For ECR
 resource "aws_cloudwatch_event_rule" "ecr_event" {
-    name = "ecr_events_cicd"
-    description = "Emmit ECR event on new image push"
-    event_pattern = jsonencode({
-      source = [
-        "aws.ecr",
-        "aws.ecs"
-      ]
-      detail-type = [
-        "ECR Image Action",
-        "ECS Deployment State Change",
-        "ECS Service Action"
-      ]
-    })
+  name        = "ecr_events_cicd"
+  description = "Emmit ECR event on new image push"
+  event_pattern = jsonencode({
+    source = [
+      "aws.ecr",
+      "aws.ecs",
+      "action.production"
+    ]
+    detail-type = [
+      "ECR Image Action",
+      "ECS Deployment State Change",
+      "ECS Service Action",
+      "DEPLOY"
+    ]
+  })
 }
 
 resource "aws_cloudwatch_event_target" "lambda" {
@@ -97,10 +100,10 @@ resource "aws_cloudwatch_event_target" "lambda" {
 
 
 resource "aws_lambda_permission" "ecr_event_call_deploy_lambda" {
-  statement_id = "AllowExecutionFromCloudWatch"
-  action = "lambda:InvokeFunction"
+  statement_id  = "AllowExecutionFromCloudWatch"
+  action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.lambda_deploy.function_name
-  principal = "events.amazonaws.com"
-  source_arn = aws_cloudwatch_event_rule.ecr_event.arn
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.ecr_event.arn
 }
 

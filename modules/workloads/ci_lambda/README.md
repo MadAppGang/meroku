@@ -19,3 +19,23 @@ The lambda have to have IAM role to be able to do a outgoing HTTP request and tw
 
 `PROJECT_NAME` - managed by terraform
 `SLACK_WEBHOOK_URL` - slack webhook if you want to receive build messages
+`PROJECT_ENV` - environment where the project is deployed, managed by terraform
+
+
+## Deploy to Production
+
+Dev deployments are automatic, every time the new ECR is published to repository. 
+
+Production deployment is done explicitly only. You need to send event to prod EventBus.
+
+`action.production` - should be a source.
+And
+
+You can send the event with aws cli:
+
+```bash
+aws events put-events --entries 'Source=action.production,DetailType=DEPLOY,Detail="{\"service\":\"backend\"}",EventBusName=default'
+```
+
+Where `backend` is a service name.
+

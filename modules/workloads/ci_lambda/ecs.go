@@ -49,6 +49,7 @@ const (
 )
 
 type templateData struct {
+	Env       string
 	Service   string
 	Reason    string
 	StateName string
@@ -75,6 +76,7 @@ func processECSEvent(srv Service, ctx context.Context, e events.CloudWatchEvent)
 		Service:   resource,
 		Reason:    detail.Reason,
 		StateName: string(detail.EventName),
+		Env:       Env,
 	}
 
 	var payload bytes.Buffer

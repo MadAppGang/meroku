@@ -14,6 +14,7 @@ import (
 var (
 	ProjectName     = os.Getenv("PROJECT_NAME")
 	SlackWebhookURL = os.Getenv("SLACK_WEBHOOK_URL")
+	Env             = os.Getenv("PROJECT_ENV")
 )
 
 func Handler(srv Service) func(ctx context.Context, e events.CloudWatchEvent) (string, error) {
@@ -25,7 +26,7 @@ func Handler(srv Service) func(ctx context.Context, e events.CloudWatchEvent) (s
 			return processECREvent(srv, ctx, e)
 		case "aws.ecs":
 			return processECSEvent(srv, ctx, e)
-		case "gihub.action.production":
+		case "action.production":
 			return processProductionDeployEvent(srv, ctx, e)
 		}
 
