@@ -81,12 +81,14 @@ resource "aws_cloudwatch_event_rule" "ecr_event" {
     source = [
       "aws.ecr",
       "aws.ecs",
+      "aws.ssm",
       "action.production"
     ]
     detail-type = [
       "ECR Image Action",
       "ECS Deployment State Change",
       "ECS Service Action",
+      "Parameter Store Change",
       "DEPLOY"
     ]
   })

@@ -28,6 +28,8 @@ func Handler(srv Service) func(ctx context.Context, e events.CloudWatchEvent) (s
 			return processECSEvent(srv, ctx, e)
 		case "action.production":
 			return processProductionDeployEvent(srv, ctx, e)
+		case "aws.ssm":
+			return processSSMEvent(srv, ctx, e)
 		}
 
 		return "", fmt.Errorf("unable to process event: %s, unsupported event source: %s", e.ID, e.Source)
