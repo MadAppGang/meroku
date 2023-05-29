@@ -85,7 +85,7 @@ variable "db_name" {
   default = ""
 }
 
-varibale "setup_FCM_SNS" {
+variable "setup_FCM_SNS" {
   default = false
 }
 
