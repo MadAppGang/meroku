@@ -10,6 +10,8 @@ slack_deployment_webhook:
 # setup backend, always deployed
 health_endpoint: "/_health"
 image_bucket_postfix: "-new"
+# setup push notification FCM SNS for backend
+setup_FCM_SNS: false
 
 # Route53 domain management
 setup_domain: true

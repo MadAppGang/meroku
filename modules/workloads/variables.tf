@@ -85,6 +85,10 @@ variable "db_name" {
   default = ""
 }
 
+varibale "setup_FCM_SNS" {
+  default = false
+}
+
 variable "ecr_lifecycle_policy" {
   type    = string
   default = <<EOF
