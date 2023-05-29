@@ -1,7 +1,11 @@
 terraform {
   backend "s3" {
     bucket = {{ .vars.state_bucket | quote }}
+    {{if .vars.state_file}} 
+    key    = {{ .vars.state_file | quote }}
+    {{else}}
     key    = "state.tfstate"
+    {{end}}
     region = {{ .vars.region | quote }}
   }
 
@@ -69,14 +73,20 @@ module "workloads" {
   vpc_id     = data.aws_vpc.default.id
   subnet_ids = data.aws_subnets.all.ids
   lambda_path = "{{ .vars.modules }}/workloads/ci_lambda/main"
+  {{if .vars.slack_deployment_webhook}}
   slack_deployment_webhook = {{ .vars.slack_deployment_webhook | quote }}
+  {{end}}
+  {{if .vars.image_bucket_postfix}}
   image_bucket_postfix = {{ .vars.image_bucket_postfix | quote }}
+  {{end}}
   {{if .vars.setup_postgres}}
   db_endpoint = module.postgres.endpoint
   db_user = {{ .vars.pg_username | quote}}
   db_name = {{ .vars.pg_db_name | quote}}
   {{end}}
+  {{if .vars.health_endpoint}}  
   backend_health_endpoint = {{ .vars.health_endpoint | quote }}
+  {{end}}
   {{if .vars.setup_domain}} 
   zone_id = module.domain.zone_id
   certificate_arn = module.domain.certificate_arn

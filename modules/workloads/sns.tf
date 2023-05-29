@@ -2,7 +2,7 @@ resource "aws_sns_platform_application" "fcm_application" {
   count               = (var.setup_FCM_SNS) ? 1 : 0
   name                = "${var.project}-fcm-${var.env}"
   platform            = "GCM"
-  platform_credential = nonsensitive(aws_ssm_parameter.gcm_server_key.value)
+  platform_credential = nonsensitive(aws_ssm_parameter.gcm_server_key[0].value)
 }
 
 resource "aws_ssm_parameter" "gcm_server_key" {
@@ -22,7 +22,7 @@ resource "aws_ssm_parameter" "gcm_server_key" {
 resource "aws_iam_role_policy_attachment" "backend_task_sns_fcm_policies" {
   count = (var.setup_FCM_SNS) ? 1 : 0
   role       = aws_iam_role.backend_task.name
-  policy_arn = aws_iam_policy.backend_fcm_policies.arn
+  policy_arn = aws_iam_policy.backend_fcm_policies[0].arn
 }
 
 resource "aws_iam_policy" "backend_fcm_policies" {
@@ -42,7 +42,7 @@ resource "aws_iam_policy" "backend_fcm_policies" {
 				"sns:SetEndpointAttributes"
       ],
       "Resource": [
-        "${aws_sns_platform_application.fcm_application.arn}"
+        "${aws_sns_platform_application.fcm_application[0].arn}"
       ]
     }
    ]
