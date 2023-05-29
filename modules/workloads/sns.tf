@@ -2,7 +2,7 @@ resource "aws_sns_platform_application" "fcm_application" {
   count               = (var.setup_FCM_SNS) ? 1 : 0
   name                = "${var.project}-fcm-${var.env}"
   platform            = "GCM"
-  platform_credential = nonsensitive(data.aws_ssm_parameter.gcm_server_key.value)
+  platform_credential = nonsensitive(aws_ssm_parameter.gcm_server_key.value)
 }
 
 resource "aws_ssm_parameter" "gcm_server_key" {
