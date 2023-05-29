@@ -42,7 +42,7 @@ data "aws_route53_zone" "domain" {
   name  = var.domain
 }
 data "aws_acm_certificate" "domain" {
-  domain      = "*.${var.env == "prod" ? "" : format("%s.", var.env)}${var.domain}"
+  domain      = "*.${var.env == "prod" ? "app." : format("%s.", var.env)}${var.domain}"
   types       = ["AMAZON_ISSUED"]
   most_recent = true
 }

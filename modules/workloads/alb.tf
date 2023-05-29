@@ -49,7 +49,7 @@ resource "aws_lb_listener_rule" "api" {
 
   condition {
     host_header {
-      values = ["api.${var.env == "prod" ? "" : format("%s.", var.env)}${var.domain}"]
+      values = ["api.${var.env == "prod" ? "app." : format("%s.", var.env)}${var.domain}"]
     }
   }
 }
@@ -67,7 +67,7 @@ resource "aws_lb_listener_rule" "mockoon" {
   
   condition {
     host_header {
-      values = ["api.${var.env == "prod" ? "" : format("%s.", var.env)}${var.domain}"]
+      values = ["api.${var.env == "prod" ? "app." : format("%s.", var.env)}${var.domain}"]
     }
   }
 
