@@ -8,6 +8,7 @@ resource "aws_sns_platform_application" "fcm_application" {
 resource "aws_ssm_parameter" "gcm_server_key" {
   count = (var.setup_FCM_SNS) ? 1 : 0
   name  = "/${var.env}/${var.project}/backend/gcm-server-key"
+  type = "SecureString"
   value = " "
   // if we manually change the value, don't rewrite it
   lifecycle {
