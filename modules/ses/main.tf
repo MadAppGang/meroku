@@ -1,5 +1,5 @@
 resource "aws_ses_domain_identity" "domain" {
-  domain = "${var.env}.${var.domain}"
+  domain = "${var.env == "prod" ? "app" : var.env}.${var.domain}"
 }
 
 resource "aws_ses_domain_dkim" "dkim" {
