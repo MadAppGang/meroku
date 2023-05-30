@@ -2,13 +2,6 @@
 
 This repository declares infrastructure of Gigit cloud as a code using [Terraform](https://www.terraform.io/).
 
-## TODO
-
-TODO
- - [ ] connect prod to dev ECR https://aws.amazon.com/blogs/containers/sharing-amazon-ecr-repositories-with-multiple-accounts-using-aws-organizations/
- - [ ] setup code pipeline to deploy to ECS https://docs.aws.amazon.com/codepipeline/latest/userguide/tutorials-ecs-ecr-codedeploy.html
-
-
 ## Dependencies
 
 - Terraform v1.2.6
