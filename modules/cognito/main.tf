@@ -1,3 +1,7 @@
+data "aws_region" "current" {}
+
+data "aws_caller_identity" "current" {}
+
 resource "aws_cognito_user_pool" "user_pool" {
   auto_verified_attributes   = ["email"]
   deletion_protection        = "INACTIVE"
@@ -80,6 +84,12 @@ resource "aws_cognito_user_pool" "user_pool" {
 }
 
 
+resource "aws_cognito_user_pool_domain" "cognito_domain" {
+  count        = (var.enable_user_pool_domain) ? 1 : 0
+  domain       = "${var.user_pool_domain_prefix}-${var.project}-${var.env}"
+  user_pool_id = aws_cognito_user_pool.user_pool.id
+}
+
 resource "aws_cognito_user_group" "main_group" {
   name         = "test"
   user_pool_id = aws_cognito_user_pool.user_pool.id
@@ -90,4 +100,34 @@ resource "aws_cognito_user_group" "admin_group" {
   name         = "admin"
   user_pool_id = aws_cognito_user_pool.user_pool.id
   description  = "Admin user group"
+}
+
+resource "aws_iam_policy" "allow_admin_confirm_signup_policy" {
+  name   = "AllowAdminConfirmSignUpForBackend"
+  policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "cognito-idp:AdminConfirmSignUp"
+      ],
+      "Resource": [
+        "arn:aws:cognito-idp:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:userpool/${aws_cognito_user_pool.user_pool.id}"
+      ]
+    }
+  ]
+}
+EOF
+  tags = {
+    terraform = "true"
+    env       = var.env
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "allow_backend_task_to_confirm_cognito_user_signup" {
+  count      = var.allow_backend_task_to_confirm_signup ? 1 : 0
+  role       = "${var.backend_task_execution_name}"
+  policy_arn = aws_iam_policy.allow_admin_confirm_signup_policy.arn
 }

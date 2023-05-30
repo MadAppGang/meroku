@@ -104,11 +104,16 @@ module "workloads" {
 
 {{if .vars.setup_cognito }} 
 module "cognito" {
-  source            = "{{ .vars.modules }}/cognito"
-  project           = {{ .vars.project | quote }}
-  env               = {{ .vars.env | quote }}
-  domain            = {{ .vars.domain | quote }}
-  enable_web_client = {{ .vars.enable_web_client | quote }}
+  source                  = "{{ .vars.modules }}/cognito"
+  project                 = {{ .vars.project | quote }}
+  env                     = {{ .vars.env | quote }}
+  enable_web_client       = {{ .vars.enable_web_client | quote }}
+  enable_dashboard_client = {{ .vars.enable_dashboard_client | quote }}
+  enable_user_pool_domain = {{ .vars.enable_user_pool_domain | quote }}
+  user_pool_domain_prefix = {{ .vars.user_pool_domain_prefix | quote }}
+  allow_backend_task_to_confirm_signup = {{ .vars.allow_backend_task_to_confirm_signup | quote }}
+
+  backend_task_execution_name = module.workloads.backend_task_execution_name
 }
 {{end}}
 
@@ -126,7 +131,7 @@ module "task" {
 # https://docs.aws.amazon.com/scheduler/latest/UserGuide/schedule-types.html?icmpid=docs_console_unmapped#rate-based
   schedule = {{ .schedule | quote }}
   {{ if and .vars.ecr_account_id .vars.ecr_account_region }}
-  ecr_url = "{{ .vars.ecr_account_id }}.dkr.ecr.{{ .vars.ecr_account_region }}.amazonaws.com/{{ .vars.project }}_tak_{{ .name }}"
+  ecr_url = "{{ .vars.ecr_account_id }}.dkr.ecr.{{ .vars.ecr_account_region }}.amazonaws.com/{{ .vars.project }}_task_{{ .name }}"
   {{ end }}
 }
 {{ end }}
@@ -146,7 +151,7 @@ module "event_bus_task" {
   vpc_id     = data.aws_vpc.default.id
   cluster = module.workloads.ecr_cluster.arn
   {{ if and .vars.ecr_account_id .vars.ecr_account_region }}
-  ecr_url = "{{ .vars.ecr_account_id }}.dkr.ecr.{{ .vars.ecr_account_region }}.amazonaws.com/{{ .vars.project }}_tak_{{ .name }}"
+  ecr_url = "{{ .vars.ecr_account_id }}.dkr.ecr.{{ .vars.ecr_account_region }}.amazonaws.com/{{ .vars.project }}_task_{{ .name }}"
   {{ end }}
 }
 {{ end }}
