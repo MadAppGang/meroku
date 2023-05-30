@@ -108,7 +108,10 @@ module "cognito" {
   project                 = {{ .vars.project | quote }}
   env                     = {{ .vars.env | quote }}
   enable_web_client       = {{ .vars.enable_web_client | quote }}
+  {{if .vars.enable_dashboard_client}}
   enable_dashboard_client = {{ .vars.enable_dashboard_client | quote }}
+  dashboard_callback_urls = [{{range $i, $v := .vars.dashboard_callback_urls}}{{if $i}} ,{{end}}{{$v | quote }}{{end}}]
+  {{end}}
   {{if .vars.enable_user_pool_domain}}
   enable_user_pool_domain = {{ .vars.enable_user_pool_domain | quote }}
   user_pool_domain_prefix = {{ .vars.user_pool_domain_prefix | quote }}
@@ -116,6 +119,7 @@ module "cognito" {
   {{if .vars.allow_backend_task_to_confirm_signup}}
   allow_backend_task_to_confirm_signup = {{ .vars.allow_backend_task_to_confirm_signup | quote }}
   {{end}}
+  auto_verified_attributes = [{{range $i, $v := .vars.auto_verified_attributes}}{{if $i}} ,{{end}}{{$v | quote }}{{end}}]
 
   backend_task_role_name  = module.workloads.backend_task_role_name
 }

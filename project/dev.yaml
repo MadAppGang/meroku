@@ -25,8 +25,13 @@ pg_username: dbadmin
 
 # setup cognito
 setup_cognito: true
+# it can be an empty list if we want to skip the verification process
+auto_verified_attributes:
+  - email
 enable_web_client: false
 enable_dashboard_client: false
+dashboard_callback_urls:
+  - https://jwt.io
 enable_user_pool_domain: false
 user_pool_domain_prefix: 
 allow_backend_task_to_confirm_signup: false
