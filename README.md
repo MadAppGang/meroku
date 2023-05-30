@@ -106,7 +106,7 @@ When you need to populate initial values from JSON file, please use
 
 ## Health check
 
-All services by default should respond status `200` on GET handler with path `/health/love`. If it is not responding with status 200, the application load balancer will consider the service unhealthy and redeploy it. 
+All services by default should respond status `200` on GET handler with path `/health/live`. If it is not responding with status 200, the application load balancer will consider the service unhealthy and redeploy it. 
 
 
 ## Remote debug

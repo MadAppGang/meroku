@@ -26,6 +26,10 @@ pg_username: dbadmin
 # setup cognito
 setup_cognito: true
 enable_web_client: false
+enable_dashboard_client: false
+enable_user_pool_domain: false
+user_pool_domain_prefix: 
+allow_backend_task_to_confirm_signup: false
 
 # setup scheduled tasks
 scheduled_tasks:

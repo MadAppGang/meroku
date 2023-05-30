@@ -2,7 +2,7 @@
 
 This lambda listen for ECR events and for every new repo push it redeploys the service in dev cluster.
 
-For pod deployment, it listens for event `gihub.action.production` only, which should be triggered outside of the system by github action.
+For pod deployment, it listens for event `action.production` only, which should be triggered outside of the system. See notes below.
 
 ## Build
 
