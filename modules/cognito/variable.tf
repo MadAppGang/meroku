@@ -57,7 +57,7 @@ variable "allow_backend_task_to_confirm_signup" {
   default = false
 }
 
-variable "backend_task_execution_name" {
+variable "backend_task_role_name" {
   type    = string
 }
 

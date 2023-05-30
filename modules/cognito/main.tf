@@ -128,6 +128,6 @@ EOF
 
 resource "aws_iam_role_policy_attachment" "allow_backend_task_to_confirm_cognito_user_signup" {
   count      = var.allow_backend_task_to_confirm_signup ? 1 : 0
-  role       = "${var.backend_task_execution_name}"
+  role       = "${var.backend_task_role_name}"
   policy_arn = aws_iam_policy.allow_admin_confirm_signup_policy.arn
 }
