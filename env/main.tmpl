@@ -117,7 +117,7 @@ module "cognito" {
   allow_backend_task_to_confirm_signup = {{ .vars.allow_backend_task_to_confirm_signup | quote }}
   {{end}}
 
-  backend_task_execution_name = module.workloads.backend_task_execution_name
+  backend_task_role_name  = module.workloads.backend_task_role_name
 }
 {{end}}
 
