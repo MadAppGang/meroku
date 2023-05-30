@@ -98,7 +98,7 @@ module "workloads" {
   ecr_url = "{{ .vars.ecr_account_id }}.dkr.ecr.{{ .vars.ecr_account_region }}.amazonaws.com/{{ .vars.project }}_backend"
   mockoon_ecr_url = "{{ .vars.ecr_account_id }}.dkr.ecr.{{ .vars.ecr_account_region }}.amazonaws.com/{{ .vars.project }}_mockoon"
   {{ end }}
-
+  setup_FCM_SNS = {{ .vars.setup_FCM_SNS | quote }}
 }
 
 
