@@ -48,9 +48,9 @@ variable "dashboard_callback_urls" {
   default = ["https://jwt.io"]
 }
 
-variable "dashboard_callback" {
-  type    = string
-  default = "https://jwt.io"
+variable "auto_verified_attributes" {
+  type    = list(string)
+  default = ["email"]
 }
 
 variable "allow_backend_task_to_confirm_signup" {

@@ -9,7 +9,7 @@ resource "aws_cognito_user_pool_client" "dashboard" {
   allowed_oauth_flows          = ["implicit", "code"]
   allowed_oauth_scopes         = ["aws.cognito.signin.user.admin", "openid", "profile"]
   callback_urls                = var.dashboard_callback_urls
-  default_redirect_uri         = var.dashboard_callback
+  default_redirect_uri         = var.dashboard_callback_urls[0]
   generate_secret              = true
 
   read_attributes = [

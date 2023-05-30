@@ -3,7 +3,7 @@ data "aws_region" "current" {}
 data "aws_caller_identity" "current" {}
 
 resource "aws_cognito_user_pool" "user_pool" {
-  auto_verified_attributes   = ["email"]
+  auto_verified_attributes   = var.auto_verified_attributes
   deletion_protection        = "INACTIVE"
   email_verification_message = "Your verification code is {####}"
   email_verification_subject = "Your verification code"
@@ -63,7 +63,7 @@ resource "aws_cognito_user_pool" "user_pool" {
   }
 
   user_attribute_update_settings {
-    attributes_require_verification_before_update = ["email"]
+    attributes_require_verification_before_update = var.auto_verified_attributes
   }
 
   username_configuration {
