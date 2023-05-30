@@ -10,6 +10,6 @@ output "ecr_cluster" {
   value = aws_ecs_cluster.main 
 }
 
-output "backend_task" {
+output "backend_task_role_name" {
   value = aws_iam_role.backend_task.name
 }
