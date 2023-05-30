@@ -109,9 +109,13 @@ module "cognito" {
   env                     = {{ .vars.env | quote }}
   enable_web_client       = {{ .vars.enable_web_client | quote }}
   enable_dashboard_client = {{ .vars.enable_dashboard_client | quote }}
+  {{if .vars.enable_user_pool_domain}}
   enable_user_pool_domain = {{ .vars.enable_user_pool_domain | quote }}
   user_pool_domain_prefix = {{ .vars.user_pool_domain_prefix | quote }}
+  {{end}}
+  {{if .vars.allow_backend_task_to_confirm_signup}}
   allow_backend_task_to_confirm_signup = {{ .vars.allow_backend_task_to_confirm_signup | quote }}
+  {{end}}
 
   backend_task_execution_name = module.workloads.backend_task_execution_name
 }
