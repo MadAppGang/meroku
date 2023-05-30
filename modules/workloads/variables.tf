@@ -55,6 +55,7 @@ variable "backend_health_endpoint" {
 variable "zone_id" {
   type = string
 }
+
 variable "certificate_arn" {
   type = string
 }

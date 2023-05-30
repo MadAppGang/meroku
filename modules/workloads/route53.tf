@@ -21,7 +21,8 @@ resource "aws_service_discovery_service" "backend" {
 }
 
 resource "aws_service_discovery_service" "mockoon" {
-  name =  "mockoon" 
+  count = var.env == "dev" ? 1 : 0
+  name  = "mockoon" 
   dns_config {
     namespace_id   = aws_service_discovery_private_dns_namespace.local.id
     routing_policy = "MULTIVALUE"
