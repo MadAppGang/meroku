@@ -11,5 +11,5 @@ output "ecr_cluster" {
 }
 
 output "backend_task_role_name" {
-  value = aws_iam_role.backend_task_role_name.name
+  value = aws_iam_role.backend_task.name
 }

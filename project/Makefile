@@ -21,15 +21,11 @@ init:
 	mkdir -p env/prod
 	git clone --depth=1 --branch=main https://github.com/MadAppGang/infrastructure.git ./infrastructure
 	rm -rf ./infrastructure/.git
-	cp -rf ./infrastructure/env/outputs.tf env/dev
-	cp -rf ./infrastructure/env/outputs.tf env/prod
 
 update: 
 	rm -rf ./infrastructure
 	git clone --depth=1 --branch=main https://github.com/MadAppGang/infrastructure.git ./infrastructure
 	rm -rf ./infrastructure/.git
-	cp -rf ./infrastructure/env/outputs.tf env/dev
-	cp -rf ./infrastructure/env/outputs.tf env/prod
 
 dev: 
 	gomplate -c vars=dev.yaml -f ./infrastructure/env/main.tmpl   -o ./env/dev/main.tf
