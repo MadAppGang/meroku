@@ -86,6 +86,8 @@ func processECSEvent(srv Service, ctx context.Context, e events.CloudWatchEvent)
 		t = errorTmpl
 	case ECSEventNameCompleted:
 		t = successTmpl
+	case ECSEventNameServiceSteady:
+		return "Ignoring SERVICE_STEADY_STATE, as it produces too much noise!", nil
 	default:
 		t = infoTmpl
 	}
