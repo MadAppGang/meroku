@@ -99,7 +99,7 @@ In production you need to send special command to AWS event bridge. Just explici
 7. Whenever you make a change to your configuration, `dev.yaml` or  `prod.yaml` you need to update it.
 
 ```bash
-make update
+make dev
 make devplan
 .........
 terraform change output here
@@ -108,6 +108,17 @@ ensure terraform performs what you expected
 make devapply
 ```
 
+8. update your infrastructure
+
+You can check infrastructure version by typing `make version`. If new version available with new features you need, you need to update your reference architecture files.
+
+```bash
+make update
+make dev
+make devapply
+```
+
+Don't upgrade if you don't have too. We are trying to keep backward compatibility, but it is not guaranteed. 
 
 ## Makefile commands
 
