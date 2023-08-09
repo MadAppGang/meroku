@@ -4,10 +4,22 @@ This repository declares infrastructure of Gigit cloud as a code using [Terrafor
 
 ## Dependencies
 
-- Terraform v1.2.6
+- Terraform v1.2.6: [how to install terraform](https://developer.hashicorp.com/terraform/tutorials/aws-get-started/install-cli).
 - AWS credentials for accessing Terraform state (hosted in S3 bucket)
 - gomplate, use your local dependency management system for it, for mac: `brew install gomplate`
 - GNU Make (should be part of any system by default). Optional, you can run command from makefile directly in terminal.
+
+0. Create a dedicated git repository for your project's infrastructure.
+
+It is a good idea to keep a state of your current infrastructure in git. Because terraform is declarative approach, you can revert your infrastructure to any moment of the changes. 
+
+Let's assume you have crated the repository for your project infrastructure and working from that:
+
+```bash
+git clone ssh@my_project_infrastructure
+cd my_project_infrastructure
+
+```
 
 
 1. Copy two file to your root repo location:
@@ -16,6 +28,10 @@ This repository declares infrastructure of Gigit cloud as a code using [Terrafor
     curl https://raw.githubusercontent.com/MadAppGang/infrastructure/main/project/Makefile -o Makefile
     curl https://raw.githubusercontent.com/MadAppGang/infrastructure/main/project/dev.yaml -o dev.yaml
 ```
+
+***Do not clone this repository, you don't need it!*** We assume that you are located in the empty repo of your project's infrastructure or you can do it in a subfolder inside your project.
+
+As a result you will 
 
 2. Init new data:
    
@@ -71,6 +87,14 @@ or
 ```bash
     terraform apply
 ```
+
+6. After that commit this repo and ideally you don't need it any more.
+   
+You can find an examples of docker files, and github actions for different tech stacks in `receipts` folder.
+
+Whenever you publish new ECR (using github action or manually) the watcher in the cloud will redeploy your infrastructure.
+
+In production you need to send special command to message 
 
 ## Makefile commands
 
