@@ -94,7 +94,20 @@ You can find an examples of docker files, and github actions for different tech 
 
 Whenever you publish new ECR (using github action or manually) the watcher in the cloud will redeploy your infrastructure.
 
-In production you need to send special command to message 
+In production you need to send special command to AWS event bridge. Just explicit deploys to prod allowed. If you want to automate it - add this to your github action or other CI.
+
+7. Whenever you make a change to your configuration, `dev.yaml` or  `prod.yaml` you need to update it.
+
+```bash
+make update
+make devplan
+.........
+terraform change output here
+ensure terraform performs what you expected
+.......
+make devapply
+```
+
 
 ## Makefile commands
 
