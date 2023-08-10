@@ -101,6 +101,11 @@ module "workloads" {
   {{ end }}
   {{ end }}
   setup_FCM_SNS = {{ .vars.setup_FCM_SNS | quote }}
+
+  {{ if and (index .vars "mockoon")  (.vars.mockoon) }}
+  mockoon_enabled = true
+  {{ end }}
+
 }
 
 

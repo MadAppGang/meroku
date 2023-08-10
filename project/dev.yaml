@@ -14,6 +14,11 @@ image_bucket_postfix:
 # setup push notification FCM SNS for backend
 setup_FCM_SNS: false
 
+
+# Enable mockoon
+# by default enabled for dev env only
+# mockoon: true
+
 # Route53 domain management
 setup_domain: true
 domain: instagram.madappgang.com.au
