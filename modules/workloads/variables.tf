@@ -28,6 +28,12 @@ variable "vpc_id" {
   type = string
 }
 
+variable "mockoon_enabled" {
+  type = boolean
+  default = var.env == "dev"
+}
+
+
 
 variable "subnet_ids" {
   type = list(string)

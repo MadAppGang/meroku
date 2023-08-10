@@ -1,7 +1,7 @@
 
 
 resource "aws_alb_target_group" "mockoon" {
-  count                = var.env == "dev" ? 1 : 0
+  count                = mockoon_enabled ? 1 : 0
   name                 = "mockoon-tg-${var.env}"
   port                 = var.mockoon_image_port
   protocol             = "HTTP"
@@ -17,7 +17,7 @@ resource "aws_alb_target_group" "mockoon" {
 }
 
 resource "aws_ecs_service" "mockoon" {
-  count                              = var.env == "dev" ? 1 : 0
+  count                              = mockoon_enabled ? 1 : 0
   name                               = "mockoon_service_${var.env}"
   cluster                            = aws_ecs_cluster.main.id
   task_definition                    = aws_ecs_task_definition.mockoon[0].arn
@@ -57,7 +57,7 @@ resource "aws_ecs_service" "mockoon" {
 }
 
 resource "aws_ecs_task_definition" "mockoon" {
-  count                    = var.env == "dev" ? 1 : 0
+  count                    = mockoon_enabled ? 1 : 0
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
   family                   = "mockoon"
@@ -103,7 +103,7 @@ resource "aws_ecs_task_definition" "mockoon" {
 
 
 resource "aws_security_group" "mockoon" {
-  count  = var.env == "dev" ? 1 : 0
+  count  = mockoon_enabled ? 1 : 0
   name   = "${var.project}_mockoon_${var.env}"
   vpc_id = var.vpc_id
 
@@ -125,7 +125,7 @@ resource "aws_security_group" "mockoon" {
 }
 
 resource "aws_cloudwatch_log_group" "mockoon" {
-  count = var.env == "dev" ? 1 : 0
+  count = mockoon_enabled ? 1 : 0
   name  = "${var.project}_mockoon_${var.env}"
 
   retention_in_days = 7
@@ -138,26 +138,26 @@ resource "aws_cloudwatch_log_group" "mockoon" {
 
 
 resource "aws_iam_role" "mockoon_task" {
-  count              = var.env == "dev" ? 1 : 0
+  count              = mockoon_enabled ? 1 : 0
   name               = "${var.project}_mockoon_task_${var.env}"
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume_role.json
 }
 
 resource "aws_iam_role" "mockoon_task_execution" {
-  count              = var.env == "dev" ? 1 : 0
+  count              = mockoon_enabled ? 1 : 0
   name               = "${var.project}_mockoon_task_execution_${var.env}"
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume_role.json
 }
 
 
 resource "aws_iam_role_policy_attachment" "mockoon_task_execution" {
-  count      = var.env == "dev" ? 1 : 0
+  count      = mockoon_enabled ? 1 : 0
   role       = aws_iam_role.mockoon_task_execution[0].name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
 resource "aws_iam_role_policy_attachment" "mockoon_task_cloudwatch" {
-  count      = var.env == "dev" ? 1 : 0
+  count      = mockoon_enabled ? 1 : 0
   role       = aws_iam_role.mockoon_task[0].name
   policy_arn = "arn:aws:iam::aws:policy/CloudWatchFullAccess"
 }
