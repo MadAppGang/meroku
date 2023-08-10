@@ -1,7 +1,7 @@
 terraform {
   backend "s3" {
     bucket = {{ .vars.state_bucket | quote }}
-    {{if .vars.state_file}} 
+    {{if and  (index .vars "state_file") (.vars.state_file) }} 
     key    = {{ .vars.state_file | quote }}
     {{else}}
     key    = "state.tfstate"
@@ -35,7 +35,7 @@ data "aws_subnets" "all" {
   }
 }
 
-{{if .vars.setup_domain}} 
+{{ if and (index .vars "setup_domain") (.vars.setup_domain) }} 
 module "domain" {
   source = "{{ .vars.modules }}/domain"
   domain = {{ .vars.domain | quote }}
@@ -73,7 +73,7 @@ module "workloads" {
   vpc_id     = data.aws_vpc.default.id
   subnet_ids = data.aws_subnets.all.ids
   lambda_path = "{{ .vars.modules }}/workloads/ci_lambda/main"
-  {{if .vars.slack_deployment_webhook}}
+  {{if and (index .vars "slack_deployment_webhook") (.vars.slack_deployment_webhook)}}
   slack_deployment_webhook = {{ .vars.slack_deployment_webhook | quote }}
   {{end}}
   {{if .vars.image_bucket_postfix}}
@@ -87,16 +87,18 @@ module "workloads" {
   {{if .vars.health_endpoint}}  
   backend_health_endpoint = {{ .vars.health_endpoint | quote }}
   {{end}}
-  {{if .vars.setup_domain}} 
+  {{if and (index .vars "setup_domain") (.vars.setup_domain) }} 
   zone_id = module.domain.zone_id
   certificate_arn = module.domain.certificate_arn
   {{else}}
   zone_id = data.aws_route53_zone.domain.zone_id
   certificate_arn = data.aws_acm_certificate.arn
   {{end}}
-  {{ if and .vars.ecr_account_id .vars.ecr_account_region }}
+  {{ if and (index .vars "ecr_account_id")  (.vars.ecr_account_id) }}
+  {{ if and (index .vars "ecr_account_region")  (.vars.ecr_account_region) }}
   ecr_url = "{{ .vars.ecr_account_id }}.dkr.ecr.{{ .vars.ecr_account_region }}.amazonaws.com/{{ .vars.project }}_backend"
   mockoon_ecr_url = "{{ .vars.ecr_account_id }}.dkr.ecr.{{ .vars.ecr_account_region }}.amazonaws.com/{{ .vars.project }}_mockoon"
+  {{ end }}
   {{ end }}
   setup_FCM_SNS = {{ .vars.setup_FCM_SNS | quote }}
 }
@@ -125,6 +127,8 @@ module "cognito" {
 }
 {{end}}
 
+
+{{if (index .vars "scheduled_tasks") }}
 {{ range .vars.scheduled_tasks }}
 # scheduled task
 # https://docs.aws.amazon.com/scheduler/latest/UserGuide/setting-up.html#setting-up-execution-role
@@ -143,8 +147,9 @@ module "task" {
   {{ end }}
 }
 {{ end }}
+{{ end }}
 
-
+{{ if (index .vars "event_tasks") }}
 {{ range .vars.event_tasks }}
 module "event_bus_task" {
   source  = "{{ .vars.modules }}/event_bridge_task"
@@ -163,15 +168,16 @@ module "event_bus_task" {
   {{ end }}
 }
 {{ end }}
+{{ end }}
 
 
-{{if .vars.setup_ses }} 
+{{if and (index .vars "setup_ses") (.vars.setup_ses) }} 
 module "ses" {
   source = "{{ .vars.modules }}/ses"
   domain = {{ or .vars.ses_domain .vars.domain | quote }}
   env     = {{ .vars.env | quote }}
   test_emails = [{{range $i, $v := .vars.ses_test_emails}}{{if $i}} ,{{end}}{{$v | quote }}{{end}}]
-  {{if .vars.setup_domain}} 
+  {{if and (index .vars "setup_domain") (.vars.setup_domain)}} 
   zone_id = module.domain.zone_id
   {{else}}
   zone_id = data.aws_route53_zone.domain.zone_id
