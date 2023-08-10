@@ -1,5 +1,6 @@
 #!/bin/bash
 ​
+# this script export parameters from local env.json file to parameter store
 # parametes are exported as:
 # /${var.env}/${var.project}/backend/ - for backend
 # /${var.env}/${var.project}/mockoon/ - for mockoon
