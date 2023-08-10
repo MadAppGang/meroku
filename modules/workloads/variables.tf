@@ -29,8 +29,8 @@ variable "vpc_id" {
 }
 
 variable "mockoon_enabled" {
-  type = boolean
-  default = var.env == "dev"
+  type = bool
+  default = false
 }
 
 

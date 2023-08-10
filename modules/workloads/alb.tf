@@ -56,7 +56,7 @@ resource "aws_lb_listener_rule" "api" {
 
 
 resource "aws_lb_listener_rule" "mockoon" {
-  count        = var.env == "dev" ? 1 : 0
+  count        = var.mockoon_enabled ? 1 : 0
   listener_arn = aws_alb_listener.https.arn
   priority     = 90
 
