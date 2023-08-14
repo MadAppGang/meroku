@@ -109,8 +109,7 @@ module "workloads" {
   {{if and (index .vars "pgadmin_enabled") .vars.pgadmin_enabled }}
   pgadmin_enabled = {{ .vars.pgadmin_enabled }}
   {{if and (index .vars "pgadmin_email") .vars.pgadmin_email }}
-  pgadmin_email = {{ .vars.pgadmin_email | quote 
-  {{end}}
+  pgadmin_email = {{ .vars.pgadmin_email | quote }}  {{end}}
   {{end}}
 
 }
