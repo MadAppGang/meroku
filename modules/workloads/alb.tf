@@ -80,6 +80,24 @@ resource "aws_lb_listener_rule" "mockoon" {
 
 }
 
+resource "aws_lb_listener_rule" "pgadmin" {
+  count        = var.pgadmin_enabled ? 1 : 0
+  listener_arn = aws_alb_listener.https.arn
+  priority     = 201
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_alb_target_group.pgadmin[0].arn
+  }
+
+  condition {
+    host_header {
+        values = ["pgadmin.${var.env == "prod" ? "app." : format("%s.", var.env)}${var.domain}"]
+    }
+  }
+}
+
+
 
 resource "aws_security_group" "alb" {
   name   = "${var.project}_sg_alb_${var.env}"

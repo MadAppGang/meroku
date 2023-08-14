@@ -63,7 +63,7 @@ module "postgres" {
   {{if and (index .vars "pgadmin") .vars.pgadmin }}
   pgadmin: {{ .vars.pgadmin }}
   {{if and (index .vars "pgadmin_email") .vars.pgadmin_email }}
-  pgadmin_email = {{ .vars.pgadmin_email | quote }}
+  pgadmin_email = {{ .vars.pgadmin_email | quote 
   {{end}}
   {{end}}
 }

@@ -20,6 +20,16 @@ variable "lambda_path" {
 }
 
 
+variable "pgadmin_enabled" {
+  type = bool
+  default = "false"
+}
+variable "pgadmin_email" {
+  type = string
+  default = "admin@madappgang.com"
+}
+
+
 variable "slack_deployment_webhook" {
   default = ""
 }
@@ -130,3 +140,17 @@ variable "ecr_lifecycle_policy" {
 EOF
 }
 
+resource "random_password" "pgadmin" {
+  length           = 8
+  special          = true
+  override_special = "!#$%&*()-_=+[]{}<>:?"
+}
+
+
+
+resource "aws_ssm_parameter" "pgadmin_password" {
+  count = var.pgadmin_enabled ? 1 : 0
+  name = "/${var.env}/${var.project}/pgadmin_password"
+  type = "SecureString"
+  value = random_password.pgadmin.result
+}
