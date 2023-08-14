@@ -27,6 +27,8 @@ domain: instagram.madappgang.com.au
 setup_postgres: true
 pg_db_name: instagram
 pg_username: dbadmin
+pgadmin: false
+pgadmin_email: admin@admin.com
 
 # setup cognito
 setup_cognito: true

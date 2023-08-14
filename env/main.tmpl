@@ -60,6 +60,12 @@ module "postgres" {
   vpc_id     = data.aws_vpc.default.id
   db_name = {{ .vars.pg_db_name | quote }} 
   username = {{ .vars.pg_username | quote }} 
+  {{if and (index .vars "pgadmin") .vars.pgadmin }}
+  pgadmin: {{ .vars.pgadmin }}
+  {{if and (index .vars "pgadmin_email") .vars.pgadmin_email }}
+  pgadmin_email = {{ .vars.pgadmin_email | quote }}
+  {{end}}
+  {{end}}
 }
 {{end}}
 
