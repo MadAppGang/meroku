@@ -1,0 +1,1 @@
+# TODO: add IAM role acces policy instead of username and password
