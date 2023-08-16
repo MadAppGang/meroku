@@ -108,7 +108,7 @@ module "workloads" {
 
 
   {{ if and (index .vars "backend_image_port")  (.vars.backend_image_port) }}
-  backend_image_port = .vars.backend_image_port
+  backend_image_port = {{ .vars.backend_image_port }}
   {{ end }}
 
   {{if and (index .vars "pgadmin_enabled") .vars.pgadmin_enabled }}
