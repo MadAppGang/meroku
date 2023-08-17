@@ -70,8 +70,8 @@ variable "private_dns_name" {
 }
 
 variable "backend_container_command" {
-  type = string
-  default = ""
+  type = list(string)
+  default = []
 }
 
 
