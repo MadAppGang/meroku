@@ -37,6 +37,5 @@ locals {
     { "name" : "AWS_S3_BUCKET", "value" : "${var.project}-images-${var.env}${var.image_bucket_postfix}"},
     { "name" : "AWS_REGION", "value": data.aws_region.current.name },
     { "name" : "URL", "value": "https://api.${var.env == "prod" ? "app" : var.env}.${var.domain}" },
-    { "name" : "PROXY", "value": "true" },
   ]
 }

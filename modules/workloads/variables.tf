@@ -59,6 +59,12 @@ variable "mockoon_image_port" {
   type    = number
 }
 
+variable "backend_env" {
+  default = [
+    { "name" : "BACKEND_TEST", "value" : "TEST" },
+  ]
+}
+
 variable "private_dns_name" {
   type    = string
 }
@@ -159,3 +165,4 @@ resource "aws_ssm_parameter" "pgadmin_password" {
   type = "SecureString"
   value = random_password.pgadmin.result
 }
+

@@ -70,7 +70,7 @@ resource "aws_ecs_task_definition" "backend" {
     memory = 512
     image  = "${var.env == "dev" ? join("", aws_ecr_repository.backend.*.repository_url) : var.ecr_url}:latest"
     secrets     = local.backend_env_ssm
-    environment = local.backend_env
+    environment = concat(local.backend_env, var.backend_env)
     essential = true
 
     logConfiguration = {

@@ -122,6 +122,15 @@ module "workloads" {
   {{end}}
   {{end}}
 
+
+  {{ if (index .vars "backend_env") .vars.backend_env }}
+  backend_env = [
+  {{ range .vars.backend_env }}
+    { "name" : upper({{ .name | quote }}), "value" : {{ .value | quote }} },
+  {{ end }}
+  ]
+  {{ end }}
+
 }
 
 
@@ -169,6 +178,9 @@ module "task" {
 }
 {{ end }}
 {{ end }}
+
+
+
 
 {{ if (index .vars "event_tasks") }}
 {{ range .vars.event_tasks }}

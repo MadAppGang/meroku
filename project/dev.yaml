@@ -14,7 +14,9 @@ image_bucket_postfix:
 # backend_image_port: 8765
 # setup push notification FCM SNS for backend
 setup_FCM_SNS: false
-
+backend_env: 
+  - name: env1
+    value: value1
 
 # Enable mockoon
 # by default enabled for dev env only
