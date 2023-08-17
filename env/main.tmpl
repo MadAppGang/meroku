@@ -123,7 +123,7 @@ module "workloads" {
   {{end}}
 
 
-  {{ if (index .vars "backend_env") .vars.backend_env }}
+  {{ if and (index .vars "backend_env") .vars.backend_env }}
   backend_env = [
   {{ range .vars.backend_env }}
     { "name" : upper({{ .name | quote }}), "value" : {{ .value | quote }} },
