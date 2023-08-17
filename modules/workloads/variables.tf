@@ -63,6 +63,11 @@ variable "private_dns_name" {
   type    = string
 }
 
+variable "backend_container_command" {
+  type = string
+  default = ""
+}
+
 
 variable "backend_health_endpoint" {
   default = "/health/live"

@@ -65,6 +65,7 @@ resource "aws_ecs_task_definition" "backend" {
 
   container_definitions = jsonencode([{
     name   = "${var.project}_backend_${var.env}"
+    command = var.backend_container_command
     cpu    = 256
     memory = 512
     image  = "${var.env == "dev" ? join("", aws_ecr_repository.backend.*.repository_url) : var.ecr_url}:latest"

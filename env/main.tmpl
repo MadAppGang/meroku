@@ -111,6 +111,10 @@ module "workloads" {
   backend_image_port = {{ .vars.backend_image_port }}
   {{ end }}
 
+  {{ if and (index .vars "backend_container_command")  (.vars.backend_container_command) }}
+  backend_container_command = {{ .vars.backend_container_command }}
+  {{ end }}
+
   {{if and (index .vars "pgadmin_enabled") .vars.pgadmin_enabled }}
   pgadmin_enabled = {{ .vars.pgadmin_enabled }}
   {{if and (index .vars "pgadmin_email") .vars.pgadmin_email }}
