@@ -1,33 +1,27 @@
 terraform {
   backend "s3" {
     bucket = {{ .vars.state_bucket | quote }}
-    {{if and  (index .vars "state_file") (.vars.state_file) }} 
+    {{- if and  (index .vars "state_file") (.vars.state_file) }} 
     key    = {{ .vars.state_file | quote }}
-    {{else}}
+    {{- else}}
     key    = "state.tfstate"
-    {{end}}
-    region = {{ .vars.region | quote }}
+    {{- end}}
+    region = {{- .vars.region | quote }}
   }
-
   required_providers {
     aws = {
       source  = "hashicorp/aws"
       version = "~> 4.25"
     }
   }
-
   required_version = ">= 1.2.6"
 }
 
 data "aws_vpc" "default" {
   default = true
 }
-
 data "aws_caller_identity" "current" {}
-
 data "aws_region" "current" {}
-
-
 data "aws_subnets" "all" {
   filter {
     name   = "vpc-id"
@@ -35,13 +29,13 @@ data "aws_subnets" "all" {
   }
 }
 
-{{ if and (index .vars "setup_domain") (.vars.setup_domain) }} 
+{{- if and (index .vars "setup_domain") (.vars.setup_domain) }} 
 module "domain" {
   source = "{{ .vars.modules }}/domain"
   domain = {{ .vars.domain | quote }}
   env = {{ .vars.env | quote }}
 }
-{{else}}
+{{- else}}
 data "aws_route53_zone" "domain" {
   name  = var.domain
 }
@@ -50,171 +44,162 @@ data "aws_acm_certificate" "domain" {
   types       = ["AMAZON_ISSUED"]
   most_recent = true
 }
-{{end}}
+{{- end}}
 
-{{if .vars.setup_postgres}} 
+{{- if .vars.setup_postgres}} 
 module "postgres" {
   source = "{{ .vars.modules }}/postgres"
-  project = {{ .vars.project | quote }}
-  env = {{ .vars.env | quote }}
+  project = {{- .vars.project | quote }}
+  env = {{- .vars.env | quote }}
   vpc_id     = data.aws_vpc.default.id
-  db_name = {{ .vars.pg_db_name | quote }} 
-  username = {{ .vars.pg_username | quote }} 
+  db_name = {{- .vars.pg_db_name | quote }} 
+  username = {{- .vars.pg_username | quote }} 
 }
-{{end}}
+{{- end}}
 
 module "workloads" {
   source = "{{ .vars.modules }}/workloads"
 
-  project    = {{ .vars.project | quote }}
-  env        = {{ .vars.env | quote}} 
-  domain     = {{ .vars.domain | quote}}
+  project    = {{- .vars.project | quote }}
+  env        = {{- .vars.env | quote}} 
+  domain     = {{- .vars.domain | quote}}
   private_dns_name = "{{  .vars.project }}.private"
   vpc_id     = data.aws_vpc.default.id
   subnet_ids = data.aws_subnets.all.ids
   lambda_path = "{{ .vars.modules }}/workloads/ci_lambda/main"
-  {{if and (index .vars "slack_deployment_webhook") (.vars.slack_deployment_webhook)}}
+  {{- if and (index .vars "slack_deployment_webhook") (.vars.slack_deployment_webhook)}}
   slack_deployment_webhook = {{ .vars.slack_deployment_webhook | quote }}
-  {{end}}
-  {{if .vars.image_bucket_postfix}}
+  {{- end}}
+  {{- if .vars.image_bucket_postfix}}
   image_bucket_postfix = {{ .vars.image_bucket_postfix | quote }}
-  {{end}}
-  {{if .vars.setup_postgres}}
+  {{- end}}
+  {{- if .vars.setup_postgres}}
   db_endpoint = module.postgres.endpoint
-  db_user = {{ .vars.pg_username | quote}}
-  db_name = {{ .vars.pg_db_name | quote}}
-  {{end}}
-  {{if .vars.health_endpoint}}  
-  backend_health_endpoint = {{ .vars.health_endpoint | quote }}
-  {{end}}
-  {{if and (index .vars "setup_domain") (.vars.setup_domain) }} 
+  db_user = {{- .vars.pg_username | quote}}
+  db_name = {{- .vars.pg_db_name | quote}}
+  {{- end}}
+  {{- if .vars.health_endpoint}}  
+  backend_health_endpoint = {{- .vars.health_endpoint | quote }}
+  {{- end}}
+  {{- if and (index .vars "setup_domain") (.vars.setup_domain) }} 
   zone_id = module.domain.zone_id
   certificate_arn = module.domain.certificate_arn
-  {{else}}
+  {{- else}}
   zone_id = data.aws_route53_zone.domain.zone_id
   certificate_arn = data.aws_acm_certificate.arn
-  {{end}}
-  {{ if and (index .vars "ecr_account_id")  (.vars.ecr_account_id) }}
-  {{ if and (index .vars "ecr_account_region")  (.vars.ecr_account_region) }}
+  {{- end}}
+  {{- if and (index .vars "ecr_account_id")  (.vars.ecr_account_id) }}
+  {{- if and (index .vars "ecr_account_region")  (.vars.ecr_account_region) }}
   ecr_url = "{{ .vars.ecr_account_id }}.dkr.ecr.{{ .vars.ecr_account_region }}.amazonaws.com/{{ .vars.project }}_backend"
   mockoon_ecr_url = "{{ .vars.ecr_account_id }}.dkr.ecr.{{ .vars.ecr_account_region }}.amazonaws.com/{{ .vars.project }}_mockoon"
-  {{ end }}
-  {{ end }}
-  setup_FCM_SNS = {{ .vars.setup_FCM_SNS | quote }}
-
-  {{ if and (index .vars "mockoon")  (.vars.mockoon) }}
+  {{- end }}
+  {{- end }}
+  setup_FCM_SNS = {{- .vars.setup_FCM_SNS | quote }}
+  {{- if and (index .vars "mockoon")  (.vars.mockoon) }}
   mockoon_enabled = true
-  {{ end }}
-
-
-  {{ if and (index .vars "backend_image_port")  (.vars.backend_image_port) }}
+  {{- end }}
+  {{- if and (index .vars "backend_image_port")  (.vars.backend_image_port) }}
   backend_image_port = {{ .vars.backend_image_port }}
-  {{ end }}
+  {{- end }}
 
-  {{ if and (index .vars "backend_container_command")  (.vars.backend_container_command) }}
-  backend_container_command = {{ .vars.backend_container_command }}
-  {{ end }}
-
-  {{if and (index .vars "pgadmin_enabled") .vars.pgadmin_enabled }}
-  pgadmin_enabled = {{ .vars.pgadmin_enabled }}
-  {{if and (index .vars "pgadmin_email") .vars.pgadmin_email }}
-  pgadmin_email = {{ .vars.pgadmin_email | quote }}  
-  {{end}}
-  {{end}}
-
-
-  {{ if and (index .vars "backend_env") .vars.backend_env }}
+  {{- if and (index .vars "backend_container_command")  (.vars.backend_container_command) }}
+  backend_container_command = [ {{- range .vars.backend_container_command}}{{ . | quote }},{{end}} ]
+  {{- end }}
+  {{- if and (index .vars "pgadmin_enabled") .vars.pgadmin_enabled }}
+  pgadmin_enabled = {{- .vars.pgadmin_enabled }}
+  {{- if and (index .vars "pgadmin_email") .vars.pgadmin_email }}
+  pgadmin_email = {{- .vars.pgadmin_email | quote }}  
+  {{- end}}
+  {{- end}}
+  {{- if and (index .vars "backend_env") .vars.backend_env }}
   backend_env = [
-  {{ range .vars.backend_env }}
+  {{- range .vars.backend_env }}
     { "name" : upper({{ .name | quote }}), "value" : {{ .value | quote }} },
-  {{ end }}
+  {{- end }}
   ]
-  {{ end }}
-
+  {{- end }}
 }
 
 
-{{if .vars.setup_cognito }} 
+{{- if .vars.setup_cognito }} 
 module "cognito" {
   source                  = "{{ .vars.modules }}/cognito"
-  project                 = {{ .vars.project | quote }}
-  env                     = {{ .vars.env | quote }}
-  enable_web_client       = {{ .vars.enable_web_client | quote }}
-  {{if .vars.enable_dashboard_client}}
-  enable_dashboard_client = {{ .vars.enable_dashboard_client | quote }}
-  dashboard_callback_urls = [{{range $i, $v := .vars.dashboard_callback_urls}}{{if $i}} ,{{end}}{{$v | quote }}{{end}}]
-  {{end}}
-  {{if .vars.enable_user_pool_domain}}
-  enable_user_pool_domain = {{ .vars.enable_user_pool_domain | quote }}
-  user_pool_domain_prefix = {{ .vars.user_pool_domain_prefix | quote }}
-  {{end}}
-  {{if .vars.allow_backend_task_to_confirm_signup}}
-  allow_backend_task_to_confirm_signup = {{ .vars.allow_backend_task_to_confirm_signup | quote }}
-  {{end}}
-  auto_verified_attributes = [{{range $i, $v := .vars.auto_verified_attributes}}{{if $i}} ,{{end}}{{$v | quote }}{{end}}]
-
+  project                 = {{- .vars.project | quote }}
+  env                     = {{- .vars.env | quote }}
+  enable_web_client       = {{- .vars.enable_web_client | quote }}
+  {{- if .vars.enable_dashboard_client}}
+  enable_dashboard_client = {{- .vars.enable_dashboard_client | quote }}
+  dashboard_callback_urls = [{{- range $i, $v := .vars.dashboard_callback_urls}}{{if $i}} ,{{end}}{{- $v | quote }}{{end}}]
+  {{- end}}
+  {{- if .vars.enable_user_pool_domain}}
+  enable_user_pool_domain = {{- .vars.enable_user_pool_domain | quote }}
+  user_pool_domain_prefix = {{- .vars.user_pool_domain_prefix | quote }}
+  {{- end}}
+  {{- if .vars.allow_backend_task_to_confirm_signup}}
+  allow_backend_task_to_confirm_signup = {{- .vars.allow_backend_task_to_confirm_signup | quote }}
+  {{- end}}
+  auto_verified_attributes = [{{- range $i, $v := .vars.auto_verified_attributes}}{{if $i}} ,{{end}}{{- $v | quote }}{{end}}]
   backend_task_role_name  = module.workloads.backend_task_role_name
 }
-{{end}}
+{{- end}}
 
-
-{{if (index .vars "scheduled_tasks") }}
-{{ range .vars.scheduled_tasks }}
+{{- if (index .vars "scheduled_tasks") }}
+{{- range .vars.scheduled_tasks }}
 # scheduled task
 # https://docs.aws.amazon.com/scheduler/latest/UserGuide/setting-up.html#setting-up-execution-role
 module "task" {
   source = "{{ .vars.modules }}/ecs_task"
-  project = {{ $.vars.project | quote }}
-  env = {{ $.vars.env | quote }}
-  task = {{ .name | quote }}
+  project = {{- $.vars.project | quote }}
+  env = {{- $.vars.env | quote }}
+  task = {{- .name | quote }}
   subnet_ids = data.aws_subnets.all.ids
   vpc_id     = data.aws_vpc.default.id
   cluster = module.workloads.ecr_cluster.arn
 # https://docs.aws.amazon.com/scheduler/latest/UserGuide/schedule-types.html?icmpid=docs_console_unmapped#rate-based
-  schedule = {{ .schedule | quote }}
-  {{ if and .vars.ecr_account_id .vars.ecr_account_region }}
+  schedule = {{- .schedule | quote }}
+  {{- if and .vars.ecr_account_id .vars.ecr_account_region }}
   ecr_url = "{{ .vars.ecr_account_id }}.dkr.ecr.{{ .vars.ecr_account_region }}.amazonaws.com/{{ .vars.project }}_task_{{ .name }}"
-  {{ end }}
+  {{- end }}
 }
-{{ end }}
-{{ end }}
+{{- end }}
+{{- end }}
 
 
 
 
-{{ if (index .vars "event_tasks") }}
+{{- if (index .vars "event_tasks") }}
 {{ range .vars.event_tasks }}
 module "event_bus_task" {
   source  = "{{ .vars.modules }}/event_bridge_task"
   # https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-events.html
-  detail_types =[{{range $i, $v := .detail_types}}{{if $i}} ,{{end}}{{$v | quote }}{{end}}]
-  sources =  [{{range $i, $v := .sources}}{{if $i}} ,{{end}}{{$v | quote }}{{end}}]
-  rule_name = {{ .rule_name | quote }}
-  project = {{ $.vars.project | quote }}
-  env =  {{ $.vars.env | quote }}
-  task = {{ .name | quote }}
+  detail_types =[{{range $i, $v := .detail_types}}{{if $i}} ,{{end}}{{- $v | quote }}{{end}}]
+  sources =  [{{range $i, $v := .sources}}{{if $i}} ,{{end}}{{- $v | quote }}{{end}}]
+  rule_name = {{- .rule_name | quote }}
+  project = {{- $.vars.project | quote }}
+  env =  {{- $.vars.env | quote }}
+  task = {{- .name | quote }}
   subnet_ids = data.aws_subnets.all.ids
   vpc_id     = data.aws_vpc.default.id
   cluster = module.workloads.ecr_cluster.arn
-  {{ if and .vars.ecr_account_id .vars.ecr_account_region }}
+  {{- if and .vars.ecr_account_id .vars.ecr_account_region }}
   ecr_url = "{{ .vars.ecr_account_id }}.dkr.ecr.{{ .vars.ecr_account_region }}.amazonaws.com/{{ .vars.project }}_task_{{ .name }}"
-  {{ end }}
+  {{- end }}
 }
-{{ end }}
-{{ end }}
+{{- end }}
+{{- end }}
 
 
-{{if and (index .vars "setup_ses") (.vars.setup_ses) }} 
+{{- if and (index .vars "setup_ses") (.vars.setup_ses) }} 
 module "ses" {
   source = "{{ .vars.modules }}/ses"
-  domain = {{ or .vars.ses_domain .vars.domain | quote }}
-  env     = {{ .vars.env | quote }}
-  test_emails = [{{range $i, $v := .vars.ses_test_emails}}{{if $i}} ,{{end}}{{$v | quote }}{{end}}]
-  {{if and (index .vars "setup_domain") (.vars.setup_domain)}} 
+  domain = {{- or .vars.ses_domain .vars.domain | quote }}
+  env     = {{- .vars.env | quote }}
+  test_emails = [{{range $i, $v := .vars.ses_test_emails}}{{if $i}} ,{{end}}{{- $v | quote }}{{end}}]
+  {{- if and (index .vars "setup_domain") (.vars.setup_domain)}} 
   zone_id = module.domain.zone_id
-  {{else}}
+  {{- else}}
   zone_id = data.aws_route53_zone.domain.zone_id
-  {{end}}
+  {{- end}}
 }
-{{ end }}
+{{- end }}
 

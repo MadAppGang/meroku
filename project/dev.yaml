@@ -11,6 +11,8 @@ slack_deployment_webhook:
 # setup backend, always deployed
 health_endpoint:
 image_bucket_postfix:
+# you can set docker command from here
+# backend_container_command: ["config", "some_value"] 
 # backend_image_port: 8765
 # setup push notification FCM SNS for backend
 setup_FCM_SNS: false
