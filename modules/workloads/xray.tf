@@ -9,7 +9,6 @@ resource "aws_ecs_service" "xray" {
   scheduling_strategy                = "REPLICA"
 
   network_configuration {
-    security_groups  = [aws_security_group.xray[0].id]
     subnets          = var.subnet_ids
     assign_public_ip = true
   }
