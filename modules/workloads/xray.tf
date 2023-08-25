@@ -11,7 +11,7 @@ resource "aws_ecs_service" "xray" {
   network_configuration {
     security_groups  = [aws_security_group.xray[0].id]
     subnets          = var.subnet_ids
-    assign_public_ip = false
+    assign_public_ip = true
   }
 
   service_registries {
@@ -78,7 +78,7 @@ resource "aws_ecs_task_definition" "xray" {
     portMappings = [{
       protocol      = "udp"
       containerPort = 2000
-      hostPort      = 0
+      hostPort      = 2000
     }]
   }])
 
