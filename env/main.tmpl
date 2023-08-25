@@ -111,6 +111,9 @@ module "workloads" {
   pgadmin_email = {{- .vars.pgadmin_email | quote }}  
   {{- end}}
   {{- end}}
+  {{- if and (index .vars "xray_enabled")  .vars.xray_enabled }}
+  xray_enabled = {{- .vars.xray_enabled }}
+  {{- end}}
   {{- if and (index .vars "backend_env") .vars.backend_env }}
   backend_env = [
   {{- range .vars.backend_env }}

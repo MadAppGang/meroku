@@ -1,0 +1,133 @@
+resource "aws_ecs_service" "xray" {
+  count                              = var.xray_enabled ? 1 : 0
+  name                               = "xray_${var.env}"
+  cluster                            = aws_ecs_cluster.main.id
+  task_definition                    = aws_ecs_task_definition.xray[0].arn
+  desired_count                      = 1
+  deployment_minimum_healthy_percent = 50
+  launch_type                        = "FARGATE"
+  scheduling_strategy                = "REPLICA"
+
+  network_configuration {
+    security_groups  = [aws_security_group.xray[0].id]
+    subnets          = var.subnet_ids
+    assign_public_ip = false
+  }
+
+  service_registries {
+    registry_arn = aws_service_discovery_service.xray[0].arn
+  }
+
+  lifecycle {
+    ignore_changes = [task_definition]
+  }
+
+  tags = {
+    terraform = "true"
+    env       = var.env
+  }
+
+  depends_on = [
+    aws_service_discovery_service.pgadmin[0]
+  ]
+}
+
+
+
+resource "aws_service_discovery_service" "xray" {
+  count = var.xray_enabled ? 1 : 0
+  name  = "xray" 
+  dns_config {
+    namespace_id   = aws_service_discovery_private_dns_namespace.local.id
+    routing_policy = "MULTIVALUE"
+    dns_records {
+      ttl  = 10
+      type = "A"
+    }
+  }
+  health_check_custom_config {
+    failure_threshold = 5
+  }
+}
+
+
+
+
+resource "aws_ecs_task_definition" "xray" {
+  count                    = var.xray_enabled ? 1 : 0
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  family                   = "xray"
+  cpu                      = 256
+  memory                   = 512
+  execution_role_arn       = aws_iam_role.xray_task_execution[0].arn
+  task_role_arn            = aws_iam_role.xray_task[0].arn
+
+  container_definitions = jsonencode([{
+    name   = "xray_${var.env}"
+    cpu    = 32
+    memory = 256
+    image  = "amazon/aws-xray-daemon"
+    environment = [
+      { "name" : "AWS_REGION", "value" : tostring(data.aws_region.current.name) },
+    ]
+    essential = true
+    linuxParameters = {
+      initProcessEnabled = true
+    }
+    portMappings = [{
+      protocol      = "udp"
+      containerPort = 2000
+      hostPort      = 0
+    }]
+  }])
+
+  tags = {
+    terraform = "true"
+    env       = var.env
+  }
+}
+
+
+resource "aws_cloudwatch_log_group" "xray" {
+  count = var.xray_enabled ? 1 : 0
+  name  = "xray_${var.env}"
+  retention_in_days = 1
+  tags = {
+    terraform = "true"
+    env       = var.env
+  }
+}
+
+
+resource "aws_iam_role" "xray_task" {
+  count              = var.xray_enabled ? 1 : 0
+  name               = "xray_task_${var.env}"
+  assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume_role.json
+}
+
+resource "aws_iam_role" "xray_task_execution" {
+  count              = var.xray_enabled ? 1 : 0
+  name               = "xray_task_execution_${var.env}"
+  assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume_role.json
+}
+
+
+resource "aws_iam_role_policy_attachment" "xray_task_execution" {
+  count      = var.xray_enabled ? 1 : 0
+  role       = aws_iam_role.xray_task_execution[0].name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+
+resource "aws_iam_role_policy_attachment" "xray_task_cloudwatch" {
+  count      = var.xray_enabled ? 1 : 0
+  role       = aws_iam_role.xray_task[0].name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchFullAccess"
+}
+
+resource "aws_iam_role_policy_attachment" "xray_task_daemon" {
+  count      = var.xray_enabled ? 1 : 0
+  role       = aws_iam_role.xray_task[0].name
+  policy_arn = "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess"
+}
+

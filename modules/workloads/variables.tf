@@ -28,6 +28,10 @@ variable "pgadmin_email" {
   type = string
   default = "admin@madappgang.com"
 }
+variable "xray_enabled" {
+  type = bool
+  default = "false"
+}
 
 
 variable "slack_deployment_webhook" {
