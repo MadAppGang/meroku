@@ -70,10 +70,10 @@ module "workloads" {
   {{- if and (index .vars "slack_deployment_webhook") (.vars.slack_deployment_webhook)}}
   slack_deployment_webhook = {{ .vars.slack_deployment_webhook | quote }}
   {{- end}}
-  {{- if .vars.image_bucket_postfix}}
+  {{- if and (index .vars "image_bucket_postfix") (.vars.image_bucket_postfix) }}
   image_bucket_postfix = {{ .vars.image_bucket_postfix | quote }}
   {{- end}}
-  {{- if .vars.image_bucket_public}}
+  {{- if and (index .vars "image_bucket_public") (.vars.image_bucket_public)}}
   image_bucket_public = {{ .vars.image_bucket_public }}
   {{- end}}
   {{- if .vars.setup_postgres}}
