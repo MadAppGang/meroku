@@ -73,6 +73,9 @@ module "workloads" {
   {{- if .vars.image_bucket_postfix}}
   image_bucket_postfix = {{ .vars.image_bucket_postfix | quote }}
   {{- end}}
+  {{- if .vars.image_bucket_public}}
+  image_bucket_public = {{ .vars.image_bucket_public }}
+  {{- end}}
   {{- if .vars.setup_postgres}}
   db_endpoint = module.postgres.endpoint
   db_user = {{- .vars.pg_username | quote}}

@@ -14,6 +14,13 @@ variable "image_bucket_postfix" {
   default = ""
 }
 
+
+variable "image_bucket_public" {
+  default = true
+}
+
+
+
 variable "lambda_path" {
   type = string
   default = "../../infrastructure/modules/workloads/ci_lambda/main"
