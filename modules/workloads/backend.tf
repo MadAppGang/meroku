@@ -150,10 +150,10 @@ resource "aws_s3_bucket_ownership_controls" "images" {
 resource "aws_s3_bucket_public_access_block" "images" {
   bucket = aws_s3_bucket.images.id
 
-  block_public_acls       = var.image_bucket_public
-  block_public_policy     = var.image_bucket_public
-  ignore_public_acls      = var.image_bucket_public
-  restrict_public_buckets = var.image_bucket_public
+  block_public_acls       = !var.image_bucket_public
+  block_public_policy     = !var.image_bucket_public
+  ignore_public_acls      = !var.image_bucket_public
+  restrict_public_buckets = !var.image_bucket_public
 }
 
 
