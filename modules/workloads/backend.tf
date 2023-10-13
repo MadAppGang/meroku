@@ -160,7 +160,7 @@ resource "aws_s3_bucket_public_access_block" "images" {
 
 resource "aws_s3_bucket_acl" "images" {
   bucket = aws_s3_bucket.images.id
-  acl    = var.image_bucket_public == true ? "public-read": "private"
+  acl    = "private"
   depends_on = [
     aws_s3_bucket_ownership_controls.images,
     aws_s3_bucket_public_access_block.images,
