@@ -1,6 +1,6 @@
 
 resource "aws_iam_openid_connect_provider" "github" {
-  url = "https://token.actions.githubusercontent.com" 
+  url = "https://token.actions.githubusercontent.com"
 
   client_id_list = [
     "sts.amazonaws.com"
@@ -8,48 +8,53 @@ resource "aws_iam_openid_connect_provider" "github" {
 
   thumbprint_list = [
     "6938fd4d98bab03faadb97b34396831e3780aea1",
-    "1c58a3a8518e8759bf075b76b750d4f2df264fcd"  # https://github.blog/changelog/2023-06-27-github-actions-update-on-oidc-integration-with-aws/
+    "1c58a3a8518e8759bf075b76b750d4f2df264fcd" # https://github.blog/changelog/2023-06-27-github-actions-update-on-oidc-integration-with-aws/
   ]
 }
 
 data "aws_iam_policy_document" "github_trust_relationship" {
   statement {
-    effect = "Allow"
+    effect  = "Allow"
     actions = ["sts:AssumeRoleWithWebIdentity"]
     principals {
-      type = "Federated"
+      type        = "Federated"
       identifiers = [aws_iam_openid_connect_provider.github.arn]
     }
     condition {
-      test = "StringEquals"
+      test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:aud"
       values   = ["sts.amazonaws.com"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:sub"
+      values   = var.github_subjects
     }
   }
 }
 
 resource "aws_iam_role" "github_role" {
-   name               = "GithubActionsRole"
-   assume_role_policy = data.aws_iam_policy_document.github_trust_relationship.json
+  name               = "GithubActionsRole"
+  assume_role_policy = data.aws_iam_policy_document.github_trust_relationship.json
 
   inline_policy {
-    name = "GithubAccessPolicy"
+    name   = "GithubAccessPolicy"
     policy = data.aws_iam_policy_document.github.json
   }
 }
 
 data "aws_iam_policy_document" "github" {
-    statement {
-            effect = "Allow"
-            actions = [
-                "ecr:CompleteLayerUpload",
-                "ecr:GetAuthorizationToken",
-                "ecr:UploadLayerPart",
-                "ecr:InitiateLayerUpload",
-                "ecr:BatchCheckLayerAvailability",
-                "ecr:PutImage",
-                "events:PutEvents"
-            ]
-            resources = ["*"]
+  statement {
+    effect = "Allow"
+    actions = [
+      "ecr:CompleteLayerUpload",
+      "ecr:GetAuthorizationToken",
+      "ecr:UploadLayerPart",
+      "ecr:InitiateLayerUpload",
+      "ecr:BatchCheckLayerAvailability",
+      "ecr:PutImage",
+      "events:PutEvents"
+    ]
+    resources = ["*"]
   }
 }

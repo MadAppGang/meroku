@@ -102,6 +102,10 @@ module "workloads" {
   backend_image_port = {{ .vars.backend_image_port }}
   {{- end }}
 
+  {{- if and (index .vars "github_subjects")  .vars.github_subjects }}
+  github_subjects = {{- .vars.github_subjects }}
+  {{- end}}
+
   {{- if and (index .vars "backend_container_command")  (.vars.backend_container_command) }}
   backend_container_command = [ {{- range .vars.backend_container_command}}{{ . | quote }},{{end}} ]
   {{- end }}

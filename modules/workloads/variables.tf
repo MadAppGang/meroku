@@ -1,5 +1,5 @@
 locals {
-  aws_account_id = data.aws_caller_identity.current.account_id  
+  aws_account_id = data.aws_caller_identity.current.account_id
 }
 
 variable "env" {
@@ -15,21 +15,21 @@ variable "image_bucket_postfix" {
 }
 
 variable "lambda_path" {
-  type = string
+  type    = string
   default = "../../infrastructure/modules/workloads/ci_lambda/main"
 }
 
 
 variable "pgadmin_enabled" {
-  type = bool
+  type    = bool
   default = "false"
 }
 variable "pgadmin_email" {
-  type = string
+  type    = string
   default = "admin@madappgang.com"
 }
 variable "xray_enabled" {
-  type = bool
+  type    = bool
   default = "false"
 }
 
@@ -43,7 +43,7 @@ variable "vpc_id" {
 }
 
 variable "mockoon_enabled" {
-  type = bool
+  type    = bool
   default = false
 }
 
@@ -52,6 +52,12 @@ variable "mockoon_enabled" {
 variable "subnet_ids" {
   type = list(string)
 }
+
+variable "github_subjects" {
+  type    = list(string)
+  default = ["repo:MadAppGang/*"]
+}
+
 
 variable "backend_image_port" {
   default = 8080
@@ -70,11 +76,11 @@ variable "backend_env" {
 }
 
 variable "private_dns_name" {
-  type    = string
+  type = string
 }
 
 variable "backend_container_command" {
-  type = list(string)
+  type    = list(string)
   default = []
 }
 
@@ -93,7 +99,7 @@ variable "certificate_arn" {
 
 
 variable "domain" {
-  type    = string
+  type = string
 }
 
 variable "ecr_url" {
@@ -165,8 +171,8 @@ resource "random_password" "pgadmin" {
 
 resource "aws_ssm_parameter" "pgadmin_password" {
   count = var.pgadmin_enabled ? 1 : 0
-  name = "/${var.env}/${var.project}/pgadmin_password"
-  type = "SecureString"
+  name  = "/${var.env}/${var.project}/pgadmin_password"
+  type  = "SecureString"
   value = random_password.pgadmin.result
 }
 

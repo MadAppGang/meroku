@@ -10,11 +10,11 @@ resource "aws_alb_target_group" "pgadmin" {
   deregistration_delay = 30
 
   health_check {
-    enabled = true
+    enabled  = true
     path     = "/misc/ping"
-    protocol = "http"
-    matcher = "200-399"  # has to be HTTP 200 or fails
-    timeout = 20
+    protocol = "HTTP"
+    matcher  = "200-399" # has to be HTTP 200 or fails
+    timeout  = 20
     interval = 100
   }
 }

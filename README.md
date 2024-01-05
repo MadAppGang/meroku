@@ -139,6 +139,13 @@ Backend, and every task are using env variables from AWS Parameter Store (SMM). 
 
 When you need to populate initial values from JSON file, please use 
 
+## Github OIDC permissions
+
+github_subject is a string to provide access for AWS infrastructure.
+
+More details could be found in official [GitHub docs](https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/about-security-hardening-with-openid-connect#example-subject-claims)
+
+`repo:OWNER/REPOSITORY:environment:NAME`
 
 ## Architecture
 
