@@ -28,7 +28,7 @@ data "aws_iam_policy_document" "github_trust_relationship" {
       values   = ["sts.amazonaws.com"]
     }
     condition {
-      test     = "StringEquals"
+      test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
       values   = var.github_subjects
     }
