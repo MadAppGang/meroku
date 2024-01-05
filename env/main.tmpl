@@ -218,3 +218,18 @@ module "ses" {
 }
 {{- end }}
 
+output "backend_ecr_repo_url" {
+  value = module.workloads.backend_ecr_repo_url
+}
+
+output "account_id" {
+  value = module.workloads.account_id
+}
+
+output "region" {
+  value = data.aws_region.current.name
+}
+
+output "backend_task_role_name" {
+  value = module.workloads.backend_task_role_name
+}

@@ -54,8 +54,6 @@ variable "mockoon_enabled" {
   default = false
 }
 
-
-
 variable "subnet_ids" {
   type = list(string)
 }
@@ -69,9 +67,6 @@ variable "github_oidc_enabled" {
   type    = bool
   default = false
 }
-
-
-
 variable "backend_image_port" {
   default = 8080
   type    = number

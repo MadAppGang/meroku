@@ -35,7 +35,7 @@ resource "aws_ecs_service" "xray" {
 
 resource "aws_service_discovery_service" "xray" {
   count = var.xray_enabled ? 1 : 0
-  name  = "xray" 
+  name  = "xray_${var.env}"
   dns_config {
     namespace_id   = aws_service_discovery_private_dns_namespace.local.id
     routing_policy = "MULTIVALUE"
@@ -56,7 +56,7 @@ resource "aws_ecs_task_definition" "xray" {
   count                    = var.xray_enabled ? 1 : 0
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  family                   = "xray"
+  family                   = "xray_${var.env}"
   cpu                      = 256
   memory                   = 512
   execution_role_arn       = aws_iam_role.xray_task_execution[0].arn
@@ -89,8 +89,8 @@ resource "aws_ecs_task_definition" "xray" {
 
 
 resource "aws_cloudwatch_log_group" "xray" {
-  count = var.xray_enabled ? 1 : 0
-  name  = "xray_${var.env}"
+  count             = var.xray_enabled ? 1 : 0
+  name              = "xray_${var.env}"
   retention_in_days = 1
   tags = {
     terraform = "true"

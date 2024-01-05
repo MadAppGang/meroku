@@ -49,15 +49,12 @@ resource "aws_ecs_service" "backend" {
     env       = var.env
   }
 
-  depends_on = [
-    aws_service_discovery_service.backend
-  ]
 }
 
 resource "aws_ecs_task_definition" "backend" {
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  family                   = "backend"
+  family                   = "backend_${var.env}"
   cpu                      = 256
   memory                   = 512
   execution_role_arn       = aws_iam_role.backend_task_execution.arn

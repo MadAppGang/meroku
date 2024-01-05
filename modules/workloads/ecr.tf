@@ -44,9 +44,9 @@ data "aws_iam_policy_document" "default_ecr_policy" {
   statement {
     sid = "Default ECR policy"
     principals {
-      type = "*"
+      type        = "*"
       identifiers = ["*"]
-    } 
+    }
     actions = [
       "ecr:GetDownloadUrlForLayer",
       "ecr:BatchGetImage",
@@ -72,9 +72,9 @@ data "aws_iam_policy_document" "default_ecr_policy" {
   statement {
     sid = "External read ECR policy"
     principals {
-      type = "*"
+      type        = "*"
       identifiers = ["*"]
-    } 
+    }
     actions = [
       "ecr:BatchCheckLayerAvailability",
       "ecr:BatchGetImage",
@@ -85,7 +85,7 @@ data "aws_iam_policy_document" "default_ecr_policy" {
     condition {
       test     = "StringEquals"
       variable = "aws:PrincipalOrgID"
-      values = [ data.aws_organizations_organization.org.id ]
+      values   = [data.aws_organizations_organization.org.id]
     }
   }
 }

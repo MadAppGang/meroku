@@ -1,12 +1,12 @@
 resource "aws_service_discovery_private_dns_namespace" "local" {
-  name = var.private_dns_name 
+  name = var.private_dns_name
   vpc  = var.vpc_id
 }
 
 
 
 resource "aws_service_discovery_service" "backend" {
-  name =  "backend" 
+  name = "backend_${var.env}"
   dns_config {
     namespace_id   = aws_service_discovery_private_dns_namespace.local.id
     routing_policy = "MULTIVALUE"
@@ -22,7 +22,7 @@ resource "aws_service_discovery_service" "backend" {
 
 resource "aws_service_discovery_service" "mockoon" {
   count = var.env == "dev" ? 1 : 0
-  name  = "mockoon" 
+  name  = "mockoon_${var.env}"
   dns_config {
     namespace_id   = aws_service_discovery_private_dns_namespace.local.id
     routing_policy = "MULTIVALUE"
@@ -39,27 +39,27 @@ resource "aws_service_discovery_service" "mockoon" {
 
 resource "aws_route53_record" "api" {
   zone_id = var.zone_id
-  name = "api.${var.env == "prod" ? "app" : var.env}.${var.domain}"
-  type = "CNAME"
-  ttl = 60
+  name    = "api.${var.env == "prod" ? "app" : var.env}.${var.domain}"
+  type    = "CNAME"
+  ttl     = 60
   records = [aws_lb.alb.dns_name]
 }
 
 
 
 resource "aws_route53_record" "pgadmin" {
-  count = var.pgadmin_enabled ? 1 : 0
+  count   = var.pgadmin_enabled ? 1 : 0
   zone_id = var.zone_id
-  name = "pgadmin.${var.env == "prod" ? "app" : var.env}.${var.domain}"
-  type = "CNAME"
-  ttl = 60
+  name    = "pgadmin.${var.env == "prod" ? "app" : var.env}.${var.domain}"
+  type    = "CNAME"
+  ttl     = 60
   records = [aws_lb.alb.dns_name]
 }
 
 
 resource "aws_service_discovery_service" "pgadmin" {
   count = var.pgadmin_enabled ? 1 : 0
-  name  = "pgadmin" 
+  name  = "pgadmin_${var.env}"
   dns_config {
     namespace_id   = aws_service_discovery_private_dns_namespace.local.id
     routing_policy = "MULTIVALUE"
