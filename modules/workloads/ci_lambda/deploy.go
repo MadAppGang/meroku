@@ -11,8 +11,10 @@ import (
 
 func deploy(srv Service, serviceName string) (string, error) {
 	// Listing all task definitions with the specific family prefix
+	familyPrefix := fmt.Sprintf("%s_%s", serviceName, Env)
+
 	taskList, err := srv.ListTaskDefinitions(&ecs.ListTaskDefinitionsInput{
-		FamilyPrefix: &serviceName,
+		FamilyPrefix: &familyPrefix,
 		Sort:         aws.String("DESC"),
 	})
 
