@@ -106,7 +106,7 @@ module "workloads" {
   {{- end }}
 
   {{- if and (index .vars "github_subjects")  .vars.github_subjects }}
-  github_subjects = {{- .vars.github_subjects }}
+  github_subjects = [{{range $i, $v := .vars.github_subjects}}{{if $i}} ,{{end}}{{- $v | quote }}{{end}}]
   {{- end}}
 
   {{- if and (index .vars "backend_container_command")  (.vars.backend_container_command) }}
