@@ -91,10 +91,11 @@ module "workloads" {
   zone_id = data.aws_route53_zone.domain.zone_id
   certificate_arn = data.aws_acm_certificate.arn
   {{- end}}
+  
   {{- if and (index .vars "ecr_account_id")  (.vars.ecr_account_id) }}
   {{- if and (index .vars "ecr_account_region")  (.vars.ecr_account_region) }}
-  ecr_url = "{{ .vars.ecr_account_id }}.dkr.ecr.{{ .vars.ecr_account_region }}.amazonaws.com/{{ .vars.project }}_backend"
-  mockoon_ecr_url = "{{ .vars.ecr_account_id }}.dkr.ecr.{{ .vars.ecr_account_region }}.amazonaws.com/{{ .vars.project }}_mockoon"
+  ecr_url = "{{printf "%.0f" .vars.ecr_account_id }}.dkr.ecr.{{ .vars.ecr_account_region }}.amazonaws.com/{{ .vars.project }}_backend"
+  mockoon_ecr_url = "{{printf "%.0f" .vars.ecr_account_id }}.dkr.ecr.{{ .vars.ecr_account_region }}.amazonaws.com/{{ .vars.project }}_mockoon"
   {{- end }}
   {{- end }}
   setup_FCM_SNS = {{- .vars.setup_FCM_SNS | quote }}
@@ -173,7 +174,7 @@ module "task" {
 # https://docs.aws.amazon.com/scheduler/latest/UserGuide/schedule-types.html?icmpid=docs_console_unmapped#rate-based
   schedule = {{- .schedule | quote }}
   {{- if and .vars.ecr_account_id .vars.ecr_account_region }}
-  ecr_url = "{{ .vars.ecr_account_id }}.dkr.ecr.{{ .vars.ecr_account_region }}.amazonaws.com/{{ .vars.project }}_task_{{ .name }}"
+  ecr_url = "{{printf "%.0f" .vars.ecr_account_id }}.dkr.ecr.{{ .vars.ecr_account_region }}.amazonaws.com/{{ .vars.project }}_task_{{ .name }}"
   {{- end }}
 }
 {{- end }}
@@ -197,7 +198,7 @@ module "event_bus_task" {
   vpc_id     = data.aws_vpc.default.id
   cluster = module.workloads.ecr_cluster.arn
   {{- if and .vars.ecr_account_id .vars.ecr_account_region }}
-  ecr_url = "{{ .vars.ecr_account_id }}.dkr.ecr.{{ .vars.ecr_account_region }}.amazonaws.com/{{ .vars.project }}_task_{{ .name }}"
+  ecr_url = "{{printf "%.0f" .vars.ecr_account_id }}.dkr.ecr.{{ .vars.ecr_account_region }}.amazonaws.com/{{ .vars.project }}_task_{{ .name }}"
   {{- end }}
 }
 {{- end }}
