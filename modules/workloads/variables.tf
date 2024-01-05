@@ -65,6 +65,12 @@ variable "github_subjects" {
   default = ["repo:MadAppGang/*"]
 }
 
+variable "github_oidc_enabled" {
+  type    = bool
+  default = false
+}
+
+
 
 variable "backend_image_port" {
   default = 8080

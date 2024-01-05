@@ -64,14 +64,14 @@ resource "aws_ecs_task_definition" "backend" {
   task_role_arn            = aws_iam_role.backend_task.arn
 
   container_definitions = jsonencode([{
-    name   = "${var.project}_backend_${var.env}"
-    command = var.backend_container_command
-    cpu    = 256
-    memory = 512
-    image  = "${var.env == "dev" ? join("", aws_ecr_repository.backend.*.repository_url) : var.ecr_url}:latest"
+    name        = "${var.project}_backend_${var.env}"
+    command     = var.backend_container_command
+    cpu         = 256
+    memory      = 512
+    image       = "${var.env == "dev" ? join("", aws_ecr_repository.backend.*.repository_url) : var.ecr_url}:latest"
     secrets     = local.backend_env_ssm
     environment = concat(local.backend_env, var.backend_env)
-    essential = true
+    essential   = true
 
     logConfiguration = {
       logDriver = "awslogs"
@@ -178,7 +178,7 @@ resource "aws_iam_role" "backend_task_execution" {
 }
 
 resource "aws_iam_policy" "full_access_to_images_bucket" {
-  name   = "FullAccessToImagesBucket"
+  name   = "FullAccessToImagesBucket_${var.project}_${var.env}"
   policy = <<EOF
 {
   "Version": "2012-10-17",
@@ -204,7 +204,7 @@ EOF
 }
 
 resource "aws_iam_policy" "send_emails" {
-  name   = "SendSESEmails"
+  name   = "SendSESEmails_${var.project}_${var.env}"
   policy = <<EOF
 {
   "Version": "2012-10-17",
@@ -255,7 +255,7 @@ resource "aws_iam_role_policy_attachment" "ssm_parameter_access" {
 }
 
 resource "aws_iam_policy" "ssm_parameter_access" {
-  name   = "BackendSSMAccessPolicy"
+  name   = "BackendSSMAccessPolicy_${var.project}_${var.env}"
   policy = data.aws_iam_policy_document.ssm_parameter_access.json
 }
 

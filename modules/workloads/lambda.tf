@@ -20,7 +20,7 @@ data "aws_iam_policy_document" "lambda_deploy_assume_role" {
 }
 
 resource "aws_iam_role" "lambda_deploy_iam" {
-  name               = "lambda_deploy_iam"
+  name               = "lambda_deploy_iam_${var.env}"
   assume_role_policy = data.aws_iam_policy_document.lambda_deploy_assume_role.json
 }
 
@@ -33,7 +33,7 @@ resource "aws_iam_role_policy_attachment" "lambda_basic_esecution" {
 
 resource "aws_lambda_function" "lambda_deploy" {
   filename         = "ci_lambda.zip"
-  function_name    = "ci_lambda"
+  function_name    = "ci_lambda_${var.env}"
   handler          = "main"
   role             = aws_iam_role.lambda_deploy_iam.arn
   source_code_hash = data.archive_file.lambda.output_base64sha256
@@ -64,7 +64,7 @@ data "aws_iam_policy_document" "lambda_ecs" {
 }
 
 resource "aws_iam_policy" "lambda_ecs" {
-  name   = "LambdaECSDevPolicy"
+  name   = "LambdaECSDevPolicy_${var.env}"
   policy = data.aws_iam_policy_document.lambda_ecs.json
 }
 

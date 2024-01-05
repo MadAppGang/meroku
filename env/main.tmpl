@@ -63,7 +63,7 @@ module "workloads" {
   project    = {{- .vars.project | quote }}
   env        = {{- .vars.env | quote}} 
   domain     = {{- .vars.domain | quote}}
-  private_dns_name = "{{  .vars.project }}.private"
+  private_dns_name = "{{  .vars.project }}_{{ .vars.env }}.private"
   vpc_id     = data.aws_vpc.default.id
   subnet_ids = data.aws_subnets.all.ids
   lambda_path = "{{ .vars.modules }}/workloads/ci_lambda/main"
@@ -105,9 +105,14 @@ module "workloads" {
   backend_image_port = {{ .vars.backend_image_port }}
   {{- end }}
 
+  {{- if and (index .vars "github_oidc_enabled") .vars.github_oidc_enabled }}
+  github_oidc_enabled = {{- .vars.github_oidc_enabled }}
+  {{- end}}
+
   {{- if and (index .vars "github_subjects")  .vars.github_subjects }}
   github_subjects = [{{range $i, $v := .vars.github_subjects}}{{if $i}} ,{{end}}{{- $v | quote }}{{end}}]
   {{- end}}
+
 
   {{- if and (index .vars "backend_container_command")  (.vars.backend_container_command) }}
   backend_container_command = [ {{- range .vars.backend_container_command}}{{ . | quote }},{{end}} ]

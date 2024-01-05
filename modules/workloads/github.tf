@@ -1,6 +1,7 @@
 
 resource "aws_iam_openid_connect_provider" "github" {
-  url = "https://token.actions.githubusercontent.com"
+  url   = "https://token.actions.githubusercontent.com"
+  count = var.github_oidc_enabled ? 1 : 0
 
   client_id_list = [
     "sts.amazonaws.com"
@@ -13,12 +14,13 @@ resource "aws_iam_openid_connect_provider" "github" {
 }
 
 data "aws_iam_policy_document" "github_trust_relationship" {
+  count = var.github_oidc_enabled ? 1 : 0
   statement {
     effect  = "Allow"
     actions = ["sts:AssumeRoleWithWebIdentity"]
     principals {
       type        = "Federated"
-      identifiers = [aws_iam_openid_connect_provider.github.arn]
+      identifiers = [aws_iam_openid_connect_provider.github[0].arn]
     }
     condition {
       test     = "StringEquals"
@@ -34,8 +36,9 @@ data "aws_iam_policy_document" "github_trust_relationship" {
 }
 
 resource "aws_iam_role" "github_role" {
+  count              = var.github_oidc_enabled ? 1 : 0
   name               = "GithubActionsRole"
-  assume_role_policy = data.aws_iam_policy_document.github_trust_relationship.json
+  assume_role_policy = data.aws_iam_policy_document.github_trust_relationship[0].json
 
   inline_policy {
     name   = "GithubAccessPolicy"
