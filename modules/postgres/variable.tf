@@ -38,7 +38,6 @@ variable "public" {
 }
 
 variable "engine_version" {
-  type    = bool
   default = "14"
 }
 
