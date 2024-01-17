@@ -55,7 +55,7 @@ module "postgres" {
   db_name = {{- .vars.pg_db_name | quote }} 
   username = {{- .vars.pg_username | quote }} 
   {{- if and (index .vars "pg_public") (.vars.pg_public)}}
-  public = {{ .vars.pg_public }}
+  public_access = {{ .vars.pg_public }}
   {{- end }}
   {{- if and (index .vars "pg_engine") (.vars.pg_engine)}}
   engine_version = {{ .vars.pg_engine | quote }}

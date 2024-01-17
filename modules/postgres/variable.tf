@@ -32,7 +32,7 @@ variable "storage" {
   default = "20"
 }
 
-variable "public" {
+variable "public_access" {
   type    = bool
   default = false
 }

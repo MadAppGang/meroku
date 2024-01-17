@@ -10,6 +10,6 @@ resource "aws_db_instance" "database" {
   password               = aws_ssm_parameter.postgres_password.value
   skip_final_snapshot    = true
   vpc_security_group_ids = [aws_security_group.database.id]
-  publicly_accessible    = var.public
+  publicly_accessible    = var.public_access
 }
 
