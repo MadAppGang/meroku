@@ -34,6 +34,9 @@ pg_db_name: instagram
 pg_username: dbadmin
 pgadmin: false
 pgadmin_email: admin@admin.com
+## optional postgres
+pg_public: true
+pg_engine: "14"
 
 # setup cognito
 setup_cognito: true
