@@ -174,7 +174,7 @@ sudo ln -s /usr/local/sessionmanagerplugin/bin/session-manager-plugin /usr/local
 
 After that you can verify the installation: `session-manager-plugin`.
 
-With session manager you can login to container, execut a command in container or do a port forwarding.
+With session manager you can login to container, execute a command in container or do a port forwarding.
 
 You can use a [usefull script](https://github.com/aws-containers/amazon-ecs-exec-checker) to help you work with AWS Exec.
 
@@ -182,7 +182,7 @@ You can use a [usefull script](https://github.com/aws-containers/amazon-ecs-exec
 
 ## Send events to Event Bridge 
 
-You can test events by sending them event bus using CLI. The same command is used to send it ot deploy from Github Aciton.
+You can test events by sending them event bus using CLI. The same command is used to send it ot deploy from Github Action.
 
 ```bash
 aws events put-events --entries "Source=github,Detail=\"{}\",DetailType=TESTING,EventBusName=default"
