@@ -28,7 +28,13 @@ variable "lambda_path" {
 
 variable "docker_image" {
   type    = string
-  default = "${var.env == "dev" ? join("", aws_ecr_repository.backend.*.repository_url) : var.ecr_url}:latest"
+  default = ""
+}
+
+
+locals {
+  ecr_image    = "${var.env == "dev" ? join("", aws_ecr_repository.backend.*.repository_url) : var.ecr_url}:latest"
+  docker_image = var.docker_image != "" ? var.docker_image : local.ecr_image
 }
 
 

@@ -65,7 +65,7 @@ resource "aws_ecs_task_definition" "backend" {
     command     = var.backend_container_command
     cpu         = 256
     memory      = 512
-    image       = "${var.env == "dev" ? join("", aws_ecr_repository.backend.*.repository_url) : var.ecr_url}:latest"
+    image       = local.docker_image
     secrets     = local.backend_env_ssm
     environment = concat(local.backend_env, var.backend_env)
     essential   = true
