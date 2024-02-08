@@ -26,6 +26,11 @@ variable "lambda_path" {
   default = "../../infrastructure/modules/workloads/ci_lambda/main"
 }
 
+variable "docker_image" {
+  type    = string
+  default = "${var.env == "dev" ? join("", aws_ecr_repository.backend.*.repository_url) : var.ecr_url}:latest"
+}
+
 
 variable "pgadmin_enabled" {
   type    = bool

@@ -104,6 +104,9 @@ module "workloads" {
   mockoon_ecr_url = "{{ .vars.ecr_account_id }}.dkr.ecr.{{ .vars.ecr_account_region }}.amazonaws.com/{{ .vars.project }}_mockoon"
   {{- end }}
   {{- end }}
+  {{- if and (index .vars "docker_image")  (.vars.docker_image) }}
+  docker_image = {{- .vars.docker_image | quote }}
+  {{- end }}
   setup_FCM_SNS = {{- .vars.setup_FCM_SNS | quote }}
   {{- if and (index .vars "mockoon")  (.vars.mockoon) }}
   mockoon_enabled = true
