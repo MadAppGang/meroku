@@ -1,7 +1,3 @@
-output "alb_dns_name" {
-  value = aws_lb.alb.dns_name
-}
-
 output "backend_ecr_repo_url" {
   value = join("", aws_ecr_repository.backend.*.repository_url)
 }
@@ -17,3 +13,9 @@ output "backend_task_role_name" {
 output "account_id" {
   value = data.aws_caller_identity.current.account_id
 }
+
+output "backend_cloud_map_arn" {
+  description = "value of the backend service discovery ARN"
+  value       = data.aws_service_discovery_service.backend.arn
+}
+

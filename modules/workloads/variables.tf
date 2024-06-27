@@ -10,12 +10,12 @@ variable "project" {
   type = string
 }
 
-variable "image_bucket_postfix" {
+variable "backend_bucket_postfix" {
   default = ""
 }
 
 
-variable "image_bucket_public" {
+variable "backend_bucket_public" {
   default = true
 }
 
@@ -38,14 +38,7 @@ locals {
 }
 
 
-variable "pgadmin_enabled" {
-  type    = bool
-  default = "false"
-}
-variable "pgadmin_email" {
-  type    = string
-  default = "admin@madappgang.com"
-}
+
 variable "xray_enabled" {
   type    = bool
   default = "false"
@@ -83,11 +76,6 @@ variable "backend_image_port" {
   type    = number
 }
 
-variable "mockoon_image_port" {
-  default = 80
-  type    = number
-}
-
 variable "backend_env" {
   default = [
     { "name" : "BACKEND_TEST", "value" : "TEST" },
@@ -117,6 +105,15 @@ variable "certificate_arn" {
 }
 
 
+variable "acm_certificate_arn" {
+  type = string
+}
+
+variable "domain_zone_id" {
+  type = string
+}
+
+
 variable "domain" {
   type = string
 }
@@ -124,11 +121,6 @@ variable "domain" {
 variable "ecr_url" {
   default = ""
 }
-
-variable "mockoon_ecr_url" {
-  default = ""
-}
-
 
 variable "db_endpoint" {
   default = ""
@@ -178,20 +170,5 @@ variable "ecr_lifecycle_policy" {
     ]
 }
 EOF
-}
-
-resource "random_password" "pgadmin" {
-  length           = 8
-  special          = true
-  override_special = "!#$%&*()-_=+[]{}<>:?"
-}
-
-
-
-resource "aws_ssm_parameter" "pgadmin_password" {
-  count = var.pgadmin_enabled ? 1 : 0
-  name  = "/${var.env}/${var.project}/pgadmin_password"
-  type  = "SecureString"
-  value = random_password.pgadmin.result
 }
 

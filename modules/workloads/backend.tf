@@ -1,24 +1,13 @@
 
-
-resource "aws_alb_target_group" "backend" {
-  name                 = "backend-tg-${var.env}"
-  port                 = var.backend_image_port
-  protocol             = "HTTP"
-  vpc_id               = var.vpc_id
-  target_type          = "ip"
-  deregistration_delay = 30
-
-  health_check {
-    path     = var.backend_health_endpoint
-    matcher  = "200-299"
-    interval = 30
-  }
+locals {
+  backend_name = "${var.project}_service_${var.env}"
 }
 
+
 resource "aws_ecs_service" "backend" {
-  name                               = "backend_service_${var.env}"
+  name                               = local.backend_name
   cluster                            = aws_ecs_cluster.main.id
-  task_definition                    = "${aws_ecs_task_definition.backend.family}:${max(aws_ecs_task_definition.backend.revision, data.aws_ecs_task_definition.backend.revision)}"
+  task_definition                    = aws_ecs_task_definition.backend.arn
   desired_count                      = 1
   deployment_minimum_healthy_percent = 50
   launch_type                        = "FARGATE"
@@ -30,38 +19,44 @@ resource "aws_ecs_service" "backend" {
     assign_public_ip = true
   }
 
-  load_balancer {
-    target_group_arn = aws_alb_target_group.backend.arn
-    container_name   = "${var.project}_backend_${var.env}"
-    container_port   = var.backend_image_port
-  }
-
-  service_registries {
-    registry_arn = aws_service_discovery_service.backend.arn
-  }
-
-  lifecycle {
-    ignore_changes = [task_definition]
+  service_connect_configuration {
+    enabled   = true
+    namespace = aws_service_discovery_private_dns_namespace.local.name
+    
+    //TODO: logs
+    service {
+      port_name      = local.backend_name
+      discovery_name = local.backend_name
+      client_alias {
+        port     = var.backend_image_port
+        dns_name = local.backend_name
+      }
+    }
   }
 
   tags = {
     terraform = "true"
     env       = var.env
   }
-
 }
+
+data "aws_service_discovery_service" "backend" {
+  namespace_id = aws_service_discovery_private_dns_namespace.local.id
+  name         = local.backend_name
+}
+
 
 resource "aws_ecs_task_definition" "backend" {
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  family                   = "backend_${var.env}"
+  family                   = local.backend_name
   cpu                      = 256
   memory                   = 512
   execution_role_arn       = aws_iam_role.backend_task_execution.arn
   task_role_arn            = aws_iam_role.backend_task.arn
 
   container_definitions = jsonencode([{
-    name        = "${var.project}_backend_${var.env}"
+    name        = local.backend_name
     command     = var.backend_container_command
     cpu         = 256
     memory      = 512
@@ -83,6 +78,7 @@ resource "aws_ecs_task_definition" "backend" {
       protocol      = "tcp"
       containerPort = var.backend_image_port
       hostPort      = var.backend_image_port
+      name          = local.backend_name
     }]
   }])
 
@@ -92,9 +88,7 @@ resource "aws_ecs_task_definition" "backend" {
   }
 }
 
-data "aws_ecs_task_definition" "backend" {
-  task_definition = aws_ecs_task_definition.backend.family
-}
+
 
 
 resource "aws_security_group" "backend" {
@@ -129,38 +123,38 @@ resource "aws_cloudwatch_log_group" "backend" {
   }
 }
 
-resource "aws_s3_bucket" "images" {
-  bucket = "${var.project}-images-${var.env}${var.image_bucket_postfix}"
+resource "aws_s3_bucket" "backend" {
+  bucket = "${var.project}-backend-${var.env}${var.backend_bucket_postfix}"
   tags = {
     terraform = "true"
     env       = var.env
   }
 }
 
-resource "aws_s3_bucket_ownership_controls" "images" {
-  bucket = aws_s3_bucket.images.id
+resource "aws_s3_bucket_ownership_controls" "backend" {
+  bucket = aws_s3_bucket.backend.id
   rule {
     object_ownership = "ObjectWriter"
   }
 }
 
-resource "aws_s3_bucket_public_access_block" "images" {
-  bucket = aws_s3_bucket.images.id
+resource "aws_s3_bucket_public_access_block" "backend" {
+  bucket = aws_s3_bucket.backend.id
 
-  block_public_acls       = !var.image_bucket_public
-  block_public_policy     = !var.image_bucket_public
-  ignore_public_acls      = !var.image_bucket_public
-  restrict_public_buckets = !var.image_bucket_public
+  block_public_acls       = !var.backend_bucket_public
+  block_public_policy     = !var.backend_bucket_public
+  ignore_public_acls      = !var.backend_bucket_public
+  restrict_public_buckets = !var.backend_bucket_public
 }
 
 
 
-resource "aws_s3_bucket_acl" "images" {
-  bucket = aws_s3_bucket.images.id
+resource "aws_s3_bucket_acl" "backend" {
+  bucket = aws_s3_bucket.backend.id
   acl    = "private"
   depends_on = [
-    aws_s3_bucket_ownership_controls.images,
-    aws_s3_bucket_public_access_block.images,
+    aws_s3_bucket_ownership_controls.backend,
+    aws_s3_bucket_public_access_block.backend,
   ]
 }
 
@@ -174,7 +168,7 @@ resource "aws_iam_role" "backend_task_execution" {
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume_role.json
 }
 
-resource "aws_iam_policy" "full_access_to_images_bucket" {
+resource "aws_iam_policy" "full_access_to_backend_bucket" {
   name   = "FullAccessToImagesBucket_${var.project}_${var.env}"
   policy = <<EOF
 {
@@ -186,8 +180,8 @@ resource "aws_iam_policy" "full_access_to_images_bucket" {
               "s3:*"        
            ],
           "Resource": [
-            "arn:aws:s3:::${aws_s3_bucket.images.id}",
-            "arn:aws:s3:::${aws_s3_bucket.images.id}/*"
+            "arn:aws:s3:::${aws_s3_bucket.backend.id}",
+            "arn:aws:s3:::${aws_s3_bucket.backend.id}/*"
            ]
       }
   ]
@@ -234,9 +228,9 @@ resource "aws_iam_role_policy_attachment" "backend_task_cloudwatch" {
   policy_arn = "arn:aws:iam::aws:policy/CloudWatchFullAccess"
 }
 
-resource "aws_iam_role_policy_attachment" "backend_task_images_bucket" {
+resource "aws_iam_role_policy_attachment" "backend_task_backend_bucket" {
   role       = aws_iam_role.backend_task.name
-  policy_arn = aws_iam_policy.full_access_to_images_bucket.arn
+  policy_arn = aws_iam_policy.full_access_to_backend_bucket.arn
 }
 
 resource "aws_iam_role_policy_attachment" "backend_task_ses" {

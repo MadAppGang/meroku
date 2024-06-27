@@ -13,41 +13,30 @@ resource "aws_ecs_service" "xray" {
     assign_public_ip = true
   }
 
-  service_registries {
-    registry_arn = aws_service_discovery_service.xray[0].arn
-  }
-
-  lifecycle {
-    ignore_changes = [task_definition]
-  }
 
   tags = {
     terraform = "true"
     env       = var.env
   }
 
-  depends_on = [
-    aws_service_discovery_service.pgadmin[0]
-  ]
-}
-
-
-
-resource "aws_service_discovery_service" "xray" {
-  count = var.xray_enabled ? 1 : 0
-  name  = "xray_${var.env}"
-  dns_config {
-    namespace_id   = aws_service_discovery_private_dns_namespace.local.id
-    routing_policy = "MULTIVALUE"
-    dns_records {
-      ttl  = 10
-      type = "A"
+  service_connect_configuration {
+    enabled   = true
+    namespace = aws_service_discovery_private_dns_namespace.local.name
+    //TODO: logs
+    service {
+      port_name      = "xray_${var.env}"
+      discovery_name = "xray_${var.env}"
+      client_alias {
+        port     = 2000
+        dns_name = "xray_${var.env}"
+      }
     }
   }
-  health_check_custom_config {
-    failure_threshold = 5
-  }
+
 }
+
+
+
 
 
 

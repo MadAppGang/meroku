@@ -143,6 +143,11 @@ module "workloads" {
   {{- end }}
   ]
   {{- end }}
+
+  {{- if and (index .vars "setup_domain") (.vars.setup_domain) }} 
+  acm_certificate_arn = module.domain.certificate_arn
+  domain_zone_id = module.domain.zone_id
+  {{- end}}
 }
 
 
@@ -242,4 +247,9 @@ output "region" {
 
 output "backend_task_role_name" {
   value = module.workloads.backend_task_role_name
+}
+
+output "backend_cloud_map_arn" {
+  description = "value of the backend service discovery ARN"
+  value       = module.workloads.backend_cloud_map_arn
 }

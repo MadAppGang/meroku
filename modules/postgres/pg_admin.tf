@@ -1,25 +1,3 @@
-
-
-resource "aws_alb_target_group" "pgadmin" {
-  count                = var.pgadmin_enabled ? 1 : 0
-  name                 = "pgadmin-tg-${var.env}"
-  port                 = 80
-  protocol             = "HTTP"
-  vpc_id               = var.vpc_id
-  target_type          = "ip"
-  deregistration_delay = 30
-
-  health_check {
-    enabled  = true
-    path     = "/misc/ping"
-    protocol = "HTTP"
-    matcher  = "200-399" # has to be HTTP 200 or fails
-    timeout  = 20
-    interval = 100
-  }
-}
-
-
 resource "aws_ecs_service" "pgadmin" {
   count                              = var.pgadmin_enabled ? 1 : 0
   name                               = "pgadmin_service_${var.env}"
@@ -36,18 +14,20 @@ resource "aws_ecs_service" "pgadmin" {
     assign_public_ip = true
   }
 
-  load_balancer {
-    target_group_arn = aws_alb_target_group.pgadmin[0].arn
-    container_name   = "${var.project}_pgadmin_${var.env}"
-    container_port   = 80
-  }
 
-  service_registries {
-    registry_arn = aws_service_discovery_service.pgadmin[0].arn
-  }
 
-  lifecycle {
-    ignore_changes = [task_definition]
+  service_connect_configuration {
+    enabled   = true
+    namespace = aws_service_discovery_private_dns_namespace.local.name
+    //TODO: logs
+    service {
+      port_name      = "pgadmin_service_${var.env}"
+      discovery_name = "pgadmin_service_${var.env}"
+      client_alias {
+        port     = 80
+        dns_name = "pgadmin_service_${var.env}"
+      }
+    }
   }
 
   tags = {
@@ -55,9 +35,6 @@ resource "aws_ecs_service" "pgadmin" {
     env       = var.env
   }
 
-  depends_on = [
-    aws_service_discovery_service.pgadmin[0]
-  ]
 }
 
 resource "aws_ecs_task_definition" "pgadmin" {
