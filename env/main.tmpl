@@ -76,11 +76,11 @@ module "workloads" {
   {{- if and (index .vars "slack_deployment_webhook") (.vars.slack_deployment_webhook)}}
   slack_deployment_webhook = {{ .vars.slack_deployment_webhook | quote }}
   {{- end}}
-  {{- if and (index .vars "image_bucket_postfix") (.vars.image_bucket_postfix) }}
-  image_bucket_postfix = {{ .vars.image_bucket_postfix | quote }}
+  {{- if and (index .vars "backend_bucket_postfix") (.vars.backed_bucket_postfix) }}
+  backend_bucket_postfix = {{ .vars.backend_bucket_postfix | quote }}
   {{- end}}
-  {{- if and (index .vars "image_bucket_public") (.vars.image_bucket_public)}}
-  image_bucket_public = {{ .vars.image_bucket_public }}
+  {{- if and (index .vars "backend_bucket_public") (.vars.backend_bucket_public)}}
+  backend_bucket_public = {{ .vars.backend_bucket_public }}
   {{- end}}
   {{- if .vars.setup_postgres}}
   db_endpoint = module.postgres.endpoint
@@ -101,16 +101,12 @@ module "workloads" {
   {{- if and (index .vars "ecr_account_id")  (.vars.ecr_account_id) }}
   {{- if and (index .vars "ecr_account_region")  (.vars.ecr_account_region) }}
   ecr_url = "{{ .vars.ecr_account_id }}.dkr.ecr.{{ .vars.ecr_account_region }}.amazonaws.com/{{ .vars.project }}_backend"
-  mockoon_ecr_url = "{{ .vars.ecr_account_id }}.dkr.ecr.{{ .vars.ecr_account_region }}.amazonaws.com/{{ .vars.project }}_mockoon"
   {{- end }}
   {{- end }}
   {{- if and (index .vars "docker_image")  (.vars.docker_image) }}
   docker_image = {{- .vars.docker_image | quote }}
   {{- end }}
   setup_FCM_SNS = {{- .vars.setup_FCM_SNS | quote }}
-  {{- if and (index .vars "mockoon")  (.vars.mockoon) }}
-  mockoon_enabled = true
-  {{- end }}
   {{- if and (index .vars "backend_image_port")  (.vars.backend_image_port) }}
   backend_image_port = {{ .vars.backend_image_port }}
   {{- end }}
