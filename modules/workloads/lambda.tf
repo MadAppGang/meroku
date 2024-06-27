@@ -37,7 +37,7 @@ resource "aws_lambda_function" "lambda_deploy" {
   handler          = "main"
   role             = aws_iam_role.lambda_deploy_iam.arn
   source_code_hash = data.archive_file.lambda.output_base64sha256
-  runtime          = "go1.x"
+  runtime          = "provided.al2"
 
   environment {
     variables = {
