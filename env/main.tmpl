@@ -76,7 +76,7 @@ module "workloads" {
   {{- if and (index .vars "slack_deployment_webhook") (.vars.slack_deployment_webhook)}}
   slack_deployment_webhook = {{ .vars.slack_deployment_webhook | quote }}
   {{- end}}
-  {{- if and (index .vars "backend_bucket_postfix") (.vars.backed_bucket_postfix) }}
+  {{- if and (index .vars "backend_bucket_postfix") (.vars.backend_bucket_postfix) }}
   backend_bucket_postfix = {{ .vars.backend_bucket_postfix | quote }}
   {{- end}}
   {{- if and (index .vars "backend_bucket_public") (.vars.backend_bucket_public)}}
