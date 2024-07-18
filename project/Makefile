@@ -63,7 +63,7 @@ prodapply:
 
 buildlambda:
 	cd infrastructure/modules/workloads/ci_lambda/; \
-	rm main; \
-	GOOS=linux GOARCH=amd64 go build -o main; \
+	rm bootstrap; \
+	GOOS=linux GOARCH=amd64 go build -o bootstrap; \
 	rm ../../../../env/dev/ci_lambda.zip || true; \
 	rm ../../../../env/prod/ci_lambda.zip || true

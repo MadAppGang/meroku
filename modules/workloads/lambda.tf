@@ -34,7 +34,7 @@ resource "aws_iam_role_policy_attachment" "lambda_basic_esecution" {
 resource "aws_lambda_function" "lambda_deploy" {
   filename         = "ci_lambda.zip"
   function_name    = "ci_lambda_${var.env}"
-  handler          = "main"
+  handler          = "bootstrap"
   role             = aws_iam_role.lambda_deploy_iam.arn
   source_code_hash = data.archive_file.lambda.output_base64sha256
   runtime          = "provided.al2"

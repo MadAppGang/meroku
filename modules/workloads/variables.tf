@@ -23,7 +23,7 @@ variable "backend_bucket_public" {
 
 variable "lambda_path" {
   type    = string
-  default = "../../infrastructure/modules/workloads/ci_lambda/main"
+  default = "../../infrastructure/modules/workloads/ci_lambda/bootstrap"
 }
 
 variable "docker_image" {
