@@ -11,14 +11,20 @@ import (
 
 func deploy(srv Service, serviceName string) (string, error) {
 	// Listing all task definitions with the specific family prefix
-	familyPrefix := fmt.Sprintf("%s_%s", serviceName, Env)
+  fmt.Printf("deploying service %s for env %s", serviceName, Env)
+
+	familyPrefix := fmt.Sprintf("%s_service_%s", serviceName, Env)
 
 	taskList, err := srv.ListTaskDefinitions(&ecs.ListTaskDefinitionsInput{
 		FamilyPrefix: &familyPrefix,
 		Sort:         aws.String("DESC"),
 	})
 
-	if err != nil || len(taskList.TaskDefinitionArns) == 0 {
+  if len(taskList.TaskDefinitionArns) == 0 {
+    return "", fmt.Errorf("not task definitions for family prefix: %v", familyPrefix)
+  }
+
+	if err != nil { 
 		return "", fmt.Errorf("unable to retrieve task definitions: %v", err)
 	}
 

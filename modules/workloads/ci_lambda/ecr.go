@@ -45,6 +45,9 @@ func getServiceNameFromRepoName(str string) (string, error) {
 	re := regexp.MustCompile(`\w+_(?P<service>\w+)`)
 	match := re.FindStringSubmatch(str)
 	if len(match) == 2 {
+    if match[1] == "backend" {
+      return ProjectName, nil
+    }
 		return match[1], nil
 	}
 	return "", errors.New("Unable to extract service name")
