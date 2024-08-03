@@ -1,5 +1,5 @@
 locals {
-  domain_name = "${var.env == "prod" ? "app." : format("%s.", var.env)}${var.domain}"
+  domain_name = "${var.env == "prod" ? "api." : format("%s.", var.env)}${var.domain}"
 }
 
 resource "aws_route53_zone" "domain" {
