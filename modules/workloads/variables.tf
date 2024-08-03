@@ -96,16 +96,12 @@ variable "backend_health_endpoint" {
   default = "/health/live"
 }
 
-variable "zone_id" {
-  type = string
-}
 
 variable "certificate_arn" {
   type = string
 }
 
-
-variable "acm_certificate_arn" {
+variable "root_certificate_arn" {
   type = string
 }
 

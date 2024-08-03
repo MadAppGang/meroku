@@ -1,10 +1,10 @@
 locals {
-  domain_name = "${var.env == "prod" ? "app." : format("%s.", var.env)}${var.domain}"
+  domain_name = "${var.env == "prod" ? "api." : format("%s.", var.env)}${var.domain}"
 }
 
 
 resource "aws_route53_record" "backend" {
-  name    = "api.${local.domain_name}"
+  name    = "${local.domain_name}"
   type    = "A"
   zone_id = var.domain_zone_id
   alias {
@@ -15,9 +15,9 @@ resource "aws_route53_record" "backend" {
 }
 
 resource "aws_apigatewayv2_domain_name" "backend" {
-  domain_name = "api.${local.domain_name}"
+  domain_name = "${local.domain_name}"
   domain_name_configuration {
-    certificate_arn = var.acm_certificate_arn
+    certificate_arn = var.root_certificate_arn
     endpoint_type   = "REGIONAL"
     security_policy = "TLS_1_2"
   }

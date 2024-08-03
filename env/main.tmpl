@@ -39,8 +39,15 @@ module "domain" {
 data "aws_route53_zone" "domain" {
   name  = var.domain
 }
+
 data "aws_acm_certificate" "domain" {
-  domain      = "*.${var.env == "prod" ? "app." : format("%s.", var.env)}${var.domain}"
+  domain      = "*.${var.env == "prod" ? "api." : format("%s.", var.env)}${var.domain}"
+  types       = ["AMAZON_ISSUED"]
+  most_recent = true
+}
+
+data "root_aws_acm_certificate" "domain" {
+  domain      = "${var.env == "prod" ? "api." : format("%s.", var.env)}${var.domain}"
   types       = ["AMAZON_ISSUED"]
   most_recent = true
 }
@@ -91,11 +98,13 @@ module "workloads" {
   backend_health_endpoint = {{- .vars.health_endpoint | quote }}
   {{- end}}
   {{- if and (index .vars "setup_domain") (.vars.setup_domain) }} 
-  zone_id = module.domain.zone_id
   certificate_arn = module.domain.certificate_arn
+  root_certificate_arn = module.domain.root_certificate_arn
+  domain_zone_id = module.domain.zone_id
   {{- else}}
-  zone_id = data.aws_route53_zone.domain.zone_id
   certificate_arn = data.aws_acm_certificate.arn
+  root_certificate_arn = data.root_aws_acm_certificate.arn
+  domain_zone_id = module.domain.zone_id
   {{- end}}
   
   {{- if and (index .vars "ecr_account_id")  (.vars.ecr_account_id) }}
@@ -141,8 +150,6 @@ module "workloads" {
   {{- end }}
 
   {{- if and (index .vars "setup_domain") (.vars.setup_domain) }} 
-  acm_certificate_arn = module.domain.certificate_arn
-  domain_zone_id = module.domain.zone_id
   {{- end}}
 }
 
