@@ -41,8 +41,10 @@ func deploy(srv Service, serviceName string) (string, error) {
 	clusterName := fmt.Sprintf("%s_cluster_%s", ProjectName, Env)
 	serviceName = fmt.Sprintf("%s_service_%s", serviceName, Env)
 
+  fmt.Printf("deploying service %s for in cluster %s\n", serviceName, clusterName)
+
 	// Updating the ECS service with the latest task definition revision
-	_, err = srv.UpdateService(&ecs.UpdateServiceInput{
+  u, err := srv.UpdateService(&ecs.UpdateServiceInput{
 		Service:            &serviceName,
 		Cluster:            &clusterName,
 		TaskDefinition:     &latestTaskDefinition,
@@ -53,6 +55,7 @@ func deploy(srv Service, serviceName string) (string, error) {
 		return "", fmt.Errorf("unable to update ECS service: %v", err)
 	}
 
+  fmt.Printf("updated ECS service: %s with result %+v\n", serviceName, u)
 	result := fmt.Sprintf("Processed ECR event and updated ECS service: %s with the latest task definition %s", serviceName, latestTaskDefinition)
 	fmt.Println(result)
 

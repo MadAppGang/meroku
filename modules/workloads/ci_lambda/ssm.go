@@ -29,8 +29,13 @@ func processSSMEvent(srv Service, ctx context.Context, e events.CloudWatchEvent)
 	re := regexp.MustCompile(fmt.Sprintf(`\/?%s\/%s\/(\w+)\/\w+$`, Env, ProjectName))
 	match := re.FindStringSubmatch(detail.Name)
 	if len(match) == 2 {
-		fmt.Printf("env variables in SSM key %s changed (%s) for service %s", detail.Name, detail.Operation, match[1])
-		return deploy(srv, match[1])
+    serviceName := match[1]
+    // backend service is default service
+    if serviceName == "backend" {
+      serviceName = ProjectName
+    }
+		fmt.Printf("env variables in SSM key %s changed (%s) for service %s\n", detail.Name, detail.Operation, serviceName)
+		return deploy(srv, serviceName)
 	}
 
 	result := fmt.Sprintf("SSM parameter with key %s does not fit to any service environment, skipping", detail.Name)
