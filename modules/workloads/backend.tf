@@ -22,7 +22,7 @@ resource "aws_ecs_service" "backend" {
   service_connect_configuration {
     enabled   = true
     namespace = aws_service_discovery_private_dns_namespace.local.name
-    
+
     //TODO: logs
     service {
       port_name      = local.backend_name
@@ -50,37 +50,39 @@ resource "aws_ecs_task_definition" "backend" {
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
   family                   = local.backend_name
-  cpu                      = 256
-  memory                   = 512
+  cpu                      = var.xray_enabled ? 512 : 256
+  memory                   = var.xray_enabled ? 1024 : 512
   execution_role_arn       = aws_iam_role.backend_task_execution.arn
   task_role_arn            = aws_iam_role.backend_task.arn
 
-  container_definitions = jsonencode([{
-    name        = local.backend_name
-    command     = var.backend_container_command
-    cpu         = 256
-    memory      = 512
-    image       = local.docker_image
-    secrets     = local.backend_env_ssm
-    environment = concat(local.backend_env, var.backend_env)
-    essential   = true
+  container_definitions = jsonencode(concat(
+    local.xray_container,
+    [{
+      name        = local.backend_name
+      command     = var.backend_container_command
+      cpu         = 256
+      memory      = 512
+      image       = local.docker_image
+      secrets     = local.backend_env_ssm
+      environment = concat(local.backend_env, var.backend_env)
+      essential   = true
 
-    logConfiguration = {
-      logDriver = "awslogs"
-      options = {
-        awslogs-group         = aws_cloudwatch_log_group.backend.name
-        awslogs-stream-prefix = "ecs"
-        awslogs-region        = data.aws_region.current.name
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = aws_cloudwatch_log_group.backend.name
+          awslogs-stream-prefix = "ecs"
+          awslogs-region        = data.aws_region.current.name
+        }
       }
-    }
 
-    portMappings = [{
-      protocol      = "tcp"
-      containerPort = var.backend_image_port
-      hostPort      = var.backend_image_port
-      name          = local.backend_name
-    }]
-  }])
+      portMappings = [{
+        protocol      = "tcp"
+        containerPort = var.backend_image_port
+        hostPort      = var.backend_image_port
+        name          = local.backend_name
+      }]
+  }]))
 
   tags = {
     terraform = "true"
