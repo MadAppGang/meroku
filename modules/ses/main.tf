@@ -29,3 +29,10 @@ resource "aws_ses_email_identity" "emails" {
   email = element(var.test_emails, count.index)
 }
 
+resource "aws_route53_record" "dmarc" {
+  zone_id = local.zone_id
+  name    = "_dmarc.${local.domain_name}"
+  type    = "TXT"
+  ttl     = "300"
+  records = ["v=DMARC1; p=quarantine; pct=100; rua=mailto:dmarc-reports@${local.domain_name}"]
+}

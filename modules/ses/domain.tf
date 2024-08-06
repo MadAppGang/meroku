@@ -16,4 +16,3 @@ resource "aws_acm_certificate" "email_domain" {
   }
 }
 
-
