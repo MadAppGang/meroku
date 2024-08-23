@@ -50,7 +50,7 @@ func newModalModel(input baseInputModel, screenWidth, screenHeight int, onConfir
 		textinput.TextStyle = styles.Text
 		textinput.Prompt = styles.PromptText
 		model = textinput
-	case InputValueTypeSingleSelect:
+	case InputValueTypeSingleSelect, InputValueTypeSlice:
 		height = 30
 		list := NewInputListSelectModel(input.value, width-4, height-7)
 		model = list
@@ -77,7 +77,7 @@ func (m modalModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "enter":
 			// Perform validation using regex for string values
-			if m.input.IsValid() {
+			if m.input.IsValid() && m.input.value.Type() != InputValueTypeSlice {
 				value := m.input.value
 				if m.input.value.Type() == InputValueTypeSingleSelect {
 					l := m.model.(InputListSelectModel)
@@ -90,8 +90,18 @@ func (m modalModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				)
 			}
 		case "esc":
-			return m, func() tea.Msg {
-				return closeModalMsg{}
+			if m.input.value.Type() == InputValueTypeSlice {
+				m := m.model.(InputListSelectModel)
+				// we can escape only if we are not editing, otherwise we need pass message to the list to cancel edit
+				if m.CanEscape(msg) {
+					return m, func() tea.Msg {
+						return closeModalMsg{}
+					}
+				}
+			} else {
+				return m, func() tea.Msg {
+					return closeModalMsg{}
+				}
 			}
 		}
 	}
@@ -120,17 +130,19 @@ func (m modalModel) View() string {
 	var validationResult string
 	var helpText string
 
-	if valid {
-		validationStyle = validStyle
-		validationResult = fmt.Sprintf("✓ %s", m.input.validationMessage)
-		helpText = fmt.Sprintf("Press Enter to confirm, Esc to cancel")
-	} else {
-		validationStyle = invalidStyle
-		validationResult = fmt.Sprintf("✗ %s", m.input.validationMessage)
-		helpText = fmt.Sprintf("Fix the input or press Esc to cancel")
+	vr := ""
+	if m.input.base().validator != nil {
+		if valid {
+			validationStyle = validStyle
+			validationResult = fmt.Sprintf("✓ %s", m.input.validationMessage)
+			helpText = fmt.Sprintf("Press Enter to confirm, Esc to cancel")
+		} else {
+			validationStyle = invalidStyle
+			validationResult = fmt.Sprintf("✗ %s", m.input.validationMessage)
+			helpText = fmt.Sprintf("Fix the input or press Esc to cancel")
+		}
+		vr = validationStyle.Padding(0, 2, 0, 0).Render(wrapText(validationResult, m.width-4))
 	}
-
-	vr := validationStyle.Padding(0, 2, 0, 0).Render(wrapText(validationResult, m.width-4))
 
 	var modelView string
 	switch m.input.value.Type() {
@@ -144,9 +156,13 @@ func (m modalModel) View() string {
 		mm.Prompt = styles.PromptText
 		modelView = mm.View()
 	case InputValueTypeSingleSelect:
-		vr = validationStyle.Padding(0, 0, 0, 0).Render("")
 		lm, _ := m.model.(InputListSelectModel)
 		modelView = lm.View()
+		helpText = fmt.Sprintf("Select one and press Enter, or press Esc to cancel")
+	case InputValueTypeSlice:
+		lm, _ := m.model.(InputListSelectModel)
+		modelView = lm.View()
+		helpText = fmt.Sprintf("Enter: start and commit edit, Esc: cancel edit or exit, A/a: append new, d/D: delete selected, Tab: move from list to button and back")
 	}
 
 	modalStyle := lipgloss.NewStyle().
@@ -164,7 +180,7 @@ func (m modalModel) View() string {
 		styles.Description.Padding(2, 2).Render(desc),
 		lipgloss.NewStyle().PaddingLeft(2).PaddingRight(2).PaddingBottom(2).Width(m.width-4).Render(modelView),
 		vr,
-		lipgloss.NewStyle().Width(m.width-4).Align(lipgloss.Center).Render(helpTextStyle.Render(helpText)),
+		lipgloss.NewStyle().Align(lipgloss.Center).Render(helpTextStyle.Render(wrapText(helpText, m.width-4))),
 	)
 
 	return lipgloss.Place(
