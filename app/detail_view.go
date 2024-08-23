@@ -58,7 +58,7 @@ func (m *detailViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "esc":
+		case "esc", "left":
 			return m, func() tea.Msg { return detailLeaveFocusMsg{} }
 		case "tab", "shift+tab", "up", "down":
 			s := msg.String()

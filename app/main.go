@@ -129,6 +129,14 @@ func (m masterView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.detailView.setFocused(false)
 			}
 			return m, nil
+		case "right":
+			if _, ok := m.list.SelectedItem().(item); ok {
+				if m.detailView != nil {
+					m.listFocused = false
+					m.detailView.setFocused(true)
+					return m, nil
+				}
+			}
 		case "enter":
 			if i, ok := m.list.SelectedItem().(item); ok {
 				if m.detailView != nil {
