@@ -8,7 +8,6 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/samber/lo"
-	"golang.org/x/exp/slices"
 )
 
 type dialogItem string
@@ -43,7 +42,16 @@ type InputListSelectModel struct {
 }
 
 func NewInputListSelectModel(value inputValue, width, height int) InputListSelectModel {
-	items := lo.Map(value.Slice(), func(s string, _ int) list.Item {
+	sitems := []string{}
+	selectedIdx := 0
+	if ss, ok := value.(sliceSelectValue); ok {
+		sitems = ss.Options()
+		selectedIdx = ss.index
+	} else if ss, ok := value.(sliceValue); ok {
+		ss.Slice()
+	}
+
+	items := lo.Map(sitems, func(s string, _ int) list.Item {
 		return dialogItem(s)
 	})
 	l := list.New(items, dialogItemDelegate{}, width, height)
@@ -53,7 +61,9 @@ func NewInputListSelectModel(value inputValue, width, height int) InputListSelec
 	l.SetFilteringEnabled(false)
 	l.Styles.Title = dialogListTitleStyle
 	l.Styles.PaginationStyle = dialogListPaginationStyle
-	l.Select(slices.Index(value.Slice(), value.String()))
+	if selectedIdx > 0 {
+		l.Select(selectedIdx)
+	}
 	return InputListSelectModel{
 		Model: l,
 	}

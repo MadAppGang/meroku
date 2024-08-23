@@ -1,20 +1,18 @@
 package main
 
-import (
-	"regexp"
-)
+import "regexp"
 
-type mainSettingsView struct {
+type backendSettingsView struct {
 	detailViewModel
 
-	e env
+	w workload
 }
 
-func newMainSettingsView(e env) *mainSettingsView {
-	return &mainSettingsView{
+func newBackendSettingsView(e env) *backendSettingsView {
+	return &backendSettingsView{
 		detailViewModel: detailViewModel{
-			title:       "Main settings",
-			description: "Configure the workload settings",
+			title:       "Backend settings",
+			description: "Backend and main workload settings",
 			inputs: []inputModel{
 				newTextFieldModel(baseInputModel{
 					title:             "Project name",
@@ -31,13 +29,6 @@ func newMainSettingsView(e env) *mainSettingsView {
 					validationMessage: "minimum 2 characters, all lowercases, only letters from a-z",
 				}, stringValue{e.env}),
 				newTextFieldModel(baseInputModel{
-					title:             "Region",
-					placeholder:       "us-east-1",
-					description:       "AWS region",
-					validator:         regexp.MustCompile(`^(us|eu|ap|sa|ca|me|af|il)-(north|south|east|west|central|southeast|northeast|southwest|northwest)-\d+$`),
-					validationMessage: "one of the valid AWS regions lower case, no spaces",
-				}, newSliceSelectValue(AWSRegions, e.region)),
-				newTextFieldModel(baseInputModel{
 					title:             "State Bucket",
 					placeholder:       "my-bucket-1",
 					description:       "Infrastructure state bucket, it's better to keep infrastructure state in a separate bucket",
@@ -53,6 +44,6 @@ func newMainSettingsView(e env) *mainSettingsView {
 				}, stringValue{e.stateFile}),
 			},
 		},
-		e: e,
+		w: e.workload,
 	}
 }

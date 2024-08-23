@@ -50,7 +50,7 @@ func newModalModel(input baseInputModel, screenWidth, screenHeight int, onConfir
 		textinput.TextStyle = styles.Text
 		textinput.Prompt = styles.PromptText
 		model = textinput
-	case InputValueTypeSlice:
+	case InputValueTypeSingleSelect:
 		height = 30
 		list := NewInputListSelectModel(input.value, width-4, height-7)
 		model = list
@@ -79,9 +79,10 @@ func (m modalModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Perform validation using regex for string values
 			if m.input.IsValid() {
 				value := m.input.value
-				if m.input.value.Type() == InputValueTypeSlice {
+				if m.input.value.Type() == InputValueTypeSingleSelect {
 					l := m.model.(InputListSelectModel)
-					value = sliceValue{value: m.input.value.Slice(), selected: m.input.value.Slice()[l.Index()]}
+					v := m.input.value.(sliceSelectValue)
+					value = sliceSelectValue{index: l.Index(), value: v.value}
 				}
 				return m, tea.Batch(
 					m.onConfirm(value),
@@ -104,6 +105,8 @@ func (m modalModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.input.value = stringValue{mm.Model.Value()}
 	case InputValueTypeSlice:
 		// do nothing for list
+	case InputValueTypeSingleSelect:
+		// do nothing fo single select
 	}
 
 	return m, cmd
@@ -140,7 +143,7 @@ func (m modalModel) View() string {
 		mm.TextStyle = styles.Text
 		mm.Prompt = styles.PromptText
 		modelView = mm.View()
-	case InputValueTypeSlice:
+	case InputValueTypeSingleSelect:
 		vr = validationStyle.Padding(0, 0, 0, 0).Render("")
 		lm, _ := m.model.(InputListSelectModel)
 		modelView = lm.View()

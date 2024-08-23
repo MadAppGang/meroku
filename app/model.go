@@ -65,20 +65,22 @@ type env struct {
 }
 
 type workload struct {
-	slackWebhook               string
-	bucketPostfix              string
-	bucketPublic               bool
 	backendHealthEndpoint      string
 	backendExternalDockerImage string
-	setupFCNSNS                bool
-	backendImagePort           int
-	enableGithubOIDC           bool
-	githubOIDCSubjects         []string
 	backendContainerCommand    []string
-	installPgAdmin             bool
-	pgAdminEmail               string
+	bucketPostfix              string
+	bucketPublic               bool
+	backendImagePort           int
+	setupFCNSNS                bool
 	xrayEnabled                bool
 	backendEnvVariables        map[string]string
+
+	slackWebhook       string
+	enableGithubOIDC   bool
+	githubOIDCSubjects []string
+
+	installPgAdmin bool
+	pgAdminEmail   string
 }
 
 type SetupDomainType string
