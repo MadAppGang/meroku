@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
-	"strings"
 )
 
 var (
@@ -136,22 +135,24 @@ func (b boolValue) Type() InputValueType {
 }
 
 type sliceValue struct {
-	value []string
+	selected string
+	value    []string
 }
 
 func (s sliceValue) LogValue() slog.Value {
 	return slog.GroupValue(
 		slog.String("value", s.String()),
+		slog.String("selected", s.selected),
 		slog.String("type", "slice"),
 	)
 }
 
 func (s sliceValue) String() string {
-	return strings.Join(s.value, ",")
+	return s.selected
 }
 
 func (s sliceValue) Int() int {
-	i, err := strconv.Atoi(s.String())
+	i, err := strconv.Atoi(s.selected)
 	if err != nil {
 		return 0
 	}
@@ -163,7 +164,7 @@ func (s sliceValue) Slice() []string {
 }
 
 func (s sliceValue) Bool() bool {
-	b, err := strconv.ParseBool(s.String())
+	b, err := strconv.ParseBool(s.selected)
 	if err != nil {
 		return false
 	}
@@ -172,4 +173,8 @@ func (s sliceValue) Bool() bool {
 
 func (s sliceValue) Type() InputValueType {
 	return InputValueTypeSlice
+}
+
+func (s sliceValue) Options() []string {
+	return s.value
 }

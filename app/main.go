@@ -200,7 +200,7 @@ func (m masterView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.detailView.setSize(m.width-listWidth-5, m.height-7)
 		}
 	case openModalMsg:
-		m.modal = newModalModel(msg.input, 60, 7, m.width, m.height, msg.onConfirm)
+		m.modal = newModalModel(msg.input, m.width, m.height, msg.onConfirm)
 		return m, textinput.Blink
 	case closeModalMsg:
 		m.modal = nil

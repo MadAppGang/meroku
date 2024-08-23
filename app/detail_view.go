@@ -97,6 +97,8 @@ func (m *detailViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					},
 				}
 			}
+		case "ctrl+c", "q":
+			return m, tea.Quit
 		}
 	case updateFieldMsg:
 		m.inputs[msg.index].setValue(msg.value)

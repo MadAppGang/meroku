@@ -1,6 +1,9 @@
 package main
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/lipgloss"
+)
 
 const (
 	listWidth              = 30 // Fixed width for the list panel
@@ -61,4 +64,9 @@ var (
 
 	helpTextStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#626262"))
+
+	dialogListItemStyle         = lipgloss.NewStyle().PaddingLeft(4)
+	dialogListSelectedItemStyle = lipgloss.NewStyle().PaddingLeft(2).Foreground(lipgloss.Color("170"))
+	dialogListTitleStyle        = lipgloss.NewStyle().MarginLeft(2)
+	dialogListPaginationStyle   = list.DefaultStyles().PaginationStyle.PaddingLeft(4)
 )

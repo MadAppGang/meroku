@@ -30,12 +30,14 @@ type updateFieldMsg struct {
 
 type closeModalMsg struct{}
 
-func newModalModel(input baseInputModel, width, height, screenWidth, screenHeight int, onConfirm func(inputValue) tea.Cmd) *modalModel {
+func newModalModel(input baseInputModel, screenWidth, screenHeight int, onConfirm func(inputValue) tea.Cmd) *modalModel {
 	slog.Info("newModalModel", "input", &input, "input type", input.value.Type())
 	var model tea.Model
+	width := 60
+	height := 7
+	styles := baseTextInputTheme.Focused
 	switch input.value.Type() {
-	case InputValueTypeString, InputValueTypeInt, InputValueTypeSlice, InputValueTypeBool:
-		styles := baseTextInputTheme.Focused
+	case InputValueTypeString, InputValueTypeInt, InputValueTypeBool:
 		textinput := NewTextInputFullModel()
 		textinput.SetValue(input.value.String())
 		textinput.Focus()
@@ -48,7 +50,10 @@ func newModalModel(input baseInputModel, width, height, screenWidth, screenHeigh
 		textinput.TextStyle = styles.Text
 		textinput.Prompt = styles.PromptText
 		model = textinput
-		slog.Info("newModalModel >>", "model", model)
+	case InputValueTypeSlice:
+		height = 30
+		list := NewInputListSelectModel(input.value, width-4, height-7)
+		model = list
 	}
 
 	return &modalModel{
@@ -73,8 +78,13 @@ func (m modalModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			// Perform validation using regex for string values
 			if m.input.IsValid() {
+				value := m.input.value
+				if m.input.value.Type() == InputValueTypeSlice {
+					l := m.model.(InputListSelectModel)
+					value = sliceValue{value: m.input.value.Slice(), selected: m.input.value.Slice()[l.Index()]}
+				}
 				return m, tea.Batch(
-					m.onConfirm(m.input.value),
+					m.onConfirm(value),
 					func() tea.Msg { return closeModalMsg{} },
 				)
 			}
@@ -92,6 +102,8 @@ func (m modalModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case InputValueTypeString:
 		mm, _ := m.model.(TextInputFullModel)
 		m.input.value = stringValue{mm.Model.Value()}
+	case InputValueTypeSlice:
+		// do nothing for list
 	}
 
 	return m, cmd
@@ -115,6 +127,9 @@ func (m modalModel) View() string {
 		helpText = fmt.Sprintf("Fix the input or press Esc to cancel")
 	}
 
+	vr := validationStyle.Padding(0, 2, 0, 0).Render(wrapText(validationResult, m.width-4))
+
+	var modelView string
 	switch m.input.value.Type() {
 	case InputValueTypeString:
 		mm, _ := m.model.(TextInputFullModel)
@@ -124,6 +139,11 @@ func (m modalModel) View() string {
 		mm.Cursor.TextStyle = styles.CursorText
 		mm.TextStyle = styles.Text
 		mm.Prompt = styles.PromptText
+		modelView = mm.View()
+	case InputValueTypeSlice:
+		vr = validationStyle.Padding(0, 0, 0, 0).Render("")
+		lm, _ := m.model.(InputListSelectModel)
+		modelView = lm.View()
 	}
 
 	modalStyle := lipgloss.NewStyle().
@@ -133,16 +153,15 @@ func (m modalModel) View() string {
 		Width(m.width).
 		Height(m.height)
 
-	vr := wrapText(validationResult, m.width-4)
 	desc := wrapText(m.input.description, m.width-4)
 
 	content := lipgloss.JoinVertical(
 		lipgloss.Center,
 		titleStyle.MarginBottom(0).Render(m.input.title),
 		styles.Description.Padding(2, 2).Render(desc),
-		lipgloss.NewStyle().PaddingLeft(2).PaddingRight(2).PaddingBottom(2).Render(m.model.View()),
-		validationStyle.Padding(0, 2, 0, 0).Render(vr),
-		helpTextStyle.Render(helpText),
+		lipgloss.NewStyle().PaddingLeft(2).PaddingRight(2).PaddingBottom(2).Width(m.width-4).Render(modelView),
+		vr,
+		lipgloss.NewStyle().Width(m.width-4).Align(lipgloss.Center).Render(helpTextStyle.Render(helpText)),
 	)
 
 	return lipgloss.Place(

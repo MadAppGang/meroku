@@ -36,7 +36,7 @@ func newMainSettingsView(e env) *mainSettingsView {
 					description:       "AWS region",
 					validator:         regexp.MustCompile(`^(us|eu|ap|sa|ca|me|af|il)-(north|south|east|west|central|southeast|northeast|southwest|northwest)-\d+$`),
 					validationMessage: "one of the valid AWS regions lower case, no spaces",
-				}, stringValue{e.region}),
+				}, sliceValue{value: AWSRegions, selected: e.region}),
 				newTextFieldModel(baseInputModel{
 					title:             "State Bucket",
 					placeholder:       "my-bucket-1",

@@ -6,6 +6,7 @@ require (
 	github.com/charmbracelet/bubbles v0.19.0
 	github.com/charmbracelet/bubbletea v0.27.0
 	github.com/charmbracelet/lipgloss v0.13.0
+	github.com/samber/lo v1.47.0
 	golang.org/x/exp v0.0.0-20220909182711-5c715a9e8561
 )
 
@@ -29,5 +30,5 @@ require (
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	golang.org/x/sync v0.8.0 // indirect
 	golang.org/x/sys v0.24.0 // indirect
-	golang.org/x/text v0.3.8 // indirect
+	golang.org/x/text v0.16.0 // indirect
 )
