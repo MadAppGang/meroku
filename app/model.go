@@ -67,7 +67,7 @@ type env struct {
 type workload struct {
 	backendHealthEndpoint      string
 	backendExternalDockerImage string
-	backendContainerCommand    []string
+	backendContainerCommand    string
 	bucketPostfix              string
 	bucketPublic               bool
 	backendImagePort           int
@@ -167,7 +167,7 @@ func createEnv(name string) env {
 			backendImagePort:           8080,
 			enableGithubOIDC:           false,
 			githubOIDCSubjects:         []string{"repo:MadAppGang/*", "repo:MadAppGang/project_backend:ref:refs/heads/main"},
-			backendContainerCommand:    []string{},
+			backendContainerCommand:    "",
 			installPgAdmin:             false,
 			pgAdminEmail:               "",
 			xrayEnabled:                false,

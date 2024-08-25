@@ -25,10 +25,12 @@ func newBackendSettingsView(e env) *backendSettingsView {
 					description: "Optional Docker hub image name, by default we use private ECR registry",
 				}, stringValue{e.workload.backendExternalDockerImage}),
 				newTextFieldModel(baseInputModel{
-					title:       "custom docker container command",
-					placeholder: "[\"aooth\", \"--flag\"]",
-					description: "Optional overwrite default docker container command",
-				}, sliceValue{e.workload.backendContainerCommand}),
+					title:             "custom docker container command",
+					placeholder:       "[\"aooth\", \"--flag\"]",
+					description:       "Optional overwrite default docker container command",
+					validator:         regexp.MustCompile(`(^\s*$|\[(\s*"[^"]*"\s*,?\s*)*\])`),
+					validationMessage: "Container command is JSON  array of strings format",
+				}, stringValue{e.workload.backendContainerCommand}),
 				newTextFieldModel(baseInputModel{
 					title:             "Bucket postfix",
 					placeholder:       "hidden",
@@ -37,6 +39,15 @@ func newBackendSettingsView(e env) *backendSettingsView {
 					validationMessage: "Letters, numbers and dash only, max 30 characters",
 				}, stringValue{e.workload.bucketPostfix}),
 			},
+			newTextFieldModel(baseInputModel{
+					title:             "setupFCNSNS",
+					description:       "Optional you can setup SNS topic for push notifications",
+					
+					validator:         regexp.MustCompile(`^[a-zA-Z0-9-]{0,30}$`),
+					validationMessage: "Letters, numbers and dash only, max 30 characters",
+				}, stringValue{e.workload.bucketPostfix}),
+			},
+
 		},
 		w: e.workload,
 	}
