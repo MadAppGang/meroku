@@ -37,7 +37,7 @@ func newModalModel(input baseInputModel, screenWidth, screenHeight int, onConfir
 	height := 7
 	styles := baseTextInputTheme.Focused
 	switch input.value.Type() {
-	case InputValueTypeString, InputValueTypeInt, InputValueTypeBool:
+	case InputValueTypeString, InputValueTypeInt:
 		textinput := NewTextInputFullModel()
 		textinput.SetValue(input.value.String())
 		textinput.Focus()
@@ -54,6 +54,10 @@ func newModalModel(input baseInputModel, screenWidth, screenHeight int, onConfir
 		height = 30
 		list := NewInputListSelectModel(input.value, width-4, height-7)
 		model = list
+	case InputValueTypeBool:
+		boolInput := newBoolInputModel(input, width-8)
+		boolInput.Focus()
+		model = boolInput
 	}
 
 	return &modalModel{
@@ -84,6 +88,7 @@ func (m modalModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					v := m.input.value.(sliceSelectValue)
 					value = sliceSelectValue{index: l.Index(), value: v.value}
 				}
+				slog.Warn("modalModel.Update", "value", value)
 				return m, tea.Batch(
 					m.onConfirm(value),
 					func() tea.Msg { return closeModalMsg{} },
@@ -115,8 +120,13 @@ func (m modalModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.input.value = stringValue{mm.Model.Value()}
 	case InputValueTypeSlice:
 		// do nothing for list
+		sliceModel, _ := m.model.(InputListSelectModel)
+		m.input.value = sliceValue{sliceModel.ListItems()}
 	case InputValueTypeSingleSelect:
 		// do nothing fo single select
+	case InputValueTypeBool:
+		boolInput, _ := m.model.(boolInputModel)
+		m.input.value = boolValue{boolInput.Value().Bool()}
 	}
 
 	return m, cmd
@@ -163,6 +173,10 @@ func (m modalModel) View() string {
 		lm, _ := m.model.(InputListSelectModel)
 		modelView = lm.View()
 		helpText = fmt.Sprintf("Enter: start and commit edit, Esc: cancel edit or exit, A/a: append new, d/D: delete selected, Tab: move from list to button and back")
+	case InputValueTypeBool:
+		boolInput, _ := m.model.(boolInputModel)
+		modelView = boolInput.View()
+		helpText = fmt.Sprintf("Space: toggle value, Enter: confirm, Esc: cancel")
 	}
 
 	modalStyle := lipgloss.NewStyle().

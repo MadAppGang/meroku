@@ -38,16 +38,11 @@ func newBackendSettingsView(e env) *backendSettingsView {
 					validator:         regexp.MustCompile(`^[a-zA-Z0-9-]{0,30}$`),
 					validationMessage: "Letters, numbers and dash only, max 30 characters",
 				}, stringValue{e.workload.bucketPostfix}),
-			},
-			newTextFieldModel(baseInputModel{
+				newBoolFieldModel(baseInputModel{
 					title:             "setupFCNSNS",
 					description:       "Optional you can setup SNS topic for push notifications",
-					
-					validator:         regexp.MustCompile(`^[a-zA-Z0-9-]{0,30}$`),
-					validationMessage: "Letters, numbers and dash only, max 30 characters",
-				}, stringValue{e.workload.bucketPostfix}),
+				}, boolValue{e.workload.setupFCNSNS}),
 			},
-
 		},
 		w: e.workload,
 	}

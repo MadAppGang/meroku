@@ -16,6 +16,10 @@ type TextInputThemeOneStyle struct {
 	CursorText             lipgloss.Style
 	Text                   lipgloss.Style
 	Title                  lipgloss.Style
+	BoolTrue               lipgloss.Style
+	BoolFalse              lipgloss.Style
+	BoolTrueText           string
+	BoolFalseText          string
 }
 
 type TextInputTheme struct {
@@ -33,6 +37,7 @@ var (
 	red        = lipgloss.AdaptiveColor{Light: "#FF4672", Dark: "#ED567A"}
 	darkRed    = lipgloss.AdaptiveColor{Light: "#FF4672", Dark: "88"}
 	lightGray  = lipgloss.AdaptiveColor{Light: "", Dark: "237"}
+	black      = lipgloss.AdaptiveColor{Light: "", Dark: "0"}
 )
 
 var baseTextInputTheme = TextInputTheme{
@@ -47,6 +52,10 @@ var baseTextInputTheme = TextInputTheme{
 		ValidationErrorMessage: lipgloss.NewStyle().Foreground(darkRed),
 		Title:                  lipgloss.NewStyle().Foreground(indigoDark).Bold(false),
 		PromptText:             "> ",
+		BoolTrue:               lipgloss.NewStyle().Foreground(green),
+		BoolFalse:              lipgloss.NewStyle().Foreground(red),
+		BoolTrueText:           "[ TRUE ]",
+		BoolFalseText:          "[ FALSE ]",
 	},
 	Focused: TextInputThemeOneStyle{
 		Base:                   lipgloss.NewStyle().PaddingLeft(1).BorderStyle(lipgloss.ThickBorder()).BorderLeft(true).BorderForeground(green),
@@ -61,5 +70,9 @@ var baseTextInputTheme = TextInputTheme{
 		Title:                  lipgloss.NewStyle().Foreground(indigo).Bold(true),
 		PromptText:             "👉 ",
 		Text:                   lipgloss.NewStyle().Bold(true),
+		BoolTrue:               lipgloss.NewStyle().Background(green).Foreground(black),
+		BoolFalse:              lipgloss.NewStyle().Background(red),
+		BoolTrueText:           "[ TRUE ]",
+		BoolFalseText:          "[ FALSE ]",
 	},
 }

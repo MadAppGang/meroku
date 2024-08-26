@@ -74,6 +74,17 @@ type InputListSelectModel struct {
 	list.Model
 }
 
+func (m InputListSelectModel) ListItems() []string {
+	items := lo.Map(m.Items(), func(s list.Item, _ int) string {
+		li, ok := s.(dialogItem)
+		if ok {
+			return li.value
+		}
+		return ""
+	})
+	return items
+}
+
 func NewInputListSelectModel(value inputValue, width, height int) InputListSelectModel {
 	sitems := []string{}
 	selectedIdx := 0

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -101,6 +102,7 @@ func (m *detailViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 	case updateFieldMsg:
+		slog.Warn("detailViewModel.Update", "updateFieldMsg", slog.Int("index", msg.index), "value", msg.value)
 		m.inputs[msg.index].setValue(msg.value)
 	}
 
