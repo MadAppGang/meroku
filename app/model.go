@@ -25,13 +25,13 @@ func (i item) FilterValue() string { return i.title }
 func menuListFromEnv(env env) []list.Item {
 	scheduledTasks := []item{}
 	for _, task := range env.scheduledTasks {
-		scheduledTasks = append(scheduledTasks, item{title: task.name, desc: fmt.Sprintf("Scheduled task with schedule: %s", task.schedule), isChild: true, detailView: nil})
+		scheduledTasks = append(scheduledTasks, item{title: task.name, desc: fmt.Sprintf("Scheduled task with schedule: %s", task.schedule), isChild: true, detailView: newScheduledTaskView(task)})
 	}
 	scheduledTasks = append(scheduledTasks, item{title: ADD_NEW_SCHEDULED_TASK, desc: "Add a new scheduled task", isChild: true})
 
 	eventProcessorTasks := []item{}
 	for _, task := range env.eventProcessorTasks {
-		eventProcessorTasks = append(eventProcessorTasks, item{title: task.name, desc: task.ruleName, isChild: true, detailView: nil})
+		eventProcessorTasks = append(eventProcessorTasks, item{title: task.name, desc: task.ruleName, isChild: true, detailView: NewEventProcessorTaskView(task)})
 	}
 	eventProcessorTasks = append(eventProcessorTasks, item{title: ADD_NEW_EVENT_TASK, desc: "Add a new event processor task", isChild: true})
 
@@ -39,9 +39,9 @@ func menuListFromEnv(env env) []list.Item {
 		item{title: "Main settings", desc: "Main settings", detailView: newMainSettingsView(env)},
 		item{title: "Backend settings", desc: "Backend and environment settings", detailView: newBackendSettingsView(env)},
 		item{title: "Domain", desc: "Domain settings", detailView: newBackendDomainView(env)},
-		item{title: "Postgres", desc: "Postgres database in RDS settings", detailView: nil},
-		item{title: "Cognito", desc: "Cognito settings", detailView: nil},
-		item{title: "SES Email", desc: "Simple email service settings", detailView: nil},
+		item{title: "Postgres", desc: "Postgres database in RDS settings", detailView: newBackendPostgresView(env)},
+		item{title: "Cognito", desc: "Cognito settings", detailView: newCognitoView(env)},
+		item{title: "SES Email", desc: "Simple email service settings", detailView: newSesView(env)},
 		item{title: "Scheduled ECS Task", desc: "mange list of scheduled ECS tasks", detailView: nil, isParent: true, children: scheduledTasks},
 		item{title: "Event Processor Task", desc: "mange list of event processor tasks EventBridge", detailView: nil, isParent: true, children: eventProcessorTasks},
 	}

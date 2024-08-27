@@ -137,6 +137,14 @@ func (m masterView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 			}
+		case "d", "D":
+			if i, ok := m.list.SelectedItem().(item); ok && i.isChild && i.title != ADD_NEW_SCHEDULED_TASK && i.title != ADD_NEW_EVENT_TASK {
+				items := m.list.Items()
+				index := m.list.Index()
+				items = append(items[:index], items[index+1:]...)
+				m.list.SetItems(items)
+			}
+
 		case "enter":
 			if i, ok := m.list.SelectedItem().(item); ok {
 				if m.detailView != nil {
@@ -188,9 +196,12 @@ func (m masterView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					var newChild item
 					if i.title == ADD_NEW_SCHEDULED_TASK {
-						newChild = item{title: fmt.Sprintf("Task %d", len(parent.children)+1), desc: "New scheduled task", isChild: true}
+						task := scheduledTask{name: fmt.Sprintf("Task_%d", len(parent.children)+1), schedule: "cron(0 6 * * ? *)"}
+						newChild = item{title: task.name, desc: "New scheduled task", isChild: true, detailView: newScheduledTaskView(task)}
 					} else {
-						newChild = item{title: fmt.Sprintf("Task %d", len(parent.children)+1), desc: "New event processor task", isChild: true}
+						name := fmt.Sprintf("Task_%d", len(parent.children)+1)
+						task := eventProcessorTask{name: name, ruleName: name + "_rule", detailTypes: []string{""}, sources: []string{""}}
+						newChild = item{title: name, desc: "New event processor task", isChild: true, detailView: NewEventProcessorTaskView(task)}
 					}
 					parent.children = insertAt(parent.children, newChild, len(parent.children)-1)
 					items = replaceAt[list.Item](items, parent, parentIndex)
