@@ -50,7 +50,11 @@ func newModalModel(input baseInputModel, screenWidth, screenHeight int, onConfir
 		textinput.TextStyle = styles.Text
 		textinput.Prompt = styles.PromptText
 		model = textinput
-	case InputValueTypeSingleSelect, InputValueTypeSlice:
+	case InputValueTypeSingleSelect:
+		height = 30
+		list := NewInputListSelectModel(input.value, width-4, height-7)
+		model = list
+	case InputValueTypeSlice:
 		height = 30
 		list := NewInputListSelectModel(input.value, width-4, height-7)
 		model = list
@@ -88,11 +92,22 @@ func (m modalModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					v := m.input.value.(sliceSelectValue)
 					value = sliceSelectValue{index: l.Index(), value: v.value}
 				}
-				slog.Warn("modalModel.Update", "value", value)
 				return m, tea.Batch(
 					m.onConfirm(value),
 					func() tea.Msg { return closeModalMsg{} },
 				)
+			}
+		case "shift+enter", "tab":
+			if m.input.value.Type() == InputValueTypeSlice {
+				s := m.model.(InputListSelectModel)
+				// if we can not escape it means we can not commit edit as well? Right? Debatable.
+				if s.CanEscape(msg) {
+					value := sliceValue{s.ListItems()}
+					return m, tea.Batch(
+						m.onConfirm(value),
+						func() tea.Msg { return closeModalMsg{} },
+					)
+				}
 			}
 		case "esc":
 			if m.input.value.Type() == InputValueTypeSlice {
@@ -172,7 +187,7 @@ func (m modalModel) View() string {
 	case InputValueTypeSlice:
 		lm, _ := m.model.(InputListSelectModel)
 		modelView = lm.View()
-		helpText = fmt.Sprintf("Enter: start and commit edit, Esc: cancel edit or exit, A/a: append new, d/D: delete selected, Tab: move from list to button and back")
+		helpText = fmt.Sprintf("Tab: commit the list, Enter: start and commit edit, Esc: cancel edit or exit, A/a: append new, d/D: delete selected")
 	case InputValueTypeBool:
 		boolInput, _ := m.model.(boolInputModel)
 		modelView = boolInput.View()

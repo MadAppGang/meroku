@@ -72,6 +72,7 @@ func (d dialogItemDelegate) Render(w io.Writer, m list.Model, index int, listIte
 
 type InputListSelectModel struct {
 	list.Model
+	mode InputValueType
 }
 
 func (m InputListSelectModel) ListItems() []string {
@@ -89,13 +90,16 @@ func NewInputListSelectModel(value inputValue, width, height int) InputListSelec
 	sitems := []string{}
 	selectedIdx := 0
 	title := ""
+	var mode InputValueType
 	if ss, ok := value.(sliceSelectValue); ok {
+		mode = InputValueTypeSingleSelect
 		title = "Select one and press Enter"
 		sitems = ss.Options()
 		selectedIdx = ss.index
 	} else if ss, ok := value.(sliceValue); ok {
+		mode = InputValueTypeSlice
 		title = "Press <Enter> to edit or <Esc> to cancel"
-		ss.Slice()
+		sitems = ss.Slice()
 	}
 
 	items := lo.Map(sitems, func(s string, _ int) list.Item {
@@ -116,6 +120,7 @@ func NewInputListSelectModel(value inputValue, width, height int) InputListSelec
 	}
 	return InputListSelectModel{
 		Model: l,
+		mode:  mode,
 	}
 }
 
@@ -124,16 +129,27 @@ func (m InputListSelectModel) Init() tea.Cmd {
 }
 
 func (m InputListSelectModel) CanEscape(msg tea.Msg) bool {
-	item, ok := m.Model.SelectedItem().(dialogItem)
-	if !ok || !item.Focused() {
+	if m.mode == InputValueTypeSlice {
+		item, ok := m.Model.SelectedItem().(dialogItem)
+		if !ok || !item.Focused() {
+			return true
+		}
+		return false
+	} else {
 		return true
 	}
-	return false
 }
 
 func (m InputListSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
+	if m.mode == InputValueTypeSlice {
+		return m.UpdateSlice(msg)
+	} else {
+		return m.UpdateSelect(msg)
+	}
+}
 
+func (m InputListSelectModel) UpdateSlice(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -190,4 +206,20 @@ func (m InputListSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.Model, cmd = m.Model.Update(msg)
 		return m, cmd
 	}
+}
+
+func (m InputListSelectModel) UpdateSelect(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "esc":
+			return m, func() tea.Msg {
+				return closeModalMsg{}
+			}
+		}
+	}
+	m.Model, cmd = m.Model.Update(msg)
+	return m, cmd
 }

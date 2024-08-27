@@ -38,7 +38,7 @@ func menuListFromEnv(env env) []list.Item {
 	items := []list.Item{
 		item{title: "Main settings", desc: "Main settings", detailView: newMainSettingsView(env)},
 		item{title: "Backend settings", desc: "Backend and environment settings", detailView: newBackendSettingsView(env)},
-		item{title: "Domain", desc: "Domain settings", detailView: nil},
+		item{title: "Domain", desc: "Domain settings", detailView: newBackendDomainView(env)},
 		item{title: "Postgres", desc: "Postgres database in RDS settings", detailView: nil},
 		item{title: "Cognito", desc: "Cognito settings", detailView: nil},
 		item{title: "SES Email", desc: "Simple email service settings", detailView: nil},
