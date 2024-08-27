@@ -2,9 +2,11 @@ package main
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/charmbracelet/bubbles/list"
 	"golang.org/x/exp/rand"
+	"gopkg.in/yaml.v2"
 )
 
 // main list items
@@ -203,6 +205,30 @@ func createEnv(name string) env {
 		scheduledTasks:      []scheduledTask{},
 		eventProcessorTasks: []eventProcessorTask{},
 	}
+}
+
+func loadEnv(name string) (env, error) {
+	var e env
+
+	data, err := os.ReadFile(name + ".yaml")
+	if err != nil {
+		return e, fmt.Errorf("error reading YAML file: %v", err)
+	}
+
+	err = yaml.Unmarshal(data, &e)
+	if err != nil {
+		return e, fmt.Errorf("error unmarshaling YAML: %v", err)
+	}
+
+	return e, nil
+}
+
+func saveEnv(name string, e env) error {
+	yamlData, err := yaml.Marshal(e)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(name+".yaml", yamlData, 0o644)
 }
 
 var AWSRegions = []string{
