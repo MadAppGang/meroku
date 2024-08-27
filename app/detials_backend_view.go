@@ -1,6 +1,10 @@
 package main
 
-import "regexp"
+import (
+	"regexp"
+
+	"github.com/charmbracelet/bubbles/viewport"
+)
 
 type backendSettingsView struct {
 	detailViewModel
@@ -9,7 +13,7 @@ type backendSettingsView struct {
 }
 
 func newBackendSettingsView(e env) *backendSettingsView {
-	return &backendSettingsView{
+	m := &backendSettingsView{
 		detailViewModel: detailViewModel{
 			title:       "Backend settings",
 			description: "Backend and main workload settings",
@@ -38,12 +42,54 @@ func newBackendSettingsView(e env) *backendSettingsView {
 					validator:         regexp.MustCompile(`^[a-zA-Z0-9-]{0,30}$`),
 					validationMessage: "Letters, numbers and dash only, max 30 characters",
 				}, stringValue{e.workload.bucketPostfix}),
+				newTextFieldModel(baseInputModel{
+					title:             "Backend docker image port",
+					placeholder:       "8000",
+					description:       "Backend docker image port",
+					validator:         regexp.MustCompile(`^($|([1-9]\d{0,3}|[1-5]\d{4}|6[0-4]\d{3}|65[0-4]\d{2}|655[0-2]\d|6553[0-5]))$`),
+					validationMessage: "Port number from 1 to 65535",
+				}, intValue{e.workload.backendImagePort}),
 				newBoolFieldModel(baseInputModel{
-					title:             "setupFCNSNS",
-					description:       "Optional you can setup SNS topic for push notifications",
+					title:       "setupFCNSNS",
+					description: "Optional you can setup SNS topic for push notifications",
 				}, boolValue{e.workload.setupFCNSNS}),
+				newBoolFieldModel(baseInputModel{
+					title:       "Enable XRay",
+					description: "Setup Xray daemon as a service in ECS",
+				}, boolValue{e.workload.xrayEnabled}),
+				newTextFieldModel(baseInputModel{
+					title:             "Slack deployment webhook",
+					placeholder:       "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX",
+					description:       "Deployment script will send slack message with deployment status",
+					validator:         regexp.MustCompile(`^$|(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$`),
+					validationMessage: "Valid URL",
+				}, stringValue{e.workload.slackWebhook}),
+				newBoolFieldModel(baseInputModel{
+					title:       "Enable Github OIDC",
+					description: "This will allow github actions to have access to AWS infrastructure to push ECR images and deploy services",
+				}, boolValue{e.workload.enableGithubOIDC}),
+				newTextFieldModel(baseInputModel{
+					title:       "Github OIDC subjects",
+					placeholder: "repo:MadAppGang/*",
+					description: "The list of github subject, usually it is a list of repositories, like repo:MadAppGang/project_backend:ref:refs/heads/main",
+				}, sliceValue{e.workload.githubOIDCSubjects}),
+				newBoolFieldModel(baseInputModel{
+					title:       "Install PgAdmin",
+					description: "Install PgAdmin as a service in ECS",
+				}, boolValue{e.workload.installPgAdmin}),
+				newTextFieldModel(baseInputModel{
+					title:             "PgAdmin admin email",
+					placeholder:       "admin@admin.com",
+					description:       "PgAdmin login email credentials, the password will be generated automatically",
+					validator:         regexp.MustCompile(`^$|^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`),
+					validationMessage: "Valid email address",
+				}, stringValue{e.workload.pgAdminEmail}),
 			},
 		},
 		w: e.workload,
 	}
+
+	m.viewport = viewport.New(0, 0)
+	m.updateViewportContent()
+	return m
 }

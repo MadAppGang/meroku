@@ -115,7 +115,7 @@ func (m modalModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.model, cmd = m.model.Update(msg)
 
 	switch m.input.value.Type() {
-	case InputValueTypeString:
+	case InputValueTypeString, InputValueTypeInt:
 		mm, _ := m.model.(TextInputFullModel)
 		m.input.value = stringValue{mm.Model.Value()}
 	case InputValueTypeSlice:
@@ -156,7 +156,7 @@ func (m modalModel) View() string {
 
 	var modelView string
 	switch m.input.value.Type() {
-	case InputValueTypeString:
+	case InputValueTypeString, InputValueTypeInt:
 		mm, _ := m.model.(TextInputFullModel)
 		mm.PlaceholderStyle = styles.Placeholder
 		mm.PromptStyle = styles.Prompt

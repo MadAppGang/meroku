@@ -2,6 +2,8 @@ package main
 
 import (
 	"regexp"
+
+	"github.com/charmbracelet/bubbles/viewport"
 )
 
 type mainSettingsView struct {
@@ -11,7 +13,7 @@ type mainSettingsView struct {
 }
 
 func newMainSettingsView(e env) *mainSettingsView {
-	return &mainSettingsView{
+	m := &mainSettingsView{
 		detailViewModel: detailViewModel{
 			title:       "Main settings",
 			description: "Configure the workload settings",
@@ -55,4 +57,8 @@ func newMainSettingsView(e env) *mainSettingsView {
 		},
 		e: e,
 	}
+
+	m.viewport = viewport.New(0, 0)
+	m.updateViewportContent()
+	return m
 }

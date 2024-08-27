@@ -2,9 +2,9 @@ package main
 
 import (
 	"fmt"
-	"log/slog"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -28,6 +28,7 @@ type detailViewModel struct {
 	width       int
 	height      int
 	isFocused   bool
+	viewport    viewport.Model
 }
 
 func (i *detailViewModel) base() detailViewModel {
@@ -41,6 +42,13 @@ func (i *detailViewModel) focused() bool {
 func (i *detailViewModel) setSize(width, height int) {
 	i.width = width
 	i.height = height
+	i.viewport.Width = width
+	i.viewport.Height = height
+	i.updateViewportContent()
+}
+
+func (m *detailViewModel) updateViewportContent() {
+	m.viewport.SetContent(m.renderContent())
 }
 
 func (i *detailViewModel) setFocused(focused bool) {
@@ -84,6 +92,7 @@ func (m *detailViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.inputs[i].Blur()
 			}
+			m.ensureSelectedItemVisible()
 
 			return m, tea.Batch(cmds...)
 		case "enter":
@@ -102,12 +111,41 @@ func (m *detailViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 	case updateFieldMsg:
-		slog.Warn("detailViewModel.Update", "updateFieldMsg", slog.Int("index", msg.index), "value", msg.value)
 		m.inputs[msg.index].setValue(msg.value)
+		m.updateViewportContent()
 	}
 
+	cmds := []tea.Cmd{}
 	cmd := m.updateInputs(msg)
-	return m, cmd
+	cmds = append(cmds, cmd)
+	m.viewport, cmd = m.viewport.Update(msg)
+	cmds = append(cmds, cmd)
+	return m, tea.Batch(cmds...)
+}
+
+func (m *detailViewModel) ensureSelectedItemVisible() {
+	contentHeight := 0
+	selectedTop := 0
+	selectedBottom := 0
+
+	for i, input := range m.inputs {
+		inputHeight := lipgloss.Height(input.View())
+		if i < m.selectedIdx {
+			selectedTop += inputHeight + 1 // Add 1 for the newline between inputs
+		}
+		if i == m.selectedIdx {
+			selectedBottom = selectedTop + inputHeight
+		}
+		contentHeight += inputHeight + 1
+	}
+
+	if selectedTop < m.viewport.YOffset {
+		m.viewport.YOffset = selectedTop
+	} else if selectedBottom > m.viewport.YOffset+m.viewport.Height {
+		m.viewport.YOffset = selectedBottom - m.viewport.Height
+	}
+
+	m.updateViewportContent()
 }
 
 func (m *detailViewModel) updateInputs(msg tea.Msg) tea.Cmd {
@@ -120,10 +158,10 @@ func (m *detailViewModel) updateInputs(msg tea.Msg) tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-func (m *detailViewModel) View() string {
+func (m *detailViewModel) renderContent() string {
 	var b strings.Builder
 
-	for i := range m.inputs {
+	for i, input := range m.inputs {
 		var style lipgloss.Style
 		if i == m.selectedIdx {
 			style = lipgloss.NewStyle().
@@ -134,7 +172,7 @@ func (m *detailViewModel) View() string {
 				Foreground(lipgloss.Color("240"))
 		}
 
-		inputView := m.inputs[i].View()
+		inputView := input.View()
 		b.WriteString(style.Render(inputView))
 		if i < len(m.inputs)-1 {
 			b.WriteRune('\n')
@@ -144,6 +182,14 @@ func (m *detailViewModel) View() string {
 	return lipgloss.NewStyle().
 		Padding(1, 2).
 		Render(b.String())
+}
+
+func (m *detailViewModel) View() string {
+	return fmt.Sprintf("%s\n\n%s",
+		// lipgloss.NewStyle().Bold(true).Render(m.title),
+		m.viewport.View(),
+		helpTextStyle.Render(m.helpMessage()),
+	)
 }
 
 func (m *detailViewModel) helpMessage() string {
