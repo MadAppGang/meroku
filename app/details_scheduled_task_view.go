@@ -9,10 +9,10 @@ import (
 type scheduledTaskView struct {
 	detailViewModel
 
-	t scheduledTask
+	t ScheduledTask
 }
 
-func newScheduledTaskView(t scheduledTask) *scheduledTaskView {
+func newScheduledTaskView(t ScheduledTask) *scheduledTaskView {
 	m := &scheduledTaskView{
 		detailViewModel: detailViewModel{
 			title:       "Scheduled ECS task",
@@ -24,14 +24,14 @@ func newScheduledTaskView(t scheduledTask) *scheduledTaskView {
 					placeholder:       "send_notifications",
 					validator:         regexp.MustCompile(`^($|[a-zA-Z][\w-]{3,254})$`),
 					validationMessage: "Valid ECS service name, letter, numbers and dash only, min 3 and max 255 characters",
-				}, stringValue{t.name}),
+				}, stringValue{t.Name}),
 				newTextFieldModel(baseInputModel{
 					title:             "Scheduled task name",
 					description:       "cron(Minutes Hours Day-of-month Month Day-of-week Year)",
 					placeholder:       "cron(0 6 * * ? *)",
 					validator:         regexp.MustCompile(`^cron\(([\d\*\-\,\/]+)\s+([\d\*\-\,\/]+)\s+([\d\*\-\,\/\?LW]+)\s+([\d\*\-\,\/]+|JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\s+([\d\*\-\,\/L\?]+|SUN|MON|TUE|WED|THU|FRI|SAT)\s+([\d\*\-\,\/]+|\*)\)$`),
 					validationMessage: "Valid cron expression",
-				}, stringValue{t.schedule}),
+				}, stringValue{t.Schedule}),
 			},
 		},
 		t: t,

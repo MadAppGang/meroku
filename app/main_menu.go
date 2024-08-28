@@ -3,17 +3,21 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"regexp"
 	"slices"
 	"strings"
 
 	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/huh/spinner"
 	"github.com/samber/lo"
 )
 
 // returns env to edit
 func mainMenu() string {
-	//
+	// check if project is init
+	initProjectIfNeeded()
+
 	envs, err := findFilesWithExts([]string{".yaml", ".yml"})
 	if err != nil {
 		panic(err)
@@ -71,10 +75,38 @@ func createEnvMenu() string {
 	}
 
 	e := createEnv(name)
-	err := saveEnv(name, e)
+	err := saveEnv(e)
 	if err != nil {
 		fmt.Println("Error saving environment:", err)
 		os.Exit(1)
 	}
 	return name
+}
+
+func initProjectIfNeeded() {
+	if _, err := os.Stat("infrastructure"); os.IsNotExist(err) {
+		answer := false
+		huh.NewConfirm().
+			Title("The project is not initialized, do you want to initialize it?").
+			Affirmative("Yes 🚀").
+			Negative("No 🤷‍♂️").
+			Value(&answer).
+			Run()
+		if !answer {
+			fmt.Println("Aborting, 👋!")
+			os.Exit(1)
+		}
+
+		action := func() {
+			cmd := exec.Command("git", "clone", "--depth=1", "--branch=main", "https://github.com/MadAppGang/infrastructure.git", "./infrastructure")
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				fmt.Println("Error cloning infrastructure:", output)
+				os.Exit(1)
+			}
+			os.RemoveAll("./infrastructure/.git")
+		}
+
+		_ = spinner.New().Title("Initializing the project...").Action(action).Run()
+	}
 }

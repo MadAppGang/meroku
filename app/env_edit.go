@@ -13,7 +13,7 @@ import (
 
 type masterView struct {
 	list        list.Model
-	env         env
+	env         Env
 	selected    item
 	width       int
 	height      int
@@ -71,7 +71,7 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 	}
 }
 
-func initialModel(e env) masterView {
+func initialModel(e Env) masterView {
 	items := menuListFromEnv(e)
 	l := list.New(items, itemDelegate{}, listWidth, 0)
 	l.Title = "Items"
@@ -195,11 +195,11 @@ func (m masterView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					var newChild item
 					if i.title == ADD_NEW_SCHEDULED_TASK {
-						task := scheduledTask{name: fmt.Sprintf("Task_%d", len(parent.children)+1), schedule: "cron(0 6 * * ? *)"}
-						newChild = item{title: task.name, desc: "New scheduled task", isChild: true, detailView: newScheduledTaskView(task)}
+						task := ScheduledTask{Name: fmt.Sprintf("Task_%d", len(parent.children)+1), Schedule: "cron(0 6 * * ? *)"}
+						newChild = item{title: task.Name, desc: "New scheduled task", isChild: true, detailView: newScheduledTaskView(task)}
 					} else {
 						name := fmt.Sprintf("Task_%d", len(parent.children)+1)
-						task := eventProcessorTask{name: name, ruleName: name + "_rule", detailTypes: []string{""}, sources: []string{""}}
+						task := EventProcessorTask{Name: name, RuleName: name + "_rule", DetailTypes: []string{""}, Sources: []string{""}}
 						newChild = item{title: name, desc: "New event processor task", isChild: true, detailView: NewEventProcessorTaskView(task)}
 					}
 					parent.children = insertAt(parent.children, newChild, len(parent.children)-1)
@@ -305,7 +305,7 @@ func (m masterView) helpView() string {
 		Render("↑/↓: Navigate • ENTER: Select/Expand • ESC: Collapse • q: Quit")
 }
 
-func RunEnvEdit(e env) {
+func RunEnvEdit(e Env) {
 	p := tea.NewProgram(initialModel(e), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Println("Error running program:", err)

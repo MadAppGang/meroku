@@ -9,10 +9,10 @@ import (
 type backendPostgresView struct {
 	detailViewModel
 
-	p postgres
+	p Postgres
 }
 
-func newBackendPostgresView(e env) *backendPostgresView {
+func newBackendPostgresView(e Env) *backendPostgresView {
 	m := &backendPostgresView{
 		detailViewModel: detailViewModel{
 			title:       "Postgres RDS settings",
@@ -21,24 +21,24 @@ func newBackendPostgresView(e env) *backendPostgresView {
 				newBoolFieldModel(baseInputModel{
 					title:       "Enable Postgres in RDS",
 					description: "Enable Postgres in RDS and set up database and admin user",
-				}, boolValue{e.postgres.enabled}),
+				}, boolValue{e.Postgres.Enabled}),
 				newTextFieldModel(baseInputModel{
 					title:             "Database name",
 					placeholder:       "MyDatabase1",
 					description:       "The name of the database will be forwarded as PG_DATABASE_NAME environment variable to backend",
 					validator:         regexp.MustCompile(`^([a-zA-Z_][a-zA-Z0-9_$]*)?$`),
 					validationMessage: "Valid database name",
-				}, stringValue{e.postgres.dbname}),
+				}, stringValue{e.Postgres.Dbname}),
 				newTextFieldModel(baseInputModel{
 					title:             "Admin user name",
 					placeholder:       "pgadmin",
 					description:       "The password will be generated automatically and saved in AWS SSM parameter store",
 					validator:         regexp.MustCompile(`^([a-z_][a-z0-9_$]*)?$`),
 					validationMessage: "Valid postgres user name",
-				}, stringValue{e.postgres.dbname}),
+				}, stringValue{e.Postgres.Dbname}),
 			},
 		},
-		p: e.postgres,
+		p: e.Postgres,
 	}
 
 	m.viewport = viewport.New(0, 0)

@@ -2,11 +2,12 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 
 	"github.com/charmbracelet/bubbles/list"
 	"golang.org/x/exp/rand"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 // main list items
@@ -24,16 +25,16 @@ func (i item) Title() string       { return i.title }
 func (i item) Description() string { return i.desc }
 func (i item) FilterValue() string { return i.title }
 
-func menuListFromEnv(env env) []list.Item {
+func menuListFromEnv(env Env) []list.Item {
 	scheduledTasks := []item{}
-	for _, task := range env.scheduledTasks {
-		scheduledTasks = append(scheduledTasks, item{title: task.name, desc: fmt.Sprintf("Scheduled task with schedule: %s", task.schedule), isChild: true, detailView: newScheduledTaskView(task)})
+	for _, task := range env.ScheduledTasks {
+		scheduledTasks = append(scheduledTasks, item{title: task.Name, desc: fmt.Sprintf("Scheduled task with schedule: %s", task.Schedule), isChild: true, detailView: newScheduledTaskView(task)})
 	}
 	scheduledTasks = append(scheduledTasks, item{title: ADD_NEW_SCHEDULED_TASK, desc: "Add a new scheduled task", isChild: true})
 
 	eventProcessorTasks := []item{}
-	for _, task := range env.eventProcessorTasks {
-		eventProcessorTasks = append(eventProcessorTasks, item{title: task.name, desc: task.ruleName, isChild: true, detailView: NewEventProcessorTaskView(task)})
+	for _, task := range env.EventProcessorTasks {
+		eventProcessorTasks = append(eventProcessorTasks, item{title: task.Name, desc: task.RuleName, isChild: true, detailView: NewEventProcessorTaskView(task)})
 	}
 	eventProcessorTasks = append(eventProcessorTasks, item{title: ADD_NEW_EVENT_TASK, desc: "Add a new event processor task", isChild: true})
 
@@ -50,95 +51,95 @@ func menuListFromEnv(env env) []list.Item {
 	return items
 }
 
-type env struct {
-	project             string
-	env                 string
-	isProd              bool
-	region              string
-	sateBucket          string
-	stateFile           string
-	workload            workload
-	domain              domain
-	postgres            postgres
-	cognito             cognito
-	ses                 ses
-	scheduledTasks      []scheduledTask
-	eventProcessorTasks []eventProcessorTask
+type Env struct {
+	Project             string               `yaml:"project"`
+	Env                 string               `yaml:"env"`
+	IsProd              bool                 `yaml:"is_prod"`
+	Region              string               `yaml:"region"`
+	SateBucket          string               `yaml:"sate_bucket"`
+	StateFile           string               `yaml:"state_file"`
+	Workload            Workload             `yaml:"workload"`
+	Domain              Domain               `yaml:"domain"`
+	Postgres            Postgres             `yaml:"postgres"`
+	Cognito             Cognito              `yaml:"cognito"`
+	Ses                 Ses                  `yaml:"ses"`
+	ScheduledTasks      []ScheduledTask      `yaml:"scheduled_tasks"`
+	EventProcessorTasks []EventProcessorTask `yaml:"event_processor_tasks"`
 }
 
-type workload struct {
-	backendHealthEndpoint      string
-	backendExternalDockerImage string
-	backendContainerCommand    string
-	bucketPostfix              string
-	bucketPublic               bool
-	backendImagePort           int
-	setupFCNSNS                bool
-	xrayEnabled                bool
-	backendEnvVariables        map[string]string
+type Workload struct {
+	BackendHealthEndpoint      string            `yaml:"backend_health_endpoint"`
+	BackendExternalDockerImage string            `yaml:"backend_external_docker_image"`
+	BackendContainerCommand    string            `yaml:"backend_container_command"`
+	BucketPostfix              string            `yaml:"bucket_postfix"`
+	BucketPublic               bool              `yaml:"bucket_public"`
+	BackendImagePort           int               `yaml:"backend_image_port"`
+	SetupFCNSNS                bool              `yaml:"setup_fcnsns"`
+	XrayEnabled                bool              `yaml:"xray_enabled"`
+	BackendEnvVariables        map[string]string `yaml:"backend_env_variables"`
 
-	slackWebhook       string
-	enableGithubOIDC   bool
-	githubOIDCSubjects []string
+	SlackWebhook       string   `yaml:"slack_webhook"`
+	EnableGithubOIDC   bool     `yaml:"enable_github_oidc"`
+	GithubOIDCSubjects []string `yaml:"github_oidc_subjects"`
 
-	installPgAdmin bool
-	pgAdminEmail   string
+	InstallPgAdmin bool   `yaml:"install_pg_admin"`
+	PgAdminEmail   string `yaml:"pg_admin_email"`
 }
 
 type SetupDomainType string
 
-type domain struct {
-	enabled     bool
-	useExistent bool
-	domainName  string
+type Domain struct {
+	Enabled     bool   `yaml:"enabled"`
+	UseExistent bool   `yaml:"use_existent"`
+	DomainName  string `yaml:"domain_name"`
 }
 
-type postgresEngineVersion string
+type PostgresEngineVersion string
 
 const (
-	postgresEngineVersion11 postgresEngineVersion = "11"
-	postgresEngineVersion12 postgresEngineVersion = "12"
-	postgresEngineVersion13 postgresEngineVersion = "13"
-	postgresEngineVersion14 postgresEngineVersion = "14"
-	postgresEngineVersion15 postgresEngineVersion = "15"
-	postgresEngineVersion16 postgresEngineVersion = "16"
+	postgresEngineVersion11 PostgresEngineVersion = "11"
+	postgresEngineVersion12 PostgresEngineVersion = "12"
+	postgresEngineVersion13 PostgresEngineVersion = "13"
+	postgresEngineVersion14 PostgresEngineVersion = "14"
+	postgresEngineVersion15 PostgresEngineVersion = "15"
+	postgresEngineVersion16 PostgresEngineVersion = "16"
 )
 
-type postgres struct {
-	enabled       bool
-	dbname        string
-	username      string
-	publicAccess  bool
-	engineVersion postgresEngineVersion
+type Postgres struct {
+	Enabled       bool                  `yaml:"enabled"`
+	Dbname        string                `yaml:"dbname"`
+	Username      string                `yaml:"username"`
+	PublicAccess  bool                  `yaml:"public_access"`
+	EngineVersion PostgresEngineVersion `yaml:"engine_version"`
 }
 
-type cognito struct {
-	enabled                bool
-	enableWebClient        bool
-	enableDashboardClient  bool
-	dashboardCallbackURLs  []string
-	enableUserPoolDomain   bool
-	userPoolDomainPrefix   string
-	backendConfirmSignup   bool
-	autoVerifiedAttributes []string
+type Cognito struct {
+	Enabled                bool     `yaml:"enabled"`
+	EnableWebClient        bool     `yaml:"enable_web_client"`
+	EnableDashboardClient  bool     `yaml:"enable_dashboard_client"`
+	DashboardCallbackURLs  []string `yaml:"dashboard_callback_ur_ls"`
+	EnableUserPoolDomain   bool     `yaml:"enable_user_pool_domain"`
+	UserPoolDomainPrefix   string   `yaml:"user_pool_domain_prefix"`
+	BackendConfirmSignup   bool     `yaml:"backend_confirm_signup"`
+	AutoVerifiedAttributes []string `yaml:"auto_verified_attributes"`
 }
 
-type ses struct {
-	enabled    bool
-	domainName string
-	testEmails []string
+type Ses struct {
+	Enabled    bool     `yaml:"enabled"`
+	DomainName string   `yaml:"domain_name"`
+	TestEmails []string `yaml:"test_emails"`
 }
 
-type scheduledTask struct {
-	name     string
-	schedule string
+type ScheduledTask struct {
+	Name     string `yaml:"name"`
+	Schedule string `yaml:"schedule"`
 }
 
-type eventProcessorTask struct {
-	name        string
-	ruleName    string
-	detailTypes []string
-	sources     []string
+type EventProcessorTask struct {
+	Name        string   `yaml:"name"`
+	RuleName    string   `yaml:"rule_name"`
+	DetailTypes []string `yaml:"detail_types"`
+	Sources     []string `yaml:"sources"`
 }
 
 // create function which generate random string
@@ -151,64 +152,64 @@ func generateRandomString(length int) string {
 	return string(result)
 }
 
-func createEnv(name string) env {
-	return env{
-		project:    name,
-		env:        "dev",
-		isProd:     false,
-		region:     "us-east-1",
-		sateBucket: fmt.Sprintf("sate-bucket-%s-%s-%s", name, "dev", generateRandomString(5)),
-		stateFile:  "state.tfstate",
-		workload: workload{
-			slackWebhook:               "",
-			bucketPostfix:              generateRandomString(5),
-			bucketPublic:               true,
-			backendHealthEndpoint:      "",
-			backendExternalDockerImage: "",
-			setupFCNSNS:                false,
-			backendImagePort:           8080,
-			enableGithubOIDC:           false,
-			githubOIDCSubjects:         []string{"repo:MadAppGang/*", "repo:MadAppGang/project_backend:ref:refs/heads/main"},
-			backendContainerCommand:    "",
-			installPgAdmin:             false,
-			pgAdminEmail:               "",
-			xrayEnabled:                false,
-			backendEnvVariables:        map[string]string{"TEST": "passed"},
+func createEnv(name string) Env {
+	return Env{
+		Project:    "project",
+		Env:        name,
+		IsProd:     false,
+		Region:     "us-east-1",
+		SateBucket: fmt.Sprintf("sate-bucket-%s-%s-%s", name, "dev", generateRandomString(5)),
+		StateFile:  "state.tfstate",
+		Workload: Workload{
+			SlackWebhook:               "",
+			BucketPostfix:              generateRandomString(5),
+			BucketPublic:               true,
+			BackendHealthEndpoint:      "",
+			BackendExternalDockerImage: "",
+			SetupFCNSNS:                false,
+			BackendImagePort:           8080,
+			EnableGithubOIDC:           false,
+			GithubOIDCSubjects:         []string{"repo:MadAppGang/*", "repo:MadAppGang/project_backend:ref:refs/heads/main"},
+			BackendContainerCommand:    "",
+			InstallPgAdmin:             false,
+			PgAdminEmail:               "",
+			XrayEnabled:                false,
+			BackendEnvVariables:        map[string]string{"TEST": "passed"},
 		},
-		domain: domain{
-			enabled:     false,
-			useExistent: false,
-			domainName:  "",
+		Domain: Domain{
+			Enabled:     false,
+			UseExistent: false,
+			DomainName:  "",
 		},
-		postgres: postgres{
-			enabled:       false,
-			dbname:        "",
-			username:      "",
-			publicAccess:  false,
-			engineVersion: postgresEngineVersion11,
+		Postgres: Postgres{
+			Enabled:       false,
+			Dbname:        "",
+			Username:      "",
+			PublicAccess:  false,
+			EngineVersion: postgresEngineVersion11,
 		},
-		cognito: cognito{
-			enabled:                false,
-			enableWebClient:        false,
-			enableDashboardClient:  false,
-			dashboardCallbackURLs:  []string{},
-			enableUserPoolDomain:   false,
-			userPoolDomainPrefix:   "",
-			backendConfirmSignup:   false,
-			autoVerifiedAttributes: []string{},
+		Cognito: Cognito{
+			Enabled:                false,
+			EnableWebClient:        false,
+			EnableDashboardClient:  false,
+			DashboardCallbackURLs:  []string{},
+			EnableUserPoolDomain:   false,
+			UserPoolDomainPrefix:   "",
+			BackendConfirmSignup:   false,
+			AutoVerifiedAttributes: []string{},
 		},
-		ses: ses{
-			enabled:    false,
-			domainName: "",
-			testEmails: []string{"i@madappgang.com"},
+		Ses: Ses{
+			Enabled:    false,
+			DomainName: "",
+			TestEmails: []string{"i@madappgang.com"},
 		},
-		scheduledTasks:      []scheduledTask{},
-		eventProcessorTasks: []eventProcessorTask{},
+		ScheduledTasks:      []ScheduledTask{},
+		EventProcessorTasks: []EventProcessorTask{},
 	}
 }
 
-func loadEnv(name string) (env, error) {
-	var e env
+func loadEnv(name string) (Env, error) {
+	var e Env
 
 	data, err := os.ReadFile(name + ".yaml")
 	if err != nil {
@@ -223,12 +224,14 @@ func loadEnv(name string) (env, error) {
 	return e, nil
 }
 
-func saveEnv(name string, e env) error {
+func saveEnv(e Env) error {
 	yamlData, err := yaml.Marshal(e)
 	if err != nil {
+		slog.Error("saveEnv", "error", err)
 		return err
 	}
-	return os.WriteFile(name+".yaml", yamlData, 0o644)
+	filename := e.Env + ".yaml"
+	return os.WriteFile(filename, yamlData, 0o644)
 }
 
 var AWSRegions = []string{

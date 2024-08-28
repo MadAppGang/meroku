@@ -2,10 +2,10 @@ package main
 
 type workloadViewModel struct {
 	detailViewModel
-	workload workload
+	workload Workload
 }
 
-func newWorkloadViewModel(w workload) workloadViewModel {
+func newWorkloadViewModel(w Workload) workloadViewModel {
 	return workloadViewModel{
 		detailViewModel: detailViewModel{
 			title:       "Main settings",

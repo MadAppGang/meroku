@@ -30,3 +30,7 @@ override.tf.json
 .supermaven
 modules/workloads/ci_lambda/bootstrap
 app/app.log
+app/infrastructure
+app/dev.yaml
+app/prod.yaml
+app/prod.yaml
