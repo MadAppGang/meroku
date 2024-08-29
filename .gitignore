@@ -34,3 +34,4 @@ app/infrastructure
 app/dev.yaml
 app/prod.yaml
 app/prod.yaml
+app.log

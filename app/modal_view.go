@@ -160,11 +160,11 @@ func (m modalModel) View() string {
 		if valid {
 			validationStyle = validStyle
 			validationResult = fmt.Sprintf("✓ %s", m.input.validationMessage)
-			helpText = fmt.Sprintf("Press Enter to confirm, Esc to cancel")
+			helpText = "Press Enter to confirm, Esc to cancel"
 		} else {
 			validationStyle = invalidStyle
 			validationResult = fmt.Sprintf("✗ %s", m.input.validationMessage)
-			helpText = fmt.Sprintf("Fix the input or press Esc to cancel")
+			helpText = "Fix the input or press Esc to cancel"
 		}
 		vr = validationStyle.Padding(0, 2, 0, 0).Render(wrapText(validationResult, m.width-4))
 	}
@@ -183,15 +183,15 @@ func (m modalModel) View() string {
 	case InputValueTypeSingleSelect:
 		lm, _ := m.model.(InputListSelectModel)
 		modelView = lm.View()
-		helpText = fmt.Sprintf("Select one and press Enter, or press Esc to cancel")
+		helpText = "Select one and press Enter, or press Esc to cancel"
 	case InputValueTypeSlice:
 		lm, _ := m.model.(InputListSelectModel)
 		modelView = lm.View()
-		helpText = fmt.Sprintf("Tab: commit the list, Enter: start and commit edit, Esc: cancel edit or exit, A/a: append new, d/D: delete selected")
+		helpText = "Tab: commit the list, Enter: start and commit edit, Esc: cancel edit or exit, A/a: append new, d/D: delete selected"
 	case InputValueTypeBool:
 		boolInput, _ := m.model.(boolInputModel)
 		modelView = boolInput.View()
-		helpText = fmt.Sprintf("Space: toggle value, Enter: confirm, Esc: cancel")
+		helpText = "Space: toggle value, Enter: confirm, Esc: cancel"
 	}
 
 	modalStyle := lipgloss.NewStyle().

@@ -8,7 +8,9 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/aymerick/raymond"
 	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/huh/spinner"
 	"github.com/samber/lo"
 )
 
@@ -50,14 +52,84 @@ func runCommandToDeploy(env string) {
 		os.Exit(1)
 	}
 	//
-	applyTemplate()
+	applyTemplate(env)
 	err = os.Chdir(filepath.Join("env", env))
 	if err != nil {
 		fmt.Println("Error changing directory to env folder:", err)
 		os.Exit(1)
 	}
 
-	cmd := exec.Command("terraform", "apply")
+	terraformInitIfNeeded()
+	runTerrafromApply()
+
+	os.Chdir(filepath.Join("..", ".."))
+}
+
+func streamOutput(r io.Reader, prefix string, doneChan chan bool) {
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		fmt.Printf("%s: %s\n", prefix, scanner.Text())
+	}
+	if err := scanner.Err(); err != nil {
+		fmt.Printf("%s: Error reading output: %s\n", prefix, err)
+	}
+	doneChan <- true
+}
+
+func applyTemplate(env string) {
+	// Read the template file
+	templateContent, err := os.ReadFile(filepath.Join("..", "..", "infrastructure", "env", "main.hbs"))
+	if err != nil {
+		fmt.Printf("error reading template file: %v", err)
+		os.Exit(1)
+	}
+
+	envMap, err := loadEnvToMap(filepath.Join("..", "..", env+".yaml"))
+	envMap["modules"] = "../infrastructure/modules"
+	if err != nil {
+		fmt.Printf("error loading environment: %v", err)
+		os.Exit(1)
+	}
+	// Create a new template and parse the content
+	tmpl, err := raymond.Parse(string(templateContent))
+	if err != nil {
+		fmt.Printf("error parsing template: %v", err)
+		os.Exit(1)
+	}
+	// Execute the template with the environment data
+	result, err := tmpl.Exec(envMap)
+	if err != nil {
+		fmt.Printf("Error executing template: %+v\n", err)
+		os.Exit(1)
+	}
+
+	os.WriteFile(filepath.Join("env", env, "main.tf"), []byte(result), 0o644)
+}
+
+func terraformInitIfNeeded() {
+	if _, err := os.Stat(".terraform"); os.IsNotExist(err) {
+		action := func() {
+			cmd := exec.Command("terraform", "init")
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				fmt.Println("Error initializing Terraform:", output)
+				os.Exit(1)
+			}
+		}
+		_ = spinner.New().Title("Initializing tarraform for your environment...").Action(action).Run()
+		fmt.Println("Terraform initialized successfully.")
+	} else if err != nil {
+		fmt.Printf("Error checking .terraform directory: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func runTerrafromApply() {
+	runCommandWithOutput("terraform", "apply")
+}
+
+func runCommandWithOutput(name string, args ...string) {
+	cmd := exec.Command(name, args...)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -96,19 +168,4 @@ func runCommandToDeploy(env string) {
 	if err != nil {
 		fmt.Println("Command finished with error:", err)
 	}
-	os.Chdir(filepath.Join("..", ".."))
-}
-
-func streamOutput(r io.Reader, prefix string, doneChan chan bool) {
-	scanner := bufio.NewScanner(r)
-	for scanner.Scan() {
-		fmt.Printf("%s: %s\n", prefix, scanner.Text())
-	}
-	if err := scanner.Err(); err != nil {
-		fmt.Printf("%s: Error reading output: %s\n", prefix, err)
-	}
-	doneChan <- true
-}
-
-func applyTemplate() {
 }

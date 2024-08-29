@@ -28,11 +28,9 @@ type TextInputTheme struct {
 }
 
 var (
-	normalFg   = lipgloss.AdaptiveColor{Light: "235", Dark: "252"}
 	indigo     = lipgloss.AdaptiveColor{Light: "#5A56E0", Dark: "#7571F9"}
 	indigoDark = lipgloss.AdaptiveColor{Light: "#5A56E0", Dark: "#4A47A3"}
 	cream      = lipgloss.AdaptiveColor{Light: "#FFFDF5", Dark: "#FFFDF5"}
-	fuchsia    = lipgloss.Color("#F780E2")
 	green      = lipgloss.AdaptiveColor{Light: "#02BA84", Dark: "#02BF87"}
 	red        = lipgloss.AdaptiveColor{Light: "#FF4672", Dark: "#ED567A"}
 	darkRed    = lipgloss.AdaptiveColor{Light: "#FF4672", Dark: "88"}

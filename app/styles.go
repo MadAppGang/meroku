@@ -48,11 +48,6 @@ var (
 				BorderForeground(focusedBorderColor).
 				Padding(0, 2, 1, 2)
 
-	statusBarStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#FFFDF5")).
-			Background(lipgloss.Color("#FF5F87")).
-			Padding(0, 1)
-
 	itemStyle         = lipgloss.NewStyle().PaddingLeft(0)
 	selectedItemStyle = lipgloss.NewStyle().PaddingLeft(0).Foreground(highlight)
 

@@ -45,7 +45,7 @@ func newMainSettingsView(e Env) *mainSettingsView {
 					description:       "Infrastructure state bucket, it's better to keep infrastructure state in a separate bucket",
 					validator:         regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9-]{5,}$`),
 					validationMessage: "minimum 5 characters, only letters from a-z, numbers and dash",
-				}, stringValue{e.SateBucket}),
+				}, stringValue{e.StateBucket}),
 				newTextFieldModel(baseInputModel{
 					title:             "State File name",
 					placeholder:       "state.tfstate",

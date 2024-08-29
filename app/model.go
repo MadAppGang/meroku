@@ -56,7 +56,7 @@ type Env struct {
 	Env                 string               `yaml:"env"`
 	IsProd              bool                 `yaml:"is_prod"`
 	Region              string               `yaml:"region"`
-	SateBucket          string               `yaml:"sate_bucket"`
+	StateBucket         string               `yaml:"state_bucket"`
 	StateFile           string               `yaml:"state_file"`
 	Workload            Workload             `yaml:"workload"`
 	Domain              Domain               `yaml:"domain"`
@@ -154,12 +154,12 @@ func generateRandomString(length int) string {
 
 func createEnv(name string) Env {
 	return Env{
-		Project:    "project",
-		Env:        name,
-		IsProd:     false,
-		Region:     "us-east-1",
-		SateBucket: fmt.Sprintf("sate-bucket-%s-%s-%s", name, "dev", generateRandomString(5)),
-		StateFile:  "state.tfstate",
+		Project:     "project",
+		Env:         name,
+		IsProd:      false,
+		Region:      "us-east-1",
+		StateBucket: fmt.Sprintf("sate-bucket-%s-%s-%s", name, "dev", generateRandomString(5)),
+		StateFile:   "state.tfstate",
 		Workload: Workload{
 			SlackWebhook:               "",
 			BucketPostfix:              generateRandomString(5),
@@ -219,6 +219,22 @@ func loadEnv(name string) (Env, error) {
 	err = yaml.Unmarshal(data, &e)
 	if err != nil {
 		return e, fmt.Errorf("error unmarshaling YAML: %v", err)
+	}
+
+	return e, nil
+}
+
+func loadEnvToMap(name string) (map[string]interface{}, error) {
+	var e map[string]interface{}
+
+	data, err := os.ReadFile(name)
+	if err != nil {
+		return nil, fmt.Errorf("error reading YAML file: %v", err)
+	}
+
+	err = yaml.Unmarshal(data, &e)
+	if err != nil {
+		return nil, fmt.Errorf("error unmarshaling YAML: %v", err)
 	}
 
 	return e, nil

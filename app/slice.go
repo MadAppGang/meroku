@@ -42,23 +42,6 @@ func replaceAt[T any](slice []T, element T, index int) []T {
 	return result
 }
 
-func splitStringByWidth(s string, maxWidth int) []string {
-	var result []string
-	runes := []rune(s)
-
-	for len(runes) > 0 {
-		if len(runes) <= maxWidth {
-			result = append(result, string(runes))
-			break
-		}
-
-		result = append(result, string(runes[:maxWidth]))
-		runes = runes[maxWidth:]
-	}
-
-	return result
-}
-
 func splitStringByWidthStripLeftWS(s string, maxWidth int) []string {
 	var result []string
 	runes := []rune(s)

@@ -3,11 +3,13 @@ module madappgang.com/infrastructure
 go 1.23.0
 
 require (
+	github.com/aymerick/raymond v2.0.2+incompatible
 	github.com/charmbracelet/bubbles v0.19.0
 	github.com/charmbracelet/bubbletea v0.27.1
 	github.com/charmbracelet/huh v0.5.3
 	github.com/charmbracelet/huh/spinner v0.0.0-20240821193529-5fd70815c13f
 	github.com/charmbracelet/lipgloss v0.13.0
+	github.com/fatih/structs v1.1.0
 	github.com/samber/lo v1.47.0
 	golang.org/x/exp v0.0.0-20240823005443-9b4947da3948
 	gopkg.in/yaml.v3 v3.0.1
@@ -35,4 +37,5 @@ require (
 	golang.org/x/sync v0.8.0 // indirect
 	golang.org/x/sys v0.24.0 // indirect
 	golang.org/x/text v0.17.0 // indirect
+	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
