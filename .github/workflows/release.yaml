@@ -20,5 +20,6 @@ jobs:
         with:
           version: latest
           args: release
+          workdir: app
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
