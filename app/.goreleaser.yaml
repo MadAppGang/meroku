@@ -46,6 +46,9 @@ brews:
     homepage: "https://madappgang.com"
     description: "Easy infrastructure management"
     license: "MIT"
+    repository:
+      owner: MadAppGang
+      name: meroku-brew
     dependencies:
       - name: awscli
         type: optional
