@@ -48,7 +48,7 @@ brews:
     license: "MIT"
     repository:
       owner: MadAppGang
-      name: meroku-brew
+      name: homebrew-meroku
     dependencies:
       - name: awscli
         type: optional
