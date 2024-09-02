@@ -39,7 +39,7 @@ archives:
       - goos: windows
         format: zip
 brews:
-  - name: meroky 
+  - name: meroku 
     commit_author:
       name: erudenko
       email: i@madappgang.com 
@@ -56,14 +56,6 @@ brews:
         type: optional
       - name: opnetofu
         type: optional
-
-cloudsmith:
-  - organization: MadAppGang
-    repository: Meroku 
-    distributions:
-      deb: "ubuntu/xenial"
-      alpine: "alpine/v3.8"
-      rpm: "el/7"
 
 changelog:
   sort: asc
