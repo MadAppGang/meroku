@@ -1,4 +1,4 @@
-module madappgang.com/infrastructure
+module madappgang.com/meroku
 
 go 1.23.0
 
