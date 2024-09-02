@@ -38,6 +38,21 @@ archives:
     format_overrides:
       - goos: windows
         format: zip
+brews:
+  - name: meroky 
+    commit_author:
+      name: erudenko
+      email: i@madappgang.com 
+    homepage: "https://madappgang.com"
+    description: "Easy infrastructure management"
+    license: "MIT"
+    dependencies:
+      - name: awscli
+        type: optional
+      - name: terraform
+        type: optional
+      - name: opnetofu
+        type: optional
 
 changelog:
   sort: asc
