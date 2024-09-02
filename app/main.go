@@ -17,6 +17,11 @@ func main() {
 	logger := slog.New(jsonHandler)
 	slog.SetDefault(logger)
 
+	err = selectAWSProfile()
+	if err != nil {
+		fmt.Println("Error selecting AWS profile:", err)
+		os.Exit(1)
+	}
 	// --- Run main menu ---
 	env := mainMenu()
 
