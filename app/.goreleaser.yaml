@@ -57,7 +57,7 @@ brews:
       - name: opnetofu
         type: optional
 
-cloudsmiths:
+cloudsmith:
   - organization: MadAppGang
     repository: Meroku 
     distributions:
