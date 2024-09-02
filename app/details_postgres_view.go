@@ -36,6 +36,14 @@ func newBackendPostgresView(e Env) *backendPostgresView {
 					validator:         regexp.MustCompile(`^([a-z_][a-z0-9_$]*)?$`),
 					validationMessage: "Valid postgres user name",
 				}, stringValue{e.Postgres.Dbname}),
+				newTextFieldModel(baseInputModel{
+					title:       "Enable public access",
+					description: "Database is available from public internet",
+				}, boolValue{e.Postgres.PublicAccess}),
+				newTextFieldModel(baseInputModel{
+					title:       "Engine version",
+					description: "Postgres engine version",
+				}, sliceSelectValue{index: 0, value: []string{"11.x", "12.x", "13.x", "14.x", "15.x", "16.x"}}),
 			},
 		},
 		p: e.Postgres,
@@ -44,4 +52,15 @@ func newBackendPostgresView(e Env) *backendPostgresView {
 	m.viewport = viewport.New(0, 0)
 	m.updateViewportContent()
 	return m
+}
+
+func (m *backendPostgresView) env(e Env) Env {
+	p := Postgres{}
+	p.Enabled = m.inputs[0].value().Bool()
+	p.Dbname = m.inputs[1].value().String()
+	p.Username = m.inputs[2].value().String()
+	p.PublicAccess = m.inputs[3].value().Bool()
+	p.EngineVersion = m.inputs[4].value().String()
+	e.Postgres = p
+	return e
 }

@@ -62,3 +62,12 @@ func newMainSettingsView(e Env) *mainSettingsView {
 	m.updateViewportContent()
 	return m
 }
+
+func (m *mainSettingsView) env(e Env) Env {
+	e.Project = m.inputs[0].value().String()
+	e.Env = m.inputs[1].value().String()
+	e.Region = m.inputs[2].value().String()
+	e.StateBucket = m.inputs[3].value().String()
+	e.StateFile = m.inputs[4].value().String()
+	return e
+}

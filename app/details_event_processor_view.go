@@ -49,3 +49,13 @@ func NewEventProcessorTaskView(t EventProcessorTask) *eventProcessorTaskView {
 	m.updateViewportContent()
 	return m
 }
+
+func (m *eventProcessorTaskView) env(e Env) Env {
+	t := EventProcessorTask{}
+	t.Name = m.inputs[0].value().String()
+	t.RuleName = m.inputs[1].value().String()
+	t.DetailTypes = m.inputs[2].value().Slice()
+	t.Sources = m.inputs[3].value().Slice()
+	e.EventProcessorTasks = append(e.EventProcessorTasks, t)
+	return e
+}

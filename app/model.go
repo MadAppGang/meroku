@@ -96,21 +96,12 @@ type Domain struct {
 
 type PostgresEngineVersion string
 
-const (
-	postgresEngineVersion11 PostgresEngineVersion = "11"
-	postgresEngineVersion12 PostgresEngineVersion = "12"
-	postgresEngineVersion13 PostgresEngineVersion = "13"
-	postgresEngineVersion14 PostgresEngineVersion = "14"
-	postgresEngineVersion15 PostgresEngineVersion = "15"
-	postgresEngineVersion16 PostgresEngineVersion = "16"
-)
-
 type Postgres struct {
-	Enabled       bool                  `yaml:"enabled"`
-	Dbname        string                `yaml:"dbname"`
-	Username      string                `yaml:"username"`
-	PublicAccess  bool                  `yaml:"public_access"`
-	EngineVersion PostgresEngineVersion `yaml:"engine_version"`
+	Enabled       bool   `yaml:"enabled"`
+	Dbname        string `yaml:"dbname"`
+	Username      string `yaml:"username"`
+	PublicAccess  bool   `yaml:"public_access"`
+	EngineVersion string `yaml:"engine_version"`
 }
 
 type Cognito struct {
@@ -186,7 +177,7 @@ func createEnv(name string) Env {
 			Dbname:        "",
 			Username:      "",
 			PublicAccess:  false,
-			EngineVersion: postgresEngineVersion11,
+			EngineVersion: "16.x",
 		},
 		Cognito: Cognito{
 			Enabled:                false,

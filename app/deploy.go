@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/aymerick/raymond"
 	"github.com/charmbracelet/huh"
@@ -78,13 +79,13 @@ func streamOutput(r io.Reader, prefix string, doneChan chan bool) {
 
 func applyTemplate(env string) {
 	// Read the template file
-	templateContent, err := os.ReadFile(filepath.Join("..", "..", "infrastructure", "env", "main.hbs"))
+	templateContent, err := os.ReadFile(filepath.Join("infrastructure", "env", "main.hbs"))
 	if err != nil {
 		fmt.Printf("error reading template file: %v", err)
 		os.Exit(1)
 	}
 
-	envMap, err := loadEnvToMap(filepath.Join("..", "..", env+".yaml"))
+	envMap, err := loadEnvToMap(filepath.Join(env + ".yaml"))
 	envMap["modules"] = "../infrastructure/modules"
 	if err != nil {
 		fmt.Printf("error loading environment: %v", err)
@@ -112,8 +113,10 @@ func terraformInitIfNeeded() {
 			cmd := exec.Command("terraform", "init")
 			output, err := cmd.CombinedOutput()
 			if err != nil {
-				fmt.Println("Error initializing Terraform:", output)
-				os.Exit(1)
+				lines := strings.Split(string(output), "\n")
+				for _, line := range lines {
+					fmt.Println(strings.TrimSpace(line))
+				}
 			}
 		}
 		_ = spinner.New().Title("Initializing tarraform for your environment...").Action(action).Run()

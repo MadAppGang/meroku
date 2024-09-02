@@ -26,7 +26,7 @@ func newSesView(e Env) *sesView {
 					title:             "Domain name for AWS SES",
 					description:       "What email domain name you want to use for AWS SES",
 					placeholder:       "email.madappgang.com",
-					validator:         regexp.MustCompile(`^(([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,6})?$`),
+					validator:         regexp.MustCompile(`^(([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,12})?$`),
 					validationMessage: "Valid domain name, with no scheme and no query string",
 				}, stringValue{e.Ses.DomainName}),
 				newTextFieldModel(baseInputModel{
@@ -41,4 +41,13 @@ func newSesView(e Env) *sesView {
 	m.viewport = viewport.New(0, 0)
 	m.updateViewportContent()
 	return m
+}
+
+func (m *sesView) env(e Env) Env {
+	s := Ses{}
+	s.Enabled = m.inputs[0].value().Bool()
+	s.DomainName = m.inputs[1].value().String()
+	s.TestEmails = m.inputs[2].value().Slice()
+	e.Ses = s
+	return e
 }

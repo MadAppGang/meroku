@@ -62,3 +62,17 @@ func newCognitoView(e Env) *cognitoView {
 	m.updateViewportContent()
 	return m
 }
+
+func (m *cognitoView) env(e Env) Env {
+	c := Cognito{}
+	c.Enabled = m.inputs[0].value().Bool()
+	c.EnableWebClient = m.inputs[1].value().Bool()
+	c.EnableDashboardClient = m.inputs[2].value().Bool()
+	c.DashboardCallbackURLs = m.inputs[3].value().Slice()
+	c.EnableUserPoolDomain = m.inputs[4].value().Bool()
+	c.UserPoolDomainPrefix = m.inputs[5].value().String()
+	c.BackendConfirmSignup = m.inputs[6].value().Bool()
+	c.AutoVerifiedAttributes = m.inputs[7].value().Slice()
+	e.Cognito = c
+	return e
+}

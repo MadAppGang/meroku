@@ -3,12 +3,14 @@ package main
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/samber/lo"
 )
 
 type masterView struct {
@@ -116,6 +118,8 @@ func (m masterView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if ok {
 				m.detailView = detailModel
 				return m, newCmd
+			} else {
+				slog.Error("update detail view is not detail view", "error", newDetailModel)
 			}
 		}
 		// handle master view input
@@ -231,6 +235,7 @@ func (m masterView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			detailModel, ok := newDetailModel.(detailView)
 			if ok {
 				m.detailView = detailModel
+				m.saveEnvWithDetails()
 				return m, newCmd
 			}
 		}
@@ -303,6 +308,20 @@ func (m masterView) helpView() string {
 	return lipgloss.NewStyle().
 		Foreground(lipgloss.Color("241")).
 		Render("↑/↓: Navigate • ENTER: Select/Expand • ESC: Collapse • q: Quit")
+}
+
+func (m masterView) saveEnvWithDetails() {
+	e := m.env
+	e.ScheduledTasks = []ScheduledTask{}
+	e.EventProcessorTasks = []EventProcessorTask{}
+	lo.ForEach(m.list.Items(), func(i list.Item, _ int) {
+		if i, ok := i.(item); ok && i.detailView != nil {
+			if envModifier, ok := i.detailView.(envModifierView); ok {
+				e = envModifier.env(e)
+			}
+		}
+	})
+	saveEnv(e)
 }
 
 func RunEnvEdit(e Env) {

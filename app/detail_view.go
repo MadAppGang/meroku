@@ -14,10 +14,15 @@ type detailView interface {
 	focused() bool
 	setFocused(bool)
 	setSize(int, int)
+	// env(e Env) Env
 
 	Update(msg tea.Msg) (tea.Model, tea.Cmd)
 	View() string
 	helpMessage() string
+}
+
+type envModifierView interface {
+	env(e Env) Env
 }
 
 type detailViewModel struct {

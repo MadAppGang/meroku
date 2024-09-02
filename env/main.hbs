@@ -74,10 +74,10 @@ module "workloads" {
   vpc_id     = data.aws_vpc.default.id
   subnet_ids = data.aws_subnets.all.ids
   lambda_path = "{{modules}}/workloads/ci_lambda/bootstrap"
-  slack_deployment_webhook = {{workload.slack_webhook}}
-  backend_bucket_postfix = {{workload.bucket_postfix}}
+  slack_deployment_webhook = "{{workload.slack_webhook}}"
+  backend_bucket_postfix = "{{workload.bucket_postfix}}"
   backend_bucket_public = {{workload.bucket_public}}
-  backend_health_endpoint = {{workload.backend_health_endpoint}}
+  backend_health_endpoint = "{{workload.backend_health_endpoint}}"
   docker_image = "{{workload.backend_external_docker_image}}"
   setup_FCM_SNS = {{workload.setup_fcnsns}}
   backend_image_port = {{workload.backend_image_port}}

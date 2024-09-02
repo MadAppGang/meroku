@@ -93,3 +93,21 @@ func newBackendSettingsView(e Env) *backendSettingsView {
 	m.updateViewportContent()
 	return m
 }
+
+func (m *backendSettingsView) env(e Env) Env {
+	w := Workload{}
+	w.BackendHealthEndpoint = m.inputs[0].value().String()
+	w.BackendExternalDockerImage = m.inputs[1].value().String()
+	w.BackendContainerCommand = m.inputs[2].value().String()
+	w.BucketPostfix = m.inputs[3].value().String()
+	w.BackendImagePort = m.inputs[4].value().Int()
+	w.SetupFCNSNS = m.inputs[5].value().Bool()
+	w.XrayEnabled = m.inputs[6].value().Bool()
+	w.SlackWebhook = m.inputs[7].value().String()
+	w.EnableGithubOIDC = m.inputs[8].value().Bool()
+	w.GithubOIDCSubjects = m.inputs[9].value().Slice()
+	w.InstallPgAdmin = m.inputs[10].value().Bool()
+	w.PgAdminEmail = m.inputs[11].value().String()
+	e.Workload = w
+	return e
+}

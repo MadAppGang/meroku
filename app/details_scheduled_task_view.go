@@ -41,3 +41,11 @@ func newScheduledTaskView(t ScheduledTask) *scheduledTaskView {
 	m.updateViewportContent()
 	return m
 }
+
+func (m *scheduledTaskView) env(e Env) Env {
+	t := ScheduledTask{}
+	t.Name = m.inputs[0].value().String()
+	t.Schedule = m.inputs[1].value().String()
+	e.ScheduledTasks = append(e.ScheduledTasks, t)
+	return e
+}
