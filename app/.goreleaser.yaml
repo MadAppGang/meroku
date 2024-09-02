@@ -57,6 +57,14 @@ brews:
       - name: opnetofu
         type: optional
 
+cloudsmiths:
+  - organization: MadAppGang
+    repository: Meroku 
+    distributions:
+      deb: "ubuntu/xenial"
+      alpine: "alpine/v3.8"
+      rpm: "el/7"
+
 changelog:
   sort: asc
   filters:
