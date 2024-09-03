@@ -54,8 +54,9 @@ func mainMenu() string {
 }
 
 func createEnvMenu() string {
-	var name string
+	projectName := getProjectName()
 
+	var name string
 	huh.NewInput().
 		Title("What is the name of the environment?").
 		Value(&name).
@@ -74,12 +75,32 @@ func createEnvMenu() string {
 		return createEnvMenu()
 	}
 
-	e := createEnv(name)
+	e := createEnv(projectName, name)
 	err := saveEnv(e)
 	if err != nil {
 		fmt.Println("Error saving environment:", err)
 		os.Exit(1)
 	}
+	return name
+}
+
+// we are getting the project name from the first yaml file in the current directory
+// if there is no yaml file, we are asking user to input the project name
+func getProjectName() string {
+	envs, _ := findFilesWithExts([]string{".yaml", ".yml"})
+	if len(envs) > 0 {
+		e, err := loadEnv(envs[0])
+		if err == nil {
+			return e.Project
+		}
+	}
+
+	var name string
+	huh.NewInput().
+		Title("What is the proejct name?").
+		Value(&name).
+		Run() // this is blocking.
+
 	return name
 }
 

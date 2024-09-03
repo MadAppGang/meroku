@@ -68,15 +68,15 @@ type Env struct {
 }
 
 type Workload struct {
-	BackendHealthEndpoint      string            `yaml:"backend_health_endpoint"`
-	BackendExternalDockerImage string            `yaml:"backend_external_docker_image"`
-	BackendContainerCommand    string            `yaml:"backend_container_command"`
-	BucketPostfix              string            `yaml:"bucket_postfix"`
-	BucketPublic               bool              `yaml:"bucket_public"`
-	BackendImagePort           int               `yaml:"backend_image_port"`
-	SetupFCNSNS                bool              `yaml:"setup_fcnsns"`
-	XrayEnabled                bool              `yaml:"xray_enabled"`
-	BackendEnvVariables        map[string]string `yaml:"backend_env_variables"`
+	BackendHealthEndpoint      string `yaml:"backend_health_endpoint"`
+	BackendExternalDockerImage string `yaml:"backend_external_docker_image"`
+	BackendContainerCommand    string `yaml:"backend_container_command"`
+	BucketPostfix              string `yaml:"bucket_postfix"`
+	BucketPublic               bool   `yaml:"bucket_public"`
+	BackendImagePort           int    `yaml:"backend_image_port"`
+	SetupFCNSNS                bool   `yaml:"setup_fcnsns"`
+	XrayEnabled                bool   `yaml:"xray_enabled"`
+	BackendEnvVariables        string `yaml:"backend_env_variables"`
 
 	SlackWebhook       string   `yaml:"slack_webhook"`
 	EnableGithubOIDC   bool     `yaml:"enable_github_oidc"`
@@ -135,7 +135,7 @@ type EventProcessorTask struct {
 
 // create function which generate random string
 func generateRandomString(length int) string {
-	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
 	result := make([]byte, length)
 	for i := 0; i < length; i++ {
 		result[i] = charset[rand.Intn(len(charset))]
@@ -143,13 +143,13 @@ func generateRandomString(length int) string {
 	return string(result)
 }
 
-func createEnv(name string) Env {
+func createEnv(name, env string) Env {
 	return Env{
-		Project:     "project",
-		Env:         name,
+		Project:     name,
+		Env:         env,
 		IsProd:      false,
 		Region:      "us-east-1",
-		StateBucket: fmt.Sprintf("sate-bucket-%s-%s-%s", name, "dev", generateRandomString(5)),
+		StateBucket: fmt.Sprintf("sate-bucket-%s-%s-%s", name, env, generateRandomString(5)),
 		StateFile:   "state.tfstate",
 		Workload: Workload{
 			SlackWebhook:               "",
@@ -165,7 +165,7 @@ func createEnv(name string) Env {
 			InstallPgAdmin:             false,
 			PgAdminEmail:               "",
 			XrayEnabled:                false,
-			BackendEnvVariables:        map[string]string{"TEST": "passed"},
+			BackendEnvVariables:        `TEST=passed`,
 		},
 		Domain: Domain{
 			Enabled:     false,

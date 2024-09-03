@@ -1,7 +1,7 @@
 terraform {
   backend "s3" {
-    bucket = "{{ sate_bucket }}"
-    key    = "{{ state.state_file }}"
+    bucket = "{{ state_bucket }}"
+    key    = "{{ state_file }}"
     region = "{{ region  }}"
   }
   required_providers {
@@ -27,7 +27,7 @@ data "aws_subnets" "all" {
 }
 
 {{#if domain.enabled}}  
-{{#if domain.use_existent}}
+  {{#if domain.use_existent}}
 data "aws_route53_zone" "domain" {
   name  = var.domain
 }
@@ -36,19 +36,18 @@ data "aws_acm_certificate" "domain" {
   types       = ["AMAZON_ISSUED"]
   most_recent = true
 }
-
 data "root_aws_acm_certificate" "domain" {
   domain      = "${var.env == "prod" ? "api." : format("%s.", var.env)}${var.domain}"
   types       = ["AMAZON_ISSUED"]
   most_recent = true
 }
-{{else}}
+  {{else}}
 module "domain" {
   source = "{{ modules }}/domain"
   domain = "{{ domain.domain_name  }}"
   env = "{{ env }}"
 }
-{{/if}}
+  {{/if}}
 {{/if}}
 
 
@@ -81,48 +80,38 @@ module "workloads" {
   docker_image = "{{workload.backend_external_docker_image}}"
   setup_FCM_SNS = {{workload.setup_fcnsns}}
   backend_image_port = {{workload.backend_image_port}}
-
   {{#if postgres.enabled}}
-  db_endpoint = module.postgres.endpoint
-  db_user = {{postgres.username}}
-  db_name = {{postgres.dbname}}
-  {{/if}}
 
-  {{#if domain.enabled}}  
-  {{#if domain.use_existent}}
+  db_endpoint = module.postgres.endpoint
+  db_user = "{{postgres.username}}"
+  db_name = "{{postgres.dbname}}"
+  {{/if}}
+  {{#if domain.enabled}}{{#if domain.use_existent}}
   certificate_arn = data.aws_acm_certificate.arn
   root_certificate_arn = data.root_aws_acm_certificate.arn
   domain_zone_id = module.domain.zone_id
-  {{else}}
+    {{else}}
   certificate_arn = module.domain.certificate_arn
   root_certificate_arn = module.domain.root_certificate_arn
   domain_zone_id = module.domain.zone_id
-  {{/if}}
-  {{/if}}
-  
-  {{#if ecr_account_id}}
-  {{#if ecr_account_region}}
+  {{/if}}{{/if}}
+  {{#if ecr_account_id}}{{#if ecr_account_region}}
   ecr_url = "{{ecr_account_id}}.dkr.ecr.{{ecr_account_region}}.amazonaws.com/{{project}}_backend"
-  {{/if}}
-  {{/if}}
-
+  {{/if}}{{/if}}
   github_oidc_enabled = {{workload.enable_github_oidc}}
-  github_subjects = {{array workload.github_oidc_subjects}}
-
+  github_subjects = {{{array workload.github_oidc_subjects}}}
   {{#if workload.backend_container_command}}
-  backend_container_command = {{backend_container_command}}
+  backend_container_command = "{{backend_container_command}}"
   {{/if}}
-
   {{#if postgres.enabled}}
   pgadmin_enabled = {{workload.install_pg_admin}}
-  pgadmin_email = {{workload.pg_admin_email}}   
+  pgadmin_email = "{{workload.pg_admin_email}}"   
   {{/if}}
-
   xray_enabled = {{workload.xray_enabled}}
-  backend_env = {{envKeyValue workload.backend_env}}
+  {{#if workload.backend_env_variables}}
+  backend_env = {{{envToMap workload.backend_env_variables}}}
+  {{/if}}
 }
-
-
 {{#if cognito.enabled}} 
 module "cognito" {
   source                  = "{{modules}}/cognito"
@@ -133,36 +122,31 @@ module "cognito" {
   dashboard_callback_urls = {{array cognito.dashboard_callback_urls}}
 
   enable_user_pool_domain = {{cognito.enable_user_pool_domain}}
-  user_pool_domain_prefix = {{cognito.user_pool_domain_prefix}}
+  user_pool_domain_prefix = "{{cognito.user_pool_domain_prefix}}"
 
   allow_backend_task_to_confirm_signup = {{cognito.backend_confirm_signup}}
   auto_verified_attributes = {{array cognito.auto_verified_attributes}}
   backend_task_role_name  = module.workloads.backend_task_role_name
 }
 {{/if}}
-
+{{#each scheduled_tasks}}
 # scheduled task
 # https://docs.aws.amazon.com/scheduler/latest/UserGuide/setting-up.html#setting-up-execution-role
-{{#each scheduled_tasks}}
 module "task" {
   source = "{{@root.modules}}/ecs_task"
   project = "{{@root.project}}"
   env = "{{@root.env}}"
   task = "{{name}}"
+  # https://docs.aws.amazon.com/scheduler/latest/UserGuide/schedule-types.html?icmpid=docs_console_unmapped#rate-based
+  schedule = "{{schedule}}"
   subnet_ids = data.aws_subnets.all.ids
   vpc_id     = data.aws_vpc.default.id
   cluster = module.workloads.ecr_cluster.arn
-# https://docs.aws.amazon.com/scheduler/latest/UserGuide/schedule-types.html?icmpid=docs_console_unmapped#rate-based
-  schedule = "{{schedule}}"
-  {{#if ecr_account_id}}
-  {{#if ecr_account_region}}
+  {{#if ecr_account_id}}{{#if ecr_account_region}}
   ecr_url = "{{ecr_account_id}}.dkr.ecr.{{ecr_account_region}}.amazonaws.com/{{project}}_task_{{name}}"
-  {{/if}}
-  {{/if}}
+  {{/if}}{{/if}}
 }
 {{/each}}
-
-
 {{#each event_processor_tasks}}
 module "event_bus_task" {
   source = "{{@root.modules}}/ecs_task"
@@ -176,15 +160,11 @@ module "event_bus_task" {
   subnet_ids = data.aws_subnets.all.ids
   vpc_id     = data.aws_vpc.default.id
   cluster = module.workloads.ecr_cluster.arn
-  {{#if ecr_account_id}}
-  {{#if ecr_account_region}}
+  {{#if ecr_account_id}}{{#if ecr_account_region}}
   ecr_url = "{{ecr_account_id}}.dkr.ecr.{{ecr_account_region}}.amazonaws.com/{{project}}_task_{{name}}"
-  {{/if}}
-  {{/if}}
+  {{/if}}{{/if}}
 }
 {{/each}}
-
-
 
 {{#if ses.enabled}} 
 module "ses" {

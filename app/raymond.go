@@ -19,15 +19,17 @@ func registerCustomHelpers() {
 		return string(jsonBytes)
 	})
 
-	raymond.RegisterHelper("envToMap", func(t any) string {
+	//   [{ "name" : "PG_DATABASE_HOST", "value" : var.db_endpoint }, ...]
+	raymond.RegisterHelper("envToEnvArray", func(t any) string {
 		fmt.Printf("t: %+v\n", t)
 		text, ok := t.(string)
 		if !ok {
-			return ""
-		}	
+			fmt.Printf("could not convert envToEnvArray, expecting string, but type of t: %T\n", t)
+			return "[]"
+		}
 		lines := strings.Split(strings.TrimSpace(text), "\n")
 		result := make(map[string]string)
-		
+
 		for _, line := range lines {
 			parts := strings.SplitN(line, "=", 2)
 			if len(parts) == 2 {
@@ -38,14 +40,14 @@ func registerCustomHelpers() {
 				result[key] = value
 			}
 		}
-		
+
 		var tfMap strings.Builder
-		tfMap.WriteString("{\n")
+		tfMap.WriteString("[\n")
 		for key, value := range result {
-			tfMap.WriteString(fmt.Sprintf("    %s = \"%s\"\n", key, value))
+			tfMap.WriteString(fmt.Sprintf("    { \"name\" : \"%s\", \"value\" : \"%s\" },\n", key, value))
 		}
-		tfMap.WriteString("  }")
-		
+		tfMap.WriteString(" ]")
+
 		return tfMap.String()
 	})
 }

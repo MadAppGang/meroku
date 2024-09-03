@@ -54,12 +54,13 @@ func runCommandToDeploy(env string) {
 	}
 	//
 	applyTemplate(env)
+	checkStateBucketAndCreateIfNeeded(env)
+
 	err = os.Chdir(filepath.Join("env", env))
 	if err != nil {
 		fmt.Println("Error changing directory to env folder:", err)
 		os.Exit(1)
 	}
-
 	terraformInitIfNeeded()
 	runTerrafromApply()
 
@@ -85,8 +86,8 @@ func applyTemplate(env string) {
 		os.Exit(1)
 	}
 
-	envMap, err := loadEnvToMap(filepath.Join(env + ".yaml"))
-	envMap["modules"] = "../infrastructure/modules"
+	envMap, err := loadEnvToMap(env + ".yaml")
+	envMap["modules"] = "../../infrastructure/modules"
 	if err != nil {
 		fmt.Printf("error loading environment: %v", err)
 		os.Exit(1)
@@ -120,11 +121,13 @@ func terraformInitIfNeeded() {
 			}
 		}
 		_ = spinner.New().Title("Initializing tarraform for your environment...").Action(action).Run()
-		fmt.Println("Terraform initialized successfully.")
+		fmt.Println("✅ Terraform initialized successfully.")
+		return
 	} else if err != nil {
 		fmt.Printf("Error checking .terraform directory: %v\n", err)
 		os.Exit(1)
 	}
+	fmt.Println("✅ Terraform already initialized.")
 }
 
 func runTerrafromApply() {

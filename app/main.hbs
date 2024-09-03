@@ -108,7 +108,9 @@ module "workloads" {
   pgadmin_email = "{{workload.pg_admin_email}}"   
   {{/if}}
   xray_enabled = {{workload.xray_enabled}}
+  {{#if workload.backend_env_variables}}
   backend_env = {{{envToMap workload.backend_env_variables}}}
+  {{/if}}
 }
 {{#if cognito.enabled}} 
 module "cognito" {

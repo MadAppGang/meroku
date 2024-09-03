@@ -96,19 +96,23 @@ variable "backend_health_endpoint" {
 
 variable "certificate_arn" {
   type = string
+  default = ""
 }
 
 variable "root_certificate_arn" {
   type = string
+  default = ""
 }
 
 variable "domain_zone_id" {
   type = string
+  default = ""
 }
 
 
 variable "domain" {
   type = string
+  default = ""
 }
 
 variable "ecr_url" {
