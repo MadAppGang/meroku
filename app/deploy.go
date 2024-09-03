@@ -54,7 +54,12 @@ func runCommandToDeploy(env string) {
 	}
 	//
 	applyTemplate(env)
-	checkStateBucketAndCreateIfNeeded(env)
+	e, err := loadEnv(env)
+	if err != nil {
+		fmt.Println("Error loading environment:", err)
+		os.Exit(1)
+	}
+	checkBucketStateForEnv(e)
 
 	err = os.Chdir(filepath.Join("env", env))
 	if err != nil {
