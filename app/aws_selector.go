@@ -48,7 +48,7 @@ func selectAWSProfile() error {
 		s3Buckets, err := listS3Buckets()
 		if err != nil {
 			fmt.Printf("Error listing S3 buckets: %v\n", err)
-			if strings.Contains(err.Error(), "the SSO session has expired or is invalid") {
+			if strings.Contains(err.Error(), "the SSO session has expired or is invalid") || strings.Contains(err.Error(), "unable to refresh SSO token") {
 				fmt.Println("SSO session has expired or is invalid. Attempting to log in...")
 				err = runCommandWithOutput("aws", "sso", "login")
 				if err != nil {

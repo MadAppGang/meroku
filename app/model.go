@@ -204,7 +204,11 @@ func loadEnv(name string) (Env, error) {
 
 	data, err := os.ReadFile(name + ".yaml")
 	if err != nil {
-		return e, fmt.Errorf("error reading YAML file: %v", err)
+		wd, err := os.Getwd()
+		if err != nil {
+			return e, fmt.Errorf("error getting current working directory: %v", err)
+		}
+		return e, fmt.Errorf("error reading YAML file: %v, current folder: %s", err, wd)
 	}
 
 	err = yaml.Unmarshal(data, &e)

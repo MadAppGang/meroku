@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -10,14 +11,26 @@ import (
 )
 
 func checkBucketStateForEnv(env Env) error {
+	return checkBucketStateForEnvWithRetry(env, false)
+}
+
+func checkBucketStateForEnvWithRetry(env Env, isRetry bool) error {
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(env.Region))
 	if err != nil {
 		return fmt.Errorf("failed to load AWS configuration: %v", err)
 	}
 	client := s3.NewFromConfig(cfg)
+
 	result, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
 	if err != nil {
+		if !isRetry && strings.Contains(err.Error(), "unable to refresh SSO token") {
+			fmt.Println("SSO token expired. Attempting to log in...")
+			if err := runCommandWithOutput("aws", "sso", "login"); err != nil {
+				return fmt.Errorf("failed to run 'aws sso login': %v", err)
+			}
+			return checkBucketStateForEnvWithRetry(env, true)
+		}
 		return fmt.Errorf("failed to list buckets: %v", err)
 	}
 

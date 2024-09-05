@@ -45,15 +45,24 @@ func deployMenu() {
 	deployMenu()
 }
 
-func runCommandToDeploy(env string) {
+func runCommandToDeploy(env string) error {
+	wd, err := os.Getwd()
+	if err != nil {
+		fmt.Println("Error getting current working directory:", err)
+		os.Exit(1)
+	}
+	defer os.Chdir(wd)
+
 	createFolderIfNotExists("env")
-	err := createFolderIfNotExists(filepath.Join("env", env))
+	err = createFolderIfNotExists(filepath.Join("env", env))
 	if err != nil {
 		fmt.Println("Error creating folder for environment:", err)
 		os.Exit(1)
 	}
 	//
 	applyTemplate(env)
+	buildDeploymentLambda(env)
+
 	e, err := loadEnv(env)
 	if err != nil {
 		fmt.Println("Error loading environment:", err)
@@ -67,9 +76,8 @@ func runCommandToDeploy(env string) {
 		os.Exit(1)
 	}
 	terraformInitIfNeeded()
-	runTerrafromApply()
+	return runTerrafromApply()
 
-	os.Chdir(filepath.Join("..", ".."))
 }
 
 func streamOutput(r io.Reader, prefix string, doneChan chan bool) {
@@ -135,6 +143,48 @@ func terraformInitIfNeeded() {
 	fmt.Println("✅ Terraform already initialized.")
 }
 
-func runTerrafromApply() {
-	runCommandWithOutput("terraform", "apply")
+func runTerrafromApply() error {
+	err := runCommandWithOutput("terraform", "plan")
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("✅ Terraform plan completed successfully.")
+	// Ask the user if they want to apply or return to the main menu
+	result := false
+	huh.NewConfirm().
+		Title("Do you want to apply the Terraform changes?").
+		Description("Select 'Yes' to apply, 'No' to return to the main menu.").
+		Affirmative("Yes").
+		Negative("No").
+		Value(&result).
+		Run()
+
+	if !result {
+		fmt.Println("Returning to main menu...")
+		return nil
+	}
+
+	fmt.Println("Applying Terraform changes...")
+	return runCommandWithOutput("terraform", "apply", "-auto-approve")
+}
+
+func buildDeploymentLambda(env string) error {
+	wd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("error getting current working directory: %w", err)
+	}
+	defer os.Chdir(wd)
+
+	os.RemoveAll(filepath.Join("env", env, "ci_lambda.zip"))
+	os.Chdir("infrastructure/modules/workloads/ci_lambda")
+	os.RemoveAll("bootstrap")
+
+	os.Setenv("GOOS", "linux")
+	os.Setenv("GOARCH", "amd64")
+	if err := runCommandWithOutput("go", "build", "-o", "bootstrap", "."); err != nil {
+		return fmt.Errorf("error building deployment lambda: %w", err)
+	}
+
+	return nil
 }
