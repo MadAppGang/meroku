@@ -1,0 +1,41 @@
+Mutation:
+  publish:
+    request: |-
+      {
+        "version": "2017-02-28",
+        "payload": {
+        "customerId": "$context.arguments.customerId",
+        "data": $util.toJson($context.arguments.data)
+      }
+    response: |-
+      $util.toJson($context.result)
+  publishCustomerUpdate:
+    request: |-
+      {
+        "version": "2017-02-28",
+        "payload": {
+          "customerId": "$context.arguments.customerId",
+          "updateType": "$context.arguments.updateType"
+        }
+      }
+    response: |-
+      $util.toJson($context.result)
+
+Query:
+
+Subscription:
+  subscribeToCustomerUpdates:
+    request: |-
+      #set($subscriberId = $context.identity.resolverContext.hankoId)
+      #set($requestedId = $context.arguments.customerId)
+
+      #if($subscriberId == $requestedId)
+      {
+        "version": "2018-05-29",
+        "payload": {}
+      }
+      #else
+      $util.unauthorized()
+      #end
+    response: |-
+      $util.toJson($context.result)

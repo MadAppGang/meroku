@@ -23,10 +23,34 @@ resource "aws_apigatewayv2_domain_name" "backend" {
   }
 }
 
+
+resource "aws_cloudwatch_log_group" "api_gateway_logs" {
+  name              = "/aws/api_gateway/${aws_apigatewayv2_api.api_gateway.name}"
+  retention_in_days = 30
+}
+
 resource "aws_apigatewayv2_stage" "backend" {
   api_id      = aws_apigatewayv2_api.api_gateway.id
   name        = var.env
   auto_deploy = true
+  access_log_settings {
+    destination_arn = aws_cloudwatch_log_group.api_gateway_logs.arn
+    format = jsonencode({
+      requestId = "$context.requestId",
+      sourceIp = "$context.identity.sourceIp",
+      requestTime = "$context.requestTime",
+      protocol = "$context.protocol",
+      httpMethod = "$context.httpMethod", 
+      resourcePath = "$context.resourcePath",
+      routeKey = "$context.routeKey",
+      status = "$context.status",
+      responseLength = "$context.responseLength",
+    })
+  }
+  default_route_settings {
+    throttling_burst_limit = 5000
+    throttling_rate_limit = 10000
+  }
 }
 
 resource "aws_apigatewayv2_api_mapping" "backend" {

@@ -1,0 +1,37 @@
+type Channel {
+	customerId: String
+	data: AWSJSON
+}
+
+type CustomerUpdate @aws_api_key
+@aws_lambda {
+	customerId: String
+	updateType: CustomerUpdateType
+}
+
+enum CustomerUpdateType {
+	PRODUCT_TRADE
+	BANK_TRANSACTION
+	ALL
+	WEALTH
+	KYC_UPDATE
+	TRANSACTIONS
+}
+
+type Mutation {
+	publish(customerId: String!, data: AWSJSON!): Channel
+	publishCustomerUpdate(customerId: String!, updateType: CustomerUpdateType!): CustomerUpdate
+		@aws_api_key
+}
+
+type Query {
+	getChannel: Channel
+	getCustomerUpdate: CustomerUpdate
+}
+
+type Subscription {
+	subscribeToCustomerUpdates(customerId: String!): CustomerUpdate
+		@aws_subscribe(mutations: ["publishCustomerUpdate"])
+	subscribe(customerId: String!): Channel
+		@aws_subscribe(mutations: ["publish"])
+}

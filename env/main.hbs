@@ -175,7 +175,7 @@ module "ses" {
   {{else}}
   domain = "{{domain.domain_name}}"
   {{/if}}
-  test_emails = {{array ses.test_emails}}
+  test_emails = {{{array ses.test_emails}}}
   {{#if domain.enabled}}
   {{#if domain.use_existent}}
   zone_id = data.aws_route53_zone.domain.zone_id
@@ -185,6 +185,23 @@ module "ses" {
   {{/if}}
 }
 {{/if}}
+
+
+
+{{#if appsync.enabled}} 
+module "appsync" {
+  source = "{{modules}}/appsync"
+  project = "{{project}}"
+  env = "{{env}}"
+  {{#if appsync.shema}}
+  schema = "{{{appsync.schema}}}"
+  {{/if}}
+  {{#if appsync.vtl_templates}}
+  vtl_templates = {{{appsync.vtl_templates}}}
+  {{/if}}
+}
+{{/if}}
+
 
 output "backend_ecr_repo_url" {
   value = module.workloads.backend_ecr_repo_url
