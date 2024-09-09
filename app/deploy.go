@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -76,8 +77,7 @@ func runCommandToDeploy(env string) error {
 		os.Exit(1)
 	}
 	terraformInitIfNeeded()
-	return runTerrafromApply()
-
+	return runTerraformApply()
 }
 
 func streamOutput(r io.Reader, prefix string, doneChan chan bool) {
@@ -89,6 +89,18 @@ func streamOutput(r io.Reader, prefix string, doneChan chan bool) {
 		fmt.Printf("%s: Error reading output: %s\n", prefix, err)
 	}
 	doneChan <- true
+}
+
+func streamOutputAndCapture(r io.Reader, prefix string, doneChan chan<- bool) string {
+	var buffer strings.Builder
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		line := scanner.Text()
+		fmt.Printf("%s: %s\n", prefix, line)
+		buffer.WriteString(line + "\n")
+	}
+	doneChan <- true
+	return buffer.String()
 }
 
 func applyTemplate(env string) {
@@ -121,53 +133,7 @@ func applyTemplate(env string) {
 	os.WriteFile(filepath.Join("env", env, "main.tf"), []byte(result), 0o644)
 }
 
-func terraformInitIfNeeded() {
-	if _, err := os.Stat(".terraform"); os.IsNotExist(err) {
-		action := func() {
-			cmd := exec.Command("terraform", "init")
-			output, err := cmd.CombinedOutput()
-			if err != nil {
-				lines := strings.Split(string(output), "\n")
-				for _, line := range lines {
-					fmt.Println(strings.TrimSpace(line))
-				}
-			}
-		}
-		_ = spinner.New().Title("Initializing tarraform for your environment...").Action(action).Run()
-		fmt.Println("✅ Terraform initialized successfully.")
-		return
-	} else if err != nil {
-		fmt.Printf("Error checking .terraform directory: %v\n", err)
-		os.Exit(1)
-	}
-	fmt.Println("✅ Terraform already initialized.")
-}
 
-func runTerrafromApply() error {
-	err := runCommandWithOutput("terraform", "plan")
-	if err != nil {
-		return err
-	}
-
-	fmt.Println("✅ Terraform plan completed successfully.")
-	// Ask the user if they want to apply or return to the main menu
-	result := false
-	huh.NewConfirm().
-		Title("Do you want to apply the Terraform changes?").
-		Description("Select 'Yes' to apply, 'No' to return to the main menu.").
-		Affirmative("Yes").
-		Negative("No").
-		Value(&result).
-		Run()
-
-	if !result {
-		fmt.Println("Returning to main menu...")
-		return nil
-	}
-
-	fmt.Println("Applying Terraform changes...")
-	return runCommandWithOutput("terraform", "apply", "-auto-approve")
-}
 
 func buildDeploymentLambda(env string) error {
 	wd, err := os.Getwd()
@@ -182,7 +148,7 @@ func buildDeploymentLambda(env string) error {
 
 	os.Setenv("GOOS", "linux")
 	os.Setenv("GOARCH", "amd64")
-	if err := runCommandWithOutput("go", "build", "-o", "bootstrap", "."); err != nil {
+	if _, err := runCommandWithOutput("go", "build", "-o", "bootstrap", "."); err != nil {
 		return fmt.Errorf("error building deployment lambda: %w", err)
 	}
 

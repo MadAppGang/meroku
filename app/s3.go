@@ -26,7 +26,7 @@ func checkBucketStateForEnvWithRetry(env Env, isRetry bool) error {
 	if err != nil {
 		if !isRetry && strings.Contains(err.Error(), "unable to refresh SSO token") {
 			fmt.Println("SSO token expired. Attempting to log in...")
-			if err := runCommandWithOutput("aws", "sso", "login"); err != nil {
+			if _, err := runCommandWithOutput("aws", "sso", "login"); err != nil {
 				return fmt.Errorf("failed to run 'aws sso login': %v", err)
 			}
 			return checkBucketStateForEnvWithRetry(env, true)

@@ -5,25 +5,25 @@ import (
 	"os/exec"
 )
 
-func runCommandWithOutput(name string, args ...string) error {
+func runCommandWithOutput(name string, args ...string) (string, error) {
 	cmd := exec.Command(name, args...)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		fmt.Println("Error creating stdout pipe:", err)
-		return err
+		return "", err
 	}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		fmt.Println("Error creating stderr pipe:", err)
-		return err
+		return "", err
 	}
 
 	// Start the command
 	err = cmd.Start()
 	if err != nil {
 		fmt.Println("Error starting command:", err)
-		return err
+		return "", err
 	}
 
 	// Create channels to signal when we're done reading from stdout and stderr
@@ -32,8 +32,11 @@ func runCommandWithOutput(name string, args ...string) error {
 	// Start goroutine to read from stdout
 	go streamOutput(stdout, "STDOUT", doneChan)
 
-	// Start goroutine to read from stderr
-	go streamOutput(stderr, "STDERR", doneChan)
+	// Start goroutine to read from stderr and capture error text
+	var stderrBuffer string
+	go func() {
+		stderrBuffer = streamOutputAndCapture(stderr, "STDERR", doneChan)
+	}()
 
 	// Wait for both stdout and stderr to finish
 	for i := 0; i < 2; i++ {
@@ -44,7 +47,7 @@ func runCommandWithOutput(name string, args ...string) error {
 	err = cmd.Wait()
 	if err != nil {
 		fmt.Println("Command finished with error:", err)
-		return err
+		return stderrBuffer, err
 	}
-	return nil
+	return "", nil
 }
