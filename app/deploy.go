@@ -4,15 +4,12 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/aymerick/raymond"
 	"github.com/charmbracelet/huh"
-	"github.com/charmbracelet/huh/spinner"
 	"github.com/samber/lo"
 )
 
@@ -132,8 +129,6 @@ func applyTemplate(env string) {
 
 	os.WriteFile(filepath.Join("env", env, "main.tf"), []byte(result), 0o644)
 }
-
-
 
 func buildDeploymentLambda(env string) error {
 	wd, err := os.Getwd()

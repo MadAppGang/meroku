@@ -35,3 +35,4 @@ app/dev.yaml
 app/prod.yaml
 app/prod.yaml
 app.log
+modules/appsync/auth_lambda/.yarn

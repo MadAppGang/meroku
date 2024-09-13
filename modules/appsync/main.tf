@@ -4,7 +4,7 @@ resource "aws_appsync_graphql_api" "pubsub" {
   schema              = file(var.vtl_templates_yaml)
 
   lambda_authorizer_config {
-    authorizer_uri = var.lambda_function_arn
+    authorizer_uri = aws_lambda_function.lambda.arn
   }
 
   additional_authentication_provider {
@@ -14,7 +14,7 @@ resource "aws_appsync_graphql_api" "pubsub" {
 
 resource "aws_appsync_api_key" "pubsub" {
   api_id  = aws_appsync_graphql_api.pubsub.id
-  expires = timeadd(timestamp(), "8760h")  # 1 year from now
+  expires = timeadd(timestamp(), "8760h") # 1 year from now
 }
 
 resource "aws_iam_role" "appsync" {
@@ -52,11 +52,11 @@ resource "aws_appsync_datasource" "none" {
 resource "aws_appsync_resolver" "resolvers" {
   for_each = merge([
     for type, fields in local.vtl_templates : {
-      for field, templates in fields : 
+      for field, templates in fields :
       "${type}.${field}" => {
-        type = type
-        field = field
-        request = templates.request
+        type     = type
+        field    = field
+        request  = templates.request
         response = templates.response
       }
     }

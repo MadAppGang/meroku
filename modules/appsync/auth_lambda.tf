@@ -5,7 +5,7 @@ resource "null_resource" "install_dependencies" {
   }
   triggers = {
     dependencies_versions = filemd5("${path.module}/auth_lambda/package.json")
-    main_file_hash        = filemd5("${path.module}/auth_lambda/main.mjs")
+    index_file_hash       = filemd5("${path.module}/auth_lambda/index.mjs")
   }
 }
 
@@ -30,7 +30,7 @@ resource "aws_iam_role" "lambda_role" {
         Action = "sts:AssumeRole"
         Effect = "Allow"
         Principal = {
-          Service = "lambda.amazonaws.com"
+          Service = "lambda.amazonaws.com"  
         }
       }
     ]
@@ -48,9 +48,9 @@ resource "aws_lambda_function" "function" {
   filename         = data.archive_file.lambda_zip.output_path
   function_name    = "${var.project}-${var.env}-appsync-auth"
   role             = aws_iam_role.lambda_role.arn
-  handler          = "index.handler"  # Adjust this to match your function's entry point
+  handler          = "index.handler" # Adjust this to match your function's entry point
   source_code_hash = data.archive_file.lambda_zip.output_base64sha256
-  runtime          = "nodejs20.x"  # Adjust this to match your Lambda's runtime
+  runtime          = "nodejs20.x" # Adjust this to match your Lambda's runtime
 
   environment {
     variables = {
