@@ -1,12 +1,9 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/aymerick/raymond"
 	"github.com/charmbracelet/huh"
@@ -77,29 +74,6 @@ func runCommandToDeploy(env string) error {
 	return runTerraformApply()
 }
 
-func streamOutput(r io.Reader, prefix string, doneChan chan bool) {
-	scanner := bufio.NewScanner(r)
-	for scanner.Scan() {
-		fmt.Printf("%s: %s\n", prefix, scanner.Text())
-	}
-	if err := scanner.Err(); err != nil {
-		fmt.Printf("%s: Error reading output: %s\n", prefix, err)
-	}
-	doneChan <- true
-}
-
-func streamOutputAndCapture(r io.Reader, prefix string, doneChan chan<- bool) string {
-	var buffer strings.Builder
-	scanner := bufio.NewScanner(r)
-	for scanner.Scan() {
-		line := scanner.Text()
-		fmt.Printf("%s: %s\n", prefix, line)
-		buffer.WriteString(line + "\n")
-	}
-	doneChan <- true
-	return buffer.String()
-}
-
 func applyTemplate(env string) {
 	// Read the template file
 	templateContent, err := os.ReadFile(filepath.Join("infrastructure", "env", "main.hbs"))
@@ -110,6 +84,7 @@ func applyTemplate(env string) {
 
 	envMap, err := loadEnvToMap(env + ".yaml")
 	envMap["modules"] = "../../infrastructure/modules"
+	envMap["custom_modules"] = "../../custom"
 	if err != nil {
 		fmt.Printf("error loading environment: %v", err)
 		os.Exit(1)

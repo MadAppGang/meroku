@@ -47,6 +47,7 @@ func menuListFromEnv(env Env) []list.Item {
 		item{title: "SES Email", desc: "Simple email service settings", detailView: newSesView(env)},
 		item{title: "Scheduled ECS Task", desc: "mange list of scheduled ECS tasks", detailView: nil, isParent: true, children: scheduledTasks},
 		item{title: "Event Processor Task", desc: "mange list of event processor tasks EventBridge", detailView: nil, isParent: true, children: eventProcessorTasks},
+		item{title: "PubSub with AppSync", desc: "Create AppSync for PubSum", detailView: newAppSyncView(env)},
 	}
 	return items
 }
@@ -65,6 +66,14 @@ type Env struct {
 	Ses                 Ses                  `yaml:"ses"`
 	ScheduledTasks      []ScheduledTask      `yaml:"scheduled_tasks"`
 	EventProcessorTasks []EventProcessorTask `yaml:"event_processor_tasks"`
+	AppSyncPubSub       AppSync              `yaml:"pubsub_appsync"`
+}
+
+type AppSync struct {
+	Enabled    bool `yaml:"enabled"`
+	Schema     bool `yaml:"schema"`
+	AuthLambda bool `yaml:"auth_lambda"`
+	Resolvers  bool `yaml:"resolvers"`
 }
 
 type Workload struct {

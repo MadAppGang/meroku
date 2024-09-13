@@ -95,23 +95,23 @@ variable "backend_health_endpoint" {
 
 
 variable "certificate_arn" {
-  type = string
+  type    = string
   default = ""
 }
 
 variable "root_certificate_arn" {
-  type = string
+  type    = string
   default = ""
 }
 
 variable "domain_zone_id" {
-  type = string
+  type    = string
   default = ""
 }
 
 
 variable "domain" {
-  type = string
+  type    = string
   default = ""
 }
 

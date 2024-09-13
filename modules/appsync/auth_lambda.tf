@@ -1,19 +1,19 @@
 # Install dependencies
 resource "null_resource" "install_dependencies" {
   provisioner "local-exec" {
-    command = "cd ${path.module}/auth_lambda && yarn install"
+    command = "cd ${local.auth_lambda} && yarn install"
   }
   triggers = {
-    dependencies_versions = filemd5("${path.module}/auth_lambda/package.json")
-    index_file_hash       = filemd5("${path.module}/auth_lambda/index.mjs")
+    dependencies_versions = filemd5("${local.auth_lambda}/package.json")
+    index_file_hash       = filemd5("${local.auth_lambda}/index.mjs")
   }
 }
 
 # Archive the Lambda function code
 data "archive_file" "lambda_zip" {
   type        = "zip"
-  source_dir  = "${path.module}/auth_lambda"
-  output_path = "${path.module}/auth_lambda.zip"
+  source_dir  = local.auth_lambda
+  output_path = "${local.auth_lambda}/../auth_lambda.zip"
 
   # This ensures the archive is created after dependencies are installed
   depends_on = [null_resource.install_dependencies]

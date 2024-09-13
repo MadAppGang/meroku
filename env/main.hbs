@@ -188,16 +188,19 @@ module "ses" {
 
 
 
-{{#if appsync.enabled}} 
+{{#if pubsub_appsync.enabled}} 
 module "appsync" {
   source = "{{modules}}/appsync"
   project = "{{project}}"
   env = "{{env}}"
-  {{#if appsync.shema}}
-  schema = "{{{appsync.schema}}}"
+  {{#if pubsub_appsync.schema}}
+  schema_file = "{{custom_modules}}/appsync/schema.graphql"
   {{/if}}
-  {{#if appsync.vtl_templates}}
-  vtl_templates = {{{appsync.vtl_templates}}}
+  {{#if appsync.resolvers}}
+  vtl_templates_yaml = "{{custom_modules}}/appsync/vtl_templates.yaml"
+  {{/if}}
+  {{#if pubsub_appsync.appsync.auth_lambda}}
+  auth_lambda_path = "{{custom_modules}}/appsync/auth_lambda"
   {{/if}}
 }
 {{/if}}
