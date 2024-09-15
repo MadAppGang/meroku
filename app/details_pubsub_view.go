@@ -24,7 +24,7 @@ func newAppSyncView(e Env) *appSyncView {
 					title:       "Enable AppSync",
 					description: "If you want to enable AppSync for your project, it is amazing way to have serverless pubsub for public clients.",
 				}, boolValue{e.AppSyncPubSub.Enabled}),
-				newTextFieldModel(baseInputModel{
+				newBoolFieldModel(baseInputModel{
 					title:       "Rewrite Graphql schema",
 					description: "If you want custom Graphql schema, the new file will be located here: ./custom/appsync/schema.graphql",
 				}, boolValue{e.AppSyncPubSub.Schema}),
@@ -63,6 +63,7 @@ func (m *appSyncView) env(e Env) Env {
 			createCustomAppSyncResolvers()
 		}
 	}
+	e.AppSyncPubSub = c
 	return e
 }
 
@@ -114,8 +115,8 @@ func createCustomAppSyncAuthLambda() {
 }
 
 func createCustomAppSyncResolvers() {
-	customResolversPath := "./custom/appsync/vtl_template.yaml"
-	moduleResolversPath := "./infrastructure/modules/appsync/vtl_template.yaml"
+	moduleResolversPath := "./infrastructure/modules/appsync/vtl_templates.yaml"
+	customResolversPath := "./custom/appsync/vtl_templates.yaml"
 
 	// Check if the custom resolvers file already exists
 	if _, err := os.Stat(customResolversPath); os.IsNotExist(err) {
