@@ -63,25 +63,26 @@ resource "aws_ecs_task_definition" "task" {
   execution_role_arn       = aws_iam_role.task_execution.arn
   task_role_arn            = aws_iam_role.task.arn
 
-  container_definitions = jsonencode([{
-    name    = "${var.project}_container_${var.task}_${var.env}"
-    cpu     = 256
-    memory  = 512
-    image   = local.docker_image
-    secrets = local.task_env_ssm
+  container_definitions = jsonencode([merge(
+    {
+      name      = "${var.project}_container_${var.task}_${var.env}"
+      cpu       = 256
+      memory    = 512
+      image     = local.docker_image
+      secrets   = local.task_env_ssm
+      essential = true
 
-    essential = true
-
-    logConfiguration = {
-      logDriver = "awslogs"
-      options = {
-        awslogs-group         = aws_cloudwatch_log_group.task.name
-        awslogs-stream-prefix = "ecs"
-        awslogs-region        = data.aws_region.current.name
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = aws_cloudwatch_log_group.task.name
+          awslogs-stream-prefix = "ecs"
+          awslogs-region        = data.aws_region.current.name
+        }
       }
-    }
-
-  }])
+    },
+    length(var.container_command) > 0 ? { command = var.container_command } : {}
+  )])
 
   tags = {
     terraform = "true"

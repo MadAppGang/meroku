@@ -26,7 +26,7 @@ variable "docker_image" {
   default = ""
 }
 
-variable "docker_command" {
+variable "container_command" {
   type    = string
   default = ""
 }
