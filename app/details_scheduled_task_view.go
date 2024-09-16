@@ -6,6 +6,22 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 )
 
+const ecsSchedule = `^(cron\(` +
+	// Minutes: 0-59 or *
+	`([0-5]?\d|\*)` +
+	// Hours: 0-23 or *
+	`\s([01]?\d|2[0-3]|\*)` +
+	// Day-of-month: 1-31 or ? or *
+	`\s(([1-9]|[12]\d|3[01])|\?|\*)` +
+	// Month: 1-12 or JAN-DEC or *
+	`\s((1[0-2]|[1-9])|(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)|\*)` +
+	// Day-of-week: 1-7 or SUN-SAT or ? or *
+	`\s([1-7]|(MON|TUE|WED|THU|FRI|SAT|SUN)|\?|\*)` +
+	// Year: 1970-2199 or *
+	`\s((19[7-9]\d|2[01]\d{2}|2199)|\*)` +
+	`\)` +
+	`|rate\((\d+)\s(minute|minutes|hour|hours|day|days)\))$`
+
 type scheduledTaskView struct {
 	detailViewModel
 
@@ -27,10 +43,10 @@ func newScheduledTaskView(t ScheduledTask) *scheduledTaskView {
 				}, stringValue{t.Name}),
 				newTextFieldModel(baseInputModel{
 					title:             "Scheduled task name",
-					description:       "cron(Minutes Hours Day-of-month Month Day-of-week Year)",
+					description:       "cron(Minutes Hours Day-of-month Month Day-of-week Year) or rate: rate(1 minute), rate(3 hours)",
 					placeholder:       "cron(0 6 * * ? *)",
-					validator:         regexp.MustCompile(`^cron\(([\d\*\-\,\/]+)\s+([\d\*\-\,\/]+)\s+([\d\*\-\,\/\?LW]+)\s+([\d\*\-\,\/]+|JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\s+([\d\*\-\,\/L\?]+|SUN|MON|TUE|WED|THU|FRI|SAT)\s+([\d\*\-\,\/]+|\*)\)$`),
-					validationMessage: "Valid cron expression",
+					validator:         regexp.MustCompile(ecsSchedule),
+					validationMessage: "Valid cron or rate expression",
 				}, stringValue{t.Schedule}),
 				newTextFieldModel(baseInputModel{
 					title:       "External Docker image",

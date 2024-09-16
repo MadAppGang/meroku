@@ -1,20 +1,17 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/huh/spinner"
 )
-
-func terraformError(err error, output string) ([]string, error) {
-	// check different error types and run the specific command to fix them
-	return []string{}, nil
-}
 
 func terraformInit(flags ...string) (string, error) {
 	var e error
@@ -53,30 +50,39 @@ func terraformInitIfNeeded() {
 
 func runTerraformApply() error {
 	errString, err := runCommandWithOutput("terraform", "plan")
+	fmt.Println("errString", errString)
+	fmt.Println("err", err)
 	if err != nil {
 		slog.Error("error running terraform plan", "error", err, "output", errString)
-		if strings.Contains(errString, "Backend initialization required: please run \"terraform init\"") {
-			runInit := false
-			huh.NewForm(
-				huh.NewGroup(
-					huh.NewNote().
-						Title("Terraform init required").
-						Description("Terraform init is required to run this command. Do you want to run it now?"),
-					huh.NewConfirm().
-						Title("Do you want to run terraform init?").
-						Value(&runInit),
-				),
-			).Run()
-			if runInit {
-				_, err = terraformInit()
-				if err != nil {
-					return fmt.Errorf("error initializing terraform, you need to run it manually: %w", err)
-				}
-				return runTerraformApply()
+		// trying to recover:
+		var recoverErr error
+		retryCount := 0
+		maxRetries := 5
+		var commands []string
+
+		for recoverErr == nil && retryCount < maxRetries {
+			commands, recoverErr = terraformError(errString)
+			if recoverErr != nil {
+				fmt.Println("🛑 terraform error recovery unable to handle output with error: ", recoverErr.Error())
+				fmt.Println(errString)
+				return fmt.Errorf("error checking terraform error: %w", recoverErr)
 			}
-			return nil
+			fmt.Printf("✳️ terraform error recovery attempt %d/%d suggests to run: %v\n", retryCount+1, maxRetries, commands)
+			errString, err = runCommandWithOutput(commands[0], commands[1:]...)
+			if err != nil {
+				fmt.Printf("❌ Attempt %d failed. Error: %v\n", retryCount+1, err)
+			} else {
+				fmt.Printf("✅ Attempt %d succeeded.\n", retryCount+1)
+				break
+			}
+			retryCount++
 		}
-		return err
+
+		if err != nil {
+			return fmt.Errorf("error running terraform command after %d attempts: %w", retryCount, err)
+		}
+
+		return runTerraformApply()
 	}
 
 	fmt.Println("✅ Terraform plan completed successfully.")
@@ -98,4 +104,23 @@ func runTerraformApply() error {
 	fmt.Println("Applying Terraform changes...")
 	_, err = runCommandWithOutput("terraform", "apply", "-auto-approve")
 	return err
+}
+
+func terraformError(output string) ([]string, error) {
+	fmt.Println("Recovering from error ... ")
+
+	clean := stripAnsiEscapeCodes(output)
+	if strings.Contains(clean, "Error: Backend configuration changed") {
+		return []string{"terraform", "init", "-reconfigure"}, nil
+	} else if strings.Contains(clean, "Error: Backend initialization required: please run \"terraform init\"") ||
+		strings.Contains(clean, "Reason: Backend configuration block has changed") {
+		return []string{"terraform", "init"}, nil
+	}
+	return []string{}, errors.New("unknown error, I could not check it. please provide the output to us–....")
+}
+
+func stripAnsiEscapeCodes(input string) string {
+	// This regex matches ANSI escape codes
+	re := regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+	return re.ReplaceAllString(input, "")
 }

@@ -11,6 +11,7 @@ import (
 )
 
 func runCommandWithOutput(name string, args ...string) (string, error) {
+	fmt.Println("▶️ runCommandWithOutput:", name, args)
 	cmd := exec.Command(name, args...)
 
 	stdout, err := cmd.StdoutPipe()
