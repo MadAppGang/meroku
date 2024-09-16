@@ -135,6 +135,7 @@ type ScheduledTask struct {
 	Schedule            string `yaml:"schedule"`
 	ExternalDockerImage string `yaml:"docker_image"`
 	ContainerCommand    string `yaml:"container_command"`
+	AllowPublicAccess   bool   `yaml:"allow_public_access"`
 }
 
 type EventProcessorTask struct {
@@ -144,6 +145,7 @@ type EventProcessorTask struct {
 	Sources             []string `yaml:"sources"`
 	ExternalDockerImage string   `yaml:"docker_image"`
 	ContainerCommand    string   `yaml:"container_command"`
+	AllowPublicAccess   bool     `yaml:"allow_public_access"`
 }
 
 // create function which generate random string

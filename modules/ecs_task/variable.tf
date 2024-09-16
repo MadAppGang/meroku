@@ -49,6 +49,11 @@ variable "cluster" {
   type = string
 }
 
+variable "allow_public_access" {
+  type    = bool
+  default = false
+}
+
 data "aws_iam_policy_document" "default_ecr_policy" {
   statement {
     sid = "Default ECR policy"

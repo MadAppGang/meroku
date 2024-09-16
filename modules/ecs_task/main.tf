@@ -24,7 +24,7 @@ resource "aws_scheduler_schedule" "scheduler" {
       launch_type            = "FARGATE"
 
       network_configuration {
-        assign_public_ip = true
+        assign_public_ip = var.allow_public_access
         security_groups  = [aws_security_group.task.id]
         subnets          = var.subnet_ids
       }

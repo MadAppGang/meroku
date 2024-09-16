@@ -25,6 +25,11 @@ variable "docker_image" {
   default = ""
 }
 
+variable "allow_public_access" {
+  type    = bool
+  default = false
+}
+
 variable "subnet_ids" {
   type = list(string)
 }

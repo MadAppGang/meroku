@@ -156,6 +156,7 @@ module "task" {
   subnet_ids = data.aws_subnets.all.ids
   vpc_id     = data.aws_vpc.default.id
   cluster = module.workloads.ecr_cluster.arn
+  allow_public_access = {{allow_public_access}}
   {{#if ecr_account_id}}{{#if ecr_account_region}}
   ecr_url = "{{ecr_account_id}}.dkr.ecr.{{ecr_account_region}}.amazonaws.com/{{project}}_task_{{name}}"
   {{/if}}{{/if}}
@@ -180,6 +181,7 @@ module "event_bus_task" {
   subnet_ids = data.aws_subnets.all.ids
   vpc_id     = data.aws_vpc.default.id
   cluster = module.workloads.ecr_cluster.arn
+  allow_public_access = {{allow_public_access}}
   {{#if ecr_account_id}}{{#if ecr_account_region}}
   ecr_url = "{{ecr_account_id}}.dkr.ecr.{{ecr_account_region}}.amazonaws.com/{{project}}_task_{{name}}"
   {{/if}}{{/if}}
