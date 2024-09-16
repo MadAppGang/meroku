@@ -29,15 +29,23 @@ data "aws_subnets" "all" {
 {{#if domain.enabled}}  
   {{#if domain.use_existent}}
 data "aws_route53_zone" "domain" {
-  name  = var.domain
+  name  = "{{ domain.domain_name  }}"
 }
 data "aws_acm_certificate" "domain" {
-  domain      = "*.${var.env == "prod" ? "api." : format("%s.", var.env)}${var.domain}" 
+  {{#if env == "prod"}}
+  domain      = "*.api.{{domain.domain_name}}"
+  {{else}}
+  domain      = "*.{{env}}.{{domain.domain_name}}"
+  {{/if}}
   types       = ["AMAZON_ISSUED"]
   most_recent = true
 }
 data "aws_acm_certificate" "root_domain" {
-  domain      = "${var.env == "prod" ? "api." : format("%s.", var.env)}${var.domain}"
+  {{#if env == "prod"}}
+  domain      = "*.api.{{domain.domain_name}}"
+  {{else}}
+  domain      = "*.{{env}}.{{domain.domain_name}}"
+  {{/if}}
   types       = ["AMAZON_ISSUED"]
   most_recent = true
 }
