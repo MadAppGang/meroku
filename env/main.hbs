@@ -32,24 +32,24 @@ data "aws_route53_zone" "domain" {
   name  = "{{ domain.domain_name  }}"
 }
 data "aws_acm_certificate" "domain" {
-  {{#if env == "prod"}}
+{{#if (eq env "prod")}}
   domain      = "*.api.{{domain.domain_name}}"
-  {{else}}
+{{else}}
   domain      = "*.{{env}}.{{domain.domain_name}}"
-  {{/if}}
+{{/if}}
   types       = ["AMAZON_ISSUED"]
   most_recent = true
 }
 data "aws_acm_certificate" "root_domain" {
-  {{#if env == "prod"}}
+{{#if (eq env "prod")}}
   domain      = "*.api.{{domain.domain_name}}"
-  {{else}}
+{{else}}
   domain      = "*.{{env}}.{{domain.domain_name}}"
-  {{/if}}
+{{/if}}
   types       = ["AMAZON_ISSUED"]
   most_recent = true
 }
-  {{else}}
+  {{else}} 
 module "domain" {
   source = "{{ modules }}/domain"
   domain = "{{ domain.domain_name  }}"
