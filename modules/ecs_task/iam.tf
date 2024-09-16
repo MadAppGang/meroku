@@ -39,7 +39,7 @@ data "aws_iam_policy_document" "ecs_tasks_assume_role" {
     actions = ["sts:AssumeRole"]
 
     principals {
-      type = "Service"
+      type        = "Service"
       identifiers = ["scheduler.amazonaws.com"]
     }
   }
@@ -57,6 +57,8 @@ resource "aws_iam_policy" "ssm_parameter_access" {
   name   = "Task${var.task}SSMAccessPolicy"
   policy = data.aws_iam_policy_document.ssm_parameter_access.json
 }
+
+data "aws_caller_identity" "current" {}
 
 data "aws_iam_policy_document" "ssm_parameter_access" {
   statement {
