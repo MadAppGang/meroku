@@ -42,9 +42,9 @@ data "aws_acm_certificate" "domain" {
 }
 data "aws_acm_certificate" "root_domain" {
 {{#if (eq env "prod")}}
-  domain      = "*.api.{{domain.domain_name}}"
+  domain      = "api.{{domain.domain_name}}"
 {{else}}
-  domain      = "*.{{env}}.{{domain.domain_name}}"
+  domain      = "{{env}}.{{domain.domain_name}}"
 {{/if}}
   types       = ["AMAZON_ISSUED"]
   most_recent = true
