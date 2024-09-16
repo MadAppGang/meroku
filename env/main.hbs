@@ -36,7 +36,7 @@ data "aws_acm_certificate" "domain" {
   types       = ["AMAZON_ISSUED"]
   most_recent = true
 }
-data "root_aws_acm_certificate" "domain" {
+data "aws_acm_certificate" "root_domain" {
   domain      = "${var.env == "prod" ? "api." : format("%s.", var.env)}${var.domain}"
   types       = ["AMAZON_ISSUED"]
   most_recent = true
@@ -87,8 +87,8 @@ module "workloads" {
   db_name = "{{postgres.dbname}}"
   {{/if}}
   {{#if domain.enabled}}{{#if domain.use_existent}}
-  certificate_arn = data.aws_acm_certificate.arn
-  root_certificate_arn = data.root_aws_acm_certificate.arn
+  certificate_arn = data.aws_acm_certificate.domain.arn
+  root_certificate_arn = data.aws_acm_certificate.root_domain.arn
   domain_zone_id = module.domain.zone_id
     {{else}}
   certificate_arn = module.domain.certificate_arn
