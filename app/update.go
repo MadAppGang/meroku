@@ -62,7 +62,7 @@ func updateInfrastructure() error {
 		}
 		_ = spinner.New().Title("Updating the infrastructure...").Action(initProject).Run()
 	} else {
-		fmt.Println("Local version is up-to-date with remote version.")
+		fmt.Println("👍 Local version is up-to-date with remote version.")
 	}
 
 	return nil
