@@ -16,7 +16,7 @@ resource "aws_scheduler_schedule" "scheduler" {
 
   target {
     arn      = var.cluster
-    role_arn = aws_iam_role.task_execution.arn
+    role_arn = aws_iam_role.scheduler_role.arn
 
     ecs_parameters {
       task_definition_arn    = aws_ecs_task_definition.task.arn

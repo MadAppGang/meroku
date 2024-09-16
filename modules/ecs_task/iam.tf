@@ -20,7 +20,7 @@ resource "aws_iam_role_policy_attachment" "task_execution" {
 }
 
 resource "aws_iam_role_policy_attachment" "scheduler" {
-  role       = aws_iam_role.task_execution.name
+  role       = aws_iam_role.scheduler_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEventBridgeFullAccess"
 }
 
@@ -31,16 +31,6 @@ data "aws_iam_policy_document" "ecs_tasks_assume_role" {
     principals {
       type        = "Service"
       identifiers = ["ecs-tasks.amazonaws.com"]
-    }
-  }
-
-
-  statement {
-    actions = ["sts:AssumeRole"]
-
-    principals {
-      type        = "Service"
-      identifiers = ["scheduler.amazonaws.com"]
     }
   }
 }
@@ -65,4 +55,26 @@ data "aws_iam_policy_document" "ssm_parameter_access" {
     actions   = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
     resources = ["arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:/${var.env}/${var.project}/task/${var.task}/*"]
   }
+}
+
+
+resource "aws_iam_role" "scheduler_role" {
+  name = "${var.project}_scheduler_${var.task}_role_${var.env}"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "scheduler.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "scheduler_ecs_full_access" {
+  role       = aws_iam_role.scheduler_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonECS_FullAccess"
 }
