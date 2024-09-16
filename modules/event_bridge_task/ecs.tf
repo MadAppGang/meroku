@@ -10,6 +10,12 @@ resource "aws_ecr_repository" "task" {
 }
 
 
+locals {
+  ecr_image    = var.env == "dev" ? join("", aws_ecr_repository.task.*.repository_url) : var.ecr_url
+  docker_image = var.docker_image != "" ? var.docker_image : "${local.ecr_image}:latest"
+}
+
+
 resource "aws_ecr_repository_policy" "task" {
   repository = join("", aws_ecr_repository.task.*.name)
   policy     = data.aws_iam_policy_document.default_ecr_policy.json
@@ -26,11 +32,11 @@ resource "aws_ecs_task_definition" "task" {
   task_role_arn            = aws_iam_role.task.arn
 
   container_definitions = jsonencode([{
-    name   = "${var.project}_container_${var.task}_${var.env}"
-    cpu    = 256
-    memory = 512
-    image  = "${var.env == "dev" ? join("", aws_ecr_repository.task.*.repository_url) : var.ecr_url}:latest"
-    secrets     = local.task_env_ssm
+    name      = "${var.project}_container_${var.task}_${var.env}"
+    cpu       = 256
+    memory    = 512
+    image     = local.docker_image
+    secrets   = local.task_env_ssm
     essential = true
 
     logConfiguration = {

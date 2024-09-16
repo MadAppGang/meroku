@@ -32,6 +32,18 @@ func newScheduledTaskView(t ScheduledTask) *scheduledTaskView {
 					validator:         regexp.MustCompile(`^cron\(([\d\*\-\,\/]+)\s+([\d\*\-\,\/]+)\s+([\d\*\-\,\/\?LW]+)\s+([\d\*\-\,\/]+|JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\s+([\d\*\-\,\/L\?]+|SUN|MON|TUE|WED|THU|FRI|SAT)\s+([\d\*\-\,\/]+|\*)\)$`),
 					validationMessage: "Valid cron expression",
 				}, stringValue{t.Schedule}),
+				newTextFieldModel(baseInputModel{
+					title:       "External Docker image",
+					placeholder: "madappgang/aooth",
+					description: "Optional Docker hub image name, by default we use private ECR registry for task",
+				}, stringValue{t.ExternalDockerImage}),
+				newTextFieldModel(baseInputModel{
+					title:             "custom docker container command",
+					placeholder:       "[\"aooth\", \"--flag\"]",
+					description:       "Optional provide container command",
+					validator:         regexp.MustCompile(`(^\s*$|\[(\s*"[^"]*"\s*,?\s*)*\])`),
+					validationMessage: "Container command is JSON  array of strings format",
+				}, stringValue{t.ContainerCommand}),
 			},
 		},
 		t: t,
@@ -46,6 +58,8 @@ func (m *scheduledTaskView) env(e Env) Env {
 	t := ScheduledTask{}
 	t.Name = m.inputs[0].value().String()
 	t.Schedule = m.inputs[1].value().String()
+	t.ExternalDockerImage = m.inputs[2].value().String()
+	t.ContainerCommand = m.inputs[3].value().String()
 	e.ScheduledTasks = append(e.ScheduledTasks, t)
 	return e
 }

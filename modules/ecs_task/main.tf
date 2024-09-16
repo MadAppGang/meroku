@@ -5,7 +5,7 @@ resource "aws_scheduler_schedule_group" "group" {
 }
 
 resource "aws_scheduler_schedule" "scheduler" {
-  name = "${var.project}-scheduler-${var.task}-${var.env}"
+  name       = "${var.project}-scheduler-${var.task}-${var.env}"
   group_name = aws_scheduler_schedule_group.group.name
 
   flexible_time_window {
@@ -15,19 +15,19 @@ resource "aws_scheduler_schedule" "scheduler" {
   schedule_expression = var.schedule
 
   target {
-    arn = var.cluster 
+    arn      = var.cluster
     role_arn = aws_iam_role.task_execution.arn
-   
+
     ecs_parameters {
-      task_definition_arn = aws_ecs_task_definition.task.arn
+      task_definition_arn    = aws_ecs_task_definition.task.arn
       enable_execute_command = true
-      launch_type = "FARGATE"
-      
+      launch_type            = "FARGATE"
+
       network_configuration {
         assign_public_ip = false
-        security_groups = [aws_security_group.task.id] 
-        subnets = var.subnet_ids 
-      } 
+        security_groups  = [aws_security_group.task.id]
+        subnets          = var.subnet_ids
+      }
     }
   }
 }
@@ -41,6 +41,11 @@ resource "aws_ecr_repository" "task" {
   }
 }
 
+
+locals {
+  ecr_image    = var.env == "dev" ? join("", aws_ecr_repository.task.*.repository_url) : var.ecr_url
+  docker_image = var.docker_image != "" ? var.docker_image : "${local.ecr_image}:latest"
+}
 
 resource "aws_ecr_repository_policy" "task" {
   repository = join("", aws_ecr_repository.task.*.name)
@@ -59,11 +64,11 @@ resource "aws_ecs_task_definition" "task" {
   task_role_arn            = aws_iam_role.task.arn
 
   container_definitions = jsonencode([{
-    name   = "${var.project}_container_${var.task}_${var.env}"
-    cpu    = 256
-    memory = 512
-    image  = "${var.env == "dev" ? join("", aws_ecr_repository.task.*.repository_url) : var.ecr_url}:latest"
-    secrets     = local.task_env_ssm
+    name    = "${var.project}_container_${var.task}_${var.env}"
+    cpu     = 256
+    memory  = 512
+    image   = docker_image
+    secrets = local.task_env_ssm
 
     essential = true
 

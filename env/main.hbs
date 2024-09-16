@@ -101,7 +101,7 @@ module "workloads" {
   github_oidc_enabled = {{workload.enable_github_oidc}}
   github_subjects = {{{array workload.github_oidc_subjects}}}
   {{#if workload.backend_container_command}}
-  backend_container_command = "{{backend_container_command}}"
+  backend_container_command = {{array backend_container_command}}
   {{/if}}
   {{#if postgres.enabled}}
   pgadmin_enabled = {{workload.install_pg_admin}}
@@ -137,6 +137,12 @@ module "task" {
   project = "{{@root.project}}"
   env = "{{@root.env}}"
   task = "{{name}}"
+  {{#if docker_image}}
+  docker_image = "{{docker_image}}"
+  {{/if}}
+  {{#if docker_command}}
+  docker_command = {{array docker_command}}
+  {{/if}}
   # https://docs.aws.amazon.com/scheduler/latest/UserGuide/schedule-types.html?icmpid=docs_console_unmapped#rate-based
   schedule = "{{schedule}}"
   subnet_ids = data.aws_subnets.all.ids
@@ -157,6 +163,12 @@ module "event_bus_task" {
   sources =  {{array sources}}
   rule_name = "{{rule_name}}"
   task = "{{name}}"
+  {{#if docker_image}}
+  docker_image = "{{docker_image}}"
+  {{/if}}
+  {{#if docker_command}}
+  docker_command = {{array docker_command}}
+  {{/if}}
   subnet_ids = data.aws_subnets.all.ids
   vpc_id     = data.aws_vpc.default.id
   cluster = module.workloads.ecr_cluster.arn

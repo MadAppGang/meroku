@@ -40,6 +40,18 @@ func NewEventProcessorTaskView(t EventProcessorTask) *eventProcessorTaskView {
 					title:       "Sources to catch",
 					description: "Optional filter by sources of messages.",
 				}, sliceValue{t.Sources}),
+				newTextFieldModel(baseInputModel{
+					title:       "External Docker image",
+					placeholder: "madappgang/aooth",
+					description: "Optional Docker hub image name, by default we use private ECR registry for task",
+				}, stringValue{t.ExternalDockerImage}),
+				newTextFieldModel(baseInputModel{
+					title:             "custom docker container command",
+					placeholder:       "[\"aooth\", \"--flag\"]",
+					description:       "Optional provide container command",
+					validator:         regexp.MustCompile(`(^\s*$|\[(\s*"[^"]*"\s*,?\s*)*\])`),
+					validationMessage: "Container command is JSON  array of strings format",
+				}, stringValue{t.ContainerCommand}),
 			},
 		},
 		t: t,
@@ -56,6 +68,8 @@ func (m *eventProcessorTaskView) env(e Env) Env {
 	t.RuleName = m.inputs[1].value().String()
 	t.DetailTypes = m.inputs[2].value().Slice()
 	t.Sources = m.inputs[3].value().Slice()
+	t.ExternalDockerImage = m.inputs[4].value().String()
+	t.ContainerCommand = m.inputs[5].value().String()
 	e.EventProcessorTasks = append(e.EventProcessorTasks, t)
 	return e
 }

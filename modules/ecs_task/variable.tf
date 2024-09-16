@@ -21,6 +21,16 @@ variable "ecr_url" {
   default = ""
 }
 
+variable "docker_image" {
+  type    = string
+  default = ""
+}
+
+variable "docker_command" {
+  type    = string
+  default = ""
+}
+
 # https://docs.aws.amazon.com/scheduler/latest/UserGuide/schedule-types.html?icmpid=docs_console_unmapped#rate-based
 variable "schedule" {
   type    = string
@@ -71,9 +81,9 @@ data "aws_iam_policy_document" "default_ecr_policy" {
   statement {
     sid = "External read ECR policy"
     principals {
-      type = "*"
+      type        = "*"
       identifiers = ["*"]
-    } 
+    }
     actions = [
       "ecr:BatchCheckLayerAvailability",
       "ecr:BatchGetImage",
@@ -84,7 +94,7 @@ data "aws_iam_policy_document" "default_ecr_policy" {
     condition {
       test     = "StringEquals"
       variable = "aws:PrincipalOrgID"
-      values = [ data.aws_organizations_organization.org.id ]
+      values   = [data.aws_organizations_organization.org.id]
     }
   }
 }
