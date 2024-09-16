@@ -27,8 +27,8 @@ variable "docker_image" {
 }
 
 variable "container_command" {
-  type    = string
-  default = ""
+  type    = list(string)
+  default = []
 }
 
 # https://docs.aws.amazon.com/scheduler/latest/UserGuide/schedule-types.html?icmpid=docs_console_unmapped#rate-based
