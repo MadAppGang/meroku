@@ -149,7 +149,7 @@ module "task" {
   docker_image = "{{docker_image}}"
   {{/if}}
   {{#if container_command}}
-  container_command = {{array container_command}}
+  container_command = {{{ container_command }}}
   {{/if}}
   # https://docs.aws.amazon.com/scheduler/latest/UserGuide/schedule-types.html?icmpid=docs_console_unmapped#rate-based
   schedule = "{{schedule}}"
@@ -175,7 +175,7 @@ module "event_bus_task" {
   docker_image = "{{docker_image}}"
   {{/if}}
   {{#if container_command}}
-  container_command = {{array container_command}}
+  container_command = {{{ container_command }}}
   {{/if}}
   subnet_ids = data.aws_subnets.all.ids
   vpc_id     = data.aws_vpc.default.id
