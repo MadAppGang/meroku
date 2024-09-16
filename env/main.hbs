@@ -97,7 +97,7 @@ module "workloads" {
   {{#if domain.enabled}}{{#if domain.use_existent}}
   certificate_arn = data.aws_acm_certificate.domain.arn
   root_certificate_arn = data.aws_acm_certificate.root_domain.arn
-  domain_zone_id = aws_route53_zone.domain.zone_id
+  domain_zone_id = data.aws_route53_zone.domain.zone_id
     {{else}}
   certificate_arn = module.domain.certificate_arn
   root_certificate_arn = module.domain.root_certificate_arn
