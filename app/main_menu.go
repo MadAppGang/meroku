@@ -27,6 +27,7 @@ func mainMenu() string {
 	})
 	options = append(options, huh.NewOption("Create new environment", "create"))
 	options = append(options, huh.NewOption("Deploy environment", "deploy"))
+	options = append(options, huh.NewOption("Check for updates", "update"))
 	options = append(options, huh.NewOption("Exit", "exit"))
 
 	action := ""
@@ -46,6 +47,13 @@ func mainMenu() string {
 		return createEnvMenu()
 	case action == "deploy":
 		deployMenu()
+		return mainMenu()
+	case action == "update":
+		err = updateInfrastructure()
+		if err != nil {
+			fmt.Println("Error updating infrastructure:", err)
+			os.Exit(1)
+		}
 		return mainMenu()
 	case action == "exit":
 		os.Exit(0)
@@ -104,6 +112,17 @@ func getProjectName() string {
 	return name
 }
 
+func initProject() {
+	os.RemoveAll("./infrastructure/")
+	cmd := exec.Command("git", "clone", "--depth=1", "--branch=main", "https://github.com/MadAppGang/infrastructure.git", "./infrastructure")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		fmt.Println("Error cloning infrastructure:", output)
+		os.Exit(1)
+	}
+	os.RemoveAll("./infrastructure/.git")
+}
+
 func initProjectIfNeeded() {
 	if _, err := os.Stat("infrastructure"); os.IsNotExist(err) {
 		answer := false
@@ -118,16 +137,8 @@ func initProjectIfNeeded() {
 			os.Exit(1)
 		}
 
-		action := func() {
-			cmd := exec.Command("git", "clone", "--depth=1", "--branch=main", "https://github.com/MadAppGang/infrastructure.git", "./infrastructure")
-			output, err := cmd.CombinedOutput()
-			if err != nil {
-				fmt.Println("Error cloning infrastructure:", output)
-				os.Exit(1)
-			}
-			os.RemoveAll("./infrastructure/.git")
-		}
+		initProject()
 
-		_ = spinner.New().Title("Initializing the project...").Action(action).Run()
+		_ = spinner.New().Title("Initializing the project...").Action(initProject).Run()
 	}
 }
