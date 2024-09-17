@@ -41,7 +41,6 @@ resource "aws_ecr_repository" "task" {
   }
 }
 
-
 locals {
   ecr_image    = var.env == "dev" ? join("", aws_ecr_repository.task.*.repository_url) : var.ecr_url
   docker_image = var.docker_image != "" ? var.docker_image : "${local.ecr_image}:latest"
@@ -52,7 +51,6 @@ resource "aws_ecr_repository_policy" "task" {
   policy     = data.aws_iam_policy_document.default_ecr_policy.json
   count      = var.env == "dev" ? 1 : 0
 }
-
 
 resource "aws_ecs_task_definition" "task" {
   network_mode             = "awsvpc"
@@ -65,11 +63,15 @@ resource "aws_ecs_task_definition" "task" {
 
   container_definitions = jsonencode([merge(
     {
-      name      = "${var.project}_container_${var.task}_${var.env}"
-      cpu       = 256
-      memory    = 512
-      image     = local.docker_image
-      secrets   = local.task_env_ssm
+      name    = "${var.project}_container_${var.task}_${var.env}"
+      cpu     = 256
+      memory  = 512
+      image   = local.docker_image
+      secrets = local.task_env_ssm
+      environment = [for param in local.task_env_ssm : {
+        name  = param.name
+        value = "$${${param.name}}"
+      }]
       essential = true
 
       logConfiguration = {
@@ -100,5 +102,3 @@ resource "aws_cloudwatch_log_group" "task" {
     env       = var.env
   }
 }
-
-
