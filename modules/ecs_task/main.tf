@@ -63,15 +63,11 @@ resource "aws_ecs_task_definition" "task" {
 
   container_definitions = jsonencode([merge(
     {
-      name    = "${var.project}_container_${var.task}_${var.env}"
-      cpu     = 256
-      memory  = 512
-      image   = local.docker_image
-      secrets = local.task_env_ssm
-      environment = [for param in local.task_env_ssm : {
-        name  = param.name
-        value = "$${${param.name}}"
-      }]
+      name      = "${var.project}_container_${var.task}_${var.env}"
+      cpu       = 256
+      memory    = 512
+      image     = local.docker_image
+      secrets   = local.task_env_ssm
       essential = true
 
       logConfiguration = {
