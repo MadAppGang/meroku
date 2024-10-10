@@ -52,6 +52,10 @@ func NewEventProcessorTaskView(t EventProcessorTask) *eventProcessorTaskView {
 					validator:         regexp.MustCompile(`(^\s*$|\[(\s*"[^"]*"\s*,?\s*)*\])`),
 					validationMessage: "Container command is JSON  array of strings format",
 				}, stringValue{t.ContainerCommand}),
+				newBoolFieldModel(baseInputModel{
+					title:       "Allow public access",
+					description: "Allow your task to access public internet, it you are using docker image from dockerhub, this should be true.",
+				}, boolValue{t.AllowPublicAccess}),
 			},
 		},
 		t: t,
@@ -70,6 +74,7 @@ func (m *eventProcessorTaskView) env(e Env) Env {
 	t.Sources = m.inputs[3].value().Slice()
 	t.ExternalDockerImage = m.inputs[4].value().String()
 	t.ContainerCommand = m.inputs[5].value().String()
+	t.AllowPublicAccess = m.inputs[6].value().Bool()
 	e.EventProcessorTasks = append(e.EventProcessorTasks, t)
 	return e
 }

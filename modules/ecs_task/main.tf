@@ -16,7 +16,7 @@ resource "aws_scheduler_schedule" "scheduler" {
 
   target {
     arn      = var.cluster
-    role_arn = aws_iam_role.task_execution.arn
+    role_arn = aws_iam_role.scheduler_role.arn
 
     ecs_parameters {
       task_definition_arn    = aws_ecs_task_definition.task.arn
@@ -24,7 +24,7 @@ resource "aws_scheduler_schedule" "scheduler" {
       launch_type            = "FARGATE"
 
       network_configuration {
-        assign_public_ip = false
+        assign_public_ip = var.allow_public_access
         security_groups  = [aws_security_group.task.id]
         subnets          = var.subnet_ids
       }
@@ -41,7 +41,6 @@ resource "aws_ecr_repository" "task" {
   }
 }
 
-
 locals {
   ecr_image    = var.env == "dev" ? join("", aws_ecr_repository.task.*.repository_url) : var.ecr_url
   docker_image = var.docker_image != "" ? var.docker_image : "${local.ecr_image}:latest"
@@ -53,7 +52,6 @@ resource "aws_ecr_repository_policy" "task" {
   count      = var.env == "dev" ? 1 : 0
 }
 
-
 resource "aws_ecs_task_definition" "task" {
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
@@ -63,25 +61,26 @@ resource "aws_ecs_task_definition" "task" {
   execution_role_arn       = aws_iam_role.task_execution.arn
   task_role_arn            = aws_iam_role.task.arn
 
-  container_definitions = jsonencode([{
-    name    = "${var.project}_container_${var.task}_${var.env}"
-    cpu     = 256
-    memory  = 512
-    image   = local.docker_image
-    secrets = local.task_env_ssm
+  container_definitions = jsonencode([merge(
+    {
+      name      = "${var.project}_container_${var.task}_${var.env}"
+      cpu       = 256
+      memory    = 512
+      image     = local.docker_image
+      secrets   = local.task_env_ssm
+      essential = true
 
-    essential = true
-
-    logConfiguration = {
-      logDriver = "awslogs"
-      options = {
-        awslogs-group         = aws_cloudwatch_log_group.task.name
-        awslogs-stream-prefix = "ecs"
-        awslogs-region        = data.aws_region.current.name
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = aws_cloudwatch_log_group.task.name
+          awslogs-stream-prefix = "ecs"
+          awslogs-region        = data.aws_region.current.name
+        }
       }
-    }
-
-  }])
+    },
+    length(var.container_command) > 0 ? { command = var.container_command } : {}
+  )])
 
   tags = {
     terraform = "true"
@@ -99,5 +98,3 @@ resource "aws_cloudwatch_log_group" "task" {
     env       = var.env
   }
 }
-
-

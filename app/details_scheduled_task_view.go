@@ -60,6 +60,10 @@ func newScheduledTaskView(t ScheduledTask) *scheduledTaskView {
 					validator:         regexp.MustCompile(`(^\s*$|\[(\s*"[^"]*"\s*,?\s*)*\])`),
 					validationMessage: "Container command is JSON  array of strings format",
 				}, stringValue{t.ContainerCommand}),
+				newBoolFieldModel(baseInputModel{
+					title:       "Allow public access",
+					description: "Allow your task to access public internet, it you are using docker image from dockerhub, this should be true.",
+				}, boolValue{t.AllowPublicAccess}),
 			},
 		},
 		t: t,
@@ -76,6 +80,7 @@ func (m *scheduledTaskView) env(e Env) Env {
 	t.Schedule = m.inputs[1].value().String()
 	t.ExternalDockerImage = m.inputs[2].value().String()
 	t.ContainerCommand = m.inputs[3].value().String()
+	t.AllowPublicAccess = m.inputs[4].value().Bool()
 	e.ScheduledTasks = append(e.ScheduledTasks, t)
 	return e
 }

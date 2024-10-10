@@ -35,7 +35,6 @@ locals {
   api_domain = "api.{{env}}.{{ domain.domain_name  }}"
   {{/compare}}
 }
-
 {{#if domain.enabled}}  
   {{#if domain.create_domain_zone}}
 module "domain" {
@@ -98,9 +97,19 @@ module "workloads" {
   db_user = "{{postgres.username}}"
   db_name = "{{postgres.dbname}}"
   {{/if}}
+<<<<<<< HEAD
   {{#if domain.enabled}}{{#if domain.create_domain_zone}}
   subdomains_certificate_arn = module.domain.subdomains_certificate_arn
   api_certificate_arn = module.domain.api_certificate_arn
+=======
+  {{#if domain.enabled}}{{#if domain.use_existent}}
+  certificate_arn = data.aws_acm_certificate.domain.arn
+  root_certificate_arn = data.aws_acm_certificate.root_domain.arn
+  domain_zone_id = data.aws_route53_zone.domain.zone_id
+    {{else}}
+  certificate_arn = module.domain.certificate_arn
+  root_certificate_arn = module.domain.root_certificate_arn
+>>>>>>> refs/remotes/origin/main
   domain_zone_id = module.domain.zone_id
   {{else}}
   subdomains_certificate_arn = data.aws_acm_certificate.subdomains.arn
@@ -152,14 +161,15 @@ module "schedule_task_{{name}}" {
   {{#if docker_image}}
   docker_image = "{{docker_image}}"
   {{/if}}
-  {{#if docker_command}}
-  docker_command = {{array docker_command}}
+  {{#if container_command}}
+  container_command = {{{ container_command }}}
   {{/if}}
   # https://docs.aws.amazon.com/scheduler/latest/UserGuide/schedule-types.html?icmpid=docs_console_unmapped#rate-based
   schedule = "{{schedule}}"
   subnet_ids = data.aws_subnets.all.ids
   vpc_id     = data.aws_vpc.default.id
   cluster = module.workloads.ecr_cluster.arn
+  allow_public_access = {{allow_public_access}}
   {{#if ecr_account_id}}{{#if ecr_account_region}}
   ecr_url = "{{ecr_account_id}}.dkr.ecr.{{ecr_account_region}}.amazonaws.com/{{project}}_task_{{name}}"
   {{/if}}{{/if}}
@@ -178,12 +188,13 @@ module "event_bus_task_{{name}}" {
   {{#if docker_image}}
   docker_image = "{{docker_image}}"
   {{/if}}
-  {{#if docker_command}}
-  docker_command = {{array docker_command}}
+  {{#if container_command}}
+  container_command = {{{ container_command }}}
   {{/if}}
   subnet_ids = data.aws_subnets.all.ids
   vpc_id     = data.aws_vpc.default.id
   cluster = module.workloads.ecr_cluster.arn
+  allow_public_access = {{allow_public_access}}
   {{#if ecr_account_id}}{{#if ecr_account_region}}
   ecr_url = "{{ecr_account_id}}.dkr.ecr.{{ecr_account_region}}.amazonaws.com/{{project}}_task_{{name}}"
   {{/if}}{{/if}}

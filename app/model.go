@@ -133,8 +133,9 @@ type Ses struct {
 type ScheduledTask struct {
 	Name                string `yaml:"name"`
 	Schedule            string `yaml:"schedule"`
-	ExternalDockerImage string `yaml:"external_docker_image"`
+	ExternalDockerImage string `yaml:"docker_image"`
 	ContainerCommand    string `yaml:"container_command"`
+	AllowPublicAccess   bool   `yaml:"allow_public_access"`
 }
 
 type EventProcessorTask struct {
@@ -142,8 +143,9 @@ type EventProcessorTask struct {
 	RuleName            string   `yaml:"rule_name"`
 	DetailTypes         []string `yaml:"detail_types"`
 	Sources             []string `yaml:"sources"`
-	ExternalDockerImage string   `yaml:"external_docker_image"`
+	ExternalDockerImage string   `yaml:"docker_image"`
 	ContainerCommand    string   `yaml:"container_command"`
+	AllowPublicAccess   bool     `yaml:"allow_public_access"`
 }
 
 // create function which generate random string
