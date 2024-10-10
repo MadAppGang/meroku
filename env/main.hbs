@@ -28,25 +28,29 @@ data "aws_subnets" "all" {
 
 locals {
   {{#compare env "==" "prod"}} 
-  subdomains = "*.{{ domain.domain_name  }}"
-  api_domain = "api.{{ domain.domain_name  }}"
+  domain_zone = "api.{{ domain.domain_name }}"
+  subdomains = "*.api.{{ domain.domain_name }}"
+  api_domain = "api.{{ domain.domain_name }}"
+  email_domain = "email.api.{{ domain.domain_name }}"
   {{else}}
-  subdomains = "*.{{env}}.{{ domain.domain_name  }}"
-  api_domain = "api.{{env}}.{{ domain.domain_name  }}"
+  domain_zone = "{{env}}.{{ domain.domain_name }}"
+  subdomains = "*.{{env}}.{{ domain.domain_name }}"
+  api_domain = "api.{{env}}.{{ domain.domain_name }}"
+  email_domain = "email.{{env}}.{{ domain.domain_name }}"
   {{/compare}}
 }
 {{#if domain.enabled}}  
   {{#if domain.create_domain_zone}}
 module "domain" {
   source = "{{ modules }}/domain"
-  domain = "{{ domain.domain_name  }}"
+  domain_zone = local.domain_zone
   subdomains = local.subdomains
   api_domain = local.api_domain
   env = "{{ env }}"
 }
   {{else}}
 data "aws_route53_zone" "domain" {
-  name  = "{{ domain.domain_name  }}"
+  name  = local.domain_zone
 }
 data "aws_acm_certificate" "subdomains" {
   domain      = local.subdomains 
@@ -97,19 +101,9 @@ module "workloads" {
   db_user = "{{postgres.username}}"
   db_name = "{{postgres.dbname}}"
   {{/if}}
-<<<<<<< HEAD
   {{#if domain.enabled}}{{#if domain.create_domain_zone}}
   subdomains_certificate_arn = module.domain.subdomains_certificate_arn
   api_certificate_arn = module.domain.api_certificate_arn
-=======
-  {{#if domain.enabled}}{{#if domain.use_existent}}
-  certificate_arn = data.aws_acm_certificate.domain.arn
-  root_certificate_arn = data.aws_acm_certificate.root_domain.arn
-  domain_zone_id = data.aws_route53_zone.domain.zone_id
-    {{else}}
-  certificate_arn = module.domain.certificate_arn
-  root_certificate_arn = module.domain.root_certificate_arn
->>>>>>> refs/remotes/origin/main
   domain_zone_id = module.domain.zone_id
   {{else}}
   subdomains_certificate_arn = data.aws_acm_certificate.subdomains.arn
@@ -208,7 +202,7 @@ module "ses" {
   {{#if ses.domain_name}}
   domain = "{{ses.domain_name}}"
   {{else}}
-  domain = local.api_domain
+  domain = local.email_domain
   {{/if}}
   test_emails = {{{array ses.test_emails}}}
   {{#if domain.enabled}}

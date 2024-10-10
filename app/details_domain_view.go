@@ -25,7 +25,7 @@ func newBackendDomainView(e Env) *backendDomainView {
 				newBoolFieldModel(baseInputModel{
 					title:       "Create domain zone in Route 53",
 					description: "If enabled, we create domain zone in Route 53, if disabled, we use existing domain zone by it's name",
-				}, boolValue{!e.Domain.UseExistent}),
+				}, boolValue{e.Domain.CreateDomainZone}),
 				newTextFieldModel(baseInputModel{
 					title:             "Domain name",
 					placeholder:       "example.com",

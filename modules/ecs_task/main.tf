@@ -1,7 +1,7 @@
 data "aws_region" "current" {}
 
 resource "aws_scheduler_schedule_group" "group" {
-  name = "${var.project}-schedule-group-${var.env}"
+  name = "${var.project}-schedule-group-${var.env}-${var.task}"
 }
 
 resource "aws_scheduler_schedule" "scheduler" {
@@ -35,6 +35,7 @@ resource "aws_scheduler_schedule" "scheduler" {
 resource "aws_ecr_repository" "task" {
   name  = "${var.project}_task_${var.task}"
   count = var.env == "dev" ? 1 : 0
+
 
   tags = {
     terraform = "true"

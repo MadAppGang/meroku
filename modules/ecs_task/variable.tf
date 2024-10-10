@@ -31,6 +31,7 @@ variable "container_command" {
   default = []
 }
 
+
 # https://docs.aws.amazon.com/scheduler/latest/UserGuide/schedule-types.html?icmpid=docs_console_unmapped#rate-based
 variable "schedule" {
   type    = string
