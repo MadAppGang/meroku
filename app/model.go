@@ -98,9 +98,9 @@ type Workload struct {
 type SetupDomainType string
 
 type Domain struct {
-	Enabled     bool   `yaml:"enabled"`
-	UseExistent bool   `yaml:"use_existent"`
-	DomainName  string `yaml:"domain_name"`
+	Enabled          bool   `yaml:"enabled"`
+	CreateDomainZone bool   `yaml:"create_domain_zone"`
+	DomainName       string `yaml:"domain_name"`
 }
 
 type PostgresEngineVersion string
@@ -181,9 +181,9 @@ func createEnv(name, env string) Env {
 			BackendEnvVariables:        `TEST=passed`,
 		},
 		Domain: Domain{
-			Enabled:     false,
-			UseExistent: false,
-			DomainName:  "",
+			Enabled:          false,
+			CreateDomainZone: true,
+			DomainName:       "",
 		},
 		Postgres: Postgres{
 			Enabled:       false,

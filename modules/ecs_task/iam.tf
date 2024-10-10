@@ -58,6 +58,8 @@ resource "aws_iam_policy" "ssm_parameter_access" {
   policy = data.aws_iam_policy_document.ssm_parameter_access.json
 }
 
+data "aws_caller_identity" "current" {}
+
 data "aws_iam_policy_document" "ssm_parameter_access" {
   statement {
     actions   = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]

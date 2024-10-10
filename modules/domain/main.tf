@@ -1,22 +1,19 @@
-locals {
-  domain_name = "${var.env == "prod" ? "api." : format("%s.", var.env)}${var.domain}"
-}
 
 resource "aws_route53_zone" "domain" {
-  name = local.domain_name
+  name = var.domain
 }
 
 
-resource "aws_acm_certificate" "domain" {
-  domain_name       = "*.${local.domain_name}"
+resource "aws_acm_certificate" "subdomains" {
+  domain_name       = var.subdomains
   validation_method = "DNS"
   lifecycle {
     create_before_destroy = true
   }
 }
 
-resource "aws_acm_certificate" "root_domain" {
-  domain_name       = "${local.domain_name}"
+resource "aws_acm_certificate" "api_domain" {
+  domain_name       = var.api_domain
   validation_method = "DNS"
   lifecycle {
     create_before_destroy = true
@@ -24,9 +21,9 @@ resource "aws_acm_certificate" "root_domain" {
 }
 
 
-resource "aws_route53_record" "root_domain" {
+resource "aws_route53_record" "api_domain" {
   for_each = {
-    for dvo in aws_acm_certificate.root_domain.domain_validation_options : dvo.domain_name => {
+    for dvo in aws_acm_certificate.api_domain.domain_validation_options : dvo.domain_name => {
       name   = dvo.resource_record_name
       record = dvo.resource_record_value
       type   = dvo.resource_record_type
@@ -41,15 +38,15 @@ resource "aws_route53_record" "root_domain" {
   zone_id         = aws_route53_zone.domain.zone_id
 }
 
-resource "aws_acm_certificate_validation" "root_domain" {
-  certificate_arn         = aws_acm_certificate.root_domain.arn
-  validation_record_fqdns = [for record in aws_route53_record.root_domain : record.fqdn]
+resource "aws_acm_certificate_validation" "api_domain" {
+  certificate_arn         = aws_acm_certificate.api_domain.arn
+  validation_record_fqdns = [for record in aws_route53_record.api_domain : record.fqdn]
 }
 
 
-resource "aws_route53_record" "domain" {
+resource "aws_route53_record" "subdomains" {
   for_each = {
-    for dvo in aws_acm_certificate.domain.domain_validation_options : dvo.domain_name => {
+    for dvo in aws_acm_certificate.subdomains.domain_validation_options : dvo.domain_name => {
       name   = dvo.resource_record_name
       record = dvo.resource_record_value
       type   = dvo.resource_record_type
@@ -64,8 +61,8 @@ resource "aws_route53_record" "domain" {
   zone_id         = aws_route53_zone.domain.zone_id
 }
 
-resource "aws_acm_certificate_validation" "domain" {
-  certificate_arn         = aws_acm_certificate.domain.arn
-  validation_record_fqdns = [for record in aws_route53_record.domain : record.fqdn]
+resource "aws_acm_certificate_validation" "subdomains" {
+  certificate_arn         = aws_acm_certificate.subdomains.arn
+  validation_record_fqdns = [for record in aws_route53_record.subdomains : record.fqdn]
 }
 

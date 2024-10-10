@@ -36,6 +36,6 @@ locals {
     { "name" : "PG_DATABASE_NAME", "value" : var.db_name },
     { "name" : "AWS_S3_BUCKET", "value" : "${aws_s3_bucket.backend.bucket}" },
     { "name" : "AWS_REGION", "value" : data.aws_region.current.name },
-    { "name" : "URL", "value" : "https://api.${var.env == "prod" ? "app" : var.env}.${var.domain}" },
+    { "name" : "URL", "value" : var.api_domain },
   ]
 }

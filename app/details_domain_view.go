@@ -46,7 +46,7 @@ func newBackendDomainView(e Env) *backendDomainView {
 func (b *backendDomainView) env(e Env) Env {
 	d := Domain{}
 	d.Enabled = b.inputs[0].value().Bool()
-	d.UseExistent = b.inputs[1].value().Bool()
+	d.CreateDomainZone = b.inputs[1].value().Bool()
 	d.DomainName = b.inputs[2].value().String()
 	e.Domain = d
 	return e

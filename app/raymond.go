@@ -50,4 +50,33 @@ func registerCustomHelpers() {
 
 		return tfMap.String()
 	})
+
+	raymond.RegisterHelper("compare", func(lvalue, operator string, rvalue string, options *raymond.Options) interface{} {
+			result := false
+
+			switch operator {
+			case "==":
+				result = (lvalue == rvalue)
+			case "!=":
+				result = (lvalue != rvalue)
+			case ">":
+				result = (lvalue > rvalue)
+			case "<":
+				result = (lvalue < rvalue)
+			case ">=":
+				result = (lvalue >= rvalue)
+			case "<=":
+				result = (lvalue <= rvalue)
+			default:
+				// Invalid operator
+				return options.Inverse()
+			}
+
+			if result {
+				return options.Fn()
+			}
+			return options.Inverse()
+	})
+
 }
+

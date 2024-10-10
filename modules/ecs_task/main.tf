@@ -67,7 +67,7 @@ resource "aws_ecs_task_definition" "task" {
     name    = "${var.project}_container_${var.task}_${var.env}"
     cpu     = 256
     memory  = 512
-    image   = docker_image
+    image   = local.docker_image
     secrets = local.task_env_ssm
 
     essential = true
