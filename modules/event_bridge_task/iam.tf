@@ -48,6 +48,11 @@ resource "aws_iam_role_policy_attachment" "ssm_parameter_access" {
   policy_arn = aws_iam_policy.ssm_parameter_access.arn
 }
 
+resource "aws_iam_role_policy_attachment" "sqs_access" {
+  count      = var.sqs_enable == true ? 1 : 0
+  role       = aws_iam_role.task.name
+  policy_arn = var.sqs_policy_arn
+}
 resource "aws_iam_policy" "ssm_parameter_access" {
   name   = "Task${var.task}SSMAccessPolicy"
   policy = data.aws_iam_policy_document.ssm_parameter_access.json

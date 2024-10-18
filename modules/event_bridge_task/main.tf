@@ -30,7 +30,6 @@ resource "aws_security_group" "task" {
   name   = "${var.project}_${var.task}_${var.env}"
   vpc_id = var.vpc_id
 
-
   egress {
     protocol         = "-1"
     from_port        = 0

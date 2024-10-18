@@ -45,6 +45,7 @@ func menuListFromEnv(env Env) []list.Item {
 		item{title: "Postgres", desc: "Postgres database in RDS settings", detailView: newBackendPostgresView(env)},
 		item{title: "Cognito", desc: "Cognito settings", detailView: newCognitoView(env)},
 		item{title: "SES Email", desc: "Simple email service settings", detailView: newSesView(env)},
+		item{title: "SQS queue", desc: "AWS Simple queue service settings", detailView: newSqsView(env)},
 		item{title: "Scheduled ECS Task", desc: "mange list of scheduled ECS tasks", detailView: nil, isParent: true, children: scheduledTasks},
 		item{title: "Event Processor Task", desc: "mange list of event processor tasks EventBridge", detailView: nil, isParent: true, children: eventProcessorTasks},
 		item{title: "PubSub with AppSync", desc: "Create AppSync for PubSum", detailView: newAppSyncView(env)},
@@ -64,6 +65,7 @@ type Env struct {
 	Postgres            Postgres             `yaml:"postgres"`
 	Cognito             Cognito              `yaml:"cognito"`
 	Ses                 Ses                  `yaml:"ses"`
+	Sqs                 Sqs                  `yaml:"sqs"`
 	ScheduledTasks      []ScheduledTask      `yaml:"scheduled_tasks"`
 	EventProcessorTasks []EventProcessorTask `yaml:"event_processor_tasks"`
 	AppSyncPubSub       AppSync              `yaml:"pubsub_appsync"`
@@ -128,6 +130,11 @@ type Ses struct {
 	Enabled    bool     `yaml:"enabled"`
 	DomainName string   `yaml:"domain_name"`
 	TestEmails []string `yaml:"test_emails"`
+}
+
+type Sqs struct {
+	Enabled bool   `yaml:"enabled"`
+	Name    string `yaml:"name"`
 }
 
 type ScheduledTask struct {

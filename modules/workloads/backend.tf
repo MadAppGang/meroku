@@ -258,3 +258,10 @@ data "aws_iam_policy_document" "ssm_parameter_access" {
     resources = ["arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/${var.env}/${var.project}/backend/*"]
   }
 }
+
+
+resource "aws_iam_role_policy_attachment" "sqs_access" {
+  count      = var.sqs_enable == true ? 1 : 0
+  role       = aws_iam_role.backend_task_execution.name
+  policy_arn = var.sqs_policy_arn
+}

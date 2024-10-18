@@ -59,6 +59,18 @@ variable "rule_name" {
   type = string
 }
 
+variable "sqs_queue_url" {
+  default = ""
+}
+
+variable "sqs_policy_arn" {
+  default = ""
+}
+
+variable "sqs_enable" { 
+  default = false
+}
+
 data "aws_iam_policy_document" "default_ecr_policy" {
   statement {
     sid = "Default ECR policy"
@@ -108,18 +120,3 @@ data "aws_iam_policy_document" "default_ecr_policy" {
     }
   }
 }
-
-data "aws_ssm_parameters_by_path" "task" {
-  path      = "/${var.env}/${var.project}/task/${var.task}"
-  recursive = true
-}
-
-locals {
-  task_env_ssm = [
-    for i in range(length(data.aws_ssm_parameters_by_path.task.names)) : {
-      name      = reverse(split("/", data.aws_ssm_parameters_by_path.task.names[i]))[0]
-      valueFrom = data.aws_ssm_parameters_by_path.task.names[i]
-    }
-  ]
-}
-

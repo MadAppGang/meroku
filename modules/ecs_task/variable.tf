@@ -55,6 +55,18 @@ variable "allow_public_access" {
   default = false
 }
 
+variable "sqs_policy_arn" {  
+  default = ""
+}
+
+variable "sqs_queue_url" {
+  default =  ""
+}
+
+variable "sqs_enable" { 
+  default = false
+}
+
 data "aws_iam_policy_document" "default_ecr_policy" {
   statement {
     sid = "Default ECR policy"

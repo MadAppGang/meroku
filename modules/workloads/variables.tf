@@ -135,6 +135,18 @@ variable "setup_FCM_SNS" {
   default = false
 }
 
+variable "sqs_queue_url" {
+  default =  ""
+}
+
+variable "sqs_policy_arn" {
+  default =  ""
+}
+
+variable "sqs_enable" { 
+  default = false
+}
+
 variable "ecr_lifecycle_policy" {
   type    = string
   default = <<EOF

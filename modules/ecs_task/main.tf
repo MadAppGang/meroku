@@ -70,6 +70,7 @@ resource "aws_ecs_task_definition" "task" {
       image     = local.docker_image
       secrets   = local.task_env_ssm
       essential = true
+      Environment = local.environment_variables
 
       logConfiguration = {
         logDriver = "awslogs"

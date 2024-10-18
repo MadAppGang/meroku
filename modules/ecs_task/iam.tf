@@ -81,3 +81,10 @@ resource "aws_iam_role_policy_attachment" "scheduler_ecs_full_access" {
   role       = aws_iam_role.scheduler_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonECS_FullAccess"
 }
+
+
+resource "aws_iam_role_policy_attachment" "sqs_access" {
+  count      = var.sqs_enable == true ? 1 : 0
+  role       = aws_iam_role.task.name
+  policy_arn = var.sqs_policy_arn
+}

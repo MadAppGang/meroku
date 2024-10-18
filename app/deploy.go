@@ -83,6 +83,10 @@ func applyTemplate(env string) {
 	}
 
 	envMap, err := loadEnvToMap(env + ".yaml")
+	if err != nil {
+		fmt.Printf("error loading environment: %v", err)
+		os.Exit(1)
+	}
 	envMap["modules"] = "../../infrastructure/modules"
 	envMap["custom_modules"] = "../../custom"
 	if err != nil {
