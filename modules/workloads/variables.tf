@@ -155,6 +155,14 @@ variable "env_files_s3" {
   description = "List of S3 environment files to load"
   default     = []
 }
+locals {
+    env_files_s3 = [
+      for file in var.env_files_s3 : {
+        bucket = "${var.project}-${file.bucket}-${var.env}"
+        key = file.key
+      }
+    ]
+}
 
 variable "ecr_lifecycle_policy" {
   type    = string

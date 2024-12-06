@@ -82,7 +82,7 @@ resource "aws_ecs_task_definition" "backend" {
       secrets     = local.backend_env_ssm
       environment = concat(local.backend_env, var.backend_env)
       environmentFiles = [
-        for file in var.env_files_s3 : {
+        for file in local.env_files_s3 : {
           value = "arn:aws:s3:::${file.bucket}/${file.key}"
           type  = "s3"
         }
@@ -120,8 +120,6 @@ resource "aws_ecs_task_definition" "backend" {
 }
 
 
-
-
 resource "aws_security_group" "backend" {
   name   = "${var.project}_backend_${var.env}"
   vpc_id = var.vpc_id
@@ -140,6 +138,22 @@ resource "aws_security_group" "backend" {
     to_port          = 0
     cidr_blocks      = ["0.0.0.0/0"]
     ipv6_cidr_blocks = ["::/0"]
+  }
+
+  dynamic "egress" {
+    for_each = { for mount in var.backend_efs_mounts : mount.efs_name => var.available_efs[mount.efs_name].security_group }
+    content {
+      protocol        = "tcp"
+      from_port       = 2049
+      to_port         = 2049
+      security_groups = [egress.value]
+      description     = "Allow EFS mount access for ${egress.key}"
+    }
+  }
+
+  tags = {
+    terraform = "true"
+    env       = var.env
   }
 }
 
@@ -297,10 +311,10 @@ resource "aws_iam_role_policy_attachment" "sqs_access" {
 
 # Modify the IAM policy to allow access to multiple files
 resource "aws_iam_role_policy" "backend_s3_env" {
-  count = length(var.env_files_s3) > 0 ? 1 : 0
+  count = length(local.env_files_s3) > 0 ? 1 : 0
   
   name = "${local.backend_name}-s3-env"
-  role = aws_iam_role.backend_task_execution.id
+  role = aws_iam_role.backend_task_execution.name
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -308,13 +322,36 @@ resource "aws_iam_role_policy" "backend_s3_env" {
       {
         Effect = "Allow"
         Action = [
-          "s3:GetObject"
+          "s3:*"
         ]
         Resource = [
-          for file in var.env_files_s3 :
+          for file in local.env_files_s3 :
           "arn:aws:s3:::${file.bucket}/${file.key}"
         ]
       }
     ]
   })
+}
+
+# resource "aws_iam_role_policy_attachment" "backend_task_s3_env" {
+#   count      = length(local.env_files_s3) > 0 ? 1 : 0
+#   role       = aws_iam_role.backend_task_execution.name
+#   policy_arn = aws_iam_role_policy.backend_s3_env[0].id
+# }
+
+
+// create empty files if they don't exist
+resource "null_resource" "create_env_files" {
+  for_each = { for file in local.env_files_s3 : "${file.bucket}-${file.key}" => file }
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      echo "Checking if file exists: ${each.value.bucket}/${each.value.key}"
+      touch empty.tmp
+      aws s3api head-object --bucket ${each.value.bucket} --key ${each.value.key} || \
+      aws s3api put-object --bucket ${each.value.bucket} --key ${each.value.key} --body empty.tmp
+      rm empty.tmp
+    EOT
+  }
+
 }

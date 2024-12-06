@@ -141,7 +141,7 @@ resource "aws_cloudwatch_event_target" "lambda_target" {
 resource "aws_lambda_permission" "allow_eventbridge" {
   for_each = { for file in var.env_files_s3 : "${file.bucket}-${file.key}" => file }
 
-  statement_id  = "AllowExecutionFromEventBridge-${each.key}"
+  statement_id  = "AllowExecutionFromEventBridge_${replace(each.key, "/[^a-zA-Z0-9_-]/", "_")}"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.lambda_deploy.function_name
   principal     = "events.amazonaws.com"

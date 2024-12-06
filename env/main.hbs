@@ -97,6 +97,14 @@ module "efs" {
   efs_configs = {{{array efs}}}
 }
 {{/compare}}
+{{#compare (len buckets) ">" 0}}
+module "s3" {
+  source = "{{modules}}/s3"
+  project = "{{project}}"
+  env = "{{env}}"
+  buckets = {{{array buckets}}}
+}
+{{/compare}}
 
 
 module "workloads" {
@@ -171,6 +179,9 @@ module "workloads" {
     },
     {{/each}}
   ]
+  {{/compare}}
+  {{#compare (len workload.env_files_s3) ">" 0}}
+  env_files_s3 = {{{array workload.env_files_s3}}} 
   {{/compare}}
 }
 {{#if cognito.enabled}} 
