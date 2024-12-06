@@ -19,6 +19,15 @@ resource "aws_ecs_service" "backend" {
     assign_public_ip = true
   }
 
+  dynamic "load_balancer" {
+    for_each = var.enable_alb ? [1] : []
+    content {
+      target_group_arn = aws_lb_target_group.backend[0].arn
+      container_name   = local.backend_name
+      container_port   = var.backend_image_port
+    }
+  }
+
   service_connect_configuration {
     enabled   = true
     namespace = aws_service_discovery_private_dns_namespace.local.name

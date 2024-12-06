@@ -112,7 +112,7 @@ resource "aws_lambda_permission" "ecr_event_call_deploy_lambda" {
 
 # Add S3 bucket notification
 resource "aws_cloudwatch_event_rule" "s3_env_file_change_rule" {
-  for_each = { for file in var.env_files_s3 : "${file.bucket}-${file.key}" => file }
+  for_each = { for file in local.env_files_s3 : "${file.bucket}-${file.key}" => file }
 
   name        = "s3-env-file-change-rule-${each.key}"
   description = "Event rule for S3 env file changes for ${each.value.bucket}/${each.value.key}"
@@ -131,7 +131,7 @@ resource "aws_cloudwatch_event_rule" "s3_env_file_change_rule" {
 }
 
 resource "aws_cloudwatch_event_target" "lambda_target" {
-  for_each = { for file in var.env_files_s3 : "${file.bucket}-${file.key}" => file }
+  for_each = { for file in local.env_files_s3 : "${file.bucket}-${file.key}" => file }
 
   rule      = aws_cloudwatch_event_rule.s3_env_file_change_rule[each.key].name
   target_id = aws_lambda_function.lambda_deploy.function_name
@@ -139,7 +139,7 @@ resource "aws_cloudwatch_event_target" "lambda_target" {
 }
 
 resource "aws_lambda_permission" "allow_eventbridge" {
-  for_each = { for file in var.env_files_s3 : "${file.bucket}-${file.key}" => file }
+  for_each = { for file in local.env_files_s3 : "${file.bucket}-${file.key}" => file }
 
   statement_id  = "AllowExecutionFromEventBridge_${replace(each.key, "/[^a-zA-Z0-9_-]/", "_")}"
   action        = "lambda:InvokeFunction"
@@ -154,7 +154,7 @@ resource "aws_lambda_permission" "allow_eventbridge" {
 locals {
   service_config = jsonencode({
     "${var.project}" = [
-      for file in var.env_files_s3 : {
+      for file in local.env_files_s3 : {
         bucket = file.bucket
         key    = file.key
       }

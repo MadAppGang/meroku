@@ -19,8 +19,6 @@ variable "backend_bucket_public" {
   default = true
 }
 
-
-
 variable "lambda_path" {
   type    = string
   default = "../../infrastructure/modules/workloads/ci_lambda/bootstrap"
@@ -108,6 +106,9 @@ variable "api_domain" {
   type    = string
 }
 
+variable "domain" {
+  default = ""
+}
 
 variable "domain_zone_id" {
   type    = string
@@ -220,3 +221,22 @@ variable "backend_efs_mounts" {
   }))
   default = []
 }
+
+
+
+// domain name for expose backend with ALB
+variable "backend_alb_domain_name" {
+  default = ""
+}
+
+variable "alb_arn" {
+  default = ""
+}
+
+variable "enable_alb" {
+  description = "Enable ALB"
+  type        = bool
+  default     = false
+}
+
+

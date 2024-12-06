@@ -105,14 +105,22 @@ module "s3" {
   buckets = {{{array buckets}}}
 }
 {{/compare}}
-
-
+{{#if alb.enabled}}
+module "alb" {
+  source = "{{modules}}/alb"
+  project = "{{project}}"
+  env = "{{env}}"
+  vpc_id = data.aws_vpc.default.id
+  private_subnets = data.aws_subnets.all.ids
+}
+{{/if}}
 module "workloads" {
   source = "{{ modules }}/workloads"
   project    = "{{project}}"
   env        = "{{env}}" 
   private_dns_name = "{{project}}_{{env}}.private"
   api_domain = local.api_domain
+  domain = local.domain_zone
   vpc_id     = data.aws_vpc.default.id
   subnet_ids = data.aws_subnets.all.ids
   lambda_path = "{{modules}}/workloads/ci_lambda/bootstrap"
@@ -183,6 +191,11 @@ module "workloads" {
   {{#compare (len workload.env_files_s3) ">" 0}}
   env_files_s3 = {{{array workload.env_files_s3}}} 
   {{/compare}}
+  {{#if alb.enabled}}{{#if workload.backend_alb_domain_name}}
+  backend_alb_domain_name = "{{workload.backend_alb_domain_name}}"
+  alb_arn = module.alb.alb_arn
+  enable_alb = true
+  {{/if}}{{/if}}
 }
 {{#if cognito.enabled}} 
 module "cognito" {
