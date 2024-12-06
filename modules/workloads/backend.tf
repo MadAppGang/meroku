@@ -55,6 +55,22 @@ resource "aws_ecs_task_definition" "backend" {
   execution_role_arn       = aws_iam_role.backend_task_execution.arn
   task_role_arn            = aws_iam_role.backend_task.arn
 
+  dynamic "volume" {
+    for_each = var.backend_efs_mounts
+    content {
+      name = volume.value.efs_name
+      efs_volume_configuration {
+        file_system_id = var.available_efs[volume.value.efs_name].id
+        root_directory = var.available_efs[volume.value.efs_name].root_directory
+        transit_encryption = "ENABLED"
+        transit_encryption_port = 2049
+        authorization_config {
+          access_point_id = var.available_efs[volume.value.efs_name].access_point_id
+        }
+      }
+    }
+  }
+
   container_definitions = jsonencode(concat(
     local.xray_container,
     [{
@@ -65,7 +81,20 @@ resource "aws_ecs_task_definition" "backend" {
       image       = local.docker_image
       secrets     = local.backend_env_ssm
       environment = concat(local.backend_env, var.backend_env)
+      environmentFiles = [
+        for file in var.env_files_s3 : {
+          value = "arn:aws:s3:::${file.bucket}/${file.key}"
+          type  = "s3"
+        }
+      ]
       essential   = true
+      mountPoints = [
+        for mount in var.backend_efs_mounts : {
+          sourceVolume  = mount.efs_name
+          containerPath = mount.mount_point
+          readOnly      = mount.read_only
+        }
+      ]
 
       logConfiguration = {
         logDriver = "awslogs"
@@ -264,4 +293,28 @@ resource "aws_iam_role_policy_attachment" "sqs_access" {
   count      = var.sqs_enable == true ? 1 : 0
   role       = aws_iam_role.backend_task_execution.name
   policy_arn = var.sqs_policy_arn
+}
+
+# Modify the IAM policy to allow access to multiple files
+resource "aws_iam_role_policy" "backend_s3_env" {
+  count = length(var.env_files_s3) > 0 ? 1 : 0
+  
+  name = "${local.backend_name}-s3-env"
+  role = aws_iam_role.backend_task_execution.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject"
+        ]
+        Resource = [
+          for file in var.env_files_s3 :
+          "arn:aws:s3:::${file.bucket}/${file.key}"
+        ]
+      }
+    ]
+  })
 }

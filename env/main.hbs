@@ -87,6 +87,18 @@ module "sqs" {
 }
 {{/if}}
 
+{{#compare (len efs) ">" 0}}
+module "efs" {
+  source = "{{modules}}/efs"
+  project = "{{project}}"
+  env = "{{env}}"
+  vpc_id = data.aws_vpc.default.id
+  private_subnets = data.aws_subnets.all.ids
+  efs_configs = {{{array efs}}}
+}
+{{/compare}}
+
+
 module "workloads" {
   source = "{{ modules }}/workloads"
   project    = "{{project}}"
@@ -139,6 +151,27 @@ module "workloads" {
   sqs_policy_arn = module.sqs.sqs_access_policy_arn
   sqs_enable = true
   {{/if}}
+  {{#compare (len workload.efs) ">" 0}}
+  available_efs = { 
+    {{#each efs}}
+    {{name}} = {
+      id = module.efs.efs_configs.{{name}}.id
+      access_point_id = module.efs.efs_configs.{{name}}.access_point_id
+      dns_name = module.efs.efs_configs.{{name}}.dns_name
+      security_group = module.efs.efs_configs.{{name}}.security_group
+      root_directory = module.efs.efs_configs.{{name}}.path
+    }
+    {{/each}}
+  }
+  backend_efs_mounts = [
+    {{#each workload.efs}}
+    {
+      efs_name = "{{name}}"
+      mount_point = "{{mount_point}}"
+    },
+    {{/each}}
+  ]
+  {{/compare}}
 }
 {{#if cognito.enabled}} 
 module "cognito" {

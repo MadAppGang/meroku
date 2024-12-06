@@ -44,6 +44,7 @@ resource "aws_lambda_function" "lambda_deploy" {
       PROJECT_NAME      = var.project
       SLACK_WEBHOOK_URL = var.slack_deployment_webhook
       PROJECT_ENV       = var.env
+      SERVICE_CONFIG = local.service_config
     }
   }
 }
@@ -73,7 +74,7 @@ resource "aws_iam_role_policy_attachment" "lambda_ecs" {
   policy_arn = aws_iam_policy.lambda_ecs.arn
 }
 
-# Eventbus For ECR
+# EventBus For ECR
 resource "aws_cloudwatch_event_rule" "ecr_event" {
   name        = "ecr_events_cicd"
   description = "Emmit ECR event on new image push"
@@ -82,15 +83,25 @@ resource "aws_cloudwatch_event_rule" "ecr_event" {
       "aws.ecr",
       "aws.ecs",
       "aws.ssm",
-      "action.production"
+      "action.production",
+      "aws.s3"
     ]
     detail-type = [
       "ECR Image Action",
       "ECS Deployment State Change",
       "ECS Service Action",
       "Parameter Store Change",
-      "DEPLOY"
-    ]
+      "DEPLOY",
+      "AWS API Call via CloudTrail"
+    ],
+    detail = {
+      eventSource = ["s3.amazonaws.com"]
+      eventName = [
+        "PutObject",
+        "DeleteObject",
+        "CompleteMultipartUpload"
+      ]
+    }
   })
 }
 
@@ -109,3 +120,44 @@ resource "aws_lambda_permission" "ecr_event_call_deploy_lambda" {
   source_arn    = aws_cloudwatch_event_rule.ecr_event.arn
 }
 
+# Add S3 bucket notification
+resource "aws_s3_bucket_notification" "lambda_env_file_notification" {
+  for_each = { for file in var.env_files_s3 : "${file.bucket}-${file.key}" => file }
+  
+  bucket = each.value.bucket
+
+  lambda_function {
+    lambda_function_arn = aws_lambda_function.lambda_deploy.arn
+    events = [
+      "s3:ObjectCreated:*",
+      "s3:ObjectRemove:*",
+      "s3:ObjectChanged:Put"
+    ]
+    filter_prefix       = each.value.key
+  }
+}
+
+# Add Lambda permission for S3
+resource "aws_lambda_permission" "s3_env_file_invoke" {
+  for_each = { for file in var.env_files_s3 : "${file.bucket}-${file.key}" => file }
+
+  statement_id  = "AllowS3Invoke-${each.key}"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.lambda_deploy.function_name
+  principal     = "s3.amazonaws.com"
+  source_arn    = "arn:aws:s3:::${each.value.bucket}"
+}
+
+
+// pass a list of services and env files to the lambda
+// to know which service to restart on file change
+locals {
+  service_config = jsonencode({
+    "${var.project}" = [
+      for file in var.env_files_s3 : {
+        bucket = file.bucket
+        key    = file.key
+      }
+    ]
+  })
+}

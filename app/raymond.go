@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/aymerick/raymond"
@@ -52,31 +53,46 @@ func registerCustomHelpers() {
 	})
 
 	raymond.RegisterHelper("compare", func(lvalue, operator string, rvalue string, options *raymond.Options) interface{} {
-			result := false
+		result := false
 
-			switch operator {
-			case "==":
-				result = (lvalue == rvalue)
-			case "!=":
-				result = (lvalue != rvalue)
-			case ">":
-				result = (lvalue > rvalue)
-			case "<":
-				result = (lvalue < rvalue)
-			case ">=":
-				result = (lvalue >= rvalue)
-			case "<=":
-				result = (lvalue <= rvalue)
-			default:
-				// Invalid operator
-				return options.Inverse()
-			}
-
-			if result {
-				return options.Fn()
-			}
+		switch operator {
+		case "==":
+			result = (lvalue == rvalue)
+		case "!=":
+			result = (lvalue != rvalue)
+		case ">":
+			result = (lvalue > rvalue)
+		case "<":
+			result = (lvalue < rvalue)
+		case ">=":
+			result = (lvalue >= rvalue)
+		case "<=":
+			result = (lvalue <= rvalue)
+		default:
+			// Invalid operator
 			return options.Inverse()
+		}
+
+		if result {
+			return options.Fn()
+		}
+		return options.Inverse()
 	})
 
-}
+	raymond.RegisterHelper("len", func(value interface{}) int {
+		if value == nil {
+			return 0
+		}
 
+		v := reflect.ValueOf(value)
+		switch v.Kind() {
+		case reflect.Array, reflect.Slice, reflect.Map:
+			return v.Len()
+		case reflect.String:
+			return len(v.String())
+		default:
+			fmt.Printf("len helper: unsupported type %T\n", value)
+			return 0
+		}
+	})
+}

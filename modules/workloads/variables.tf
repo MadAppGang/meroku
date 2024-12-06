@@ -147,6 +147,15 @@ variable "sqs_enable" {
   default = false
 }
 
+variable "env_files_s3" {
+  type = list(object({
+    bucket = string
+    key    = string
+  }))
+  description = "List of S3 environment files to load"
+  default     = []
+}
+
 variable "ecr_lifecycle_policy" {
   type    = string
   default = <<EOF
@@ -181,3 +190,25 @@ variable "ecr_lifecycle_policy" {
 EOF
 }
 
+variable "available_efs" {
+  description = "Map of available EFS resources"
+  type = map(object({
+    id              = string
+    access_point_id = string
+    dns_name        = string
+    security_group  = string
+    root_directory  = string
+  }))
+  default = {}
+}
+
+
+variable "backend_efs_mounts" {
+  description = "List of EFS mounts for backend service"
+  type = list(object({
+    efs_name     = string      # Name of EFS to mount
+    mount_point  = optional(string, "/")      # Container mount path
+    read_only    = optional(bool, false)
+  }))
+  default = []
+}
