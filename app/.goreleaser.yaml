@@ -7,7 +7,7 @@
 # vim: set ts=2 sw=2 tw=0 fo=cnqoj
 
 version: 2
-project_name: meroku 
+project_name: meroku
 
 before:
   hooks:
@@ -39,10 +39,10 @@ archives:
       - goos: windows
         format: zip
 brews:
-  - name: meroku 
+  - name: meroku
     commit_author:
       name: erudenko
-      email: i@madappgang.com 
+      email: i@madappgang.com
     homepage: "https://madappgang.com"
     description: "Easy infrastructure management"
     license: "MIT"
@@ -54,7 +54,7 @@ brews:
         type: optional
       - name: terraform
         type: optional
-      - name: opnetofu
+      - name: opentofu
         type: optional
 
 changelog:
