@@ -84,7 +84,6 @@ resource "aws_cloudwatch_event_rule" "ecr_event" {
       "aws.ecs",
       "aws.ssm",
       "action.production",
-      "aws.s3"
     ]
     detail-type = [
       "ECR Image Action",
@@ -92,16 +91,7 @@ resource "aws_cloudwatch_event_rule" "ecr_event" {
       "ECS Service Action",
       "Parameter Store Change",
       "DEPLOY",
-      "AWS API Call via CloudTrail"
-    ],
-    detail = {
-      eventSource = ["s3.amazonaws.com"]
-      eventName = [
-        "PutObject",
-        "DeleteObject",
-        "CompleteMultipartUpload"
-      ]
-    }
+    ]
   })
 }
 
@@ -111,7 +101,6 @@ resource "aws_cloudwatch_event_target" "lambda" {
   arn       = aws_lambda_function.lambda_deploy.arn
 }
 
-
 resource "aws_lambda_permission" "ecr_event_call_deploy_lambda" {
   statement_id  = "AllowExecutionFromCloudWatch"
   action        = "lambda:InvokeFunction"
@@ -120,32 +109,43 @@ resource "aws_lambda_permission" "ecr_event_call_deploy_lambda" {
   source_arn    = aws_cloudwatch_event_rule.ecr_event.arn
 }
 
-# Add S3 bucket notification
-resource "aws_s3_bucket_notification" "lambda_env_file_notification" {
-  for_each = { for file in var.env_files_s3 : "${file.bucket}-${file.key}" => file }
-  
-  bucket = each.value.bucket
 
-  lambda_function {
-    lambda_function_arn = aws_lambda_function.lambda_deploy.arn
-    events = [
-      "s3:ObjectCreated:*",
-      "s3:ObjectRemove:*",
-      "s3:ObjectChanged:Put"
-    ]
-    filter_prefix       = each.value.key
-  }
+# Add S3 bucket notification
+resource "aws_cloudwatch_event_rule" "s3_env_file_change_rule" {
+  for_each = { for file in var.env_files_s3 : "${file.bucket}-${file.key}" => file }
+
+  name        = "s3-env-file-change-rule-${each.key}"
+  description = "Event rule for S3 env file changes for ${each.value.bucket}/${each.value.key}"
+  event_pattern = jsonencode({
+    "source": ["aws.s3"],
+    "detail-type": ["AWS API Call via CloudTrail"],
+    "detail": {
+      "eventSource": ["s3.amazonaws.com"],
+      "eventName": ["PutObject", "DeleteObject"],
+      "requestParameters": {
+        "bucketName": [each.value.bucket],
+        "key": [each.value.key]
+      }
+    }
+  })
 }
 
-# Add Lambda permission for S3
-resource "aws_lambda_permission" "s3_env_file_invoke" {
+resource "aws_cloudwatch_event_target" "lambda_target" {
   for_each = { for file in var.env_files_s3 : "${file.bucket}-${file.key}" => file }
 
-  statement_id  = "AllowS3Invoke-${each.key}"
+  rule      = aws_cloudwatch_event_rule.s3_env_file_change_rule[each.key].name
+  target_id = aws_lambda_function.lambda_deploy.function_name
+  arn       = aws_lambda_function.lambda_deploy.arn
+}
+
+resource "aws_lambda_permission" "allow_eventbridge" {
+  for_each = { for file in var.env_files_s3 : "${file.bucket}-${file.key}" => file }
+
+  statement_id  = "AllowExecutionFromEventBridge-${each.key}"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.lambda_deploy.function_name
-  principal     = "s3.amazonaws.com"
-  source_arn    = "arn:aws:s3:::${each.value.bucket}"
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.s3_env_file_change_rule[each.key].arn
 }
 
 
