@@ -240,3 +240,7 @@ variable "enable_alb" {
 }
 
 
+variable "backend_remote_access" {  
+  type = bool
+  default = false
+}

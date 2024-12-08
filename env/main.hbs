@@ -128,6 +128,7 @@ module "workloads" {
   backend_bucket_postfix = "{{workload.bucket_postfix}}"
   backend_bucket_public = {{workload.bucket_public}}
   backend_health_endpoint = "{{workload.backend_health_endpoint}}"
+  backend_remote_access = {{workload.backend_remote_access}}
   docker_image = "{{workload.backend_external_docker_image}}"
   setup_FCM_SNS = {{workload.setup_fcnsns}}
   backend_image_port = {{workload.backend_image_port}}

@@ -12,7 +12,8 @@ resource "aws_ecs_service" "backend" {
   deployment_minimum_healthy_percent = 50
   launch_type                        = "FARGATE"
   scheduling_strategy                = "REPLICA"
-
+  enable_ecs_managed_tags           = var.backend_remote_access
+  
   network_configuration {
     security_groups  = [aws_security_group.backend.id]
     subnets          = var.subnet_ids
