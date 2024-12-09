@@ -13,7 +13,7 @@ resource "aws_ecs_service" "backend" {
   launch_type                        = "FARGATE"
   scheduling_strategy                = "REPLICA"
   enable_ecs_managed_tags           = var.backend_remote_access
-  
+
   network_configuration {
     security_groups  = [aws_security_group.backend.id]
     subnets          = var.subnet_ids
@@ -365,3 +365,28 @@ resource "null_resource" "create_env_files" {
   }
 
 }
+
+// remote exec policy
+
+resource "aws_iam_role_policy" "ecs_exec_policy" {
+  count = var.backend_remote_access ? 1 : 0
+
+  name   = "${var.project}-ecs-exec-policy-${var.env}"
+  role   = aws_iam_role.backend_task.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ssmmessages:CreateControlChannel",
+          "ssmmessages:CreateDataChannel",
+          "ssmmessages:OpenControlChannel",
+          "ssmmessages:OpenDataChannel"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
