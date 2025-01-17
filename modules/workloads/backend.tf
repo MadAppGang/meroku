@@ -12,7 +12,8 @@ resource "aws_ecs_service" "backend" {
   deployment_minimum_healthy_percent = 50
   launch_type                        = "FARGATE"
   scheduling_strategy                = "REPLICA"
-  enable_ecs_managed_tags           = var.backend_remote_access
+  enable_ecs_managed_tags            = true
+  enable_execute_command             = var.backend_remote_access
 
   network_configuration {
     security_groups  = [aws_security_group.backend.id]
@@ -70,9 +71,9 @@ resource "aws_ecs_task_definition" "backend" {
     content {
       name = volume.value.efs_name
       efs_volume_configuration {
-        file_system_id = var.available_efs[volume.value.efs_name].id
-        root_directory = var.available_efs[volume.value.efs_name].root_directory
-        transit_encryption = "ENABLED"
+        file_system_id          = var.available_efs[volume.value.efs_name].id
+        root_directory          = var.available_efs[volume.value.efs_name].root_directory
+        transit_encryption      = "ENABLED"
         transit_encryption_port = 2049
         authorization_config {
           access_point_id = var.available_efs[volume.value.efs_name].access_point_id
@@ -97,7 +98,7 @@ resource "aws_ecs_task_definition" "backend" {
           type  = "s3"
         }
       ]
-      essential   = true
+      essential = true
       mountPoints = [
         for mount in var.backend_efs_mounts : {
           sourceVolume  = mount.efs_name
@@ -322,7 +323,7 @@ resource "aws_iam_role_policy_attachment" "sqs_access" {
 # Modify the IAM policy to allow access to multiple files
 resource "aws_iam_role_policy" "backend_s3_env" {
   count = length(local.env_files_s3) > 0 ? 1 : 0
-  
+
   name = "${local.backend_name}-s3-env"
   role = aws_iam_role.backend_task_execution.name
 
@@ -365,8 +366,8 @@ resource "null_resource" "create_env_files" {
 resource "aws_iam_role_policy" "ecs_exec_policy" {
   count = var.backend_remote_access ? 1 : 0
 
-  name   = "${var.project}-ecs-exec-policy-${var.env}"
-  role   = aws_iam_role.backend_task.id
+  name = "${var.project}-ecs-exec-policy-${var.env}"
+  role = aws_iam_role.backend_task.id
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [

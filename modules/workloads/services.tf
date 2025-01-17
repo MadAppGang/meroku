@@ -88,7 +88,8 @@ resource "aws_ecs_service" "services" {
   deployment_minimum_healthy_percent = 50
   launch_type                        = "FARGATE"
   scheduling_strategy                = "REPLICA"
-  enable_ecs_managed_tags            = each.value.remote_access
+  enable_ecs_managed_tags            = true
+  enable_execute_command             = each.value.remote_access
 
 
   network_configuration {
@@ -140,7 +141,7 @@ resource "aws_ecs_task_definition" "services" {
       // 1. from SSM
       // 2. from env_files_s3
       // 3. from env_vars variable
-      secrets     = local.services_env_ssm[each.key]
+      secrets = local.services_env_ssm[each.key]
       environment = concat(local.services_env, [
         for name, value in each.value.env_vars : {
           name  = name
@@ -351,7 +352,7 @@ resource "null_resource" "create_services_env_files" {
 
 # Remote exec policy for services
 resource "aws_iam_role_policy" "services_ecs_exec_policy" {
-  for_each = { for k, v in local.service_names : k => v if var.backend_remote_access }
+  for_each = { for k, v in local.service_names : k => v if v.remote_access }
 
   name = "${var.project}-${each.key}-ecs-exec-policy-${var.env}"
   role = aws_iam_role.services_task[each.key].id
