@@ -44,5 +44,6 @@ locals {
     { "name" : "AWS_REGION", "value" : data.aws_region.current.name },
     { "name" : "URL", "value" : var.api_domain },
     { "name" : "SQS_QUEUE_URL", "value" : var.sqs_queue_url },
+    { "name" : "AWS_QUEUE_URL", "value" : var.sqs_queue_url },
   ]
 }

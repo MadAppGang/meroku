@@ -103,7 +103,7 @@ variable "api_certificate_arn" {
 }
 
 variable "api_domain" {
-  type    = string
+  type = string
 }
 
 variable "domain" {
@@ -137,14 +137,14 @@ variable "setup_FCM_SNS" {
 }
 
 variable "sqs_queue_url" {
-  default =  ""
+  default = ""
 }
 
 variable "sqs_policy_arn" {
-  default =  ""
+  default = ""
 }
 
-variable "sqs_enable" { 
+variable "sqs_enable" {
   default = false
 }
 
@@ -157,12 +157,12 @@ variable "env_files_s3" {
   default     = []
 }
 locals {
-    env_files_s3 = [
-      for file in var.env_files_s3 : {
-        bucket = "${var.project}-${file.bucket}-${var.env}"
-        key = file.key
-      }
-    ]
+  env_files_s3 = [
+    for file in var.env_files_s3 : {
+      bucket = "${var.project}-${file.bucket}-${var.env}"
+      key    = file.key
+    }
+  ]
 }
 
 variable "ecr_lifecycle_policy" {
@@ -215,9 +215,9 @@ variable "available_efs" {
 variable "backend_efs_mounts" {
   description = "List of EFS mounts for backend service"
   type = list(object({
-    efs_name     = string      # Name of EFS to mount
-    mount_point  = optional(string, "/")      # Container mount path
-    read_only    = optional(bool, false)
+    efs_name    = string                # Name of EFS to mount
+    mount_point = optional(string, "/") # Container mount path
+    read_only   = optional(bool, false)
   }))
   default = []
 }
@@ -240,29 +240,30 @@ variable "enable_alb" {
 }
 
 
-variable "backend_remote_access" {  
-  type = bool
+variable "backend_remote_access" {
+  type    = bool
   default = false
 }
 
 variable "services" {
   type = list(object({
-    name = string
-    remote_access  = optional(bool, false)
-    container_port = optional(number, 3000)
-    host_port      = optional(number, 3000)
-    cpu            = optional(number, 256)
-    memory         = optional(number, 512)
-    xray_enabled   = optional(bool, false)
-    docker_image   = optional(string, "")
-    env_vars       = optional(map(string), { "name" : "SERVICE_TEST", "value" : "PASSED" })
-    essential      = optional(bool, true)
-    desired_count  = optional(number, 1)
-    env_files_s3   = optional(list(object({
+    name              = string
+    remote_access     = optional(bool, false)
+    container_port    = optional(number, 3000)
+    container_command = optional(list(string), [])
+    host_port         = optional(number, 3000)
+    cpu               = optional(number, 256)
+    memory            = optional(number, 512)
+    xray_enabled      = optional(bool, false)
+    docker_image      = optional(string, "")
+    env_vars          = optional(map(string), { "name" : "SERVICE_TEST", "value" : "PASSED" })
+    essential         = optional(bool, true)
+    desired_count     = optional(number, 1)
+    env_files_s3 = optional(list(object({
       bucket = string
       key    = string
     })))
-  })) 
+  }))
   default = []
 }
 
@@ -272,7 +273,7 @@ locals {
     for service in var.services :
     service.name => [
       for file in coalesce(service.env_files_s3, []) : {
-        bucket = "${var.project}-${file.bucket}-${var.env}"
+        bucket = file.bucket
         key    = file.key
       }
     ]

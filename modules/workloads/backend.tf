@@ -316,9 +316,10 @@ data "aws_iam_policy_document" "ssm_parameter_access" {
 
 resource "aws_iam_role_policy_attachment" "sqs_access" {
   count      = var.sqs_enable == true ? 1 : 0
-  role       = aws_iam_role.backend_task_execution.name
+  role       = aws_iam_role.backend_task.name
   policy_arn = var.sqs_policy_arn
 }
+
 
 # Modify the IAM policy to allow access to multiple files
 resource "aws_iam_role_policy" "backend_s3_env" {
@@ -358,7 +359,6 @@ resource "null_resource" "create_env_files" {
       rm empty.tmp
     EOT
   }
-
 }
 
 // remote exec policy
@@ -384,4 +384,3 @@ resource "aws_iam_role_policy" "ecs_exec_policy" {
     ]
   })
 }
-

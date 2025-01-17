@@ -132,10 +132,12 @@ resource "aws_ecs_task_definition" "services" {
   container_definitions = jsonencode(concat(
     each.value.xray_enabled ? local.xray_service_container : [],
     [{
-      name   = "${var.project}_service_${each.key}_${var.env}"
-      cpu    = each.value.cpu
-      memory = each.value.memory
-      image  = "${each.value.docker_image != "" ? each.value.docker_image : (var.env == "dev" ? join("", aws_ecr_repository.services[each.key].*.repository_url) : var.ecr_url)}:latest"
+      name    = "${var.project}_service_${each.key}_${var.env}"
+      cpu     = each.value.cpu
+      memory  = each.value.memory
+      image   = "${each.value.docker_image != "" ? each.value.docker_image : (var.env == "dev" ? join("", aws_ecr_repository.services[each.key].*.repository_url) : var.ecr_url)}:latest"
+      command = each.value.container_command
+
 
       // we support three types of env variables:
       // 1. from SSM
@@ -297,7 +299,7 @@ resource "aws_iam_policy" "services_ssm_parameter_access" {
 resource "aws_iam_role_policy_attachment" "services_sqs_access" {
   for_each = { for k, v in local.service_names : k => v if var.sqs_enable }
 
-  role       = aws_iam_role.services_task_execution[each.key].name
+  role       = aws_iam_role.services_task[each.key].name
   policy_arn = var.sqs_policy_arn
 }
 
@@ -332,21 +334,29 @@ resource "null_resource" "create_services_env_files" {
     for pair in flatten([
       for service_name, files in local.services_env_files_s3 : [
         for file in files : {
-          key  = "${file.bucket}-${file.key}"
-          file = file
+          id     = "${file.bucket}-${file.key}"
+          bucket = file.bucket
+          key    = file.key
         }
       ]
-    ]) : pair.key => pair.file
+    ]) : pair.id => pair
   }
 
   provisioner "local-exec" {
     command = <<-EOT
+      set -e
       echo "Checking if file exists: ${each.value.bucket}/${each.value.key}"
       touch empty.tmp
-      aws s3api head-object --bucket ${each.value.bucket} --key ${each.value.key} || \
-      aws s3api put-object --bucket ${each.value.bucket} --key ${each.value.key} --body empty.tmp
-      rm empty.tmp
+      if ! aws s3api head-object --bucket ${each.value.bucket} --key ${each.value.key} 2>/dev/null; then
+        aws s3api put-object --bucket ${each.value.bucket} --key ${each.value.key} --body empty.tmp
+      fi
+      rm -f empty.tmp
     EOT
+  }
+
+  triggers = {
+    bucket = each.value.bucket
+    key    = each.value.key
   }
 }
 
