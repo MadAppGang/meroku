@@ -38,3 +38,4 @@ app.log
 modules/appsync/auth_lambda/.yarn
 modules/appsync/auth_lambda/node_modules
 modules/appsync/auth_lambda.zip
+dist/
