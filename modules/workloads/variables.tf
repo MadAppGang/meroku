@@ -249,8 +249,8 @@ variable "services" {
   type = list(object({
     name = string
     remote_access  = optional(bool, false)
-    container_port     = optional(number, 3000)
-    hots_port      = optional(number, 3000)
+    container_port = optional(number, 3000)
+    host_port      = optional(number, 3000)
     cpu            = optional(number, 256)
     memory         = optional(number, 512)
     xray_enabled   = optional(bool, false)

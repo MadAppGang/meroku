@@ -20,9 +20,18 @@ backend_env:
   - name: env1
     value: value1
 
-# Enable mockoon
-# by default enabled for dev env only
-# mockoon: true
+# setup services
+services:
+  - name: service1
+    remote_access: true
+    container_port: 3000
+    host_port: 3000
+    cpu: 256
+    memory: 512
+    xray_enabled: false
+    env_vars:
+      name: SERVICE_TEST
+      value: PASSED
 
 # Route53 domain management
 setup_domain: true

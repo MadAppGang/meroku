@@ -2,6 +2,81 @@ locals {
   service_names = { for service in var.services : service.name => service }
 }
 
+# Create ALB target group for each service
+resource "aws_lb_target_group" "services" {
+  for_each = { for k, v in local.service_names : k => v if var.enable_alb }
+
+  name        = "${var.project}-${each.key}-${var.env}"
+  port        = each.value.container_port
+  protocol    = "HTTP"
+  vpc_id      = var.vpc_id
+  target_type = "ip"
+
+  health_check {
+    enabled             = true
+    healthy_threshold   = 2
+    interval            = 30
+    matcher            = "200"
+    path               = "/health/live"
+    port               = "traffic-port"
+    protocol           = "HTTP"
+    timeout            = 5
+    unhealthy_threshold = 10
+  }
+
+  tags = {
+    terraform = "true"
+    env       = var.env
+  }
+}
+
+# Create ECR repository for each service
+resource "aws_ecr_repository" "services" {
+  for_each = { for k, v in local.service_names : k => v if var.env == "dev" }
+
+  name = "${var.project}-${each.key}-${var.env}"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  force_delete = true
+
+  tags = {
+    terraform = "true"
+    env       = var.env
+  }
+}
+
+resource "aws_ecr_lifecycle_policy" "services" {
+  for_each = { for k, v in local.service_names : k => v if var.env == "dev" }
+
+  repository = aws_ecr_repository.services[each.key].name
+  policy     = var.ecr_lifecycle_policy
+}
+
+# Service Discovery for each service
+resource "aws_service_discovery_service" "services" {
+  for_each = local.service_names
+
+  name = "${var.project}_${each.key}_${var.env}"
+
+  dns_config {
+    namespace_id = aws_service_discovery_private_dns_namespace.local.id
+
+    dns_records {
+      ttl  = 10
+      type = "A"
+    }
+
+    routing_policy = "MULTIVALUE"
+  }
+
+  health_check_custom_config {
+    failure_threshold = 1
+  }
+}
+
 # Create ECS Service for each service
 resource "aws_ecs_service" "services" {
   for_each = local.service_names
@@ -31,18 +106,8 @@ resource "aws_ecs_service" "services" {
     }
   }
 
-  service_connect_configuration {
-    enabled   = true
-    namespace = aws_service_discovery_private_dns_namespace.local.name
-
-    service {
-      port_name      = "${var.project}_service_${each.key}_${var.env}"
-      discovery_name = "${var.project}_service_${each.key}_${var.env}"
-      client_alias {
-        port     = each.value.hots_port
-        dns_name = "${var.project}_service_${each.key}_${var.env}"
-      }
-    }
+  service_registries {
+    registry_arn = aws_service_discovery_service.services[each.key].arn
   }
 
   tags = {
@@ -97,7 +162,7 @@ resource "aws_ecs_task_definition" "services" {
       portMappings = [{
         protocol      = "tcp"
         containerPort = each.value.container_port
-        hostPort      = each.value.hots_port
+        hostPort      = each.value.host_port
         name          = "${var.project}_service_${each.key}_${var.env}"
       }]
     }]
