@@ -46,11 +46,11 @@ locals {
   ]
 
   # X-Ray container configuration
-  xray_enabled_container = [
+  xray_service_container = [
     {
-      name             = "xray-daemon"
-      image            = "amazon/aws-xray-daemon"
-      cpu              = 32
+      name              = "xray-daemon"
+      image             = "amazon/aws-xray-daemon"
+      cpu               = 32
       memoryReservation = 256
       portMappings = [
         {

@@ -95,4 +95,88 @@ func registerCustomHelpers() {
 			return 0
 		}
 	})
+
+	raymond.RegisterHelper("default", func(value any, defaultValue any) any {
+		if value == nil {
+			return defaultValue
+		}
+
+		v := reflect.ValueOf(value)
+		switch v.Kind() {
+		case reflect.String:
+			if v.String() == "" {
+				return defaultValue
+			}
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			if v.Int() == 0 {
+				return defaultValue
+			}
+		case reflect.Float32, reflect.Float64:
+			if v.Float() == 0 {
+				return defaultValue
+			}
+		case reflect.Slice, reflect.Map:
+			if v.Len() == 0 {
+				return defaultValue
+			}
+		}
+
+		return value
+	})
+
+	raymond.RegisterHelper("notEmpty", func(value interface{}, options *raymond.Options) interface{} {
+		if value == nil {
+			return options.Inverse()
+		}
+
+		v := reflect.ValueOf(value)
+		switch v.Kind() {
+		case reflect.String:
+			if v.String() == "" {
+				return options.Inverse()
+			}
+		case reflect.Slice, reflect.Map, reflect.Array:
+			if v.Len() == 0 {
+				return options.Inverse()
+			}
+		case reflect.Bool:
+			if !v.Bool() {
+				return options.Inverse()
+			}
+		}
+
+		return options.Fn()
+	})
+
+	raymond.RegisterHelper("notZero", func(value interface{}, options *raymond.Options) interface{} {
+		if value == nil {
+			return options.Inverse()
+		}
+
+		v := reflect.ValueOf(value)
+		switch v.Kind() {
+		case reflect.String:
+			if v.String() == "" {
+				return options.Inverse()
+			}
+		case reflect.Slice, reflect.Map, reflect.Array:
+			if v.Len() == 0 {
+				return options.Inverse()
+			}
+		case reflect.Bool:
+			if !v.Bool() {
+				return options.Inverse()
+			}
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			if v.Int() == 0 {
+				return options.Inverse()
+			}
+		case reflect.Float32, reflect.Float64:
+			if v.Float() == 0 {
+				return options.Inverse()
+			}
+		}
+
+		return options.Fn()
+	})
 }

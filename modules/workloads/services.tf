@@ -16,11 +16,11 @@ resource "aws_lb_target_group" "services" {
     enabled             = true
     healthy_threshold   = 2
     interval            = 30
-    matcher            = "200"
-    path               = "/health/live"
-    port               = "traffic-port"
-    protocol           = "HTTP"
-    timeout            = 5
+    matcher             = "200"
+    path                = "/health/live"
+    port                = "traffic-port"
+    protocol            = "HTTP"
+    timeout             = 5
     unhealthy_threshold = 10
   }
 
@@ -88,7 +88,7 @@ resource "aws_ecs_service" "services" {
   deployment_minimum_healthy_percent = 50
   launch_type                        = "FARGATE"
   scheduling_strategy                = "REPLICA"
-  enable_ecs_managed_tags           = each.value.remote_access
+  enable_ecs_managed_tags            = each.value.remote_access
 
 
   network_configuration {
@@ -126,29 +126,34 @@ resource "aws_ecs_task_definition" "services" {
   cpu                      = each.value.cpu
   memory                   = each.value.memory
   execution_role_arn       = aws_iam_role.services_task_execution[each.key].arn
-  task_role_arn           = aws_iam_role.services_task[each.key].arn
+  task_role_arn            = aws_iam_role.services_task[each.key].arn
 
   container_definitions = jsonencode(concat(
-    each.value.xray_enabled ? local.xray_enabled_container : [],
+    each.value.xray_enabled ? local.xray_service_container : [],
     [{
-      name        = "${var.project}_service_${each.key}_${var.env}"
-      cpu         = each.value.cpu
-      memory      = each.value.memory
-      image       = "${each.value.docker_image != "" ? each.value.docker_image : (var.env == "dev" ? join("", aws_ecr_repository.services[each.key].*.repository_url) : var.ecr_url)}:latest"
+      name   = "${var.project}_service_${each.key}_${var.env}"
+      cpu    = each.value.cpu
+      memory = each.value.memory
+      image  = "${each.value.docker_image != "" ? each.value.docker_image : (var.env == "dev" ? join("", aws_ecr_repository.services[each.key].*.repository_url) : var.ecr_url)}:latest"
 
       // we support three types of env variables:
       // 1. from SSM
       // 2. from env_files_s3
       // 3. from env_vars variable
       secrets     = local.services_env_ssm[each.key]
-      environment = concat(local.services_env, each.value.env_vars)
+      environment = concat(local.services_env, [
+        for name, value in each.value.env_vars : {
+          name  = name
+          value = value
+        }
+      ])
       environmentFiles = [
         for file in local.services_env_files_s3[each.key] : {
           value = "arn:aws:s3:::${file.bucket}/${file.key}"
           type  = "s3"
         }
       ]
-      essential   = each.value.essential
+      essential = each.value.essential
 
       logConfiguration = {
         logDriver = "awslogs"
@@ -247,7 +252,7 @@ resource "aws_iam_role_policy_attachment" "services_task_cloudwatch" {
 }
 
 # S3 bucket access
-resource "aws_iam_role_policy_attachment" "backend_task_backend_bucket" {
+resource "aws_iam_role_policy_attachment" "service_task_bucket" {
   for_each = local.service_names
 
   role       = aws_iam_role.services_task_execution[each.key].name
@@ -255,7 +260,7 @@ resource "aws_iam_role_policy_attachment" "backend_task_backend_bucket" {
 }
 
 # SES access
-resource "aws_iam_role_policy_attachment" "backend_task_ses" {
+resource "aws_iam_role_policy_attachment" "service_task_ses" {
   for_each = local.service_names
 
   role       = aws_iam_role.services_task_execution[each.key].name
@@ -275,13 +280,13 @@ resource "aws_iam_role_policy_attachment" "services_ssm_parameter_access" {
 resource "aws_iam_policy" "services_ssm_parameter_access" {
   for_each = local.service_names
 
-  name   = "ServiceSSMAccessPolicy_${var.project}_${each.key}_${var.env}"
+  name = "ServiceSSMAccessPolicy_${var.project}_${each.key}_${var.env}"
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
-        Effect = "Allow"
-        Action = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
+        Effect   = "Allow"
+        Action   = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
         Resource = ["arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/${var.env}/${var.project}/${each.key}/*"]
       }
     ]
@@ -326,7 +331,7 @@ resource "null_resource" "create_services_env_files" {
     for pair in flatten([
       for service_name, files in local.services_env_files_s3 : [
         for file in files : {
-          key = "${file.bucket}-${file.key}"
+          key  = "${file.bucket}-${file.key}"
           file = file
         }
       ]
@@ -350,7 +355,7 @@ resource "aws_iam_role_policy" "services_ecs_exec_policy" {
 
   name = "${var.project}-${each.key}-ecs-exec-policy-${var.env}"
   role = aws_iam_role.services_task[each.key].id
-  
+
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
