@@ -343,12 +343,6 @@ resource "aws_iam_role_policy" "backend_s3_env" {
   })
 }
 
-# resource "aws_iam_role_policy_attachment" "backend_task_s3_env" {
-#   count      = length(local.env_files_s3) > 0 ? 1 : 0
-#   role       = aws_iam_role.backend_task_execution.name
-#   policy_arn = aws_iam_role_policy.backend_s3_env[0].id
-# }
-
 
 // create empty files if they don't exist
 resource "null_resource" "create_env_files" {

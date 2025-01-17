@@ -51,6 +51,9 @@ enable_user_pool_domain: false
 user_pool_domain_prefix:
 allow_backend_task_to_confirm_signup: false
 
+services:
+  - name: backend
+
 # setup scheduled tasks
 scheduled_tasks:
   - name: task1

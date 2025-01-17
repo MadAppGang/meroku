@@ -26,3 +26,4 @@ resource "aws_apigatewayv2_route" "backend" {
   route_key = "ANY /{proxy+}"
   target    = "integrations/${aws_apigatewayv2_integration.backend.id}"
 }
+

@@ -1,5 +1,5 @@
 locals {
-  xray_container = var.xray_enabled ?  [{
+  xray_enabled_container = [{
       name  = "adot-collector"
       image = "public.ecr.aws/aws-observability/aws-otel-collector:latest"
       portMappings = [
@@ -27,18 +27,20 @@ locals {
       environment = [
         {
           name  = "AWS_REGION"
-          value = "us-west-2"  # Change this to your desired region
+          value =   data.aws_region.current.name
         }
       ]
       logConfiguration = {
         logDriver = "awslogs"
         options = {
           awslogs-group         = "/ecs/adot-collector"
-          awslogs-region        = "us-west-2"  # Change this to your desired region
+          awslogs-region        = data.aws_region.current.name
           awslogs-stream-prefix = "xray"
         }
       }
-    }] : []
+    }]
+
+  xray_container = var.xray_enabled ?  xray_enabled_container : []
 
   app_container_environment = var.xray_enabled ? [
     {

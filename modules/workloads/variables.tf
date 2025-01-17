@@ -244,3 +244,37 @@ variable "backend_remote_access" {
   type = bool
   default = false
 }
+
+variable "services" {
+  type = list(object({
+    name = string
+    remote_access  = optional(bool, false)
+    container_port     = optional(number, 3000)
+    hots_port      = optional(number, 3000)
+    cpu            = optional(number, 256)
+    memory         = optional(number, 512)
+    xray_enabled   = optional(bool, false)
+    docker_image   = optional(string, "")
+    env_vars       = optional(map(string), { "name" : "SERVICE_TEST", "value" : "PASSED" })
+    essential      = optional(bool, true)
+    desired_count  = optional(number, 1)
+    env_files_s3   = optional(list(object({
+      bucket = string
+      key    = string
+    })))
+  })) 
+  default = []
+}
+
+
+locals {
+  services_env_files_s3 = {
+    for service in var.services :
+    service.name => [
+      for file in coalesce(service.env_files_s3, []) : {
+        bucket = "${var.project}-${file.bucket}-${var.env}"
+        key    = file.key
+      }
+    ]
+  }
+}
