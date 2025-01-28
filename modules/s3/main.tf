@@ -4,7 +4,7 @@ locals {
 
 resource "aws_s3_bucket" "this" {
   for_each = local.bucket_names
-  
+
   bucket = "${var.project}-${each.key}-${var.env}"
 
   # Add tags for better resource management
@@ -26,10 +26,29 @@ resource "aws_s3_bucket_versioning" "this" {
   }
 }
 
+# Configure CORS for buckets that have CORS rules defined
+resource "aws_s3_bucket_cors_configuration" "this" {
+  for_each = { for name, bucket in local.bucket_names : name => bucket if length(bucket.cors_rules) > 0 }
+
+  bucket = aws_s3_bucket.this[each.key].id
+
+  dynamic "cors_rule" {
+    for_each = each.value.cors_rules
+
+    content {
+      allowed_headers = cors_rule.value.allowed_headers
+      allowed_methods = cors_rule.value.allowed_methods
+      allowed_origins = cors_rule.value.allowed_origins
+      expose_headers  = cors_rule.value.expose_headers
+      max_age_seconds = cors_rule.value.max_age_seconds
+    }
+  }
+}
+
 # Block public access by default
 resource "aws_s3_bucket_public_access_block" "this" {
   for_each = { for name, bucket in local.bucket_names : name => bucket if !bucket.public }
-  
+
   bucket = aws_s3_bucket.this[each.key].id
 
   block_public_acls       = true
@@ -41,7 +60,7 @@ resource "aws_s3_bucket_public_access_block" "this" {
 # Configure public access for buckets marked as public
 resource "aws_s3_bucket_public_access_block" "public" {
   for_each = { for name, bucket in local.bucket_names : name => bucket if bucket.public }
-  
+
   bucket = aws_s3_bucket.this[each.key].id
 
   block_public_acls       = false
@@ -53,7 +72,7 @@ resource "aws_s3_bucket_public_access_block" "public" {
 # Add bucket policy for public buckets
 resource "aws_s3_bucket_policy" "public" {
   for_each = { for name, bucket in local.bucket_names : name => bucket if bucket.public }
-  
+
   bucket = aws_s3_bucket.this[each.key].id
 
   policy = jsonencode({
