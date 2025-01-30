@@ -53,6 +53,7 @@ data "aws_iam_policy_document" "github" {
       "ecr:CompleteLayerUpload",
       "ecr:GetAuthorizationToken",
       "ecr:UploadLayerPart",
+      "ecr:BatchGetImage",
       "ecr:InitiateLayerUpload",
       "ecr:BatchCheckLayerAvailability",
       "ecr:PutImage",
