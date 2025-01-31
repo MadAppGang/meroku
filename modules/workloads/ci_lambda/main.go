@@ -9,6 +9,7 @@ import (
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
+	"madappgang.com/infrastructure/ci_lambda/utils"
 )
 
 var (
@@ -17,13 +18,13 @@ var (
 	Env             = os.Getenv("PROJECT_ENV")
 )
 
-func Handler(srv Service) func(ctx context.Context, e events.CloudWatchEvent) (string, error) {
+func Handler(srv utils.Service) func(ctx context.Context, e events.CloudWatchEvent) (string, error) {
 	return func(ctx context.Context, e events.CloudWatchEvent) (string, error) {
 		fmt.Printf("Processing request data for event %s.\n", e.ID)
 
 		switch e.Source {
 		case "aws.ecr":
-			return processECREvent(srv, ctx, e)
+			return utils.ProcessECREvent(srv, ctx, e)
 		case "aws.ecs":
 			return processECSEvent(srv, ctx, e)
 		case "action.production":
@@ -50,5 +51,5 @@ func getServiceName(str string) (string, error) {
 }
 
 func main() {
-	lambda.Start(Handler(NewAWSService()))
+	lambda.Start(Handler(utils.NewAWSService()))
 }

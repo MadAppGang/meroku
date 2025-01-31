@@ -10,6 +10,7 @@ import (
 	"net/http"
 
 	"github.com/aws/aws-lambda-go/events"
+	"madappgang.com/infrastructure/ci_lambda/utils"
 )
 
 //go:embed slack.message.error.json.tmpl
@@ -55,7 +56,7 @@ type templateData struct {
 	StateName string
 }
 
-func processECSEvent(srv Service, ctx context.Context, e events.CloudWatchEvent) (string, error) {
+func processECSEvent(srv utils.Service, ctx context.Context, e events.CloudWatchEvent) (string, error) {
 	if len(SlackWebhookURL) == 0 {
 		return "no webhook setup, ignoring service deployment event", nil
 	}

@@ -1,14 +1,15 @@
-package main
+package utils
 
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"regexp"
+	"os"
 
 	"github.com/aws/aws-lambda-go/events"
 )
+
+var ProjectName = os.Getenv("PROJECT_NAME")
 
 type ECRImagePushEventDetail struct {
 	RepositoryName string `json:"repository-name"`
@@ -17,7 +18,7 @@ type ECRImagePushEventDetail struct {
 	Result         string `json:"result"`
 }
 
-func processECREvent(srv Service, _ context.Context, e events.CloudWatchEvent) (string, error) {
+func ProcessECREvent(srv Service, _ context.Context, e events.CloudWatchEvent) (string, error) {
 	var detail ECRImagePushEventDetail
 	err := json.Unmarshal(e.Detail, &detail)
 	if err != nil {
@@ -33,23 +34,10 @@ func processECREvent(srv Service, _ context.Context, e events.CloudWatchEvent) (
 		return fmt.Sprintf("Skipping event with result: %s", detail.Result), nil
 	}
 
-	serviceName, err := getServiceNameFromRepoName(detail.RepositoryName)
+	serviceName, err := GetServiceNameFromRepoName(detail.RepositoryName, ProjectName)
 	if err != nil {
-		fmt.Printf("Unable to extract service name from repo name, assuming it is a service name: %s", detail.RepositoryName)
-		serviceName = detail.RepositoryName
+		return "", fmt.Errorf("Unable to extract service name from repo name, assuming it not a service: %s", detail.RepositoryName)
 	}
 
-	return deploy(srv, serviceName)
-}
-
-func getServiceNameFromRepoName(str string) (string, error) {
-	re := regexp.MustCompile(`\w+_(?P<service>\w+)`)
-	match := re.FindStringSubmatch(str)
-	if len(match) == 2 {
-		if match[1] == "backend" {
-			return ProjectName, nil
-		}
-		return match[1], nil
-	}
-	return "", errors.New("Unable to extract service name")
+	return Deploy(srv, serviceName)
 }

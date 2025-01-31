@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/aws/aws-lambda-go/events"
+	"madappgang.com/infrastructure/ci_lambda/utils"
 )
 
 type S3File struct {
@@ -35,7 +36,7 @@ type UpdateResult struct {
 	Error   error
 }
 
-func processS3Event(srv Service, ctx context.Context, e events.CloudWatchEvent) (string, error) {
+func processS3Event(srv utils.Service, ctx context.Context, e events.CloudWatchEvent) (string, error) {
 	var s3Event struct {
 		RequestParameters map[string]string `json:"requestParameters"`
 	}
@@ -53,7 +54,7 @@ func processS3Event(srv Service, ctx context.Context, e events.CloudWatchEvent) 
 	for service, files := range serviceConfig {
 		for _, file := range files {
 			if file.Bucket == bucketName && file.Key == objectKey {
-				message, err := deploy(srv, service)
+				message, err := utils.Deploy(srv, service)
 				result := UpdateResult{
 					Message: message,
 					Error:   err,

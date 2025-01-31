@@ -7,6 +7,7 @@ import (
 	"regexp"
 
 	"github.com/aws/aws-lambda-go/events"
+	"madappgang.com/infrastructure/ci_lambda/utils"
 )
 
 type SSMEventDetail struct {
@@ -16,7 +17,7 @@ type SSMEventDetail struct {
 	Description string `json:"description"`
 }
 
-func processSSMEvent(srv Service, ctx context.Context, e events.CloudWatchEvent) (string, error) {
+func processSSMEvent(srv utils.Service, ctx context.Context, e events.CloudWatchEvent) (string, error) {
 	var detail SSMEventDetail
 	err := json.Unmarshal(e.Detail, &detail)
 	if err != nil {
@@ -29,13 +30,13 @@ func processSSMEvent(srv Service, ctx context.Context, e events.CloudWatchEvent)
 	re := regexp.MustCompile(fmt.Sprintf(`\/?%s\/%s\/(\w+)\/\w+$`, Env, ProjectName))
 	match := re.FindStringSubmatch(detail.Name)
 	if len(match) == 2 {
-    serviceName := match[1]
-    // backend service is default service
-    if serviceName == "backend" {
-      serviceName = ProjectName
-    }
+		serviceName := match[1]
+		// backend service is default service
+		if serviceName == "backend" {
+			serviceName = ProjectName
+		}
 		fmt.Printf("env variables in SSM key %s changed (%s) for service %s\n", detail.Name, detail.Operation, serviceName)
-		return deploy(srv, serviceName)
+		return utils.Deploy(srv, serviceName)
 	}
 
 	result := fmt.Sprintf("SSM parameter with key %s does not fit to any service environment, skipping", detail.Name)
