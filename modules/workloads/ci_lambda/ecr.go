@@ -17,7 +17,7 @@ type ECRImagePushEventDetail struct {
 	Result         string `json:"result"`
 }
 
-func processECREvent(srv Service, ctx context.Context, e events.CloudWatchEvent) (string, error) {
+func processECREvent(srv Service, _ context.Context, e events.CloudWatchEvent) (string, error) {
 	var detail ECRImagePushEventDetail
 	err := json.Unmarshal(e.Detail, &detail)
 	if err != nil {
@@ -35,7 +35,8 @@ func processECREvent(srv Service, ctx context.Context, e events.CloudWatchEvent)
 
 	serviceName, err := getServiceNameFromRepoName(detail.RepositoryName)
 	if err != nil {
-		return "", fmt.Errorf("unable to extract service name from repo name: %s", detail.RepositoryName)
+		fmt.Printf("Unable to extract service name from repo name, assuming it is a service name: %s", detail.RepositoryName)
+		serviceName = detail.RepositoryName
 	}
 
 	return deploy(srv, serviceName)
@@ -45,9 +46,9 @@ func getServiceNameFromRepoName(str string) (string, error) {
 	re := regexp.MustCompile(`\w+_(?P<service>\w+)`)
 	match := re.FindStringSubmatch(str)
 	if len(match) == 2 {
-    if match[1] == "backend" {
-      return ProjectName, nil
-    }
+		if match[1] == "backend" {
+			return ProjectName, nil
+		}
 		return match[1], nil
 	}
 	return "", errors.New("Unable to extract service name")

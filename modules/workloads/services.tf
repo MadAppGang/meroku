@@ -6,7 +6,7 @@ locals {
 resource "aws_lb_target_group" "services" {
   for_each = { for k, v in local.service_names : k => v if var.enable_alb }
 
-  name        = "${var.project}-${each.key}-${var.env}"
+  name        = "${var.project}-service-${each.key}-tg-${var.env}"
   port        = each.value.container_port
   protocol    = "HTTP"
   vpc_id      = var.vpc_id
@@ -34,7 +34,7 @@ resource "aws_lb_target_group" "services" {
 resource "aws_ecr_repository" "services" {
   for_each = { for k, v in local.service_names : k => v if var.env == "dev" }
 
-  name = "${var.project}-${each.key}-${var.env}"
+  name = "${var.project}_service_${each.key}"
 
   image_scanning_configuration {
     scan_on_push = true
@@ -59,7 +59,7 @@ resource "aws_ecr_lifecycle_policy" "services" {
 resource "aws_service_discovery_service" "services" {
   for_each = local.service_names
 
-  name = "${var.project}_${each.key}_${var.env}"
+  name = "${var.project}_service_${each.key}_${var.env}"
 
   dns_config {
     namespace_id = aws_service_discovery_private_dns_namespace.local.id
@@ -228,14 +228,14 @@ resource "aws_cloudwatch_log_group" "services" {
 resource "aws_iam_role" "services_task" {
   for_each = local.service_names
 
-  name               = "${var.project}_${each.key}_task_${var.env}"
+  name               = "${var.project}_service_${each.key}_task_${var.env}"
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume_role.json
 }
 
 resource "aws_iam_role" "services_task_execution" {
   for_each = local.service_names
 
-  name               = "${var.project}_${each.key}_task_execution_${var.env}"
+  name               = "${var.project}_service_${each.key}_task_execution_${var.env}"
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume_role.json
 }
 
