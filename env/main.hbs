@@ -99,7 +99,7 @@ module "workloads" {
   env        = "{{env}}" 
   private_dns_name = "{{project}}_{{env}}.private"
   {{#compare (len domain.api_domain_prefix) ">" 0}}
-  api_domain = " {{domain.api_domain_prefix}}.{{domain.domain_name}}"
+  api_domain = "{{domain.api_domain_prefix}}.{{domain.domain_name}}"
   create_api_domain_record = true
   {{else}}
   api_domain = "{{domain.domain_name}}"

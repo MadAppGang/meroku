@@ -1,6 +1,6 @@
 resource "aws_route53_record" "backend" {
   count = var.create_api_domain_record ? 1 : 0
-  name    = "${var.api_domain}"
+  name    = var.api_domain
   type    = "A"
   zone_id = var.domain_zone_id
   alias {
@@ -11,7 +11,7 @@ resource "aws_route53_record" "backend" {
 }
 
 resource "aws_apigatewayv2_domain_name" "backend" {
-  domain_name = "${var.api_domain}"
+  domain_name = var.api_domain
   domain_name_configuration {
     certificate_arn = var.api_certificate_arn
     endpoint_type   = "REGIONAL"
