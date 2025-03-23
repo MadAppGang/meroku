@@ -1,9 +1,5 @@
-# locals {
-#   domain_name = "${var.env == "prod" ? "api." : format("%s.api", var.env)}${var.domain}"
-# }
-
-
 resource "aws_route53_record" "backend" {
+  count = var.create_api_domain_record ? 1 : 0
   name    = "${var.api_domain}"
   type    = "A"
   zone_id = var.domain_zone_id

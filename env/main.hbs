@@ -28,41 +28,20 @@ data "aws_subnets" "all" {
 
 locals {
   {{#compare env "==" "prod"}} 
-  domain_zone = "api.{{ domain.domain_name }}"
-  subdomains = "*.api.{{ domain.domain_name }}"
-  api_domain = "api.{{ domain.domain_name }}"
-  email_domain = "email.api.{{ domain.domain_name }}"
+  add_domain_prefix = false
   {{else}}
-  domain_zone = "{{env}}.{{ domain.domain_name }}"
-  subdomains = "*.{{env}}.{{ domain.domain_name }}"
-  api_domain = "api.{{env}}.{{ domain.domain_name }}"
-  email_domain = "email.{{env}}.{{ domain.domain_name }}"
+  add_domain_prefix =  {{ domain.add_domain_prefix }}
   {{/compare}}
 }
 {{#if domain.enabled}}  
-  {{#if domain.create_domain_zone}}
 module "domain" {
   source = "{{ modules }}/domain"
-  domain_zone = local.domain_zone
-  subdomains = local.subdomains
-  api_domain = local.api_domain
+  domain_zone = "{{ domain.domain_name }}"
   env = "{{ env }}"
+  create_domain_zone = {{ domain.create_domain_zone }}
+  api_domain_prefix = "{{ domain.api_domain_prefix }}"
+  add_env_domain_prefix = {{default local.add_env_domain_prefix false}}
 }
-  {{else}}
-data "aws_route53_zone" "domain" {
-  name  = local.domain_zone
-}
-data "aws_acm_certificate" "subdomains" {
-  domain      = local.subdomains 
-  types       = ["AMAZON_ISSUED"]
-  most_recent = true
-}
-data "aws_acm_certificate" "api_domain" {
-  domain      = local.api_domain
-  types       = ["AMAZON_ISSUED"]
-  most_recent = true
-}
-  {{/if}}
 {{/if}}
 
 
@@ -119,8 +98,14 @@ module "workloads" {
   project    = "{{project}}"
   env        = "{{env}}" 
   private_dns_name = "{{project}}_{{env}}.private"
-  api_domain = local.api_domain
-  domain = local.domain_zone
+  {{#compare (len domain.api_domain_prefix) ">" 0}}
+  api_domain = " {{domain.api_domain_prefix}}.{{domain.domain_name}}"
+  create_api_domain_record = true
+  {{else}}
+  api_domain = "{{domain.domain_name}}"
+  create_api_domain_record = false
+  {{/compare}}
+  domain = "{{ domain.domain_name }}"
   vpc_id     = data.aws_vpc.default.id
   subnet_ids = data.aws_subnets.all.ids
   lambda_path = "{{modules}}/workloads/ci_lambda/bootstrap"
@@ -138,15 +123,11 @@ module "workloads" {
   db_user = "{{postgres.username}}"
   db_name = "{{postgres.dbname}}"
   {{/if}}
-  {{#if domain.enabled}}{{#if domain.create_domain_zone}}
+  {{#if domain.enabled}}
   subdomains_certificate_arn = module.domain.subdomains_certificate_arn
   api_certificate_arn = module.domain.api_certificate_arn
   domain_zone_id = module.domain.zone_id
-  {{else}}
-  subdomains_certificate_arn = data.aws_acm_certificate.subdomains.arn
-  api_certificate_arn = data.aws_acm_certificate.api_domain.arn
-  domain_zone_id = data.aws_route53_zone.domain.zone_id
-  {{/if}}{{/if}}
+  {{/if}}
   {{#if ecr_account_id}}{{#if ecr_account_region}}
   ecr_url = "{{ecr_account_id}}.dkr.ecr.{{ecr_account_region}}.amazonaws.com/{{project}}_backend"
   {{/if}}{{/if}}
@@ -290,11 +271,7 @@ module "ses" {
   {{/if}}
   test_emails = {{{array ses.test_emails}}}
   {{#if domain.enabled}}
-  {{#if domain.create_domain_zone}}
   zone_id = module.domain.zone_id
-  {{else}}
-  zone_id = data.aws_route53_zone.domain.zone_id
-  {{/if}}
   {{/if}}
 }
 {{/if}}

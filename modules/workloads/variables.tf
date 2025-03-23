@@ -110,6 +110,11 @@ variable "domain" {
   default = ""
 }
 
+variable "create_api_domain_record" {
+  default = true
+}
+
+
 variable "domain_zone_id" {
   type    = string
   default = ""
