@@ -79,15 +79,17 @@ type AppSync struct {
 }
 
 type Workload struct {
-	BackendHealthEndpoint      string `yaml:"backend_health_endpoint"`
-	BackendExternalDockerImage string `yaml:"backend_external_docker_image"`
-	BackendContainerCommand    string `yaml:"backend_container_command"`
-	BucketPostfix              string `yaml:"bucket_postfix"`
-	BucketPublic               bool   `yaml:"bucket_public"`
-	BackendImagePort           int    `yaml:"backend_image_port"`
-	SetupFCNSNS                bool   `yaml:"setup_fcnsns"`
-	XrayEnabled                bool   `yaml:"xray_enabled"`
-	BackendEnvVariables        string `yaml:"backend_env_variables"`
+	BackendHealthEndpoint      string            `yaml:"backend_health_endpoint"`
+	BackendExternalDockerImage string            `yaml:"backend_external_docker_image"`
+	BackendContainerCommand    string            `yaml:"backend_container_command"`
+	BucketPostfix              string            `yaml:"bucket_postfix"`
+	BucketPublic               bool              `yaml:"bucket_public"`
+	BackendImagePort           int               `yaml:"backend_image_port"`
+	SetupFCNSNS                bool              `yaml:"setup_fcnsns"`
+	XrayEnabled                bool              `yaml:"xray_enabled"`
+	BackendEnvVariables        map[string]string `yaml:"backend_env_variables"`
+	Policies                   []string          `yaml:"policies"`
+	BackendPolicies            []Policy          `yaml:"backend_policies"`
 
 	SlackWebhook       string   `yaml:"slack_webhook"`
 	EnableGithubOIDC   bool     `yaml:"enable_github_oidc"`
@@ -95,6 +97,11 @@ type Workload struct {
 
 	InstallPgAdmin bool   `yaml:"install_pg_admin"`
 	PgAdminEmail   string `yaml:"pg_admin_email"`
+}
+
+type Policy struct {
+	Actions   []string `yaml:"actions"`
+	Resources []string `yaml:"resources"`
 }
 
 type SetupDomainType string
@@ -187,7 +194,8 @@ func createEnv(name, env string) Env {
 			InstallPgAdmin:             false,
 			PgAdminEmail:               "",
 			XrayEnabled:                false,
-			BackendEnvVariables:        `TEST=passed`,
+			BackendEnvVariables:        map[string]string{"TEST": "passed"},
+			BackendPolicies:            []Policy{},
 		},
 		Domain: Domain{
 			Enabled:          false,

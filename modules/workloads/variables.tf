@@ -153,6 +153,7 @@ variable "sqs_enable" {
   default = false
 }
 
+
 variable "env_files_s3" {
   type = list(object({
     bucket = string
@@ -283,4 +284,16 @@ locals {
       }
     ]
   }
+}
+
+variable "backend_policy" {
+  type = object({
+    actions   = list(string)
+    resources = list(string)
+  })
+  default = {
+    actions   = []
+    resources = ["*"]
+  }
+  description = "Custom IAM policy for the backend task"
 }

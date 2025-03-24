@@ -1,4 +1,3 @@
-
 locals {
   backend_name = "${var.project}_service_${var.env}"
 }
@@ -291,6 +290,11 @@ resource "aws_iam_role_policy_attachment" "backend_task_execution" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
+resource "aws_iam_role_policy_attachment" "backend_task_execution_cloudwatch" {
+  role       = aws_iam_role.backend_task_execution.name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchFullAccess"
+}
+
 resource "aws_iam_role_policy_attachment" "backend_task_cloudwatch" {
   role       = aws_iam_role.backend_task.name
   policy_arn = "arn:aws:iam::aws:policy/CloudWatchFullAccess"
@@ -306,10 +310,21 @@ resource "aws_iam_role_policy_attachment" "backend_task_ses" {
   policy_arn = aws_iam_policy.send_emails.arn
 }
 
+// Add X-Ray permissions to the backend task role
+resource "aws_iam_role_policy_attachment" "backend_task_xray" {
+  role       = aws_iam_role.backend_task.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess"
+}
 
-// SSM IAM access policy
+// SSM IAM access policy for task execution role
 resource "aws_iam_role_policy_attachment" "ssm_parameter_access" {
   role       = aws_iam_role.backend_task_execution.name
+  policy_arn = aws_iam_policy.ssm_parameter_access.arn
+}
+
+// Adding SSM parameter access to task role as well
+resource "aws_iam_role_policy_attachment" "ssm_parameter_access_task_role" {
+  role       = aws_iam_role.backend_task.name
   policy_arn = aws_iam_policy.ssm_parameter_access.arn
 }
 
@@ -324,6 +339,9 @@ data "aws_iam_policy_document" "ssm_parameter_access" {
     resources = ["arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/${var.env}/${var.project}/backend/*"]
   }
 }
+
+
+
 
 
 resource "aws_iam_role_policy_attachment" "sqs_access" {
@@ -374,7 +392,6 @@ resource "null_resource" "create_env_files" {
 }
 
 // remote exec policy
-
 resource "aws_iam_role_policy" "ecs_exec_policy" {
   count = var.backend_remote_access ? 1 : 0
 
@@ -395,4 +412,35 @@ resource "aws_iam_role_policy" "ecs_exec_policy" {
       }
     ]
   })
+}
+
+
+// Create custom IAM policy from backend_policy if actions are specified
+resource "aws_iam_policy" "backend_custom_policy" {
+  count  = length(var.backend_policy.actions) > 0 ? 1 : 0
+  
+  name   = "${var.project}_backend_custom_policy_${var.env}"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = var.backend_policy.actions
+        Resource = var.backend_policy.resources
+      }
+    ]
+  })
+
+  tags = {
+    terraform = "true"
+    env       = var.env
+  }
+}
+
+// Attach the custom policy to the backend task role if it exists
+resource "aws_iam_role_policy_attachment" "backend_custom_policy_attachment" {
+  count      = length(var.backend_policy.actions) > 0 ? 1 : 0
+  
+  role       = aws_iam_role.backend_task.name
+  policy_arn = aws_iam_policy.backend_custom_policy[0].arn
 }

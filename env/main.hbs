@@ -142,7 +142,7 @@ module "workloads" {
   {{/if}}
   xray_enabled = {{workload.xray_enabled}}
   {{#if workload.backend_env_variables}}
-  backend_env = {{{envToMap workload.backend_env_variables}}}
+  backend_env = {{{ envArray workload.backend_env_variables }}}
   {{/if}}
   {{#if sqs.enabled}}
   sqs_queue_url = module.sqs.queue_url
@@ -180,6 +180,12 @@ module "workloads" {
   {{/if}}{{/if}}
   {{#compare (len services) ">" 0}}
   services = {{{array services}}} 
+  {{/compare}}
+  {{#compare (len workload.policy.actions) ">" 0}}
+  backend_policy = {
+    actions = {{{array workload.policy.actions}}}
+    resources = {{{array workload.policy.resources}}}
+  }
   {{/compare}}
 }
 {{#if cognito.enabled}} 

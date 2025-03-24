@@ -179,4 +179,91 @@ func registerCustomHelpers() {
 
 		return options.Fn()
 	})
+
+	raymond.RegisterHelper("mmap", func(value interface{}) string {
+		if value == nil {
+			return "{}"
+		}
+
+		// Handle case when input is a slice of maps with name/value keys
+		if slice, ok := value.([]interface{}); ok {
+			var builder strings.Builder
+			builder.WriteString("{\n")
+
+			for _, item := range slice {
+				if m, ok := item.(map[string]interface{}); ok {
+					// Extract name and value from each map
+					if name, hasName := m["name"]; hasName {
+						if value, hasValue := m["value"]; hasValue {
+							strValue := fmt.Sprintf("%v", value)
+
+							// Handle boolean values properly
+							if strValue == "true" || strValue == "false" {
+								builder.WriteString(fmt.Sprintf("  %s = %s\n", name, strValue))
+							} else {
+								// Quote all other values
+								builder.WriteString(fmt.Sprintf("  %s = \"%s\"\n", name, strValue))
+							}
+						}
+					}
+				}
+			}
+
+			builder.WriteString("}")
+			return builder.String()
+		}
+
+		// If it's already a map, format it as Terraform map
+		if m, ok := value.(map[string]interface{}); ok {
+			var builder strings.Builder
+			builder.WriteString("{\n")
+
+			for k, v := range m {
+				strValue := fmt.Sprintf("%v", v)
+
+				// Handle boolean values properly
+				if strValue == "true" || strValue == "false" {
+					builder.WriteString(fmt.Sprintf("  %s = %s\n", k, strValue))
+				} else {
+					// Quote all other values
+					builder.WriteString(fmt.Sprintf("  %s = \"%s\"\n", k, strValue))
+				}
+			}
+
+			builder.WriteString("}")
+			return builder.String()
+		}
+
+		return "{}"
+	})
+
+	raymond.RegisterHelper("envArray", func(value interface{}) string {
+		if value == nil {
+			return "[]"
+		}
+
+		var builder strings.Builder
+		builder.WriteString("[\n")
+
+		// Handle case when input is already a slice of maps with name/value keys
+		if slice, ok := value.([]interface{}); ok {
+			for _, item := range slice {
+				if m, ok := item.(map[string]interface{}); ok {
+					if name, hasName := m["name"]; hasName {
+						if val, hasValue := m["value"]; hasValue {
+							builder.WriteString(fmt.Sprintf("    { \"name\" : \"%v\", \"value\" : \"%v\" },\n", name, val))
+						}
+					}
+				}
+			}
+		} else if m, ok := value.(map[string]interface{}); ok {
+			// If it's a regular map, convert to name/value format
+			for k, v := range m {
+				builder.WriteString(fmt.Sprintf("    { \"name\" : \"%s\", \"value\" : \"%v\" },\n", k, v))
+			}
+		}
+
+		builder.WriteString("  ]")
+		return builder.String()
+	})
 }
