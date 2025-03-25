@@ -417,16 +417,16 @@ resource "aws_iam_role_policy" "ecs_exec_policy" {
 
 // Create custom IAM policy from backend_policy if actions are specified
 resource "aws_iam_policy" "backend_custom_policy" {
-  count  = length(var.backend_policy.actions) > 0 ? 1 : 0
-  
-  name   = "${var.project}_backend_custom_policy_${var.env}"
+  count = length(var.backend_policy) > 0 && length(var.backend_policy[0].actions) > 0 ? 1 : 0
+
+  name = "${var.project}_backend_custom_policy_${var.env}"
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
-      {
+      for policy in var.backend_policy : {
         Effect   = "Allow"
-        Action   = var.backend_policy.actions
-        Resource = var.backend_policy.resources
+        Action   = policy.actions
+        Resource = policy.resources
       }
     ]
   })
@@ -439,8 +439,8 @@ resource "aws_iam_policy" "backend_custom_policy" {
 
 // Attach the custom policy to the backend task role if it exists
 resource "aws_iam_role_policy_attachment" "backend_custom_policy_attachment" {
-  count      = length(var.backend_policy.actions) > 0 ? 1 : 0
-  
+  count = length(var.backend_policy) > 0 && length(var.backend_policy[0].actions) > 0 ? 1 : 0
+
   role       = aws_iam_role.backend_task.name
   policy_arn = aws_iam_policy.backend_custom_policy[0].arn
 }

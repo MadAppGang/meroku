@@ -181,12 +181,14 @@ module "workloads" {
   {{#compare (len services) ">" 0}}
   services = {{{array services}}} 
   {{/compare}}
-  {{#compare (len workload.policy.actions) ">" 0}}
-  backend_policy = {
-    actions = {{{array workload.policy.actions}}}
-    resources = {{{array workload.policy.resources}}}
-  }
-  {{/compare}}
+  backend_policy = [
+  {{#each workload.policy}}
+    {
+      actions = {{{array actions}}}
+      resources = {{{array resources}}}
+    }{{#unless @last}},{{/unless}}
+  {{/each}}
+  ]
 }
 {{#if cognito.enabled}} 
 module "cognito" {

@@ -287,13 +287,15 @@ locals {
 }
 
 variable "backend_policy" {
-  type = object({
+  type = list(object({
     actions   = list(string)
     resources = list(string)
-  })
-  default = {
-    actions   = []
-    resources = ["*"]
-  }
+  }))
+  default = [
+    {
+      actions   = []
+      resources = ["*"]
+    }
+  ]
   description = "Custom IAM policy for the backend task"
 }
