@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(pnpm add:*)",
+      "Bash(grep:*)",
+      "Bash(rm:*)",
+      "Bash(pnpm remove:*)"
     ],
     "deny": []
   }
