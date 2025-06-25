@@ -1,0 +1,75 @@
+project: moreai
+env: dev
+is_prod: false
+region: eu-central-1
+state_bucket: moreai-terraform-state-dev
+state_file: state.tfstate
+workload:
+  backend_health_endpoint: ""
+  backend_external_docker_image: ""
+  backend_container_command: ""
+  bucket_postfix: jdlks
+  bucket_public: false
+  backend_image_port: 3000
+  setup_fcnsns: false
+  xray_enabled: false
+  backend_env_variables: ""
+  slack_webhook: "https://hooks.slack.com/services/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4"
+  enable_github_oidc: true
+  github_oidc_subjects:
+    - repo:MadAppGang/*
+  install_pg_admin: false
+  pg_admin_email: ""
+domain:
+  enabled: true
+  create_domain_zone: true
+  domain_name: aidev.company
+postgres:
+  enabled: false
+  dbname: ""
+  username: ""
+  public_access: false
+  engine_version: 11.x
+cognito:
+  enabled: false
+  enable_web_client: false
+  enable_dashboard_client: false
+  dashboard_callback_ur_ls: []
+  enable_user_pool_domain: false
+  user_pool_domain_prefix: ""
+  backend_confirm_signup: false
+  auto_verified_attributes: []
+ses:
+  enabled: true
+  domain_name: ""
+  test_emails:
+    - i@madappgang.com
+scheduled_tasks:
+  - name: reconciliation
+    schedule: rate(1 day)
+    docker_image: ""
+    container_command: '["recon"]'
+    allow_public_access: true
+  - name: fees
+    schedule: rate(1 day)
+    docker_image: ""
+    container_command: '["fees"]'
+    allow_public_access: true
+sqs:
+  enabled: true
+  name: main
+event_processor_tasks: []
+pubsub_appsync:
+  enabled: true
+  schema: true
+  auth_lambda: true
+  resolvers: true
+services:
+  - name: aichat
+    container_command: ["ai"]
+    env_files_s3:
+      - bucket: moreai-backend-devjdlks
+        key: aichat.env
+    env_variables:
+      - name: env1
+        value: value1
