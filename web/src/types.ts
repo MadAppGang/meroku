@@ -29,7 +29,10 @@ export interface ComponentNode {
     | "auth"
     | "client-app"
     | "admin-app"
-    | "opa";
+    | "opa"
+    | "service-regular"
+    | "service-periodic"
+    | "service-event-driven";
   name: string;
   url?: string;
   status: "running" | "deploying" | "stopped" | "error";
@@ -49,6 +52,8 @@ export interface ComponentNode {
   };
   deletable?: boolean;
   group?: string;
+  subgroup?: string;
+  hasTelemetry?: boolean;
 }
 
 export interface LogEntry {

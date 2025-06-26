@@ -15,6 +15,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import { ServiceNode } from './ServiceNode';
 import { GroupNode } from './GroupNode';
+import { DynamicGroupNode } from './DynamicGroupNode';
 import { CanvasControls } from './CanvasControls';
 import { ComponentNode } from '../types';
 import { layoutNodesWithGroups } from '../utils/layoutUtils';
@@ -27,14 +28,15 @@ interface DeploymentCanvasProps {
 const nodeTypes = {
   service: ServiceNode,
   group: GroupNode,
+  dynamicGroup: DynamicGroupNode,
 };
 
 const initialNodes: Node[] = [
-  // GitHub Actions
+  // GitHub Actions (top)
   {
     id: 'github',
     type: 'service',
-    position: { x: 700, y: 20 },
+    position: { x: 230, y: -80 },
     data: {
       id: 'github',
       type: 'github',
@@ -45,11 +47,11 @@ const initialNodes: Node[] = [
     deletable: false,
   },
   
-  // Client Applications
+  // Client Applications (left)
   {
     id: 'client-app',
     type: 'service',
-    position: { x: 50, y: 400 },
+    position: { x: -639, y: 388 },
     data: {
       id: 'client-app',
       type: 'client-app',
@@ -60,7 +62,7 @@ const initialNodes: Node[] = [
   {
     id: 'admin-app',
     type: 'service',
-    position: { x: 50, y: 550 },
+    position: { x: -637, y: 538 },
     data: {
       id: 'admin-app',
       type: 'admin-app',
@@ -69,11 +71,11 @@ const initialNodes: Node[] = [
     },
   },
   
-  // Entry Points
+  // Entry Points (left-middle)
   {
     id: 'route53',
     type: 'service',
-    position: { x: 400, y: 200 },
+    position: { x: -131, y: 158 },
     data: {
       id: 'route53',
       type: 'route53',
@@ -86,7 +88,7 @@ const initialNodes: Node[] = [
   {
     id: 'waf',
     type: 'service',
-    position: { x: 300, y: 400 },
+    position: { x: -81, y: 368 },
     data: {
       id: 'waf',
       type: 'waf',
@@ -96,12 +98,10 @@ const initialNodes: Node[] = [
     },
     deletable: false,
   },
-  
-  // API Gateway
   {
     id: 'api-gateway',
     type: 'service',
-    position: { x: 500, y: 400 },
+    position: { x: -83, y: 518 },
     data: {
       id: 'api-gateway',
       type: 'api-gateway',
@@ -112,41 +112,45 @@ const initialNodes: Node[] = [
     deletable: false,
   },
   
-  // ECS Cluster Group
+  // Main ECS Cluster Group (center) - contains all ECS-related elements
   {
     id: 'ecs-cluster-group',
-    type: 'group',
-    position: { x: 550, y: 150 },
+    type: 'dynamicGroup',
+    position: { x: 0, y: 0 }, // Position will be calculated
     data: {
       label: 'ECS Cluster',
+      nodeIds: ['ecs-cluster', 'backend-service', 'xray', 'cloudwatch', 'alarms'],
     },
     style: {
-      zIndex: -1,
-      width: 750,
-      height: 350,
+      zIndex: -3,
+      backgroundColor: 'rgba(59, 130, 246, 0.05)',
+      border: '2px solid #3b82f6',
     },
     draggable: false,
     selectable: false,
   },
   
-  // ECS Services
+  // ECS Cluster node (center-top)
   {
-    id: 'ecs',
+    id: 'ecs-cluster',
     type: 'service',
-    position: { x: 600, y: 200 },
+    position: { x: 284, y: 283 },
     data: {
-      id: 'ecs',
+      id: 'ecs-cluster',
       type: 'ecs',
       name: 'Amazon ECS Cluster',
       status: 'running',
       deletable: false,
+      group: 'ECS Cluster',
     },
     deletable: false,
   },
+  
+  // ECR (standalone - not in ECS cluster)
   {
     id: 'ecr',
     type: 'service',
-    position: { x: 750, y: 200 },
+    position: { x: 280, y: 110 },
     data: {
       id: 'ecr',
       type: 'ecr',
@@ -156,23 +160,45 @@ const initialNodes: Node[] = [
     },
     deletable: false,
   },
+  
+  
+  // Services in the services subgroup
+  {
+    id: 'backend-service',
+    type: 'service',
+    position: { x: 292, y: 459 },
+    data: {
+      id: 'backend-service',
+      type: 'backend',
+      name: 'Backend service',
+      description: 'Main backend (required)',
+      status: 'running',
+      group: 'ECS Cluster',
+      subgroup: 'Services',
+      hasTelemetry: true,
+    },
+  },
+  
+  // Aurora DB (standalone - not in ECS cluster)
   {
     id: 'aurora',
     type: 'service',
-    position: { x: 900, y: 200 },
+    position: { x: 600, y: 110 },
     data: {
       id: 'aurora',
       type: 'aurora',
-      name: 'Amazon Aurora Serverless V2',
+      name: 'Amazon Aurora',
       status: 'running',
       deletable: false,
     },
     deletable: false,
   },
+  
+  // EventBridge (standalone - not in ECS cluster)
   {
     id: 'eventbridge',
     type: 'service',
-    position: { x: 1050, y: 200 },
+    position: { x: 290, y: 620 },
     data: {
       id: 'eventbridge',
       type: 'eventbridge',
@@ -183,62 +209,57 @@ const initialNodes: Node[] = [
     deletable: false,
   },
   
-  // Backend Services in ECS
+  
+  // Observability Services
   {
-    id: 'backend-service',
+    id: 'xray',
     type: 'service',
-    position: { x: 600, y: 320 },
+    position: { x: 860, y: 280 },
     data: {
-      id: 'backend-service',
-      type: 'backend',
-      name: 'Backend service',
-      description: '1-n instances',
+      id: 'xray',
+      type: 'xray',
+      name: 'AWS X-Ray',
       status: 'running',
-      group: 'ECS',
+      deletable: false,
+      group: 'ECS Cluster',
+      subgroup: 'Observability',
     },
+    deletable: false,
   },
   {
-    id: 'scheduled-service',
+    id: 'cloudwatch',
     type: 'service',
-    position: { x: 750, y: 320 },
+    position: { x: 580, y: 280 },
     data: {
-      id: 'scheduled-service',
-      type: 'backend',
-      name: 'Scheduled service',
+      id: 'cloudwatch',
+      type: 'cloudwatch',
+      name: 'Amazon CloudWatch',
       status: 'running',
-      group: 'ECS',
+      deletable: false,
+      group: 'ECS Cluster',
+      subgroup: 'Observability',
     },
+    deletable: false,
   },
   {
-    id: 'analytics-service',
+    id: 'alarms',
     type: 'service',
-    position: { x: 900, y: 320 },
+    position: { x: 1140, y: 280 },
     data: {
-      id: 'analytics-service',
-      type: 'analytics',
-      name: 'Analytics services',
+      id: 'alarms',
+      type: 'alarms',
+      name: 'Alarm rules',
       status: 'running',
-      group: 'ECS',
-    },
-  },
-  {
-    id: 'opa',
-    type: 'service',
-    position: { x: 1050, y: 320 },
-    data: {
-      id: 'opa',
-      type: 'opa',
-      name: 'Open Policy Agent',
-      status: 'running',
-      group: 'ECS',
+      group: 'ECS Cluster',
+      subgroup: 'Observability',
     },
   },
   
-  // Supporting Services
+  // Supporting Services (right side)
   {
     id: 'secrets-manager',
     type: 'service',
-    position: { x: 600, y: 550 },
+    position: { x: 900, y: 110 },
     data: {
       id: 'secrets-manager',
       type: 'secrets-manager',
@@ -251,7 +272,7 @@ const initialNodes: Node[] = [
   {
     id: 'ses',
     type: 'service',
-    position: { x: 750, y: 550 },
+    position: { x: 1170, y: 620 },
     data: {
       id: 'ses',
       type: 'ses',
@@ -264,7 +285,7 @@ const initialNodes: Node[] = [
   {
     id: 'sns',
     type: 'service',
-    position: { x: 900, y: 550 },
+    position: { x: 580, y: 620 },
     data: {
       id: 'sns',
       type: 'sns',
@@ -277,7 +298,7 @@ const initialNodes: Node[] = [
   {
     id: 's3',
     type: 'service',
-    position: { x: 1050, y: 550 },
+    position: { x: 880, y: 620 },
     data: {
       id: 's3',
       type: 's3',
@@ -288,11 +309,11 @@ const initialNodes: Node[] = [
     deletable: false,
   },
   
-  // Authentication
+  // Authentication (bottom-left)
   {
     id: 'auth-system',
     type: 'service',
-    position: { x: 450, y: 550 },
+    position: { x: -71, y: 818 },
     data: {
       id: 'auth-system',
       type: 'auth',
@@ -301,11 +322,11 @@ const initialNodes: Node[] = [
     },
   },
   
-  // Frontend Distribution
+  // Frontend Distribution (bottom)
   {
     id: 'amplify',
     type: 'service',
-    position: { x: 650, y: 700 },
+    position: { x: -76, y: 668 },
     data: {
       id: 'amplify',
       type: 'amplify',
@@ -315,73 +336,6 @@ const initialNodes: Node[] = [
       deletable: false,
     },
     deletable: false,
-  },
-  
-  // Observability Group
-  {
-    id: 'observability-group',
-    type: 'group',
-    position: { x: 1350, y: 150 },
-    data: {
-      label: 'Observability',
-    },
-    style: {
-      zIndex: -1,
-      width: 350,
-      height: 350,
-    },
-    draggable: false,
-    selectable: false,
-  },
-  
-  // Observability Services
-  {
-    id: 'xray',
-    type: 'service',
-    position: { x: 1400, y: 200 },
-    data: {
-      id: 'xray',
-      type: 'xray',
-      name: 'AWS X-Ray',
-      status: 'running',
-      deletable: false,
-    },
-    deletable: false,
-  },
-  {
-    id: 'cloudwatch',
-    type: 'service',
-    position: { x: 1550, y: 200 },
-    data: {
-      id: 'cloudwatch',
-      type: 'cloudwatch',
-      name: 'Amazon CloudWatch',
-      status: 'running',
-      deletable: false,
-    },
-    deletable: false,
-  },
-  {
-    id: 'telemetry',
-    type: 'service',
-    position: { x: 1400, y: 320 },
-    data: {
-      id: 'telemetry',
-      type: 'telemetry',
-      name: 'Open telemetry collector',
-      status: 'running',
-    },
-  },
-  {
-    id: 'alarms',
-    type: 'service',
-    position: { x: 1550, y: 320 },
-    data: {
-      id: 'alarms',
-      type: 'alarms',
-      name: 'Alarm rules',
-      status: 'running',
-    },
   },
 ];
 
@@ -404,7 +358,6 @@ const initialEdges: Edge[] = [
     target: 'waf',
     type: 'smoothstep',
     animated: true,
-    label: 'API access',
     style: { stroke: '#4f46e5', strokeWidth: 2 },
     markerEnd: { type: MarkerType.ArrowClosed, color: '#4f46e5' },
   },
@@ -418,38 +371,114 @@ const initialEdges: Edge[] = [
     markerEnd: { type: MarkerType.ArrowClosed, color: '#4f46e5' },
   },
   
-  // WAF to API Gateway
+  // Entry points to ECS Cluster
   {
-    id: 'waf-api',
-    source: 'waf',
-    target: 'api-gateway',
-    type: 'smoothstep',
-    animated: true,
-    style: { stroke: '#4f46e5', strokeWidth: 2 },
-    markerEnd: { type: MarkerType.ArrowClosed, color: '#4f46e5' },
-  },
-  
-  // Route53 to API Gateway
-  {
-    id: 'route53-api',
+    id: 'route53-ecs',
     source: 'route53',
-    target: 'api-gateway',
+    target: 'ecs-cluster',
     type: 'smoothstep',
     animated: true,
-    label: 'Cloud map',
+    label: 'DNS',
     style: { stroke: '#8b5cf6', strokeWidth: 2 },
     markerEnd: { type: MarkerType.ArrowClosed, color: '#8b5cf6' },
   },
-  
-  // API Gateway to Backend
   {
-    id: 'api-backend',
-    source: 'api-gateway',
-    target: 'backend-service',
+    id: 'waf-ecs',
+    source: 'waf',
+    target: 'ecs-cluster',
     type: 'smoothstep',
     animated: true,
     style: { stroke: '#4f46e5', strokeWidth: 2 },
     markerEnd: { type: MarkerType.ArrowClosed, color: '#4f46e5' },
+  },
+  {
+    id: 'api-ecs',
+    source: 'api-gateway',
+    target: 'ecs-cluster',
+    type: 'smoothstep',
+    animated: true,
+    style: { stroke: '#4f46e5', strokeWidth: 2 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: '#4f46e5' },
+  },
+  
+  // ECS to Supporting Services
+  {
+    id: 'ecs-secrets',
+    source: 'ecs-cluster',
+    target: 'secrets-manager',
+    type: 'smoothstep',
+    animated: true,
+    style: { stroke: '#4f46e5', strokeWidth: 2 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: '#4f46e5' },
+  },
+  {
+    id: 'ecs-ses',
+    source: 'ecs-cluster',
+    target: 'ses',
+    type: 'smoothstep',
+    animated: true,
+    style: { stroke: '#4f46e5', strokeWidth: 2 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: '#4f46e5' },
+  },
+  {
+    id: 'ecs-sns',
+    source: 'ecs-cluster',
+    target: 'sns',
+    type: 'smoothstep',
+    animated: true,
+    style: { stroke: '#4f46e5', strokeWidth: 2 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: '#4f46e5' },
+  },
+  {
+    id: 'ecs-s3',
+    source: 'ecs-cluster',
+    target: 's3',
+    type: 'smoothstep',
+    animated: true,
+    style: { stroke: '#4f46e5', strokeWidth: 2 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: '#4f46e5' },
+  },
+  
+  // Backend to Aurora
+  {
+    id: 'backend-aurora',
+    source: 'backend-service',
+    target: 'aurora',
+    type: 'smoothstep',
+    animated: true,
+    style: { stroke: '#10b981', strokeWidth: 2 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: '#10b981' },
+  },
+  
+  // Backend to EventBridge
+  {
+    id: 'backend-eventbridge',
+    source: 'backend-service',
+    target: 'eventbridge',
+    type: 'smoothstep',
+    animated: true,
+    style: { stroke: '#10b981', strokeWidth: 2 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: '#10b981' },
+  },
+  
+  // Services to Observability
+  {
+    id: 'backend-xray',
+    source: 'backend-service',
+    target: 'xray',
+    type: 'smoothstep',
+    animated: true,
+    style: { stroke: '#a855f7', strokeWidth: 2, strokeDasharray: '5,5' },
+    markerEnd: { type: MarkerType.ArrowClosed, color: '#a855f7' },
+  },
+  {
+    id: 'backend-cloudwatch',
+    source: 'backend-service',
+    target: 'cloudwatch',
+    type: 'smoothstep',
+    animated: true,
+    style: { stroke: '#a855f7', strokeWidth: 2, strokeDasharray: '5,5' },
+    markerEnd: { type: MarkerType.ArrowClosed, color: '#a855f7' },
   },
   
   // Authentication flows
@@ -473,9 +502,9 @@ const initialEdges: Edge[] = [
     markerEnd: { type: MarkerType.ArrowClosed, color: '#6b7280' },
   },
   {
-    id: 'auth-api',
+    id: 'auth-ecs',
     source: 'auth-system',
-    target: 'api-gateway',
+    target: 'ecs-cluster',
     type: 'smoothstep',
     animated: true,
     label: 'JWT/OIDC',
@@ -483,140 +512,15 @@ const initialEdges: Edge[] = [
     markerEnd: { type: MarkerType.ArrowClosed, color: '#6b7280' },
   },
   
-  // Backend to services
-  {
-    id: 'backend-secrets',
-    source: 'backend-service',
-    target: 'secrets-manager',
-    type: 'smoothstep',
-    animated: true,
-    style: { stroke: '#4f46e5', strokeWidth: 2 },
-    markerEnd: { type: MarkerType.ArrowClosed, color: '#4f46e5' },
-  },
-  {
-    id: 'backend-ses',
-    source: 'backend-service',
-    target: 'ses',
-    type: 'smoothstep',
-    animated: true,
-    style: { stroke: '#4f46e5', strokeWidth: 2 },
-    markerEnd: { type: MarkerType.ArrowClosed, color: '#4f46e5' },
-  },
-  {
-    id: 'backend-sns',
-    source: 'backend-service',
-    target: 'sns',
-    type: 'smoothstep',
-    animated: true,
-    style: { stroke: '#4f46e5', strokeWidth: 2 },
-    markerEnd: { type: MarkerType.ArrowClosed, color: '#4f46e5' },
-  },
-  {
-    id: 'backend-s3',
-    source: 'backend-service',
-    target: 's3',
-    type: 'smoothstep',
-    animated: true,
-    style: { stroke: '#4f46e5', strokeWidth: 2 },
-    markerEnd: { type: MarkerType.ArrowClosed, color: '#4f46e5' },
-  },
-  
-  // Scheduled service connections
-  {
-    id: 'scheduled-ses',
-    source: 'scheduled-service',
-    target: 'ses',
-    type: 'smoothstep',
-    animated: true,
-    style: { stroke: '#4f46e5', strokeWidth: 2 },
-    markerEnd: { type: MarkerType.ArrowClosed, color: '#4f46e5' },
-  },
-  {
-    id: 'scheduled-sns',
-    source: 'scheduled-service',
-    target: 'sns',
-    type: 'smoothstep',
-    animated: true,
-    style: { stroke: '#4f46e5', strokeWidth: 2 },
-    markerEnd: { type: MarkerType.ArrowClosed, color: '#4f46e5' },
-  },
-  
-  // Analytics service connections
-  {
-    id: 'analytics-sns',
-    source: 'analytics-service',
-    target: 'sns',
-    type: 'smoothstep',
-    animated: true,
-    style: { stroke: '#4f46e5', strokeWidth: 2 },
-    markerEnd: { type: MarkerType.ArrowClosed, color: '#4f46e5' },
-  },
-  {
-    id: 'analytics-s3',
-    source: 'analytics-service',
-    target: 's3',
-    type: 'smoothstep',
-    animated: true,
-    style: { stroke: '#4f46e5', strokeWidth: 2 },
-    markerEnd: { type: MarkerType.ArrowClosed, color: '#4f46e5' },
-  },
-  
   // Frontend to Amplify
   {
-    id: 'client-amplify',
-    source: 'client-app',
+    id: 'ecs-amplify',
+    source: 'ecs-cluster',
     target: 'amplify',
     type: 'smoothstep',
     animated: true,
-    style: { stroke: '#6b7280', strokeWidth: 2 },
-    markerEnd: { type: MarkerType.ArrowClosed, color: '#6b7280' },
-  },
-  {
-    id: 'admin-amplify',
-    source: 'admin-app',
-    target: 'amplify',
-    type: 'smoothstep',
-    animated: true,
-    style: { stroke: '#6b7280', strokeWidth: 2 },
-    markerEnd: { type: MarkerType.ArrowClosed, color: '#6b7280' },
-  },
-  
-  // Observability connections
-  {
-    id: 'backend-xray',
-    source: 'backend-service',
-    target: 'xray',
-    type: 'smoothstep',
-    animated: true,
-    style: { stroke: '#8b5cf6', strokeWidth: 2, strokeDasharray: '5,5' },
-    markerEnd: { type: MarkerType.ArrowClosed, color: '#8b5cf6' },
-  },
-  {
-    id: 'backend-telemetry',
-    source: 'backend-service',
-    target: 'telemetry',
-    type: 'smoothstep',
-    animated: true,
-    style: { stroke: '#8b5cf6', strokeWidth: 2, strokeDasharray: '5,5' },
-    markerEnd: { type: MarkerType.ArrowClosed, color: '#8b5cf6' },
-  },
-  {
-    id: 'scheduled-telemetry',
-    source: 'scheduled-service',
-    target: 'telemetry',
-    type: 'smoothstep',
-    animated: true,
-    style: { stroke: '#8b5cf6', strokeWidth: 2, strokeDasharray: '5,5' },
-    markerEnd: { type: MarkerType.ArrowClosed, color: '#8b5cf6' },
-  },
-  {
-    id: 'analytics-telemetry',
-    source: 'analytics-service',
-    target: 'telemetry',
-    type: 'smoothstep',
-    animated: true,
-    style: { stroke: '#8b5cf6', strokeWidth: 2, strokeDasharray: '5,5' },
-    markerEnd: { type: MarkerType.ArrowClosed, color: '#8b5cf6' },
+    style: { stroke: '#4f46e5', strokeWidth: 2 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: '#4f46e5' },
   },
 ];
 
@@ -640,6 +544,14 @@ export function DeploymentCanvas({ onNodeSelect, selectedNode }: DeploymentCanva
 
   const onNodeClick = useCallback(
     (event: React.MouseEvent, node: Node) => {
+      // Log node position and details
+      console.log('Node clicked:', {
+        id: node.id,
+        type: node.type,
+        position: node.position,
+        data: node.data,
+      });
+      
       if (node.type === 'service') {
         onNodeSelect(node.data as ComponentNode);
       }
@@ -680,6 +592,8 @@ export function DeploymentCanvas({ onNodeSelect, selectedNode }: DeploymentCanva
         defaultViewport={{ x: 0, y: 0, zoom: 0.4 }}
         className="bg-gray-950"
         proOptions={{ hideAttribution: true }}
+        snapToGrid={true}
+        snapGrid={[10, 10]}
       >
         <Background 
           color="#374151" 

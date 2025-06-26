@@ -1,6 +1,6 @@
 import React from 'react';
-import { Plus, Minus, Maximize, Grid3x3, Move, MousePointer, Layout } from 'lucide-react';
-import { useReactFlow } from 'reactflow';
+import { Plus, Minus, Maximize, Grid3x3, Move, MousePointer, Layout, Printer } from 'lucide-react';
+import { useReactFlow, useNodes } from 'reactflow';
 import { Button } from './ui/button';
 
 interface CanvasControlsProps {
@@ -9,6 +9,32 @@ interface CanvasControlsProps {
 
 export function CanvasControls({ onAutoLayout }: CanvasControlsProps) {
   const { zoomIn, zoomOut, fitView } = useReactFlow();
+  const nodes = useNodes();
+  
+  const printNodePositions = () => {
+    const positions = nodes
+      .filter(node => node.type === 'service')
+      .map(node => ({
+        id: node.id,
+        position: node.position,
+        type: node.data.type,
+        name: node.data.name,
+      }));
+    
+    console.log('=== Node Positions ===');
+    positions.forEach(({ id, position, type, name }) => {
+      console.log(`${id}: { x: ${Math.round(position.x)}, y: ${Math.round(position.y)} } // ${name}`);
+    });
+    console.log('=== End Positions ===');
+    
+    // Also log as a copyable object
+    const positionsObj = positions.reduce((acc, { id, position }) => {
+      acc[id] = { x: Math.round(position.x), y: Math.round(position.y) };
+      return acc;
+    }, {} as Record<string, { x: number; y: number }>);
+    
+    console.log('Positions object:', JSON.stringify(positionsObj, null, 2));
+  };
 
   return (
     <div className="absolute left-4 top-4 z-40 flex flex-col gap-2">
@@ -79,6 +105,19 @@ export function CanvasControls({ onAutoLayout }: CanvasControlsProps) {
           </Button>
         </div>
       )}
+      
+      {/* Print Positions Control */}
+      <div className="bg-gray-800 border border-gray-700 rounded-lg p-1">
+        <Button
+          size="icon"
+          variant="ghost"
+          onClick={printNodePositions}
+          className="w-8 h-8 text-gray-400 hover:text-white hover:bg-gray-700"
+          title="Print node positions to console"
+        >
+          <Printer className="w-4 h-4" />
+        </Button>
+      </div>
     </div>
   );
 }

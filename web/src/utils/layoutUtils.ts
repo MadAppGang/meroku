@@ -168,8 +168,10 @@ function calculateAdjustment(
 // Group-aware layout that maintains nodes within their groups
 export function layoutNodesWithGroups(nodes: Node[], margin: number = MINIMUM_MARGIN): Node[] {
   // First, separate groups and regular nodes
+  // Dynamic groups should not be moved as they calculate their own position
+  const dynamicGroups = nodes.filter(n => n.type === 'dynamicGroup');
   const groups = nodes.filter(n => n.type === 'group');
-  const regularNodes = nodes.filter(n => n.type !== 'group');
+  const regularNodes = nodes.filter(n => n.type !== 'group' && n.type !== 'dynamicGroup');
   
   // Apply overlap prevention to groups first
   const adjustedGroups = preventNodeOverlap(groups, margin);
@@ -206,8 +208,12 @@ export function layoutNodesWithGroups(nodes: Node[], margin: number = MINIMUM_MA
     return node;
   });
   
-  // Apply overlap prevention to all nodes
-  const allAdjustedNodes = [...adjustedGroups, ...preventNodeOverlap(adjustedRegularNodes, margin)];
+  // Apply overlap prevention to all nodes except dynamic groups
+  const allAdjustedNodes = [
+    ...dynamicGroups, // Keep dynamic groups at their original position
+    ...adjustedGroups, 
+    ...preventNodeOverlap(adjustedRegularNodes, margin)
+  ];
   
   return allAdjustedNodes;
 }

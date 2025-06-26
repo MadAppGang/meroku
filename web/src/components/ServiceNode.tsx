@@ -27,7 +27,10 @@ import {
   Users,
   Monitor,
   Smartphone,
-  ShieldCheck
+  ShieldCheck,
+  Timer,
+  Calendar,
+  Workflow
 } from 'lucide-react';
 import { ComponentNode } from '../types';
 
@@ -61,6 +64,9 @@ const serviceIcons = {
   'client-app': Monitor,
   'admin-app': Monitor,
   opa: ShieldCheck,
+  'service-regular': Server,
+  'service-periodic': Calendar,
+  'service-event-driven': Workflow,
 };
 
 const serviceColors = {
@@ -93,6 +99,9 @@ const serviceColors = {
   'client-app': 'bg-gray-600',
   'admin-app': 'bg-gray-600',
   opa: 'bg-gray-700',
+  'service-regular': 'bg-blue-600',
+  'service-periodic': 'bg-purple-600',
+  'service-event-driven': 'bg-green-600',
 };
 
 const statusIcons = {
@@ -179,6 +188,13 @@ export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
         <div className="mt-2 flex items-center gap-1 text-xs text-gray-500">
           <Network className="w-3 h-3" />
           <span>{data.group}</span>
+          {data.subgroup && <span>/ {data.subgroup}</span>}
+        </div>
+      )}
+      
+      {data.hasTelemetry && (
+        <div className="absolute -top-2 -right-2 bg-purple-600 rounded-full p-1">
+          <Gauge className="w-3 h-3 text-white" />
         </div>
       )}
     </div>
