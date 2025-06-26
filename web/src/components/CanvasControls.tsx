@@ -1,9 +1,13 @@
 import React from 'react';
-import { Plus, Minus, Maximize, Grid3x3, Move, MousePointer } from 'lucide-react';
+import { Plus, Minus, Maximize, Grid3x3, Move, MousePointer, Layout } from 'lucide-react';
 import { useReactFlow } from 'reactflow';
 import { Button } from './ui/button';
 
-export function CanvasControls() {
+interface CanvasControlsProps {
+  onAutoLayout?: () => void;
+}
+
+export function CanvasControls({ onAutoLayout }: CanvasControlsProps) {
   const { zoomIn, zoomOut, fitView } = useReactFlow();
 
   return (
@@ -60,6 +64,21 @@ export function CanvasControls() {
           <Grid3x3 className="w-4 h-4" />
         </Button>
       </div>
+
+      {/* Layout Control */}
+      {onAutoLayout && (
+        <div className="bg-gray-800 border border-gray-700 rounded-lg p-1">
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={onAutoLayout}
+            className="w-8 h-8 text-gray-400 hover:text-white hover:bg-gray-700"
+            title="Auto-layout nodes"
+          >
+            <Layout className="w-4 h-4" />
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

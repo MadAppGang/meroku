@@ -17,9 +17,6 @@ export default function App() {
   return (
     <div className="size-full bg-gray-950 text-white relative overflow-hidden">
       <ReactFlowProvider>
-        {/* Canvas Controls */}
-        <CanvasControls />
-
         {/* Main Canvas */}
         <DeploymentCanvas
           onNodeSelect={handleNodeSelect}

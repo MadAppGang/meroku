@@ -11,17 +11,56 @@ import {
   Clock,
   XCircle,
   AlertCircle,
-  Copy
+  Copy,
+  Network,
+  Package,
+  Shield,
+  Key,
+  Mail,
+  Bell,
+  HardDrive,
+  Cloud,
+  Activity,
+  Eye,
+  Gauge,
+  Siren,
+  Users,
+  Monitor,
+  Smartphone,
+  ShieldCheck
 } from 'lucide-react';
 import { ComponentNode } from '../types';
 
 const serviceIcons = {
   frontend: Globe,
-  backend: Github,
+  backend: Server,
   database: Database,
   cache: Database,
   api: Server,
   analytics: BarChart3,
+  infrastructure: Network,
+  'container-registry': Package,
+  route53: Network,
+  waf: Shield,
+  'api-gateway': Server,
+  ecs: Package,
+  ecr: Package,
+  aurora: Database,
+  eventbridge: Zap,
+  'secrets-manager': Key,
+  ses: Mail,
+  sns: Bell,
+  s3: HardDrive,
+  amplify: Cloud,
+  xray: Activity,
+  cloudwatch: Eye,
+  telemetry: Gauge,
+  alarms: Siren,
+  github: Github,
+  auth: Users,
+  'client-app': Monitor,
+  'admin-app': Monitor,
+  opa: ShieldCheck,
 };
 
 const serviceColors = {
@@ -31,6 +70,29 @@ const serviceColors = {
   cache: 'bg-red-500',
   api: 'bg-blue-400',
   analytics: 'bg-green-500',
+  infrastructure: 'bg-purple-500',
+  'container-registry': 'bg-orange-500',
+  route53: 'bg-purple-600',
+  waf: 'bg-red-600',
+  'api-gateway': 'bg-pink-600',
+  ecs: 'bg-orange-600',
+  ecr: 'bg-orange-500',
+  aurora: 'bg-purple-500',
+  eventbridge: 'bg-pink-500',
+  'secrets-manager': 'bg-red-500',
+  ses: 'bg-red-500',
+  sns: 'bg-pink-500',
+  s3: 'bg-green-600',
+  amplify: 'bg-red-500',
+  xray: 'bg-purple-500',
+  cloudwatch: 'bg-pink-500',
+  telemetry: 'bg-yellow-600',
+  alarms: 'bg-blue-500',
+  github: 'bg-gray-700',
+  auth: 'bg-gray-800',
+  'client-app': 'bg-gray-600',
+  'admin-app': 'bg-gray-600',
+  opa: 'bg-gray-700',
 };
 
 const statusIcons = {
@@ -110,6 +172,13 @@ export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
               {data.resources.cpu}, {data.resources.memory}
             </span>
           </div>
+        </div>
+      )}
+
+      {data.group && (
+        <div className="mt-2 flex items-center gap-1 text-xs text-gray-500">
+          <Network className="w-3 h-3" />
+          <span>{data.group}</span>
         </div>
       )}
     </div>

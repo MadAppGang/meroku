@@ -6,7 +6,30 @@ export interface ComponentNode {
     | "database"
     | "cache"
     | "api"
-    | "analytics";
+    | "analytics"
+    | "infrastructure"
+    | "container-registry"
+    | "route53"
+    | "waf"
+    | "api-gateway"
+    | "ecs"
+    | "ecr"
+    | "aurora"
+    | "eventbridge"
+    | "secrets-manager"
+    | "ses"
+    | "sns"
+    | "s3"
+    | "amplify"
+    | "xray"
+    | "cloudwatch"
+    | "telemetry"
+    | "alarms"
+    | "github"
+    | "auth"
+    | "client-app"
+    | "admin-app"
+    | "opa";
   name: string;
   url?: string;
   status: "running" | "deploying" | "stopped" | "error";
@@ -24,6 +47,8 @@ export interface ComponentNode {
     memory: number;
     requests: number;
   };
+  deletable?: boolean;
+  group?: string;
 }
 
 export interface LogEntry {
