@@ -95,6 +95,7 @@ const initialNodes: Node[] = [
       name: 'AWS WAF',
       status: 'running',
       deletable: false,
+      disabled: true,
     },
     deletable: false,
   },
@@ -279,6 +280,7 @@ const initialNodes: Node[] = [
       name: 'Amazon SES',
       status: 'running',
       deletable: false,
+      disabled: true,
     },
     deletable: false,
   },
@@ -571,11 +573,30 @@ export function DeploymentCanvas({ onNodeSelect, selectedNode }: DeploymentCanva
     }));
   }, [nodes, selectedNode]);
 
+  // Update edges to show dimmed state when connected to disabled nodes
+  const edgesWithState = useMemo(() => {
+    const nodeMap = new Map(nodes.map(n => [n.id, n]));
+    return edges.map(edge => {
+      const sourceNode = nodeMap.get(edge.source);
+      const targetNode = nodeMap.get(edge.target);
+      const isDimmed = sourceNode?.data?.disabled || targetNode?.data?.disabled;
+      
+      return {
+        ...edge,
+        style: {
+          ...edge.style,
+          opacity: isDimmed ? 0.3 : 1,
+        },
+        animated: isDimmed ? false : edge.animated,
+      };
+    });
+  }, [edges, nodes]);
+
   return (
     <div className="size-full">
       <ReactFlow
         nodes={nodesWithSelection}
-        edges={edges}
+        edges={edgesWithState}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}

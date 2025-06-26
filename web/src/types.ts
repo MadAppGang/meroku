@@ -54,6 +54,7 @@ export interface ComponentNode {
   group?: string;
   subgroup?: string;
   hasTelemetry?: boolean;
+  disabled?: boolean;
 }
 
 export interface LogEntry {

@@ -129,6 +129,7 @@ export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
       bg-gray-800 border-2 rounded-lg p-4 min-w-64 shadow-lg
       ${selected ? 'border-blue-500 shadow-blue-500/20' : 'border-gray-600'}
       hover:border-gray-500 transition-all duration-200
+      ${data.disabled ? 'opacity-50' : ''}
     `}>
       <Handle
         type="target"
@@ -142,7 +143,7 @@ export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
       />
       
       <div className="flex items-center gap-3 mb-2">
-        <div className={`p-2 rounded-lg ${serviceColor}`}>
+        <div className={`p-2 rounded-lg ${serviceColor} ${data.disabled ? 'opacity-60' : ''}`}>
           <Icon className="w-4 h-4 text-white" />
         </div>
         <div className="flex-1">
@@ -154,7 +155,7 @@ export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
       </div>
 
       <div className="flex items-center gap-2 mb-2">
-        <StatusIcon className={`w-4 h-4 ${statusColor}`} />
+        <StatusIcon className={`w-4 h-4 ${statusColor} ${data.disabled ? 'opacity-60' : ''}`} />
         <span className="text-sm text-gray-300">
           {data.description || 'No description'}
         </span>
