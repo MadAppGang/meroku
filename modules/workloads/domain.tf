@@ -1,5 +1,5 @@
 resource "aws_route53_record" "backend" {
-  count = var.create_api_domain_record ? 1 : 0
+  count   = var.create_api_domain_record ? 1 : 0
   name    = var.api_domain
   type    = "A"
   zone_id = var.domain_zone_id
@@ -17,12 +17,28 @@ resource "aws_apigatewayv2_domain_name" "backend" {
     endpoint_type   = "REGIONAL"
     security_policy = "TLS_1_2"
   }
+
+  tags = {
+    Name        = var.api_domain
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 
 
 resource "aws_cloudwatch_log_group" "api_gateway_logs" {
   name              = "/aws/api_gateway/${aws_apigatewayv2_api.api_gateway.name}"
   retention_in_days = 30
+
+  tags = {
+    Name        = "/aws/api_gateway/${aws_apigatewayv2_api.api_gateway.name}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 
 resource "aws_apigatewayv2_stage" "backend" {
@@ -32,20 +48,28 @@ resource "aws_apigatewayv2_stage" "backend" {
   access_log_settings {
     destination_arn = aws_cloudwatch_log_group.api_gateway_logs.arn
     format = jsonencode({
-      requestId = "$context.requestId",
-      sourceIp = "$context.identity.sourceIp",
-      requestTime = "$context.requestTime",
-      protocol = "$context.protocol",
-      httpMethod = "$context.httpMethod", 
-      resourcePath = "$context.resourcePath",
-      routeKey = "$context.routeKey",
-      status = "$context.status",
+      requestId      = "$context.requestId",
+      sourceIp       = "$context.identity.sourceIp",
+      requestTime    = "$context.requestTime",
+      protocol       = "$context.protocol",
+      httpMethod     = "$context.httpMethod",
+      resourcePath   = "$context.resourcePath",
+      routeKey       = "$context.routeKey",
+      status         = "$context.status",
       responseLength = "$context.responseLength",
     })
   }
   default_route_settings {
     throttling_burst_limit = 5000
-    throttling_rate_limit = 10000
+    throttling_rate_limit  = 10000
+  }
+
+  tags = {
+    Name        = var.env
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
   }
 }
 

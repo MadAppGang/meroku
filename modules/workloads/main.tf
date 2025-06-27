@@ -2,8 +2,12 @@ resource "aws_ecs_cluster" "main" {
   name = "${var.project}_cluster_${var.env}"
 
   tags = {
-    terraform = "true"
-    env       = var.env
+    Name        = "${var.project}_cluster_${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    terraform   = "true"
+    Application = "${var.project}-${var.env}"
   }
 }
 

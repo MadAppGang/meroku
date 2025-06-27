@@ -9,6 +9,14 @@ resource "aws_ssm_parameter" "backend_env" {
       value,
     ]
   }
+
+  tags = {
+    Name        = "/${var.env}/${var.project}/backend/env"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 
 

@@ -12,7 +12,13 @@ resource "aws_cognito_user_pool" "user_pool" {
   name                       = "${var.project}-user-pool-${var.env}"
   sms_authentication_message = "Your login code is {####}"
   sms_verification_message   = "Your verification code is {####}"
-  tags                       = {}
+  tags = {
+    Name        = "${var.project}-user-pool-${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 
   admin_create_user_config {
     allow_admin_create_user_only = false
@@ -121,8 +127,12 @@ resource "aws_iam_policy" "allow_admin_confirm_signup_policy" {
 }
 EOF
   tags = {
-    terraform = "true"
-    env       = var.env
+    Name        = "AllowAdminConfirmSignUpForBackend-${var.project}-${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    terraform   = "true"
+    Application = "${var.project}-${var.env}"
   }
 }
 

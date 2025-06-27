@@ -10,6 +10,14 @@ resource "aws_appsync_graphql_api" "pubsub" {
   additional_authentication_provider {
     authentication_type = "API_KEY"
   }
+
+  tags = {
+    Name        = "${var.project}-${var.env}-pubsub-api"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 
 resource "aws_appsync_api_key" "pubsub" {
@@ -32,6 +40,14 @@ resource "aws_iam_role" "appsync" {
       }
     ]
   })
+
+  tags = {
+    Name        = "${var.project}-${var.env}-appsync-role"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 
 resource "aws_iam_role_policy_attachment" "appsync_logs" {

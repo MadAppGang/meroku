@@ -35,6 +35,14 @@ resource "aws_iam_role" "lambda_role" {
       }
     ]
   })
+
+  tags = {
+    Name        = "${var.project}-${var.env}-appsync-lambda-exec"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 
 # Attach basic Lambda execution policy to the IAM role
@@ -57,5 +65,13 @@ resource "aws_lambda_function" "function" {
       # Add any environment variables your Lambda needs
       EXAMPLE_VAR = "example_value"
     }
+  }
+
+  tags = {
+    Name        = "${var.project}-${var.env}-appsync-auth"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
   }
 }

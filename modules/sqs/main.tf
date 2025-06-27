@@ -2,7 +2,10 @@
 resource "aws_sqs_queue" "queue" {
   name = var.name
   tags = {
+    Name        = var.name
     Environment = var.env
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
   }
 }
 
@@ -28,4 +31,11 @@ resource "aws_iam_policy" "sqs_access_policy" {
   path        = "/"
   description = "IAM policy for accessing SQS"
   policy      = data.aws_iam_policy_document.sqs_policy.json
+
+  tags = {
+    Name        = "sqs-access-policy"
+    Environment = var.env
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }

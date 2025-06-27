@@ -12,6 +12,8 @@ resource "aws_s3_bucket" "this" {
     Name        = "${var.project}-${each.key}-${var.env}"
     Environment = var.env
     Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
   }
 }
 

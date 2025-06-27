@@ -7,6 +7,10 @@ variable env {
   type = string
 }
 
+variable project {
+  type = string
+}
+
 variable test_emails {
   type = list(string)
   default = [ ]

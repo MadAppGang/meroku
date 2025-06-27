@@ -25,8 +25,12 @@ resource "aws_lb_target_group" "services" {
   }
 
   tags = {
-    terraform = "true"
-    env       = var.env
+    Name        = "${var.project}-service-${each.key}-tg-${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    terraform   = "true"
+    Application = "${var.project}-${var.env}"
   }
 }
 
@@ -43,8 +47,12 @@ resource "aws_ecr_repository" "services" {
   force_delete = true
 
   tags = {
-    terraform = "true"
-    env       = var.env
+    Name        = "${var.project}-service-${each.key}-tg-${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    terraform   = "true"
+    Application = "${var.project}-${var.env}"
   }
 }
 
@@ -112,8 +120,12 @@ resource "aws_ecs_service" "services" {
   }
 
   tags = {
-    terraform = "true"
-    env       = var.env
+    Name        = "${var.project}-service-${each.key}-tg-${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    terraform   = "true"
+    Application = "${var.project}-${var.env}"
   }
 }
 
@@ -177,8 +189,12 @@ resource "aws_ecs_task_definition" "services" {
   ))
 
   tags = {
-    terraform = "true"
-    env       = var.env
+    Name        = "${var.project}-service-${each.key}-tg-${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    terraform   = "true"
+    Application = "${var.project}-${var.env}"
   }
 }
 
@@ -206,8 +222,12 @@ resource "aws_security_group" "services" {
   }
 
   tags = {
-    terraform = "true"
-    env       = var.env
+    Name        = "${var.project}-service-${each.key}-tg-${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    terraform   = "true"
+    Application = "${var.project}-${var.env}"
   }
 }
 
@@ -219,8 +239,12 @@ resource "aws_cloudwatch_log_group" "services" {
   retention_in_days = 7
 
   tags = {
-    terraform = "true"
-    env       = var.env
+    Name        = "${var.project}-service-${each.key}-tg-${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    terraform   = "true"
+    Application = "${var.project}-${var.env}"
   }
 }
 
@@ -230,6 +254,14 @@ resource "aws_iam_role" "services_task" {
 
   name               = "${var.project}_service_${each.key}_task_${var.env}"
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume_role.json
+
+  tags = {
+    Name        = "${var.project}_service_${each.key}_task_${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 
 resource "aws_iam_role" "services_task_execution" {
@@ -237,6 +269,14 @@ resource "aws_iam_role" "services_task_execution" {
 
   name               = "${var.project}_service_${each.key}_task_execution_${var.env}"
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume_role.json
+
+  tags = {
+    Name        = "${var.project}_service_${each.key}_task_execution_${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 
 # Attach policies to service roles
@@ -294,6 +334,14 @@ resource "aws_iam_policy" "services_ssm_parameter_access" {
       }
     ]
   })
+
+  tags = {
+    Name        = "ServiceSSMAccessPolicy_${var.project}_${each.key}_${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 
 resource "aws_iam_role_policy_attachment" "services_sqs_access" {

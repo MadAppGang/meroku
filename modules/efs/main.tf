@@ -5,9 +5,13 @@ resource "aws_efs_file_system" "this" {
   encrypted      = true
 
   tags = {
-    Name      = "${var.project}-${each.key}-${var.env}"
-    terraform = "true"
-    env       = var.env
+    Name        = "${var.project}-${each.key}-${var.env}"
+    terraform   = "true"
+    env         = var.env
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
   }
 }
 
@@ -22,6 +26,14 @@ resource "aws_security_group" "efs" {
     to_port     = 2049
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name        = "${var.project}-efs-${each.key}-${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
   }
 }
 
@@ -55,5 +67,13 @@ resource "aws_efs_access_point" "this" {
       owner_uid   = each.value.uid
       permissions = each.value.permissions
     }
+  }
+
+  tags = {
+    Name        = "${var.project}-${each.key}-access-point-${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
   }
 }

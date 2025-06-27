@@ -72,6 +72,8 @@ resource "aws_lb_target_group" "backend" {
     Name        = "${var.project}-backend-tg-${var.env}"
     Environment = var.env
     Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
   }
 }
 

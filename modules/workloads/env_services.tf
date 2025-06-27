@@ -11,6 +11,14 @@ resource "aws_ssm_parameter" "services_env" {
       value,
     ]
   }
+
+  tags = {
+    Name        = "/${var.env}/${var.project}/${each.key}/env"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 
 # Get SSM parameters for each service

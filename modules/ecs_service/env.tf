@@ -3,6 +3,14 @@ resource "aws_ssm_parameter" "service_env" {
   type  = "SecureString"
   value = " "
 
+  tags = {
+    Name        = "${var.project}-${var.service}-env-parameter-${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
+
   // if we manually change the value, don't rewrite it
   lifecycle {
     ignore_changes = [

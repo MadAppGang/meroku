@@ -31,8 +31,11 @@ resource "aws_ecs_service" "pgadmin" {
   }
 
   tags = {
-    terraform = "true"
-    env       = var.env
+    Name        = "pgadmin-service-${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
   }
 
 }
@@ -68,8 +71,11 @@ resource "aws_ecs_task_definition" "pgadmin" {
   }])
 
   tags = {
-    terraform = "true"
-    env       = var.env
+    Name        = "pgadmin-service-${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
   }
 }
 
@@ -95,6 +101,14 @@ resource "aws_security_group" "pgadmin" {
     cidr_blocks      = ["0.0.0.0/0"]
     ipv6_cidr_blocks = ["::/0"]
   }
+
+  tags = {
+    Name        = "${var.project}-pgadmin-${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 
 resource "aws_cloudwatch_log_group" "pgadmin" {
@@ -104,8 +118,11 @@ resource "aws_cloudwatch_log_group" "pgadmin" {
   retention_in_days = 1
 
   tags = {
-    terraform = "true"
-    env       = var.env
+    Name        = "pgadmin-service-${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
   }
 }
 
@@ -114,12 +131,28 @@ resource "aws_iam_role" "pgadmin_task" {
   count              = var.pgadmin_enabled ? 1 : 0
   name               = "${var.project}_pgadmin_task_${var.env}"
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume_role.json
+
+  tags = {
+    Name        = "${var.project}-pgadmin-task-role-${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 
 resource "aws_iam_role" "pgadmin_task_execution" {
   count              = var.pgadmin_enabled ? 1 : 0
   name               = "${var.project}_pgadmin_task_execution_${var.env}"
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume_role.json
+
+  tags = {
+    Name        = "${var.project}-pgadmin-task-execution-role-${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 
 

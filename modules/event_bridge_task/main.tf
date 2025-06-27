@@ -5,6 +5,14 @@ resource "aws_cloudwatch_event_rule" "rule" {
     source      = var.sources
     detail-type = var.detail_types
   })
+
+  tags = {
+    Name        = "${var.project}-rule-${var.rule_name}-${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 
 resource "aws_cloudwatch_event_target" "target" {
@@ -36,6 +44,14 @@ resource "aws_security_group" "task" {
     to_port          = 0
     cidr_blocks      = ["0.0.0.0/0"]
     ipv6_cidr_blocks = ["::/0"]
+  }
+
+  tags = {
+    Name        = "${var.project}-${var.task}-sg-${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
   }
 }
 

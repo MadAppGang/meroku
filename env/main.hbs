@@ -33,7 +33,7 @@ module "domain" {
   domain_zone = "{{ domain.domain_name }}"
   env = "{{ env }}"
   create_domain_zone = {{ domain.create_domain_zone }}
-  api_domain_prefix = "{{default domain.api_domain_prefix 'api'}}"
+  api_domain_prefix = "{{ domain.api_domain_prefix }}"
   {{#compare env "==" "prod"}}
   add_env_domain_prefix = false
   {{else}}
@@ -96,13 +96,17 @@ module "workloads" {
   project    = "{{project}}"
   env        = "{{env}}" 
   private_dns_name = "{{project}}_{{env}}.private"
+  {{#if domain.enabled}}
+  api_domain = module.domain.api_domain_name
   {{#compare (len domain.api_domain_prefix) ">" 0}}
-  api_domain = "{{domain.api_domain_prefix}}.{{domain.domain_name}}"
   create_api_domain_record = true
   {{else}}
-  api_domain = "{{domain.domain_name}}"
   create_api_domain_record = false
   {{/compare}}
+  {{else}}
+  api_domain = "{{ domain.domain_name }}"
+  create_api_domain_record = false
+  {{/if}}
   domain = "{{ domain.domain_name }}"
   vpc_id     = data.aws_vpc.default.id
   subnet_ids = data.aws_subnets.all.ids

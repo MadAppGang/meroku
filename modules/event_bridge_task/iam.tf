@@ -1,7 +1,17 @@
 
+data "aws_caller_identity" "current" {}
+
 resource "aws_iam_role" "task" {
   name               = "${var.project}_${var.task}_task_${var.env}"
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume_role.json
+
+  tags = {
+    Name        = "${var.project}-${var.task}-task-role-${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 
 resource "aws_iam_role_policy_attachment" "task_cloudwatch" {
@@ -12,6 +22,14 @@ resource "aws_iam_role_policy_attachment" "task_cloudwatch" {
 resource "aws_iam_role" "task_execution" {
   name               = "${var.project}_scheduler_${var.task}_task_execution_${var.env}"
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume_role.json
+
+  tags = {
+    Name        = "${var.project}-scheduler-${var.task}-execution-role-${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 
 
@@ -56,6 +74,14 @@ resource "aws_iam_role_policy_attachment" "sqs_access" {
 resource "aws_iam_policy" "ssm_parameter_access" {
   name   = "Task${var.task}SSMAccessPolicy"
   policy = data.aws_iam_policy_document.ssm_parameter_access.json
+
+  tags = {
+    Name        = "Task-${var.task}-SSM-Access-Policy"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 
 data "aws_iam_policy_document" "ssm_parameter_access" {

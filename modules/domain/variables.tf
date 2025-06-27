@@ -22,3 +22,7 @@ variable "api_domain_prefix" {
   type = string
   default = "api"
 }
+
+variable "project" {
+  type = string
+}

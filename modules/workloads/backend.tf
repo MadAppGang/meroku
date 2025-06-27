@@ -45,8 +45,12 @@ resource "aws_ecs_service" "backend" {
   }
 
   tags = {
-    terraform = "true"
-    env       = var.env
+    Name        = local.backend_name
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    terraform   = "true"
+    Application = "${var.project}-${var.env}"
   }
 }
 
@@ -124,8 +128,12 @@ resource "aws_ecs_task_definition" "backend" {
   }]))
 
   tags = {
-    terraform = "true"
-    env       = var.env
+    Name        = local.backend_name
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    terraform   = "true"
+    Application = "${var.project}-${var.env}"
   }
 }
 
@@ -162,8 +170,12 @@ resource "aws_security_group" "backend" {
   }
 
   tags = {
-    terraform = "true"
-    env       = var.env
+    Name        = local.backend_name
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    terraform   = "true"
+    Application = "${var.project}-${var.env}"
   }
 }
 
@@ -173,16 +185,24 @@ resource "aws_cloudwatch_log_group" "backend" {
   retention_in_days = 7
 
   tags = {
-    terraform = "true"
-    env       = var.env
+    Name        = local.backend_name
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    terraform   = "true"
+    Application = "${var.project}-${var.env}"
   }
 }
 
 resource "aws_s3_bucket" "backend" {
   bucket = "${var.project}-backend-${var.env}${var.backend_bucket_postfix}"
   tags = {
-    terraform = "true"
-    env       = var.env
+    Name        = local.backend_name
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    terraform   = "true"
+    Application = "${var.project}-${var.env}"
   }
 }
 
@@ -228,11 +248,27 @@ resource "aws_s3_bucket_acl" "backend" {
 resource "aws_iam_role" "backend_task" {
   name               = "${var.project}_backend_task_${var.env}"
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume_role.json
+
+  tags = {
+    Name        = "${var.project}_backend_task_${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 
 resource "aws_iam_role" "backend_task_execution" {
   name               = "${var.project}_backend_task_execution_${var.env}"
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume_role.json
+
+  tags = {
+    Name        = "${var.project}_backend_task_execution_${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 
 resource "aws_iam_policy" "full_access_to_backend_bucket" {
@@ -256,8 +292,12 @@ resource "aws_iam_policy" "full_access_to_backend_bucket" {
 EOF
 
   tags = {
-    terraform = "true"
-    env       = var.env
+    Name        = local.backend_name
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    terraform   = "true"
+    Application = "${var.project}-${var.env}"
   }
 }
 
@@ -280,8 +320,12 @@ resource "aws_iam_policy" "send_emails" {
 EOF
 
   tags = {
-    terraform = "true"
-    env       = var.env
+    Name        = local.backend_name
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    terraform   = "true"
+    Application = "${var.project}-${var.env}"
   }
 }
 
@@ -331,6 +375,14 @@ resource "aws_iam_role_policy_attachment" "ssm_parameter_access_task_role" {
 resource "aws_iam_policy" "ssm_parameter_access" {
   name   = "BackendSSMAccessPolicy_${var.project}_${var.env}"
   policy = data.aws_iam_policy_document.ssm_parameter_access.json
+
+  tags = {
+    Name        = "BackendSSMAccessPolicy_${var.project}_${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 
 data "aws_iam_policy_document" "ssm_parameter_access" {
@@ -432,8 +484,12 @@ resource "aws_iam_policy" "backend_custom_policy" {
   })
 
   tags = {
-    terraform = "true"
-    env       = var.env
+    Name        = local.backend_name
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    terraform   = "true"
+    Application = "${var.project}-${var.env}"
   }
 }
 

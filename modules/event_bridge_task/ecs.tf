@@ -5,7 +5,12 @@ resource "aws_ecr_repository" "task" {
   count = var.env == "dev" ? 1 : 0
 
   tags = {
-    terraform = "true"
+    Name        = "${var.project}-task-${var.task}-ecr"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    terraform   = "true"
+    Application = "${var.project}-${var.env}"
   }
 }
 
@@ -52,8 +57,12 @@ resource "aws_ecs_task_definition" "task" {
   }])
 
   tags = {
-    terraform = "true"
-    env       = var.env
+    Name        = "${var.project}-task-${var.task}-${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    terraform   = "true"
+    Application = "${var.project}-${var.env}"
   }
 }
 
@@ -63,8 +72,12 @@ resource "aws_cloudwatch_log_group" "task" {
   retention_in_days = 7
 
   tags = {
-    terraform = "true"
-    env       = var.env
+    Name        = "${var.project}-task-${var.task}-logs-${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    terraform   = "true"
+    Application = "${var.project}-${var.env}"
   }
 }
 

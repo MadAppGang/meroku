@@ -16,6 +16,14 @@ resource "aws_ssm_parameter" "gcm_server_key" {
       value,
     ]
   }
+
+  tags = {
+    Name        = "/${var.env}/${var.project}/backend/gcm-server-key"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 
 
@@ -49,7 +57,11 @@ resource "aws_iam_policy" "backend_fcm_policies" {
 }
 EOF
   tags = {
-    terraform = "true"
-    env       = var.env
+    Name        = "ManageEndpointsAndPublishFirebaseCloudMessages"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    terraform   = "true"
+    Application = "${var.project}-${var.env}"
   }
 }

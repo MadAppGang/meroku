@@ -11,6 +11,14 @@ resource "aws_iam_openid_connect_provider" "github" {
     "6938fd4d98bab03faadb97b34396831e3780aea1",
     "1c58a3a8518e8759bf075b76b750d4f2df264fcd" # https://github.blog/changelog/2023-06-27-github-actions-update-on-oidc-integration-with-aws/
   ]
+
+  tags = {
+    Name        = "github-actions-oidc-${var.project}-${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 
 data "aws_iam_policy_document" "github_trust_relationship" {
@@ -43,6 +51,14 @@ resource "aws_iam_role" "github_role" {
   inline_policy {
     name   = "GithubAccessPolicy"
     policy = data.aws_iam_policy_document.github.json
+  }
+
+  tags = {
+    Name        = "GithubActionsRole"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
   }
 }
 

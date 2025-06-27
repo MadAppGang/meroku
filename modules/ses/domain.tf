@@ -4,5 +4,12 @@ resource "aws_acm_certificate" "email_domain" {
   lifecycle {
     create_before_destroy = true
   }
+
+  tags = {
+    Name        = "email-cert-${var.env}"
+    Environment = var.env
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 

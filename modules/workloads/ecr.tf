@@ -6,7 +6,12 @@ resource "aws_ecr_repository" "backend" {
   count = var.env == "dev" ? 1 : 0
 
   tags = {
-    terraform = "true"
+    Name        = "${var.project}_backend"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    terraform   = "true"
+    Application = "${var.project}-${var.env}"
   }
 }
 

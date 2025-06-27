@@ -64,6 +64,14 @@ resource "aws_ssm_parameter" "postgres_password" {
   name  = "/${var.env}/${var.project}/postgres_password"
   type  = "SecureString"
   value = random_password.postgres.result
+
+  tags = {
+    Name        = "${var.project}-postgres-password-${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 
 // propagade the result to backend env
@@ -71,6 +79,14 @@ resource "aws_ssm_parameter" "postgres_password_backend" {
   name  = "/${var.env}/${var.project}/backend/pg_database_password"
   type  = "SecureString"
   value = random_password.postgres.result
+
+  tags = {
+    Name        = "${var.project}-postgres-password-backend-${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 
 resource "random_password" "pgadmin" {
@@ -86,5 +102,13 @@ resource "aws_ssm_parameter" "pgadmin_password" {
   name  = "/${var.env}/${var.project}/pgadmin_password"
   type  = "SecureString"
   value = random_password.pgadmin.result
+
+  tags = {
+    Name        = "${var.project}-pgadmin-password-${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 

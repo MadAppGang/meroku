@@ -1,6 +1,13 @@
 resource "aws_route53_zone" "domain" {
   count = var.create_domain_zone ? 1 : 0
   name  = local.domain_name
+
+  tags = {
+    Name        = "zone-${var.env}"
+    Environment = var.env
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 
 data "aws_route53_zone" "domain" {
@@ -9,23 +16,39 @@ data "aws_route53_zone" "domain" {
 }
 
 locals {
-  zone_id = var.create_domain_zone ? aws_route53_zone.domain[0].zone_id : data.aws_route53_zone.domain[0].zone_id
-  domain_name = var.add_env_domain_prefix ? "${var.env}.${var.domain_zone}" : var.domain_zone
+  zone_id         = var.create_domain_zone ? aws_route53_zone.domain[0].zone_id : data.aws_route53_zone.domain[0].zone_id
+  domain_name     = var.add_env_domain_prefix ? "${var.env}.${var.domain_zone}" : var.domain_zone
+  api_domain_name = var.api_domain_prefix == "" ? local.domain_name : "${var.api_domain_prefix}.${local.domain_name}"
 }
 
 resource "aws_acm_certificate" "subdomains" {
-  domain_name       = "*.${local.domain_name}"
-  validation_method = "DNS"
+  domain_name               = local.domain_name
+  subject_alternative_names = ["*.${local.domain_name}"]
+  validation_method         = "DNS"
   lifecycle {
     create_before_destroy = true
+  }
+
+  tags = {
+    Name        = "wildcard-cert-${var.env}"
+    Environment = var.env
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
   }
 }
 
 resource "aws_acm_certificate" "api_domain" {
-  domain_name       = var.api_domain_prefix == "" ? local.domain_name : "${var.api_domain_prefix}.${local.domain_name}"
+  domain_name       = local.api_domain_name
   validation_method = "DNS"
   lifecycle {
     create_before_destroy = true
+  }
+
+  tags = {
+    Name        = "api-cert-${var.env}"
+    Environment = var.env
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
   }
 }
 

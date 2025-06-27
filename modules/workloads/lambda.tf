@@ -22,6 +22,14 @@ data "aws_iam_policy_document" "lambda_deploy_assume_role" {
 resource "aws_iam_role" "lambda_deploy_iam" {
   name               = "lambda_deploy_iam_${var.env}"
   assume_role_policy = data.aws_iam_policy_document.lambda_deploy_assume_role.json
+
+  tags = {
+    Name        = "lambda_deploy_iam_${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 
 
@@ -47,6 +55,14 @@ resource "aws_lambda_function" "lambda_deploy" {
       SERVICE_CONFIG = local.service_config
     }
   }
+
+  tags = {
+    Name        = "ci_lambda_${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 
 
@@ -67,6 +83,14 @@ data "aws_iam_policy_document" "lambda_ecs" {
 resource "aws_iam_policy" "lambda_ecs" {
   name   = "LambdaECSDevPolicy_${var.env}"
   policy = data.aws_iam_policy_document.lambda_ecs.json
+
+  tags = {
+    Name        = "LambdaECSDevPolicy_${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 
 resource "aws_iam_role_policy_attachment" "lambda_ecs" {
@@ -93,6 +117,14 @@ resource "aws_cloudwatch_event_rule" "ecr_event" {
       "DEPLOY",
     ]
   })
+
+  tags = {
+    Name        = "ecr_events_cicd"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 
 resource "aws_cloudwatch_event_target" "lambda" {
@@ -128,6 +160,14 @@ resource "aws_cloudwatch_event_rule" "s3_env_file_change_rule" {
       }
     }
   })
+
+  tags = {
+    Name        = "s3-env-file-change-rule-${each.key}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 
 resource "aws_cloudwatch_event_target" "lambda_target" {

@@ -9,6 +9,8 @@ resource "aws_lb" "alb" {
     Name        = "${var.project}-alb-${var.env}"
     Environment = var.env
     Project     = var.project
+    Application = "${var.project}-${var.env}"
+    ManagedBy   = "meroku"
   }
 }
 
@@ -45,6 +47,8 @@ resource "aws_security_group" "alb" {
     Name        = "${var.project}_alb_${var.env}"
     Environment = var.env
     Project     = var.project
+    Application = "${var.project}-${var.env}"
+    ManagedBy   = "meroku"
   }
 }
 

@@ -1,6 +1,14 @@
 resource "aws_apigatewayv2_api" "api_gateway" {
   name          = "${var.project}-${var.env}"
   protocol_type = "HTTP"
+
+  tags = {
+    Name        = "${var.project}-${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 
 # VPC Links for services
@@ -10,12 +18,28 @@ resource "aws_apigatewayv2_vpc_link" "services" {
   name               = "${var.project}-${each.key}-${var.env}"
   security_group_ids = [aws_security_group.services[each.key].id]
   subnet_ids         = var.subnet_ids
+
+  tags = {
+    Name        = "${var.project}-${each.key}-${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 
 resource "aws_apigatewayv2_vpc_link" "backend" {
   name               = "${var.project}-${var.env}"
   security_group_ids = [aws_security_group.backend.id]
   subnet_ids         = var.subnet_ids
+
+  tags = {
+    Name        = "${var.project}-${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 
 

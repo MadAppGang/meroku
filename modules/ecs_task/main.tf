@@ -2,6 +2,14 @@ data "aws_region" "current" {}
 
 resource "aws_scheduler_schedule_group" "group" {
   name = "${var.project}-schedule-group-${var.env}-${var.task}"
+
+  tags = {
+    Name        = "${var.project}-schedule-group-${var.env}-${var.task}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 
 resource "aws_scheduler_schedule" "scheduler" {
@@ -38,7 +46,12 @@ resource "aws_ecr_repository" "task" {
 
 
   tags = {
-    terraform = "true"
+    Name        = "${var.project}_task_${var.task}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    terraform   = "true"
+    Application = "${var.project}-${var.env}"
   }
 }
 
@@ -85,8 +98,13 @@ resource "aws_ecs_task_definition" "task" {
   )])
 
   tags = {
-    terraform = "true"
-    env       = var.env
+    Name        = "${var.project}-task-${var.task}-${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    terraform   = "true"
+    env         = var.env
+    Application = "${var.project}-${var.env}"
   }
 }
 
@@ -96,7 +114,12 @@ resource "aws_cloudwatch_log_group" "task" {
   retention_in_days = 7
 
   tags = {
-    terraform = "true"
-    env       = var.env
+    Name        = "${var.project}_task_${var.task}_${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    terraform   = "true"
+    env         = var.env
+    Application = "${var.project}-${var.env}"
   }
 }

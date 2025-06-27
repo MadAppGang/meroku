@@ -18,9 +18,12 @@ resource "aws_vpc_endpoint" "s3" {
   route_table_ids   = [data.aws_route_table.default.id]
 
   tags = {
-    Name      = "${var.project}-s3-endpoint"
-    terraform = "true"
-    env       = var.env
+    Name        = "${var.project}-s3-endpoint"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    terraform   = "true"
+    Application = "${var.project}-${var.env}"
   }
 }
 
@@ -32,9 +35,12 @@ resource "aws_vpc_endpoint" "dynamodb" {
   route_table_ids   = [data.aws_route_table.default.id]
 
   tags = {
-    Name      = "${var.project}-dynamodb-endpoint"
-    terraform = "true"
-    env       = var.env
+    Name        = "${var.project}-dynamodb-endpoint"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    terraform   = "true"
+    Application = "${var.project}-${var.env}"
   }
 }
 
@@ -49,9 +55,12 @@ resource "aws_vpc_endpoint" "ecr_dkr" {
   private_dns_enabled = true
 
   tags = {
-    Name      = "${var.project}-ecr-dkr-endpoint"
-    terraform = "true"
-    env       = var.env
+    Name        = "${var.project}-ecr-dkr-endpoint"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    terraform   = "true"
+    Application = "${var.project}-${var.env}"
   }
 }
 
@@ -65,9 +74,12 @@ resource "aws_vpc_endpoint" "ecr_api" {
   private_dns_enabled = true
 
   tags = {
-    Name      = "${var.project}-ecr-api-endpoint"
-    terraform = "true"
-    env       = var.env
+    Name        = "${var.project}-ecr-api-endpoint"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    terraform   = "true"
+    Application = "${var.project}-${var.env}"
   }
 }
 
@@ -96,8 +108,11 @@ resource "aws_security_group" "ecr_endpoint" {
   }
 
   tags = {
-    Name      = "${var.project}-ecr-endpoint-sg"
-    terraform = "true"
-    env       = var.env
+    Name        = "${var.project}-ecr-endpoint-sg"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    terraform   = "true"
+    Application = "${var.project}-${var.env}"
   }
 }

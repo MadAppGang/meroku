@@ -11,5 +11,13 @@ resource "aws_db_instance" "database" {
   skip_final_snapshot    = true
   vpc_security_group_ids = [aws_security_group.database.id]
   publicly_accessible    = var.public_access
+
+  tags = {
+    Name        = "${var.project}-postgres-${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 
