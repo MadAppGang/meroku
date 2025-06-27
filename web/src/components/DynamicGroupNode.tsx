@@ -8,7 +8,11 @@ interface GroupNodeData {
   nodeIds?: string[]; // IDs of nodes that belong to this group
 }
 
-export function DynamicGroupNode({ data, id, position = { x: 0, y: 0 } }: NodeProps<GroupNodeData>) {
+export function DynamicGroupNode({
+  data,
+  id,
+  position = { x: 0, y: 0 },
+}: NodeProps<GroupNodeData>) {
   const nodes = useNodes();
   const nodeInternals = useStore((state) => state.nodeInternals);
 
@@ -74,9 +78,9 @@ export function DynamicGroupNode({ data, id, position = { x: 0, y: 0 } }: NodePr
       width: maxX - minX + sidePadding * 2,
       height: maxY - minY + topPadding + bottomPadding,
     };
-    
+
     console.log(`Group ${data.label} bounds:`, bounds);
-    
+
     return bounds;
   }, [nodes, nodeInternals, data.nodeIds, data.label, position]);
 
@@ -107,18 +111,6 @@ export function DynamicGroupNode({ data, id, position = { x: 0, y: 0 } }: NodePr
           fontSize: 14,
           color: "#9ca3af",
           fontWeight: 500,
-          cursor: "pointer",
-          pointerEvents: "auto",
-        }}
-        onClick={() => {
-          console.log(`Group "${data.label}" bounds:`, {
-            x: bounds.x,
-            y: bounds.y,
-            width: bounds.width,
-            height: bounds.height,
-            topEdge: bounds.y,
-            bottomEdge: bounds.y + bounds.height,
-          });
         }}
       >
         {data.label}

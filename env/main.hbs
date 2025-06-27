@@ -26,21 +26,19 @@ data "aws_subnets" "all" {
   }
 }
 
-locals {
-  {{#compare env "==" "prod"}} 
-  add_domain_prefix = false
-  {{else}}
-  add_domain_prefix =  {{ domain.add_domain_prefix }}
-  {{/compare}}
-}
+# Locals removed - using direct handlebar resolution in modules
 {{#if domain.enabled}}  
 module "domain" {
   source = "{{ modules }}/domain"
   domain_zone = "{{ domain.domain_name }}"
   env = "{{ env }}"
   create_domain_zone = {{ domain.create_domain_zone }}
-  api_domain_prefix = "{{ domain.api_domain_prefix }}"
-  add_env_domain_prefix = {{default local.add_env_domain_prefix false}}
+  api_domain_prefix = "{{default domain.api_domain_prefix 'api'}}"
+  {{#compare env "==" "prod"}}
+  add_env_domain_prefix = false
+  {{else}}
+  add_env_domain_prefix = {{default domain.add_env_domain_prefix true}}
+  {{/compare}}
 }
 {{/if}}
 
@@ -268,6 +266,8 @@ module "event_bus_task_{{name}}" {
 }
 {{/each}}
 
+
+# Email domain resolved directly in SES module
 {{#if ses.enabled}} 
 module "ses" {
   env     = "{{env}}"
@@ -275,7 +275,7 @@ module "ses" {
   {{#if ses.domain_name}}
   domain = "{{ses.domain_name}}"
   {{else}}
-  domain = local.email_domain
+  domain = "mail.{{ domain.domain_name }}"
   {{/if}}
   test_emails = {{{array ses.test_emails}}}
   {{#if domain.enabled}}

@@ -3,55 +3,11 @@ package main
 import (
 	"fmt"
 	"log/slog"
+	"math/rand"
 	"os"
 
-	"github.com/charmbracelet/bubbles/list"
-	"golang.org/x/exp/rand"
-	"gopkg.in/yaml.v3"
+	"gopkg.in/yaml.v2"
 )
-
-// main list items
-type item struct {
-	title      string
-	desc       string
-	detailView detailView
-	children   []item
-	isParent   bool
-	isExpanded bool
-	isChild    bool
-}
-
-func (i item) Title() string       { return i.title }
-func (i item) Description() string { return i.desc }
-func (i item) FilterValue() string { return i.title }
-
-func menuListFromEnv(env Env) []list.Item {
-	scheduledTasks := []item{}
-	for _, task := range env.ScheduledTasks {
-		scheduledTasks = append(scheduledTasks, item{title: task.Name, desc: fmt.Sprintf("Scheduled task with schedule: %s", task.Schedule), isChild: true, detailView: newScheduledTaskView(task)})
-	}
-	scheduledTasks = append(scheduledTasks, item{title: ADD_NEW_SCHEDULED_TASK, desc: "Add a new scheduled task", isChild: true})
-
-	eventProcessorTasks := []item{}
-	for _, task := range env.EventProcessorTasks {
-		eventProcessorTasks = append(eventProcessorTasks, item{title: task.Name, desc: task.RuleName, isChild: true, detailView: NewEventProcessorTaskView(task)})
-	}
-	eventProcessorTasks = append(eventProcessorTasks, item{title: ADD_NEW_EVENT_TASK, desc: "Add a new event processor task", isChild: true})
-
-	items := []list.Item{
-		item{title: "Main settings", desc: "Main settings", detailView: newMainSettingsView(env)},
-		item{title: "Backend settings", desc: "Backend and environment settings", detailView: newBackendSettingsView(env)},
-		item{title: "Domain", desc: "Domain settings", detailView: newBackendDomainView(env)},
-		item{title: "Postgres", desc: "Postgres database in RDS settings", detailView: newBackendPostgresView(env)},
-		item{title: "Cognito", desc: "Cognito settings", detailView: newCognitoView(env)},
-		item{title: "SES Email", desc: "Simple email service settings", detailView: newSesView(env)},
-		item{title: "SQS queue", desc: "AWS Simple queue service settings", detailView: newSqsView(env)},
-		item{title: "Scheduled ECS Task", desc: "mange list of scheduled ECS tasks", detailView: nil, isParent: true, children: scheduledTasks},
-		item{title: "Event Processor Task", desc: "mange list of event processor tasks EventBridge", detailView: nil, isParent: true, children: eventProcessorTasks},
-		item{title: "PubSub with AppSync", desc: "Create AppSync for PubSum", detailView: newAppSyncView(env)},
-	}
-	return items
-}
 
 type Env struct {
 	Project             string               `yaml:"project"`
@@ -275,27 +231,27 @@ func saveEnv(e Env) error {
 	return os.WriteFile(filename, yamlData, 0o644)
 }
 
-var AWSRegions = []string{
-	"us-east-1",
-	"us-east-2",
-	"us-west-1",
-	"us-west-2",
-	"af-south-1",
-	"ap-east-1",
-	"ap-south-1",
-	"ap-northeast-1",
-	"ap-northeast-2",
-	"ap-northeast-3",
-	"ap-southeast-1",
-	"ap-southeast-2",
-	"ap-northeast-3",
-	"ca-central-1",
-	"eu-central-1",
-	"eu-west-1",
-	"eu-west-2",
-	"eu-south-1",
-	"eu-west-3",
-	"eu-north-1",
-	"me-south-1",
-	"sa-east-1",
-}
+// var AWSRegions = []string{
+// 	"us-east-1",
+// 	"us-east-2",
+// 	"us-west-1",
+// 	"us-west-2",
+// 	"af-south-1",
+// 	"ap-east-1",
+// 	"ap-south-1",
+// 	"ap-northeast-1",
+// 	"ap-northeast-2",
+// 	"ap-northeast-3",
+// 	"ap-southeast-1",
+// 	"ap-southeast-2",
+// 	"ap-northeast-3",
+// 	"ca-central-1",
+// 	"eu-central-1",
+// 	"eu-west-1",
+// 	"eu-west-2",
+// 	"eu-south-1",
+// 	"eu-west-3",
+// 	"eu-north-1",
+// 	"me-south-1",
+// 	"sa-east-1",
+// }

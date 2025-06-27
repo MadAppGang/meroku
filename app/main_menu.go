@@ -10,7 +10,6 @@ import (
 
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/huh/spinner"
-	"github.com/samber/lo"
 )
 
 // returns env to edit
@@ -18,14 +17,7 @@ func mainMenu() string {
 	// check if project is init
 	initProjectIfNeeded()
 
-	envs, err := findFilesWithExts([]string{".yaml", ".yml"})
-	if err != nil {
-		panic(err)
-	}
-	options := lo.Map(envs, func(s string, _ int) huh.Option[string] {
-		return huh.NewOption(fmt.Sprintf("Edit %s environment", s), fmt.Sprintf("env:%s", s))
-	})
-	options = append(options, huh.NewOption("Create new environment", "create"))
+	options := []huh.Option[string]{huh.NewOption("Create new environment", "create")}
 	options = append(options, huh.NewOption("Deploy environment", "deploy"))
 	options = append(options, huh.NewOption("Check for updates", "update"))
 	options = append(options, huh.NewOption("Exit", "exit"))
@@ -49,7 +41,7 @@ func mainMenu() string {
 		deployMenu()
 		return mainMenu()
 	case action == "update":
-		err = updateInfrastructure()
+		err := updateInfrastructure()
 		if err != nil {
 			fmt.Println("Error updating infrastructure:", err)
 			os.Exit(1)

@@ -23,12 +23,6 @@ func main() {
 		os.Exit(1)
 	}
 	// --- Run main menu ---
-	env := mainMenu()
-
-	e, err := loadEnv(env)
-	if err != nil {
-		fmt.Println("Error loading environment:", err)
-		os.Exit(1)
-	}
-	RunEnvEdit(e)
+	mainMenu()
+	os.Exit(0)
 }

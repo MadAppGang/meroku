@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -49,9 +50,8 @@ func terraformInitIfNeeded() {
 }
 
 func runTerraformApply() error {
-	errString, err := runCommandWithOutput("terraform", "plan")
-	fmt.Println("errString", errString)
-	fmt.Println("err", err)
+	// Run plan and save to file
+	errString, err := runCommandWithOutput("terraform", "plan", "-out=tfplan")
 	if err != nil {
 		slog.Error("error running terraform plan", "error", err, "output", errString)
 		// trying to recover:
@@ -85,7 +85,81 @@ func runTerraformApply() error {
 		return runTerraformApply()
 	}
 
-	fmt.Println("✅ Terraform plan completed successfully.")
+	// Parse and format the plan
+	// Run terraform show to get JSON output
+	cmd := exec.Command("terraform", "show", "-json", "tfplan")
+	jsonOutput, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("error running terraform show: %w", err)
+	}
+	
+	// Parse the JSON to filter only changes
+	var fullPlan TerraformPlanVisual
+	err = json.Unmarshal(jsonOutput, &fullPlan)
+	if err == nil {
+		// Create a filtered version with only changes
+		filteredPlan := struct {
+			TerraformVersion string           `json:"terraform_version"`
+			ResourceChanges  []ResourceChange `json:"resource_changes"`
+			Summary          struct {
+				Total   int `json:"total"`
+				Create  int `json:"create"`
+				Update  int `json:"update"`
+				Delete  int `json:"delete"`
+				Replace int `json:"replace"`
+			} `json:"summary"`
+		}{
+			TerraformVersion: fullPlan.TerraformVersion,
+		}
+		
+		// Filter only actual changes
+		for _, change := range fullPlan.ResourceChanges {
+			if len(change.Change.Actions) > 0 && 
+			   change.Change.Actions[0] != "no-op" && 
+			   change.Change.Actions[0] != "read" {
+				filteredPlan.ResourceChanges = append(filteredPlan.ResourceChanges, change)
+				
+				// Update summary
+				switch change.Change.Actions[0] {
+				case "create":
+					filteredPlan.Summary.Create++
+				case "update":
+					filteredPlan.Summary.Update++
+				case "delete":
+					filteredPlan.Summary.Delete++
+				case "replace":
+					filteredPlan.Summary.Replace++
+				}
+			}
+		}
+		filteredPlan.Summary.Total = len(filteredPlan.ResourceChanges)
+		
+		// Save the filtered JSON
+		filteredJSON, _ := json.MarshalIndent(filteredPlan, "", "  ")
+		err = os.WriteFile("terraform-plan-changes.json", filteredJSON, 0644)
+		if err == nil {
+			fmt.Printf("💾 Changes saved to terraform-plan-changes.json (%d resources)\n", filteredPlan.Summary.Total)
+		}
+	}
+	
+	// Still save the full plan for reference
+	err = os.WriteFile("terraform-plan-full.json", jsonOutput, 0644)
+	if err != nil {
+		return fmt.Errorf("error saving plan JSON: %w", err)
+	}
+	fmt.Println("📄 Full plan saved to terraform-plan-full.json")
+	
+	// Skip the text formatting and go straight to interactive view
+	fmt.Println("✅ Terraform plan generated successfully")
+	
+	// Show interactive TUI
+	fmt.Println("\n📋 Press ENTER to view interactive plan details...")
+	fmt.Scanln()
+	err = showModernTerraformPlanTUI(string(jsonOutput))
+	if err != nil {
+		return fmt.Errorf("error showing plan TUI: %w", err)
+	}
+
 	// Ask the user if they want to apply or return to the main menu
 	result := false
 	huh.NewConfirm().
@@ -102,7 +176,9 @@ func runTerraformApply() error {
 	}
 
 	fmt.Println("Applying Terraform changes...")
-	_, err = runCommandWithOutput("terraform", "apply", "-auto-approve")
+	_, err = runCommandWithOutput("terraform", "apply", "tfplan")
+	// Clean up the plan file
+	os.Remove("tfplan")
 	return err
 }
 

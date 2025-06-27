@@ -9,13 +9,11 @@ require (
 	github.com/aymerick/raymond v2.0.2+incompatible
 	github.com/blang/semver/v4 v4.0.0
 	github.com/charmbracelet/bubbles v0.19.0
-	github.com/charmbracelet/bubbletea v0.27.1
 	github.com/charmbracelet/huh v0.5.3
 	github.com/charmbracelet/huh/spinner v0.0.0-20240821193529-5fd70815c13f
 	github.com/charmbracelet/lipgloss v0.13.0
 	github.com/samber/lo v1.47.0
-	golang.org/x/exp v0.0.0-20240823005443-9b4947da3948
-	gopkg.in/yaml.v3 v3.0.1
+	gopkg.in/yaml.v2 v2.4.0
 )
 
 require (
@@ -37,6 +35,8 @@ require (
 	github.com/aws/smithy-go v1.20.4 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/catppuccin/go v0.2.0 // indirect
+	github.com/charmbracelet/bubbletea v0.27.1 // indirect
+	github.com/charmbracelet/harmonica v0.2.0 // indirect
 	github.com/charmbracelet/x/ansi v0.2.3 // indirect
 	github.com/charmbracelet/x/exp/strings v0.0.0-20240722160745-212f7b056ed0 // indirect
 	github.com/charmbracelet/x/term v0.2.0 // indirect
@@ -55,5 +55,4 @@ require (
 	golang.org/x/sync v0.8.0 // indirect
 	golang.org/x/sys v0.24.0 // indirect
 	golang.org/x/text v0.17.0 // indirect
-	gopkg.in/yaml.v2 v2.4.0 // indirect
 )

@@ -30,9 +30,10 @@ func deployMenu() {
 		Value(&env).
 		Run()
 
-	if env == "go:back" {
+	switch env {
+	case "go:back":
 		return
-	} else if env == "" {
+	case "":
 		fmt.Println("No environment selected")
 		os.Exit(1)
 	}

@@ -36,11 +36,11 @@ workload:
     - <string>
   backend_image_port: <number>               # Container port (default: 8080)
   backend_remote_access: <boolean>           # Enable ECS Exec for debugging (default: true)
-  
+
   # S3 bucket configuration
   bucket_postfix: <string>                   # S3 bucket name suffix (alphanumeric + dash, max 30 chars)
   bucket_public: <boolean>                   # Make backend S3 bucket publicly accessible (default: true)
-  
+
   # Environment configuration
   backend_env_variables: <list>              # Environment variables for backend
     - name: <string>
@@ -48,35 +48,35 @@ workload:
   env_files_s3: <list>                       # S3-stored environment files
     - bucket: <string>                       # S3 bucket name
       key: <string>                          # S3 object key (e.g., "config/app.env")
-  
+
   # Monitoring and observability
   xray_enabled: <boolean>                    # Enable AWS X-Ray distributed tracing
-  
+
   # Notifications
   setup_fcnsns: <boolean>                    # Setup Firebase Cloud Messaging/SNS for push notifications
   slack_webhook: <string>                    # Slack webhook URL for deployment notifications
-  
+
   # CI/CD configuration
   enable_github_oidc: <boolean>              # Enable GitHub OIDC for passwordless CI/CD
   github_oidc_subjects: <list>               # GitHub repos/branches allowed to assume roles
     - <string>                               # Format: "repo:Owner/Repo:ref:refs/heads/branch" or "repo:Owner/*"
-  
+
   # Database admin tools
   install_pg_admin: <boolean>                # Install pgAdmin web interface
   pg_admin_email: <string>                   # pgAdmin admin email address
-  
+
   # IAM policies
   policy: <list>                             # Additional IAM policies for backend task
     - actions: <list>                        # IAM actions (e.g., ["s3:GetObject", "s3:PutObject"])
         - <string>
       resources: <list>                      # IAM resources (e.g., ["arn:aws:s3:::my-bucket/*"])
         - <string>
-  
+
   # EFS mounts
   efs: <list>                                # EFS volumes to mount in backend
     - name: <string>                         # EFS config name (must match EFS definition)
       mount_point: <string>                  # Container mount path (e.g., "/data")
-  
+
   # ALB configuration (requires alb.enabled)
   backend_alb_domain_name: <string>          # Custom domain for ALB (e.g., "api.example.com")
 
@@ -212,17 +212,17 @@ services: <list>
       - <string>
     container_port: <number>                 # Container port (default: 3000)
     host_port: <number>                      # Host port (default: 3000)
-    
+
     # Resource allocation
     cpu: <number>                            # CPU units (256, 512, 1024, etc.)
     memory: <number>                         # Memory in MB (512, 1024, 2048, etc.)
     desired_count: <number>                  # Number of running tasks (default: 1)
-    
+
     # Features
     remote_access: <boolean>                 # Enable ECS Exec for debugging
     xray_enabled: <boolean>                  # Enable X-Ray tracing
     essential: <boolean>                     # Mark as essential container
-    
+
     # Environment configuration
     env_vars: <list>                         # Environment variables
       - name: <string>
@@ -347,7 +347,8 @@ services:
 
 7. **Domain Setup**: Requires valid DNS configuration. Certificate validation may take up to 30 minutes.
 
-8. **Resource Limits**: 
+8. **Resource Limits**:
+
    - CPU: Must be 256, 512, 1024, 2048, or 4096
    - Memory: Must be compatible with CPU (see AWS Fargate limits)
 
