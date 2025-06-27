@@ -33,7 +33,7 @@ locals {
     logConfiguration = {
       logDriver = "awslogs"
       options = {
-        awslogs-group         = "/ecs/adot-collector"
+        awslogs-group         = "${var.project}_adot_collector_${var.env}"
         awslogs-region        = data.aws_region.current.name
         awslogs-stream-prefix = "xray"
       }
@@ -48,4 +48,20 @@ locals {
       value = "localhost:2000"
     }
   ] : []
+}
+
+resource "aws_cloudwatch_log_group" "adot_collector" {
+  count = var.xray_enabled ? 1 : 0
+  name  = "${var.project}_adot_collector_${var.env}"
+
+  retention_in_days = 7
+
+  tags = {
+    Name        = "${var.project}_adot_collector_${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    terraform   = "true"
+    Application = "${var.project}-${var.env}"
+  }
 }
