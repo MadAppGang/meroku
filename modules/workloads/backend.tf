@@ -2,6 +2,10 @@ locals {
   backend_name = "${var.project}_service_${var.env}"
 }
 
+data "aws_vpc" "selected" {
+  id = var.vpc_id
+}
+
 
 resource "aws_ecs_service" "backend" {
   name                               = local.backend_name
@@ -142,13 +146,39 @@ resource "aws_security_group" "backend" {
   name   = "${var.project}_backend_${var.env}"
   vpc_id = var.vpc_id
 
+  # Allow traffic from within VPC (for API Gateway VPC Link and internal services)
   ingress {
     protocol         = "tcp"
     from_port        = var.backend_image_port
     to_port          = var.backend_image_port
-    cidr_blocks      = ["0.0.0.0/0"]
-    ipv6_cidr_blocks = ["::/0"]
+    cidr_blocks      = [data.aws_vpc.selected.cidr_block]
+    description      = "Allow traffic from VPC (API Gateway VPC Link)"
   }
+
+  # Allow traffic from ALB if enabled
+  dynamic "ingress" {
+    for_each = var.enable_alb ? [1] : []
+    content {
+      protocol        = "tcp"
+      from_port       = var.backend_image_port
+      to_port         = var.backend_image_port
+      security_groups = [aws_security_group.alb[0].id]
+      description     = "Allow traffic from ALB"
+    }
+  }
+
+  # Prepare for CloudFront support (commented out until CloudFront is implemented)
+  # To enable CloudFront access, uncomment below and add cloudfront_enabled variable
+  # dynamic "ingress" {
+  #   for_each = var.cloudfront_enabled ? [1] : []
+  #   content {
+  #     protocol    = "tcp"
+  #     from_port   = var.backend_image_port
+  #     to_port     = var.backend_image_port
+  #     cidr_blocks = data.aws_ip_ranges.cloudfront.cidr_blocks
+  #     description = "Allow traffic from AWS CloudFront"
+  #   }
+  # }
 
   egress {
     protocol         = "-1"
