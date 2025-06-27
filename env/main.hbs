@@ -30,6 +30,7 @@ data "aws_subnets" "all" {
 {{#if domain.enabled}}  
 module "domain" {
   source = "{{ modules }}/domain"
+  project = "{{ project }}"
   domain_zone = "{{ domain.domain_name }}"
   env = "{{ env }}"
   create_domain_zone = {{ domain.create_domain_zone }}
@@ -59,6 +60,7 @@ module "postgres" {
 {{#if sqs.enabled}}
 module "sqs" {
   source = "{{modules}}/sqs"
+  project = "{{project}}"
   name = "{{sqs.name}}"
   env = "{{env}}"
 }
@@ -274,8 +276,9 @@ module "event_bus_task_{{name}}" {
 # Email domain resolved directly in SES module
 {{#if ses.enabled}} 
 module "ses" {
-  env     = "{{env}}"
   source = "{{modules}}/ses"
+  project = "{{project}}"
+  env     = "{{env}}"
   {{#if ses.domain_name}}
   domain = "{{ses.domain_name}}"
   {{else}}
