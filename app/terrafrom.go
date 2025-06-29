@@ -92,7 +92,7 @@ func runTerraformApply() error {
 	if err != nil {
 		return fmt.Errorf("error running terraform show: %w", err)
 	}
-	
+
 	// Parse the JSON to filter only changes
 	var fullPlan TerraformPlanVisual
 	err = json.Unmarshal(jsonOutput, &fullPlan)
@@ -111,14 +111,14 @@ func runTerraformApply() error {
 		}{
 			TerraformVersion: fullPlan.TerraformVersion,
 		}
-		
+
 		// Filter only actual changes
 		for _, change := range fullPlan.ResourceChanges {
-			if len(change.Change.Actions) > 0 && 
-			   change.Change.Actions[0] != "no-op" && 
-			   change.Change.Actions[0] != "read" {
+			if len(change.Change.Actions) > 0 &&
+				change.Change.Actions[0] != "no-op" &&
+				change.Change.Actions[0] != "read" {
 				filteredPlan.ResourceChanges = append(filteredPlan.ResourceChanges, change)
-				
+
 				// Update summary
 				switch change.Change.Actions[0] {
 				case "create":
@@ -133,28 +133,26 @@ func runTerraformApply() error {
 			}
 		}
 		filteredPlan.Summary.Total = len(filteredPlan.ResourceChanges)
-		
+
 		// Save the filtered JSON
 		filteredJSON, _ := json.MarshalIndent(filteredPlan, "", "  ")
-		err = os.WriteFile("terraform-plan-changes.json", filteredJSON, 0644)
+		err = os.WriteFile("terraform-plan-changes.json", filteredJSON, 0o644)
 		if err == nil {
 			fmt.Printf("💾 Changes saved to terraform-plan-changes.json (%d resources)\n", filteredPlan.Summary.Total)
 		}
 	}
-	
+
 	// Still save the full plan for reference
-	err = os.WriteFile("terraform-plan-full.json", jsonOutput, 0644)
+	err = os.WriteFile("terraform-plan-full.json", jsonOutput, 0o644)
 	if err != nil {
 		return fmt.Errorf("error saving plan JSON: %w", err)
 	}
 	fmt.Println("📄 Full plan saved to terraform-plan-full.json")
-	
+
 	// Skip the text formatting and go straight to interactive view
 	fmt.Println("✅ Terraform plan generated successfully")
-	
+
 	// Show interactive TUI
-	fmt.Println("\n📋 Press ENTER to view interactive plan details...")
-	fmt.Scanln()
 	err = showModernTerraformPlanTUI(string(jsonOutput))
 	if err != nil {
 		return fmt.Errorf("error showing plan TUI: %w", err)
