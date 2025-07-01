@@ -3,14 +3,17 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -79,7 +82,28 @@ func callAnthropicForVisualizationWithProgress(planData interface{}) error {
 		return fmt.Errorf("ANTHROPIC_API_KEY environment variable not set")
 	}
 
+	// Create context with cancellation
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Set up signal handling for Ctrl+C
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sigChan)
+
+	// Handle cancellation in a goroutine
+	go func() {
+		select {
+		case <-sigChan:
+			fmt.Println("\n\n🛑 Cancelling AI visualization generation...")
+			cancel()
+		case <-ctx.Done():
+			return
+		}
+	}()
+
 	fmt.Println("\n🤖 Asking AI to explain your infrastructure changes...")
+	fmt.Println("   Press Ctrl+C to cancel")
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
 	// Convert plan data to JSON
@@ -145,8 +169,8 @@ func callAnthropicForVisualizationWithProgress(planData interface{}) error {
 		return fmt.Errorf("error marshaling request: %w", err)
 	}
 
-	// Make the API request
-	req, err := http.NewRequest("POST", "https://api.anthropic.com/v1/messages", bytes.NewBuffer(jsonBody))
+	// Make the API request with context
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.anthropic.com/v1/messages", bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return fmt.Errorf("error creating request: %w", err)
 	}
@@ -177,6 +201,15 @@ func callAnthropicForVisualizationWithProgress(planData interface{}) error {
 	fmt.Print("\n")
 
 	for scanner.Scan() {
+		// Check if context was cancelled
+		select {
+		case <-ctx.Done():
+			fmt.Println("\n\n❌ AI visualization generation cancelled")
+			return fmt.Errorf("cancelled by user")
+		default:
+			// Continue processing
+		}
+
 		line := scanner.Text()
 
 		// Skip empty lines
@@ -204,7 +237,7 @@ func callAnthropicForVisualizationWithProgress(planData interface{}) error {
 				charCount += len(event.Delta.Text)
 
 				// Show progress
-				fmt.Printf("\r%s Generating HTML... (%d characters)", progressChars[charIndex], charCount)
+				fmt.Printf("\r%s Generating HTML... (%d characters) [Press Ctrl+C to cancel]", progressChars[charIndex], charCount)
 				charIndex = (charIndex + 1) % len(progressChars)
 			}
 		}
@@ -214,7 +247,20 @@ func callAnthropicForVisualizationWithProgress(planData interface{}) error {
 		return fmt.Errorf("error reading stream: %w", err)
 	}
 
-	fmt.Printf("\r✅ Generated HTML (%d characters)                    \n", charCount)
+	// Check if we were cancelled
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("cancelled by user")
+	default:
+		// Continue with normal flow
+	}
+
+	fmt.Printf("\r✅ Generated HTML (%d characters)                                        \n", charCount)
+
+	// Only proceed if we have content
+	if htmlContent.Len() == 0 {
+		return fmt.Errorf("no HTML content generated")
+	}
 
 	// Save the HTML to a temporary file
 	tmpFile, err := os.CreateTemp("", "terraform-visual-*.html")
@@ -239,7 +285,21 @@ func callAnthropicForVisualizationWithProgress(planData interface{}) error {
 	fmt.Println("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Println("✨ AI explanation generated successfully!")
 	fmt.Println("\nPress ENTER to return to the TUI...")
-	fmt.Scanln()
+	
+	// Use a channel to handle ENTER or cancellation
+	done := make(chan bool)
+	go func() {
+		fmt.Scanln()
+		done <- true
+	}()
+
+	select {
+	case <-done:
+		// User pressed ENTER
+	case <-ctx.Done():
+		// User cancelled
+		fmt.Println("\nCancelled. Returning to TUI...")
+	}
 
 	// Clear screen before returning to TUI
 	fmt.Print("\033[H\033[2J")

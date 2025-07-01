@@ -240,7 +240,8 @@ var (
 		PaddingLeft(2)
 		
 	selectedItemStyle = lipgloss.NewStyle().
-		Background(lipgloss.Color("#1f2937")).
+		Background(lipgloss.Color("#374151")).
+		Foreground(lipgloss.Color("#ffffff")).
 		Bold(true)
 		
 	createIconStyle = lipgloss.NewStyle().Foreground(successColor)
@@ -248,8 +249,7 @@ var (
 	deleteIconStyle = lipgloss.NewStyle().Foreground(dangerColor)
 	
 	labelStyle = lipgloss.NewStyle().
-		Foreground(mutedColor).
-		Width(15)
+		Foreground(mutedColor)
 		
 	valueStyle = lipgloss.NewStyle().
 		Foreground(fgColor)
@@ -372,6 +372,13 @@ func getResourceIcon(resourceType string) string {
 		return "☁️ "
 	}
 	return "📄"
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 func getServiceFromResourceType(resourceType string) string {
@@ -1077,6 +1084,9 @@ func (m *modernPlanModel) updateTreeViewport() {
 func (m *modernPlanModel) renderTreeContent() string {
 	var b strings.Builder
 	
+	// Calculate available width for the tree (half screen minus borders and padding)
+	treeWidth := m.width / 2 - 4
+	
 	for i, provider := range m.providers {
 		isProviderSelected := i == m.selectedProvider
 		
@@ -1100,7 +1110,9 @@ func (m *modernPlanModel) renderTreeContent() string {
 		)
 		
 		if isProviderSelected && m.selectedService == -1 && m.selectedResource == -1 {
-			b.WriteString(selectedItemStyle.Render(providerLine))
+			// Pad the line to full width for consistent highlighting
+			paddedLine := providerLine + strings.Repeat(" ", max(0, treeWidth-lipgloss.Width(providerLine)))
+			b.WriteString(selectedItemStyle.Render(paddedLine))
 		} else {
 			b.WriteString(providerLine)
 		}
@@ -1125,7 +1137,9 @@ func (m *modernPlanModel) renderTreeContent() string {
 				)
 				
 				if isServiceSelected && m.selectedResource == -1 {
-					b.WriteString(selectedItemStyle.Render(serviceLine))
+					// Pad the line to full width for consistent highlighting
+					paddedLine := serviceLine + strings.Repeat(" ", max(0, treeWidth-lipgloss.Width(serviceLine)))
+					b.WriteString(selectedItemStyle.Render(paddedLine))
 				} else {
 					b.WriteString(serviceLine)
 				}
@@ -1164,15 +1178,23 @@ func (m *modernPlanModel) renderTreeContent() string {
 							connector = "└"
 						}
 						
-						resourceLine := fmt.Sprintf("    %s %s %s",
-							connector,
-							iconStyle.Render(icon),
-							name,
-						)
-						
 						if isResourceSelected {
-							b.WriteString(selectedItemStyle.Render(resourceLine))
+							// When selected, don't apply icon styles that would override the background
+							resourceLine := fmt.Sprintf("    %s %s %s",
+								connector,
+								icon,
+								name,
+							)
+							// Pad the line to full width for consistent highlighting
+							paddedLine := resourceLine + strings.Repeat(" ", max(0, treeWidth-lipgloss.Width(resourceLine)))
+							b.WriteString(selectedItemStyle.Render(paddedLine))
 						} else {
+							// When not selected, apply icon styles
+							resourceLine := fmt.Sprintf("    %s %s %s",
+								connector,
+								iconStyle.Render(icon),
+								name,
+							)
 							b.WriteString(resourceLine)
 						}
 						b.WriteString("\n")
@@ -1914,7 +1936,7 @@ func (m *modernPlanModel) renderApplyOverallProgress() string {
 	progressLine := fmt.Sprintf("Overall Progress: %s %s (%d%%)", 
 		progressBar, stats, int(percent*100))
 	
-	return boxStyle.Width(m.width - 2).Render(progressLine)
+	return boxStyle.Width(m.width - 4).Render(progressLine)
 }
 
 func (m *modernPlanModel) renderApplyCurrentOperation() string {
@@ -1922,7 +1944,7 @@ func (m *modernPlanModel) renderApplyCurrentOperation() string {
 		// Show empty state
 		box := boxStyle.Copy().
 			BorderForeground(dimColor).
-			Width(m.width - 2)
+			Width(m.width - 4)
 		return box.Render(titleStyle.Render("Currently Updating") + "\n" + dimStyle.Render("No active operations"))
 	}
 	
@@ -1986,13 +2008,26 @@ func (m *modernPlanModel) renderApplyCurrentOperation() string {
 	
 	box := boxStyle.Copy().
 		BorderForeground(primaryColor).
-		Width(m.width - 2)
+		Width(m.width - 4)
 	
 	return box.Render(titleStyle.Render("Currently Updating") + "\n" + content)
 }
 
 func (m *modernPlanModel) renderApplyColumns() string {
-	halfWidth := (m.width - 6) / 2
+	// Calculate width for each column
+	// We want to use the full available width
+	// Each box will get half the width minus the gap between them
+	gap := 2
+	halfWidth := (m.width - gap) / 2
+	
+	// Debug: Log the widths to see what's happening
+	if m.applyState != nil {
+		m.applyState.logs = append(m.applyState.logs, logEntry{
+			Timestamp: time.Now(),
+			Level:     "debug",
+			Message:   fmt.Sprintf("[DEBUG] Column widths - Terminal: %d, Each column: %d", m.width, halfWidth),
+		})
+	}
 	
 	// Completed column
 	completedBox := m.renderApplyCompleted(halfWidth)
@@ -2042,9 +2077,25 @@ func (m *modernPlanModel) renderApplyCompleted(width int) string {
 			
 			// Truncate long addresses
 			addr := res.Address
+			// The width passed is the outer box width (including border and padding)
+			// boxStyle has: border = 2 chars (left+right), padding(0,1) = 2 chars
+			// We also need space for icon + space = 2 chars
+			// Total overhead = 2 + 2 + 2 = 6 characters
 			maxLen := width - 6
+			
+			// Debug log truncation
 			if len(addr) > maxLen && maxLen > 10 {
+				originalLen := len(addr)
+				// Simple character-based truncation for consistency
 				addr = addr[:maxLen-3] + "..."
+				// Log the truncation for debugging
+				if m.applyState != nil {
+					m.applyState.logs = append(m.applyState.logs, logEntry{
+						Timestamp: time.Now(),
+						Level:     "debug",
+						Message:   fmt.Sprintf("[DEBUG] Truncated '%s' (len %d) to fit column width %d (maxLen %d)", res.Address, originalLen, width, maxLen),
+					})
+				}
 			}
 			
 			line := fmt.Sprintf("%s %s", icon, addr)
@@ -2056,8 +2107,9 @@ func (m *modernPlanModel) renderApplyCompleted(width int) string {
 				// Add truncated error message if available
 				if res.Error != "" {
 					errMsg := res.Error
-					if len(errMsg) > width-8 {
-						errMsg = errMsg[:width-11] + "..."
+					// Adjust for the indent "  └ " which is 4 characters
+					if len(errMsg) > width-4 && width > 7 {
+						errMsg = errMsg[:width-7] + "..."
 					}
 					content += dimStyle.Faint(true).Render(fmt.Sprintf("  └ %s", errMsg)) + "\n"
 				}
@@ -2106,9 +2158,25 @@ func (m *modernPlanModel) renderApplyPending(width int) string {
 			
 			// Truncate long addresses
 			addr := res.Address
+			// The width passed is the outer box width (including border and padding)
+			// boxStyle has: border = 2 chars (left+right), padding(0,1) = 2 chars
+			// We also need space for icon + space = 2 chars
+			// Total overhead = 2 + 2 + 2 = 6 characters
 			maxLen := width - 6
+			
+			// Debug log truncation
 			if len(addr) > maxLen && maxLen > 10 {
+				originalLen := len(addr)
+				// Simple character-based truncation for consistency
 				addr = addr[:maxLen-3] + "..."
+				// Log the truncation for debugging
+				if m.applyState != nil {
+					m.applyState.logs = append(m.applyState.logs, logEntry{
+						Timestamp: time.Now(),
+						Level:     "debug",
+						Message:   fmt.Sprintf("[DEBUG] Truncated '%s' (len %d) to fit column width %d (maxLen %d)", res.Address, originalLen, width, maxLen),
+					})
+				}
 			}
 			
 			line := fmt.Sprintf("%s %s", icon, addr)
@@ -2156,7 +2224,7 @@ func (m *modernPlanModel) renderApplyErrorSummary() string {
 	
 	box := boxStyle.Copy().
 		BorderForeground(dangerColor).
-		Width(m.width - 2).
+		Width(m.width - 4).
 		Padding(0, 1)
 	
 	return box.Render(content)
@@ -2166,7 +2234,7 @@ func (m *modernPlanModel) renderApplyLogs() string {
 	title := titleStyle.Render("Logs")
 	
 	// Apply highlight if selected
-	box := boxStyle.Width(m.width - 2)
+	box := boxStyle.Width(m.width - 4)
 	if m.applyState != nil && m.applyState.selectedSection == 2 {
 		box = box.BorderForeground(primaryColor)
 	}
