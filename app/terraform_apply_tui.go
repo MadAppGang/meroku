@@ -58,11 +58,12 @@ type pendingResource struct {
 }
 
 type currentOperation struct {
-	Address   string
-	Action    string
-	Progress  float64
-	Status    string
-	StartTime time.Time
+	Address     string
+	Action      string
+	Progress    float64
+	Status      string
+	StartTime   time.Time
+	ElapsedTime string // Elapsed time from Terraform messages like "10s"
 }
 
 type logEntry struct {
@@ -318,12 +319,28 @@ func (m *modernPlanModel) parseTerraformOutput(stdout interface{}) {
 							action = "update"
 						}
 						
+						// Extract elapsed time if present (e.g., "[10s elapsed]")
+						elapsedTime := ""
+						if strings.Contains(msg.Message, "elapsed]") {
+							// Find the pattern [XXs elapsed]
+							startIdx := strings.LastIndex(msg.Message, "[")
+							endIdx := strings.LastIndex(msg.Message, " elapsed]")
+							if startIdx != -1 && endIdx != -1 && startIdx < endIdx {
+								elapsedTime = msg.Message[startIdx+1:endIdx]
+							}
+						}
+						
 						// Send start message if we haven't seen this resource yet
-						if m.applyState != nil && (m.applyState.currentOp == nil || m.applyState.currentOp.Address != addr) {
-							m.sendMsg(resourceStartMsg{
-								Address: addr,
-								Action:  action,
-							})
+						if m.applyState != nil {
+							if m.applyState.currentOp == nil || m.applyState.currentOp.Address != addr {
+								m.sendMsg(resourceStartMsg{
+									Address: addr,
+									Action:  action,
+								})
+							} else if m.applyState.currentOp != nil && m.applyState.currentOp.Address == addr && elapsedTime != "" {
+								// Update elapsed time for current operation
+								m.applyState.currentOp.ElapsedTime = elapsedTime
+							}
 						}
 					}
 				}

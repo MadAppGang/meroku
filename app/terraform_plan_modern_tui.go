@@ -1935,22 +1935,43 @@ func (m *modernPlanModel) renderApplyCurrentOperation() string {
 	
 	// Progress bar for current operation
 	opProgress := ""
+	elapsedDisplay := ""
+	
 	if op.Progress > 0 {
 		opProgress = m.progress.ViewAs(op.Progress)
 	} else {
-		// Show animated progress
+		// Show infinite progress animation
 		elapsed := time.Since(op.StartTime)
-		dots := int(elapsed.Seconds()) % 10
-		opProgress = strings.Repeat("█", dots) + strings.Repeat("░", 10-dots)
+		// Create a sliding window animation
+		totalBars := 20
+		windowSize := 5
+		position := int(elapsed.Seconds()) % (totalBars + windowSize)
+		
+		bar := ""
+		for i := 0; i < totalBars; i++ {
+			if i >= position-windowSize && i < position {
+				bar += "█"
+			} else {
+				bar += "░"
+			}
+		}
+		opProgress = bar
+		
+		// Use elapsed time from Terraform if available, otherwise calculate
+		if op.ElapsedTime != "" {
+			elapsedDisplay = fmt.Sprintf(" [%s elapsed]", op.ElapsedTime)
+		} else {
+			elapsedDisplay = fmt.Sprintf(" [%ds elapsed]", int(elapsed.Seconds()))
+		}
 	}
 	
 	content := fmt.Sprintf(
-		"%s %s %s\n%s %d%%\n\nStatus: %s",
+		"%s %s %s\n%s%s\n\nStatus: %s",
 		icon,
 		actionStyle.Render(strings.Title(op.Action)+"ing"),
 		op.Address,
 		opProgress,
-		int(op.Progress*100),
+		elapsedDisplay,
 		op.Status,
 	)
 	

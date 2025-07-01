@@ -10,7 +10,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/huh/spinner"
 )
 
@@ -142,13 +141,6 @@ func runTerraformApply() error {
 		}
 	}
 
-	// Still save the full plan for reference
-	err = os.WriteFile("terraform-plan-full.json", jsonOutput, 0o644)
-	if err != nil {
-		return fmt.Errorf("error saving plan JSON: %w", err)
-	}
-	fmt.Println("📄 Full plan saved to terraform-plan-full.json")
-
 	// Skip the text formatting and go straight to interactive view
 	fmt.Println("✅ Terraform plan generated successfully")
 
@@ -157,27 +149,9 @@ func runTerraformApply() error {
 	if err != nil {
 		return fmt.Errorf("error showing plan TUI: %w", err)
 	}
-
-	// Ask the user if they want to apply or return to the main menu
-	result := false
-	huh.NewConfirm().
-		Title("Do you want to apply the Terraform changes?").
-		Description("Select 'Yes' to apply, 'No' to return to the main menu.").
-		Affirmative("Yes").
-		Negative("No").
-		Value(&result).
-		Run()
-
-	if !result {
-		fmt.Println("Returning to main menu...")
-		return nil
-	}
-
-	fmt.Println("Applying Terraform changes...")
-	_, err = runCommandWithOutput("terraform", "apply", "tfplan")
-	// Clean up the plan file
 	os.Remove("tfplan")
-	return err
+	fmt.Println("Returning to main menu...")
+	return nil
 }
 
 func terraformError(output string) ([]string, error) {
