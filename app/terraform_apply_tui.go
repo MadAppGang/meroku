@@ -258,8 +258,24 @@ func (m *modernPlanModel) parseTerraformOutput(stdout interface{}) {
 					logLevel = msg.Level
 				}
 				
-				// Check for error patterns in the message
-				if msg.Level == "error" || 
+				// Check for completion patterns in the message
+				if strings.Contains(msg.Message, ": Creation complete after") ||
+				   strings.Contains(msg.Message, ": Modifications complete after") ||
+				   strings.Contains(msg.Message, ": Destroy complete after") ||
+				   strings.Contains(msg.Message, ": Destruction complete after") {
+					// Parse successful completion
+					parts := strings.SplitN(msg.Message, ":", 2)
+					if len(parts) >= 1 {
+						addr := strings.TrimSpace(parts[0])
+						// Send a resource complete message with success
+						m.sendMsg(resourceCompleteMsg{
+							Address:  addr,
+							Success:  true,
+							Error:    "",
+							Duration: 0,
+						})
+					}
+				} else if msg.Level == "error" || 
 				   (msg.Message != "" && (strings.Contains(msg.Message, ": Creation errored after") ||
 				                         strings.Contains(msg.Message, ": Modification errored after") ||
 				                         strings.Contains(msg.Message, ": Destruction errored after"))) {
@@ -274,6 +290,39 @@ func (m *modernPlanModel) parseTerraformOutput(stdout interface{}) {
 								Success:  false,
 								Error:    msg.Message,
 								Duration: 0,
+							})
+						}
+					}
+				} else if strings.Contains(msg.Message, ": Still destroying...") ||
+				          strings.Contains(msg.Message, ": Destroying...") ||
+				          strings.Contains(msg.Message, ": Still creating...") ||
+				          strings.Contains(msg.Message, ": Creating...") ||
+				          strings.Contains(msg.Message, ": Still modifying...") ||
+				          strings.Contains(msg.Message, ": Modifying...") {
+					// Parse in-progress operations
+					parts := strings.SplitN(msg.Message, ":", 2)
+					if len(parts) >= 1 {
+						addr := strings.TrimSpace(parts[0])
+						// Remove any remote-exec or other provisioner suffixes
+						if strings.Contains(addr, " (") {
+							addr = strings.Split(addr, " (")[0]
+						}
+						
+						// Determine action from message
+						action := "update"
+						if strings.Contains(msg.Message, "destroy") || strings.Contains(msg.Message, "Destroy") {
+							action = "delete"
+						} else if strings.Contains(msg.Message, "creat") || strings.Contains(msg.Message, "Creat") {
+							action = "create"
+						} else if strings.Contains(msg.Message, "modify") || strings.Contains(msg.Message, "Modify") {
+							action = "update"
+						}
+						
+						// Send start message if we haven't seen this resource yet
+						if m.applyState != nil && (m.applyState.currentOp == nil || m.applyState.currentOp.Address != addr) {
+							m.sendMsg(resourceStartMsg{
+								Address: addr,
+								Action:  action,
 							})
 						}
 					}
