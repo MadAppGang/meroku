@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"sort"
 	"strings"
 	"time"
@@ -112,6 +114,9 @@ type modernPlanModel struct {
 	applyProgress  float64
 	applyState     *applyState
 	program        *tea.Program
+	// Resource replacement tracking
+	markedForReplace map[string]bool
+	showReplaceMode  bool
 }
 
 type modernKeyMap struct {
@@ -128,6 +133,8 @@ type modernKeyMap struct {
 	Copy     key.Binding
 	Quit     key.Binding
 	Help     key.Binding
+	Replace  key.Binding
+	Import   key.Binding
 }
 
 func (k modernKeyMap) ShortHelp() []key.Binding {
@@ -137,7 +144,7 @@ func (k modernKeyMap) ShortHelp() []key.Binding {
 func (k modernKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down, k.Left, k.Right},
-		{k.Tab, k.Enter, k.Space},
+		{k.Tab, k.Enter, k.Space, k.Replace},
 		{k.Copy, k.Apply, k.AskAI},
 		{k.Help, k.Quit},
 	}
@@ -195,6 +202,14 @@ var modernKeys = modernKeyMap{
 	Help: key.NewBinding(
 		key.WithKeys("?"),
 		key.WithHelp("?", "help"),
+	),
+	Replace: key.NewBinding(
+		key.WithKeys("r"),
+		key.WithHelp("r", "mark for replace"),
+	),
+	Import: key.NewBinding(
+		key.WithKeys("i"),
+		key.WithHelp("i", "import existing"),
 	),
 }
 
@@ -598,6 +613,8 @@ func initModernTerraformPlanTUI(planJSON string) (tea.Model, error) {
 		help:           help.New(),
 		keys:           modernKeys,
 		progress:       prog,
+		markedForReplace: make(map[string]bool),
+		showReplaceMode:  false,
 	}, nil
 }
 
@@ -680,6 +697,8 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			
 		case key.Matches(msg, m.keys.Apply):
+			// No need to check for replacements - the startTerraformApply function
+			// already handles -replace flags properly
 			m.currentView = applyView
 			m.initApplyState()
 			// Set viewport dimensions
@@ -738,6 +757,44 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Only scroll logs if logs section is selected
 				if m.applyState.selectedSection == 2 {
 					m.logViewport.LineUp(1)
+				}
+			}
+			
+		case key.Matches(msg, m.keys.Replace):
+			// Toggle replace mode or mark resource for replacement
+			if m.currentView == dashboardView {
+				resource := m.getSelectedResource()
+				if resource != nil {
+					// Toggle the replacement mark for this resource
+					if m.markedForReplace[resource.Address] {
+						delete(m.markedForReplace, resource.Address)
+					} else {
+						m.markedForReplace[resource.Address] = true
+					}
+					m.updateTreeViewport()
+					m.updateDetailViewport()
+				} else {
+					// Toggle replace mode if no specific resource selected
+					m.showReplaceMode = !m.showReplaceMode
+				}
+			}
+			
+		case key.Matches(msg, m.keys.Import):
+			// Show import help for the selected resource
+			if m.currentView == dashboardView {
+				resource := m.getSelectedResource()
+				if resource != nil {
+					m.showImportHelp(resource)
+					// Force a full redraw when returning
+					return m, tea.Batch(
+						tea.ClearScreen,
+						func() tea.Msg {
+							return tea.WindowSizeMsg{
+								Width:  m.width,
+								Height: m.height,
+							}
+						},
+					)
 				}
 			}
 			
@@ -929,6 +986,7 @@ func (m *modernPlanModel) View() string {
 	}
 }
 
+
 func (m *modernPlanModel) renderDashboard() string {
 	// Header
 	header := m.renderHeader()
@@ -1064,11 +1122,16 @@ func (m *modernPlanModel) renderProgressBar(label string, percent float64, color
 }
 
 func (m *modernPlanModel) renderFooter() string {
-	help := "[↑↓] Navigate  [Space/Enter] Expand  [c] Copy  "
+	help := "[↑↓] Navigate  [Space/Enter] Expand  [r] Replace  [i] Import  [c] Copy  "
 	if os.Getenv("ANTHROPIC_API_KEY") != "" {
 		help += "[e] Ask AI  "
 	}
 	help += "[a] Apply  [?] Help  [q] Quit"
+	
+	// Add indicator for marked resources
+	if len(m.markedForReplace) > 0 {
+		help += fmt.Sprintf("  |  %d resources marked for replacement", len(m.markedForReplace))
+	}
 	
 	return lipgloss.NewStyle().
 		Foreground(mutedColor).
@@ -1178,22 +1241,33 @@ func (m *modernPlanModel) renderTreeContent() string {
 							connector = "└"
 						}
 						
+						// Check if resource is marked for replacement
+						replaceMarker := ""
+						if m.markedForReplace[resource.Address] {
+							replaceMarker = " ↻"
+						}
+						
 						if isResourceSelected {
 							// When selected, don't apply icon styles that would override the background
-							resourceLine := fmt.Sprintf("    %s %s %s",
+							resourceLine := fmt.Sprintf("    %s %s %s%s",
 								connector,
 								icon,
 								name,
+								replaceMarker,
 							)
 							// Pad the line to full width for consistent highlighting
 							paddedLine := resourceLine + strings.Repeat(" ", max(0, treeWidth-lipgloss.Width(resourceLine)))
 							b.WriteString(selectedItemStyle.Render(paddedLine))
 						} else {
 							// When not selected, apply icon styles
+							nameWithMarker := name
+							if replaceMarker != "" {
+								nameWithMarker = name + lipgloss.NewStyle().Foreground(primaryColor).Bold(true).Render(replaceMarker)
+							}
 							resourceLine := fmt.Sprintf("    %s %s %s",
 								connector,
 								iconStyle.Render(icon),
-								name,
+								nameWithMarker,
 							)
 							b.WriteString(resourceLine)
 						}
@@ -1231,7 +1305,16 @@ func (m *modernPlanModel) renderResourceDetails(resource *ResourceChange) string
 	
 	// Action badge
 	actionBadge := actionStyle.Padding(0, 1).Render(strings.ToUpper(resource.Change.Actions[0]))
-	b.WriteString(fmt.Sprintf("%s  %s\n\n", actionBadge, typeStyle.Render(resource.Type)))
+	replaceBadge := ""
+	if m.markedForReplace[resource.Address] {
+		replaceBadge = "  " + lipgloss.NewStyle().
+			Background(primaryColor).
+			Foreground(lipgloss.Color("#ffffff")).
+			Bold(true).
+			Padding(0, 1).
+			Render("MARKED FOR REPLACE")
+	}
+	b.WriteString(fmt.Sprintf("%s  %s%s\n\n", actionBadge, typeStyle.Render(resource.Type), replaceBadge))
 	
 	// Render based on action type
 	switch resource.Change.Actions[0] {
@@ -1814,9 +1897,495 @@ func (m *modernPlanModel) askAIToExplain() {
 	if err != nil {
 		fmt.Printf("\n❌ Error creating visual view: %v\n", err)
 		fmt.Println("\nPress ENTER to return to the TUI...")
-		fmt.Scanln()
+		bufio.NewReader(os.Stdin).ReadBytes('\n')
 	}
 }
+
+func (m *modernPlanModel) showImportHelp(resource *ResourceChange) {
+	// Generate import ID based on resource type
+	importID := m.getImportIDHint(resource.Type, resource.Address)
+	
+	// For certain resources, try to get the name from the resource configuration
+	if resource.Change.After != nil {
+		switch resource.Type {
+		case "aws_iam_role":
+			if nameValue, exists := resource.Change.After["name"]; exists {
+				if name, ok := nameValue.(string); ok && name != "" {
+					importID = name
+				}
+			}
+		case "aws_ecr_repository":
+			if nameValue, exists := resource.Change.After["name"]; exists {
+				if name, ok := nameValue.(string); ok && name != "" {
+					importID = name
+				}
+			}
+		case "aws_ssm_parameter":
+			if nameValue, exists := resource.Change.After["name"]; exists {
+				if name, ok := nameValue.(string); ok && name != "" {
+					importID = name
+				}
+			}
+		case "aws_ecs_service":
+			// ECS services need cluster/service format
+			var clusterName, serviceName string
+			if clusterValue, exists := resource.Change.After["cluster"]; exists {
+				if c, ok := clusterValue.(string); ok && c != "" {
+					clusterName = c
+				}
+			}
+			if nameValue, exists := resource.Change.After["name"]; exists {
+				if n, ok := nameValue.(string); ok && n != "" {
+					serviceName = n
+				}
+			}
+			if clusterName != "" && serviceName != "" {
+				importID = fmt.Sprintf("%s/%s", clusterName, serviceName)
+			}
+		}
+	}
+	
+	// Clear screen
+	fmt.Print("\033[H\033[2J")
+	
+	// Check if this resource requires runtime IDs that can't be predicted
+	if importID == "@REQUIRES_RUNTIME_ID@" {
+		fmt.Printf("\n⚠️  %s Cannot Be Imported\n", resource.Type)
+		fmt.Printf("Resource: %s\n\n", resource.Address)
+		fmt.Printf("This resource type requires IDs that don't exist until the parent resource is created.\n\n")
+		
+		// Provide specific guidance based on resource type
+		switch resource.Type {
+		case "aws_apigatewayv2_integration", "aws_apigatewayv2_route":
+			fmt.Printf("Recommendation: Let Terraform create this resource naturally.\n")
+			fmt.Printf("The API Gateway API must exist first before integrations/routes can be added.\n\n")
+			fmt.Printf("If the parent API already exists, you can find its ID with:\n")
+			fmt.Printf("  aws apigatewayv2 get-apis --query \"Items[?Name=='<api-name>'].ApiId\"\n")
+		default:
+			fmt.Printf("This resource will be created automatically once its dependencies exist.\n")
+		}
+		
+		fmt.Printf("\nReturning to plan view in 2 seconds...")
+		time.Sleep(2 * time.Second)
+		return
+	}
+	
+	// Check if this resource requires looking up the ID
+	if importID == "@REQUIRES_LOOKUP@" {
+		// Extract name from address
+		parts := strings.Split(resource.Address, ".")
+		name := parts[len(parts)-1]
+		if strings.Contains(name, "[") {
+			name = strings.TrimSuffix(strings.Split(name, "[")[1], "]")
+			name = strings.Trim(name, `"'`)
+		}
+		
+		fmt.Printf("\n🔍 Looking up %s ID\n", resource.Type)
+		fmt.Printf("Resource: %s\n", resource.Address)
+		
+		// Perform automatic lookup based on resource type
+		switch resource.Type {
+		case "aws_security_group":
+			// First try to get the security group name from configuration
+			var sgName string
+			if resource.Change.After != nil {
+				if nameValue, exists := resource.Change.After["name"]; exists {
+					if n, ok := nameValue.(string); ok && n != "" {
+						sgName = n
+					}
+				}
+			}
+			
+			// If we don't have a name from config, extract from address
+			if sgName == "" {
+				sgName = name
+			}
+			
+			fmt.Printf("Looking up security group ID for name: %s\n\n", sgName)
+			
+			// Look up security group by name
+			lookupCmd := exec.Command("aws", "ec2", "describe-security-groups",
+				"--filters", fmt.Sprintf("Name=group-name,Values=%s", sgName),
+				"--query", "SecurityGroups[0].GroupId",
+				"--output", "text")
+			
+			output, err := lookupCmd.Output()
+			sgID := strings.TrimSpace(string(output))
+			
+			if err != nil || sgID == "" || sgID == "None" {
+				fmt.Printf("❌ Could not find security group with name: %s\n", sgName)
+				fmt.Printf("\nYou'll need to find the security group ID manually and run:\n")
+				fmt.Printf("  terraform import %s <sg-xxxxx>\n", resource.Address)
+				fmt.Print("\nReturning to plan view in 3 seconds...")
+				time.Sleep(3 * time.Second)
+				return
+			}
+			
+			fmt.Printf("✅ Found security group ID: %s\n", sgID)
+			importID = sgID
+			
+		case "aws_iam_policy":
+			// First try to get the policy name from configuration
+			var policyName string
+			if resource.Change.After != nil {
+				if nameValue, exists := resource.Change.After["name"]; exists {
+					if n, ok := nameValue.(string); ok && n != "" {
+						policyName = n
+					}
+				}
+			}
+			
+			// If we don't have a name from config, extract from address
+			if policyName == "" {
+				policyName = name
+			}
+			
+			fmt.Printf("Looking up IAM policy ARN for name: %s\n\n", policyName)
+			
+			// Get current AWS account ID
+			accountCmd := exec.Command("aws", "sts", "get-caller-identity", "--query", "Account", "--output", "text")
+			accountOutput, err := accountCmd.Output()
+			if err != nil {
+				fmt.Printf("❌ Could not get AWS account ID: %v\n", err)
+				fmt.Print("\nReturning to plan view in 3 seconds...")
+				time.Sleep(3 * time.Second)
+				return
+			}
+			accountID := strings.TrimSpace(string(accountOutput))
+			
+			// Construct the ARN
+			policyARN := fmt.Sprintf("arn:aws:iam::%s:policy/%s", accountID, policyName)
+			
+			// Verify the policy exists
+			checkCmd := exec.Command("aws", "iam", "get-policy", "--policy-arn", policyARN)
+			_, err = checkCmd.Output()
+			
+			if err != nil {
+				fmt.Printf("❌ Could not find IAM policy with ARN: %s\n", policyARN)
+				fmt.Printf("\nYou'll need to find the policy ARN manually and run:\n")
+				fmt.Printf("  terraform import %s <policy-arn>\n", resource.Address)
+				fmt.Print("\nReturning to plan view in 3 seconds...")
+				time.Sleep(3 * time.Second)
+				return
+			}
+			
+			fmt.Printf("✅ Found IAM policy ARN: %s\n", policyARN)
+			importID = policyARN
+			
+		case "aws_iam_role_policy_attachment":
+			// Role policy attachments need role name and policy ARN
+			// Extract both from the configuration
+			var roleName, policyArn string
+			
+			if resource.Change.After != nil {
+				if roleValue, exists := resource.Change.After["role"]; exists {
+					if r, ok := roleValue.(string); ok {
+						roleName = r
+					}
+				}
+				if policyValue, exists := resource.Change.After["policy_arn"]; exists {
+					if p, ok := policyValue.(string); ok {
+						policyArn = p
+					}
+				}
+			}
+			
+			if roleName == "" || policyArn == "" {
+				fmt.Printf("❌ Could not determine role name or policy ARN from configuration\n")
+				fmt.Printf("\nRole policy attachments need to be imported as: role-name/policy-arn\n")
+				fmt.Printf("\nYou'll need to run:\n")
+				fmt.Printf("  terraform import %s <role-name>/<policy-arn>\n", resource.Address)
+				fmt.Print("\nReturning to plan view in 3 seconds...")
+				time.Sleep(3 * time.Second)
+				return
+			}
+			
+			// Construct the import ID
+			importID = fmt.Sprintf("%s/%s", roleName, policyArn)
+			fmt.Printf("Using import ID: %s\n", importID)
+			
+		case "aws_service_discovery_service":
+			// Get service name from configuration
+			var serviceName string
+			if resource.Change.After != nil {
+				if nameValue, exists := resource.Change.After["name"]; exists {
+					if n, ok := nameValue.(string); ok && n != "" {
+						serviceName = n
+					}
+				}
+			}
+			
+			// If we don't have a name from config, extract from address
+			if serviceName == "" {
+				serviceName = name
+			}
+			
+			fmt.Printf("Looking up Service Discovery service ID for name: %s\n\n", serviceName)
+			
+			// List all namespaces to find the service
+			// First, let's try the default namespace pattern
+			namespaceCmd := exec.Command("aws", "servicediscovery", "list-namespaces",
+				"--query", "Namespaces[?contains(Name, 'moreai')].Id",
+				"--output", "text")
+			
+			namespaceOutput, err := namespaceCmd.Output()
+			if err != nil {
+				fmt.Printf("❌ Could not list Service Discovery namespaces: %v\n", err)
+				fmt.Print("\nReturning to plan view in 3 seconds...")
+				time.Sleep(3 * time.Second)
+				return
+			}
+			
+			namespaceIDs := strings.Fields(strings.TrimSpace(string(namespaceOutput)))
+			var serviceID string
+			
+			// Search for the service in each namespace
+			for _, nsID := range namespaceIDs {
+				listCmd := exec.Command("aws", "servicediscovery", "list-services",
+					"--filters", fmt.Sprintf("Name=NAMESPACE_ID,Values=%s", nsID),
+					"--query", fmt.Sprintf("Services[?Name=='%s'].Id", serviceName),
+					"--output", "text")
+				
+				output, err := listCmd.Output()
+				if err == nil {
+					sid := strings.TrimSpace(string(output))
+					if sid != "" && sid != "None" {
+						serviceID = sid
+						break
+					}
+				}
+			}
+			
+			if serviceID == "" {
+				fmt.Printf("❌ Could not find Service Discovery service with name: %s\n", serviceName)
+				fmt.Printf("\nYou'll need to find the service ID manually and run:\n")
+				fmt.Printf("  terraform import %s <service-id>\n", resource.Address)
+				fmt.Print("\nReturning to plan view in 3 seconds...")
+				time.Sleep(3 * time.Second)
+				return
+			}
+			
+			fmt.Printf("✅ Found Service Discovery service ID: %s\n", serviceID)
+			importID = serviceID
+			
+		case "aws_lb_target_group":
+			fmt.Printf("Searching for target group...\n\n")
+			
+			// Look up target group ARN by name
+			lookupCmd := exec.Command("aws", "elbv2", "describe-target-groups",
+				"--names", fmt.Sprintf("moreai-dev-%s-tg", name),
+				"--query", "TargetGroups[0].TargetGroupArn",
+				"--output", "text")
+			
+			output, err := lookupCmd.Output()
+			tgARN := strings.TrimSpace(string(output))
+			
+			if err != nil || tgARN == "" || tgARN == "None" {
+				fmt.Printf("❌ Could not find target group with name: moreai-dev-%s-tg\n", name)
+				fmt.Printf("\nYou'll need to find the target group ARN manually and run:\n")
+				fmt.Printf("  terraform import %s <target-group-arn>\n", resource.Address)
+				fmt.Print("\nPress ENTER to continue...")
+				bufio.NewReader(os.Stdin).ReadBytes('\n')
+				return
+			}
+			
+			// Found the ARN, proceed with import
+			fmt.Printf("✅ Found target group ARN: %s\n", tgARN)
+			importID = tgARN
+		}
+		
+		// Clear the lookup message before proceeding to import
+		fmt.Print("\033[H\033[2J")
+	}
+	
+	// Check if we need user input (legacy placeholder format)
+	needsUserInput := strings.Contains(importID, "<") && strings.Contains(importID, ">")
+	
+	// If we need user input, ask for it
+	if needsUserInput {
+		fmt.Printf("\n🔍 Import %s\n", resource.Type)
+		fmt.Printf("Resource: %s\n", resource.Address)
+		fmt.Printf("\nEnter the resource ID (%s): ", importID)
+		
+		reader := bufio.NewReader(os.Stdin)
+		userInput, _ := reader.ReadString('\n')
+		userInput = strings.TrimSpace(userInput)
+		
+		if userInput == "" {
+			// User cancelled, return immediately
+			return
+		}
+		
+		importID = userInput
+		// Clear screen again after input
+		fmt.Print("\033[H\033[2J")
+	}
+	
+	// Show importing progress immediately
+	fmt.Printf("\n⏳ Importing %s\n", resource.Address)
+	fmt.Printf("   ID: %s\n\n", importID)
+	
+	// Execute the import command with real-time output
+	cmd := exec.Command("terraform", "import", resource.Address, importID)
+	
+	// Create pipes for stdout and stderr
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		fmt.Printf("❌ Failed to create stdout pipe: %v\n", err)
+		fmt.Print("\nReturning to plan view in 2 seconds...")
+		time.Sleep(2 * time.Second)
+		return
+	}
+	
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		fmt.Printf("❌ Failed to create stderr pipe: %v\n", err)
+		fmt.Print("\nReturning to plan view in 2 seconds...")
+		time.Sleep(2 * time.Second)
+		return
+	}
+	
+	// Start the command
+	if err := cmd.Start(); err != nil {
+		fmt.Printf("❌ Failed to start import: %v\n", err)
+		fmt.Print("\nReturning to plan view in 2 seconds...")
+		time.Sleep(2 * time.Second)
+		return
+	}
+	
+	// Read output in real-time
+	go func() {
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			fmt.Println(scanner.Text())
+		}
+	}()
+	
+	go func() {
+		scanner := bufio.NewScanner(stderr)
+		for scanner.Scan() {
+			fmt.Println(scanner.Text())
+		}
+	}()
+	
+	// Wait for command to complete
+	err = cmd.Wait()
+	
+	fmt.Println() // Add a blank line
+	
+	if err != nil {
+		fmt.Printf("❌ Import failed: %v\n", err)
+		fmt.Print("\nReturning to plan view in 3 seconds...")
+		time.Sleep(3 * time.Second)
+	} else {
+		fmt.Println("✅ Import successful!")
+		fmt.Print("\nReturning to plan view in 2 seconds...")
+		time.Sleep(2 * time.Second)
+	}
+}
+
+func (m *modernPlanModel) getImportIDHint(resourceType, address string) string {
+	// Extract name from address if possible
+	parts := strings.Split(address, ".")
+	name := parts[len(parts)-1]
+	if strings.Contains(name, "[") {
+		// Handle indexed resources like services["aichat"]
+		name = strings.TrimSuffix(strings.Split(name, "[")[1], "]")
+		name = strings.Trim(name, `"'`)
+	}
+	
+	// Provide hints based on resource type
+	switch resourceType {
+	case "aws_cloudwatch_log_group":
+		// CloudWatch log groups typically follow a pattern
+		if strings.Contains(address, "service") && name != "" {
+			// Use the exact pattern from the error message
+			return fmt.Sprintf("moreai_service_%s_dev", name)
+		}
+		return "<log-group-name>"
+	case "aws_security_group":
+		// Security groups must be imported by ID (sg-xxxxx)
+		// We need to look up the ID from the name
+		return "@REQUIRES_LOOKUP@"
+	case "aws_iam_role":
+		// IAM roles are imported by their name directly
+		return "<role-name>"
+	case "aws_iam_policy":
+		// IAM policies need to be imported by ARN
+		// We need to look up the ARN from the name
+		return "@REQUIRES_LOOKUP@"
+	case "aws_s3_bucket":
+		return name
+	case "aws_ecr_repository":
+		// ECR repositories are imported by their name only
+		return name
+	case "aws_service_discovery_service":
+		// Service discovery services need their service ID
+		// We need to look it up
+		return "@REQUIRES_LOOKUP@"
+	case "aws_apigatewayv2_integration":
+		// API Gateway integrations need API ID and integration ID
+		// These cannot be predicted from names alone
+		// Return a special marker that will trigger different handling
+		return "@REQUIRES_RUNTIME_ID@"
+	case "aws_apigatewayv2_route":
+		// Routes need API ID and route ID
+		// These cannot be predicted from names alone
+		return "@REQUIRES_RUNTIME_ID@"
+	case "aws_apigatewayv2_api":
+		// API Gateway APIs use name
+		if name != "" {
+			return name
+		}
+		return "<api-name>"
+	case "aws_ecs_service":
+		// ECS services use cluster-name/service-name
+		if name != "" {
+			return fmt.Sprintf("moreai-dev-cluster/%s", name)
+		}
+		return "<cluster-name>/<service-name>"
+	case "aws_lb_target_group":
+		// Target groups need ARN for import, not name
+		return "@REQUIRES_LOOKUP@"
+	case "aws_lb", "aws_alb":
+		// Load balancers use name
+		if name != "" {
+			return name
+		}
+		return "<load-balancer-name>"
+	case "aws_cloudwatch_log_stream":
+		// Log streams need log group name and stream name
+		return "<log-group-name>/<log-stream-name>"
+	case "aws_route53_record":
+		// Route53 records need zone ID and record name
+		return "<zone-id>/<record-name>/<record-type>"
+	case "aws_acm_certificate":
+		// Certificates can be imported by domain name
+		if name != "" {
+			return name
+		}
+		return "<domain-name>"
+	case "aws_iam_role_policy_attachment":
+		// Role policy attachments need special handling
+		// Import format is: role-name/policy-arn
+		return "@REQUIRES_LOOKUP@"
+	case "aws_ssm_parameter":
+		// SSM parameters need their full path
+		// For service parameters, construct the full path
+		if strings.Contains(address, "services_env[") && name != "" {
+			// Assuming pattern like /dev/moreai/aichat/...
+			return fmt.Sprintf("/dev/moreai/%s", name)
+		}
+		return "<parameter-path>"
+	default:
+		// For any unhandled resource, try to use the name
+		if name != "" {
+			return name
+		}
+		return "<resource-name>"
+	}
+}
+
 
 func (m *modernPlanModel) renderApplyView() string {
 	if m.applyState == nil {
@@ -2020,15 +2589,6 @@ func (m *modernPlanModel) renderApplyColumns() string {
 	gap := 2
 	halfWidth := (m.width - gap) / 2
 	
-	// Debug: Log the widths to see what's happening
-	if m.applyState != nil {
-		m.applyState.logs = append(m.applyState.logs, logEntry{
-			Timestamp: time.Now(),
-			Level:     "debug",
-			Message:   fmt.Sprintf("[DEBUG] Column widths - Terminal: %d, Each column: %d", m.width, halfWidth),
-		})
-	}
-	
 	// Completed column
 	completedBox := m.renderApplyCompleted(halfWidth)
 	
@@ -2083,19 +2643,9 @@ func (m *modernPlanModel) renderApplyCompleted(width int) string {
 			// Total overhead = 2 + 2 + 2 = 6 characters
 			maxLen := width - 6
 			
-			// Debug log truncation
 			if len(addr) > maxLen && maxLen > 10 {
-				originalLen := len(addr)
 				// Simple character-based truncation for consistency
 				addr = addr[:maxLen-3] + "..."
-				// Log the truncation for debugging
-				if m.applyState != nil {
-					m.applyState.logs = append(m.applyState.logs, logEntry{
-						Timestamp: time.Now(),
-						Level:     "debug",
-						Message:   fmt.Sprintf("[DEBUG] Truncated '%s' (len %d) to fit column width %d (maxLen %d)", res.Address, originalLen, width, maxLen),
-					})
-				}
 			}
 			
 			line := fmt.Sprintf("%s %s", icon, addr)
@@ -2164,19 +2714,9 @@ func (m *modernPlanModel) renderApplyPending(width int) string {
 			// Total overhead = 2 + 2 + 2 = 6 characters
 			maxLen := width - 6
 			
-			// Debug log truncation
 			if len(addr) > maxLen && maxLen > 10 {
-				originalLen := len(addr)
 				// Simple character-based truncation for consistency
 				addr = addr[:maxLen-3] + "..."
-				// Log the truncation for debugging
-				if m.applyState != nil {
-					m.applyState.logs = append(m.applyState.logs, logEntry{
-						Timestamp: time.Now(),
-						Level:     "debug",
-						Message:   fmt.Sprintf("[DEBUG] Truncated '%s' (len %d) to fit column width %d (maxLen %d)", res.Address, originalLen, width, maxLen),
-					})
-				}
 			}
 			
 			line := fmt.Sprintf("%s %s", icon, addr)

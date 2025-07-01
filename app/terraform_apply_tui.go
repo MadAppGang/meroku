@@ -185,8 +185,31 @@ func (m *modernPlanModel) startTerraformApply() tea.Cmd {
 			m.initApplyState()
 		}
 		
+		// Build command arguments
+		args := []string{"apply", "-json", "-auto-approve"}
+		
+		// Add replace flags for marked resources
+		for resource := range m.markedForReplace {
+			args = append(args, fmt.Sprintf("-replace=%s", resource))
+		}
+		
+		// Only use plan file if no replacements are marked
+		// When using -replace, we need to let terraform create a new plan
+		if len(m.markedForReplace) == 0 {
+			// Add plan file
+			args = append(args, "tfplan")
+		}
+		
+		// Log the command being executed if there are replacements
+		if len(m.markedForReplace) > 0 {
+			m.sendLogMessage("info", fmt.Sprintf("🔄 Running terraform apply with %d resource replacements", len(m.markedForReplace)), "")
+			for resource := range m.markedForReplace {
+				m.sendLogMessage("info", fmt.Sprintf("  • Replacing: %s", resource), "")
+			}
+		}
+		
 		// Start terraform apply with JSON output
-		cmd := exec.Command("terraform", "apply", "-json", "-auto-approve", "tfplan")
+		cmd := exec.Command("terraform", args...)
 		stdout, err := cmd.StdoutPipe()
 		if err != nil {
 			return applyErrorMsg{err: err}
@@ -219,10 +242,6 @@ func (m *modernPlanModel) parseTerraformOutput(stdout interface{}) {
 			continue
 		}
 		
-		// Debug log the message type
-		if msg.Type != "" {
-			m.sendLogMessage("debug", fmt.Sprintf("[DEBUG] Message type: %s", msg.Type), "")
-		}
 		
 		// Process based on message type
 		switch msg.Type {
@@ -248,10 +267,6 @@ func (m *modernPlanModel) parseTerraformOutput(stdout interface{}) {
 		case "refresh_complete":
 			m.sendLogMessage("info", "✅ Refresh completed", "")
 		default:
-			// Log any unhandled message types for debugging
-			if msg.Type != "" && msg.Type != "version" && msg.Type != "log" {
-				m.sendLogMessage("debug", fmt.Sprintf("[DEBUG] Unhandled message type: %s", msg.Type), "")
-			}
 			
 			// Check if this is an error message by content
 			if msg.Message != "" {
@@ -284,6 +299,8 @@ func (m *modernPlanModel) parseTerraformOutput(stdout interface{}) {
 				                         strings.Contains(msg.Message, ": Destruction errored after"))) {
 					// Parse the resource address from error message
 					if strings.Contains(msg.Message, "errored after") {
+						// Override log level to error for these messages
+						logLevel = "error"
 						parts := strings.SplitN(msg.Message, ":", 2)
 						if len(parts) >= 1 {
 							addr := strings.TrimSpace(parts[0])
