@@ -624,7 +624,16 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			
 		case applyView:
 			m.logViewport.Width = m.width - 4
-			m.logViewport.Height = m.height / 3
+			// Set a more reasonable default height for logs
+			if m.applyState != nil && m.applyState.showFullLogs {
+				m.logViewport.Height = m.height * 2 / 3
+			} else {
+				m.logViewport.Height = m.height / 3 // Increased from /5 to /3
+			}
+			// Update log content after resizing
+			if m.applyState != nil {
+				m.updateApplyLogViewport()
+			}
 		}
 		
 		m.updateTreeViewport()
@@ -666,10 +675,17 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.Apply):
 			m.currentView = applyView
 			m.initApplyState()
+			// Set viewport dimensions
+			m.logViewport.Width = m.width - 4
+			m.logViewport.Height = m.height / 3
+			m.updateApplyLogViewport() // Show initial logs
 			return m, m.startTerraformApply()
 			
 		case key.Matches(msg, m.keys.Tab):
-			// Tab navigation logic
+			// Tab navigation for apply view
+			if m.currentView == applyView && m.applyState != nil {
+				m.applyState.selectedSection = (m.applyState.selectedSection + 1) % 3
+			}
 			
 		case key.Matches(msg, m.keys.Space), key.Matches(msg, m.keys.Enter):
 			if m.currentView == dashboardView && len(m.providers) > 0 {
@@ -699,9 +715,11 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.navigateDown()
 				m.updateTreeViewport()
 				m.updateDetailViewport()
-			} else if m.currentView == applyView {
-				// Scroll logs down
-				m.logViewport.LineDown(1)
+			} else if m.currentView == applyView && m.applyState != nil {
+				// Only scroll logs if logs section is selected
+				if m.applyState.selectedSection == 2 {
+					m.logViewport.LineDown(1)
+				}
 			}
 			
 		case key.Matches(msg, m.keys.Up):
@@ -709,9 +727,11 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.navigateUp()
 				m.updateTreeViewport()
 				m.updateDetailViewport()
-			} else if m.currentView == applyView {
-				// Scroll logs up
-				m.logViewport.LineUp(1)
+			} else if m.currentView == applyView && m.applyState != nil {
+				// Only scroll logs if logs section is selected
+				if m.applyState.selectedSection == 2 {
+					m.logViewport.LineUp(1)
+				}
 			}
 			
 		case msg.String() == "s":
@@ -732,7 +752,7 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.applyState.showFullLogs {
 					m.logViewport.Height = m.height * 2 / 3
 				} else {
-					m.logViewport.Height = m.height / 3
+					m.logViewport.Height = m.height / 3 // Consistent with window resize
 				}
 				m.updateApplyLogViewport()
 			}
@@ -741,6 +761,12 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Toggle details view
 			if m.currentView == applyView && m.applyState != nil {
 				m.applyState.showDetails = !m.applyState.showDetails
+			}
+			
+		case msg.String() == "x":
+			// Toggle error details view
+			if m.currentView == applyView && m.applyState != nil && m.applyState.errorCount > 0 {
+				m.applyState.showErrorDetails = !m.applyState.showErrorDetails
 			}
 		}
 		
@@ -753,6 +779,7 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case applyStartMsg:
 		if m.applyState != nil {
 			m.applyState.isApplying = true
+			m.updateApplyLogViewport() // Update viewport to show initial logs
 		}
 		
 	case applyCompleteMsg:
@@ -787,6 +814,15 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		
 	case resourceCompleteMsg:
 		if m.applyState != nil {
+			// Get action from pending list before removing
+			action := "update"
+			for _, p := range m.applyState.pending {
+				if p.Address == msg.Address {
+					action = p.Action
+					break
+				}
+			}
+			
 			// Move from pending to completed
 			for i, p := range m.applyState.pending {
 				if p.Address == msg.Address {
@@ -795,10 +831,19 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			
+			// Get duration safely
+			var duration time.Duration
+			if m.applyState.currentOp != nil && m.applyState.currentOp.Address == msg.Address {
+				action = m.applyState.currentOp.Action
+				duration = time.Since(m.applyState.currentOp.StartTime)
+			} else if msg.Duration > 0 {
+				duration = msg.Duration
+			}
+			
 			m.applyState.completed = append(m.applyState.completed, completedResource{
 				Address:   msg.Address,
-				Action:    m.applyState.currentOp.Action,
-				Duration:  time.Since(m.applyState.currentOp.StartTime),
+				Action:    action,
+				Duration:  duration,
 				Timestamp: time.Now(),
 				Success:   msg.Success,
 				Error:     msg.Error,
@@ -806,6 +851,7 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			
 			if !msg.Success {
 				m.applyState.errorCount++
+				m.applyState.hasErrors = true
 			}
 			
 			m.applyState.currentOp = nil
@@ -825,6 +871,7 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.applyState.warningCount++
 			} else if msg.Level == "error" {
 				m.applyState.errorCount++
+				m.applyState.hasErrors = true
 			}
 			
 			m.updateApplyLogViewport()
@@ -1753,8 +1800,13 @@ func (m *modernPlanModel) renderApplyView() string {
 	header := m.renderApplyHeader(elapsedStr)
 	
 	// If showing details view
-	if m.applyState.showDetails && m.applyState.currentOp != nil {
+	if m.applyState.showDetails {
 		return m.renderApplyDetailsView(header, elapsedStr)
+	}
+	
+	// If showing error details view
+	if m.applyState.showErrorDetails && m.applyState.errorCount > 0 {
+		return m.renderApplyErrorDetailsView(header, elapsedStr)
 	}
 	
 	// Overall progress
@@ -1778,12 +1830,21 @@ func (m *modernPlanModel) renderApplyView() string {
 		columns := m.renderApplyColumns()
 		logsSection := m.renderApplyLogs()
 		
+		// Add error summary if there are errors
+		errorSummary := ""
+		if m.applyState.errorCount > 0 {
+			errorSummary = m.renderApplyErrorSummary()
+		}
+		
+		parts := []string{overallProgress, currentOp}
+		if errorSummary != "" {
+			parts = append(parts, errorSummary)
+		}
+		parts = append(parts, columns, logsSection)
+		
 		mainContent = lipgloss.JoinVertical(
 			lipgloss.Left,
-			overallProgress,
-			currentOp,
-			columns,
-			logsSection,
+			parts...,
 		)
 	}
 	
@@ -1809,7 +1870,17 @@ func (m *modernPlanModel) renderApplyHeader(elapsed string) string {
 		}
 	}
 	
-	right := fmt.Sprintf("⏱ %s elapsed", elapsed)
+	// Build status indicators
+	var status []string
+	if m.applyState.errorCount > 0 {
+		status = append(status, deleteIconStyle.Render(fmt.Sprintf("❌ %d errors", m.applyState.errorCount)))
+	}
+	if m.applyState.warningCount > 0 {
+		status = append(status, updateIconStyle.Render(fmt.Sprintf("⚠️  %d warnings", m.applyState.warningCount)))
+	}
+	status = append(status, fmt.Sprintf("⏱ %s", elapsed))
+	
+	right := strings.Join(status, "  ")
 	
 	gap := m.width - lipgloss.Width(title) - lipgloss.Width(right) - 4
 	if gap < 0 {
@@ -1839,7 +1910,11 @@ func (m *modernPlanModel) renderApplyOverallProgress() string {
 
 func (m *modernPlanModel) renderApplyCurrentOperation() string {
 	if m.applyState.currentOp == nil {
-		return ""
+		// Show empty state
+		box := boxStyle.Copy().
+			BorderForeground(dimColor).
+			Width(m.width - 2)
+		return box.Render(titleStyle.Render("Currently Updating") + "\n" + dimStyle.Render("No active operations"))
 	}
 	
 	op := m.applyState.currentOp
@@ -1883,7 +1958,7 @@ func (m *modernPlanModel) renderApplyCurrentOperation() string {
 		BorderForeground(primaryColor).
 		Width(m.width - 2)
 	
-	return box.Render(titleStyle.Render("Current Operation") + "\n" + content)
+	return box.Render(titleStyle.Render("Currently Updating") + "\n" + content)
 }
 
 func (m *modernPlanModel) renderApplyColumns() string {
@@ -1909,34 +1984,66 @@ func (m *modernPlanModel) renderApplyCompleted(width int) string {
 	if len(m.applyState.completed) == 0 {
 		content += dimStyle.Render("No resources completed yet")
 	} else {
-		// Show last 10 completed resources
+		// Show last 6 completed resources (to fit in box)
+		displayCount := 6
 		start := 0
-		if len(m.applyState.completed) > 10 {
-			start = len(m.applyState.completed) - 10
+		if len(m.applyState.completed) > displayCount {
+			start = len(m.applyState.completed) - displayCount
+			content += dimStyle.Render(fmt.Sprintf("↑ %d earlier completed\n", start))
 		}
 		
 		for _, res := range m.applyState.completed[start:] {
 			icon := "✅"
+			actionStyle := dimStyle
+			
 			if !res.Success {
 				icon = "❌"
+				actionStyle = deleteIconStyle.Bold(true)
+			} else {
+				switch res.Action {
+				case "create":
+					actionStyle = createIconStyle
+				case "update":
+					actionStyle = updateIconStyle
+				case "delete":
+					actionStyle = deleteIconStyle
+				}
 			}
 			
-			actionStyle := dimStyle
-			switch res.Action {
-			case "create":
-				actionStyle = createIconStyle
-			case "update":
-				actionStyle = updateIconStyle
-			case "delete":
-				actionStyle = deleteIconStyle
+			// Truncate long addresses
+			addr := res.Address
+			maxLen := width - 6
+			if len(addr) > maxLen && maxLen > 10 {
+				addr = addr[:maxLen-3] + "..."
 			}
 			
-			line := fmt.Sprintf("%s %s", icon, res.Address)
-			content += actionStyle.Render(line) + "\n"
+			line := fmt.Sprintf("%s %s", icon, addr)
+			
+			// For failed resources, show with error background
+			if !res.Success {
+				errorStyle := actionStyle.Background(lipgloss.Color("#3D0000"))
+				content += errorStyle.Render(line) + "\n"
+				// Add truncated error message if available
+				if res.Error != "" {
+					errMsg := res.Error
+					if len(errMsg) > width-8 {
+						errMsg = errMsg[:width-11] + "..."
+					}
+					content += dimStyle.Faint(true).Render(fmt.Sprintf("  └ %s", errMsg)) + "\n"
+				}
+			} else {
+				content += actionStyle.Render(line) + "\n"
+			}
 		}
 	}
 	
-	return boxStyle.Width(width).Height(12).Render(content)
+	// Apply highlight if selected
+	box := boxStyle.Width(width).Height(10)
+	if m.applyState.selectedSection == 0 {
+		box = box.BorderForeground(primaryColor)
+	}
+	
+	return box.Render(content)
 }
 
 func (m *modernPlanModel) renderApplyPending(width int) string {
@@ -1945,9 +2052,10 @@ func (m *modernPlanModel) renderApplyPending(width int) string {
 	if len(m.applyState.pending) == 0 {
 		content += dimStyle.Render("No pending resources")
 	} else {
-		// Show next 10 pending resources
-		end := 10
-		if len(m.applyState.pending) < 10 {
+		// Show next 6 pending resources (to fit in box)
+		displayCount := 6
+		end := displayCount
+		if len(m.applyState.pending) < displayCount {
 			end = len(m.applyState.pending)
 		}
 		
@@ -1966,24 +2074,74 @@ func (m *modernPlanModel) renderApplyPending(width int) string {
 				icon = "✗"
 			}
 			
-			line := fmt.Sprintf("%s %s", icon, res.Address)
+			// Truncate long addresses
+			addr := res.Address
+			maxLen := width - 6
+			if len(addr) > maxLen && maxLen > 10 {
+				addr = addr[:maxLen-3] + "..."
+			}
+			
+			line := fmt.Sprintf("%s %s", icon, addr)
 			content += actionStyle.Render(line) + "\n"
 		}
 		
-		if len(m.applyState.pending) > 10 {
-			content += dimStyle.Render(fmt.Sprintf("... and %d more", len(m.applyState.pending)-10))
+		if len(m.applyState.pending) > displayCount {
+			content += dimStyle.Render(fmt.Sprintf("↓ %d more pending", len(m.applyState.pending)-displayCount))
 		}
 	}
 	
-	return boxStyle.Width(width).Height(12).Render(content)
+	// Apply highlight if selected
+	box := boxStyle.Width(width).Height(10)
+	if m.applyState.selectedSection == 1 {
+		box = box.BorderForeground(primaryColor)
+	}
+	
+	return box.Render(content)
+}
+
+func (m *modernPlanModel) renderApplyErrorSummary() string {
+	content := deleteIconStyle.Bold(true).Render("⚠️  Errors Detected") + "\n"
+	
+	// Collect recent error messages
+	var errorMessages []string
+	for i := len(m.applyState.logs) - 1; i >= 0 && len(errorMessages) < 3; i-- {
+		if m.applyState.logs[i].Level == "error" {
+			msg := m.applyState.logs[i].Message
+			// Truncate long messages
+			if len(msg) > 100 {
+				msg = msg[:97] + "..."
+			}
+			errorMessages = append(errorMessages, fmt.Sprintf("• %s", msg))
+		}
+	}
+	
+	// Show in reverse order (oldest first)
+	for i := len(errorMessages) - 1; i >= 0; i-- {
+		content += deleteIconStyle.Render(errorMessages[i]) + "\n"
+	}
+	
+	if len(errorMessages) == 0 {
+		content += deleteIconStyle.Render("Check logs for error details")
+	}
+	
+	box := boxStyle.Copy().
+		BorderForeground(dangerColor).
+		Width(m.width - 2).
+		Padding(0, 1)
+	
+	return box.Render(content)
 }
 
 func (m *modernPlanModel) renderApplyLogs() string {
 	title := titleStyle.Render("Logs")
-	logsBox := boxStyle.Width(m.width - 2).Render(
-		title + "\n" + m.logViewport.View(),
-	)
-	return logsBox
+	
+	// Apply highlight if selected
+	box := boxStyle.Width(m.width - 2)
+	if m.applyState != nil && m.applyState.selectedSection == 2 {
+		box = box.BorderForeground(primaryColor)
+	}
+	
+	return box.Render(title + "\n" + m.logViewport.View())
 }
 
 func (m *modernPlanModel) renderApplyFooter() string {
@@ -2005,7 +2163,19 @@ func (m *modernPlanModel) renderApplyFooter() string {
 		help += "[d] Show Details  "
 	}
 	
-	help += "[↑↓] Scroll  "
+	if m.applyState.errorCount > 0 {
+		if m.applyState.showErrorDetails {
+			help += "[x] Hide Errors  "
+		} else {
+			help += "[x] Show Errors  "
+		}
+	}
+	
+	help += "[Tab] Switch Section  "
+	
+	if m.applyState.selectedSection == 2 {
+		help += "[↑↓] Scroll Logs  "
+	}
 	
 	if m.applyState.applyComplete {
 		help += "[Enter] Continue  "
@@ -2023,6 +2193,19 @@ func (m *modernPlanModel) updateApplyLogViewport() {
 	
 	var content strings.Builder
 	
+	// Collect non-debug logs first if not in full log mode
+	var logsToShow []logEntry
+	if !m.applyState.showFullLogs {
+		// Filter out debug messages
+		for _, log := range m.applyState.logs {
+			if log.Level != "debug" {
+				logsToShow = append(logsToShow, log)
+			}
+		}
+	} else {
+		logsToShow = m.applyState.logs
+	}
+	
 	// Show last N log entries
 	start := 0
 	maxLogs := 20
@@ -2030,93 +2213,129 @@ func (m *modernPlanModel) updateApplyLogViewport() {
 		maxLogs = 50 // Show more logs in full view
 	}
 	
-	if len(m.applyState.logs) > maxLogs {
-		start = len(m.applyState.logs) - maxLogs
+	if len(logsToShow) > maxLogs {
+		start = len(logsToShow) - maxLogs
 	}
 	
-	for _, log := range m.applyState.logs[start:] {
+	// Ensure we show at least something if there are logs
+	if len(logsToShow) == 0 && len(m.applyState.logs) > 0 {
+		content.WriteString(dimStyle.Render("No non-debug logs yet. Press 'l' to show all logs.\n"))
+	}
+	
+	for _, log := range logsToShow[start:] {
+		
 		timestamp := log.Timestamp.Format("15:04:05")
 		
 		var icon string
 		var style lipgloss.Style
+		var levelStr string
 		switch log.Level {
 		case "error":
 			icon = "❌"
-			style = deleteIconStyle
+			style = deleteIconStyle.Bold(true)
+			levelStr = style.Render("[ERROR]")
 		case "warning":
 			icon = "⚠️"
 			style = updateIconStyle
+			levelStr = style.Render("[WARN] ")
 		case "info":
 			icon = "ℹ️"
 			style = dimStyle
+			levelStr = dimStyle.Render("[INFO] ")
+		case "debug":
+			icon = "🔍"
+			style = dimStyle.Faint(true)
+			levelStr = style.Render("[DEBUG]")
 		default:
 			icon = "•"
 			style = dimStyle
+			levelStr = dimStyle.Render("[INFO] ")
 		}
 		
-		line := fmt.Sprintf("%s [%s] %s %s", timestamp, log.Level, icon, log.Message)
-		content.WriteString(style.Render(line) + "\n")
+		// Format the line with consistent spacing
+		line := fmt.Sprintf("%s %s %s %s", timestamp, levelStr, icon, log.Message)
+		
+		// For errors, highlight the entire line
+		if log.Level == "error" {
+			// Add background color for better visibility
+			errorStyle := style.Background(lipgloss.Color("#3D0000"))
+			content.WriteString(errorStyle.Render(line) + "\n")
+		} else {
+			content.WriteString(style.Render(line) + "\n")
+		}
 	}
 	
 	m.logViewport.SetContent(content.String())
 }
 
 func (m *modernPlanModel) renderApplyDetailsView(header, elapsed string) string {
-	if m.applyState == nil || m.applyState.currentOp == nil {
-		return "No operation in progress"
-	}
-	
-	op := m.applyState.currentOp
-	
-	// Find the resource in our plan
-	var resource *ResourceChange
-	for _, provider := range m.providers {
-		for _, service := range provider.services {
-			for _, res := range service.resources {
-				if res.Address == op.Address {
-					resource = &res
-					break
-				}
-			}
-		}
+	if m.applyState == nil {
+		return "No apply state available"
 	}
 	
 	// Details content
 	var content strings.Builder
-	content.WriteString(titleStyle.Render("📋 Resource Details") + "\n\n")
+	content.WriteString(titleStyle.Render("📋 Apply Details") + "\n\n")
 	
-	content.WriteString(fmt.Sprintf("Address: %s\n", op.Address))
-	content.WriteString(fmt.Sprintf("Action: %s\n", op.Action))
-	content.WriteString(fmt.Sprintf("Status: %s\n", op.Status))
-	content.WriteString(fmt.Sprintf("Progress: %d%%\n", int(op.Progress*100)))
-	content.WriteString(fmt.Sprintf("Duration: %s\n\n", time.Since(op.StartTime).Round(time.Second)))
-	
-	if resource != nil {
-		content.WriteString(titleStyle.Render("Resource Type") + "\n")
-		content.WriteString(fmt.Sprintf("%s %s\n\n", getResourceIcon(resource.Type), resource.Type))
-		
-		// Show changes
-		if resource.Change.Before != nil || resource.Change.After != nil {
-			content.WriteString(titleStyle.Render("Changes") + "\n")
-			changes := m.findChangedAttributes(resource.Change.Before, resource.Change.After)
-			for _, change := range changes {
-				content.WriteString(m.renderAttributeChange(change))
-				content.WriteString("\n")
-			}
-		}
+	// Show current operation if any
+	if m.applyState.currentOp != nil {
+		op := m.applyState.currentOp
+		content.WriteString(titleStyle.Render("Current Operation") + "\n")
+		content.WriteString(fmt.Sprintf("Address: %s\n", op.Address))
+		content.WriteString(fmt.Sprintf("Action: %s\n", op.Action))
+		content.WriteString(fmt.Sprintf("Status: %s\n", op.Status))
+		content.WriteString(fmt.Sprintf("Progress: %d%%\n", int(op.Progress*100)))
+		content.WriteString(fmt.Sprintf("Duration: %s\n\n", time.Since(op.StartTime).Round(time.Second)))
+	} else {
+		content.WriteString(dimStyle.Render("No operation currently in progress\n\n"))
 	}
 	
-	// Recent logs for this resource
-	content.WriteString("\n" + titleStyle.Render("Resource Logs") + "\n")
-	for _, log := range m.applyState.logs {
-		if log.Resource == op.Address {
-			content.WriteString(fmt.Sprintf("%s %s\n", log.Timestamp.Format("15:04:05"), log.Message))
+	// Show recent completed operations
+	content.WriteString(titleStyle.Render("Recent Operations") + "\n")
+	if len(m.applyState.completed) > 0 {
+		// Show last 10 completed operations
+		start := 0
+		if len(m.applyState.completed) > 10 {
+			start = len(m.applyState.completed) - 10
+		}
+		
+		for _, res := range m.applyState.completed[start:] {
+			icon := "✅"
+			if !res.Success {
+				icon = "❌"
+			}
+			content.WriteString(fmt.Sprintf("%s %s %s - %s (%v)\n", 
+				icon, 
+				res.Timestamp.Format("15:04:05"),
+				res.Action,
+				res.Address,
+				res.Duration.Round(time.Millisecond)))
+			if !res.Success && res.Error != "" {
+				content.WriteString(deleteIconStyle.Render(fmt.Sprintf("   └ %s\n", res.Error)))
+			}
+		}
+	} else {
+		content.WriteString(dimStyle.Render("No completed operations yet\n"))
+	}
+	
+	// Show pending operations count
+	content.WriteString("\n" + titleStyle.Render("Pending Operations") + "\n")
+	content.WriteString(fmt.Sprintf("Total pending: %d\n", len(m.applyState.pending)))
+	
+	// Show error/warning summary
+	if m.applyState.errorCount > 0 || m.applyState.warningCount > 0 {
+		content.WriteString("\n" + titleStyle.Render("Summary") + "\n")
+		if m.applyState.errorCount > 0 {
+			content.WriteString(deleteIconStyle.Render(fmt.Sprintf("Errors: %d\n", m.applyState.errorCount)))
+		}
+		if m.applyState.warningCount > 0 {
+			content.WriteString(updateIconStyle.Render(fmt.Sprintf("Warnings: %d\n", m.applyState.warningCount)))
 		}
 	}
 	
 	detailBox := boxStyle.Width(m.width - 2).Height(m.height - 6).Render(content.String())
 	
-	footer := "[d] Back to overview  [q] Quit"
+	footer := "[d] Back to overview  [x] Show error details  [q] Quit"
 	
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
@@ -2220,4 +2439,123 @@ func showModernTerraformPlanTUI(planJSON string) error {
 	}
 	
 	return nil
+}
+
+func (m *modernPlanModel) renderApplyErrorDetailsView(header, elapsed string) string {
+	// Collect all failed resources
+	var failedResources []completedResource
+	for _, res := range m.applyState.completed {
+		if !res.Success {
+			failedResources = append(failedResources, res)
+		}
+	}
+	
+	if len(failedResources) == 0 {
+		return lipgloss.JoinVertical(
+			lipgloss.Left,
+			header,
+			"\n\nNo errors to display.",
+			m.renderApplyFooter(),
+		)
+	}
+	
+	// Create error details content
+	var content strings.Builder
+	content.WriteString(titleStyle.Render("🔴 Error Details") + "\n\n")
+	content.WriteString(fmt.Sprintf("Total Errors: %d\n\n", len(failedResources)))
+	
+	// Show each failed resource
+	for i, res := range failedResources {
+		// Resource header
+		content.WriteString(deleteIconStyle.Bold(true).Render(fmt.Sprintf("Error %d: %s", i+1, res.Address)) + "\n")
+		content.WriteString(strings.Repeat("─", m.width-10) + "\n")
+		
+		// Action attempted
+		content.WriteString(fmt.Sprintf("Action: %s\n", res.Action))
+		
+		// Duration before failure
+		if res.Duration > 0 {
+			content.WriteString(fmt.Sprintf("Failed after: %v\n", res.Duration))
+		}
+		
+		// Error message
+		content.WriteString("\nError Message:\n")
+		errorStyle := lipgloss.NewStyle().
+			Foreground(dangerColor).
+			PaddingLeft(2)
+		
+		// Wrap long error messages
+		errorMsg := res.Error
+		if errorMsg == "" {
+			errorMsg = "No error message available"
+		}
+		
+		// Simple word wrapping
+		maxWidth := m.width - 10
+		wrapped := wordWrap(errorMsg, maxWidth)
+		content.WriteString(errorStyle.Render(wrapped) + "\n")
+		
+		// Add spacing between errors
+		if i < len(failedResources)-1 {
+			content.WriteString("\n")
+		}
+	}
+	
+	// Create scrollable viewport for error details
+	vp := viewport.New(m.width-4, m.height-10)
+	vp.SetContent(content.String())
+	
+	// Build the view
+	box := boxStyle.Width(m.width-2).Height(m.height-8)
+	
+	return lipgloss.JoinVertical(
+		lipgloss.Left,
+		header,
+		box.Render(vp.View()),
+		m.renderApplyFooter(),
+	)
+}
+
+// Simple word wrap helper
+func wordWrap(text string, width int) string {
+	if width <= 0 {
+		return text
+	}
+	
+	var result strings.Builder
+	lines := strings.Split(text, "\n")
+	
+	for _, line := range lines {
+		if len(line) <= width {
+			result.WriteString(line + "\n")
+			continue
+		}
+		
+		// Wrap long lines
+		for len(line) > width {
+			// Find last space before width
+			cutPoint := width
+			for i := width - 1; i >= 0; i-- {
+				if line[i] == ' ' {
+					cutPoint = i
+					break
+				}
+			}
+			
+			// If no space found, just cut at width
+			if cutPoint == width {
+				result.WriteString(line[:width] + "\n")
+				line = line[width:]
+			} else {
+				result.WriteString(line[:cutPoint] + "\n")
+				line = line[cutPoint+1:] // Skip the space
+			}
+		}
+		
+		if len(line) > 0 {
+			result.WriteString(line + "\n")
+		}
+	}
+	
+	return strings.TrimSuffix(result.String(), "\n")
 }

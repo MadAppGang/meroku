@@ -11,11 +11,24 @@ import (
 
 func registerCustomHelpers() {
 	// Register custom helper for array to JSON string conversion
-	raymond.RegisterHelper("array", func(items []any) string {
-		jsonBytes, err := json.Marshal(items)
+	raymond.RegisterHelper("array", func(items interface{}) string {
+		// Handle different input types more gracefully
+		if items == nil {
+			panic("array helper: received nil value")
+		}
+		
+		// Use reflection to check if it's actually a slice
+		v := reflect.ValueOf(items)
+		if v.Kind() != reflect.Slice && v.Kind() != reflect.Array {
+			panic(fmt.Sprintf("array helper: expected slice or array, got %T", items))
+		}
+		
+		// Convert map[interface{}]interface{} to map[string]interface{} for JSON compatibility
+		converted := convertToJSONCompatible(items)
+		
+		jsonBytes, err := json.Marshal(converted)
 		if err != nil {
-			fmt.Printf("Error marshaling array to JSON: %+v\n", err)
-			return "[]"
+			panic(fmt.Sprintf("array helper: failed to marshal to JSON: %v", err))
 		}
 		return string(jsonBytes)
 	})
@@ -266,4 +279,25 @@ func registerCustomHelpers() {
 		builder.WriteString("  ]")
 		return builder.String()
 	})
+}
+
+// convertToJSONCompatible converts map[interface{}]interface{} to map[string]interface{}
+// This is necessary because YAML unmarshaling creates map[interface{}]interface{} which
+// is not compatible with JSON marshaling
+func convertToJSONCompatible(data interface{}) interface{} {
+	switch v := data.(type) {
+	case map[interface{}]interface{}:
+		m := make(map[string]interface{})
+		for key, value := range v {
+			m[fmt.Sprintf("%v", key)] = convertToJSONCompatible(value)
+		}
+		return m
+	case []interface{}:
+		for i, item := range v {
+			v[i] = convertToJSONCompatible(item)
+		}
+		return v
+	default:
+		return v
+	}
 }

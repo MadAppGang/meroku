@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -33,8 +35,11 @@ type applyState struct {
 	warningCount   int
 	
 	// View state
-	showFullLogs   bool
-	showDetails    bool
+	showFullLogs    bool
+	showDetails     bool
+	showErrorDetails bool
+	selectedSection int  // 0=completed, 1=pending, 2=logs
+	selectedError   int  // Index of selected error in completed list
 }
 
 type completedResource struct {
@@ -98,14 +103,14 @@ type logMsg struct {
 
 // TerraformJSONMessage represents the JSON output from terraform apply -json
 type TerraformJSONMessage struct {
-	Type       string                 `json:"@type"`
-	Level      string                 `json:"@level"`
-	Message    string                 `json:"@message"`
-	Module     string                 `json:"@module"`
-	Timestamp  string                 `json:"@timestamp"`
-	Diagnostic *DiagnosticInfo        `json:"diagnostic,omitempty"`
-	Hook       map[string]interface{} `json:"hook,omitempty"`
-	Change     *ChangeInfo            `json:"change,omitempty"`
+	Type       string          `json:"@type"`
+	Level      string          `json:"@level"`
+	Message    string          `json:"@message"`
+	Module     string          `json:"@module"`
+	Timestamp  string          `json:"@timestamp"`
+	Diagnostic *DiagnosticInfo `json:"diagnostic,omitempty"`
+	Hook       *HookInfo       `json:"hook,omitempty"`
+	Change     *ChangeInfo     `json:"change,omitempty"`
 }
 
 type DiagnosticInfo struct {
@@ -115,16 +120,27 @@ type DiagnosticInfo struct {
 	Address  string `json:"address,omitempty"`
 }
 
+type HookInfo struct {
+	Resource       *ResourceInfo `json:"resource,omitempty"`
+	Action         string        `json:"action,omitempty"`
+	IDKey          string        `json:"id_key,omitempty"`
+	IDValue        string        `json:"id_value,omitempty"`
+	ElapsedSeconds float64       `json:"elapsed_seconds,omitempty"`
+}
+
+type ResourceInfo struct {
+	Addr            string `json:"addr"`
+	Module          string `json:"module"`
+	Resource        string `json:"resource"`
+	ResourceType    string `json:"resource_type"`
+	ResourceName    string `json:"resource_name"`
+	ResourceKey     interface{} `json:"resource_key,omitempty"`
+	ImpliedProvider string `json:"implied_provider,omitempty"`
+}
+
 type ChangeInfo struct {
-	Resource struct {
-		Addr         string `json:"addr"`
-		Module       string `json:"module"`
-		Resource     string `json:"resource"`
-		ResourceType string `json:"resource_type"`
-		ResourceName string `json:"resource_name"`
-		ResourceKey  string `json:"resource_key"`
-	} `json:"resource"`
-	Action string `json:"action"`
+	Resource *ResourceInfo `json:"resource"`
+	Action   string        `json:"action"`
 }
 
 // Initialize apply state from the plan
@@ -200,6 +216,11 @@ func (m *modernPlanModel) parseTerraformOutput(stdout interface{}) {
 			continue
 		}
 		
+		// Debug log the message type
+		if msg.Type != "" {
+			m.sendLogMessage("debug", fmt.Sprintf("[DEBUG] Message type: %s", msg.Type), "")
+		}
+		
 		// Process based on message type
 		switch msg.Type {
 		case "apply_start":
@@ -210,6 +231,11 @@ func (m *modernPlanModel) parseTerraformOutput(stdout interface{}) {
 			m.handleApplyComplete(&msg)
 		case "apply_errored":
 			m.handleApplyError(&msg)
+		case "resource_drift":
+			// Handle resource drift messages
+			if msg.Hook != nil && msg.Hook.Resource != nil {
+				m.sendLogMessage("info", fmt.Sprintf("Resource drift detected: %s", msg.Hook.Resource.Addr), msg.Hook.Resource.Addr)
+			}
 		case "diagnostic":
 			m.handleDiagnostic(&msg)
 		case "provision_start", "provision_progress", "provision_complete", "provision_errored":
@@ -219,8 +245,41 @@ func (m *modernPlanModel) parseTerraformOutput(stdout interface{}) {
 		case "refresh_complete":
 			m.sendLogMessage("info", "✅ Refresh completed", "")
 		default:
+			// Log any unhandled message types for debugging
+			if msg.Type != "" && msg.Type != "version" && msg.Type != "log" {
+				m.sendLogMessage("debug", fmt.Sprintf("[DEBUG] Unhandled message type: %s", msg.Type), "")
+			}
+			
+			// Check if this is an error message by content
 			if msg.Message != "" {
-				m.sendLogMessage("info", msg.Message, "")
+				// Use the level from the message
+				logLevel := "info"
+				if msg.Level != "" {
+					logLevel = msg.Level
+				}
+				
+				// Check for error patterns in the message
+				if msg.Level == "error" || 
+				   (msg.Message != "" && (strings.Contains(msg.Message, ": Creation errored after") ||
+				                         strings.Contains(msg.Message, ": Modification errored after") ||
+				                         strings.Contains(msg.Message, ": Destruction errored after"))) {
+					// Parse the resource address from error message
+					if strings.Contains(msg.Message, "errored after") {
+						parts := strings.SplitN(msg.Message, ":", 2)
+						if len(parts) >= 1 {
+							addr := strings.TrimSpace(parts[0])
+							// Send a resource complete message with error
+							m.sendMsg(resourceCompleteMsg{
+								Address:  addr,
+								Success:  false,
+								Error:    msg.Message,
+								Duration: 0,
+							})
+						}
+					}
+				}
+				
+				m.sendLogMessage(logLevel, msg.Message, "")
 			}
 		}
 	}
@@ -234,74 +293,102 @@ func (m *modernPlanModel) parseTerraformOutput(stdout interface{}) {
 }
 
 func (m *modernPlanModel) handleApplyStart(msg *TerraformJSONMessage) {
-	if hook, ok := msg.Hook["resource"].(map[string]interface{}); ok {
-		addr := hook["addr"].(string)
-		m.sendMsg(resourceStartMsg{
-			Address: addr,
-			Action:  m.getResourceAction(addr),
-		})
-		
-		m.sendLogMessage("info", fmt.Sprintf("🔄 Starting %s...", addr), addr)
+	if msg.Hook == nil || msg.Hook.Resource == nil {
+		return
 	}
+	
+	addr := msg.Hook.Resource.Addr
+	action := msg.Hook.Action
+	if action == "" {
+		action = m.getResourceAction(addr)
+	}
+	
+	m.sendMsg(resourceStartMsg{
+		Address: addr,
+		Action:  action,
+	})
+	m.sendLogMessage("info", fmt.Sprintf("🔄 Starting %s on %s...", action, addr), addr)
 }
 
 func (m *modernPlanModel) handleApplyProgress(msg *TerraformJSONMessage) {
-	if hook, ok := msg.Hook["resource"].(map[string]interface{}); ok {
-		addr := hook["addr"].(string)
-		progress := 0.5 // Default progress
-		status := "In progress"
-		
-		if p, ok := hook["progress"].(map[string]interface{}); ok {
-			if pct, ok := p["percent"].(float64); ok {
-				progress = pct / 100.0
-			}
-			if s, ok := p["status"].(string); ok {
-				status = s
-			}
-		}
-		
-		m.sendMsg(resourceProgressMsg{
-			Address:  addr,
-			Progress: progress,
-			Status:   status,
-		})
+	if msg.Hook == nil || msg.Hook.Resource == nil {
+		return
 	}
+	
+	addr := msg.Hook.Resource.Addr
+	// Calculate progress based on elapsed time
+	progress := 0.5
+	if msg.Hook.ElapsedSeconds > 0 {
+		// Assume most operations complete within 30 seconds
+		progress = math.Min(msg.Hook.ElapsedSeconds/30.0, 0.9)
+	}
+	
+	status := fmt.Sprintf("In progress (%.1fs)", msg.Hook.ElapsedSeconds)
+	
+	m.sendMsg(resourceProgressMsg{
+		Address:  addr,
+		Progress: progress,
+		Status:   status,
+	})
 }
 
 func (m *modernPlanModel) handleApplyComplete(msg *TerraformJSONMessage) {
-	if hook, ok := msg.Hook["resource"].(map[string]interface{}); ok {
-		addr := hook["addr"].(string)
-		
-		// Calculate duration
-		duration := time.Since(time.Now()) // This should track from start
-		
-		m.sendMsg(resourceCompleteMsg{
-			Address:  addr,
-			Success:  true,
-			Duration: duration,
-		})
-		
-		m.sendLogMessage("info", fmt.Sprintf("✅ Completed %s", addr), addr)
+	if msg.Hook == nil || msg.Hook.Resource == nil {
+		return
 	}
+	
+	addr := msg.Hook.Resource.Addr
+	action := msg.Hook.Action
+	if action == "" {
+		action = m.getResourceAction(addr)
+	}
+	
+	// Use elapsed seconds from the message
+	duration := time.Duration(msg.Hook.ElapsedSeconds * float64(time.Second))
+	
+	m.sendMsg(resourceCompleteMsg{
+		Address:  addr,
+		Success:  true,
+		Duration: duration,
+	})
+	
+	// Include ID in log if available
+	idInfo := ""
+	if msg.Hook.IDKey != "" && msg.Hook.IDValue != "" {
+		idInfo = fmt.Sprintf(" [%s=%s]", msg.Hook.IDKey, msg.Hook.IDValue)
+	}
+	
+	m.sendLogMessage("info", fmt.Sprintf("✅ Completed %s on %s (%v)%s", action, addr, duration, idInfo), addr)
 }
 
 func (m *modernPlanModel) handleApplyError(msg *TerraformJSONMessage) {
-	if hook, ok := msg.Hook["resource"].(map[string]interface{}); ok {
-		addr := hook["addr"].(string)
-		errorMsg := "Unknown error"
-		
-		if e, ok := hook["error"].(string); ok {
-			errorMsg = e
-		}
-		
-		m.sendMsg(resourceCompleteMsg{
-			Address: addr,
-			Success: false,
-			Error:   errorMsg,
-		})
-		
-		m.sendLogMessage("error", fmt.Sprintf("❌ Failed %s: %s", addr, errorMsg), addr)
+	if msg.Hook == nil || msg.Hook.Resource == nil {
+		return
 	}
+	
+	addr := msg.Hook.Resource.Addr
+	action := msg.Hook.Action
+	if action == "" {
+		action = m.getResourceAction(addr)
+	}
+	
+	// Use elapsed seconds from the message
+	duration := time.Duration(msg.Hook.ElapsedSeconds * float64(time.Second))
+	
+	// Error message is typically in the main message field
+	errorMsg := msg.Message
+	if errorMsg == "" {
+		errorMsg = "Operation failed"
+	}
+	
+	m.sendMsg(resourceCompleteMsg{
+		Address:  addr,
+		Success:  false,
+		Error:    errorMsg,
+		Duration: duration,
+	})
+	
+	m.sendLogMessage("error", fmt.Sprintf("❌ Failed %s on %s after %v: %s", action, addr, duration, errorMsg), addr)
 }
 
 func (m *modernPlanModel) handleDiagnostic(msg *TerraformJSONMessage) {
@@ -330,10 +417,9 @@ func (m *modernPlanModel) handleProvisionMessage(msg *TerraformJSONMessage) {
 	case "provision_start":
 		m.sendLogMessage("info", "🔧 Starting provisioner...", "")
 	case "provision_progress":
-		if hook, ok := msg.Hook["provisioner"].(map[string]interface{}); ok {
-			if output, ok := hook["output"].(string); ok {
-				m.sendLogMessage("info", fmt.Sprintf("  %s", output), "")
-			}
+		// Provisioner output is typically in the message field
+		if msg.Message != "" {
+			m.sendLogMessage("info", fmt.Sprintf("  %s", msg.Message), "")
 		}
 	case "provision_complete":
 		m.sendLogMessage("info", "✅ Provisioner completed", "")
