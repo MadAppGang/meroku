@@ -781,6 +781,8 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.applyState.isApplying = true
 			m.updateApplyLogViewport() // Update viewport to show initial logs
 		}
+		// Start animation ticker
+		return m, m.tickCmd()
 		
 	case applyCompleteMsg:
 		if m.applyState != nil {
@@ -875,6 +877,13 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			
 			m.updateApplyLogViewport()
+		}
+		
+	case applyTickMsg:
+		// Update animation frame and continue ticking if still applying
+		if m.applyState != nil && m.applyState.isApplying {
+			m.applyState.animationFrame++
+			return m, m.tickCmd()
 		}
 	}
 	
@@ -1940,12 +1949,11 @@ func (m *modernPlanModel) renderApplyCurrentOperation() string {
 	if op.Progress > 0 {
 		opProgress = m.progress.ViewAs(op.Progress)
 	} else {
-		// Show infinite progress animation
-		elapsed := time.Since(op.StartTime)
-		// Create a sliding window animation
+		// Show infinite progress animation using animation frame
 		totalBars := 20
 		windowSize := 5
-		position := int(elapsed.Seconds()) % (totalBars + windowSize)
+		// Use animation frame for smooth animation
+		position := (m.applyState.animationFrame / 2) % (totalBars + windowSize)
 		
 		bar := ""
 		for i := 0; i < totalBars; i++ {
@@ -1961,6 +1969,7 @@ func (m *modernPlanModel) renderApplyCurrentOperation() string {
 		if op.ElapsedTime != "" {
 			elapsedDisplay = fmt.Sprintf(" [%s elapsed]", op.ElapsedTime)
 		} else {
+			elapsed := time.Since(op.StartTime)
 			elapsedDisplay = fmt.Sprintf(" [%ds elapsed]", int(elapsed.Seconds()))
 		}
 	}
@@ -2579,4 +2588,11 @@ func wordWrap(text string, width int) string {
 	}
 	
 	return strings.TrimSuffix(result.String(), "\n")
+}
+
+// tickCmd returns a command that sends a tick message after a short delay
+func (m *modernPlanModel) tickCmd() tea.Cmd {
+	return tea.Tick(time.Millisecond*100, func(t time.Time) tea.Msg {
+		return applyTickMsg{}
+	})
 }

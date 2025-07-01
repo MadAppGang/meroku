@@ -40,6 +40,7 @@ type applyState struct {
 	showErrorDetails bool
 	selectedSection int  // 0=completed, 1=pending, 2=logs
 	selectedError   int  // Index of selected error in completed list
+	animationFrame  int  // For progress bar animation
 }
 
 type completedResource struct {
@@ -77,6 +78,7 @@ type logEntry struct {
 type applyStartMsg struct{}
 type applyCompleteMsg struct{ success bool }
 type applyErrorMsg struct{ err error }
+type applyTickMsg struct{} // For animating progress bars
 
 type resourceStartMsg struct {
 	Address string
