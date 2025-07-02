@@ -285,7 +285,7 @@ func callAnthropicForVisualizationWithProgress(planData interface{}) error {
 	fmt.Println("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Println("✨ AI explanation generated successfully!")
 	fmt.Println("\nPress ENTER to return to the TUI...")
-	
+
 	// Use a channel to handle ENTER or cancellation
 	done := make(chan bool)
 	go func() {

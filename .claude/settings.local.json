@@ -6,7 +6,11 @@
       "Bash(grep:*)",
       "Bash(rm:*)",
       "Bash(pnpm remove:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(chmod:*)",
+      "Bash(./dev.sh)",
+      "Bash(go build:*)",
+      "Bash(./meroku)"
     ],
     "deny": []
   }

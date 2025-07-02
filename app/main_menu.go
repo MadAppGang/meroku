@@ -20,6 +20,7 @@ func mainMenu() string {
 	options := []huh.Option[string]{huh.NewOption("Create new environment", "create")}
 	options = append(options, huh.NewOption("Deploy environment", "deploy"))
 	options = append(options, huh.NewOption("Check for updates", "update"))
+	options = append(options, huh.NewOption("Open web app", "api"))
 	options = append(options, huh.NewOption("Exit", "exit"))
 
 	action := ""
@@ -46,6 +47,9 @@ func mainMenu() string {
 			fmt.Println("Error updating infrastructure:", err)
 			os.Exit(1)
 		}
+		return mainMenu()
+	case action == "api":
+		startSPAServer("8080")
 		return mainMenu()
 	case action == "exit":
 		os.Exit(0)

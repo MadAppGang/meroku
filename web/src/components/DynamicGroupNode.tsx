@@ -8,11 +8,7 @@ interface GroupNodeData {
   nodeIds?: string[]; // IDs of nodes that belong to this group
 }
 
-export function DynamicGroupNode({
-  data,
-  id,
-  position = { x: 0, y: 0 },
-}: NodeProps<GroupNodeData>) {
+export function DynamicGroupNode({ data, id }: NodeProps<GroupNodeData>) {
   const nodes = useNodes();
   const nodeInternals = useStore((state) => state.nodeInternals);
 
@@ -38,12 +34,13 @@ export function DynamicGroupNode({
       return { x: 0, y: 0, width: 400, height: 300 };
     }
 
-    // Filter out any nodes that might have invalid positions
+    // Filter out any nodes that might have invalid positions or are group nodes
     const validNodes = childNodes.filter(
       (node) =>
         node.position &&
         typeof node.position.x === "number" &&
-        typeof node.position.y === "number"
+        typeof node.position.y === "number" &&
+        node.type === "service" // Only include service nodes for bounds calculation
     );
 
     if (validNodes.length === 0) {
@@ -55,7 +52,7 @@ export function DynamicGroupNode({
     let maxX = Number.NEGATIVE_INFINITY;
     let maxY = Number.NEGATIVE_INFINITY;
 
-    for (const node of validNodes) {
+    validNodes.forEach((node) => {
       // Get actual node dimensions from React Flow internals
       const nodeInternal = nodeInternals.get(node.id);
       const nodeWidth = nodeInternal?.width || 140;
@@ -65,38 +62,40 @@ export function DynamicGroupNode({
       minY = Math.min(minY, node.position.y);
       maxX = Math.max(maxX, node.position.x + nodeWidth);
       maxY = Math.max(maxY, node.position.y + nodeHeight);
-    }
+    });
 
     // Add padding
     const sidePadding = 20;
-    const topPadding = 35; // Space above nodes for label
-    const bottomPadding = 15; // Bottom padding
+    const topPadding = 0; // Space above nodes for label
+    const bottomPadding = 0; // Minimal bottom padding
 
-    const bounds = {
+    const bb = {
       x: minX - sidePadding,
       y: minY - topPadding,
       width: maxX - minX + sidePadding * 2,
       height: maxY - minY + topPadding + bottomPadding,
     };
-
-    console.log(`Group ${data.label} bounds:`, bounds);
-
-    return bounds;
-  }, [nodes, nodeInternals, data.nodeIds, data.label, position]);
+    console.log(bb);
+    return {
+      x: minX - sidePadding,
+      y: minY - topPadding,
+      width: maxX - minX + sidePadding * 2,
+      height: maxY - minY + topPadding + bottomPadding,
+    };
+  }, [nodes, nodeInternals, data.nodeIds, data.label]);
 
   return (
     <div
       style={{
         position: "absolute",
-        left: 0,
-        top: 0,
+        left: bounds.x,
+        top: bounds.y,
         width: bounds.width,
         height: bounds.height,
         borderRadius: 12,
         border: "2px dashed #4b5563",
         backgroundColor: "rgba(75, 85, 99, 0.1)",
         pointerEvents: "none",
-        transform: `translate(${bounds.x}px, ${bounds.y}px)`,
         ...data.style,
       }}
     >
