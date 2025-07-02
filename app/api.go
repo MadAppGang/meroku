@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 )
 
@@ -46,26 +45,22 @@ func getEnvironments(w http.ResponseWriter, r *http.Request) {
 
 	var environments []Environment
 	
-	err := filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		
-		if !info.IsDir() && strings.HasSuffix(path, ".yaml") {
-			name := strings.TrimSuffix(filepath.Base(path), ".yaml")
-			environments = append(environments, Environment{
-				Name: name,
-				Path: path,
-			})
-		}
-		
-		return nil
-	})
-	
+	// Read only files in the current directory (not subdirectories)
+	files, err := os.ReadDir(".")
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
 		return
+	}
+	
+	for _, file := range files {
+		if !file.IsDir() && strings.HasSuffix(file.Name(), ".yaml") {
+			name := strings.TrimSuffix(file.Name(), ".yaml")
+			environments = append(environments, Environment{
+				Name: name,
+				Path: file.Name(),
+			})
+		}
 	}
 	
 	w.Header().Set("Content-Type", "application/json")
@@ -146,5 +141,6 @@ func updateEnvironmentConfig(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"message": "configuration updated successfully"})
 }
+
 
 

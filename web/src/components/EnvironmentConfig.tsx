@@ -19,7 +19,11 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Textarea } from "./ui/textarea";
 
-export function EnvironmentConfig() {
+interface EnvironmentConfigProps {
+  selectedEnvironment: string | null;
+}
+
+export function EnvironmentConfig({ selectedEnvironment }: EnvironmentConfigProps) {
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [selectedEnv, setSelectedEnv] = useState<string>("");
   const [configContent, setConfigContent] = useState<string>("");
@@ -31,6 +35,12 @@ export function EnvironmentConfig() {
   useEffect(() => {
     loadEnvironments();
   }, []);
+
+  useEffect(() => {
+    if (selectedEnvironment && selectedEnvironment !== selectedEnv) {
+      setSelectedEnv(selectedEnvironment);
+    }
+  }, [selectedEnvironment]);
 
   useEffect(() => {
     if (selectedEnv) {
