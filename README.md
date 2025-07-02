@@ -11,7 +11,7 @@ This repository declares infrastructure of Gigit cloud as a code using [Terrafor
 
 0. Create a dedicated git repository for your project's infrastructure.
 
-It is a good idea to keep a state of your current infrastructure in git. Because terraform is declarative approach, you can revert your infrastructure to any moment of the changes. 
+It is a good idea to keep a state of your current infrastructure in git. Because terraform is declarative approach, you can revert your infrastructure to any moment of the changes.
 
 Let's assume you have crated the repository for your project infrastructure and working from that:
 
@@ -21,7 +21,6 @@ cd my_project_infrastructure
 
 ```
 
-
 1. Copy two file to your root repo location:
 
 ```bash
@@ -29,16 +28,15 @@ cd my_project_infrastructure
     curl https://raw.githubusercontent.com/MadAppGang/infrastructure/main/project/dev.yaml -o dev.yaml
 ```
 
-***Do not clone this repository, you don't need it!*** We assume that you are located in the empty repo of your project's infrastructure or you can do it in a subfolder inside your project.
+**_Do not clone this repository, you don't need it!_** We assume that you are located in the empty repo of your project's infrastructure or you can do it in a subfolder inside your project.
 
-As a result you will 
+As a result you will
 
 2. Init new data:
-   
+
 ```bash
     make init
 ```
-   
 
 3. Edit `dev.yaml` file and run generate your terraform data:
 
@@ -46,7 +44,7 @@ As a result you will
     make dev
 ```
 
-or 
+or
 
 ```sh
     gomplate -c vars=dev.yaml -f ./infrastructure/env/main.tmpl   -o ./env/dev/main.tf
@@ -77,7 +75,6 @@ or
 
 5. Apply the plan when you're happy with it:
 
-
 ```bash
     make devapply
 ```
@@ -89,14 +86,14 @@ or
 ```
 
 6. After that commit this repo and ideally you don't need it any more.
-   
+
 You can find an examples of docker files, and github actions for different tech stacks in `receipts` folder.
 
 Whenever you publish new ECR (using github action or manually) the watcher in the cloud will redeploy your infrastructure.
 
 In production you need to send special command to AWS event bridge. Just explicit deploys to prod allowed. If you want to automate it - add this to your github action or other CI.
 
-7. Whenever you make a change to your configuration, `dev.yaml` or  `prod.yaml` you need to update it.
+7. Whenever you make a change to your configuration, `dev.yaml` or `prod.yaml` you need to update it.
 
 ```bash
 make dev
@@ -118,26 +115,27 @@ make dev
 make devapply
 ```
 
-Don't upgrade if you don't have too. We are trying to keep backward compatibility, but it is not guaranteed. 
+Don't upgrade if you don't have too. We are trying to keep backward compatibility, but it is not guaranteed.
 
 ## Makefile commands
 
-| command | description |
-| ---- | ------ |
-| clean | remove all the data |
-| update | apply new version of infrastructure |
-| version | show current infrastructure version |
-| dev | generate dev terraform env |
-| prod | generate prod terraform env |
-| devplan | show dev terraform plan |
-| prodplan | show prod terraform plan |
-| devapply | apply dev terraform plan | 
-| prodapply | apply prod terraform plan |
+| command   | description                         |
+| --------- | ----------------------------------- |
+| clean     | remove all the data                 |
+| update    | apply new version of infrastructure |
+| version   | show current infrastructure version |
+| dev       | generate dev terraform env          |
+| prod      | generate prod terraform env         |
+| devplan   | show dev terraform plan             |
+| prodplan  | show prod terraform plan            |
+| devapply  | apply dev terraform plan            |
+| prodapply | apply prod terraform plan           |
 
 ## Env variables management
+
 Backend, and every task are using env variables from AWS Parameter Store (SMM). One parameter store per value.
 
-When you need to populate initial values from JSON file, please use 
+When you need to populate initial values from JSON file, please use
 
 ## Github OIDC permissions
 
@@ -151,19 +149,17 @@ More details could be found in official [GitHub docs](https://docs.github.com/en
 
 ![Architecture diagram](./docs/images/architecture.png)
 
-
 ## Health check
 
-All services by default should respond status `200` on GET handler with path `/health/live`. If it is not responding with status 200, the application load balancer will consider the service unhealthy and redeploy it. 
-
+All services by default should respond status `200` on GET handler with path `/health/live`. If it is not responding with status 200, the application load balancer will consider the service unhealthy and redeploy it.
 
 ## Remote debug
 
-[You can use Amazon ECS Exec](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/ecs-exec.html) to  execute command remotely in terminal.
+[You can use Amazon ECS Exec](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/ecs-exec.html) to execute command remotely in terminal.
 
 To do so, you need to install [AWS Session Management Plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html#install-plugin-macos) on your machine.
 
-For mac Mx you  need:
+For mac Mx you need:
 
 ```shell
 curl "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/mac_arm64/session-manager-plugin.pkg" -o "session-manager-plugin.pkg"
@@ -178,9 +174,7 @@ With session manager you can login to container, execute a command in container 
 
 You can use a [usefull script](https://github.com/aws-containers/amazon-ecs-exec-checker) to help you work with AWS Exec.
 
-
-
-## Send events to Event Bridge 
+## Send events to Event Bridge
 
 You can test events by sending them event bus using CLI. The same command is used to send it ot deploy from Github Action.
 

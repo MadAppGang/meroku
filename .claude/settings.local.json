@@ -5,7 +5,8 @@
       "Bash(pnpm add:*)",
       "Bash(grep:*)",
       "Bash(rm:*)",
-      "Bash(pnpm remove:*)"
+      "Bash(pnpm remove:*)",
+      "Bash(cat:*)"
     ],
     "deny": []
   }
