@@ -11,6 +11,12 @@ export interface ErrorResponse {
 	error: string;
 }
 
+export interface AccountInfo {
+	profile: string;
+	accountId: string;
+	region: string;
+}
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || "";
 
 export const infrastructureApi = {
@@ -45,4 +51,13 @@ export const infrastructureApi = {
 			throw new Error(error.error || "Failed to update environment config");
 		}
 	},
+
+	async getAccountInfo(): Promise<AccountInfo> {
+		const response = await fetch(`${API_BASE_URL}/api/account`);
+		if (!response.ok) {
+			throw new Error("Failed to fetch account info");
+		}
+		return response.json();
+	},
+
 };

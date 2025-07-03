@@ -40,8 +40,11 @@ export function EnvironmentSelector({ open, onSelect }: EnvironmentSelectorProps
     try {
       setIsLoading(true);
       setError(null);
+      
       const envs = await infrastructureApi.getEnvironments();
+      
       setEnvironments(envs);
+      
       if (envs.length > 0) {
         setSelectedEnv(envs[0].name);
       }
@@ -74,7 +77,7 @@ export function EnvironmentSelector({ open, onSelect }: EnvironmentSelectorProps
           </DialogDescription>
         </DialogHeader>
         
-        <div className="py-4">
+        <div className="py-4 space-y-4">
           {error && (
             <Alert variant="destructive" className="mb-4">
               <AlertDescription>{error}</AlertDescription>
@@ -92,18 +95,23 @@ export function EnvironmentSelector({ open, onSelect }: EnvironmentSelectorProps
               </AlertDescription>
             </Alert>
           ) : (
-            <Select value={selectedEnv} onValueChange={setSelectedEnv}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select an environment" />
-              </SelectTrigger>
-              <SelectContent>
-                {environments.map((env) => (
-                  <SelectItem key={env.name} value={env.name}>
-                    {env.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <>
+              <div>
+                <label className="text-sm font-medium mb-2 block">Environment</label>
+                <Select value={selectedEnv} onValueChange={setSelectedEnv}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select an environment" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {environments.map((env) => (
+                      <SelectItem key={env.name} value={env.name}>
+                        {env.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </>
           )}
         </div>
         

@@ -43,6 +43,8 @@ func mainRouter() http.Handler {
 	mux.HandleFunc("/api/environments", corsMiddleware(getEnvironments))
 	mux.HandleFunc("/api/environment", corsMiddleware(getEnvironmentConfig))
 	mux.HandleFunc("/api/environment/update", corsMiddleware(updateEnvironmentConfig))
+	mux.HandleFunc("/api/account", corsMiddleware(getCurrentAccount))
+	mux.HandleFunc("/api/profiles", corsMiddleware(getAWSProfiles))
 
 	// SPA handler for all other routes
 	mux.HandleFunc("/", spaHandler())

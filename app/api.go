@@ -1,12 +1,17 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
+	
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
 type Environment struct {
@@ -140,6 +145,79 @@ func updateEnvironmentConfig(w http.ResponseWriter, r *http.Request) {
 	
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"message": "configuration updated successfully"})
+}
+
+type AccountInfo struct {
+	Profile   string `json:"profile"`
+	AccountID string `json:"accountId"`
+	Region    string `json:"region"`
+}
+
+func getCurrentAccount(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Always use the profile selected at startup
+	accountInfo := AccountInfo{
+		Profile: selectedAWSProfile,
+	}
+
+	// Get AWS account ID and region using the selected profile
+	if selectedAWSProfile != "" {
+		ctx := context.Background()
+		cfg, err := config.LoadDefaultConfig(ctx,
+			config.WithSharedConfigProfile(selectedAWSProfile),
+		)
+		if err == nil {
+			stsClient := sts.NewFromConfig(cfg)
+			identity, err := stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+			if err == nil && identity.Account != nil {
+				accountInfo.AccountID = *identity.Account
+			}
+			accountInfo.Region = cfg.Region
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(accountInfo)
+}
+
+func getAWSProfiles(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to get user home directory"})
+		return
+	}
+
+	configPath := filepath.Join(homeDir, ".aws", "config")
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to read AWS config file"})
+		return
+	}
+
+	var profiles []string
+	lines := strings.Split(string(content), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "[profile ") && strings.HasSuffix(line, "]") {
+			profile := strings.TrimPrefix(line, "[profile ")
+			profile = strings.TrimSuffix(profile, "]")
+			profiles = append(profiles, profile)
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(profiles)
 }
 
 

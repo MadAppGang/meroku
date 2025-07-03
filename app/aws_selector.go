@@ -13,8 +13,11 @@ import (
 	"github.com/charmbracelet/huh"
 )
 
+// Global variable to store the selected AWS profile
+var selectedAWSProfile string
+
 func selectAWSProfile() error {
-	profiles, err := getAWSProfiles()
+	profiles, err := getLocalAWSProfiles()
 	if err != nil {
 		return fmt.Errorf("failed to get AWS profiles: %w", err)
 	}
@@ -40,6 +43,9 @@ func selectAWSProfile() error {
 	}
 
 	if selectedProfile != "" {
+		// Store the selected profile globally
+		selectedAWSProfile = selectedProfile
+		
 		err = os.Setenv("AWS_PROFILE", selectedProfile)
 		if err != nil {
 			return fmt.Errorf("failed to set AWS_PROFILE: %w", err)
@@ -87,7 +93,7 @@ func selectAWSProfile() error {
 	return nil
 }
 
-func getAWSProfiles() ([]string, error) {
+func getLocalAWSProfiles() ([]string, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user home directory: %w", err)

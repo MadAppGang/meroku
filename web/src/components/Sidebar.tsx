@@ -1,5 +1,5 @@
 import React, { useState, useContext } from 'react';
-import { X, Settings, FileText, BarChart, Zap, Link, Code } from 'lucide-react';
+import { X, Settings, FileText, BarChart, Zap, Link, Code, Database } from 'lucide-react';
 import { ComponentNode } from '../types';
 import { Tabs } from './ui/tabs';
 import { Button } from './ui/button';
@@ -9,8 +9,11 @@ import { Switch } from './ui/switch';
 import { ECSNodeProperties } from './ECSNodeProperties';
 import { BackendServiceProperties } from './BackendServiceProperties';
 import { YamlInfrastructureConfig } from '../types/yamlConfig';
+import { type AccountInfo } from '../api/infrastructure';
 import { NodeConfigProperties } from './NodeConfigProperties';
 import { GitHubNodeProperties } from './GitHubNodeProperties';
+import { ECRNodeProperties } from './ECRNodeProperties';
+import { ECRRepositoryList } from './ECRRepositoryList';
 
 interface SidebarProps {
   selectedNode: ComponentNode | null;
@@ -18,9 +21,10 @@ interface SidebarProps {
   onClose: () => void;
   config?: YamlInfrastructureConfig;
   onConfigChange?: (config: Partial<YamlInfrastructureConfig>) => void;
+  accountInfo?: AccountInfo;
 }
 
-export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange }: SidebarProps) {
+export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange, accountInfo }: SidebarProps) {
   const [activeTab, setActiveTab] = useState('settings');
 
   if (!isOpen || !selectedNode) return null;
@@ -42,8 +46,8 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange 
   };
 
   return (
-    <div className="fixed right-0 top-0 h-full w-96 bg-gray-900 border-l border-gray-700 shadow-xl z-50 overflow-hidden">
-      <div className="flex items-center justify-between p-4 border-b border-gray-700">
+    <div className="fixed right-0 top-0 h-full w-96 bg-gray-900 border-l border-gray-700 shadow-xl z-50 flex flex-col">
+      <div className="flex items-center justify-between p-4 border-b border-gray-700 flex-shrink-0">
         <h2 className="text-lg font-medium text-white">{selectedNode.name}</h2>
         <Button
           variant="ghost"
@@ -55,10 +59,13 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange 
         </Button>
       </div>
 
-      <div className="flex border-b border-gray-700">
+      <div className="flex border-b border-gray-700 flex-shrink-0">
         {(selectedNode.type === 'github' ? [
           { id: 'settings', label: 'Settings', icon: Settings },
           { id: 'example', label: 'Example', icon: Code },
+        ] : selectedNode.type === 'ecr' ? [
+          { id: 'settings', label: 'Settings', icon: Settings },
+          { id: 'repos', label: 'Repos', icon: Database },
         ] : [
           { id: 'settings', label: 'Settings', icon: Settings },
           { id: 'logs', label: 'Logs', icon: FileText },
@@ -81,7 +88,7 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange 
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto p-4 min-h-0">
         {activeTab === 'settings' && (
           selectedNode.type === 'ecs' && config && onConfigChange ? (
             <ECSNodeProperties 
@@ -97,6 +104,12 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange 
             <GitHubNodeProperties 
               config={config}
               onConfigChange={onConfigChange}
+            />
+          ) : selectedNode.type === 'ecr' && config && onConfigChange ? (
+            <ECRNodeProperties 
+              config={config}
+              onConfigChange={onConfigChange}
+              accountInfo={accountInfo}
             />
           ) : (
             <div className="space-y-6">
@@ -339,6 +352,10 @@ jobs:
 }`}</pre>
             </div>
           </div>
+        )}
+
+        {activeTab === 'repos' && selectedNode.type === 'ecr' && config && (
+          <ECRRepositoryList config={config} accountInfo={accountInfo} />
         )}
       </div>
     </div>

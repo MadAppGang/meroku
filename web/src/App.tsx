@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
 import type { ComponentNode } from "./types";
 import { InfrastructureConfig } from "./types/config";
 import { YamlInfrastructureConfig } from "./types/yamlConfig";
-import { infrastructureApi } from "./api/infrastructure";
+import { infrastructureApi, type AccountInfo } from "./api/infrastructure";
 
 export default function App() {
   const [selectedNode, setSelectedNode] = useState<ComponentNode | null>(null);
@@ -18,6 +18,7 @@ export default function App() {
   const [selectedEnvironment, setSelectedEnvironment] = useState<string | null>(null);
   const [showEnvSelector, setShowEnvSelector] = useState(true);
   const [config, setConfig] = useState<YamlInfrastructureConfig | null>(null);
+  const [accountInfo, setAccountInfo] = useState<AccountInfo | null>(null);
 
   const handleNodeSelect = useCallback((node: ComponentNode | null) => {
     setSelectedNode(node);
@@ -29,10 +30,11 @@ export default function App() {
     setShowEnvSelector(false);
   }, []);
 
-  // Load configuration when environment is selected
+  // Load configuration and account info when environment is selected
   useEffect(() => {
     if (selectedEnvironment) {
       loadConfiguration(selectedEnvironment);
+      loadAccountInfo();
     }
   }, [selectedEnvironment]);
 
@@ -43,6 +45,15 @@ export default function App() {
       setConfig(parsed);
     } catch (error) {
       console.error("Failed to load configuration:", error);
+    }
+  };
+
+  const loadAccountInfo = async () => {
+    try {
+      const info = await infrastructureApi.getAccountInfo();
+      setAccountInfo(info);
+    } catch (error) {
+      console.error("Failed to load account info:", error);
     }
   };
 
@@ -99,6 +110,7 @@ export default function App() {
               }}
               config={config || undefined}
               onConfigChange={handleConfigChange}
+              accountInfo={accountInfo || undefined}
             />
           </ReactFlowProvider>
         </TabsContent>
