@@ -1,5 +1,5 @@
 import React, { useState, useContext } from 'react';
-import { X, Settings, FileText, BarChart, Zap, Link, Code, Database, Upload } from 'lucide-react';
+import { X, Settings, FileText, BarChart, Zap, Link, Code, Database, Upload, Globe } from 'lucide-react';
 import { ComponentNode } from '../types';
 import { Tabs } from './ui/tabs';
 import { Button } from './ui/button';
@@ -15,6 +15,8 @@ import { GitHubNodeProperties } from './GitHubNodeProperties';
 import { ECRNodeProperties } from './ECRNodeProperties';
 import { ECRRepositoryList } from './ECRRepositoryList';
 import { ECRPushInstructions } from './ECRPushInstructions';
+import { Route53NodeProperties } from './Route53NodeProperties';
+import { Route53DNSRecords } from './Route53DNSRecords';
 
 interface SidebarProps {
   selectedNode: ComponentNode | null;
@@ -68,6 +70,9 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
           { id: 'settings', label: 'Settings', icon: Settings },
           { id: 'repos', label: 'Repos', icon: Database },
           { id: 'push', label: 'Push', icon: Upload },
+        ] : selectedNode.type === 'route53' ? [
+          { id: 'settings', label: 'Settings', icon: Settings },
+          { id: 'dns', label: 'DNS', icon: Globe },
         ] : [
           { id: 'settings', label: 'Settings', icon: Settings },
           { id: 'logs', label: 'Logs', icon: FileText },
@@ -112,6 +117,11 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
               config={config}
               onConfigChange={onConfigChange}
               accountInfo={accountInfo}
+            />
+          ) : selectedNode.type === 'route53' && config && onConfigChange ? (
+            <Route53NodeProperties 
+              config={config}
+              onConfigChange={onConfigChange}
             />
           ) : (
             <div className="space-y-6">
@@ -362,6 +372,10 @@ jobs:
 
         {activeTab === 'push' && selectedNode.type === 'ecr' && config && (
           <ECRPushInstructions config={config} accountInfo={accountInfo} />
+        )}
+
+        {activeTab === 'dns' && selectedNode.type === 'route53' && config && (
+          <Route53DNSRecords config={config} />
         )}
       </div>
     </div>
