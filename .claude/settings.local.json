@@ -10,7 +10,11 @@
       "Bash(chmod:*)",
       "Bash(./dev.sh)",
       "Bash(go build:*)",
-      "Bash(./meroku)"
+      "Bash(./meroku)",
+      "Bash(rg:*)",
+      "Bash(mkdir:*)",
+      "Bash(mv:*)",
+      "Bash(ls:*)"
     ],
     "deny": []
   }

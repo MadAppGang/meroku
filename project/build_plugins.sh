@@ -7,7 +7,8 @@ for d in plugins/*/ ; do
     echo \ >> ./env/$1/main.tf
     echo \ >> ./env/$1/main.tf
     echo //$d >> ./env/$1/main.tf
-    gomplate -c vars=$1.yaml -f "./$d/module.tmpl"  >> ./env/$1/main.tf
+    # Uses Handlebars templating via Raymond to generate module config
+    meroku template -c vars=$1.yaml -f "./$d/module.tmpl" >> ./env/$1/main.tf
     echo \ >> ./env/$1/main.tf
     
     if test -f "$d/outputs.tf"; then

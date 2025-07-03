@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
 import { X, Settings, FileText, BarChart, Zap, Link } from 'lucide-react';
 import { ComponentNode } from '../types';
 import { Tabs } from './ui/tabs';
@@ -6,14 +6,19 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Switch } from './ui/switch';
+import { ECSNodeProperties } from './ECSNodeProperties';
+import { BackendServiceProperties } from './BackendServiceProperties';
+import { InfrastructureConfig } from '../types/config';
 
 interface SidebarProps {
   selectedNode: ComponentNode | null;
   isOpen: boolean;
   onClose: () => void;
+  config?: InfrastructureConfig;
+  onConfigChange?: (config: Partial<InfrastructureConfig>) => void;
 }
 
-export function Sidebar({ selectedNode, isOpen, onClose }: SidebarProps) {
+export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange }: SidebarProps) {
   const [activeTab, setActiveTab] = useState('settings');
 
   if (!isOpen || !selectedNode) return null;
@@ -73,63 +78,75 @@ export function Sidebar({ selectedNode, isOpen, onClose }: SidebarProps) {
 
       <div className="flex-1 overflow-y-auto p-4">
         {activeTab === 'settings' && (
-          <div className="space-y-6">
-            <div>
-              <Label htmlFor="service-name">Service Name</Label>
-              <Input
-                id="service-name"
-                value={selectedNode.name}
-                className="mt-1 bg-gray-800 border-gray-600 text-white"
-                readOnly
-              />
-            </div>
-            
-            <div>
-              <Label htmlFor="service-url">Service URL</Label>
-              <Input
-                id="service-url"
-                value={selectedNode.url || 'Not available'}
-                className="mt-1 bg-gray-800 border-gray-600 text-white"
-                readOnly
-              />
-            </div>
-
-            <div>
-              <Label>Status</Label>
-              <div className="mt-1 px-3 py-2 bg-gray-800 border border-gray-600 rounded-md">
-                <span className={`capitalize ${
-                  selectedNode.status === 'running' ? 'text-green-400' :
-                  selectedNode.status === 'deploying' ? 'text-yellow-400' :
-                  selectedNode.status === 'error' ? 'text-red-400' : 'text-gray-400'
-                }`}>
-                  {selectedNode.status}
-                </span>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <Label htmlFor="auto-deploy">Auto Deploy</Label>
-              <Switch id="auto-deploy" defaultChecked />
-            </div>
-
-            <div className="flex items-center justify-between">
-              <Label htmlFor="health-check">Health Check</Label>
-              <Switch id="health-check" defaultChecked />
-            </div>
-
-            {selectedNode.replicas && (
+          selectedNode.type === 'ecs' && config && onConfigChange ? (
+            <ECSNodeProperties 
+              config={config}
+              onConfigChange={onConfigChange}
+            />
+          ) : selectedNode.type === 'backend' && config && onConfigChange ? (
+            <BackendServiceProperties 
+              config={config}
+              onConfigChange={onConfigChange}
+            />
+          ) : (
+            <div className="space-y-6">
               <div>
-                <Label htmlFor="replicas">Replicas</Label>
+                <Label htmlFor="service-name">Service Name</Label>
                 <Input
-                  id="replicas"
-                  type="number"
-                  value={selectedNode.replicas}
+                  id="service-name"
+                  value={selectedNode.name}
                   className="mt-1 bg-gray-800 border-gray-600 text-white"
                   readOnly
                 />
               </div>
-            )}
-          </div>
+              
+              <div>
+                <Label htmlFor="service-url">Service URL</Label>
+                <Input
+                  id="service-url"
+                  value={selectedNode.url || 'Not available'}
+                  className="mt-1 bg-gray-800 border-gray-600 text-white"
+                  readOnly
+                />
+              </div>
+
+              <div>
+                <Label>Status</Label>
+                <div className="mt-1 px-3 py-2 bg-gray-800 border border-gray-600 rounded-md">
+                  <span className={`capitalize ${
+                    selectedNode.status === 'running' ? 'text-green-400' :
+                    selectedNode.status === 'deploying' ? 'text-yellow-400' :
+                    selectedNode.status === 'error' ? 'text-red-400' : 'text-gray-400'
+                  }`}>
+                    {selectedNode.status}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <Label htmlFor="auto-deploy">Auto Deploy</Label>
+                <Switch id="auto-deploy" defaultChecked />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <Label htmlFor="health-check">Health Check</Label>
+                <Switch id="health-check" defaultChecked />
+              </div>
+
+              {selectedNode.replicas && (
+                <div>
+                  <Label htmlFor="replicas">Replicas</Label>
+                  <Input
+                    id="replicas"
+                    type="number"
+                    value={selectedNode.replicas}
+                    className="mt-1 bg-gray-800 border-gray-600 text-white"
+                    readOnly
+                  />
+                </div>
+              )}
+            </div>
+          )
         )}
 
         {activeTab === 'logs' && (

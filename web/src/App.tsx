@@ -1,5 +1,6 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { ReactFlowProvider } from "reactflow";
+import * as yaml from "js-yaml";
 import { CanvasControls } from "./components/CanvasControls";
 import { DeploymentCanvas } from "./components/DeploymentCanvas";
 import { Sidebar } from "./components/Sidebar";
@@ -7,12 +8,15 @@ import { EnvironmentConfig } from "./components/EnvironmentConfig";
 import { EnvironmentSelector } from "./components/EnvironmentSelector";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
 import type { ComponentNode } from "./types";
+import { InfrastructureConfig } from "./types/config";
+import { infrastructureApi } from "./api/infrastructure";
 
 export default function App() {
   const [selectedNode, setSelectedNode] = useState<ComponentNode | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedEnvironment, setSelectedEnvironment] = useState<string | null>(null);
   const [showEnvSelector, setShowEnvSelector] = useState(true);
+  const [config, setConfig] = useState<InfrastructureConfig | null>(null);
 
   const handleNodeSelect = useCallback((node: ComponentNode | null) => {
     setSelectedNode(node);
@@ -23,6 +27,31 @@ export default function App() {
     setSelectedEnvironment(environment);
     setShowEnvSelector(false);
   }, []);
+
+  // Load configuration when environment is selected
+  useEffect(() => {
+    if (selectedEnvironment) {
+      loadConfiguration(selectedEnvironment);
+    }
+  }, [selectedEnvironment]);
+
+  const loadConfiguration = async (envName: string) => {
+    try {
+      const content = await infrastructureApi.getEnvironmentConfig(envName);
+      const parsed = yaml.load(content) as InfrastructureConfig;
+      setConfig(parsed);
+    } catch (error) {
+      console.error("Failed to load configuration:", error);
+    }
+  };
+
+  const handleConfigChange = (updates: Partial<InfrastructureConfig>) => {
+    if (config) {
+      const updatedConfig = { ...config, ...updates };
+      setConfig(updatedConfig);
+      // TODO: Save to backend
+    }
+  };
 
   return (
     <div className="size-full bg-gray-950 text-white relative overflow-hidden">
@@ -66,6 +95,8 @@ export default function App() {
                 setSidebarOpen(false);
                 setSelectedNode(null);
               }}
+              config={config || undefined}
+              onConfigChange={handleConfigChange}
             />
           </ReactFlowProvider>
         </TabsContent>

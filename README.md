@@ -6,7 +6,7 @@ This repository declares infrastructure of Gigit cloud as a code using [Terrafor
 
 - Terraform v1.2.6: [how to install terraform](https://developer.hashicorp.com/terraform/tutorials/aws-get-started/install-cli).
 - AWS credentials for accessing Terraform state (hosted in S3 bucket)
-- gomplate, use your local dependency management system for it, for mac: `brew install gomplate`
+- Handlebars templating (using Raymond Go package), already included in the infrastructure tools
 - GNU Make (should be part of any system by default). Optional, you can run command from makefile directly in terminal.
 
 0. Create a dedicated git repository for your project's infrastructure.
@@ -47,7 +47,8 @@ As a result you will
 or
 
 ```sh
-    gomplate -c vars=dev.yaml -f ./infrastructure/env/main.tmpl   -o ./env/dev/main.tf
+    # Uses Handlebars templating via Raymond to generate Terraform files
+    make dev
 ```
 
 If you set up on a new AWS account, you need to create state bucket first:

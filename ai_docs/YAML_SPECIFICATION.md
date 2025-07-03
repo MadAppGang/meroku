@@ -4,7 +4,9 @@ This document provides a complete specification for the YAML configuration files
 
 ## Overview
 
-The YAML configuration files (e.g., `dev.yaml`, `prod.yaml`) define environment-specific settings that are processed by Gomplate to generate Terraform configurations. These files control all aspects of the AWS infrastructure deployment.
+The YAML configuration files (e.g., `dev.yaml`, `prod.yaml`) define environment-specific settings that are processed by Handlebars (using the Raymond Go package) to generate Terraform configurations. These files control all aspects of the AWS infrastructure deployment.
+
+The configuration is processed through the `env/main.hbs` Handlebars template to generate Terraform configurations in the `env/` directory.
 
 ## Complete Configuration Schema
 
@@ -15,7 +17,7 @@ The YAML configuration files (e.g., `dev.yaml`, `prod.yaml`) define environment-
 
 project: <string>              # Required: Project name (alphanumeric + dash, e.g., "my-app")
 env: <string>                  # Required: Environment name (e.g., "dev", "staging", "prod")
-is_prod: <boolean>             # Required: Whether this is a production environment
+is_prod: <boolean>             # Required: Whether this is a production environment (affects domain behavior)
 region: <string>               # Required: AWS region (e.g., "us-east-1", "eu-central-1")
 state_bucket: <string>         # Required: S3 bucket for Terraform state storage
 state_file: <string>           # Required: Terraform state file name (default: "state.tfstate")
@@ -32,7 +34,7 @@ workload:
   # Basic backend configuration
   backend_health_endpoint: <string>          # Health check endpoint (default: "/health/live")
   backend_external_docker_image: <string>    # External Docker image URL (leave empty to use ECR)
-  backend_container_command: <list>          # Container command override
+  backend_container_command: <list>          # Container command override (uses backend Dockerfile CMD if not set)
     - <string>
   backend_image_port: <number>               # Container port (default: 8080)
   backend_remote_access: <boolean>           # Enable ECS Exec for debugging (default: true)
@@ -89,7 +91,7 @@ domain:
   create_domain_zone: <boolean>              # Create new hosted zone (false = use existing)
   domain_name: <string>                      # Base domain name (e.g., "example.com")
   api_domain_prefix: <string>                # API subdomain prefix (e.g., "api" → "api.example.com")
-  add_domain_prefix: <boolean>               # Add environment prefix to domain (e.g., "dev.example.com")
+  add_domain_prefix: <boolean>               # Add environment prefix to domain (auto-false for prod env)
 
 # ===================================
 # DATABASE CONFIGURATION
@@ -165,7 +167,7 @@ scheduled_tasks: <list>
   - name: <string>                           # Task name (alphanumeric + dash)
     schedule: <string>                       # Schedule expression (see examples below)
     docker_image: <string>                   # Docker image (optional, uses backend if empty)
-    container_command: <string>              # Command in JSON array format: '["cmd", "arg1"]'
+    container_command: <string>              # Command in JSON array format: '["cmd", "arg1"]' (uses image default if not set)
     allow_public_access: <boolean>           # Assign public IP to task
 
 # Schedule expression examples:
@@ -208,7 +210,7 @@ services: <list>
   - name: <string>                           # Service name
     # Container configuration
     docker_image: <string>                   # Docker image override
-    container_command: <list>                # Command override
+    container_command: <list>                # Command override (uses image CMD if not set)
       - <string>
     container_port: <number>                 # Container port (default: 3000)
     host_port: <number>                      # Host port (default: 3000)
@@ -355,3 +357,72 @@ services:
 9. **GitHub OIDC**: Subjects must match your GitHub repository structure exactly.
 
 10. **Schedule Expressions**: Use UTC timezone for cron expressions.
+
+## Template Processing
+
+### Helper Functions
+
+The Handlebars template (processed by Raymond) uses several helper functions to process YAML configuration:
+
+1. **`{{default value fallback}}`** - Provides default values when not specified
+2. **`{{array list}}`** - Converts YAML lists to Terraform array format
+3. **`{{envArray list}}`** - Converts environment variable lists to Terraform format
+4. **`{{compare value operator value}}`** - Conditional logic (e.g., `{{compare env "==" "prod"}}`)
+5. **`{{#if condition}}`** - Conditional blocks
+6. **`{{#each list}}`** - Iteration over lists
+7. **`{{@root.property}}`** - Access root context in loops
+8. **`{{len list}}`** - Get length of lists to check if empty
+
+### Module Dependencies
+
+Based on the template, the following Terraform modules are conditionally loaded:
+
+1. **domain** - Loaded when `domain.enabled` is true
+2. **postgres** - Loaded when `postgres.enabled` is true
+3. **sqs** - Loaded when `sqs.enabled` is true
+4. **efs** - Loaded when `efs` list has items
+5. **s3** - Loaded when `buckets` list has items
+6. **alb** - Loaded when `alb.enabled` is true
+7. **cognito** - Loaded when `cognito.enabled` is true
+8. **ses** - Loaded when `ses.enabled` is true
+9. **appsync** - Loaded when `pubsub_appsync.enabled` is true
+10. **workloads** - Always loaded (core module)
+
+### Special Template Behaviors
+
+#### ECR Cross-Account Access
+
+When both `ecr_account_id` and `ecr_account_region` are set, ECR URLs are automatically generated:
+
+- Backend: `{ecr_account_id}.dkr.ecr.{ecr_account_region}.amazonaws.com/{project}_backend`
+- Scheduled tasks: `{ecr_account_id}.dkr.ecr.{ecr_account_region}.amazonaws.com/{project}_task_{name}`
+- Event tasks: `{ecr_account_id}.dkr.ecr.{ecr_account_region}.amazonaws.com/{project}_task_{name}`
+
+#### Domain Prefix Handling
+
+- Production environments (`env == "prod"`) automatically set `add_env_domain_prefix` to false
+- Other environments default to true unless explicitly set
+- This prevents production from having environment prefixes in domain names
+
+#### Email Domain Default
+
+- If `ses.domain_name` is not specified, defaults to `mail.{domain.domain_name}`
+- Requires `domain.enabled` to be true for zone ID access
+
+#### AppSync Custom Modules
+
+When enabled, AppSync looks for custom files relative to the `custom_modules` path:
+
+- Schema: `{custom_modules}/appsync/schema.graphql`
+- Resolvers: `{custom_modules}/appsync/vtl_templates.yaml`
+- Auth Lambda: `{custom_modules}/appsync/auth_lambda`
+
+### Terraform Outputs
+
+The generated Terraform configuration provides these outputs:
+
+- `backend_ecr_repo_url` - ECR repository URL for the backend service
+- `account_id` - AWS account ID
+- `region` - AWS region
+- `backend_task_role_name` - IAM role name for backend ECS tasks
+- `backend_cloud_map_arn` - Service discovery ARN for the backend service

@@ -28,11 +28,13 @@ update:
 	rm -rf ./infrastructure/.git
 
 dev: 
-	gomplate -c vars=dev.yaml -f ./infrastructure/env/main.tmpl   -o ./env/dev/main.tf
+	# Uses Handlebars templating via Raymond to generate Terraform files
+	meroku template -c vars=dev.yaml -f ./infrastructure/env/main.tmpl -o ./env/dev/main.tf
 
 
 prod: 
-	gomplate -c vars=prod.yaml -f ./infrastructure/env/main.tmpl   -o ./env/prod/main.tf
+	# Uses Handlebars templating via Raymond to generate Terraform files
+	meroku template -c vars=prod.yaml -f ./infrastructure/env/main.tmpl -o ./env/prod/main.tf
 
 version:
 	cat ./infrastructure/version.txt
