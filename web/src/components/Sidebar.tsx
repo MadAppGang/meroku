@@ -1,5 +1,5 @@
 import React, { useState, useContext } from 'react';
-import { X, Settings, FileText, BarChart, Zap, Link, Code, Database, Upload, Globe } from 'lucide-react';
+import { X, Settings, FileText, BarChart, Zap, Link, Code, Database, Upload, Globe, BookOpen } from 'lucide-react';
 import { ComponentNode } from '../types';
 import { Tabs } from './ui/tabs';
 import { Button } from './ui/button';
@@ -18,6 +18,8 @@ import { ECRPushInstructions } from './ECRPushInstructions';
 import { Route53NodeProperties } from './Route53NodeProperties';
 import { Route53DNSRecords } from './Route53DNSRecords';
 import { AuroraNodeProperties } from './AuroraNodeProperties';
+import { ParameterStoreNodeProperties } from './ParameterStoreNodeProperties';
+import { ParameterStoreDescription } from './ParameterStoreDescription';
 
 interface SidebarProps {
   selectedNode: ComponentNode | null;
@@ -76,6 +78,9 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
           { id: 'dns', label: 'DNS', icon: Globe },
         ] : selectedNode.type === 'aurora' ? [
           { id: 'settings', label: 'Settings', icon: Settings },
+        ] : selectedNode.type === 'secrets-manager' ? [
+          { id: 'settings', label: 'Settings', icon: Settings },
+          { id: 'description', label: 'Description', icon: BookOpen },
         ] : [
           { id: 'settings', label: 'Settings', icon: Settings },
           { id: 'logs', label: 'Logs', icon: FileText },
@@ -128,6 +133,8 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
             />
           ) : selectedNode.type === 'aurora' ? (
             <AuroraNodeProperties />
+          ) : selectedNode.type === 'secrets-manager' && config ? (
+            <ParameterStoreNodeProperties config={config} />
           ) : (
             <div className="space-y-6">
               <div>
@@ -381,6 +388,10 @@ jobs:
 
         {activeTab === 'dns' && selectedNode.type === 'route53' && config && (
           <Route53DNSRecords config={config} />
+        )}
+
+        {activeTab === 'description' && selectedNode.type === 'secrets-manager' && config && (
+          <ParameterStoreDescription config={config} />
         )}
       </div>
     </div>

@@ -198,10 +198,10 @@ export const nodeStateMapping: NodeStateConfig[] = [
 	},
 	{
 		id: "secrets-manager",
-		name: "AWS Secrets Manager",
+		name: "Parameter Store",
 		type: "secrets-manager",
-		enabled: () => false, // SSM Parameter Store used instead
-		description: "SSM Parameter Store used instead",
+		enabled: () => true, // Always enabled for parameter storage
+		description: "AWS Systems Manager Parameter Store",
 	},
 	{
 		id: "alarms",

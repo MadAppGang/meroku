@@ -268,7 +268,7 @@ const initialNodes: Node[] = [
     data: {
       id: 'secrets-manager',
       type: 'secrets-manager',
-      name: 'AWS Secrets Manager',
+      name: 'Parameter Store',
       status: 'running',
       deletable: false,
     },
