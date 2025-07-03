@@ -181,7 +181,6 @@ const initialNodes: Node[] = [
       status: 'running',
       group: 'ECS Cluster',
       subgroup: 'Services',
-      hasTelemetry: true,
     },
   },
   

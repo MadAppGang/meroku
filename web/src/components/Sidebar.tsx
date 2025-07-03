@@ -1,5 +1,5 @@
 import React, { useState, useContext } from 'react';
-import { X, Settings, FileText, BarChart, Zap, Link } from 'lucide-react';
+import { X, Settings, FileText, BarChart, Zap, Link, Code } from 'lucide-react';
 import { ComponentNode } from '../types';
 import { Tabs } from './ui/tabs';
 import { Button } from './ui/button';
@@ -10,6 +10,7 @@ import { ECSNodeProperties } from './ECSNodeProperties';
 import { BackendServiceProperties } from './BackendServiceProperties';
 import { YamlInfrastructureConfig } from '../types/yamlConfig';
 import { NodeConfigProperties } from './NodeConfigProperties';
+import { GitHubNodeProperties } from './GitHubNodeProperties';
 
 interface SidebarProps {
   selectedNode: ComponentNode | null;
@@ -55,13 +56,16 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange 
       </div>
 
       <div className="flex border-b border-gray-700">
-        {[
+        {(selectedNode.type === 'github' ? [
+          { id: 'settings', label: 'Settings', icon: Settings },
+          { id: 'example', label: 'Example', icon: Code },
+        ] : [
           { id: 'settings', label: 'Settings', icon: Settings },
           { id: 'logs', label: 'Logs', icon: FileText },
           { id: 'metrics', label: 'Metrics', icon: BarChart },
           { id: 'env', label: 'Environment', icon: Zap },
           { id: 'connections', label: 'Connections', icon: Link },
-        ].map((tab) => (
+        ]).map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
@@ -86,6 +90,11 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange 
             />
           ) : selectedNode.type === 'backend' && config && onConfigChange ? (
             <BackendServiceProperties 
+              config={config}
+              onConfigChange={onConfigChange}
+            />
+          ) : selectedNode.type === 'github' && config && onConfigChange ? (
+            <GitHubNodeProperties 
               config={config}
               onConfigChange={onConfigChange}
             />
@@ -245,6 +254,89 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange 
                   <span className="text-white">{service}</span>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'example' && selectedNode.type === 'github' && (
+          <div className="space-y-4">
+            <h3 className="font-medium text-white mb-4">GitHub Actions Workflow Example</h3>
+            <div className="bg-gray-800 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm text-gray-400 font-mono">.github/workflows/deploy.yml</span>
+                <Button size="sm" variant="ghost" className="text-xs">
+                  Copy
+                </Button>
+              </div>
+              <pre className="text-xs text-gray-300 overflow-x-auto">
+{`name: Deploy to AWS
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::\${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-role
+          aws-region: us-east-1
+      
+      - name: Login to ECR
+        run: |
+          aws ecr get-login-password | docker login --username AWS --password-stdin \${{ secrets.ECR_URI }}
+      
+      - name: Build and push Docker image
+        run: |
+          docker build -t my-app .
+          docker tag my-app:latest \${{ secrets.ECR_URI }}/my-app:latest
+          docker push \${{ secrets.ECR_URI }}/my-app:latest
+      
+      - name: Deploy to ECS
+        run: |
+          aws ecs update-service --cluster my-cluster --service my-service --force-new-deployment`}</pre>
+            </div>
+            
+            <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-3">
+              <h4 className="text-sm font-medium text-blue-400 mb-2">Required Secrets</h4>
+              <ul className="text-xs text-gray-400 space-y-1">
+                <li>• <code className="text-blue-300">AWS_ACCOUNT_ID</code> - Your AWS account ID</li>
+                <li>• <code className="text-blue-300">ECR_URI</code> - Your ECR repository URI</li>
+              </ul>
+            </div>
+
+            <div className="bg-gray-800 rounded-lg p-3">
+              <h4 className="text-sm font-medium text-gray-300 mb-2">IAM Trust Policy</h4>
+              <pre className="text-xs text-gray-400 overflow-x-auto">
+{`{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": {
+      "Federated": "arn:aws:iam::\${AWS_ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com"
+    },
+    "Action": "sts:AssumeRoleWithWebIdentity",
+    "Condition": {
+      "StringEquals": {
+        "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+      },
+      "StringLike": {
+        "token.actions.githubusercontent.com:sub": "repo:Owner/Repo:*"
+      }
+    }
+  }]
+}`}</pre>
             </div>
           </div>
         )}
