@@ -1,5 +1,5 @@
 import React, { useState, useContext } from 'react';
-import { X, Settings, FileText, BarChart, Zap, Link, Code, Database } from 'lucide-react';
+import { X, Settings, FileText, BarChart, Zap, Link, Code, Database, Upload } from 'lucide-react';
 import { ComponentNode } from '../types';
 import { Tabs } from './ui/tabs';
 import { Button } from './ui/button';
@@ -14,6 +14,7 @@ import { NodeConfigProperties } from './NodeConfigProperties';
 import { GitHubNodeProperties } from './GitHubNodeProperties';
 import { ECRNodeProperties } from './ECRNodeProperties';
 import { ECRRepositoryList } from './ECRRepositoryList';
+import { ECRPushInstructions } from './ECRPushInstructions';
 
 interface SidebarProps {
   selectedNode: ComponentNode | null;
@@ -66,6 +67,7 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
         ] : selectedNode.type === 'ecr' ? [
           { id: 'settings', label: 'Settings', icon: Settings },
           { id: 'repos', label: 'Repos', icon: Database },
+          { id: 'push', label: 'Push', icon: Upload },
         ] : [
           { id: 'settings', label: 'Settings', icon: Settings },
           { id: 'logs', label: 'Logs', icon: FileText },
@@ -356,6 +358,10 @@ jobs:
 
         {activeTab === 'repos' && selectedNode.type === 'ecr' && config && (
           <ECRRepositoryList config={config} accountInfo={accountInfo} />
+        )}
+
+        {activeTab === 'push' && selectedNode.type === 'ecr' && config && (
+          <ECRPushInstructions config={config} accountInfo={accountInfo} />
         )}
       </div>
     </div>
