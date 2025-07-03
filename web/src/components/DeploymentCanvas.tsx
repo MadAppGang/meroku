@@ -64,17 +64,6 @@ const initialNodes: Node[] = [
       status: 'running',
     },
   },
-  {
-    id: 'admin-app',
-    type: 'service',
-    position: { x: -637, y: 538 },
-    data: {
-      id: 'admin-app',
-      type: 'admin-app',
-      name: 'Admin app',
-      status: 'running',
-    },
-  },
   
   // Entry Points (left-middle)
   {
@@ -367,15 +356,6 @@ const initialEdges: Edge[] = [
     style: { stroke: '#4f46e5', strokeWidth: 2 },
     markerEnd: { type: MarkerType.ArrowClosed, color: '#4f46e5' },
   },
-  {
-    id: 'admin-waf',
-    source: 'admin-app',
-    target: 'waf',
-    type: 'smoothstep',
-    animated: true,
-    style: { stroke: '#4f46e5', strokeWidth: 2 },
-    markerEnd: { type: MarkerType.ArrowClosed, color: '#4f46e5' },
-  },
   
   // Entry points to ECS Cluster
   {
@@ -495,15 +475,6 @@ const initialEdges: Edge[] = [
     type: 'smoothstep',
     animated: true,
     label: 'authenticate',
-    style: { stroke: '#6b7280', strokeWidth: 2 },
-    markerEnd: { type: MarkerType.ArrowClosed, color: '#6b7280' },
-  },
-  {
-    id: 'admin-auth',
-    source: 'admin-app',
-    target: 'auth-system',
-    type: 'smoothstep',
-    animated: true,
     style: { stroke: '#6b7280', strokeWidth: 2 },
     markerEnd: { type: MarkerType.ArrowClosed, color: '#6b7280' },
   },

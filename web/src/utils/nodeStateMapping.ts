@@ -23,17 +23,6 @@ export const nodeStateMapping: NodeStateConfig[] = [
 		description: "External client applications (web, mobile)",
 	},
 	{
-		id: "admin-app",
-		name: "Admin app",
-		type: "admin-app",
-		enabled: (config) =>
-			config.cognito?.enabled === true &&
-			config.cognito?.enable_dashboard_client === true,
-		properties: (config) => ({
-			callbackUrls: config.cognito?.dashboard_callback_urls || [],
-		}),
-	},
-	{
 		id: "github",
 		name: "GitHub actions",
 		type: "github",

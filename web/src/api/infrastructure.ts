@@ -17,6 +17,69 @@ export interface AccountInfo {
 	region: string;
 }
 
+export interface ECSClusterInfo {
+	clusterName: string;
+	clusterArn: string;
+	status: string;
+	registeredTasks: number;
+	runningTasks: number;
+	activeServices: number;
+	capacityProviders: string[];
+	containerInsights: string;
+}
+
+export interface ECSNetworkInfo {
+	vpc: VPCInfo;
+	availabilityZones: string[];
+	subnets: SubnetInfo[];
+	serviceDiscovery: ServiceDiscovery;
+}
+
+export interface VPCInfo {
+	vpcId: string;
+	cidrBlock: string;
+	state: string;
+}
+
+export interface SubnetInfo {
+	subnetId: string;
+	availabilityZone: string;
+	cidrBlock: string;
+	availableIpCount: number;
+	type: string;
+}
+
+export interface ServiceDiscovery {
+	namespaceId: string;
+	namespaceName: string;
+	serviceCount: number;
+}
+
+export interface ECSServicesInfo {
+	services: ServiceInfo[];
+	scheduledTasks: TaskInfo[];
+	eventTasks: TaskInfo[];
+	totalTasks: number;
+}
+
+export interface ServiceInfo {
+	serviceName: string;
+	status: string;
+	desiredCount: number;
+	runningCount: number;
+	pendingCount: number;
+	launchType: string;
+	taskDefinition: string;
+}
+
+export interface TaskInfo {
+	taskName: string;
+	taskType: string;
+	schedule?: string;
+	eventPattern?: string;
+	enabled: boolean;
+}
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || "";
 
 export const infrastructureApi = {
@@ -60,4 +123,27 @@ export const infrastructureApi = {
 		return response.json();
 	},
 
+	async getECSClusterInfo(env: string): Promise<ECSClusterInfo> {
+		const response = await fetch(`${API_BASE_URL}/api/ecs/cluster?env=${encodeURIComponent(env)}`);
+		if (!response.ok) {
+			throw new Error("Failed to fetch ECS cluster info");
+		}
+		return response.json();
+	},
+
+	async getECSNetworkInfo(env: string): Promise<ECSNetworkInfo> {
+		const response = await fetch(`${API_BASE_URL}/api/ecs/network?env=${encodeURIComponent(env)}`);
+		if (!response.ok) {
+			throw new Error("Failed to fetch ECS network info");
+		}
+		return response.json();
+	},
+
+	async getECSServicesInfo(env: string): Promise<ECSServicesInfo> {
+		const response = await fetch(`${API_BASE_URL}/api/ecs/services?env=${encodeURIComponent(env)}`);
+		if (!response.ok) {
+			throw new Error("Failed to fetch ECS services info");
+		}
+		return response.json();
+	},
 };

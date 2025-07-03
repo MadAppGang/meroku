@@ -74,16 +74,31 @@ export default function App() {
       <Tabs defaultValue="infrastructure" className="size-full">
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-4">
           {selectedEnvironment && (
-            <div className="flex items-center gap-2 px-3 py-1 bg-gray-800 rounded-md">
-              <span className="text-sm text-gray-400">Environment:</span>
-              <span className="text-sm font-medium">{selectedEnvironment}</span>
-              <button
-                onClick={() => setShowEnvSelector(true)}
-                className="ml-2 text-xs text-blue-400 hover:text-blue-300"
-              >
-                Change
-              </button>
-            </div>
+            <>
+              <div className="flex items-center gap-2 px-3 py-1 bg-gray-800 rounded-md">
+                <span className="text-sm text-gray-400">Environment:</span>
+                <span className="text-sm font-medium">{selectedEnvironment}</span>
+                <button
+                  onClick={() => setShowEnvSelector(true)}
+                  className="ml-2 text-xs text-blue-400 hover:text-blue-300"
+                >
+                  Change
+                </button>
+              </div>
+              {config && (
+                <div className="flex items-center gap-4 px-3 py-1 bg-gray-800 rounded-md">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-400">Project:</span>
+                    <span className="text-sm font-medium">{config.project}</span>
+                  </div>
+                  <div className="h-4 w-px bg-gray-600"></div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-400">Region:</span>
+                    <span className="text-sm font-medium">{config.region}</span>
+                  </div>
+                </div>
+              )}
+            </>
           )}
           <TabsList>
             <TabsTrigger value="infrastructure">Infrastructure View</TabsTrigger>

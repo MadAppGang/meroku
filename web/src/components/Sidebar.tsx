@@ -1,12 +1,12 @@
-import React, { useState, useContext } from 'react';
-import { X, Settings, FileText, BarChart, Zap, Link, Code, Database, Upload, Globe, BookOpen } from 'lucide-react';
+import React, { useState, useContext, useRef, useEffect } from 'react';
+import { X, Settings, FileText, BarChart, Zap, Link, Code, Database, Upload, Globe, BookOpen, Key, HardDrive, Shield, Server, Network, Activity, ChevronLeft, ChevronRight } from 'lucide-react';
 import { ComponentNode } from '../types';
 import { Tabs } from './ui/tabs';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Switch } from './ui/switch';
-import { ECSNodeProperties } from './ECSNodeProperties';
+import { ECSNodeProperties, ECSClusterInfo, ECSNetworkInfo, ECSServicesInfo } from './ECSNodeProperties';
 import { BackendServiceProperties } from './BackendServiceProperties';
 import { YamlInfrastructureConfig } from '../types/yamlConfig';
 import { type AccountInfo } from '../api/infrastructure';
@@ -20,6 +20,10 @@ import { Route53DNSRecords } from './Route53DNSRecords';
 import { AuroraNodeProperties } from './AuroraNodeProperties';
 import { ParameterStoreNodeProperties } from './ParameterStoreNodeProperties';
 import { ParameterStoreDescription } from './ParameterStoreDescription';
+import { BackendEnvironmentVariables } from './BackendEnvironmentVariables';
+import { BackendParameterStore } from './BackendParameterStore';
+import { BackendS3Buckets } from './BackendS3Buckets';
+import { BackendIAMPermissions } from './BackendIAMPermissions';
 
 interface SidebarProps {
   selectedNode: ComponentNode | null;
@@ -32,6 +36,40 @@ interface SidebarProps {
 
 export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange, accountInfo }: SidebarProps) {
   const [activeTab, setActiveTab] = useState('settings');
+  const [showLeftScroll, setShowLeftScroll] = useState(false);
+  const [showRightScroll, setShowRightScroll] = useState(false);
+  const tabsContainerRef = useRef<HTMLDivElement>(null);
+
+  const checkScrollButtons = () => {
+    if (tabsContainerRef.current) {
+      const { scrollLeft, scrollWidth, clientWidth } = tabsContainerRef.current;
+      setShowLeftScroll(scrollLeft > 0);
+      setShowRightScroll(scrollLeft < scrollWidth - clientWidth - 5);
+    }
+  };
+
+  useEffect(() => {
+    checkScrollButtons();
+    const container = tabsContainerRef.current;
+    if (container) {
+      container.addEventListener('scroll', checkScrollButtons);
+      window.addEventListener('resize', checkScrollButtons);
+      return () => {
+        container.removeEventListener('scroll', checkScrollButtons);
+        window.removeEventListener('resize', checkScrollButtons);
+      };
+    }
+  }, [selectedNode]);
+
+  const scrollTabs = (direction: 'left' | 'right') => {
+    if (tabsContainerRef.current) {
+      const scrollAmount = 150;
+      tabsContainerRef.current.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth'
+      });
+    }
+  };
 
   if (!isOpen || !selectedNode) return null;
 
@@ -53,54 +91,112 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
 
   return (
     <div className="fixed right-0 top-0 h-full w-96 bg-gray-900 border-l border-gray-700 shadow-xl z-50 flex flex-col">
-      <div className="flex items-center justify-between p-4 border-b border-gray-700 flex-shrink-0">
-        <h2 className="text-lg font-medium text-white">{selectedNode.name}</h2>
+      <div className="flex items-start justify-between p-4 border-b border-gray-700 flex-shrink-0">
+        <div className="flex-1 pr-2">
+          <h2 className="text-lg font-medium text-white">{selectedNode.name}</h2>
+          {config && (
+            <div className="grid grid-cols-3 gap-2 mt-2">
+              <div>
+                <span className="text-xs text-gray-400 block">Project</span>
+                <span className="text-xs text-gray-300 font-mono">{config.project}</span>
+              </div>
+              <div>
+                <span className="text-xs text-gray-400 block">Region</span>
+                <span className="text-xs text-gray-300 font-mono">{config.region}</span>
+              </div>
+              <div>
+                <span className="text-xs text-gray-400 block">Environment</span>
+                <span className="text-xs text-gray-300 font-mono">{config.env}</span>
+              </div>
+            </div>
+          )}
+        </div>
         <Button
           variant="ghost"
           size="icon"
           onClick={onClose}
-          className="text-gray-400 hover:text-white"
+          className="text-gray-400 hover:text-white flex-shrink-0"
         >
           <X className="w-4 h-4" />
         </Button>
       </div>
 
-      <div className="flex border-b border-gray-700 flex-shrink-0">
-        {(selectedNode.type === 'github' ? [
-          { id: 'settings', label: 'Settings', icon: Settings },
-          { id: 'example', label: 'Example', icon: Code },
-        ] : selectedNode.type === 'ecr' ? [
-          { id: 'settings', label: 'Settings', icon: Settings },
-          { id: 'repos', label: 'Repos', icon: Database },
-          { id: 'push', label: 'Push', icon: Upload },
-        ] : selectedNode.type === 'route53' ? [
-          { id: 'settings', label: 'Settings', icon: Settings },
-          { id: 'dns', label: 'DNS', icon: Globe },
-        ] : selectedNode.type === 'aurora' ? [
-          { id: 'settings', label: 'Settings', icon: Settings },
-        ] : selectedNode.type === 'secrets-manager' ? [
-          { id: 'settings', label: 'Settings', icon: Settings },
-          { id: 'description', label: 'Description', icon: BookOpen },
-        ] : [
-          { id: 'settings', label: 'Settings', icon: Settings },
-          { id: 'logs', label: 'Logs', icon: FileText },
-          { id: 'metrics', label: 'Metrics', icon: BarChart },
-          { id: 'env', label: 'Environment', icon: Zap },
-          { id: 'connections', label: 'Connections', icon: Link },
-        ]).map((tab) => (
+      <div className="relative flex-shrink-0 border-b border-gray-700">
+        {/* Left scroll button */}
+        {showLeftScroll && (
           <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium transition-colors ${
-              activeTab === tab.id
-                ? 'text-blue-400 border-b-2 border-blue-400'
-                : 'text-gray-400 hover:text-white'
-            }`}
+            onClick={() => scrollTabs('left')}
+            className="absolute left-0 top-0 bottom-0 z-10 px-2 bg-gradient-to-r from-gray-900 via-gray-900 to-transparent flex items-center justify-center"
           >
-            <tab.icon className="w-4 h-4" />
-            {tab.label}
+            <ChevronLeft className="w-4 h-4 text-gray-400" />
           </button>
-        ))}
+        )}
+        
+        {/* Right scroll button */}
+        {showRightScroll && (
+          <button
+            onClick={() => scrollTabs('right')}
+            className="absolute right-0 top-0 bottom-0 z-10 px-2 bg-gradient-to-l from-gray-900 via-gray-900 to-transparent flex items-center justify-center"
+          >
+            <ChevronRight className="w-4 h-4 text-gray-400" />
+          </button>
+        )}
+
+        <div 
+          ref={tabsContainerRef}
+          className="overflow-x-auto scrollbar-hide"
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        >
+          <div className="flex min-w-max">
+            {(selectedNode.type === 'github' ? [
+              { id: 'settings', label: 'Settings', icon: Settings },
+              { id: 'example', label: 'Example', icon: Code },
+            ] : selectedNode.type === 'ecr' ? [
+              { id: 'settings', label: 'Settings', icon: Settings },
+              { id: 'repos', label: 'Repos', icon: Database },
+              { id: 'push', label: 'Push', icon: Upload },
+            ] : selectedNode.type === 'route53' ? [
+              { id: 'settings', label: 'Settings', icon: Settings },
+              { id: 'dns', label: 'DNS', icon: Globe },
+            ] : selectedNode.type === 'aurora' ? [
+              { id: 'settings', label: 'Settings', icon: Settings },
+            ] : selectedNode.type === 'secrets-manager' ? [
+              { id: 'settings', label: 'Settings', icon: Settings },
+              { id: 'description', label: 'Description', icon: BookOpen },
+            ] : selectedNode.type === 'ecs' ? [
+              { id: 'settings', label: 'Settings', icon: Settings },
+              { id: 'cluster', label: 'Cluster', icon: Server },
+              { id: 'network', label: 'Network', icon: Network },
+              { id: 'services', label: 'Services', icon: Activity },
+            ] : selectedNode.type === 'backend' ? [
+              { id: 'settings', label: 'Settings', icon: Settings },
+              { id: 'env', label: 'Env Vars', icon: Zap },
+              { id: 'params', label: 'Parameters', icon: Key },
+              { id: 's3', label: 'S3 Buckets', icon: HardDrive },
+              { id: 'iam', label: 'IAM', icon: Shield },
+              { id: 'logs', label: 'Logs', icon: FileText },
+            ] : [
+              { id: 'settings', label: 'Settings', icon: Settings },
+              { id: 'logs', label: 'Logs', icon: FileText },
+              { id: 'metrics', label: 'Metrics', icon: BarChart },
+              { id: 'env', label: 'Environment', icon: Zap },
+              { id: 'connections', label: 'Connections', icon: Link },
+            ]).map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
+                  activeTab === tab.id
+                    ? 'text-blue-400 border-b-2 border-blue-400'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                <tab.icon className="w-4 h-4 flex-shrink-0" />
+                <span>{tab.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 min-h-0">
@@ -260,7 +356,7 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
           </div>
         )}
 
-        {activeTab === 'env' && (
+        {activeTab === 'env' && selectedNode.type !== 'backend' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="font-medium text-white">Environment Variables</h3>
@@ -392,6 +488,34 @@ jobs:
 
         {activeTab === 'description' && selectedNode.type === 'secrets-manager' && config && (
           <ParameterStoreDescription config={config} />
+        )}
+
+        {activeTab === 'env' && selectedNode.type === 'backend' && config && (
+          <BackendEnvironmentVariables config={config} />
+        )}
+
+        {activeTab === 'params' && selectedNode.type === 'backend' && config && (
+          <BackendParameterStore config={config} />
+        )}
+
+        {activeTab === 's3' && selectedNode.type === 'backend' && config && (
+          <BackendS3Buckets config={config} />
+        )}
+
+        {activeTab === 'iam' && selectedNode.type === 'backend' && config && (
+          <BackendIAMPermissions config={config} />
+        )}
+
+        {activeTab === 'cluster' && selectedNode.type === 'ecs' && config && (
+          <ECSClusterInfo config={config} />
+        )}
+
+        {activeTab === 'network' && selectedNode.type === 'ecs' && config && (
+          <ECSNetworkInfo config={config} />
+        )}
+
+        {activeTab === 'services' && selectedNode.type === 'ecs' && config && (
+          <ECSServicesInfo config={config} />
         )}
       </div>
     </div>
