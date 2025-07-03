@@ -17,6 +17,7 @@ import { ECRRepositoryList } from './ECRRepositoryList';
 import { ECRPushInstructions } from './ECRPushInstructions';
 import { Route53NodeProperties } from './Route53NodeProperties';
 import { Route53DNSRecords } from './Route53DNSRecords';
+import { AuroraNodeProperties } from './AuroraNodeProperties';
 
 interface SidebarProps {
   selectedNode: ComponentNode | null;
@@ -73,6 +74,8 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
         ] : selectedNode.type === 'route53' ? [
           { id: 'settings', label: 'Settings', icon: Settings },
           { id: 'dns', label: 'DNS', icon: Globe },
+        ] : selectedNode.type === 'aurora' ? [
+          { id: 'settings', label: 'Settings', icon: Settings },
         ] : [
           { id: 'settings', label: 'Settings', icon: Settings },
           { id: 'logs', label: 'Logs', icon: FileText },
@@ -123,6 +126,8 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
               config={config}
               onConfigChange={onConfigChange}
             />
+          ) : selectedNode.type === 'aurora' ? (
+            <AuroraNodeProperties />
           ) : (
             <div className="space-y-6">
               <div>
