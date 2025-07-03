@@ -1,12 +1,12 @@
 import React, { useState, useContext, useRef, useEffect } from 'react';
-import { X, Settings, FileText, BarChart, Zap, Link, Code, Database, Upload, Globe, BookOpen, Key, HardDrive, Shield, Server, Network, Activity, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, Settings, FileText, BarChart, Zap, Link, Code, Database, Upload, Globe, BookOpen, Key, HardDrive, Shield, Server, Network, Activity, ChevronLeft, ChevronRight, Bell } from 'lucide-react';
 import { ComponentNode } from '../types';
 import { Tabs } from './ui/tabs';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Switch } from './ui/switch';
-import { ECSNodeProperties, ECSClusterInfo, ECSNetworkInfo, ECSServicesInfo } from './ECSNodeProperties';
+import { ECSNodeProperties, ECSClusterInfo, ECSNetworkInfo, ECSServicesInfo, ECSNotifications } from './ECSNodeProperties';
 import { BackendServiceProperties } from './BackendServiceProperties';
 import { YamlInfrastructureConfig } from '../types/yamlConfig';
 import { type AccountInfo } from '../api/infrastructure';
@@ -165,6 +165,7 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
               { id: 'description', label: 'Description', icon: BookOpen },
             ] : selectedNode.type === 'ecs' ? [
               { id: 'settings', label: 'Settings', icon: Settings },
+              { id: 'notifications', label: 'Notifications', icon: Bell },
               { id: 'cluster', label: 'Cluster', icon: Server },
               { id: 'network', label: 'Network', icon: Network },
               { id: 'services', label: 'Services', icon: Activity },
@@ -516,6 +517,10 @@ jobs:
 
         {activeTab === 'services' && selectedNode.type === 'ecs' && config && (
           <ECSServicesInfo config={config} />
+        )}
+
+        {activeTab === 'notifications' && selectedNode.type === 'ecs' && config && onConfigChange && (
+          <ECSNotifications config={config} onConfigChange={onConfigChange} />
         )}
       </div>
     </div>

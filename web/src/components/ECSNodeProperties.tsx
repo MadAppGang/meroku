@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { YamlInfrastructureConfig } from '../types/yamlConfig';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
-import { Server, Network, Activity, Info, CheckCircle, XCircle, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { Server, Network, Activity, Info, CheckCircle, XCircle, Loader2, AlertCircle, RefreshCw, Bell } from 'lucide-react';
 import { infrastructureApi, ECSClusterInfo as ClusterInfo, ECSNetworkInfo as NetworkInfo, ECSServicesInfo as ServicesInfo } from '../api/infrastructure';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -756,6 +756,222 @@ export function ECSServicesInfo({ config }: { config: YamlInfrastructureConfig }
               Each service is allocated CPU and memory based on workload requirements. 
               Fargate automatically provisions the right compute resources.
             </p>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+export function ECSNotifications({ config, onConfigChange }: ECSNodePropertiesProps) {
+  const [testingWebhook, setTestingWebhook] = useState(false);
+  const [webhookTestResult, setWebhookTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const testSlackWebhook = async () => {
+    if (!config.workload?.slack_webhook) return;
+    
+    setTestingWebhook(true);
+    setWebhookTestResult(null);
+    
+    try {
+      const response = await fetch(config.workload.slack_webhook, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: `🔔 Test notification from ${config.project} (${config.env})`,
+          attachments: [{
+            color: 'good',
+            fields: [
+              { title: 'Project', value: config.project, short: true },
+              { title: 'Environment', value: config.env, short: true },
+              { title: 'Region', value: config.region, short: true },
+              { title: 'Status', value: 'Webhook test successful', short: true }
+            ],
+            footer: 'ECS Infrastructure',
+            ts: Math.floor(Date.now() / 1000)
+          }]
+        })
+      });
+      
+      if (response.ok) {
+        setWebhookTestResult({ success: true, message: 'Test notification sent successfully!' });
+      } else {
+        setWebhookTestResult({ success: false, message: `Failed to send test notification: ${response.status}` });
+      }
+    } catch (error) {
+      setWebhookTestResult({ 
+        success: false, 
+        message: `Error testing webhook: ${error instanceof Error ? error.message : 'Unknown error'}` 
+      });
+    } finally {
+      setTestingWebhook(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Slack Configuration */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Slack Notifications</CardTitle>
+          <CardDescription>
+            Configure Slack webhook for deployment notifications and alerts
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label htmlFor="slack-webhook">Slack Webhook URL</Label>
+            <div className="mt-1 space-y-2">
+              <div className="flex gap-2">
+                <Input
+                  id="slack-webhook"
+                  type="url"
+                  value={config.workload?.slack_webhook || ''}
+                  onChange={(e) => {
+                    setWebhookTestResult(null);
+                    onConfigChange({
+                      workload: {
+                        ...config.workload,
+                        slack_webhook: e.target.value
+                      }
+                    });
+                  }}
+                  className="flex-1 bg-gray-800 border-gray-600 text-white font-mono text-sm"
+                  placeholder="https://hooks.slack.com/services/..."
+                />
+                {config.workload?.slack_webhook && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={testSlackWebhook}
+                    disabled={testingWebhook}
+                  >
+                    {testingWebhook ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      'Test'
+                    )}
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs text-gray-500">
+                Webhook URL for deployment notifications and alerts
+              </p>
+              
+              {webhookTestResult && (
+                <div className={`text-xs p-2 rounded ${webhookTestResult.success ? 'bg-green-900/20 text-green-400' : 'bg-red-900/20 text-red-400'}`}>
+                  {webhookTestResult.message}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {config.workload?.slack_webhook && (
+            <div className="bg-green-900/20 border border-green-700 rounded-lg p-4">
+              <div className="flex items-start gap-2">
+                <Bell className="w-4 h-4 text-green-400 mt-0.5" />
+                <div className="flex-1">
+                  <h4 className="text-sm font-medium text-green-400 mb-1">Slack Notifications Configured</h4>
+                  <p className="text-xs text-gray-300">
+                    Deployment events and critical alerts will be sent to your Slack channel.
+                  </p>
+                  <ul className="text-xs text-gray-400 mt-2 space-y-1">
+                    <li>• Deployment started/completed</li>
+                    <li>• Service health check failures</li>
+                    <li>• Auto-scaling events</li>
+                    <li>• Task failures and restarts</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!config.workload?.slack_webhook && (
+            <div className="bg-gray-800 rounded-lg p-4">
+              <p className="text-xs text-gray-400">
+                <strong>Note:</strong> Without a Slack webhook, deployment notifications will only be available in CloudWatch Logs.
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Webhook Setup Instructions */}
+      <Card>
+        <CardHeader>
+          <CardTitle>How to Setup Slack Webhook</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ol className="space-y-3 text-xs text-gray-300">
+            <li className="flex items-start gap-2">
+              <span className="text-blue-400 font-medium flex-shrink-0">1.</span>
+              <span>Go to your Slack workspace and navigate to <strong>Apps</strong></span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-blue-400 font-medium flex-shrink-0">2.</span>
+              <span>Search for and add <strong>"Incoming Webhooks"</strong></span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-blue-400 font-medium flex-shrink-0">3.</span>
+              <span>Choose the channel where you want to receive notifications</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-blue-400 font-medium flex-shrink-0">4.</span>
+              <span>Copy the webhook URL and paste it above</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-blue-400 font-medium flex-shrink-0">5.</span>
+              <span>Click <strong>Test</strong> to verify the connection</span>
+            </li>
+          </ol>
+          
+          <div className="mt-4 p-3 bg-gray-800 rounded">
+            <p className="text-xs text-gray-400">
+              <strong>Tip:</strong> Create a dedicated channel like <code>#deployments</code> or <code>#{config.project}-{config.env}</code> for infrastructure notifications.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Additional Notification Options */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Additional Notification Options</CardTitle>
+          <CardDescription>
+            Other notification channels and integrations
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            <div className="p-3 bg-gray-800 rounded-lg">
+              <div className="flex items-center gap-2 mb-2">
+                <Info className="w-4 h-4 text-blue-400" />
+                <h4 className="text-sm font-medium text-gray-300">CloudWatch Logs</h4>
+              </div>
+              <p className="text-xs text-gray-400">
+                All deployment events are automatically logged to CloudWatch. Access them through the AWS Console or CLI.
+              </p>
+            </div>
+            
+            <div className="p-3 bg-gray-800 rounded-lg">
+              <div className="flex items-center gap-2 mb-2">
+                <Info className="w-4 h-4 text-purple-400" />
+                <h4 className="text-sm font-medium text-gray-300">EventBridge Integration</h4>
+              </div>
+              <p className="text-xs text-gray-400">
+                ECS deployment events are published to EventBridge, allowing custom integrations with SNS, Lambda, or other services.
+              </p>
+            </div>
+            
+            <div className="p-3 bg-gray-800 rounded-lg">
+              <div className="flex items-center gap-2 mb-2">
+                <Info className="w-4 h-4 text-yellow-400" />
+                <h4 className="text-sm font-medium text-gray-300">Coming Soon</h4>
+              </div>
+              <p className="text-xs text-gray-400">
+                Future support planned for: Email notifications, PagerDuty, Discord webhooks, and custom webhook endpoints.
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>
