@@ -32,7 +32,15 @@ export interface ComponentNode {
     | "opa"
     | "service-regular"
     | "service-periodic"
-    | "service-event-driven";
+    | "service-event-driven"
+    | "service"
+    | "scheduled-task"
+    | "event-task"
+    | "postgres"
+    | "sqs"
+    | "efs"
+    | "alb"
+    | "appsync";
   name: string;
   url?: string;
   status: "running" | "deploying" | "stopped" | "error";
@@ -55,6 +63,7 @@ export interface ComponentNode {
   subgroup?: string;
   hasTelemetry?: boolean;
   disabled?: boolean;
+  configProperties?: Record<string, any>;
 }
 
 export interface LogEntry {

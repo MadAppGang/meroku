@@ -67,6 +67,14 @@ const serviceIcons = {
   'service-regular': Server,
   'service-periodic': Calendar,
   'service-event-driven': Workflow,
+  'service': Server,
+  'scheduled-task': Timer,
+  'event-task': Zap,
+  'postgres': Database,
+  'sqs': Bell,
+  'efs': HardDrive,
+  'alb': Network,
+  'appsync': Network,
 };
 
 const serviceColors = {
@@ -102,6 +110,14 @@ const serviceColors = {
   'service-regular': 'bg-blue-600',
   'service-periodic': 'bg-purple-600',
   'service-event-driven': 'bg-green-600',
+  'service': 'bg-blue-600',
+  'scheduled-task': 'bg-purple-600',
+  'event-task': 'bg-green-600',
+  'postgres': 'bg-indigo-600',
+  'sqs': 'bg-yellow-600',
+  'efs': 'bg-teal-600',
+  'alb': 'bg-pink-600',
+  'appsync': 'bg-purple-600',
 };
 
 const statusIcons = {

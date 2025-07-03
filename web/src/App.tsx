@@ -9,6 +9,7 @@ import { EnvironmentSelector } from "./components/EnvironmentSelector";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
 import type { ComponentNode } from "./types";
 import { InfrastructureConfig } from "./types/config";
+import { YamlInfrastructureConfig } from "./types/yamlConfig";
 import { infrastructureApi } from "./api/infrastructure";
 
 export default function App() {
@@ -16,7 +17,7 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedEnvironment, setSelectedEnvironment] = useState<string | null>(null);
   const [showEnvSelector, setShowEnvSelector] = useState(true);
-  const [config, setConfig] = useState<InfrastructureConfig | null>(null);
+  const [config, setConfig] = useState<YamlInfrastructureConfig | null>(null);
 
   const handleNodeSelect = useCallback((node: ComponentNode | null) => {
     setSelectedNode(node);
@@ -38,14 +39,14 @@ export default function App() {
   const loadConfiguration = async (envName: string) => {
     try {
       const content = await infrastructureApi.getEnvironmentConfig(envName);
-      const parsed = yaml.load(content) as InfrastructureConfig;
+      const parsed = yaml.load(content) as YamlInfrastructureConfig;
       setConfig(parsed);
     } catch (error) {
       console.error("Failed to load configuration:", error);
     }
   };
 
-  const handleConfigChange = (updates: Partial<InfrastructureConfig>) => {
+  const handleConfigChange = (updates: Partial<YamlInfrastructureConfig>) => {
     if (config) {
       const updatedConfig = { ...config, ...updates };
       setConfig(updatedConfig);
@@ -85,6 +86,7 @@ export default function App() {
             <DeploymentCanvas
               onNodeSelect={handleNodeSelect}
               selectedNode={selectedNode}
+              config={config}
             />
 
             {/* Right Sidebar */}

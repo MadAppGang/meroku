@@ -19,10 +19,15 @@ import { DynamicGroupNode } from './DynamicGroupNode';
 import { CanvasControls } from './CanvasControls';
 import { ComponentNode } from '../types';
 import { layoutNodesWithGroups } from '../utils/layoutUtils';
+import { YamlInfrastructureConfig } from '../types/yamlConfig';
+import { getNodeState, getNodeProperties } from '../utils/nodeStateMapping';
+import { generateAdditionalServiceNodes, updateEcsClusterGroup } from '../utils/additionalServicesNodes';
+import { generateHiddenComponentNodes } from '../utils/hiddenComponentsNodes';
 
 interface DeploymentCanvasProps {
   onNodeSelect: (node: ComponentNode | null) => void;
   selectedNode: ComponentNode | null;
+  config?: YamlInfrastructureConfig | null;
 }
 
 const nodeTypes = {
@@ -526,12 +531,38 @@ const initialEdges: Edge[] = [
   },
 ];
 
-export function DeploymentCanvas({ onNodeSelect, selectedNode }: DeploymentCanvasProps) {
-  // Apply layout algorithm to prevent overlaps
-  const layoutAdjustedNodes = useMemo(() => layoutNodesWithGroups(initialNodes), []);
+export function DeploymentCanvas({ onNodeSelect, selectedNode, config }: DeploymentCanvasProps) {
+  // Generate all nodes including dynamic ones
+  const allNodes = useMemo(() => {
+    // Start with initial nodes
+    let combinedNodes = [...initialNodes];
+    
+    // Add dynamic service nodes
+    const additionalServices = generateAdditionalServiceNodes(config, 292, 459);
+    const additionalServiceIds = additionalServices.map(n => n.id);
+    combinedNodes = [...combinedNodes, ...additionalServices];
+    
+    // Add hidden component nodes
+    const hiddenComponents = generateHiddenComponentNodes(config);
+    combinedNodes = [...combinedNodes, ...hiddenComponents];
+    
+    // Update ECS cluster group to include dynamic services
+    combinedNodes = combinedNodes.map(node => 
+      node.id === 'ecs-cluster-group' 
+        ? updateEcsClusterGroup(node, additionalServiceIds)
+        : node
+    );
+    
+    return layoutNodesWithGroups(combinedNodes);
+  }, [config]);
   
-  const [nodes, setNodes, onNodesChange] = useNodesState(layoutAdjustedNodes);
+  const [nodes, setNodes, onNodesChange] = useNodesState(allNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+  
+  // Update nodes when config changes
+  useEffect(() => {
+    setNodes(allNodes);
+  }, [allNodes, setNodes]);
   
   // Function to manually trigger layout
   const handleAutoLayout = useCallback(() => {
@@ -565,13 +596,24 @@ export function DeploymentCanvas({ onNodeSelect, selectedNode }: DeploymentCanva
     onNodeSelect(null);
   }, [onNodeSelect]);
 
-  // Update nodes to show selection state
+  // Update nodes to show selection state and apply config-based states
   const nodesWithSelection = useMemo(() => {
-    return nodes.map(node => ({
-      ...node,
-      selected: selectedNode?.id === node.id,
-    }));
-  }, [nodes, selectedNode]);
+    return nodes.map(node => {
+      // Apply configuration-based state
+      const isEnabled = getNodeState(node.id, config || null);
+      const properties = getNodeProperties(node.id, config || null);
+      
+      return {
+        ...node,
+        selected: selectedNode?.id === node.id,
+        data: {
+          ...node.data,
+          disabled: !isEnabled,
+          configProperties: properties,
+        },
+      };
+    });
+  }, [nodes, selectedNode, config]);
 
   // Update edges to show dimmed state when connected to disabled nodes
   const edgesWithState = useMemo(() => {

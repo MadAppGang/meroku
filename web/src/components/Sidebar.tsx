@@ -8,14 +8,15 @@ import { Label } from './ui/label';
 import { Switch } from './ui/switch';
 import { ECSNodeProperties } from './ECSNodeProperties';
 import { BackendServiceProperties } from './BackendServiceProperties';
-import { InfrastructureConfig } from '../types/config';
+import { YamlInfrastructureConfig } from '../types/yamlConfig';
+import { NodeConfigProperties } from './NodeConfigProperties';
 
 interface SidebarProps {
   selectedNode: ComponentNode | null;
   isOpen: boolean;
   onClose: () => void;
-  config?: InfrastructureConfig;
-  onConfigChange?: (config: Partial<InfrastructureConfig>) => void;
+  config?: YamlInfrastructureConfig;
+  onConfigChange?: (config: Partial<YamlInfrastructureConfig>) => void;
 }
 
 export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange }: SidebarProps) {
@@ -143,6 +144,13 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange 
                     className="mt-1 bg-gray-800 border-gray-600 text-white"
                     readOnly
                   />
+                </div>
+              )}
+              
+              {/* Show configuration properties if available */}
+              {selectedNode.configProperties && (
+                <div className="mt-6">
+                  <NodeConfigProperties node={selectedNode} />
                 </div>
               )}
             </div>
