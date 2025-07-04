@@ -89,6 +89,17 @@ func mainRouter() http.Handler {
 	}))
 	mux.HandleFunc("/api/s3/files", corsMiddleware(listS3Files))
 	mux.HandleFunc("/api/s3/buckets", corsMiddleware(listProjectS3Buckets))
+	// Node positions endpoints
+	mux.HandleFunc("/api/positions", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			getNodePositions(w, r)
+		case http.MethodPost, http.MethodPut:
+			saveNodePositions(w, r)
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))
 
 	// SPA handler for all other routes
 	mux.HandleFunc("/", spaHandler())

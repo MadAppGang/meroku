@@ -40,3 +40,4 @@ modules/appsync/auth_lambda/node_modules
 modules/appsync/auth_lambda.zip
 dist/
 app/meroku
+.positions/

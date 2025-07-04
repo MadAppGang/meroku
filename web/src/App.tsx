@@ -113,6 +113,7 @@ export default function App() {
               onNodeSelect={handleNodeSelect}
               selectedNode={selectedNode}
               config={config}
+              environmentName={selectedEnvironment || undefined}
             />
 
             {/* Right Sidebar */}

@@ -33,7 +33,7 @@ func testWebSocket(w http.ResponseWriter, r *http.Request) {
 		var msg map[string]interface{}
 		if err := conn.ReadJSON(&msg); err != nil {
 			fmt.Printf("Test WebSocket read error: %v\n", err)
-			breakwhen
+			break
 		}
 
 		fmt.Printf("Test WebSocket received: %v\n", msg)
