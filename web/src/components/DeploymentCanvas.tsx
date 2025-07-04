@@ -432,6 +432,7 @@ export function DeploymentCanvas({
   const [savedPositions, setSavedPositions] = React.useState<
     Map<string, { x: number; y: number }>
   >(new Map());
+  const [showInactive, setShowInactive] = React.useState(true);
 
   // Generate all nodes including dynamic ones
   const allNodes = useMemo(() => {
@@ -500,6 +501,11 @@ export function DeploymentCanvas({
     setNodes(adjustedNodes);
   }, [nodes, setNodes]);
 
+  // Toggle inactive nodes visibility
+  const handleToggleInactive = useCallback(() => {
+    setShowInactive((prev) => !prev);
+  }, []);
+
   const onConnect = useCallback(
     (params: Connection) => setEdges((eds) => addEdge(params, eds)),
     [setEdges]
@@ -528,41 +534,60 @@ export function DeploymentCanvas({
 
   // Update nodes to show selection state and apply config-based states
   const nodesWithSelection = useMemo(() => {
-    return nodes.map((node) => {
-      // Apply configuration-based state
-      const isEnabled = getNodeState(node.id, config || null);
-      const properties = getNodeProperties(node.id, config || null);
+    return nodes
+      .map((node) => {
+        // Apply configuration-based state
+        const isEnabled = getNodeState(node.id, config || null);
+        const properties = getNodeProperties(node.id, config || null);
 
-      return {
-        ...node,
-        selected: selectedNode?.id === node.id,
-        data: {
-          ...node.data,
-          disabled: !isEnabled,
-          configProperties: properties,
-        },
-      };
-    });
-  }, [nodes, selectedNode, config]);
+        return {
+          ...node,
+          selected: selectedNode?.id === node.id,
+          data: {
+            ...node.data,
+            disabled: !isEnabled,
+            configProperties: properties,
+          },
+        };
+      })
+      .filter((node) => {
+        // Always show group nodes
+        if (node.type === 'group' || node.type === 'dynamicGroup') {
+          return true;
+        }
+        // Filter out disabled nodes if showInactive is false
+        if (!showInactive && node.data.disabled) {
+          return false;
+        }
+        return true;
+      });
+  }, [nodes, selectedNode, config, showInactive]);
 
   // Update edges to show dimmed state when connected to disabled nodes
   const edgesWithState = useMemo(() => {
-    const nodeMap = new Map(nodes.map((n) => [n.id, n]));
-    return edges.map((edge) => {
-      const sourceNode = nodeMap.get(edge.source);
-      const targetNode = nodeMap.get(edge.target);
-      const isDimmed = sourceNode?.data?.disabled || targetNode?.data?.disabled;
+    const nodeMap = new Map(nodesWithSelection.map((n) => [n.id, n]));
+    const visibleNodeIds = new Set(nodesWithSelection.map((n) => n.id));
+    
+    return edges
+      .filter((edge) => {
+        // Only show edges where both source and target nodes are visible
+        return visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target);
+      })
+      .map((edge) => {
+        const sourceNode = nodeMap.get(edge.source);
+        const targetNode = nodeMap.get(edge.target);
+        const isDimmed = sourceNode?.data?.disabled || targetNode?.data?.disabled;
 
-      return {
-        ...edge,
-        style: {
-          ...edge.style,
-          opacity: isDimmed ? 0.3 : 1,
-        },
-        animated: isDimmed ? false : edge.animated,
-      };
-    });
-  }, [edges, nodes]);
+        return {
+          ...edge,
+          style: {
+            ...edge.style,
+            opacity: isDimmed ? 0.3 : 1,
+          },
+          animated: isDimmed ? false : edge.animated,
+        };
+      });
+  }, [edges, nodesWithSelection]);
 
   // Save positions when nodes are moved
   const savePositions = useCallback(() => {
@@ -639,7 +664,11 @@ export function DeploymentCanvas({
           nodeStrokeWidth={3}
           className="bg-gray-800 border border-gray-700 rounded-lg"
         />
-        <CanvasControls onAutoLayout={handleAutoLayout} />
+        <CanvasControls 
+          onAutoLayout={handleAutoLayout} 
+          showInactive={showInactive}
+          onToggleInactive={handleToggleInactive}
+        />
       </ReactFlow>
     </div>
   );

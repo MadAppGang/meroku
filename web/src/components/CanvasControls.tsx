@@ -1,13 +1,15 @@
 import React from 'react';
-import { Plus, Minus, Maximize, Grid3x3, Move, MousePointer, Layout, Printer } from 'lucide-react';
+import { Plus, Minus, Maximize, Grid3x3, Move, MousePointer, Layout, Printer, Eye, EyeOff } from 'lucide-react';
 import { useReactFlow, useNodes } from 'reactflow';
 import { Button } from './ui/button';
 
 interface CanvasControlsProps {
   onAutoLayout?: () => void;
+  showInactive: boolean;
+  onToggleInactive: () => void;
 }
 
-export function CanvasControls({ onAutoLayout }: CanvasControlsProps) {
+export function CanvasControls({ onAutoLayout, showInactive, onToggleInactive }: CanvasControlsProps) {
   const { zoomIn, zoomOut, fitView } = useReactFlow();
   const nodes = useNodes();
   
@@ -116,6 +118,19 @@ export function CanvasControls({ onAutoLayout }: CanvasControlsProps) {
           title="Print node positions to console"
         >
           <Printer className="w-4 h-4" />
+        </Button>
+      </div>
+
+      {/* Toggle Inactive Items */}
+      <div className="bg-gray-800 border border-gray-700 rounded-lg p-1">
+        <Button
+          size="icon"
+          variant="ghost"
+          onClick={onToggleInactive}
+          className="w-8 h-8 text-gray-400 hover:text-white hover:bg-gray-700"
+          title={showInactive ? "Hide inactive items" : "Show inactive items"}
+        >
+          {showInactive ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
         </Button>
       </div>
     </div>
