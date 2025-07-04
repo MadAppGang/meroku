@@ -188,6 +188,33 @@ export interface ECSTasksResponse {
 	tasks: ECSTask[];
 }
 
+// SSM Parameter interfaces
+export interface SSMParameter {
+	name: string;
+	value: string;
+	type: 'String' | 'StringList' | 'SecureString';
+	version: number;
+	description?: string;
+	lastModifiedDate?: string;
+	arn?: string;
+}
+
+export interface SSMParameterMetadata {
+	name: string;
+	type: 'String' | 'StringList' | 'SecureString';
+	lastModifiedDate: string;
+	version: number;
+	description?: string;
+}
+
+export interface SSMParameterCreateRequest {
+	name: string;
+	value: string;
+	type: 'String' | 'StringList' | 'SecureString';
+	description?: string;
+	overwrite?: boolean;
+}
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || "";
 
 export const infrastructureApi = {
@@ -487,5 +514,52 @@ export const infrastructureApi = {
 			onError?.(new Error('Failed to create SSH WebSocket connection'));
 			throw error;
 		}
+	},
+
+	// SSM Parameter Store APIs
+	async getSSMParameter(name: string): Promise<SSMParameter> {
+		const response = await fetch(`${API_BASE_URL}/api/ssm/parameter?name=${encodeURIComponent(name)}`);
+		if (!response.ok) {
+			const error: ErrorResponse = await response.json();
+			throw new Error(error.error || "Failed to fetch SSM parameter");
+		}
+		return response.json();
+	},
+
+	async createOrUpdateSSMParameter(params: SSMParameterCreateRequest): Promise<void> {
+		const response = await fetch(`${API_BASE_URL}/api/ssm/parameter`, {
+			method: "PUT",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify(params),
+		});
+		if (!response.ok) {
+			const error: ErrorResponse = await response.json();
+			throw new Error(error.error || "Failed to create/update SSM parameter");
+		}
+	},
+
+	async deleteSSMParameter(name: string): Promise<void> {
+		const response = await fetch(`${API_BASE_URL}/api/ssm/parameter?name=${encodeURIComponent(name)}`, {
+			method: "DELETE",
+		});
+		if (!response.ok) {
+			const error: ErrorResponse = await response.json();
+			throw new Error(error.error || "Failed to delete SSM parameter");
+		}
+	},
+
+	async listSSMParameters(prefix?: string): Promise<SSMParameterMetadata[]> {
+		const params = new URLSearchParams();
+		if (prefix) {
+			params.append("prefix", prefix);
+		}
+		const response = await fetch(`${API_BASE_URL}/api/ssm/parameters?${params}`);
+		if (!response.ok) {
+			const error: ErrorResponse = await response.json();
+			throw new Error(error.error || "Failed to list SSM parameters");
+		}
+		return response.json();
 	},
 };

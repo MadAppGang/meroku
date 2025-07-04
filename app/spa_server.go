@@ -60,7 +60,20 @@ func mainRouter() http.Handler {
 	// SSH endpoints
 	mux.HandleFunc("/api/ssh/capability", corsMiddleware(getSSHCapability))
 	mux.HandleFunc("/ws/ssh", startSSHSessionPTY) // WebSocket doesn't need CORS middleware - Using PTY version
-	// mux.HandleFunc("/ws/test", testWebSocket) // Test WebSocket endpoint
+	// SSM Parameter endpoints
+	mux.HandleFunc("/api/ssm/parameter", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			getSSMParameter(w, r)
+		case http.MethodPut, http.MethodPost:
+			putSSMParameter(w, r)
+		case http.MethodDelete:
+			deleteSSMParameter(w, r)
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))
+	mux.HandleFunc("/api/ssm/parameters", corsMiddleware(listSSMParameters))
 
 	// SPA handler for all other routes
 	mux.HandleFunc("/", spaHandler())
