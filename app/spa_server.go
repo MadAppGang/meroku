@@ -57,6 +57,10 @@ func mainRouter() http.Handler {
 	mux.HandleFunc("/ws/logs", streamServiceLogs) // WebSocket doesn't need CORS middleware
 	// Tasks endpoints
 	mux.HandleFunc("/api/ecs/tasks", corsMiddleware(getServiceTasks))
+	// SSH endpoints
+	mux.HandleFunc("/api/ssh/capability", corsMiddleware(getSSHCapability))
+	mux.HandleFunc("/ws/ssh", startSSHSessionPTY) // WebSocket doesn't need CORS middleware - Using PTY version
+	// mux.HandleFunc("/ws/test", testWebSocket) // Test WebSocket endpoint
 
 	// SPA handler for all other routes
 	mux.HandleFunc("/", spaHandler())

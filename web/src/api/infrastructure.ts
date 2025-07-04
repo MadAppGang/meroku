@@ -147,6 +147,17 @@ export interface ServiceTasksResponse {
 	tasks: ECSTaskInfo[];
 }
 
+// SSH interfaces
+export interface SSHCapability {
+	enabled: boolean;
+	reason?: string;
+}
+
+export interface SSHMessage {
+	type: 'input' | 'output' | 'error' | 'connected' | 'disconnected';
+	data: string;
+}
+
 // Logs interfaces
 export interface LogEntry {
 	timestamp: string;
@@ -318,7 +329,17 @@ export const infrastructureApi = {
 		onError?: (error: Error) => void,
 		onConnect?: () => void
 	): WebSocket {
-		const wsUrl = `${API_BASE_URL.replace(/^http/, 'ws')}/ws/logs?env=${encodeURIComponent(env)}&service=${encodeURIComponent(serviceName)}`;
+		// Handle both relative and absolute URLs
+		let wsUrl: string;
+		if (API_BASE_URL) {
+			wsUrl = `${API_BASE_URL.replace(/^http/, 'ws')}/ws/logs?env=${encodeURIComponent(env)}&service=${encodeURIComponent(serviceName)}`;
+		} else {
+			// If no base URL, use current host with ws protocol
+			const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+			const host = window.location.host;
+			wsUrl = `${protocol}//${host}/ws/logs?env=${encodeURIComponent(env)}&service=${encodeURIComponent(serviceName)}`;
+		}
+		
 		const ws = new WebSocket(wsUrl);
 
 		ws.onopen = () => {
@@ -363,5 +384,108 @@ export const infrastructureApi = {
 			throw new Error("Failed to fetch service tasks");
 		}
 		return response.json();
+	},
+
+	// Check SSH capability for a task
+	async checkSSHCapability(env: string, serviceName: string, taskArn: string): Promise<SSHCapability> {
+		const params = new URLSearchParams({
+			env,
+			service: serviceName,
+			taskArn,
+		});
+		
+		const response = await fetch(`${API_BASE_URL}/api/ssh/capability?${params}`);
+		if (!response.ok) {
+			throw new Error("Failed to check SSH capability");
+		}
+		return response.json();
+	},
+
+	// Connect to SSH session via WebSocket
+	connectToSSH(
+		env: string,
+		serviceName: string,
+		taskArn: string,
+		containerName: string | undefined,
+		onMessage: (message: SSHMessage) => void,
+		onError?: (error: Error) => void,
+		onClose?: () => void
+	): WebSocket {
+		const params = new URLSearchParams({
+			env,
+			service: serviceName,
+			taskArn,
+		});
+		if (containerName) {
+			params.append('container', containerName);
+		}
+
+		// Handle both relative and absolute URLs
+		let wsUrl: string;
+		if (API_BASE_URL) {
+			wsUrl = `${API_BASE_URL.replace(/^http/, 'ws')}/ws/ssh?${params}`;
+		} else {
+			// If no base URL, use current host with ws protocol
+			const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+			const host = window.location.host;
+			wsUrl = `${protocol}//${host}/ws/ssh?${params}`;
+		}
+		
+		console.log('Connecting to SSH WebSocket:', wsUrl);
+		
+		// First check if the backend is reachable
+		try {
+			const ws = new WebSocket(wsUrl);
+			
+			// Add a connection timeout
+			const connectionTimeout = setTimeout(() => {
+				if (ws.readyState !== WebSocket.OPEN) {
+					ws.close();
+					onError?.(new Error('SSH connection timeout. Please check if the backend server is running.'));
+				}
+			}, 5000);
+
+			ws.onopen = () => {
+				clearTimeout(connectionTimeout);
+				console.log('SSH WebSocket connected');
+			};
+
+		ws.onmessage = (event) => {
+			try {
+				const message: SSHMessage = JSON.parse(event.data);
+				onMessage(message);
+			} catch (err) {
+				console.error('Failed to parse SSH message:', err);
+			}
+		};
+
+		ws.onerror = (event) => {
+			console.error('SSH WebSocket error:', event);
+			// Provide more context about the error
+			let errorMessage = 'SSH WebSocket connection error';
+			if (ws.readyState === WebSocket.CLOSED) {
+				errorMessage = 'Unable to connect to SSH WebSocket. The backend server may not be running or the /ws/ssh endpoint is not available.';
+			}
+			onError?.(new Error(errorMessage));
+		};
+
+		ws.onclose = () => {
+			console.log('SSH WebSocket disconnected');
+			onClose?.();
+		};
+
+			// Add send method for input
+			(ws as any).sendInput = (input: string) => {
+				if (ws.readyState === WebSocket.OPEN) {
+					ws.send(JSON.stringify({ type: 'input', data: input }));
+				}
+			};
+
+			return ws;
+		} catch (error) {
+			console.error('Failed to create WebSocket:', error);
+			onError?.(new Error('Failed to create SSH WebSocket connection'));
+			throw error;
+		}
 	},
 };

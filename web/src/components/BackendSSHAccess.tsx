@@ -7,6 +7,7 @@ import { Button } from "./ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Info, RefreshCw, Copy, Terminal, AlertCircle } from "lucide-react";
+import { SSHTerminal } from "./SSHTerminal";
 
 interface BackendSSHAccessProps {
   config: YamlInfrastructureConfig;
@@ -19,6 +20,8 @@ export function BackendSSHAccess({ config, onConfigChange, accountInfo }: Backen
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copiedCommand, setCopiedCommand] = useState(false);
+  const [activeSSHSession, setActiveSSHSession] = useState<{ taskArn: string; containerName?: string } | null>(null);
+  const [checkingSSH, setCheckingSSH] = useState<string | null>(null);
 
   const handleRemoteAccessToggle = (checked: boolean) => {
     onConfigChange({
@@ -51,6 +54,34 @@ export function BackendSSHAccess({ config, onConfigChange, accountInfo }: Backen
     navigator.clipboard.writeText(command);
     setCopiedCommand(true);
     setTimeout(() => setCopiedCommand(false), 2000);
+  };
+
+  const handleOpenSSH = async (task: ECSTaskInfo) => {
+    try {
+      setCheckingSSH(task.taskArn);
+      
+      // Check SSH capability
+      const capability = await infrastructureApi.checkSSHCapability(
+        config.env,
+        'backend',
+        task.taskArn
+      );
+      
+      if (!capability.enabled) {
+        setError(`SSH not available: ${capability.reason || 'Unknown reason'}`);
+        return;
+      }
+      
+      // Open SSH terminal
+      setActiveSSHSession({ 
+        taskArn: task.taskArn, 
+        containerName: `${config.project}_service_${config.env}` 
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to check SSH capability');
+    } finally {
+      setCheckingSSH(null);
+    }
   };
 
   const runningTasks = tasks.filter(task => task.lastStatus === 'RUNNING');
@@ -210,6 +241,26 @@ export function BackendSSHAccess({ config, onConfigChange, accountInfo }: Backen
                         </div>
                         <div>Started: {new Date(task.startedAt || task.createdAt).toLocaleString()}</div>
                       </div>
+                      <div className="mt-3">
+                        <Button
+                          size="sm"
+                          onClick={() => handleOpenSSH(task)}
+                          disabled={checkingSSH === task.taskArn}
+                          className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+                        >
+                          {checkingSSH === task.taskArn ? (
+                            <>
+                              <RefreshCw className="w-3 h-3 mr-2 animate-spin" />
+                              Checking SSH...
+                            </>
+                          ) : (
+                            <>
+                              <Terminal className="w-3 h-3 mr-2" />
+                              Open SSH Terminal
+                            </>
+                          )}
+                        </Button>
+                      </div>
                     </div>
                   ))}
                   {runningTasks.length > 3 && (
@@ -254,6 +305,17 @@ export function BackendSSHAccess({ config, onConfigChange, accountInfo }: Backen
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* SSH Terminal Modal */}
+      {activeSSHSession && (
+        <SSHTerminal
+          env={config.env}
+          serviceName="backend"
+          taskArn={activeSSHSession.taskArn}
+          containerName={activeSSHSession.containerName}
+          onClose={() => setActiveSSHSession(null)}
+        />
       )}
     </div>
   );
