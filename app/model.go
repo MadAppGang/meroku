@@ -46,6 +46,7 @@ type Workload struct {
 	BackendEnvVariables        map[string]string `yaml:"backend_env_variables"`
 	Policies                   []string          `yaml:"policies"`
 	BackendPolicies            []Policy          `yaml:"backend_policies"`
+	EnvFilesS3                 []S3EnvFile       `yaml:"env_files_s3"`
 
 	SlackWebhook       string   `yaml:"slack_webhook"`
 	EnableGithubOIDC   bool     `yaml:"enable_github_oidc"`
@@ -53,6 +54,11 @@ type Workload struct {
 
 	InstallPgAdmin bool   `yaml:"install_pg_admin"`
 	PgAdminEmail   string `yaml:"pg_admin_email"`
+}
+
+type S3EnvFile struct {
+	Bucket string `yaml:"bucket"`
+	Key    string `yaml:"key"`
 }
 
 type Policy struct {

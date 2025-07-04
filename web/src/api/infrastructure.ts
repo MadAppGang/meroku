@@ -215,6 +215,20 @@ export interface SSMParameterCreateRequest {
 	overwrite?: boolean;
 }
 
+// S3 interfaces
+export interface S3FileContent {
+	bucket: string;
+	key: string;
+	content: string;
+	lastModified?: string;
+}
+
+export interface S3PutFileRequest {
+	bucket: string;
+	key: string;
+	content: string;
+}
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || "";
 
 export const infrastructureApi = {
@@ -561,5 +575,30 @@ export const infrastructureApi = {
 			throw new Error(error.error || "Failed to list SSM parameters");
 		}
 		return response.json();
+	},
+
+	// S3 File APIs
+	async getS3File(bucket: string, key: string): Promise<S3FileContent> {
+		const params = new URLSearchParams({ bucket, key });
+		const response = await fetch(`${API_BASE_URL}/api/s3/file?${params}`);
+		if (!response.ok) {
+			const error: ErrorResponse = await response.json();
+			throw new Error(error.error || "Failed to fetch S3 file");
+		}
+		return response.json();
+	},
+
+	async putS3File(params: S3PutFileRequest): Promise<void> {
+		const response = await fetch(`${API_BASE_URL}/api/s3/file`, {
+			method: "PUT",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify(params),
+		});
+		if (!response.ok) {
+			const error: ErrorResponse = await response.json();
+			throw new Error(error.error || "Failed to update S3 file");
+		}
 	},
 };

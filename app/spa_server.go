@@ -74,6 +74,21 @@ func mainRouter() http.Handler {
 		}
 	}))
 	mux.HandleFunc("/api/ssm/parameters", corsMiddleware(listSSMParameters))
+	// S3 File Management endpoints
+	mux.HandleFunc("/api/s3/file", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			getS3File(w, r)
+		case http.MethodPut, http.MethodPost:
+			putS3File(w, r)
+		case http.MethodDelete:
+			deleteS3File(w, r)
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))
+	mux.HandleFunc("/api/s3/files", corsMiddleware(listS3Files))
+	mux.HandleFunc("/api/s3/buckets", corsMiddleware(listProjectS3Buckets))
 
 	// SPA handler for all other routes
 	mux.HandleFunc("/", spaHandler())
