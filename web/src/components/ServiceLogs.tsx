@@ -79,6 +79,7 @@ export function ServiceLogs({ environment, serviceName }: ServiceLogsProps) {
       setIsStreaming(false);
     } else {
       setIsStreaming(true);
+      // WebSocket will show logs from last 24 hours, then stream new ones
       wsRef.current = infrastructureApi.connectToLogStream(
         environment,
         serviceName,
@@ -163,6 +164,7 @@ export function ServiceLogs({ environment, serviceName }: ServiceLogsProps) {
               size="sm"
               variant={isStreaming ? "destructive" : "default"}
               onClick={toggleStreaming}
+              title={isStreaming ? "Stop real-time log streaming" : "Stream logs from last 24 hours + new logs"}
             >
               {isStreaming ? (
                 <>
@@ -182,6 +184,7 @@ export function ServiceLogs({ environment, serviceName }: ServiceLogsProps) {
               variant="outline"
               onClick={() => loadLogs(false)}
               disabled={loading || isStreaming}
+              title="Fetch latest 100 logs across all time"
             >
               <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
               Refresh
@@ -299,6 +302,13 @@ export function ServiceLogs({ environment, serviceName }: ServiceLogsProps) {
                 {searchTerm || filterLevel !== 'all' 
                   ? 'No logs match your filters' 
                   : 'No logs available'}
+                {!isStreaming && logs.length === 0 && !searchTerm && filterLevel === 'all' && (
+                  <div className="mt-4 space-y-2">
+                    <p className="text-xs">Try one of these options:</p>
+                    <p className="text-xs">• Click "Start Streaming" to see logs from the last 24 hours</p>
+                    <p className="text-xs">• Check if the service is running and generating logs</p>
+                  </div>
+                )}
               </div>
             ) : (
               filteredLogs.map((log, index) => (
@@ -372,6 +382,7 @@ export function ServiceLogs({ environment, serviceName }: ServiceLogsProps) {
                 size="sm"
                 variant={isStreaming ? "destructive" : "default"}
                 onClick={toggleStreaming}
+                title={isStreaming ? "Stop real-time log streaming" : "Stream logs from last 24 hours + new logs"}
               >
                 {isStreaming ? (
                   <>
@@ -391,6 +402,7 @@ export function ServiceLogs({ environment, serviceName }: ServiceLogsProps) {
                 variant="outline"
                 onClick={() => loadLogs(false)}
                 disabled={loading || isStreaming}
+                title="Fetch latest 100 logs across all time"
               >
                 <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
                 Refresh

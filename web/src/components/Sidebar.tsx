@@ -1,5 +1,5 @@
 import React, { useState, useContext, useRef, useEffect } from 'react';
-import { X, Settings, FileText, BarChart, Zap, Link, Code, Database, Upload, Globe, BookOpen, Key, HardDrive, Shield, Server, Network, Activity, ChevronLeft, ChevronRight, Bell, Microscope, Gauge, Terminal } from 'lucide-react';
+import { X, Settings, FileText, BarChart, Zap, Link, Code, Database, Upload, Globe, BookOpen, Key, HardDrive, Shield, Server, Network, Activity, ChevronLeft, ChevronRight, Bell, Microscope, Gauge, Terminal, Cloud } from 'lucide-react';
 import { ComponentNode } from '../types';
 import { Tabs } from './ui/tabs';
 import { Button } from './ui/button';
@@ -27,6 +27,8 @@ import { BackendIAMPermissions } from './BackendIAMPermissions';
 import { BackendXRayConfiguration } from './BackendXRayConfiguration';
 import { BackendScalingConfiguration } from './BackendScalingConfiguration';
 import { BackendSSHAccess } from './BackendSSHAccess';
+import { BackendCloudWatch } from './BackendCloudWatch';
+import { BackendAlerts } from './BackendAlerts';
 import { ServiceLogs } from './ServiceLogs';
 
 interface SidebarProps {
@@ -183,6 +185,8 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
               { id: 's3', label: 'S3 Buckets', icon: HardDrive },
               { id: 'iam', label: 'IAM', icon: Shield },
               { id: 'logs', label: 'Logs', icon: FileText },
+              { id: 'cloudwatch', label: 'CloudWatch', icon: Cloud },
+              { id: 'alerts', label: 'Alerts', icon: Bell },
             ] : [
               { id: 'settings', label: 'Settings', icon: Settings },
               { id: 'logs', label: 'Logs', icon: FileText },
@@ -532,6 +536,14 @@ jobs:
 
         {activeTab === 'iam' && selectedNode.type === 'backend' && config && (
           <BackendIAMPermissions config={config} />
+        )}
+
+        {activeTab === 'cloudwatch' && selectedNode.type === 'backend' && config && (
+          <BackendCloudWatch config={config} />
+        )}
+
+        {activeTab === 'alerts' && selectedNode.type === 'backend' && config && (
+          <BackendAlerts config={config} />
         )}
 
         {activeTab === 'cluster' && selectedNode.type === 'ecs' && config && (

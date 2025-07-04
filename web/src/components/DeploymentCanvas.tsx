@@ -114,7 +114,7 @@ const initialNodes: Node[] = [
     position: { x: 0, y: 0 }, // Position will be calculated
     data: {
       label: 'ECS Cluster',
-      nodeIds: ['ecs-cluster', 'backend-service', 'xray', 'cloudwatch', 'alarms'],
+      nodeIds: ['ecs-cluster', 'backend-service'],
     },
     style: {
       zIndex: -3,
@@ -204,65 +204,7 @@ const initialNodes: Node[] = [
   },
   
   
-  // Observability Services
-  {
-    id: 'xray',
-    type: 'service',
-    position: { x: 860, y: 280 },
-    data: {
-      id: 'xray',
-      type: 'xray',
-      name: 'AWS X-Ray',
-      status: 'running',
-      deletable: false,
-      group: 'ECS Cluster',
-      subgroup: 'Observability',
-    },
-    deletable: false,
-  },
-  {
-    id: 'cloudwatch',
-    type: 'service',
-    position: { x: 580, y: 280 },
-    data: {
-      id: 'cloudwatch',
-      type: 'cloudwatch',
-      name: 'Amazon CloudWatch',
-      status: 'running',
-      deletable: false,
-      group: 'ECS Cluster',
-      subgroup: 'Observability',
-    },
-    deletable: false,
-  },
-  {
-    id: 'alarms',
-    type: 'service',
-    position: { x: 1140, y: 280 },
-    data: {
-      id: 'alarms',
-      type: 'alarms',
-      name: 'Alarm rules',
-      status: 'running',
-      group: 'ECS Cluster',
-      subgroup: 'Observability',
-    },
-  },
-  
   // Supporting Services (right side)
-  {
-    id: 'secrets-manager',
-    type: 'service',
-    position: { x: 900, y: 110 },
-    data: {
-      id: 'secrets-manager',
-      type: 'secrets-manager',
-      name: 'Parameter Store',
-      status: 'running',
-      deletable: false,
-    },
-    deletable: false,
-  },
   {
     id: 'ses',
     type: 'service',
@@ -389,15 +331,6 @@ const initialEdges: Edge[] = [
   
   // ECS to Supporting Services
   {
-    id: 'ecs-secrets',
-    source: 'ecs-cluster',
-    target: 'secrets-manager',
-    type: 'smoothstep',
-    animated: true,
-    style: { stroke: '#4f46e5', strokeWidth: 2 },
-    markerEnd: { type: MarkerType.ArrowClosed, color: '#4f46e5' },
-  },
-  {
     id: 'ecs-ses',
     source: 'ecs-cluster',
     target: 'ses',
@@ -445,26 +378,6 @@ const initialEdges: Edge[] = [
     animated: true,
     style: { stroke: '#10b981', strokeWidth: 2 },
     markerEnd: { type: MarkerType.ArrowClosed, color: '#10b981' },
-  },
-  
-  // Services to Observability
-  {
-    id: 'backend-xray',
-    source: 'backend-service',
-    target: 'xray',
-    type: 'smoothstep',
-    animated: true,
-    style: { stroke: '#a855f7', strokeWidth: 2, strokeDasharray: '5,5' },
-    markerEnd: { type: MarkerType.ArrowClosed, color: '#a855f7' },
-  },
-  {
-    id: 'backend-cloudwatch',
-    source: 'backend-service',
-    target: 'cloudwatch',
-    type: 'smoothstep',
-    animated: true,
-    style: { stroke: '#a855f7', strokeWidth: 2, strokeDasharray: '5,5' },
-    markerEnd: { type: MarkerType.ArrowClosed, color: '#a855f7' },
   },
   
   // Authentication flows

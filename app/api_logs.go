@@ -17,6 +17,31 @@ import (
 	"os"
 )
 
+// constructLogGroupName determines the correct log group name based on service type
+func constructLogGroupName(envConfig Env, serviceName string) string {
+	// Check if it's the backend service
+	if serviceName == "backend" {
+		return fmt.Sprintf("%s_backend_%s", envConfig.Project, envConfig.Env)
+	}
+	
+	// Check if it's a scheduled task
+	for _, task := range envConfig.ScheduledTasks {
+		if task.Name == serviceName {
+			return fmt.Sprintf("%s_task_%s_%s", envConfig.Project, serviceName, envConfig.Env)
+		}
+	}
+	
+	// Check if it's an event processor task
+	for _, task := range envConfig.EventProcessorTasks {
+		if task.Name == serviceName {
+			return fmt.Sprintf("%s_task_%s_%s", envConfig.Project, serviceName, envConfig.Env)
+		}
+	}
+	
+	// Default to service pattern for regular services
+	return fmt.Sprintf("%s_service_%s_%s", envConfig.Project, serviceName, envConfig.Env)
+}
+
 // LogEntry represents a single log entry
 type LogEntry struct {
 	Timestamp string `json:"timestamp"`
@@ -84,11 +109,8 @@ func getServiceLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Construct log group name
-	logGroupName := fmt.Sprintf("%s_%s_%s", envConfig.Project, serviceName, envConfig.Env)
-	if serviceName == "backend" {
-		logGroupName = fmt.Sprintf("%s_backend_%s", envConfig.Project, envConfig.Env)
-	}
+	// Construct log group name based on service type
+	logGroupName := constructLogGroupName(envConfig, serviceName)
 
 	// Get AWS config
 	ctx := context.Background()
@@ -129,14 +151,9 @@ func getServiceLogs(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// Query logs
-		now := time.Now()
-		oneHourAgo := now.Add(-1 * time.Hour)
-
+		// Query logs - get latest logs across all time
 		filterInput := &cloudwatchlogs.FilterLogEventsInput{
 			LogGroupName:   aws.String(logGroupName),
-			StartTime:      aws.Int64(oneHourAgo.Unix() * 1000),
-			EndTime:        aws.Int64(now.Unix() * 1000),
 			Limit:          aws.Int32(logLimit),
 			LogStreamNames: streamNames,
 		}
@@ -224,11 +241,8 @@ func streamServiceLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Construct log group name
-	logGroupName := fmt.Sprintf("%s_%s_%s", envConfig.Project, serviceName, envConfig.Env)
-	if serviceName == "backend" {
-		logGroupName = fmt.Sprintf("%s_backend_%s", envConfig.Project, envConfig.Env)
-	}
+	// Construct log group name based on service type
+	logGroupName := constructLogGroupName(envConfig, serviceName)
 
 	// Get AWS config
 	ctx := context.Background()
@@ -246,8 +260,8 @@ func streamServiceLogs(w http.ResponseWriter, r *http.Request) {
 		"message": "Connected to log stream",
 	})
 
-	// Keep track of the last timestamp
-	lastTimestamp := time.Now().Add(-1 * time.Minute).Unix() * 1000
+	// Keep track of the last timestamp - start from 24 hours ago to get recent logs
+	lastTimestamp := time.Now().Add(-24 * time.Hour).Unix() * 1000
 
 	// Create a ticker for periodic log fetching
 	ticker := time.NewTicker(2 * time.Second)

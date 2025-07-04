@@ -124,13 +124,13 @@ export function BackendSSHAccess({ config, onConfigChange, accountInfo }: Backen
             </div>
             <Switch
               id="remote_access"
-              checked={config.workload?.backend_remote_access || false}
+              checked={config.workload?.backend_remote_access !== false}
               onCheckedChange={handleRemoteAccessToggle}
               className="data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-gray-600"
             />
           </div>
 
-          {config.workload?.backend_remote_access && (
+          {config.workload?.backend_remote_access !== false && (
             <div className="bg-green-900/20 border border-green-700 rounded-lg p-4">
               <div className="flex items-start gap-2">
                 <Info className="w-4 h-4 text-green-400 mt-0.5" />
@@ -148,7 +148,7 @@ export function BackendSSHAccess({ config, onConfigChange, accountInfo }: Backen
       </Card>
 
       {/* SSH Instructions */}
-      {config.workload?.backend_remote_access && (
+      {config.workload?.backend_remote_access !== false && (
         <Card>
           <CardHeader>
             <CardTitle>SSH Connection</CardTitle>
@@ -284,7 +284,7 @@ export function BackendSSHAccess({ config, onConfigChange, accountInfo }: Backen
       )}
 
       {/* Disabled State */}
-      {!config.workload?.backend_remote_access && (
+      {config.workload?.backend_remote_access === false && (
         <Card>
           <CardHeader>
             <CardTitle>Getting Started</CardTitle>
