@@ -43,15 +43,21 @@ locals {
 }
 
 locals {
-  backend_env = [
-    { "name" : "PG_DATABASE_HOST", "value" : var.db_endpoint },
-    { "name" : "PG_DATABASE_USERNAME", "value" : var.db_user },
-    { "name" : "PORT", "value" : tostring(var.backend_image_port) },
-    { "name" : "PG_DATABASE_NAME", "value" : var.db_name },
-    { "name" : "AWS_S3_BUCKET", "value" : "${aws_s3_bucket.backend.bucket}" },
-    { "name" : "AWS_REGION", "value" : data.aws_region.current.name },
-    { "name" : "URL", "value" : var.api_domain },
-    { "name" : "SQS_QUEUE_URL", "value" : var.sqs_queue_url },
-    { "name" : "AWS_QUEUE_URL", "value" : var.sqs_queue_url },
-  ]
+  backend_env = concat(
+    [
+      { "name" : "PG_DATABASE_HOST", "value" : var.db_endpoint },
+      { "name" : "PG_DATABASE_USERNAME", "value" : var.db_user },
+      { "name" : "PORT", "value" : tostring(var.backend_image_port) },
+      { "name" : "PG_DATABASE_NAME", "value" : var.db_name },
+      { "name" : "AWS_S3_BUCKET", "value" : "${aws_s3_bucket.backend.bucket}" },
+      { "name" : "AWS_REGION", "value" : data.aws_region.current.name },
+      { "name" : "URL", "value" : var.api_domain },
+      { "name" : "SQS_QUEUE_URL", "value" : var.sqs_queue_url },
+      { "name" : "AWS_QUEUE_URL", "value" : var.sqs_queue_url },
+    ],
+    # Add ADOT collector URL when X-Ray is enabled
+    var.xray_enabled ? [
+      { "name" : "ADOT_COLLECTOR_URL", "value" : "localhost:2000" }
+    ] : []
+  )
 }

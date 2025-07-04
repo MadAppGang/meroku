@@ -11,7 +11,7 @@ resource "aws_ecs_service" "backend" {
   name                               = local.backend_name
   cluster                            = aws_ecs_cluster.main.id
   task_definition                    = aws_ecs_task_definition.backend.arn
-  desired_count                      = 1
+  desired_count                      = var.backend_desired_count
   deployment_minimum_healthy_percent = 50
   launch_type                        = "FARGATE"
   scheduling_strategy                = "REPLICA"
@@ -68,8 +68,8 @@ resource "aws_ecs_task_definition" "backend" {
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
   family                   = local.backend_name
-  cpu                      = var.xray_enabled ? 512 : 256
-  memory                   = var.xray_enabled ? 1024 : 512
+  cpu                      = max(var.backend_cpu, 256)  # Fargate minimum is 256
+  memory                   = max(var.backend_memory, 512)  # Fargate minimum is 512
   execution_role_arn       = aws_iam_role.backend_task_execution.arn
   task_role_arn            = aws_iam_role.backend_task.arn
 
@@ -94,8 +94,8 @@ resource "aws_ecs_task_definition" "backend" {
     [{
       name        = local.backend_name
       command     = var.backend_container_command
-      cpu         = 256
-      memory      = 512
+      cpu         = max(var.backend_cpu, 256)
+      memory      = max(var.backend_memory, 512)
       image       = local.docker_image
       secrets     = local.backend_env_ssm
       environment = concat(local.backend_env, var.backend_env)

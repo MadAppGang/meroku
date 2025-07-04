@@ -44,15 +44,21 @@ locals {
   }
 
   # Common environment variables for services
-  services_env = [
-    { "name" : "PG_DATABASE_HOST", "value" : var.db_endpoint },
-    { "name" : "PG_DATABASE_USERNAME", "value" : var.db_user },
-    { "name" : "PG_DATABASE_NAME", "value" : var.db_name },
-    { "name" : "AWS_REGION", "value" : data.aws_region.current.name },
-    { "name" : "URL", "value" : var.api_domain },
-    { "name" : "SQS_QUEUE_URL", "value" : var.sqs_queue_url },
-    { "name" : "AWS_QUEUE_URL", "value" : var.sqs_queue_url },
-  ]
+  services_env = concat(
+    [
+      { "name" : "PG_DATABASE_HOST", "value" : var.db_endpoint },
+      { "name" : "PG_DATABASE_USERNAME", "value" : var.db_user },
+      { "name" : "PG_DATABASE_NAME", "value" : var.db_name },
+      { "name" : "AWS_REGION", "value" : data.aws_region.current.name },
+      { "name" : "URL", "value" : var.api_domain },
+      { "name" : "SQS_QUEUE_URL", "value" : var.sqs_queue_url },
+      { "name" : "AWS_QUEUE_URL", "value" : var.sqs_queue_url },
+    ],
+    # Add ADOT collector URL for services with X-Ray enabled
+    var.xray_enabled ? [
+      { "name" : "ADOT_COLLECTOR_URL", "value" : "localhost:2000" }
+    ] : []
+  )
 
   # X-Ray container configuration
   xray_service_container = [

@@ -214,6 +214,25 @@ export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
           <Gauge className="w-3 h-3 text-white" />
         </div>
       )}
+      
+      {/* Scaling badges for backend service */}
+      {data.type === 'backend' && data.configProperties && (
+        <div className="absolute -top-2 -left-2 flex gap-1">
+          {/* Instance count badge */}
+          <div className="bg-blue-600 text-white rounded-full px-2 py-0.5 text-xs font-medium flex items-center gap-1">
+            <Users className="w-3 h-3" />
+            {data.configProperties.desiredCount || 1}
+          </div>
+          
+          {/* Autoscaling badge */}
+          {data.configProperties.autoscalingEnabled && (
+            <div className="bg-green-600 text-white rounded-full px-2 py-0.5 text-xs font-medium flex items-center gap-1">
+              <Activity className="w-3 h-3" />
+              {data.configProperties.autoscalingMinCapacity}-{data.configProperties.autoscalingMaxCapacity}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

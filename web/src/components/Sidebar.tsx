@@ -1,5 +1,5 @@
 import React, { useState, useContext, useRef, useEffect } from 'react';
-import { X, Settings, FileText, BarChart, Zap, Link, Code, Database, Upload, Globe, BookOpen, Key, HardDrive, Shield, Server, Network, Activity, ChevronLeft, ChevronRight, Bell } from 'lucide-react';
+import { X, Settings, FileText, BarChart, Zap, Link, Code, Database, Upload, Globe, BookOpen, Key, HardDrive, Shield, Server, Network, Activity, ChevronLeft, ChevronRight, Bell, Microscope, Gauge, Terminal } from 'lucide-react';
 import { ComponentNode } from '../types';
 import { Tabs } from './ui/tabs';
 import { Button } from './ui/button';
@@ -24,6 +24,10 @@ import { BackendEnvironmentVariables } from './BackendEnvironmentVariables';
 import { BackendParameterStore } from './BackendParameterStore';
 import { BackendS3Buckets } from './BackendS3Buckets';
 import { BackendIAMPermissions } from './BackendIAMPermissions';
+import { BackendXRayConfiguration } from './BackendXRayConfiguration';
+import { BackendScalingConfiguration } from './BackendScalingConfiguration';
+import { BackendSSHAccess } from './BackendSSHAccess';
+import { ServiceLogs } from './ServiceLogs';
 
 interface SidebarProps {
   selectedNode: ComponentNode | null;
@@ -171,6 +175,9 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
               { id: 'services', label: 'Services', icon: Activity },
             ] : selectedNode.type === 'backend' ? [
               { id: 'settings', label: 'Settings', icon: Settings },
+              { id: 'scaling', label: 'Scaling', icon: Gauge },
+              { id: 'xray', label: 'X-Ray', icon: Microscope },
+              { id: 'ssh', label: 'SSH', icon: Terminal },
               { id: 'env', label: 'Env Vars', icon: Zap },
               { id: 'params', label: 'Parameters', icon: Key },
               { id: 's3', label: 'S3 Buckets', icon: HardDrive },
@@ -211,6 +218,7 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
             <BackendServiceProperties 
               config={config}
               onConfigChange={onConfigChange}
+              accountInfo={accountInfo}
             />
           ) : selectedNode.type === 'github' && config && onConfigChange ? (
             <GitHubNodeProperties 
@@ -300,35 +308,42 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
           )
         )}
 
-        {activeTab === 'logs' && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-medium text-white">Recent Logs</h3>
-              <Button size="sm" variant="outline" className="text-xs">
-                Clear
-              </Button>
-            </div>
-            <div className="space-y-2 font-mono text-sm">
-              {mockLogs.map((log, index) => (
-                <div
-                  key={index}
-                  className="p-2 bg-gray-800 rounded border-l-4 border-l-blue-500"
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-gray-400 text-xs">{log.timestamp}</span>
-                    <span className={`text-xs px-2 py-1 rounded ${
-                      log.level === 'error' ? 'bg-red-900 text-red-300' :
-                      log.level === 'warning' ? 'bg-yellow-900 text-yellow-300' :
-                      'bg-blue-900 text-blue-300'
-                    }`}>
-                      {log.level.toUpperCase()}
-                    </span>
+        {activeTab === 'logs' && config && (
+          selectedNode.type === 'backend' ? (
+            <ServiceLogs environment={config.env} serviceName="backend" />
+          ) : selectedNode.type === 'service' ? (
+            <ServiceLogs environment={config.env} serviceName={selectedNode.name} />
+          ) : (
+            // Fallback to mock logs for other node types
+            <div className="space-y-2">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-medium text-white">Recent Logs</h3>
+                <Button size="sm" variant="outline" className="text-xs">
+                  Clear
+                </Button>
+              </div>
+              <div className="space-y-2 font-mono text-sm">
+                {mockLogs.map((log, index) => (
+                  <div
+                    key={index}
+                    className="p-2 bg-gray-800 rounded border-l-4 border-l-blue-500"
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-gray-400 text-xs">{log.timestamp}</span>
+                      <span className={`text-xs px-2 py-1 rounded ${
+                        log.level === 'error' ? 'bg-red-900 text-red-300' :
+                        log.level === 'warning' ? 'bg-yellow-900 text-yellow-300' :
+                        'bg-blue-900 text-blue-300'
+                      }`}>
+                        {log.level.toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="text-gray-300 text-xs">{log.message}</div>
                   </div>
-                  <div className="text-gray-300 text-xs">{log.message}</div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
+          )
         )}
 
         {activeTab === 'metrics' && (
@@ -489,6 +504,18 @@ jobs:
 
         {activeTab === 'description' && selectedNode.type === 'secrets-manager' && config && (
           <ParameterStoreDescription config={config} />
+        )}
+
+        {activeTab === 'scaling' && selectedNode.type === 'backend' && config && onConfigChange && (
+          <BackendScalingConfiguration config={config} onConfigChange={onConfigChange} />
+        )}
+
+        {activeTab === 'xray' && selectedNode.type === 'backend' && config && onConfigChange && (
+          <BackendXRayConfiguration config={config} onConfigChange={onConfigChange} />
+        )}
+
+        {activeTab === 'ssh' && selectedNode.type === 'backend' && config && onConfigChange && (
+          <BackendSSHAccess config={config} onConfigChange={onConfigChange} accountInfo={accountInfo} />
         )}
 
         {activeTab === 'env' && selectedNode.type === 'backend' && config && (

@@ -299,3 +299,52 @@ variable "backend_policy" {
   ]
   description = "Custom IAM policy for the backend task"
 }
+
+# Backend service scaling configuration
+variable "backend_cpu" {
+  description = "CPU units for the backend task (256, 512, 1024, 2048, 4096)"
+  type        = number
+  default     = 256
+}
+
+variable "backend_memory" {
+  description = "Memory for the backend task in MB"
+  type        = number
+  default     = 512
+}
+
+variable "backend_desired_count" {
+  description = "Desired number of backend tasks"
+  type        = number
+  default     = 1
+}
+
+variable "backend_autoscaling_enabled" {
+  description = "Enable autoscaling for backend service"
+  type        = bool
+  default     = false
+}
+
+variable "backend_autoscaling_min_capacity" {
+  description = "Minimum number of tasks for autoscaling"
+  type        = number
+  default     = 1
+}
+
+variable "backend_autoscaling_max_capacity" {
+  description = "Maximum number of tasks for autoscaling"
+  type        = number
+  default     = 10
+}
+
+variable "backend_autoscaling_target_cpu" {
+  description = "Target CPU utilization percentage for autoscaling"
+  type        = number
+  default     = 70
+}
+
+variable "backend_autoscaling_target_memory" {
+  description = "Target memory utilization percentage for autoscaling"
+  type        = number
+  default     = 80
+}

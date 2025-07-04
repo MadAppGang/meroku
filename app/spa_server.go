@@ -48,6 +48,15 @@ func mainRouter() http.Handler {
 	mux.HandleFunc("/api/ecs/cluster", corsMiddleware(getECSClusterInfo))
 	mux.HandleFunc("/api/ecs/network", corsMiddleware(getECSNetworkInfo))
 	mux.HandleFunc("/api/ecs/services", corsMiddleware(getECSServicesInfo))
+	// Autoscaling endpoints
+	mux.HandleFunc("/api/ecs/autoscaling", corsMiddleware(getServiceAutoscaling))
+	mux.HandleFunc("/api/ecs/scaling-history", corsMiddleware(getServiceScalingHistory))
+	mux.HandleFunc("/api/ecs/metrics", corsMiddleware(getServiceMetrics))
+	// Logs endpoints
+	mux.HandleFunc("/api/logs", corsMiddleware(getServiceLogs))
+	mux.HandleFunc("/ws/logs", streamServiceLogs) // WebSocket doesn't need CORS middleware
+	// Tasks endpoints
+	mux.HandleFunc("/api/ecs/tasks", corsMiddleware(getServiceTasks))
 
 	// SPA handler for all other routes
 	mux.HandleFunc("/", spaHandler())

@@ -150,6 +150,38 @@ More details could be found in official [GitHub docs](https://docs.github.com/en
 
 ![Architecture diagram](./docs/images/architecture.png)
 
+## Backend Scaling and Performance
+
+The infrastructure supports flexible backend service scaling with the following features:
+
+### Resource Configuration
+- **CPU**: Configure CPU units (256, 512, 1024, 2048, 4096)
+- **Memory**: Configure memory in MB (must be compatible with CPU selection)
+- **Instance Count**: Set desired number of backend instances
+
+### Autoscaling
+Enable automatic scaling based on resource utilization:
+- **CPU-based scaling**: Scale when CPU usage exceeds threshold (default: 70%)
+- **Memory-based scaling**: Scale when memory usage exceeds threshold (default: 80%)
+- **Request-based scaling**: When ALB is enabled, scale based on request count
+- **Configurable limits**: Set minimum and maximum instance counts
+
+Example configuration in `dev.yaml` or `prod.yaml`:
+```yaml
+workload:
+  # Basic scaling
+  backend_cpu: 512
+  backend_memory: 1024
+  backend_desired_count: 2
+  
+  # Autoscaling
+  backend_autoscaling_enabled: true
+  backend_autoscaling_min_capacity: 1
+  backend_autoscaling_max_capacity: 10
+  backend_autoscaling_target_cpu: 70
+  backend_autoscaling_target_memory: 80
+```
+
 ## Health check
 
 All services by default should respond status `200` on GET handler with path `/health/live`. If it is not responding with status 200, the application load balancer will consider the service unhealthy and redeploy it.

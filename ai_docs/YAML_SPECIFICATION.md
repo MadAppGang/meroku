@@ -38,6 +38,18 @@ workload:
     - <string>
   backend_image_port: <number>               # Container port (default: 8080)
   backend_remote_access: <boolean>           # Enable ECS Exec for debugging (default: true)
+  
+  # Backend scaling configuration
+  backend_cpu: <number>                      # CPU units for backend (256, 512, 1024, 2048, 4096) (default: 256)
+  backend_memory: <number>                   # Memory in MB for backend (default: 512)
+  backend_desired_count: <number>            # Number of backend instances (default: 1)
+  
+  # Backend autoscaling configuration
+  backend_autoscaling_enabled: <boolean>     # Enable autoscaling for backend service (default: false)
+  backend_autoscaling_min_capacity: <number> # Minimum number of tasks (default: 1)
+  backend_autoscaling_max_capacity: <number> # Maximum number of tasks (default: 10)
+  backend_autoscaling_target_cpu: <number>   # Target CPU utilization % (default: 70)
+  backend_autoscaling_target_memory: <number> # Target memory utilization % (default: 80)
 
   # S3 bucket configuration
   bucket_postfix: <string>                   # S3 bucket name suffix (alphanumeric + dash, max 30 chars)
@@ -267,6 +279,17 @@ workload:
   bucket_postfix: prod456
   bucket_public: false
   xray_enabled: true
+  
+  # Backend scaling for production
+  backend_cpu: 1024
+  backend_memory: 2048
+  backend_desired_count: 2
+  backend_autoscaling_enabled: true
+  backend_autoscaling_min_capacity: 2
+  backend_autoscaling_max_capacity: 20
+  backend_autoscaling_target_cpu: 70
+  backend_autoscaling_target_memory: 80
+  
   backend_env_variables:
     - name: NODE_ENV
       value: production
@@ -353,10 +376,24 @@ services:
 
    - CPU: Must be 256, 512, 1024, 2048, or 4096
    - Memory: Must be compatible with CPU (see AWS Fargate limits)
+   - Valid CPU/Memory combinations for Fargate:
+     - 256 CPU: 512, 1024, 2048 MB
+     - 512 CPU: 1024-4096 MB (in 1024 MB increments)
+     - 1024 CPU: 2048-8192 MB (in 1024 MB increments)
+     - 2048 CPU: 4096-16384 MB (in 1024 MB increments)
+     - 4096 CPU: 8192-30720 MB (in 1024 MB increments)
+   - When X-Ray is enabled, ensure total task resources accommodate both containers
 
 9. **GitHub OIDC**: Subjects must match your GitHub repository structure exactly.
 
 10. **Schedule Expressions**: Use UTC timezone for cron expressions.
+
+11. **Backend Autoscaling**: 
+    - When enabled, the backend service will scale based on CPU and memory utilization
+    - Scaling policies use target tracking with configurable thresholds
+    - Scale-out is faster (60s cooldown) than scale-in (300s cooldown) to handle traffic spikes
+    - If ALB is enabled, an additional request-based scaling policy is created
+    - Ensure min/max capacity aligns with your application's requirements and budget
 
 ## Template Processing
 
