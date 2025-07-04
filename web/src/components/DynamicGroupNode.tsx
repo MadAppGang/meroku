@@ -66,8 +66,8 @@ export function DynamicGroupNode({ data, id }: NodeProps<GroupNodeData>) {
 
     // Add padding
     const sidePadding = 20;
-    const topPadding = 0; // Space above nodes for label
-    const bottomPadding = 0; // Minimal bottom padding
+    const topPadding = 40; // Space above nodes for label
+    const bottomPadding = 20; // Bottom padding
 
     const bb = {
       x: minX - sidePadding,
@@ -102,7 +102,7 @@ export function DynamicGroupNode({ data, id }: NodeProps<GroupNodeData>) {
       <div
         style={{
           position: "absolute",
-          top: 8,
+          top: 12,
           left: 20,
           backgroundColor: "#0a0a0a",
           padding: "4px 12px",
