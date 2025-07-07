@@ -34,6 +34,7 @@ import { ScheduledTaskProperties } from './ScheduledTaskProperties';
 import { ScheduledTaskParameterStore } from './ScheduledTaskParameterStore';
 import { ScheduledTaskCloudWatch } from './ScheduledTaskCloudWatch';
 import { ScheduledTaskIAMPermissions } from './ScheduledTaskIAMPermissions';
+import { EventTaskProperties } from './EventTaskProperties';
 
 interface SidebarProps {
   selectedNode: ComponentNode | null;
@@ -182,6 +183,13 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
               { id: 'iam', label: 'IAM', icon: Shield },
               { id: 'cloudwatch', label: 'CloudWatch', icon: Cloud },
               { id: 'logs', label: 'Logs', icon: FileText },
+            ] : selectedNode.type === 'event-task' ? [
+              { id: 'settings', label: 'Settings', icon: Settings },
+              { id: 'env', label: 'Env Vars', icon: Zap },
+              { id: 'params', label: 'Parameters', icon: Key },
+              { id: 'iam', label: 'IAM', icon: Shield },
+              { id: 'cloudwatch', label: 'CloudWatch', icon: Cloud },
+              { id: 'logs', label: 'Logs', icon: FileText },
             ] : [
               { id: 'settings', label: 'Settings', icon: Settings },
               { id: 'logs', label: 'Logs', icon: FileText },
@@ -241,6 +249,13 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
             <ParameterStoreNodeProperties config={config} />
           ) : selectedNode.type === 'scheduled-task' && config && onConfigChange ? (
             <ScheduledTaskProperties 
+              config={config}
+              onConfigChange={onConfigChange}
+              accountInfo={accountInfo}
+              node={selectedNode}
+            />
+          ) : selectedNode.type === 'event-task' && config && onConfigChange ? (
+            <EventTaskProperties 
               config={config}
               onConfigChange={onConfigChange}
               accountInfo={accountInfo}
@@ -553,6 +568,64 @@ jobs:
           <ServiceLogs 
             environment={config.env} 
             serviceName={selectedNode.id.replace('scheduled-', '')} 
+          />
+        )}
+
+        {/* Event Task Tabs */}
+        {activeTab === 'env' && selectedNode.type === 'event-task' && config && (
+          <div className="space-y-4">
+            <h3 className="font-medium text-white">Environment Variables</h3>
+            
+            {/* Static Environment Variable */}
+            <div className="space-y-3">
+              <div className="bg-gray-800 rounded-lg p-4">
+                <h4 className="text-sm font-medium text-gray-200 mb-3">Static Environment Variables</h4>
+                {config.sqs?.enabled ? (
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-mono text-blue-400">SQS_QUEUE_URL</span>
+                      <span className="text-xs text-gray-500">Only when SQS is enabled</span>
+                    </div>
+                    <div className="text-sm font-mono text-gray-300 break-all bg-gray-900 p-2 rounded">
+                      https://sqs.{config.region}.amazonaws.com/{accountInfo?.accountId || '<ACCOUNT_ID>'}/{config.project}-{config.env}-{config.sqs.name || 'queue'}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-400">
+                    No environment variables. Enable SQS to get <code className="text-blue-400">SQS_QUEUE_URL</code>.
+                  </p>
+                )}
+              </div>
+              
+              {/* Note about other variables */}
+              <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-3">
+                <p className="text-xs text-gray-300">
+                  <strong className="text-blue-400">Note:</strong> To set custom environment variables, create parameters in AWS Systems Manager Parameter Store under:
+                </p>
+                <code className="text-xs text-gray-400 block mt-1">
+                  /{config.env}/{config.project}/task/{selectedNode.id.replace('event-', '')}/
+                </code>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'params' && selectedNode.type === 'event-task' && config && (
+          <ScheduledTaskParameterStore config={config} node={selectedNode} />
+        )}
+
+        {activeTab === 'iam' && selectedNode.type === 'event-task' && config && (
+          <ScheduledTaskIAMPermissions config={config} node={selectedNode} />
+        )}
+
+        {activeTab === 'cloudwatch' && selectedNode.type === 'event-task' && config && (
+          <ScheduledTaskCloudWatch config={config} node={selectedNode} />
+        )}
+
+        {activeTab === 'logs' && selectedNode.type === 'event-task' && config && (
+          <ServiceLogs 
+            environment={config.env} 
+            serviceName={selectedNode.id.replace('event-', '')} 
           />
         )}
 

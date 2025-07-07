@@ -26,8 +26,8 @@ interface ScheduledTaskParameterStoreProps {
 }
 
 export function ScheduledTaskParameterStore({ config, node }: ScheduledTaskParameterStoreProps) {
-  // Extract task name from node id (e.g., "scheduled-daily-report" -> "daily-report")
-  const taskName = node.id.replace('scheduled-', '');
+  // Extract task name from node id (e.g., "scheduled-daily-report" -> "daily-report", "event-order-processor" -> "order-processor")
+  const taskName = node.id.replace(/^(scheduled|event)-/, '');
   const parameterPath = `/${config.env}/${config.project}/task/${taskName}`;
   
   const [parameters, setParameters] = useState<SSMParameterMetadata[]>([]);
@@ -57,9 +57,20 @@ export function ScheduledTaskParameterStore({ config, node }: ScheduledTaskParam
       setLoading(true);
       setError(null);
       const params = await infrastructureApi.listSSMParameters(parameterPath);
-      setParameters(params);
+      // Handle null response when service is not deployed
+      setParameters(params || []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load parameters');
+      // If service is not deployed, we might get a specific error
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load parameters';
+      
+      // Check if it's a "service not deployed" type error
+      if (errorMessage.includes('not found') || errorMessage.includes('not deployed') || errorMessage.includes('does not exist')) {
+        // Don't show as error, just set empty parameters
+        setParameters([]);
+        setError(null);
+      } else {
+        setError(errorMessage);
+      }
     } finally {
       setLoading(false);
     }
@@ -353,6 +364,11 @@ export function ScheduledTaskParameterStore({ config, node }: ScheduledTaskParam
                   <Key className="w-8 h-8 mx-auto mb-2 opacity-50" />
                   <p className="text-sm">No parameters found for this task</p>
                   <p className="text-xs mt-1">Click "Add Parameter" to create one</p>
+                  {!error && (
+                    <p className="text-xs mt-2 text-gray-500">
+                      If the task is not deployed yet, parameters will be available after deployment
+                    </p>
+                  )}
                 </div>
               )}
             </div>

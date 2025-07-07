@@ -15,13 +15,13 @@ interface ScheduledTaskCloudWatchProps {
 export function ScheduledTaskCloudWatch({ config, node }: ScheduledTaskCloudWatchProps) {
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
   
-  // Extract task name from node id
-  const taskName = node.id.replace('scheduled-', '');
+  // Extract task name from node id (works for both scheduled and event tasks)
+  const taskName = node.id.replace(/^(scheduled|event)-/, '');
 
   const logGroup = {
-    name: `/ecs/${config.project}/task/${taskName}`,
-    description: `Scheduled task logs for ${taskName}`,
-    service: 'ECS Scheduled Task',
+    name: `${config.project}_task_${taskName}_${config.env}`,
+    description: `Task logs for ${taskName}`,
+    service: node.type === 'scheduled-task' ? 'ECS Scheduled Task' : 'ECS Event Task',
     retention: '7 days'
   };
 
@@ -133,7 +133,7 @@ export function ScheduledTaskCloudWatch({ config, node }: ScheduledTaskCloudWatc
             CloudWatch CLI Commands
           </CardTitle>
           <CardDescription>
-            Commands for viewing and analyzing scheduled task logs
+            Commands for viewing and analyzing task logs
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">

@@ -12,12 +12,14 @@ interface ScheduledTaskIAMPermissionsProps {
 }
 
 export function ScheduledTaskIAMPermissions({ config, node }: ScheduledTaskIAMPermissionsProps) {
-  // Extract task name from node id
-  const taskName = node.id.replace('scheduled-', '');
+  // Extract task name from node id (works for both scheduled and event tasks)
+  const taskName = node.id.replace(/^(scheduled|event)-/, '');
   
   // Check if SQS is enabled for this specific task
-  const taskConfig = config.scheduled_tasks?.find(task => task.name === taskName);
-  const sqsEnabled = taskConfig?.sqs_enable || false;
+  const scheduledTaskConfig = config.scheduled_tasks?.find(task => task.name === taskName);
+  const eventTaskConfig = config.event_processor_tasks?.find(task => task.name === taskName);
+  const taskConfig = scheduledTaskConfig || eventTaskConfig;
+  const sqsEnabled = (taskConfig as any)?.sqs_enable || false; // sqs_enable might not be in the type definition
 
   const roles = [
     {
@@ -106,7 +108,7 @@ export function ScheduledTaskIAMPermissions({ config, node }: ScheduledTaskIAMPe
           <Alert>
             <Info className="h-4 w-4" />
             <AlertDescription>
-              Each scheduled task uses three IAM roles following the principle of least privilege. 
+              Each task uses three IAM roles following the principle of least privilege. 
               Roles are automatically created by Terraform with task-specific permissions.
             </AlertDescription>
           </Alert>
