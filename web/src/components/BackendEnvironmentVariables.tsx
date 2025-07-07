@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/
 import { Badge } from './ui/badge';
 import { Separator } from './ui/separator';
 import { YamlInfrastructureConfig } from '../types/yamlConfig';
+import { type AccountInfo } from '../api/infrastructure';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { Plus, Trash2, Edit2, Check, X, Lock, Settings } from 'lucide-react';
@@ -10,9 +11,10 @@ import { Label } from './ui/label';
 
 interface BackendEnvironmentVariablesProps {
   config: YamlInfrastructureConfig;
+  accountInfo?: AccountInfo;
 }
 
-export function BackendEnvironmentVariables({ config }: BackendEnvironmentVariablesProps) {
+export function BackendEnvironmentVariables({ config, accountInfo }: BackendEnvironmentVariablesProps) {
   const [editingPort, setEditingPort] = useState(false);
   const [portValue, setPortValue] = useState(config.workload?.backend_image_port?.toString() || '8080');
   const [customVars, setCustomVars] = useState(config.workload?.backend_env_variables || []);
@@ -29,8 +31,8 @@ export function BackendEnvironmentVariables({ config }: BackendEnvironmentVariab
     { name: 'AWS_S3_BUCKET', value: `${config.project}-backend-${config.env}${config.workload?.bucket_postfix ? `-${config.workload.bucket_postfix}` : ''}`, description: 'S3 Bucket for Backend' },
     { name: 'AWS_REGION', value: config.region, description: 'AWS Region' },
     { name: 'URL', value: config.workload?.backend_alb_domain_name || `api.${config.domain?.domain_name || ''}`, description: 'API Domain URL' },
-    { name: 'SQS_QUEUE_URL', value: `https://sqs.${config.region}.amazonaws.com/${config.ecr_account_id || 'ACCOUNT_ID'}/${config.project}-${config.env}-queue`, description: 'SQS Queue URL' },
-    { name: 'AWS_QUEUE_URL', value: `https://sqs.${config.region}.amazonaws.com/${config.ecr_account_id || 'ACCOUNT_ID'}/${config.project}-${config.env}-queue`, description: 'SQS Queue URL (Alias)' },
+    { name: 'SQS_QUEUE_URL', value: `https://sqs.${config.region}.amazonaws.com/${accountInfo?.accountId || config.ecr_account_id || '<ACCOUNT_ID>'}/${config.project}-${config.env}-${config.sqs?.name || 'queue'}`, description: 'SQS Queue URL' },
+    { name: 'AWS_QUEUE_URL', value: `https://sqs.${config.region}.amazonaws.com/${accountInfo?.accountId || config.ecr_account_id || '<ACCOUNT_ID>'}/${config.project}-${config.env}-${config.sqs?.name || 'queue'}`, description: 'SQS Queue URL (Alias)' },
   ];
 
   // Configurable environment variables

@@ -23,9 +23,8 @@ export function BackendServiceProperties({ config, onConfigChange, accountInfo }
   const accountId = accountInfo?.accountId || config.ecr_account_id;
   const region = config.ecr_account_region || config.region;
   
-  const ecrUri = accountId 
-    ? `${accountId}.dkr.ecr.${region}.amazonaws.com/${ecrRepoName}`
-    : `<YOUR_ACCOUNT_ID>.dkr.ecr.${region}.amazonaws.com/${ecrRepoName}`;
+  // Always show the actual account ID when available
+  const ecrUri = `${accountId || '<YOUR_ACCOUNT_ID>'}.dkr.ecr.${region}.amazonaws.com/${ecrRepoName}`;
 
   const handleWorkloadChange = (updates: Partial<YamlInfrastructureConfig['workload']>) => {
     onConfigChange({

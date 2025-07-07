@@ -1,5 +1,5 @@
 import React, { useState, useContext, useRef, useEffect } from 'react';
-import { X, Settings, FileText, BarChart, Zap, Link, Code, Database, Upload, Globe, BookOpen, Key, HardDrive, Shield, Server, Network, Activity, ChevronLeft, ChevronRight, Bell, Microscope, Gauge, Terminal, Cloud } from 'lucide-react';
+import { X, Settings, FileText, BarChart, Zap, Link, Code, Database, Upload, Globe, BookOpen, Key, HardDrive, Shield, Server, Network, Activity, ChevronLeft, ChevronRight, Bell, Microscope, Gauge, Terminal, Cloud, Info } from 'lucide-react';
 import { ComponentNode } from '../types';
 import { Tabs } from './ui/tabs';
 import { Button } from './ui/button';
@@ -30,6 +30,7 @@ import { BackendSSHAccess } from './BackendSSHAccess';
 import { BackendCloudWatch } from './BackendCloudWatch';
 import { BackendAlerts } from './BackendAlerts';
 import { ServiceLogs } from './ServiceLogs';
+import { ScheduledTaskProperties } from './ScheduledTaskProperties';
 
 interface SidebarProps {
   selectedNode: ComponentNode | null;
@@ -86,14 +87,6 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
     { timestamp: '2024-01-12 09:08:45', level: 'info' as const, message: 'Request processed successfully' },
     { timestamp: '2024-01-12 09:09:10', level: 'error' as const, message: 'Failed to connect to external API' },
   ];
-
-  const mockEnvVars = {
-    NODE_ENV: 'production',
-    PORT: '3000',
-    DATABASE_URL: 'postgres://user:pass@localhost:5432/db',
-    REDIS_URL: 'redis://localhost:6379',
-    API_KEY: '**********************',
-  };
 
   return (
     <div className="fixed right-0 top-0 h-full w-[768px] bg-gray-900 border-l border-gray-700 shadow-xl z-50 flex flex-col">
@@ -187,6 +180,10 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
               { id: 'logs', label: 'Logs', icon: FileText },
               { id: 'cloudwatch', label: 'CloudWatch', icon: Cloud },
               { id: 'alerts', label: 'Alerts', icon: Bell },
+            ] : selectedNode.type === 'scheduled-task' ? [
+              { id: 'settings', label: 'Settings', icon: Settings },
+              { id: 'env', label: 'Env Vars', icon: Zap },
+              { id: 'logs', label: 'Logs', icon: FileText },
             ] : [
               { id: 'settings', label: 'Settings', icon: Settings },
               { id: 'logs', label: 'Logs', icon: FileText },
@@ -244,6 +241,13 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
             <AuroraNodeProperties />
           ) : selectedNode.type === 'secrets-manager' && config ? (
             <ParameterStoreNodeProperties config={config} />
+          ) : selectedNode.type === 'scheduled-task' && config && onConfigChange ? (
+            <ScheduledTaskProperties 
+              config={config}
+              onConfigChange={onConfigChange}
+              accountInfo={accountInfo}
+              node={selectedNode}
+            />
           ) : (
             <div className="space-y-6">
               <div>
@@ -376,26 +380,6 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
           </div>
         )}
 
-        {activeTab === 'env' && selectedNode.type !== 'backend' && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="font-medium text-white">Environment Variables</h3>
-              <Button size="sm" variant="outline" className="text-xs">
-                Add Variable
-              </Button>
-            </div>
-            <div className="space-y-2">
-              {Object.entries(mockEnvVars).map(([key, value]) => (
-                <div key={key} className="bg-gray-800 p-3 rounded-lg">
-                  <div className="text-sm font-medium text-white">{key}</div>
-                  <div className="text-sm text-gray-400 font-mono mt-1">
-                    {value}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {activeTab === 'connections' && (
           <div className="space-y-4">
@@ -523,7 +507,7 @@ jobs:
         )}
 
         {activeTab === 'env' && selectedNode.type === 'backend' && config && (
-          <BackendEnvironmentVariables config={config} />
+          <BackendEnvironmentVariables config={config} accountInfo={accountInfo} />
         )}
 
         {activeTab === 'params' && selectedNode.type === 'backend' && config && (
@@ -545,6 +529,53 @@ jobs:
         {activeTab === 'alerts' && selectedNode.type === 'backend' && config && (
           <BackendAlerts config={config} />
         )}
+
+        {/* Scheduled Task Tabs */}
+        {activeTab === 'env' && selectedNode.type === 'scheduled-task' && config && (
+          <div className="space-y-4">
+            <h3 className="font-medium text-white">Environment Variables</h3>
+            
+            {/* Static Environment Variable */}
+            <div className="space-y-3">
+              <div className="bg-gray-800 rounded-lg p-4">
+                <h4 className="text-sm font-medium text-gray-200 mb-3">Static Environment Variables</h4>
+                {config.sqs?.enabled ? (
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-mono text-blue-400">SQS_QUEUE_URL</span>
+                      <span className="text-xs text-gray-500">Only when SQS is enabled</span>
+                    </div>
+                    <div className="text-sm font-mono text-gray-300 break-all bg-gray-900 p-2 rounded">
+                      https://sqs.{config.region}.amazonaws.com/{accountInfo?.accountId || '<ACCOUNT_ID>'}/{config.project}-{config.env}-{config.sqs.name || 'queue'}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-400">
+                    No environment variables. Enable SQS to get <code className="text-blue-400">SQS_QUEUE_URL</code>.
+                  </p>
+                )}
+              </div>
+              
+              {/* Note about other variables */}
+              <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-3">
+                <p className="text-xs text-gray-300">
+                  <strong className="text-blue-400">Note:</strong> To set custom environment variables, create parameters in AWS Systems Manager Parameter Store under:
+                </p>
+                <code className="text-xs text-gray-400 block mt-1">
+                  /{config.env}/{config.project}/task/{selectedNode.id.replace('scheduled-', '')}/
+                </code>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'logs' && selectedNode.type === 'scheduled-task' && config && (
+          <ServiceLogs 
+            environment={config.env} 
+            serviceName={`task/${selectedNode.id.replace('scheduled-', '')}`} 
+          />
+        )}
+
 
         {activeTab === 'cluster' && selectedNode.type === 'ecs' && config && (
           <ECSClusterInfo config={config} />
