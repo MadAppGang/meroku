@@ -1,5 +1,5 @@
 import React, { useState, useContext, useRef, useEffect } from 'react';
-import { X, Settings, FileText, BarChart, Zap, Link, Code, Database, Upload, Globe, BookOpen, Key, HardDrive, Shield, Server, Network, Activity, ChevronLeft, ChevronRight, Bell, Microscope, Gauge, Terminal, Cloud, Info } from 'lucide-react';
+import { X, Settings, FileText, BarChart, Zap, Link, Code, Database, Upload, Globe, BookOpen, Key, HardDrive, Shield, Server, Network, Activity, ChevronLeft, ChevronRight, Bell, Microscope, Gauge, Terminal, Cloud, Info, Send } from 'lucide-react';
 import { ComponentNode } from '../types';
 import { Tabs } from './ui/tabs';
 import { Button } from './ui/button';
@@ -35,6 +35,7 @@ import { ScheduledTaskParameterStore } from './ScheduledTaskParameterStore';
 import { ScheduledTaskCloudWatch } from './ScheduledTaskCloudWatch';
 import { ScheduledTaskIAMPermissions } from './ScheduledTaskIAMPermissions';
 import { EventTaskProperties } from './EventTaskProperties';
+import { EventTaskTestEvent } from './EventTaskTestEvent';
 
 interface SidebarProps {
   selectedNode: ComponentNode | null;
@@ -185,6 +186,7 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
               { id: 'logs', label: 'Logs', icon: FileText },
             ] : selectedNode.type === 'event-task' ? [
               { id: 'settings', label: 'Settings', icon: Settings },
+              { id: 'test', label: 'Test Event', icon: Send },
               { id: 'env', label: 'Env Vars', icon: Zap },
               { id: 'params', label: 'Parameters', icon: Key },
               { id: 'iam', label: 'IAM', icon: Shield },
@@ -608,6 +610,10 @@ jobs:
               </div>
             </div>
           </div>
+        )}
+
+        {activeTab === 'test' && selectedNode.type === 'event-task' && config && (
+          <EventTaskTestEvent config={config} node={selectedNode} />
         )}
 
         {activeTab === 'params' && selectedNode.type === 'event-task' && config && (

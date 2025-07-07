@@ -240,6 +240,26 @@ export interface BoardPositions {
 	positions: NodePosition[];
 }
 
+export interface TestEventRequest {
+	source: string;
+	detailType: string;
+	detail?: Record<string, any>;
+}
+
+export interface TestEventResponse {
+	success: boolean;
+	eventId?: string;
+	message: string;
+}
+
+export interface EventTaskInfo {
+	name: string;
+	ruleName: string;
+	sources: string[];
+	detailTypes: string[];
+	dockerImage?: string;
+}
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || "";
 
 export const infrastructureApi = {
@@ -635,5 +655,30 @@ export const infrastructureApi = {
 			const error: ErrorResponse = await response.json();
 			throw new Error(error.error || "Failed to save node positions");
 		}
+	},
+
+	// EventBridge APIs
+	async sendTestEvent(event: TestEventRequest): Promise<TestEventResponse> {
+		const response = await fetch(`${API_BASE_URL}/api/eventbridge/send-test-event`, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify(event),
+		});
+		if (!response.ok) {
+			const error: ErrorResponse = await response.json();
+			throw new Error(error.error || "Failed to send test event");
+		}
+		return response.json();
+	},
+
+	async getEventTasks(env: string): Promise<EventTaskInfo[]> {
+		const response = await fetch(`${API_BASE_URL}/api/eventbridge/event-tasks?env=${encodeURIComponent(env)}`);
+		if (!response.ok) {
+			const error: ErrorResponse = await response.json();
+			throw new Error(error.error || "Failed to fetch event tasks");
+		}
+		return response.json();
 	},
 };
