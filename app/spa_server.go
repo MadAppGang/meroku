@@ -107,6 +107,8 @@ func mainRouter() http.Handler {
 	mux.HandleFunc("/api/ses/status", corsMiddleware(getSESStatus))
 	mux.HandleFunc("/api/ses/sandbox-info", corsMiddleware(getSESSandboxInfo))
 	mux.HandleFunc("/api/ses/send-test-email", corsMiddleware(sendTestEmail))
+	mux.HandleFunc("/api/ses/request-production", corsMiddleware(submitSESProductionAccess))
+	mux.HandleFunc("/api/ses/production-access-prefill", corsMiddleware(getProductionAccessPrefill))
 
 	// SPA handler for all other routes
 	mux.HandleFunc("/", spaHandler())

@@ -721,8 +721,8 @@ export const infrastructureApi = {
 		return response.json();
 	},
 
-	async sendTestEmail(to: string, subject: string, body: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
-		const response = await fetch(`${API_BASE_URL}/api/ses/send-test-email`, {
+	async sendTestEmail(env: string, to: string, subject: string, body: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
+		const response = await fetch(`${API_BASE_URL}/api/ses/send-test-email?env=${encodeURIComponent(env)}`, {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
@@ -732,6 +732,53 @@ export const infrastructureApi = {
 		if (!response.ok) {
 			const error: ErrorResponse = await response.json();
 			throw new Error(error.error || "Failed to send test email");
+		}
+		return response.json();
+	},
+
+	async getProductionAccessPrefill(env: string): Promise<{
+		websiteUrl: string;
+		useCaseDescription: string;
+		mailingListBuildProcess: string;
+		bounceComplaintProcess: string;
+		additionalInfo: string;
+		expectedDailyVolume: string;
+		expectedPeakVolume: string;
+		domainName: string;
+	}> {
+		const response = await fetch(`${API_BASE_URL}/api/ses/production-access-prefill?env=${encodeURIComponent(env)}`);
+		if (!response.ok) {
+			const error: ErrorResponse = await response.json();
+			throw new Error(error.error || "Failed to fetch production access prefill");
+		}
+		return response.json();
+	},
+
+	async requestSESProductionAccess(env: string, data: {
+		websiteUrl: string;
+		useCaseDescription: string;
+		mailingListBuildProcess: string;
+		bounceComplaintProcess: string;
+		additionalInfo: string;
+		expectedDailyVolume: string;
+		expectedPeakVolume: string;
+		contactLanguage?: string;
+	}): Promise<{
+		success: boolean;
+		caseId?: string;
+		error?: string;
+		message?: string;
+	}> {
+		const response = await fetch(`${API_BASE_URL}/api/ses/request-production?env=${encodeURIComponent(env)}`, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify(data),
+		});
+		if (!response.ok) {
+			const error: ErrorResponse = await response.json();
+			throw new Error(error.error || "Failed to request SES production access");
 		}
 		return response.json();
 	},

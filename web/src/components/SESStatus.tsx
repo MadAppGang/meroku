@@ -16,7 +16,8 @@ import {
   TrendingUp,
   XCircle,
   ExternalLink,
-  Clock
+  Clock,
+  Copy
 } from 'lucide-react';
 
 interface SESStatusProps {
@@ -254,66 +255,167 @@ export function SESStatus({ config }: SESStatusProps) {
 
       {/* Sandbox Information */}
       {status.inSandbox && sandboxInfo && (
-        <Card>
+        <Card className="border-yellow-600/50">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Info className="w-5 h-5" />
-              Sandbox Mode Information
+              <AlertCircle className="w-5 h-5 text-yellow-500" />
+              Sandbox Mode - Request Production Access
             </CardTitle>
             <CardDescription>
-              Limitations and how to request production access
+              Your account is currently limited. Request production access to send emails without restrictions.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Limitations */}
-            <div>
-              <h4 className="text-sm font-medium text-gray-300 mb-2">Current Limitations</h4>
-              <ul className="space-y-1 text-sm text-gray-400">
-                {sandboxInfo.limitations.map((limitation, index) => (
-                  <li key={index} className="flex items-start gap-2">
-                    <span className="text-yellow-400">•</span>
-                    <span>{limitation}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* Exit Steps */}
-            <div>
-              <h4 className="text-sm font-medium text-gray-300 mb-2">How to Exit Sandbox</h4>
-              <ol className="space-y-2 text-sm text-gray-400">
-                {sandboxInfo.exitSteps.map((step, index) => (
-                  <li key={index} className="flex items-start gap-2">
-                    <span className="text-blue-400">{index + 1}.</span>
-                    <span>{step}</span>
-                  </li>
-                ))}
-              </ol>
-            </div>
-
-            {/* Required Info */}
-            <div>
-              <h4 className="text-sm font-medium text-gray-300 mb-2">Required for Production Access</h4>
-              <ul className="space-y-1 text-sm text-gray-400">
-                {sandboxInfo.requiredInfo.map((info, index) => (
-                  <li key={index} className="flex items-start gap-2">
-                    <span className="text-green-400">✓</span>
-                    <span>{info}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="pt-2">
+            {/* Action Buttons */}
+            <div className="flex gap-2">
               <Button
-                variant="outline"
-                size="sm"
+                variant="default"
                 onClick={() => window.open('https://console.aws.amazon.com/ses/home#/account', '_blank')}
               >
                 <ExternalLink className="w-4 h-4 mr-2" />
                 Request Production Access
               </Button>
+              <Button
+                variant="outline"
+                onClick={() => window.open('https://docs.aws.amazon.com/ses/latest/dg/request-production-access.html', '_blank')}
+              >
+                <Info className="w-4 h-4 mr-2" />
+                View Guide
+              </Button>
             </div>
+
+            {/* Current Limitations */}
+            <Alert variant="warning">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                <p className="font-medium mb-2">Current Sandbox Limitations:</p>
+                <ul className="space-y-1 text-sm">
+                  {sandboxInfo.limitations.map((limitation, index) => (
+                    <li key={index}>• {limitation}</li>
+                  ))}
+                </ul>
+              </AlertDescription>
+            </Alert>
+
+            {/* Production Access Request Template */}
+            <div className="space-y-3">
+              <h4 className="text-sm font-medium text-gray-300">Production Access Request Template</h4>
+              <div className="bg-gray-800 rounded-lg p-4 space-y-3">
+                <p className="text-sm text-gray-400">Use this template when submitting your production access request:</p>
+                
+                <div className="bg-gray-900 rounded p-3 font-mono text-xs text-gray-300 space-y-2">
+                  <p><strong>Use Case Description:</strong></p>
+                  <p>We are using AWS SES to send transactional emails for our {config.project || '[PROJECT NAME]'} application. Our emails include:</p>
+                  <p>- User registration confirmations</p>
+                  <p>- Password reset notifications</p>
+                  <p>- Order confirmations and updates</p>
+                  <p>- System alerts and notifications</p>
+                  <p></p>
+                  <p><strong>Email Volume:</strong></p>
+                  <p>Expected daily volume: [SPECIFY YOUR EXPECTED VOLUME]</p>
+                  <p>Peak sending rate: [SPECIFY EMAILS PER SECOND]</p>
+                  <p></p>
+                  <p><strong>Recipient Management:</strong></p>
+                  <p>- All recipients have explicitly opted in to receive emails</p>
+                  <p>- We maintain unsubscribe links in all marketing emails</p>
+                  <p>- We immediately process bounce and complaint notifications</p>
+                  <p>- We maintain a suppression list for opted-out addresses</p>
+                  <p></p>
+                  <p><strong>Content Type:</strong></p>
+                  <p>Transactional emails only - no marketing or promotional content without explicit consent</p>
+                  <p></p>
+                  <p><strong>Compliance:</strong></p>
+                  <p>We comply with CAN-SPAM Act, GDPR, and all applicable email regulations</p>
+                </div>
+                
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    const template = `Use Case Description:
+We are using AWS SES to send transactional emails for our ${config.project || '[PROJECT NAME]'} application. Our emails include:
+- User registration confirmations
+- Password reset notifications
+- Order confirmations and updates
+- System alerts and notifications
+
+Email Volume:
+Expected daily volume: [SPECIFY YOUR EXPECTED VOLUME]
+Peak sending rate: [SPECIFY EMAILS PER SECOND]
+
+Recipient Management:
+- All recipients have explicitly opted in to receive emails
+- We maintain unsubscribe links in all marketing emails
+- We immediately process bounce and complaint notifications
+- We maintain a suppression list for opted-out addresses
+
+Content Type:
+Transactional emails only - no marketing or promotional content without explicit consent
+
+Compliance:
+We comply with CAN-SPAM Act, GDPR, and all applicable email regulations`;
+                    navigator.clipboard.writeText(template);
+                  }}
+                >
+                  <Copy className="w-3 h-3 mr-1" />
+                  Copy Template
+                </Button>
+              </div>
+            </div>
+
+            {/* Step by Step Instructions */}
+            <div className="space-y-3">
+              <h4 className="text-sm font-medium text-gray-300">How to Request Production Access</h4>
+              <ol className="space-y-2 text-sm text-gray-400">
+                <li className="flex items-start gap-2">
+                  <span className="text-blue-400 font-medium">1.</span>
+                  <div>
+                    <p>Go to the AWS Support Center</p>
+                    <p className="text-xs mt-1">Click "Request Production Access" button above</p>
+                  </div>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-blue-400 font-medium">2.</span>
+                  <div>
+                    <p>Create a new case with:</p>
+                    <ul className="text-xs mt-1 ml-4 space-y-1">
+                      <li>• Service: Service Limit Increase</li>
+                      <li>• Limit Type: SES Sending Limits</li>
+                      <li>• Region: {status.region}</li>
+                    </ul>
+                  </div>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-blue-400 font-medium">3.</span>
+                  <div>
+                    <p>Fill in the request details:</p>
+                    <ul className="text-xs mt-1 ml-4 space-y-1">
+                      <li>• Use the template above</li>
+                      <li>• Be specific about your use case</li>
+                      <li>• Include your website URL</li>
+                    </ul>
+                  </div>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-blue-400 font-medium">4.</span>
+                  <span>Submit and wait 24-48 hours for approval</span>
+                </li>
+              </ol>
+            </div>
+
+            {/* Best Practices */}
+            <Alert>
+              <Info className="h-4 w-4" />
+              <AlertDescription>
+                <p className="font-medium mb-1">Tips for Approval:</p>
+                <ul className="text-xs space-y-1">
+                  <li>• Clearly explain your business use case</li>
+                  <li>• Demonstrate you have bounce/complaint handling</li>
+                  <li>• Show you maintain opt-in/opt-out mechanisms</li>
+                  <li>• Include your privacy policy URL</li>
+                </ul>
+              </AlertDescription>
+            </Alert>
           </CardContent>
         </Card>
       )}
