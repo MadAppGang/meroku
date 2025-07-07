@@ -171,6 +171,17 @@ export const nodeStateMapping: NodeStateConfig[] = [
 		description: "Firebase Cloud Messaging/SNS for push notifications",
 	},
 	{
+		id: "sqs",
+		name: "Amazon SQS",
+		type: "sqs",
+		enabled: (config) => config.sqs?.enabled === true,
+		properties: (config) => ({
+			queueName: config.sqs?.name || 'default-queue',
+			queueUrl: `https://sqs.${config.region}.amazonaws.com/${config.region}/${config.project}-${config.env}-${config.sqs?.name || 'default-queue'}`,
+		}),
+		description: "Simple Queue Service for async task processing",
+	},
+	{
 		id: "ses",
 		name: "Amazon SES",
 		type: "ses",

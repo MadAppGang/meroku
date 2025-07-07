@@ -41,6 +41,7 @@ import { SESStatus } from './SESStatus';
 import { SESSendTestEmail } from './SESSendTestEmail';
 import { S3NodeProperties } from './S3NodeProperties';
 import { PostgresNodeProperties } from './PostgresNodeProperties';
+import { SQSNodeProperties } from './SQSNodeProperties';
 
 interface SidebarProps {
   selectedNode: ComponentNode | null;
@@ -172,6 +173,8 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
               { id: 'settings', label: 'Buckets', icon: HardDrive },
             ] : selectedNode.type === 'postgres' ? [
               { id: 'settings', label: 'Settings', icon: Settings },
+            ] : selectedNode.type === 'sqs' ? [
+              { id: 'settings', label: 'Settings', icon: Settings },
             ] : selectedNode.type === 'ecs' ? [
               { id: 'settings', label: 'Settings', icon: Settings },
               { id: 'notifications', label: 'Notifications', icon: Bell },
@@ -271,6 +274,8 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
             <S3NodeProperties config={config} onConfigChange={onConfigChange} />
           ) : selectedNode.type === 'postgres' && config && onConfigChange ? (
             <PostgresNodeProperties config={config} onConfigChange={onConfigChange} accountInfo={accountInfo} />
+          ) : selectedNode.type === 'sqs' && config && onConfigChange ? (
+            <SQSNodeProperties config={config} onConfigChange={onConfigChange} accountInfo={accountInfo} />
           ) : selectedNode.type === 'scheduled-task' && config && onConfigChange ? (
             <ScheduledTaskProperties 
               config={config}
