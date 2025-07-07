@@ -182,15 +182,15 @@ const initialNodes: Node[] = [
     },
   },
 
-  // Aurora DB (standalone - not in ECS cluster)
+  // PostgreSQL Database (standalone - not in ECS cluster)
   {
     id: "aurora",
     type: "service",
     position: { x: 600, y: 110 },
     data: {
       id: "aurora",
-      type: "aurora",
-      name: "Amazon Aurora",
+      type: "postgres",
+      name: "PostgreSQL Database",
       status: "running",
       deletable: false,
     },

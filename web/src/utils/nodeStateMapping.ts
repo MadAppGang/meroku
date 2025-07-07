@@ -130,10 +130,18 @@ export const nodeStateMapping: NodeStateConfig[] = [
 	},
 	{
 		id: "aurora",
-		name: "Amazon Aurora",
-		type: "aurora",
-		enabled: () => false, // RDS PostgreSQL used instead
-		description: "RDS PostgreSQL used instead",
+		name: "PostgreSQL Database",
+		type: "postgres",
+		enabled: (config) => config.postgres?.enabled === true,
+		properties: (config) => ({
+			dbname: config.postgres?.dbname || config.project,
+			username: config.postgres?.username || 'postgres',
+			publicAccess: config.postgres?.public_access || false,
+			engineVersion: config.postgres?.engine_version || '14',
+			pgAdminEnabled: config.workload?.install_pg_admin || false,
+			pgAdminEmail: config.workload?.pg_admin_email || 'admin@madappgang.com',
+		}),
+		description: "AWS RDS Aurora PostgreSQL Serverless v2",
 	},
 
 	// Storage Layer
