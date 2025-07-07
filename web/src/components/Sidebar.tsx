@@ -32,6 +32,7 @@ import { BackendAlerts } from './BackendAlerts';
 import { ServiceLogs } from './ServiceLogs';
 import { ScheduledTaskProperties } from './ScheduledTaskProperties';
 import { ScheduledTaskParameterStore } from './ScheduledTaskParameterStore';
+import { ScheduledTaskCloudWatch } from './ScheduledTaskCloudWatch';
 
 interface SidebarProps {
   selectedNode: ComponentNode | null;
@@ -80,14 +81,6 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
   };
 
   if (!isOpen || !selectedNode) return null;
-
-  const mockLogs = [
-    { timestamp: '2024-01-12 09:05:30', level: 'info' as const, message: 'Application started successfully' },
-    { timestamp: '2024-01-12 09:06:50', level: 'info' as const, message: 'Database connection established' },
-    { timestamp: '2024-01-12 09:07:20', level: 'warning' as const, message: 'High memory usage detected' },
-    { timestamp: '2024-01-12 09:08:45', level: 'info' as const, message: 'Request processed successfully' },
-    { timestamp: '2024-01-12 09:09:10', level: 'error' as const, message: 'Failed to connect to external API' },
-  ];
 
   return (
     <div className="fixed right-0 top-0 h-full w-[768px] bg-gray-900 border-l border-gray-700 shadow-xl z-50 flex flex-col">
@@ -185,6 +178,7 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
               { id: 'settings', label: 'Settings', icon: Settings },
               { id: 'env', label: 'Env Vars', icon: Zap },
               { id: 'params', label: 'Parameters', icon: Key },
+              { id: 'cloudwatch', label: 'CloudWatch', icon: Cloud },
               { id: 'logs', label: 'Logs', icon: FileText },
             ] : [
               { id: 'settings', label: 'Settings', icon: Settings },
@@ -323,37 +317,7 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
             <ServiceLogs environment={config.env} serviceName="backend" />
           ) : selectedNode.type === 'service' ? (
             <ServiceLogs environment={config.env} serviceName={selectedNode.name} />
-          ) : (
-            // Fallback to mock logs for other node types
-            <div className="space-y-2">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-medium text-white">Recent Logs</h3>
-                <Button size="sm" variant="outline" className="text-xs">
-                  Clear
-                </Button>
-              </div>
-              <div className="space-y-2 font-mono text-sm">
-                {mockLogs.map((log, index) => (
-                  <div
-                    key={index}
-                    className="p-2 bg-gray-800 rounded border-l-4 border-l-blue-500"
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-gray-400 text-xs">{log.timestamp}</span>
-                      <span className={`text-xs px-2 py-1 rounded ${
-                        log.level === 'error' ? 'bg-red-900 text-red-300' :
-                        log.level === 'warning' ? 'bg-yellow-900 text-yellow-300' :
-                        'bg-blue-900 text-blue-300'
-                      }`}>
-                        {log.level.toUpperCase()}
-                      </span>
-                    </div>
-                    <div className="text-gray-300 text-xs">{log.message}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )
+          ) : null
         )}
 
         {activeTab === 'metrics' && (
@@ -575,10 +539,14 @@ jobs:
           <ScheduledTaskParameterStore config={config} node={selectedNode} />
         )}
 
+        {activeTab === 'cloudwatch' && selectedNode.type === 'scheduled-task' && config && (
+          <ScheduledTaskCloudWatch config={config} node={selectedNode} />
+        )}
+
         {activeTab === 'logs' && selectedNode.type === 'scheduled-task' && config && (
           <ServiceLogs 
             environment={config.env} 
-            serviceName={`task/${selectedNode.id.replace('scheduled-', '')}`} 
+            serviceName={selectedNode.id.replace('scheduled-', '')} 
           />
         )}
 
