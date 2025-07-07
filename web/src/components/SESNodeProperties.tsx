@@ -35,7 +35,9 @@ export function SESNodeProperties({ config, onConfigChange }: SESNodePropertiesP
   // Determine the actual domain that will be used
   const isDomainEnabled = config.domain?.enabled;
   const mainDomain = config.domain?.domain_name;
-  const defaultDomain = mainDomain ? `mail.${mainDomain}` : '';
+  const isProd = config.env === 'prod' || config.env === 'production';
+  const defaultDomain = mainDomain ? 
+    (isProd ? `mail.${mainDomain}` : `mail.${config.env}.${mainDomain}`) : '';
   const actualDomain = sesConfig.domain_name || defaultDomain;
 
   const handleToggleSES = (enabled: boolean) => {
@@ -131,7 +133,7 @@ export function SESNodeProperties({ config, onConfigChange }: SESNodePropertiesP
                 />
                 <p className="text-xs text-gray-500">
                   {isDomainEnabled && mainDomain && !sesConfig.domain_name ? (
-                    <>Default: <code className="text-blue-400">{defaultDomain}</code> (mail subdomain of your main domain)</>
+                    <>Default: <code className="text-blue-400">{defaultDomain}</code> ({isProd ? 'mail' : `mail.${config.env}`} subdomain)</>
                   ) : (
                     'The domain you\'ll use for sending emails (must have Route53 zone)'
                   )}
@@ -308,7 +310,7 @@ export function SESNodeProperties({ config, onConfigChange }: SESNodePropertiesP
               <div className="space-y-2 text-sm text-gray-300">
                 <p>• The domain must be one you own and have a Route53 hosted zone for</p>
                 {isDomainEnabled && mainDomain && (
-                  <p>• If no domain is specified, SES will use <code className="text-blue-400">{defaultDomain}</code></p>
+                  <p>• Default domain: <code className="text-blue-400">{defaultDomain}</code> {!isProd && '(includes environment prefix for non-prod)'}</p>
                 )}
                 <p>• Domain verification happens automatically via Route53</p>
                 <p>• DMARC policy is set to quarantine unauthorized emails</p>

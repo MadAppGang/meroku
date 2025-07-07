@@ -267,7 +267,12 @@ func sendTestEmail(w http.ResponseWriter, r *http.Request) {
 	} else if envConfig.Ses.Enabled && envConfig.Ses.DomainName != "" {
 		fromEmail = fmt.Sprintf("noreply@%s", envConfig.Ses.DomainName)
 	} else if envConfig.Domain.Enabled && envConfig.Domain.DomainName != "" {
-		fromEmail = fmt.Sprintf("noreply@mail.%s", envConfig.Domain.DomainName)
+		// Apply the same logic as in the Terraform template
+		if envName == "prod" {
+			fromEmail = fmt.Sprintf("noreply@mail.%s", envConfig.Domain.DomainName)
+		} else {
+			fromEmail = fmt.Sprintf("noreply@mail.%s.%s", envName, envConfig.Domain.DomainName)
+		}
 	}
 
 	// Create the email input

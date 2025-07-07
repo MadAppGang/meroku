@@ -40,7 +40,9 @@ This email confirms that your SES configuration is working correctly.`);
   const sesConfig = config.ses || { enabled: false };
   const isDomainEnabled = config.domain?.enabled;
   const mainDomain = config.domain?.domain_name;
-  const defaultDomain = mainDomain ? `mail.${mainDomain}` : '';
+  const isProd = config.env === 'prod' || config.env === 'production';
+  const defaultDomain = mainDomain ? 
+    (isProd ? `mail.${mainDomain}` : `mail.${config.env}.${mainDomain}`) : '';
   const actualDomain = sesConfig.domain_name || defaultDomain || 'example.com';
   const fromAddress = `noreply@${actualDomain}`;
 
