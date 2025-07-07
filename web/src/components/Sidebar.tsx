@@ -42,6 +42,7 @@ import { SESSendTestEmail } from './SESSendTestEmail';
 import { S3NodeProperties } from './S3NodeProperties';
 import { PostgresNodeProperties } from './PostgresNodeProperties';
 import { SQSNodeProperties } from './SQSNodeProperties';
+import { EventBridgeTestEvent } from './EventBridgeTestEvent';
 
 interface SidebarProps {
   selectedNode: ComponentNode | null;
@@ -175,6 +176,8 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
               { id: 'settings', label: 'Settings', icon: Settings },
             ] : selectedNode.type === 'sqs' ? [
               { id: 'settings', label: 'Settings', icon: Settings },
+            ] : selectedNode.type === 'eventbridge' ? [
+              { id: 'test', label: 'Test Event', icon: Send },
             ] : selectedNode.type === 'ecs' ? [
               { id: 'settings', label: 'Settings', icon: Settings },
               { id: 'notifications', label: 'Notifications', icon: Bell },
@@ -649,6 +652,10 @@ jobs:
 
         {activeTab === 'test' && selectedNode.type === 'event-task' && config && (
           <EventTaskTestEvent config={config} node={selectedNode} />
+        )}
+
+        {activeTab === 'test' && selectedNode.type === 'eventbridge' && config && (
+          <EventBridgeTestEvent config={config} />
         )}
 
         {activeTab === 'params' && selectedNode.type === 'event-task' && config && (
