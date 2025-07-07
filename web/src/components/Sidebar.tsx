@@ -31,6 +31,7 @@ import { BackendCloudWatch } from './BackendCloudWatch';
 import { BackendAlerts } from './BackendAlerts';
 import { ServiceLogs } from './ServiceLogs';
 import { ScheduledTaskProperties } from './ScheduledTaskProperties';
+import { ScheduledTaskParameterStore } from './ScheduledTaskParameterStore';
 
 interface SidebarProps {
   selectedNode: ComponentNode | null;
@@ -183,6 +184,7 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
             ] : selectedNode.type === 'scheduled-task' ? [
               { id: 'settings', label: 'Settings', icon: Settings },
               { id: 'env', label: 'Env Vars', icon: Zap },
+              { id: 'params', label: 'Parameters', icon: Key },
               { id: 'logs', label: 'Logs', icon: FileText },
             ] : [
               { id: 'settings', label: 'Settings', icon: Settings },
@@ -567,6 +569,10 @@ jobs:
               </div>
             </div>
           </div>
+        )}
+
+        {activeTab === 'params' && selectedNode.type === 'scheduled-task' && config && (
+          <ScheduledTaskParameterStore config={config} node={selectedNode} />
         )}
 
         {activeTab === 'logs' && selectedNode.type === 'scheduled-task' && config && (
