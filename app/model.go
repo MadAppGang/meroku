@@ -25,6 +25,7 @@ type Env struct {
 	ScheduledTasks      []ScheduledTask      `yaml:"scheduled_tasks"`
 	EventProcessorTasks []EventProcessorTask `yaml:"event_processor_tasks"`
 	AppSyncPubSub       AppSync              `yaml:"pubsub_appsync"`
+	Buckets             []BucketConfig       `yaml:"buckets"`
 }
 
 type AppSync struct {

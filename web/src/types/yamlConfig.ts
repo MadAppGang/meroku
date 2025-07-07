@@ -178,4 +178,18 @@ export interface YamlInfrastructureConfig {
       key: string;
     }>;
   }>;
+  
+  // S3 Buckets
+  buckets?: Array<{
+    name: string;
+    public?: boolean;
+    versioning?: boolean;
+    cors_rules?: Array<{
+      allowed_headers?: string[];
+      allowed_methods?: string[];
+      allowed_origins?: string[];
+      expose_headers?: string[];
+      max_age_seconds?: number;
+    }>;
+  }>;
 }

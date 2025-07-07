@@ -88,7 +88,7 @@ func mainRouter() http.Handler {
 		}
 	}))
 	mux.HandleFunc("/api/s3/files", corsMiddleware(listS3Files))
-	mux.HandleFunc("/api/s3/buckets", corsMiddleware(listProjectS3Buckets))
+	mux.HandleFunc("/api/s3/buckets", corsMiddleware(listBuckets))
 	// Node positions endpoints
 	mux.HandleFunc("/api/positions", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {

@@ -280,6 +280,23 @@ export interface SESSandboxInfo {
 	tips: string[];
 }
 
+export interface S3BucketInfo {
+	name: string;
+	type: 'static' | 'configured';
+	publicAccess: boolean;
+	versioning: string;
+	corsRules?: Array<{
+		allowedHeaders: string[];
+		allowedMethods: string[];
+		allowedOrigins: string[];
+		exposeHeaders: string[];
+		maxAgeSeconds: number;
+	}>;
+	consoleUrl: string;
+	region: string;
+	creationDate?: string;
+}
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || "";
 
 export const infrastructureApi = {
@@ -779,6 +796,16 @@ export const infrastructureApi = {
 		if (!response.ok) {
 			const error: ErrorResponse = await response.json();
 			throw new Error(error.error || "Failed to request SES production access");
+		}
+		return response.json();
+	},
+
+	// S3 Buckets API
+	async getS3Buckets(env: string): Promise<S3BucketInfo[]> {
+		const response = await fetch(`${API_BASE_URL}/api/s3/buckets?env=${encodeURIComponent(env)}`);
+		if (!response.ok) {
+			const error: ErrorResponse = await response.json();
+			throw new Error(error.error || "Failed to fetch S3 buckets");
 		}
 		return response.json();
 	},

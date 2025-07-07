@@ -39,6 +39,7 @@ import { EventTaskTestEvent } from './EventTaskTestEvent';
 import { SESNodeProperties } from './SESNodeProperties';
 import { SESStatus } from './SESStatus';
 import { SESSendTestEmail } from './SESSendTestEmail';
+import { S3NodeProperties } from './S3NodeProperties';
 
 interface SidebarProps {
   selectedNode: ComponentNode | null;
@@ -166,6 +167,8 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
               { id: 'settings', label: 'Settings', icon: Settings },
               { id: 'status', label: 'Status', icon: Activity },
               { id: 'send', label: 'Send Email', icon: Send },
+            ] : selectedNode.type === 's3' ? [
+              { id: 'settings', label: 'Buckets', icon: HardDrive },
             ] : selectedNode.type === 'ecs' ? [
               { id: 'settings', label: 'Settings', icon: Settings },
               { id: 'notifications', label: 'Notifications', icon: Bell },
@@ -261,6 +264,8 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
               config={config}
               onConfigChange={onConfigChange}
             />
+          ) : selectedNode.type === 's3' && config && onConfigChange ? (
+            <S3NodeProperties config={config} onConfigChange={onConfigChange} />
           ) : selectedNode.type === 'scheduled-task' && config && onConfigChange ? (
             <ScheduledTaskProperties 
               config={config}
