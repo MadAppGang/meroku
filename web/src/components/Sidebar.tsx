@@ -33,6 +33,7 @@ import { ServiceLogs } from './ServiceLogs';
 import { ScheduledTaskProperties } from './ScheduledTaskProperties';
 import { ScheduledTaskParameterStore } from './ScheduledTaskParameterStore';
 import { ScheduledTaskCloudWatch } from './ScheduledTaskCloudWatch';
+import { ScheduledTaskIAMPermissions } from './ScheduledTaskIAMPermissions';
 
 interface SidebarProps {
   selectedNode: ComponentNode | null;
@@ -178,6 +179,7 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
               { id: 'settings', label: 'Settings', icon: Settings },
               { id: 'env', label: 'Env Vars', icon: Zap },
               { id: 'params', label: 'Parameters', icon: Key },
+              { id: 'iam', label: 'IAM', icon: Shield },
               { id: 'cloudwatch', label: 'CloudWatch', icon: Cloud },
               { id: 'logs', label: 'Logs', icon: FileText },
             ] : [
@@ -537,6 +539,10 @@ jobs:
 
         {activeTab === 'params' && selectedNode.type === 'scheduled-task' && config && (
           <ScheduledTaskParameterStore config={config} node={selectedNode} />
+        )}
+
+        {activeTab === 'iam' && selectedNode.type === 'scheduled-task' && config && (
+          <ScheduledTaskIAMPermissions config={config} node={selectedNode} />
         )}
 
         {activeTab === 'cloudwatch' && selectedNode.type === 'scheduled-task' && config && (
