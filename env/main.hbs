@@ -258,7 +258,7 @@ module "schedule_task_{{name}}" {
   subnet_ids = data.aws_subnets.all.ids
   vpc_id     = data.aws_vpc.default.id
   cluster = module.workloads.ecr_cluster.arn
-  allow_public_access = {{allow_public_access}}
+  allow_public_access = {{#if allow_public_access}}{{allow_public_access}}{{else}}false{{/if}}
   {{#if sqs.enabled}}
   sqs_queue_url = module.sqs.queue_url
   sqs_policy_arn = module.sqs.sqs_access_policy_arn
@@ -271,12 +271,12 @@ module "schedule_task_{{name}}" {
 {{/each}}
 {{#each event_processor_tasks}}
 module "event_bus_task_{{name}}" {
-  source = "{{@root.modules}}/ecs_task"
+  source = "{{@root.modules}}/event_bridge_task"
   project = "{{@root.project}}"
   env = "{{@root.env}}"
   # https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-events.html
-  detail_types ={{array detail_types}}
-  sources =  {{array sources}}
+  detail_types = {{{array detail_types}}}
+  sources = {{{array sources}}}
   rule_name = "{{rule_name}}"
   task = "{{name}}"
   {{#if docker_image}}
@@ -293,7 +293,7 @@ module "event_bus_task_{{name}}" {
   sqs_policy_arn = module.sqs.sqs_access_policy_arn
   sqs_enable = true
   {{/if}}
-  allow_public_access = {{allow_public_access}}
+  allow_public_access = {{#if allow_public_access}}{{allow_public_access}}{{else}}false{{/if}}
   {{#if ecr_account_id}}{{#if ecr_account_region}}
   ecr_url = "{{ecr_account_id}}.dkr.ecr.{{ecr_account_region}}.amazonaws.com/{{project}}_task_{{name}}"
   {{/if}}{{/if}}
@@ -310,7 +310,11 @@ module "ses" {
   {{#if ses.domain_name}}
   domain = "{{ses.domain_name}}"
   {{else}}
+    {{#compare env "==" "prod"}}
   domain = "mail.{{ domain.domain_name }}"
+    {{else}}
+  domain = "mail.{{ env }}.{{ domain.domain_name }}"
+    {{/compare}}
   {{/if}}
   test_emails = {{{array ses.test_emails}}}
   {{#if domain.enabled}}

@@ -260,6 +260,26 @@ export interface EventTaskInfo {
 	dockerImage?: string;
 }
 
+export interface SESStatusResponse {
+	inSandbox: boolean;
+	sendingEnabled: boolean;
+	dailyQuota: number;
+	maxSendRate: number;
+	sentLast24Hours: number;
+	verifiedDomains: string[];
+	verifiedEmails: string[];
+	suppressionListEnabled: boolean;
+	reputationStatus: string;
+	region: string;
+}
+
+export interface SESSandboxInfo {
+	limitations: string[];
+	howToExit: string[];
+	requiredInfo: string[];
+	tips: string[];
+}
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || "";
 
 export const infrastructureApi = {
@@ -678,6 +698,40 @@ export const infrastructureApi = {
 		if (!response.ok) {
 			const error: ErrorResponse = await response.json();
 			throw new Error(error.error || "Failed to fetch event tasks");
+		}
+		return response.json();
+	},
+
+	// SES APIs
+	async getSESStatus(): Promise<SESStatusResponse> {
+		const response = await fetch(`${API_BASE_URL}/api/ses/status`);
+		if (!response.ok) {
+			const error: ErrorResponse = await response.json();
+			throw new Error(error.error || "Failed to fetch SES status");
+		}
+		return response.json();
+	},
+
+	async getSESSandboxInfo(): Promise<SESSandboxInfo> {
+		const response = await fetch(`${API_BASE_URL}/api/ses/sandbox-info`);
+		if (!response.ok) {
+			const error: ErrorResponse = await response.json();
+			throw new Error(error.error || "Failed to fetch SES sandbox info");
+		}
+		return response.json();
+	},
+
+	async sendTestEmail(to: string, subject: string, body: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
+		const response = await fetch(`${API_BASE_URL}/api/ses/send-test-email`, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ to, subject, body }),
+		});
+		if (!response.ok) {
+			const error: ErrorResponse = await response.json();
+			throw new Error(error.error || "Failed to send test email");
 		}
 		return response.json();
 	},

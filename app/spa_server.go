@@ -103,6 +103,10 @@ func mainRouter() http.Handler {
 	// EventBridge endpoints
 	mux.HandleFunc("/api/eventbridge/send-test-event", corsMiddleware(sendTestEvent))
 	mux.HandleFunc("/api/eventbridge/event-tasks", corsMiddleware(getEventTaskInfo))
+	// SES endpoints
+	mux.HandleFunc("/api/ses/status", corsMiddleware(getSESStatus))
+	mux.HandleFunc("/api/ses/sandbox-info", corsMiddleware(getSESSandboxInfo))
+	mux.HandleFunc("/api/ses/send-test-email", corsMiddleware(sendTestEmail))
 
 	// SPA handler for all other routes
 	mux.HandleFunc("/", spaHandler())

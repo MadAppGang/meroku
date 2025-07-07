@@ -36,6 +36,9 @@ import { ScheduledTaskCloudWatch } from './ScheduledTaskCloudWatch';
 import { ScheduledTaskIAMPermissions } from './ScheduledTaskIAMPermissions';
 import { EventTaskProperties } from './EventTaskProperties';
 import { EventTaskTestEvent } from './EventTaskTestEvent';
+import { SESNodeProperties } from './SESNodeProperties';
+import { SESStatus } from './SESStatus';
+import { SESSendTestEmail } from './SESSendTestEmail';
 
 interface SidebarProps {
   selectedNode: ComponentNode | null;
@@ -159,6 +162,10 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
             ] : selectedNode.type === 'secrets-manager' ? [
               { id: 'settings', label: 'Settings', icon: Settings },
               { id: 'description', label: 'Description', icon: BookOpen },
+            ] : selectedNode.type === 'ses' ? [
+              { id: 'settings', label: 'Settings', icon: Settings },
+              { id: 'status', label: 'Status', icon: Activity },
+              { id: 'send', label: 'Send Email', icon: Send },
             ] : selectedNode.type === 'ecs' ? [
               { id: 'settings', label: 'Settings', icon: Settings },
               { id: 'notifications', label: 'Notifications', icon: Bell },
@@ -249,6 +256,11 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
             <AuroraNodeProperties />
           ) : selectedNode.type === 'secrets-manager' && config ? (
             <ParameterStoreNodeProperties config={config} />
+          ) : selectedNode.type === 'ses' && config && onConfigChange ? (
+            <SESNodeProperties 
+              config={config}
+              onConfigChange={onConfigChange}
+            />
           ) : selectedNode.type === 'scheduled-task' && config && onConfigChange ? (
             <ScheduledTaskProperties 
               config={config}
@@ -477,6 +489,14 @@ jobs:
 
         {activeTab === 'description' && selectedNode.type === 'secrets-manager' && config && (
           <ParameterStoreDescription config={config} />
+        )}
+
+        {activeTab === 'status' && selectedNode.type === 'ses' && config && (
+          <SESStatus config={config} />
+        )}
+
+        {activeTab === 'send' && selectedNode.type === 'ses' && config && (
+          <SESSendTestEmail config={config} />
         )}
 
         {activeTab === 'scaling' && selectedNode.type === 'backend' && config && onConfigChange && (
