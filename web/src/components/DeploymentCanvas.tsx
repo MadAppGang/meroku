@@ -12,6 +12,7 @@ import ReactFlow, {
   MarkerType,
   NodeProps,
   NodeDragHandler,
+  useReactFlow,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import {
@@ -468,6 +469,7 @@ export function DeploymentCanvas({
   const [showInactive, setShowInactive] = React.useState(true);
   const [selectedEdge, setSelectedEdge] = useState<Edge | null>(null);
   const [edgeSelectorPosition, setEdgeSelectorPosition] = useState<{ x: number; y: number } | null>(null);
+  const nodesRef = useRef<Node[]>([]);
 
   // Generate all nodes including dynamic ones
   const allNodes = useMemo(() => {
@@ -499,12 +501,20 @@ export function DeploymentCanvas({
         }
         return node;
       });
+      // Don't re-layout if we have saved positions
+      return combinedNodes;
     }
 
+    // Only apply layout if no saved positions
     return layoutNodesWithGroups(combinedNodes);
   }, [config, savedPositions]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(allNodes);
+  
+  // Update nodes ref whenever nodes change
+  useEffect(() => {
+    nodesRef.current = nodes;
+  }, [nodes]);
   
   // Create dynamic edges based on enabled nodes
   const dynamicEdges = useMemo(() => {
@@ -553,6 +563,7 @@ export function DeploymentCanvas({
           data.positions.forEach((pos) => {
             posMap.set(pos.nodeId, { x: pos.x, y: pos.y });
           });
+          console.log("Loading positions for nodes:", data.positions.filter(p => ['s3', 'ses', 'sqs', 'eventbridge'].includes(p.nodeId)));
           setSavedPositions(posMap);
           
           // Load edge handle positions
@@ -683,9 +694,11 @@ export function DeploymentCanvas({
 
   // Save positions when nodes are moved
   const savePositions = useCallback(() => {
-    if (!environmentName) return;
+    if (!environmentName || isLoadingPositions) return;
 
-    const positions: NodePosition[] = nodes.map((node) => ({
+    // Use the ref to get the latest node positions
+    const currentNodes = nodesRef.current;
+    const positions: NodePosition[] = currentNodes.map((node) => ({
       nodeId: node.id,
       x: node.position.x,
       y: node.position.y,
@@ -700,11 +713,13 @@ export function DeploymentCanvas({
       edgeHandles: edgeHandles.length > 0 ? edgeHandles : undefined,
     };
 
+    console.log("Saving positions - total nodes:", positions.length);
+    console.log("Saving positions for problematic nodes:", positions.filter(p => ['s3', 'ses', 'sqs', 'eventbridge', 'sns'].includes(p.nodeId)));
 
     infrastructureApi.saveNodePositions(boardPositions).catch((error) => {
       console.error("Failed to save node positions:", error);
     });
-  }, [nodes, environmentName, savedEdgeHandles]);
+  }, [environmentName, savedEdgeHandles, isLoadingPositions]);
 
   // Handle edge handle change
   const handleEdgeHandleChange = useCallback((edgeId: string, sourceHandle?: string, targetHandle?: string) => {
@@ -736,10 +751,10 @@ export function DeploymentCanvas({
           clearTimeout(saveTimeoutRef.current);
         }
 
-        // Set new timeout to save positions after 1 second of inactivity
+        // Set new timeout to save positions after a shorter delay
         saveTimeoutRef.current = setTimeout(() => {
           savePositions();
-        }, 1000);
+        }, 500);
       }
     },
     [onNodesChange, savePositions, environmentName]
