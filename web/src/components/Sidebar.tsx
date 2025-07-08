@@ -49,6 +49,7 @@ import { ServiceProperties } from './ServiceProperties';
 import { ServiceXRayConfiguration } from './ServiceXRayConfiguration';
 import { ServiceEnvironmentVariables } from './ServiceEnvironmentVariables';
 import { ServiceParameterStore } from './ServiceParameterStore';
+import { APIGatewayProperties } from './APIGatewayProperties';
 
 interface SidebarProps {
   selectedNode: ComponentNode | null;
@@ -186,6 +187,8 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
               { id: 'settings', label: 'Settings', icon: Settings },
             ] : selectedNode.type === 'eventbridge' ? [
               { id: 'test', label: 'Test Event', icon: Send },
+            ] : selectedNode.type === 'api-gateway' ? [
+              { id: 'settings', label: 'Settings', icon: Settings },
             ] : selectedNode.type === 'ecs' ? [
               { id: 'settings', label: 'Settings', icon: Settings },
               { id: 'notifications', label: 'Notifications', icon: Bell },
@@ -283,6 +286,8 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
               config={config}
               onConfigChange={onConfigChange}
             />
+          ) : selectedNode.type === 'api-gateway' && config ? (
+            <APIGatewayProperties config={config} />
           ) : selectedNode.type === 'aurora' ? (
             <AuroraNodeProperties />
           ) : selectedNode.type === 'secrets-manager' && config ? (

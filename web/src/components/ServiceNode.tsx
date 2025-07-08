@@ -141,10 +141,15 @@ export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
   const StatusIcon = statusIcons[data.status];
   const serviceColor = serviceColors[data.type];
   const statusColor = statusColors[data.status];
+  
+  // Determine if this is a service node that needs extended display
+  const isServiceNode = ['backend', 'service', 'service-regular', 'service-periodic', 'service-event-driven', 
+                        'scheduled-task', 'event-task'].includes(data.type);
+  const minWidth = 'min-w-64'; // Keep compact width
 
   return (
     <div className={`
-      border-2 rounded-lg p-4 min-w-64 shadow-lg
+      border-2 rounded-lg p-4 ${minWidth} shadow-lg
       ${data.isExternal 
         ? 'bg-gray-900 border-dashed' 
         : 'bg-gray-800'
@@ -228,6 +233,89 @@ export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
           {data.description || 'No description'}
         </span>
       </div>
+      
+      {/* Extended information for service nodes */}
+      {isServiceNode && data.configProperties && (
+        <div className="space-y-2 mt-2">
+          {/* Domain for backend/services */}
+          {(data.type === 'backend' || data.type === 'service') && data.configProperties.domain && (
+            <div className="text-xs bg-gray-900/50 rounded px-2 py-1">
+              <div className="flex items-center gap-1 text-gray-400">
+                <Globe className="w-3 h-3" />
+                <span className="font-mono truncate">{data.configProperties.domain}</span>
+              </div>
+            </div>
+          )}
+          
+          {/* Schedule for scheduled tasks */}
+          {data.type === 'scheduled-task' && data.configProperties.schedule && (
+            <div className="text-xs bg-gray-900/50 rounded px-2 py-1">
+              <div className="flex items-center gap-1 text-gray-400">
+                <Clock className="w-3 h-3" />
+                <span className="font-mono">{data.configProperties.schedule}</span>
+              </div>
+            </div>
+          )}
+          
+          {/* Event rules for event tasks */}
+          {data.type === 'event-task' && data.configProperties.sources && (
+            <div className="text-xs bg-gray-900/50 rounded px-2 py-1 space-y-1">
+              <div className="flex items-center gap-1 text-gray-400">
+                <Zap className="w-3 h-3" />
+                <span>Event Rules:</span>
+              </div>
+              {data.configProperties.sources && (
+                <div className="text-gray-300 ml-4">
+                  Source: {data.configProperties.sources.join(', ')}
+                </div>
+              )}
+              {data.configProperties.detailTypes && (
+                <div className="text-gray-300 ml-4 truncate">
+                  Types: {data.configProperties.detailTypes.join(', ')}
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* Resources - always show for all service types */}
+          <div className="bg-gray-900/50 rounded px-2 py-1">
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2">
+                <span className="text-gray-400">Resources:</span>
+                {data.configProperties.desiredCount && (
+                  <div className="flex items-center gap-0.5">
+                    <Copy className="w-3 h-3 text-gray-500" />
+                    <span className="text-white font-medium">{data.configProperties.desiredCount}</span>
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center gap-2 text-gray-300">
+                <span>{data.configProperties.cpu || '0.25'} vCPU</span>
+                <span className="text-gray-500">•</span>
+                <span>{data.configProperties.memory || '512MB'}</span>
+              </div>
+            </div>
+          </div>
+          
+          {/* Health Status - compact inline */}
+          {data.configProperties.healthStatus && (
+            <div className="flex items-center gap-3 text-xs">
+              {data.configProperties.healthStatus.critical && (
+                <div className="flex items-center gap-0.5 text-red-400">
+                  <AlertCircle className="w-3 h-3" />
+                  <span>Critical</span>
+                </div>
+              )}
+              {data.configProperties.healthStatus.monitored && (
+                <div className="flex items-center gap-0.5 text-green-400">
+                  <Activity className="w-3 h-3" />
+                  <span>Monitored</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {data.isExternal && (
         <div className="text-xs text-blue-400 mb-2 italic">
@@ -235,20 +323,20 @@ export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
         </div>
       )}
 
-      {data.deploymentType && (
+      {data.deploymentType && !isServiceNode && (
         <div className="text-xs text-gray-400 mb-2">
           {data.deploymentType}
         </div>
       )}
 
-      {data.replicas && (
+      {data.replicas && !isServiceNode && (
         <div className="flex items-center gap-2 text-xs text-gray-400">
           <Copy className="w-3 h-3" />
           <span>{data.replicas} Replicas</span>
         </div>
       )}
 
-      {data.resources && (
+      {data.resources && !isServiceNode && (
         <div className="mt-2 p-2 bg-gray-700 rounded text-xs">
           <div className="flex justify-between items-center">
             <span className="text-gray-300">Resources:</span>

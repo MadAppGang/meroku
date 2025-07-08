@@ -10,6 +10,9 @@ export interface YamlInfrastructureConfig {
   state_bucket: string;
   state_file: string;
   
+  // API Configuration
+  api_domain?: string;
+  
   // Optional ECR configuration
   ecr_account_id?: string;
   ecr_account_region?: string;

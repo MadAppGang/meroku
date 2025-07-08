@@ -85,6 +85,7 @@ export const nodeStateMapping: NodeStateConfig[] = [
 			autoscalingEnabled: config.workload?.backend_autoscaling_enabled || false,
 			autoscalingMinCapacity: config.workload?.backend_autoscaling_min_capacity || 1,
 			autoscalingMaxCapacity: config.workload?.backend_autoscaling_max_capacity || 10,
+			domain: config.api_domain || `api.${config.project}.com`,
 		}),
 	},
 
