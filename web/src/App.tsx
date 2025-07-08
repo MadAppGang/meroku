@@ -1,15 +1,15 @@
-import React, { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { ReactFlowProvider } from "reactflow";
 import * as yaml from "js-yaml";
-import { CanvasControls } from "./components/CanvasControls";
 import { DeploymentCanvas } from "./components/DeploymentCanvas";
 import { Sidebar } from "./components/Sidebar";
-import { EnvironmentConfig } from "./components/EnvironmentConfig";
 import { EnvironmentSelector } from "./components/EnvironmentSelector";
+import { AddServiceDialog } from "./components/AddServiceDialog";
+import { AddScheduledTaskDialog } from "./components/AddScheduledTaskDialog";
+import { AddEventTaskDialog } from "./components/AddEventTaskDialog";
 // Removed Tabs import - no longer needed
 import type { ComponentNode } from "./types";
-import { InfrastructureConfig } from "./types/config";
-import { YamlInfrastructureConfig } from "./types/yamlConfig";
+import type { YamlInfrastructureConfig } from "./types/yamlConfig";
 import { infrastructureApi, type AccountInfo } from "./api/infrastructure";
 
 export default function App() {
@@ -19,6 +19,9 @@ export default function App() {
   const [showEnvSelector, setShowEnvSelector] = useState(true);
   const [config, setConfig] = useState<YamlInfrastructureConfig | null>(null);
   const [accountInfo, setAccountInfo] = useState<AccountInfo | null>(null);
+  const [showAddServiceDialog, setShowAddServiceDialog] = useState(false);
+  const [showAddScheduledTaskDialog, setShowAddScheduledTaskDialog] = useState(false);
+  const [showAddEventTaskDialog, setShowAddEventTaskDialog] = useState(false);
 
   const handleNodeSelect = useCallback((node: ComponentNode | null) => {
     setSelectedNode(node);
@@ -63,6 +66,94 @@ export default function App() {
       setConfig(updatedConfig);
       // TODO: Save to backend
     }
+  };
+
+  const saveConfigToBackend = async (updatedConfig: YamlInfrastructureConfig) => {
+    if (!selectedEnvironment) return;
+    
+    try {
+      const yamlContent = yaml.dump(updatedConfig, {
+        indent: 2,
+        lineWidth: -1,
+        noRefs: true,
+        sortKeys: false,
+      });
+      await infrastructureApi.updateEnvironmentConfig(selectedEnvironment, yamlContent);
+      console.log('Configuration saved successfully');
+    } catch (error) {
+      console.error('Failed to save configuration:', error);
+      alert('Failed to save configuration. Please try again.');
+    }
+  };
+
+  const handleAddService = (service: any) => {
+    if (!config) return;
+    
+    const updatedConfig = {
+      ...config,
+      services: [...(config.services || []), service],
+    };
+    setConfig(updatedConfig);
+    saveConfigToBackend(updatedConfig);
+  };
+
+  const handleAddScheduledTask = (task: any) => {
+    if (!config) return;
+    
+    const updatedConfig = {
+      ...config,
+      scheduled_tasks: [...(config.scheduled_tasks || []), task],
+    };
+    setConfig(updatedConfig);
+    saveConfigToBackend(updatedConfig);
+  };
+
+  const handleAddEventTask = (task: any) => {
+    if (!config) return;
+    
+    const updatedConfig = {
+      ...config,
+      event_processor_tasks: [...(config.event_processor_tasks || []), task],
+    };
+    setConfig(updatedConfig);
+    saveConfigToBackend(updatedConfig);
+  };
+
+  const handleDeleteNode = (nodeId: string, nodeType: string) => {
+    if (!config) return;
+    
+    let updatedConfig = { ...config };
+    
+    if (nodeType === 'service') {
+      const serviceName = nodeId.replace('service-', '');
+      updatedConfig.services = (config.services || []).filter(s => s.name !== serviceName);
+    } else if (nodeType === 'scheduled-task') {
+      const taskName = nodeId.replace('scheduled-', '');
+      updatedConfig.scheduled_tasks = (config.scheduled_tasks || []).filter(t => t.name !== taskName);
+    } else if (nodeType === 'event-task') {
+      const taskName = nodeId.replace('event-', '');
+      updatedConfig.event_processor_tasks = (config.event_processor_tasks || []).filter(t => t.name !== taskName);
+    }
+    
+    setConfig(updatedConfig);
+    saveConfigToBackend(updatedConfig);
+  };
+
+  const getExistingServices = () => {
+    return (config?.services || []).map(s => s.name);
+  };
+
+  const getExistingScheduledTasks = () => {
+    return (config?.scheduled_tasks || []).map(t => t.name);
+  };
+
+  const getExistingEventTasks = () => {
+    return (config?.event_processor_tasks || []).map(t => t.name);
+  };
+
+  const getAvailableServices = () => {
+    const services = ['backend', ...(config?.services || []).map(s => s.name)];
+    return services;
   };
 
   return (
@@ -157,6 +248,9 @@ export default function App() {
           selectedNode={selectedNode}
           config={config}
           environmentName={selectedEnvironment || undefined}
+          onAddService={() => setShowAddServiceDialog(true)}
+          onAddScheduledTask={() => setShowAddScheduledTaskDialog(true)}
+          onAddEventTask={() => setShowAddEventTaskDialog(true)}
         />
 
         {/* Right Sidebar */}
@@ -170,8 +264,32 @@ export default function App() {
           config={config || undefined}
           onConfigChange={handleConfigChange}
           accountInfo={accountInfo || undefined}
+          onDeleteNode={handleDeleteNode}
         />
       </ReactFlowProvider>
+      
+      {/* Dialogs */}
+      <AddServiceDialog
+        open={showAddServiceDialog}
+        onClose={() => setShowAddServiceDialog(false)}
+        onAdd={handleAddService}
+        existingServices={getExistingServices()}
+      />
+      
+      <AddScheduledTaskDialog
+        open={showAddScheduledTaskDialog}
+        onClose={() => setShowAddScheduledTaskDialog(false)}
+        onAdd={handleAddScheduledTask}
+        existingTasks={getExistingScheduledTasks()}
+      />
+      
+      <AddEventTaskDialog
+        open={showAddEventTaskDialog}
+        onClose={() => setShowAddEventTaskDialog(false)}
+        onAdd={handleAddEventTask}
+        existingTasks={getExistingEventTasks()}
+        availableServices={getAvailableServices()}
+      />
     </div>
   );
 }

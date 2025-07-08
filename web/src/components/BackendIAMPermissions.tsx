@@ -110,7 +110,7 @@ export function BackendIAMPermissions({ config, node }: BackendIAMPermissionsPro
       condition: 'sqs_enable = true',
       enabled: !!config.sqs?.enabled,
       type: 'policy_arn',
-      policyArn: config.sqs?.policy_arn,
+      policyArn: undefined,
       description: 'Attaches the policy specified in sqs_policy_arn',
     },
     {

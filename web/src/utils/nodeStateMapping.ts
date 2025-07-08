@@ -327,7 +327,7 @@ export function hasAdditionalServices(
 	config: YamlInfrastructureConfig | null,
 ): boolean {
 	if (!config) return false;
-	return (
+	return !!(
 		(config.services && config.services.length > 0) ||
 		(config.scheduled_tasks && config.scheduled_tasks.length > 0) ||
 		(config.event_processor_tasks && config.event_processor_tasks.length > 0)

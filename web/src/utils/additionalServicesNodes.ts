@@ -39,7 +39,7 @@ export function generateAdditionalServiceNodes(
 					xrayEnabled: service.xray_enabled,
 					serviceType: getServiceType(service.name),
 					purpose: getServicePurpose(service.name),
-					domain: service.public_access ? `${service.name}.${config.api_domain || `api.${config.project}.com`}` : undefined,
+					domain: undefined,
 					healthStatus: {
 						critical: true,
 						monitored: service.xray_enabled || false,
@@ -68,8 +68,8 @@ export function generateAdditionalServiceNodes(
 					schedule: task.schedule,
 					publicAccess: task.allow_public_access,
 					taskCount: 1, // Scheduled tasks run as single instances
-					cpu: task.cpu || '256',
-					memory: task.memory || '512',
+					cpu: task.cpu?.toString() || '256',
+					memory: task.memory?.toString() || '512',
 					serviceType: 'Scheduled Task',
 					purpose: getTaskPurpose(task.name, 'scheduled'),
 					healthStatus: {
@@ -102,8 +102,8 @@ export function generateAdditionalServiceNodes(
 					sources: task.sources,
 					publicAccess: task.allow_public_access,
 					taskCount: 1, // Event tasks run as single instances
-					cpu: task.cpu || '256',
-					memory: task.memory || '512',
+					cpu: task.cpu?.toString() || '256',
+					memory: task.memory?.toString() || '512',
 					serviceType: 'Event Processor',
 					purpose: getTaskPurpose(task.name, 'event'),
 					healthStatus: {

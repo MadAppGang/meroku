@@ -126,12 +126,6 @@ export interface YamlInfrastructureConfig {
     path: string;
   }>;
   
-  // Additional S3 buckets
-  buckets?: Array<{
-    name: string;
-    public?: boolean;
-  }>;
-  
   // Load Balancer Configuration
   alb?: {
     enabled: boolean;
@@ -144,6 +138,9 @@ export interface YamlInfrastructureConfig {
     docker_image?: string;
     container_command?: string;
     allow_public_access?: boolean;
+    cpu?: number;
+    memory?: number;
+    environment_variables?: Record<string, string>;
   }>;
   
   // Event-driven Tasks
@@ -153,8 +150,11 @@ export interface YamlInfrastructureConfig {
     detail_types: string[];
     sources: string[];
     docker_image?: string;
-    container_command?: string;
+    container_command?: string[];
     allow_public_access?: boolean;
+    cpu?: number;
+    memory?: number;
+    environment_variables?: Record<string, string>;
   }>;
   
   // GraphQL API Configuration
@@ -178,7 +178,11 @@ export interface YamlInfrastructureConfig {
     remote_access?: boolean;
     xray_enabled?: boolean;
     essential?: boolean;
-    env_vars?: Array<{
+    public_access?: boolean;
+    health_check_path?: string;
+    env_vars?: Record<string, string>;
+    environment_variables?: Record<string, string>;
+    env_variables?: Array<{
       name: string;
       value: string;
     }>;

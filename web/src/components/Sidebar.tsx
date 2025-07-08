@@ -1,5 +1,5 @@
 import React, { useState, useContext, useRef, useEffect } from 'react';
-import { X, Settings, FileText, BarChart, Zap, Link, Code, Database, Upload, Globe, BookOpen, Key, HardDrive, Shield, Server, Network, Activity, ChevronLeft, ChevronRight, Bell, Microscope, Gauge, Terminal, Cloud, Info, Send } from 'lucide-react';
+import { X, Settings, FileText, BarChart, Zap, Link, Code, Database, Upload, Globe, BookOpen, Key, HardDrive, Shield, Server, Network, Activity, ChevronLeft, ChevronRight, Bell, Microscope, Gauge, Terminal, Cloud, Info, Send, Trash2 } from 'lucide-react';
 import { ComponentNode } from '../types';
 import { Tabs } from './ui/tabs';
 import { Button } from './ui/button';
@@ -58,9 +58,10 @@ interface SidebarProps {
   config?: YamlInfrastructureConfig;
   onConfigChange?: (config: Partial<YamlInfrastructureConfig>) => void;
   accountInfo?: AccountInfo;
+  onDeleteNode?: (nodeId: string, nodeType: string) => void;
 }
 
-export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange, accountInfo }: SidebarProps) {
+export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange, accountInfo, onDeleteNode }: SidebarProps) {
   const [activeTab, setActiveTab] = useState('settings');
   const [showLeftScroll, setShowLeftScroll] = useState(false);
   const [showRightScroll, setShowRightScroll] = useState(false);
@@ -121,14 +122,32 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
             </div>
           )}
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onClose}
-          className="text-gray-400 hover:text-white flex-shrink-0"
-        >
-          <X className="w-4 h-4" />
-        </Button>
+        <div className="flex items-center gap-2">
+          {(selectedNode.type === 'service' || selectedNode.type === 'scheduled-task' || selectedNode.type === 'event-task') && onDeleteNode && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                if (window.confirm(`Are you sure you want to delete ${selectedNode.name}? This action cannot be undone.`)) {
+                  onDeleteNode(selectedNode.id, selectedNode.type);
+                  onClose();
+                }
+              }}
+              className="text-red-400 hover:text-red-300 hover:bg-red-900/20 flex-shrink-0"
+              title="Delete"
+            >
+              <Trash2 className="w-4 h-4" />
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+            className="text-gray-400 hover:text-white flex-shrink-0"
+          >
+            <X className="w-4 h-4" />
+          </Button>
+        </div>
       </div>
 
       <div className="relative flex-shrink-0 border-b border-gray-700">

@@ -41,6 +41,9 @@ interface DeploymentCanvasProps {
   selectedNode: ComponentNode | null;
   config?: YamlInfrastructureConfig | null;
   environmentName?: string;
+  onAddService?: () => void;
+  onAddScheduledTask?: () => void;
+  onAddEventTask?: () => void;
 }
 
 const nodeTypes = {
@@ -452,6 +455,9 @@ export function DeploymentCanvas({
   selectedNode,
   config,
   environmentName,
+  onAddService,
+  onAddScheduledTask,
+  onAddEventTask,
 }: DeploymentCanvasProps) {
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [savedPositions, setSavedPositions] = React.useState<
@@ -580,12 +586,6 @@ export function DeploymentCanvas({
     }
   }, [isLoadingPositions, dynamicEdges, setEdges]);
 
-
-  // Function to manually trigger layout
-  const handleAutoLayout = useCallback(() => {
-    const adjustedNodes = layoutNodesWithGroups(nodes);
-    setNodes(adjustedNodes);
-  }, [nodes, setNodes]);
 
   // Toggle inactive nodes visibility
   const handleToggleInactive = useCallback(() => {
@@ -778,9 +778,11 @@ export function DeploymentCanvas({
           className="bg-gray-800 border border-gray-700 rounded-lg"
         />
         <CanvasControls 
-          onAutoLayout={handleAutoLayout} 
           showInactive={showInactive}
           onToggleInactive={handleToggleInactive}
+          onAddService={onAddService}
+          onAddScheduledTask={onAddScheduledTask}
+          onAddEventTask={onAddEventTask}
         />
       </ReactFlow>
       
