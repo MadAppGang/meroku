@@ -23,6 +23,7 @@ import { ParameterStoreDescription } from './ParameterStoreDescription';
 import { BackendEnvironmentVariables } from './BackendEnvironmentVariables';
 import { BackendParameterStore } from './BackendParameterStore';
 import { BackendS3Buckets } from './BackendS3Buckets';
+import { BackendSNS } from './BackendSNS';
 import { BackendIAMPermissions } from './BackendIAMPermissions';
 import { BackendXRayConfiguration } from './BackendXRayConfiguration';
 import { BackendScalingConfiguration } from './BackendScalingConfiguration';
@@ -40,6 +41,7 @@ import { SESNodeProperties } from './SESNodeProperties';
 import { SESStatus } from './SESStatus';
 import { SESSendTestEmail } from './SESSendTestEmail';
 import { S3NodeProperties } from './S3NodeProperties';
+import { SNSNodeProperties } from './SNSNodeProperties';
 import { PostgresNodeProperties } from './PostgresNodeProperties';
 import { SQSNodeProperties } from './SQSNodeProperties';
 import { EventBridgeTestEvent } from './EventBridgeTestEvent';
@@ -176,6 +178,8 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
               { id: 'send', label: 'Send Email', icon: Send },
             ] : selectedNode.type === 's3' ? [
               { id: 'settings', label: 'Buckets', icon: HardDrive },
+            ] : selectedNode.type === 'sns' ? [
+              { id: 'settings', label: 'Settings', icon: Settings },
             ] : selectedNode.type === 'postgres' ? [
               { id: 'settings', label: 'Settings', icon: Settings },
             ] : selectedNode.type === 'sqs' ? [
@@ -196,6 +200,7 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
               { id: 'env', label: 'Env Vars', icon: Zap },
               { id: 'params', label: 'Parameters', icon: Key },
               { id: 's3', label: 'S3 Buckets', icon: HardDrive },
+              { id: 'sns', label: 'SNS', icon: Bell },
               { id: 'iam', label: 'IAM', icon: Shield },
               { id: 'logs', label: 'Logs', icon: FileText },
               { id: 'cloudwatch', label: 'CloudWatch', icon: Cloud },
@@ -289,6 +294,8 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
             />
           ) : selectedNode.type === 's3' && config && onConfigChange ? (
             <S3NodeProperties config={config} onConfigChange={onConfigChange} />
+          ) : selectedNode.type === 'sns' && config && onConfigChange ? (
+            <SNSNodeProperties config={config} onConfigChange={onConfigChange} />
           ) : selectedNode.type === 'postgres' && config && onConfigChange ? (
             <PostgresNodeProperties config={config} onConfigChange={onConfigChange} accountInfo={accountInfo} />
           ) : selectedNode.type === 'sqs' && config && onConfigChange ? (
@@ -560,6 +567,10 @@ jobs:
 
         {activeTab === 's3' && selectedNode.type === 'backend' && config && (
           <BackendS3Buckets config={config} />
+        )}
+
+        {activeTab === 'sns' && selectedNode.type === 'backend' && config && (
+          <BackendSNS config={config} />
         )}
 
         {activeTab === 'iam' && selectedNode.type === 'backend' && config && (

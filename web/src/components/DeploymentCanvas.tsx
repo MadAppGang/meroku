@@ -235,6 +235,7 @@ const initialNodes: Node[] = [
       id: "sns",
       type: "sns",
       name: "Amazon SNS",
+      description: "Push notifications",
       status: "running",
       deletable: false,
     },

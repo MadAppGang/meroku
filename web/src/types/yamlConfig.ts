@@ -22,6 +22,12 @@ export interface YamlInfrastructureConfig {
     backend_container_command?: string[];
     backend_image_port?: number;
     backend_remote_access?: boolean;
+    backend_cpu?: string;
+    backend_memory?: string;
+    backend_desired_count?: number;
+    backend_autoscaling_enabled?: boolean;
+    backend_autoscaling_min_capacity?: number;
+    backend_autoscaling_max_capacity?: number;
     
     // S3 bucket configuration
     bucket_postfix?: string;

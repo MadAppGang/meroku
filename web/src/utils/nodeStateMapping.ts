@@ -168,6 +168,11 @@ export const nodeStateMapping: NodeStateConfig[] = [
 		name: "Amazon SNS",
 		type: "sns",
 		enabled: (config) => config.workload?.setup_fcnsns === true,
+		properties: (config) => ({
+			platformApplicationName: `${config.project}-fcm-${config.env}`,
+			platform: "GCM",
+			gcmServerKeyPath: `/${config.env}/${config.project}/backend/gcm-server-key`,
+		}),
 		description: "Firebase Cloud Messaging/SNS for push notifications",
 	},
 	{
