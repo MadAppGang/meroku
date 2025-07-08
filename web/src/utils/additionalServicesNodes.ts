@@ -59,8 +59,8 @@ export function generateAdditionalServiceNodes(
 			data: {
 				id: `scheduled-${task.name}`,
 				type: "scheduled-task",
-				name: `Scheduled: ${task.name}`,
-				description: task.schedule,
+				name: task.name,
+				description: getScheduledTaskDescription(task.name),
 				status: "running",
 				group: "ECS Cluster",
 				subgroup: "Scheduled Tasks",
@@ -91,8 +91,8 @@ export function generateAdditionalServiceNodes(
 			data: {
 				id: `event-${task.name}`,
 				type: "event-task",
-				name: `Event: ${task.name}`,
-				description: task.rule_name,
+				name: task.name,
+				description: getEventTaskDescription(task.name),
 				status: "running",
 				group: "ECS Cluster",
 				subgroup: "Event Tasks",
@@ -170,14 +170,18 @@ function getServiceType(serviceName: string): string {
  */
 function getServiceDescription(serviceName: string): string {
 	const name = serviceName.toLowerCase();
-	if (name.includes('api')) return 'API service';
-	if (name.includes('auth')) return 'Authentication service';
-	if (name.includes('notification')) return 'Notification service';
-	if (name.includes('cache')) return 'Caching service';
-	if (name.includes('monitor')) return 'Monitoring service';
-	if (name.includes('analytics')) return 'Analytics service';
-	if (name.includes('worker')) return 'Background worker';
-	return 'Service';
+	if (name.includes('api')) return 'REST/GraphQL API';
+	if (name.includes('auth')) return 'User authentication';
+	if (name.includes('notification')) return 'Push & email alerts';
+	if (name.includes('cache')) return 'Redis cache layer';
+	if (name.includes('monitor')) return 'System monitoring';
+	if (name.includes('analytics')) return 'Data analytics';
+	if (name.includes('worker')) return 'Async processing';
+	if (name.includes('chat') || name.includes('ai')) return 'AI chat service';
+	if (name.includes('payment')) return 'Payment processing';
+	if (name.includes('search')) return 'Search engine';
+	if (name.includes('media')) return 'Media processing';
+	return 'Container service';
 }
 
 /**
@@ -216,4 +220,37 @@ function getTaskPurpose(taskName: string, taskType: 'scheduled' | 'event'): stri
 		if (name.includes('audit')) return 'Audit logging';
 		return 'Event processing';
 	}
+}
+
+/**
+ * Get scheduled task description
+ */
+function getScheduledTaskDescription(taskName: string): string {
+	const name = taskName.toLowerCase();
+	if (name.includes('backup')) return 'Database backup';
+	if (name.includes('cleanup')) return 'Cleanup old data';
+	if (name.includes('report')) return 'Generate reports';
+	if (name.includes('sync')) return 'Data synchronization';
+	if (name.includes('reconcil')) return 'Reconcile records';
+	if (name.includes('fee')) return 'Calculate fees';
+	if (name.includes('export')) return 'Export data';
+	if (name.includes('import')) return 'Import data';
+	if (name.includes('notification')) return 'Send notifications';
+	return 'Scheduled task';
+}
+
+/**
+ * Get event task description
+ */
+function getEventTaskDescription(taskName: string): string {
+	const name = taskName.toLowerCase();
+	if (name.includes('order')) return 'Process orders';
+	if (name.includes('payment')) return 'Handle payments';
+	if (name.includes('notification')) return 'Send notifications';
+	if (name.includes('audit')) return 'Audit events';
+	if (name.includes('webhook')) return 'Process webhooks';
+	if (name.includes('email')) return 'Email processor';
+	if (name.includes('sms')) return 'SMS processor';
+	if (name.includes('analytics')) return 'Analytics events';
+	return 'Event processor';
 }

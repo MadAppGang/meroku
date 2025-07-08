@@ -152,15 +152,27 @@ export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
       border-2 rounded-lg p-4 ${minWidth} shadow-lg
       ${data.isExternal 
         ? 'bg-gray-900 border-dashed' 
-        : 'bg-gray-800'
+        : isServiceNode 
+          ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-2'
+          : 'bg-gray-800'
       }
       ${selected 
         ? 'border-blue-500 shadow-blue-500/20' 
         : data.isExternal 
           ? 'border-gray-500' 
-          : 'border-gray-600'
+          : isServiceNode
+            ? data.type === 'backend' 
+              ? 'border-blue-600/50 shadow-blue-900/20'
+              : data.type === 'service'
+                ? 'border-purple-600/50 shadow-purple-900/20'
+                : data.type === 'scheduled-task'
+                  ? 'border-green-600/50 shadow-green-900/20'
+                  : data.type === 'event-task'
+                    ? 'border-orange-600/50 shadow-orange-900/20'
+                    : 'border-gray-600'
+            : 'border-gray-600'
       }
-      hover:border-gray-500 transition-all duration-200
+      hover:border-gray-400 transition-all duration-200
       ${data.disabled ? 'opacity-50' : ''}
     `}>
       {/* Handles on all sides for flexible connections */}
@@ -215,6 +227,18 @@ export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
         className="w-3 h-3 bg-gray-600 border-2 border-gray-700"
       />
       
+      {/* Service type indicator for service nodes */}
+      {isServiceNode && (
+        <div className={`absolute -top-1 -right-1 w-2 h-2 rounded-full
+          ${data.type === 'backend' ? 'bg-blue-500' :
+            data.type === 'service' ? 'bg-purple-500' :
+            data.type === 'scheduled-task' ? 'bg-green-500' :
+            data.type === 'event-task' ? 'bg-orange-500' :
+            'bg-gray-500'
+          }`} 
+        />
+      )}
+      
       <div className="flex items-center gap-3 mb-2">
         <div className={`p-2 rounded-lg ${serviceColor} ${data.disabled ? 'opacity-60' : ''}`}>
           <Icon className="w-4 h-4 text-white" />
@@ -227,12 +251,13 @@ export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
         </div>
       </div>
 
-      <div className="flex items-center gap-2 mb-2">
-        <StatusIcon className={`w-4 h-4 ${statusColor} ${data.disabled ? 'opacity-60' : ''}`} />
-        <span className="text-sm text-gray-300">
-          {data.description || 'No description'}
-        </span>
-      </div>
+      {data.description && (
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-xs text-gray-400">
+            {data.description}
+          </span>
+        </div>
+      )}
       
       {/* Extended information for service nodes */}
       {isServiceNode && data.configProperties && (

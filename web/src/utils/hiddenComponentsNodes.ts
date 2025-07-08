@@ -25,6 +25,7 @@ export function generateHiddenComponentNodes(
 				id: "postgres",
 				type: "postgres",
 				name: "RDS PostgreSQL",
+				description: "Managed database",
 				status: "running",
 				configProperties: {
 					dbname: config.postgres.dbname,
@@ -47,6 +48,7 @@ export function generateHiddenComponentNodes(
 				id: "sqs",
 				type: "sqs",
 				name: "Amazon SQS",
+				description: "Message queue",
 				status: "running",
 				configProperties: {
 					queueName: config.sqs.name,
@@ -65,6 +67,7 @@ export function generateHiddenComponentNodes(
 				id: "efs",
 				type: "efs",
 				name: "Amazon EFS",
+				description: "Shared file storage",
 				status: "running",
 				configProperties: {
 					volumes: config.efs.map((ef) => ({
@@ -87,6 +90,7 @@ export function generateHiddenComponentNodes(
 				id: "alb",
 				type: "alb",
 				name: "Application Load Balancer",
+				description: "HTTP/HTTPS routing",
 				status: "running",
 				configProperties: {
 					domainName: config.workload?.backend_alb_domain_name,
@@ -105,6 +109,7 @@ export function generateHiddenComponentNodes(
 				id: "appsync",
 				type: "appsync",
 				name: "AWS AppSync",
+				description: "GraphQL API",
 				status: "running",
 				configProperties: {
 					schema: config.pubsub_appsync.schema,
