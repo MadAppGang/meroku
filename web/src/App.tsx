@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { ReactFlowProvider } from "reactflow";
 import * as yaml from "js-yaml";
+import { CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 import { DeploymentCanvas } from "./components/DeploymentCanvas";
 import { Sidebar } from "./components/Sidebar";
 import { EnvironmentSelector } from "./components/EnvironmentSelector";
@@ -22,6 +23,8 @@ export default function App() {
   const [showAddServiceDialog, setShowAddServiceDialog] = useState(false);
   const [showAddScheduledTaskDialog, setShowAddScheduledTaskDialog] = useState(false);
   const [showAddEventTaskDialog, setShowAddEventTaskDialog] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
 
   const handleNodeSelect = useCallback((node: ComponentNode | null) => {
     setSelectedNode(node);
@@ -60,16 +63,19 @@ export default function App() {
     }
   };
 
-  const handleConfigChange = (updates: Partial<YamlInfrastructureConfig>) => {
+  const handleConfigChange = async (updates: Partial<YamlInfrastructureConfig>) => {
     if (config) {
       const updatedConfig = { ...config, ...updates };
       setConfig(updatedConfig);
-      // TODO: Save to backend
+      await saveConfigToBackend(updatedConfig);
     }
   };
 
   const saveConfigToBackend = async (updatedConfig: YamlInfrastructureConfig) => {
     if (!selectedEnvironment) return;
+    
+    setIsSaving(true);
+    setSaveStatus('saving');
     
     try {
       const yamlContent = yaml.dump(updatedConfig, {
@@ -80,24 +86,33 @@ export default function App() {
       });
       await infrastructureApi.updateEnvironmentConfig(selectedEnvironment, yamlContent);
       console.log('Configuration saved successfully');
+      setSaveStatus('success');
+      // Reset status after 2 seconds
+      setTimeout(() => setSaveStatus('idle'), 2000);
     } catch (error) {
       console.error('Failed to save configuration:', error);
-      alert('Failed to save configuration. Please try again.');
+      setSaveStatus('error');
+      // Reset status after 3 seconds
+      setTimeout(() => setSaveStatus('idle'), 3000);
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const handleAddService = (service: any) => {
+  const handleAddService = async (service: any) => {
     if (!config) return;
     
     const updatedConfig = {
       ...config,
       services: [...(config.services || []), service],
     };
+    // Optimistic update - update UI immediately
     setConfig(updatedConfig);
-    saveConfigToBackend(updatedConfig);
+    // Save to backend in the background
+    await saveConfigToBackend(updatedConfig);
   };
 
-  const handleAddScheduledTask = (task: any) => {
+  const handleAddScheduledTask = async (task: any) => {
     if (!config) return;
     
     const updatedConfig = {
@@ -105,10 +120,10 @@ export default function App() {
       scheduled_tasks: [...(config.scheduled_tasks || []), task],
     };
     setConfig(updatedConfig);
-    saveConfigToBackend(updatedConfig);
+    await saveConfigToBackend(updatedConfig);
   };
 
-  const handleAddEventTask = (task: any) => {
+  const handleAddEventTask = async (task: any) => {
     if (!config) return;
     
     const updatedConfig = {
@@ -116,10 +131,10 @@ export default function App() {
       event_processor_tasks: [...(config.event_processor_tasks || []), task],
     };
     setConfig(updatedConfig);
-    saveConfigToBackend(updatedConfig);
+    await saveConfigToBackend(updatedConfig);
   };
 
-  const handleDeleteNode = (nodeId: string, nodeType: string) => {
+  const handleDeleteNode = async (nodeId: string, nodeType: string) => {
     if (!config) return;
     
     let updatedConfig = { ...config };
@@ -136,7 +151,7 @@ export default function App() {
     }
     
     setConfig(updatedConfig);
-    saveConfigToBackend(updatedConfig);
+    await saveConfigToBackend(updatedConfig);
   };
 
   const getExistingServices = () => {
@@ -239,6 +254,37 @@ export default function App() {
           </div>
         )}
       </div>
+      
+      {/* Save Status Indicator */}
+      {saveStatus !== 'idle' && (
+        <div className="absolute top-4 right-4 z-50">
+          <div className={`
+            flex items-center gap-2 px-4 py-2 rounded-lg shadow-lg
+            ${saveStatus === 'saving' ? 'bg-blue-900/90 border border-blue-700' : ''}
+            ${saveStatus === 'success' ? 'bg-green-900/90 border border-green-700' : ''}
+            ${saveStatus === 'error' ? 'bg-red-900/90 border border-red-700' : ''}
+          `}>
+            {saveStatus === 'saving' && (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
+                <span className="text-sm text-blue-200">Saving configuration...</span>
+              </>
+            )}
+            {saveStatus === 'success' && (
+              <>
+                <CheckCircle className="w-4 h-4 text-green-400" />
+                <span className="text-sm text-green-200">Configuration saved</span>
+              </>
+            )}
+            {saveStatus === 'error' && (
+              <>
+                <AlertCircle className="w-4 h-4 text-red-400" />
+                <span className="text-sm text-red-200">Failed to save configuration</span>
+              </>
+            )}
+          </div>
+        </div>
+      )}
       
       {/* Main Content */}
       <ReactFlowProvider>
