@@ -225,6 +225,73 @@ export const nodeStateMapping: NodeStateConfig[] = [
 ];
 
 /**
+ * Dynamic node state mappings for services that are created from config
+ */
+export function getDynamicNodeStateMapping(config: YamlInfrastructureConfig): NodeStateConfig[] {
+	const dynamicMappings: NodeStateConfig[] = [];
+
+	// Add mappings for additional services
+	if (config.services) {
+		config.services.forEach(service => {
+			dynamicMappings.push({
+				id: `service-${service.name}`,
+				name: service.name,
+				type: "service",
+				enabled: () => true,
+				properties: () => ({
+					desiredCount: service.desired_count || 1,
+					cpu: service.cpu || 256,
+					memory: service.memory || 512,
+					containerPort: service.container_port || 3000,
+					xrayEnabled: service.xray_enabled || false,
+					remoteAccess: service.remote_access || false,
+				}),
+				description: `Additional service: ${service.name}`,
+			});
+		});
+	}
+
+	// Add mappings for event processor tasks
+	if (config.event_processor_tasks) {
+		config.event_processor_tasks.forEach(task => {
+			dynamicMappings.push({
+				id: `event-${task.name}`,
+				name: `Event: ${task.name}`,
+				type: "event-task",
+				enabled: () => true,
+				properties: () => ({
+					ruleName: task.rule_name,
+					detailTypes: task.detail_types,
+					sources: task.sources,
+					publicAccess: task.allow_public_access || false,
+				}),
+				description: `Event processor: ${task.rule_name}`,
+			});
+		});
+	}
+
+	// Add mappings for scheduled tasks
+	if (config.scheduled_tasks) {
+		config.scheduled_tasks.forEach(task => {
+			dynamicMappings.push({
+				id: `scheduled-${task.name}`,
+				name: `Scheduled: ${task.name}`,
+				type: "scheduled-task",
+				enabled: () => true,
+				properties: () => ({
+					taskCount: 1, // Scheduled tasks always run single instances
+					schedule: task.schedule,
+					publicAccess: task.allow_public_access || false,
+				}),
+				description: `Scheduled task: ${task.schedule}`,
+			});
+		});
+	}
+
+	return dynamicMappings;
+}
+
+/**
  * Get the enabled state of a node based on configuration
  */
 export function getNodeState(
@@ -233,10 +300,20 @@ export function getNodeState(
 ): boolean {
 	if (!config) return true; // Show all nodes if no config loaded
 
+	// Check static mappings first
 	const nodeConfig = nodeStateMapping.find((n) => n.id === nodeId);
-	if (!nodeConfig) return true; // Unknown nodes default to enabled
+	if (nodeConfig) {
+		return nodeConfig.enabled(config);
+	}
 
-	return nodeConfig.enabled(config);
+	// Check dynamic mappings for services and tasks
+	const dynamicMappings = getDynamicNodeStateMapping(config);
+	const dynamicNodeConfig = dynamicMappings.find((n) => n.id === nodeId);
+	if (dynamicNodeConfig) {
+		return dynamicNodeConfig.enabled(config);
+	}
+
+	return true; // Unknown nodes default to enabled
 }
 
 /**
@@ -248,10 +325,20 @@ export function getNodeProperties(
 ): Record<string, any> {
 	if (!config) return {};
 
+	// Check static mappings first
 	const nodeConfig = nodeStateMapping.find((n) => n.id === nodeId);
-	if (!nodeConfig || !nodeConfig.properties) return {};
+	if (nodeConfig && nodeConfig.properties) {
+		return nodeConfig.properties(config);
+	}
 
-	return nodeConfig.properties(config);
+	// Check dynamic mappings for services and tasks
+	const dynamicMappings = getDynamicNodeStateMapping(config);
+	const dynamicNodeConfig = dynamicMappings.find((n) => n.id === nodeId);
+	if (dynamicNodeConfig && dynamicNodeConfig.properties) {
+		return dynamicNodeConfig.properties(config);
+	}
+
+	return {};
 }
 
 /**

@@ -42,7 +42,6 @@ export function EventTaskProperties({ config, onConfigChange, accountInfo, node 
   const [ruleName, setRuleName] = useState(eventTask?.rule_name || '');
   const [eventSources, setEventSources] = useState<string[]>(eventTask?.sources || []);
   const [detailTypes, setDetailTypes] = useState<string[]>(eventTask?.detail_types || []);
-  const [taskCount, setTaskCount] = useState(1); // Not configurable in the current schema
   const [dockerImage, setDockerImage] = useState(eventTask?.docker_image || '');
   const [publicAccess, setPublicAccess] = useState(eventTask?.allow_public_access || false);
   
@@ -282,38 +281,6 @@ export function EventTaskProperties({ config, onConfigChange, accountInfo, node 
         </CardContent>
       </Card>
 
-      {/* Task Configuration */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Settings className="w-5 h-5" />
-            Task Configuration
-          </CardTitle>
-          <CardDescription>
-            Configure how many tasks run per event
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="task-count">Task Count</Label>
-            <Input
-              id="task-count"
-              type="number"
-              min="1"
-              max="10"
-              value={taskCount}
-              onChange={(e) => {
-                const count = parseInt(e.target.value) || 1;
-                setTaskCount(count);
-                updateTaskConfig({ task_count: count });
-              }}
-            />
-            <p className="text-xs text-gray-500">
-              Number of tasks to run per event (default: 1)
-            </p>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Container Settings */}
       <Card>

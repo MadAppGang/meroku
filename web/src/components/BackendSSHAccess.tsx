@@ -13,9 +13,11 @@ interface BackendSSHAccessProps {
   config: YamlInfrastructureConfig;
   onConfigChange: (config: Partial<YamlInfrastructureConfig>) => void;
   accountInfo?: AccountInfo;
+  isService?: boolean;
+  serviceName?: string;
 }
 
-export function BackendSSHAccess({ config, onConfigChange, accountInfo }: BackendSSHAccessProps) {
+export function BackendSSHAccess({ config, onConfigChange, accountInfo, isService = false, serviceName }: BackendSSHAccessProps) {
   const [tasks, setTasks] = useState<ECSTaskInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -23,13 +25,29 @@ export function BackendSSHAccess({ config, onConfigChange, accountInfo }: Backen
   const [activeSSHSession, setActiveSSHSession] = useState<{ taskArn: string; containerName?: string } | null>(null);
   const [checkingSSH, setCheckingSSH] = useState<string | null>(null);
 
+  // Get service config if this is for a service
+  const serviceConfig = isService && serviceName ? config.services?.find(s => s.name === serviceName) : null;
+  const actualServiceName = isService && serviceName ? serviceName : 'backend';
+  
   const handleRemoteAccessToggle = (checked: boolean) => {
-    onConfigChange({
-      workload: {
-        ...config.workload,
-        backend_remote_access: checked
-      }
-    });
+    if (isService && serviceName) {
+      // Update service configuration
+      const updatedServices = config.services?.map(service => 
+        service.name === serviceName 
+          ? { ...service, remote_access: checked }
+          : service
+      ) || [];
+      
+      onConfigChange({ services: updatedServices });
+    } else {
+      // Update backend configuration
+      onConfigChange({
+        workload: {
+          ...config.workload,
+          backend_remote_access: checked
+        }
+      });
+    }
   };
 
   const fetchTasks = async () => {
@@ -38,7 +56,7 @@ export function BackendSSHAccess({ config, onConfigChange, accountInfo }: Backen
       setError(null);
       
       // Use the actual API endpoint: /api/ecs/tasks?env={environment}&service={serviceName}
-      const response = await infrastructureApi.getServiceTasks(config.env, 'backend');
+      const response = await infrastructureApi.getServiceTasks(config.env, actualServiceName);
       setTasks(response.tasks || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch tasks');
@@ -63,7 +81,7 @@ export function BackendSSHAccess({ config, onConfigChange, accountInfo }: Backen
       // Check SSH capability
       const capability = await infrastructureApi.checkSSHCapability(
         config.env,
-        'backend',
+        actualServiceName,
         task.taskArn
       );
       
@@ -75,7 +93,7 @@ export function BackendSSHAccess({ config, onConfigChange, accountInfo }: Backen
       // Open SSH terminal
       setActiveSSHSession({ 
         taskArn: task.taskArn, 
-        containerName: `${config.project}_service_${config.env}` 
+        containerName: isService ? actualServiceName : `${config.project}_service_${config.env}` 
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to check SSH capability');
@@ -90,7 +108,7 @@ export function BackendSSHAccess({ config, onConfigChange, accountInfo }: Backen
   const generateSSHCommand = (taskArn?: string) => {
     const arn = taskArn || '{task-arn}';
     const clusterName = `${config.project}_cluster_${config.env}`;
-    const containerName = `${config.project}_service_${config.env}`;
+    const containerName = isService ? actualServiceName : `${config.project}_service_${config.env}`;
     const profile = accountInfo?.profile || '{profile-name}';
     return `AWS_PROFILE=${profile} aws ecs execute-command \\
 --cluster ${clusterName} \\
@@ -111,7 +129,7 @@ export function BackendSSHAccess({ config, onConfigChange, accountInfo }: Backen
             Remote SSH Access
           </CardTitle>
           <CardDescription>
-            Enable secure remote access to backend containers for debugging
+            Enable secure remote access to {actualServiceName} containers for debugging
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -124,20 +142,20 @@ export function BackendSSHAccess({ config, onConfigChange, accountInfo }: Backen
             </div>
             <Switch
               id="remote_access"
-              checked={config.workload?.backend_remote_access !== false}
+              checked={isService ? (serviceConfig?.remote_access || false) : (config.workload?.backend_remote_access !== false)}
               onCheckedChange={handleRemoteAccessToggle}
               className="data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-gray-600"
             />
           </div>
 
-          {config.workload?.backend_remote_access !== false && (
+          {(isService ? serviceConfig?.remote_access : config.workload?.backend_remote_access !== false) && (
             <div className="bg-green-900/20 border border-green-700 rounded-lg p-4">
               <div className="flex items-start gap-2">
                 <Info className="w-4 h-4 text-green-400 mt-0.5" />
                 <div className="flex-1">
                   <h4 className="text-sm font-medium text-green-400 mb-1">Remote Access Enabled</h4>
                   <p className="text-xs text-gray-300">
-                    ECS Exec is enabled for secure SSH access to your backend containers.
+                    ECS Exec is enabled for secure SSH access to your {actualServiceName} containers.
                     No bastion host required.
                   </p>
                 </div>
@@ -153,7 +171,7 @@ export function BackendSSHAccess({ config, onConfigChange, accountInfo }: Backen
           <CardHeader>
             <CardTitle>SSH Connection</CardTitle>
             <CardDescription>
-              Get running tasks and connect to your backend containers
+              Get running tasks and connect to your {actualServiceName} containers
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -270,6 +288,33 @@ export function BackendSSHAccess({ config, onConfigChange, accountInfo }: Backen
               </div>
             )}
 
+            {/* How to Get Tasks */}
+            <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-4">
+              <h4 className="text-sm font-medium text-blue-400 mb-2">How to Get Task ARN</h4>
+              <div className="space-y-3">
+                <div>
+                  <p className="text-xs text-gray-300 mb-2">Option 1: Use the Web UI (Recommended)</p>
+                  <p className="text-xs text-gray-400">Click the "Get Tasks" button above to automatically fetch running tasks and fill in the task ARN.</p>
+                </div>
+                
+                <div>
+                  <p className="text-xs text-gray-300 mb-2">Option 2: Use AWS CLI</p>
+                  <div className="bg-gray-900 rounded p-2 font-mono text-xs text-gray-300 overflow-x-auto">
+                    <pre>aws ecs list-tasks --cluster {config.project}_cluster_{config.env} --service-name {actualServiceName} --region {config.region}</pre>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">Then use one of the returned task ARNs in the SSH command.</p>
+                </div>
+                
+                <div>
+                  <p className="text-xs text-gray-300 mb-2">Option 3: Get Task Details</p>
+                  <div className="bg-gray-900 rounded p-2 font-mono text-xs text-gray-300 overflow-x-auto">
+                    <pre>aws ecs describe-tasks --cluster {config.project}_cluster_{config.env} --tasks $(aws ecs list-tasks --cluster {config.project}_cluster_{config.env} --service-name {actualServiceName} --query 'taskArns[0]' --output text) --region {config.region}</pre>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">This command gets details about the first running task.</p>
+                </div>
+              </div>
+            </div>
+
             {/* Prerequisites - Always Show */}
             <div className="bg-gray-800 rounded-lg p-4">
               <h4 className="text-sm font-medium text-gray-300 mb-2">Prerequisites</h4>
@@ -284,7 +329,7 @@ export function BackendSSHAccess({ config, onConfigChange, accountInfo }: Backen
       )}
 
       {/* Disabled State */}
-      {config.workload?.backend_remote_access === false && (
+      {(isService ? !serviceConfig?.remote_access : config.workload?.backend_remote_access === false) && (
         <Card>
           <CardHeader>
             <CardTitle>Getting Started</CardTitle>
@@ -294,7 +339,7 @@ export function BackendSSHAccess({ config, onConfigChange, accountInfo }: Backen
               <Terminal className="w-12 h-12 text-gray-600 mx-auto mb-4" />
               <h3 className="text-sm font-medium text-gray-300 mb-2">Remote Access Disabled</h3>
               <p className="text-xs text-gray-500 mb-4">
-                Enable remote access to SSH into your backend containers for debugging and troubleshooting.
+                Enable remote access to SSH into your {actualServiceName} containers for debugging and troubleshooting.
               </p>
               <Button
                 onClick={() => handleRemoteAccessToggle(true)}
@@ -311,7 +356,7 @@ export function BackendSSHAccess({ config, onConfigChange, accountInfo }: Backen
       {activeSSHSession && (
         <SSHTerminal
           env={config.env}
-          serviceName="backend"
+          serviceName={actualServiceName}
           taskArn={activeSSHSession.taskArn}
           containerName={activeSSHSession.containerName}
           onClose={() => setActiveSSHSession(null)}

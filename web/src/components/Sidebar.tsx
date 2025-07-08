@@ -43,6 +43,10 @@ import { S3NodeProperties } from './S3NodeProperties';
 import { PostgresNodeProperties } from './PostgresNodeProperties';
 import { SQSNodeProperties } from './SQSNodeProperties';
 import { EventBridgeTestEvent } from './EventBridgeTestEvent';
+import { ServiceProperties } from './ServiceProperties';
+import { ServiceXRayConfiguration } from './ServiceXRayConfiguration';
+import { ServiceEnvironmentVariables } from './ServiceEnvironmentVariables';
+import { ServiceParameterStore } from './ServiceParameterStore';
 
 interface SidebarProps {
   selectedNode: ComponentNode | null;
@@ -211,6 +215,16 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
               { id: 'iam', label: 'IAM', icon: Shield },
               { id: 'cloudwatch', label: 'CloudWatch', icon: Cloud },
               { id: 'logs', label: 'Logs', icon: FileText },
+            ] : selectedNode.type === 'service' ? [
+              { id: 'settings', label: 'Settings', icon: Settings },
+              { id: 'scaling', label: 'Scaling', icon: Gauge },
+              { id: 'xray', label: 'X-Ray', icon: Microscope },
+              { id: 'ssh', label: 'SSH', icon: Terminal },
+              { id: 'env', label: 'Env Vars', icon: Zap },
+              { id: 'params', label: 'Parameters', icon: Key },
+              { id: 'iam', label: 'IAM', icon: Shield },
+              { id: 'logs', label: 'Logs', icon: FileText },
+              { id: 'cloudwatch', label: 'CloudWatch', icon: Cloud },
             ] : [
               { id: 'settings', label: 'Settings', icon: Settings },
               { id: 'logs', label: 'Logs', icon: FileText },
@@ -293,6 +307,13 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
               accountInfo={accountInfo}
               node={selectedNode}
             />
+          ) : selectedNode.type === 'service' && config && onConfigChange ? (
+            <ServiceProperties 
+              config={config}
+              onConfigChange={onConfigChange}
+              accountInfo={accountInfo}
+              node={selectedNode}
+            />
           ) : (
             <div className="space-y-6">
               <div>
@@ -365,7 +386,7 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
           selectedNode.type === 'backend' ? (
             <ServiceLogs environment={config.env} serviceName="backend" />
           ) : selectedNode.type === 'service' ? (
-            <ServiceLogs environment={config.env} serviceName={selectedNode.name} />
+            <ServiceLogs environment={config.env} serviceName={selectedNode.id.replace('service-', '')} />
           ) : null
         )}
 
@@ -551,6 +572,36 @@ jobs:
 
         {activeTab === 'alerts' && selectedNode.type === 'backend' && config && (
           <BackendAlerts config={config} />
+        )}
+
+        {/* Service-specific tabs */}
+        {activeTab === 'scaling' && selectedNode.type === 'service' && config && onConfigChange && (
+          <BackendScalingConfiguration config={config} onConfigChange={onConfigChange} isService={true} serviceName={selectedNode.id.replace('service-', '')} />
+        )}
+
+        {activeTab === 'xray' && selectedNode.type === 'service' && config && onConfigChange && (
+          <ServiceXRayConfiguration config={config} onConfigChange={onConfigChange} node={selectedNode} />
+        )}
+
+        {activeTab === 'ssh' && selectedNode.type === 'service' && config && onConfigChange && (
+          <BackendSSHAccess config={config} onConfigChange={onConfigChange} accountInfo={accountInfo} isService={true} serviceName={selectedNode.id.replace('service-', '')} />
+        )}
+
+        {activeTab === 'env' && selectedNode.type === 'service' && config && onConfigChange && (
+          <ServiceEnvironmentVariables config={config} accountInfo={accountInfo} node={selectedNode} onConfigChange={onConfigChange} />
+        )}
+
+        {activeTab === 'params' && selectedNode.type === 'service' && config && (
+          <ServiceParameterStore config={config} node={selectedNode} />
+        )}
+
+        {activeTab === 'iam' && selectedNode.type === 'service' && config && (
+          <BackendIAMPermissions config={config} node={selectedNode} />
+        )}
+
+
+        {activeTab === 'cloudwatch' && selectedNode.type === 'service' && config && (
+          <BackendCloudWatch config={config} node={selectedNode} />
         )}
 
         {/* Scheduled Task Tabs */}

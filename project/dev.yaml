@@ -16,9 +16,8 @@ image_bucket_postfix:
 # backend_image_port: 8765
 # setup push notification FCM SNS for backend
 setup_FCM_SNS: false
-backend_env:
-  - name: env1
-    value: value1
+backend_env_variables:
+  env1: value1
 
 # setup services
 services:
@@ -30,8 +29,7 @@ services:
     memory: 512
     xray_enabled: false
     env_vars:
-      name: SERVICE_TEST
-      value: PASSED
+      SERVICE_TEST: PASSED
 
 # Route53 domain management
 setup_domain: true
@@ -68,7 +66,7 @@ scheduled_tasks:
     schedule: rate(1 hours)
 
 # setup event processing tasks
-event_tasks:
+event_processor_tasks:
   - name: event_task1
     rule_name: hug_all
     sources:

@@ -26,6 +26,7 @@ type Env struct {
 	EventProcessorTasks []EventProcessorTask `yaml:"event_processor_tasks"`
 	AppSyncPubSub       AppSync              `yaml:"pubsub_appsync"`
 	Buckets             []BucketConfig       `yaml:"buckets"`
+	Services            []Service            `yaml:"services"`
 }
 
 type AppSync struct {
@@ -121,8 +122,30 @@ type EventProcessorTask struct {
 	DetailTypes         []string `yaml:"detail_types"`
 	Sources             []string `yaml:"sources"`
 	ExternalDockerImage string   `yaml:"docker_image"`
-	ContainerCommand    string   `yaml:"container_command"`
+	ContainerCommand    []string `yaml:"container_command"`
 	AllowPublicAccess   bool     `yaml:"allow_public_access"`
+}
+
+type EnvVariable struct {
+	Name  string `yaml:"name"`
+	Value string `yaml:"value"`
+}
+
+type Service struct {
+	Name             string            `yaml:"name"`
+	DockerImage      string            `yaml:"docker_image"`
+	ContainerCommand []string          `yaml:"container_command"`
+	ContainerPort    int               `yaml:"container_port"`
+	HostPort         int               `yaml:"host_port"`
+	CPU              int               `yaml:"cpu"`
+	Memory           int               `yaml:"memory"`
+	DesiredCount     int               `yaml:"desired_count"`
+	RemoteAccess     bool              `yaml:"remote_access"`
+	XrayEnabled      bool              `yaml:"xray_enabled"`
+	Essential        bool              `yaml:"essential"`
+	EnvVars          map[string]string `yaml:"env_vars"`
+	EnvVariables     []EnvVariable     `yaml:"env_variables"`
+	EnvFilesS3       []S3EnvFile       `yaml:"env_files_s3"`
 }
 
 // create function which generate random string

@@ -12,6 +12,8 @@ import { Checkbox } from './ui/checkbox';
 interface BackendScalingConfigurationProps {
   config: YamlInfrastructureConfig;
   onConfigChange: (config: Partial<YamlInfrastructureConfig>) => void;
+  isService?: boolean;
+  serviceName?: string;
 }
 
 // CPU to Memory mapping based on Fargate requirements
@@ -23,11 +25,14 @@ const cpuMemoryMap: { [key: string]: string[] } = {
   '4096': ['8192', '9216', '10240', '11264', '12288', '13312', '14336', '15360', '16384', '17408', '18432', '19456', '20480', '21504', '22528', '23552', '24576', '25600', '26624', '27648', '28672', '29696', '30720']
 };
 
-export function BackendScalingConfiguration({ config, onConfigChange }: BackendScalingConfigurationProps) {
-  const [cpu, setCpu] = useState(config.workload?.backend_cpu || '256');
-  const [memory, setMemory] = useState(config.workload?.backend_memory || '512');
-  const [desiredCount, setDesiredCount] = useState(config.workload?.backend_desired_count || 1);
-  const [autoscalingEnabled, setAutoscalingEnabled] = useState(config.workload?.backend_autoscaling_enabled || false);
+export function BackendScalingConfiguration({ config, onConfigChange, isService = false, serviceName }: BackendScalingConfigurationProps) {
+  // Get service config if this is for a service
+  const serviceConfig = isService && serviceName ? config.services?.find(s => s.name === serviceName) : null;
+  
+  const [cpu, setCpu] = useState(isService && serviceConfig ? (serviceConfig.cpu?.toString() || '256') : (config.workload?.backend_cpu || '256'));
+  const [memory, setMemory] = useState(isService && serviceConfig ? (serviceConfig.memory?.toString() || '512') : (config.workload?.backend_memory || '512'));
+  const [desiredCount, setDesiredCount] = useState(isService && serviceConfig ? (serviceConfig.desired_count || 1) : (config.workload?.backend_desired_count || 1));
+  const [autoscalingEnabled, setAutoscalingEnabled] = useState(isService ? false : (config.workload?.backend_autoscaling_enabled || false));
   const [minCapacity, setMinCapacity] = useState(config.workload?.backend_autoscaling_min_capacity || 1);
   const [maxCapacity, setMaxCapacity] = useState(config.workload?.backend_autoscaling_max_capacity || 10);
   const [cpuTarget, setCpuTarget] = useState(config.workload?.backend_autoscaling_cpu_target || 70);
@@ -44,12 +49,29 @@ export function BackendScalingConfiguration({ config, onConfigChange }: BackendS
   }, [cpu, memory]);
 
   const handleWorkloadChange = (updates: Partial<YamlInfrastructureConfig['workload']>) => {
-    onConfigChange({
-      workload: {
-        ...config.workload,
-        ...updates
-      }
-    });
+    if (isService && serviceName) {
+      // Update service configuration
+      const updatedServices = config.services?.map(service => 
+        service.name === serviceName 
+          ? { 
+              ...service, 
+              cpu: updates.backend_cpu ? parseInt(updates.backend_cpu) : service.cpu,
+              memory: updates.backend_memory ? parseInt(updates.backend_memory) : service.memory,
+              desired_count: updates.backend_desired_count || service.desired_count
+            }
+          : service
+      ) || [];
+      
+      onConfigChange({ services: updatedServices });
+    } else {
+      // Update backend configuration
+      onConfigChange({
+        workload: {
+          ...config.workload,
+          ...updates
+        }
+      });
+    }
   };
 
   // X-Ray no longer affects resource allocation
@@ -148,37 +170,38 @@ export function BackendScalingConfiguration({ config, onConfigChange }: BackendS
         </CardContent>
       </Card>
 
-      {/* Autoscaling Configuration */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Activity className="w-5 h-5 text-green-400" />
-            Autoscaling Configuration
-          </CardTitle>
-          <CardDescription>
-            Configure automatic scaling based on metrics
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex-1">
-              <Label htmlFor="enable-autoscaling">Enable Autoscaling</Label>
-              <p className="text-xs text-gray-500 mt-1">
-                Automatically adjust the number of instances based on load
-              </p>
+      {/* Autoscaling Configuration - Only show for backend, not services */}
+      {!isService && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Activity className="w-5 h-5 text-green-400" />
+              Autoscaling Configuration
+            </CardTitle>
+            <CardDescription>
+              Configure automatic scaling based on metrics
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex-1">
+                <Label htmlFor="enable-autoscaling">Enable Autoscaling</Label>
+                <p className="text-xs text-gray-500 mt-1">
+                  Automatically adjust the number of instances based on load
+                </p>
+              </div>
+              <Switch
+                id="enable-autoscaling"
+                checked={autoscalingEnabled}
+                onCheckedChange={(checked) => {
+                  setAutoscalingEnabled(checked);
+                  handleWorkloadChange({ backend_autoscaling_enabled: checked });
+                }}
+                className="data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-gray-600"
+              />
             </div>
-            <Switch
-              id="enable-autoscaling"
-              checked={autoscalingEnabled}
-              onCheckedChange={(checked) => {
-                setAutoscalingEnabled(checked);
-                handleWorkloadChange({ backend_autoscaling_enabled: checked });
-              }}
-              className="data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-gray-600"
-            />
-          </div>
 
-          {autoscalingEnabled && (
+            {autoscalingEnabled && (
             <>
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -315,22 +338,23 @@ export function BackendScalingConfiguration({ config, onConfigChange }: BackendS
             </>
           )}
 
-          {!autoscalingEnabled && (
-            <div className="bg-yellow-900/20 border border-yellow-700 rounded-lg p-4">
-              <div className="flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-yellow-400 mt-0.5" />
-                <div className="flex-1">
-                  <h4 className="text-sm font-medium text-yellow-400 mb-1">Manual Scaling</h4>
-                  <p className="text-xs text-gray-300">
-                    With autoscaling disabled, your service will always run exactly {desiredCount} instance{desiredCount > 1 ? 's' : ''}. 
-                    You'll need to manually adjust this value to handle load changes.
-                  </p>
+            {!autoscalingEnabled && (
+              <div className="bg-yellow-900/20 border border-yellow-700 rounded-lg p-4">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-yellow-400 mt-0.5" />
+                  <div className="flex-1">
+                    <h4 className="text-sm font-medium text-yellow-400 mb-1">Manual Scaling</h4>
+                    <p className="text-xs text-gray-300">
+                      With autoscaling disabled, your service will always run exactly {desiredCount} instance{desiredCount > 1 ? 's' : ''}. 
+                      You'll need to manually adjust this value to handle load changes.
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
 
       {/* Resource Summary */}

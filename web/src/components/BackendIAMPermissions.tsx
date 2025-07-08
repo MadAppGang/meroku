@@ -7,14 +7,20 @@ import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Shield, Check, X, AlertCircle, Plus, Trash2, Edit2, ChevronDown, ChevronUp } from 'lucide-react';
 import { YamlInfrastructureConfig } from '../types/yamlConfig';
+import { ComponentNode } from '../types';
 
 interface BackendIAMPermissionsProps {
   config: YamlInfrastructureConfig;
+  node?: ComponentNode;
 }
 
-export function BackendIAMPermissions({ config }: BackendIAMPermissionsProps) {
-  // Custom policies from YAML config
-  const [customPolicies, setCustomPolicies] = useState(config.workload?.policy || []);
+export function BackendIAMPermissions({ config, node }: BackendIAMPermissionsProps) {
+  // Determine if this is for a service or backend
+  const isService = node?.type === 'service';
+  const serviceName = isService ? node.id.replace('service-', '') : null;
+  const serviceConfig = isService && serviceName ? config.services?.find(s => s.name === serviceName) : null;
+  // Custom policies from YAML config (only for backend)
+  const [customPolicies, setCustomPolicies] = useState(!isService ? (config.workload?.policy || []) : []);
   const [showNewPolicy, setShowNewPolicy] = useState(false);
   const [newActions, setNewActions] = useState('');
   const [newResources, setNewResources] = useState('');
@@ -64,11 +70,11 @@ export function BackendIAMPermissions({ config }: BackendIAMPermissionsProps) {
       description: 'Applied to both task role and execution role',
     },
     {
-      name: 'Backend S3 Bucket Full Access',
+      name: 'S3 Backend Bucket Access',
       type: 'custom',
       actions: ['s3:*'],
       resources: [`arn:aws:s3:::${config.project}-backend-${config.env}${config.workload?.bucket_postfix || ''}`, `arn:aws:s3:::${config.project}-backend-${config.env}${config.workload?.bucket_postfix || ''}/*`],
-      description: 'Full access to backend bucket and all objects within it',
+      description: 'Full access to backend S3 bucket',
     },
     {
       name: 'SES Email Sending',
@@ -78,18 +84,23 @@ export function BackendIAMPermissions({ config }: BackendIAMPermissionsProps) {
       description: 'Send emails via Amazon SES',
     },
     {
-      name: 'SSM Parameter Store Access',
+      name: 'SSM Parameter Access',
       type: 'custom',
       actions: ['ssm:GetParameter', 'ssm:GetParameters', 'ssm:GetParametersByPath'],
-      resources: [`arn:aws:ssm:*:*:parameter/${config.env}/${config.project}/backend/*`],
-      description: 'Read parameters from Parameter Store',
+      resources: isService 
+        ? [`arn:aws:ssm:*:*:parameter/${config.env}/${config.project}/${serviceName}/*`]
+        : [`arn:aws:ssm:*:*:parameter/${config.env}/${config.project}/backend/*`],
+      description: isService 
+        ? `Read parameters under /${config.env}/${config.project}/${serviceName}/*`
+        : 'Read parameters from Parameter Store',
     },
-    {
+    // Only include X-Ray for backend
+    ...(!isService ? [{
       name: 'X-Ray Write Access',
       type: 'managed',
       arn: 'arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess',
       description: 'Send traces to AWS X-Ray',
-    },
+    }] : []),
   ];
 
   // Conditional permissions
@@ -104,8 +115,8 @@ export function BackendIAMPermissions({ config }: BackendIAMPermissionsProps) {
     },
     {
       name: 'ECS Execute Command',
-      condition: 'backend_remote_access = true',
-      enabled: config.workload?.backend_remote_access !== false,
+      condition: isService ? 'remote_access = true' : 'backend_remote_access = true',
+      enabled: isService ? (serviceConfig?.remote_access || false) : (config.workload?.backend_remote_access !== false),
       type: 'custom',
       actions: [
         'ssmmessages:CreateControlChannel',
@@ -119,15 +130,18 @@ export function BackendIAMPermissions({ config }: BackendIAMPermissionsProps) {
     {
       name: 'S3 Environment Files',
       condition: 'env_files_s3 is not empty',
-      enabled: (config.workload?.env_files_s3?.length || 0) > 0,
+      enabled: isService 
+        ? ((serviceConfig?.env_files_s3?.length || 0) > 0)
+        : ((config.workload?.env_files_s3?.length || 0) > 0),
       type: 'custom',
-      actions: ['s3:*'],
-      resources: config.workload?.env_files_s3?.map(f => 
-        `arn:aws:s3:::${f.bucket}/${f.key}`
-      ) || [],
-      description: 'Access to specific S3 environment files',
+      actions: isService ? ['s3:GetObject'] : ['s3:*'],
+      resources: isService
+        ? (serviceConfig?.env_files_s3?.map(f => `arn:aws:s3:::${f.bucket}/${f.key}`) || [])
+        : (config.workload?.env_files_s3?.map(f => `arn:aws:s3:::${f.bucket}/${f.key}`) || []),
+      description: isService ? 'Read specific S3 environment files' : 'Access to specific S3 environment files',
     },
-    {
+    // Only include EFS for backend
+    ...(!isService ? [{
       name: 'EFS Access',
       condition: 'backend_efs_mounts is not empty',
       enabled: (config.workload?.efs?.length || 0) > 0,
@@ -142,7 +156,7 @@ export function BackendIAMPermissions({ config }: BackendIAMPermissionsProps) {
         `arn:aws:elasticfilesystem:*:*:file-system/${efs.name}`
       ) || [],
       description: 'Mount and access EFS file systems',
-    },
+    }] : []),
   ];
 
   // Task Execution Role permissions
@@ -160,21 +174,24 @@ export function BackendIAMPermissions({ config }: BackendIAMPermissionsProps) {
       description: 'Write logs and metrics',
     },
     {
-      name: 'SSM Parameter Store Access',
+      name: 'SSM Parameter Access',
       type: 'custom',
       actions: ['ssm:GetParameter', 'ssm:GetParameters', 'ssm:GetParametersByPath'],
-      resources: [`arn:aws:ssm:*:*:parameter/${config.env}/${config.project}/backend/*`],
+      resources: isService
+        ? [`arn:aws:ssm:*:*:parameter/${config.env}/${config.project}/${serviceName}/*`]
+        : [`arn:aws:ssm:*:*:parameter/${config.env}/${config.project}/backend/*`],
       description: 'Read parameters during task startup',
     },
   ];
 
   // Add S3 env files to execution role if configured
-  if ((config.workload?.env_files_s3?.length || 0) > 0) {
+  const envFilesS3 = isService ? serviceConfig?.env_files_s3 : config.workload?.env_files_s3;
+  if ((envFilesS3?.length || 0) > 0) {
     executionRolePermissions.push({
       name: 'S3 Environment Files Access',
       type: 'custom',
       actions: ['s3:GetObject'],
-      resources: config.workload?.env_files_s3?.map(f => 
+      resources: envFilesS3?.map(f => 
         `arn:aws:s3:::${f.bucket}/${f.key}`
       ) || [],
       description: 'Read environment files during task startup',
@@ -190,22 +207,24 @@ export function BackendIAMPermissions({ config }: BackendIAMPermissionsProps) {
             IAM Roles
           </CardTitle>
           <CardDescription>
-            Roles used by the ECS backend service
+            Roles used by the ECS {isService ? `${serviceName} service` : 'backend service'}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
             <div className="p-3 bg-gray-800 rounded">
               <p className="text-sm font-medium text-gray-200 mb-1">Task Role</p>
-              <code className="text-sm font-mono text-blue-400">{config.project}_backend_task_{config.env}</code>
+              <code className="text-sm font-mono text-blue-400">
+                {isService ? `${config.project}_service_${serviceName}_task_${config.env}` : `${config.project}_backend_task_${config.env}`}
+              </code>
               <p className="text-xs text-gray-400 mt-1">Used by the running container to access AWS services</p>
-              <p className="text-xs text-gray-500 mt-1">ARN: <code className="font-mono">arn:aws:iam::ACCOUNT:role/{config.project}_backend_task_{config.env}</code></p>
             </div>
             <div className="p-3 bg-gray-800 rounded">
               <p className="text-sm font-medium text-gray-200 mb-1">Task Execution Role</p>
-              <code className="text-sm font-mono text-blue-400">{config.project}_backend_task_execution_{config.env}</code>
+              <code className="text-sm font-mono text-blue-400">
+                {isService ? `${config.project}_service_${serviceName}_task_execution_${config.env}` : `${config.project}_backend_task_execution_${config.env}`}
+              </code>
               <p className="text-xs text-gray-400 mt-1">Used by ECS to start the task (pull images, write logs)</p>
-              <p className="text-xs text-gray-500 mt-1">ARN: <code className="font-mono">arn:aws:iam::ACCOUNT:role/{config.project}_backend_task_execution_{config.env}</code></p>
             </div>
           </div>
         </CardContent>
@@ -263,7 +282,8 @@ export function BackendIAMPermissions({ config }: BackendIAMPermissionsProps) {
         </CardContent>
       </Card>
 
-      {/* Custom Policies Section */}
+      {/* Custom Policies Section - Only for backend */}
+      {!isService && (
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -469,6 +489,7 @@ export function BackendIAMPermissions({ config }: BackendIAMPermissionsProps) {
           )}
         </CardContent>
       </Card>
+      )}
 
       {/* Optional Permissions */}
       <Card>
@@ -548,7 +569,9 @@ export function BackendIAMPermissions({ config }: BackendIAMPermissionsProps) {
             Task Execution Role Permissions
           </CardTitle>
           <CardDescription>
-            <code className="font-mono text-sm">{config.project}_backend_task_execution_{config.env}</code>
+            <code className="font-mono text-sm">
+              {isService ? `${config.project}_service_${serviceName}_task_execution_${config.env}` : `${config.project}_backend_task_execution_${config.env}`}
+            </code>
           </CardDescription>
         </CardHeader>
         <CardContent>

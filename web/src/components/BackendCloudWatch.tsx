@@ -5,15 +5,27 @@ import { Button } from './ui/button';
 import { Alert, AlertDescription } from './ui/alert';
 import { Cloud, Terminal, Copy, Info, Clock, FileText } from 'lucide-react';
 import { YamlInfrastructureConfig } from '../types/yamlConfig';
+import { ComponentNode } from '../types';
 
 interface BackendCloudWatchProps {
   config: YamlInfrastructureConfig;
+  node?: ComponentNode;
 }
 
-export function BackendCloudWatch({ config }: BackendCloudWatchProps) {
+export function BackendCloudWatch({ config, node }: BackendCloudWatchProps) {
+  // Determine if this is for a service or backend
+  const isService = node?.type === 'service';
+  const serviceName = isService ? node.id.replace('service-', '') : null;
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
 
-  const logGroups = [
+  const logGroups = isService ? [
+    {
+      name: `${config.project}_service_${serviceName}_${config.env}`,
+      description: `${serviceName} service logs`,
+      service: `ECS ${serviceName} Service`,
+      retention: '7 days',
+    }
+  ] : [
     {
       name: `${config.project}_backend_${config.env}`,
       description: 'Backend service logs',
@@ -68,7 +80,7 @@ export function BackendCloudWatch({ config }: BackendCloudWatchProps) {
             CloudWatch Log Groups
           </CardTitle>
           <CardDescription>
-            Log groups for backend services and collectors
+            Log groups for {isService ? `${serviceName} service` : 'backend services and collectors'}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -280,11 +292,11 @@ export function BackendCloudWatch({ config }: BackendCloudWatchProps) {
               <div className="bg-gray-900 rounded-lg p-3 font-mono text-xs text-gray-300">
                 <pre>{`# Export logs to S3
 aws logs create-export-task \\
-  --log-group-name "${config.project}_backend_${config.env}" \\
+  --log-group-name "${isService ? `${config.project}_service_${serviceName}_${config.env}` : `${config.project}_backend_${config.env}`}" \\
   --from $(date -d '7 days ago' +%s)000 \\
   --to $(date +%s)000 \\
   --destination "${config.project}-logs-export" \\
-  --destination-prefix "backend/${config.env}/"`}</pre>
+  --destination-prefix "${isService ? `service/${serviceName}` : 'backend'}/${config.env}/"`}</pre>
               </div>
             </div>
 
@@ -292,9 +304,9 @@ aws logs create-export-task \\
               <p className="text-sm font-medium text-gray-300">Stream to Local File</p>
               <div className="bg-gray-900 rounded-lg p-3 font-mono text-xs text-gray-300">
                 <pre>{`# Save logs to local file
-aws logs tail ${config.project}_backend_${config.env} \\
+aws logs tail ${isService ? `${config.project}_service_${serviceName}_${config.env}` : `${config.project}_backend_${config.env}`} \\
   --follow \\
-  --format short > backend-logs-$(date +%Y%m%d-%H%M%S).log`}</pre>
+  --format short > ${isService ? `${serviceName}` : 'backend'}-logs-$(date +%Y%m%d-%H%M%S).log`}</pre>
               </div>
             </div>
           </div>

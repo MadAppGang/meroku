@@ -59,6 +59,7 @@ export function generateAdditionalServiceNodes(
 				configProperties: {
 					schedule: task.schedule,
 					publicAccess: task.allow_public_access,
+					taskCount: 1, // Scheduled tasks run as single instances
 				},
 			},
 		});
@@ -84,6 +85,7 @@ export function generateAdditionalServiceNodes(
 					detailTypes: task.detail_types,
 					sources: task.sources,
 					publicAccess: task.allow_public_access,
+					taskCount: 1, // Event tasks run as single instances
 				},
 			},
 		});
