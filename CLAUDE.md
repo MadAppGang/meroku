@@ -11,6 +11,23 @@ This is a comprehensive Terraform Infrastructure as Code (IaC) repository that p
 - Handlebars-based templating system (using Raymond Go package) for environment configuration
 - GitHub Actions CI/CD workflows with OIDC authentication
 
+## Important Architecture Decisions
+
+### VPC Endpoints (Deprecated)
+**Note**: VPC endpoints are NO LONGER USED in this infrastructure due to cost considerations (~$27/month per interface endpoint). Instead, we rely on:
+- Security groups for access control
+- Internet Gateway for outbound connectivity
+- Service-to-service communication through the VPC
+
+All VPC endpoint code in `modules/workloads/ecs_endpoints.tf` is commented out and should remain so.
+
+### API Gateway vs ALB
+The infrastructure supports two ingress patterns:
+- **Default (enable_alb: false)**: API Gateway → ECS Services
+- **Alternative (enable_alb: true)**: ALB → ECS Services
+
+Note: Currently, both resources are created regardless of the setting, but only one is used for traffic routing.
+
 ## Memories
 
 - Always keep all AI-related documentation, created by AI or intended to be consumed by AI, in the @ai_docs/ folder
@@ -45,4 +62,69 @@ make infra-gen-prod   # For prod environment
 make infra-import env=dev
 ```
 
-[... rest of the file remains unchanged ...]
+### Development Commands
+```bash
+# Run the TUI application
+make tui
+
+# Run the web frontend
+make web
+
+# Build the CLI
+make build
+
+# Run tests
+make test
+
+# Generate code from templates
+make generate
+```
+
+## Project Structure
+
+```
+infrastructure/
+├── modules/          # Terraform modules for AWS services
+├── env/             # Environment-specific Terraform configurations
+├── project/         # YAML configuration files (dev.yaml, prod.yaml)
+├── templates/       # Handlebars templates for Terraform generation
+├── app/            # Go CLI application (meroku)
+├── web/            # React+TypeScript frontend
+└── scripts/        # Utility scripts
+```
+
+## Key Configuration Files
+
+- `project/dev.yaml` - Development environment configuration
+- `project/prod.yaml` - Production environment configuration
+- `env/dev/*.tf` - Generated Terraform files for dev (DO NOT EDIT MANUALLY)
+- `env/prod/*.tf` - Generated Terraform files for prod (DO NOT EDIT MANUALLY)
+
+## Working with the Codebase
+
+1. **Making Infrastructure Changes**: Edit YAML files in `project/`, then run `make infra-gen-{env}`
+2. **Adding New Services**: Update the `services` array in YAML configuration
+3. **Modifying Terraform Modules**: Edit files in `modules/` directory
+4. **Updating Templates**: Modify Handlebars templates in `templates/`
+
+## Testing Guidelines
+
+- Always run `make infra-plan env={env}` before applying changes
+- Test infrastructure changes in dev environment first
+- Use `make test` to run Go tests
+- Frontend tests: `cd web && npm test`
+
+## Security Considerations
+
+- Never commit secrets or credentials
+- Use AWS SSM Parameter Store for sensitive values
+- Security groups control service access (no VPC endpoints needed)
+- Enable encryption at rest for all data stores
+- Use IAM roles for service authentication
+
+## Cost Optimization
+
+- VPC endpoints are disabled to save costs
+- Use appropriate instance sizes for ECS tasks
+- Enable auto-scaling where appropriate
+- Monitor CloudWatch costs (logs retention is set to 30 days)

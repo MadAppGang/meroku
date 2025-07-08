@@ -15,9 +15,16 @@ type NodePosition struct {
 	Y        float64 `json:"y"`
 }
 
+type EdgeHandlePosition struct {
+	EdgeID       string `json:"edgeId"`
+	SourceHandle string `json:"sourceHandle,omitempty"`
+	TargetHandle string `json:"targetHandle,omitempty"`
+}
+
 type BoardPositions struct {
-	Environment string         `json:"environment"`
-	Positions   []NodePosition `json:"positions"`
+	Environment  string               `json:"environment"`
+	Positions    []NodePosition       `json:"positions"`
+	EdgeHandles  []EdgeHandlePosition `json:"edgeHandles,omitempty"`
 }
 
 func getPositionsFilePath(environment string) string {
@@ -49,6 +56,7 @@ func getNodePositions(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(BoardPositions{
 			Environment: environment,
 			Positions:   []NodePosition{},
+			EdgeHandles: []EdgeHandlePosition{},
 		})
 		return
 	}

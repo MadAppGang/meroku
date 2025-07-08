@@ -61,7 +61,7 @@ const serviceIcons = {
   alarms: Siren,
   github: Github,
   auth: Users,
-  'client-app': Monitor,
+  'client-app': Users,
   'admin-app': Monitor,
   opa: ShieldCheck,
   'service-regular': Server,
@@ -104,7 +104,7 @@ const serviceColors = {
   alarms: 'bg-blue-500',
   github: 'bg-gray-700',
   auth: 'bg-gray-800',
-  'client-app': 'bg-gray-600',
+  'client-app': 'bg-indigo-700',
   'admin-app': 'bg-gray-600',
   opa: 'bg-gray-700',
   'service-regular': 'bg-blue-600',
@@ -125,6 +125,7 @@ const statusIcons = {
   deploying: Clock,
   stopped: XCircle,
   error: AlertCircle,
+  external: Globe,
 };
 
 const statusColors = {
@@ -132,6 +133,7 @@ const statusColors = {
   deploying: 'text-yellow-400',
   stopped: 'text-gray-400',
   error: 'text-red-400',
+  external: 'text-blue-400',
 };
 
 export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
@@ -142,19 +144,69 @@ export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
 
   return (
     <div className={`
-      bg-gray-800 border-2 rounded-lg p-4 min-w-64 shadow-lg
-      ${selected ? 'border-blue-500 shadow-blue-500/20' : 'border-gray-600'}
+      border-2 rounded-lg p-4 min-w-64 shadow-lg
+      ${data.isExternal 
+        ? 'bg-gray-900 border-dashed' 
+        : 'bg-gray-800'
+      }
+      ${selected 
+        ? 'border-blue-500 shadow-blue-500/20' 
+        : data.isExternal 
+          ? 'border-gray-500' 
+          : 'border-gray-600'
+      }
       hover:border-gray-500 transition-all duration-200
       ${data.disabled ? 'opacity-50' : ''}
     `}>
+      {/* Handles on all sides for flexible connections */}
+      <Handle
+        type="target"
+        position={Position.Top}
+        id="target-top"
+        className="w-3 h-3 bg-gray-600 border-2 border-gray-700"
+      />
       <Handle
         type="target"
         position={Position.Left}
+        id="target-left"
+        className="w-3 h-3 bg-gray-600 border-2 border-gray-700"
+      />
+      <Handle
+        type="target"
+        position={Position.Bottom}
+        id="target-bottom"
+        className="w-3 h-3 bg-gray-600 border-2 border-gray-700"
+      />
+      <Handle
+        type="target"
+        position={Position.Right}
+        id="target-right"
+        className="w-3 h-3 bg-gray-600 border-2 border-gray-700"
+      />
+      
+      {/* Source handles */}
+      <Handle
+        type="source"
+        position={Position.Top}
+        id="source-top"
+        className="w-3 h-3 bg-gray-600 border-2 border-gray-700"
+      />
+      <Handle
+        type="source"
+        position={Position.Left}
+        id="source-left"
+        className="w-3 h-3 bg-gray-600 border-2 border-gray-700"
+      />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        id="source-bottom"
         className="w-3 h-3 bg-gray-600 border-2 border-gray-700"
       />
       <Handle
         type="source"
         position={Position.Right}
+        id="source-right"
         className="w-3 h-3 bg-gray-600 border-2 border-gray-700"
       />
       
@@ -176,6 +228,12 @@ export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
           {data.description || 'No description'}
         </span>
       </div>
+
+      {data.isExternal && (
+        <div className="text-xs text-blue-400 mb-2 italic">
+          External to infrastructure
+        </div>
+      )}
 
       {data.deploymentType && (
         <div className="text-xs text-gray-400 mb-2">

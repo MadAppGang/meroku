@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useEffect, useRef } from "react";
+import React, { useCallback, useMemo, useEffect, useRef, useState } from "react";
 import ReactFlow, {
   Background,
   Controls,
@@ -17,6 +17,7 @@ import "reactflow/dist/style.css";
 import {
   type BoardPositions,
   type NodePosition,
+  type EdgeHandlePosition,
   infrastructureApi,
 } from "../api/infrastructure";
 import type { ComponentNode } from "../types";
@@ -32,6 +33,7 @@ import { CanvasControls } from "./CanvasControls";
 import { DynamicGroupNode } from "./DynamicGroupNode";
 import { GroupNode } from "./GroupNode";
 import { ServiceNode } from "./ServiceNode";
+import { EdgeHandleSelector } from "./EdgeHandleSelector";
 
 interface DeploymentCanvasProps {
   onNodeSelect: (node: ComponentNode | null) => void;
@@ -62,7 +64,7 @@ const initialNodes: Node[] = [
     deletable: false,
   },
 
-  // Client Applications (left)
+  // Client Applications (left) - External to infrastructure
   {
     id: "client-app",
     type: "service",
@@ -70,9 +72,13 @@ const initialNodes: Node[] = [
     data: {
       id: "client-app",
       type: "client-app",
-      name: "Client app",
-      status: "running",
+      name: "Client Applications",
+      description: "Web, Mobile, Desktop",
+      status: "external",
+      isExternal: true,
+      deletable: false,
     },
+    deletable: false,
   },
 
   // Entry Points (left-middle)
@@ -86,20 +92,6 @@ const initialNodes: Node[] = [
       name: "Amazon Route 53",
       status: "running",
       deletable: false,
-    },
-    deletable: false,
-  },
-  {
-    id: "waf",
-    type: "service",
-    position: { x: -81, y: 368 },
-    data: {
-      id: "waf",
-      type: "waf",
-      name: "AWS WAF",
-      status: "running",
-      deletable: false,
-      disabled: true,
     },
     deletable: false,
   },
@@ -268,181 +260,175 @@ const initialNodes: Node[] = [
     },
     deletable: false,
   },
-
-  // Authentication (bottom-left)
-  {
-    id: "auth-system",
-    type: "service",
-    position: { x: -71, y: 818 },
-    data: {
-      id: "auth-system",
-      type: "auth",
-      name: "Authentication system",
-      status: "running",
-    },
-  },
-
-  // Frontend Distribution (bottom)
-  {
-    id: "amplify",
-    type: "service",
-    position: { x: -76, y: 668 },
-    data: {
-      id: "amplify",
-      type: "amplify",
-      name: "AWS Amplify",
-      description: "Frontend distribution",
-      status: "running",
-      deletable: false,
-    },
-    deletable: false,
-  },
 ];
 
 const initialEdges: Edge[] = [
-  // GitHub to ECR
+  // CI/CD Flow: GitHub Actions to ECR
   {
     id: "github-ecr",
     source: "github",
     target: "ecr",
+    sourceHandle: "source-bottom",
+    targetHandle: "target-top",
     type: "smoothstep",
     animated: true,
+    label: "push images",
     style: { stroke: "#6b7280", strokeWidth: 2 },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#6b7280" },
   },
 
-  // Client Apps to WAF
+  // ECR to ECS deployment flow
   {
-    id: "client-waf",
-    source: "client-app",
-    target: "waf",
+    id: "ecr-ecs",
+    source: "ecr",
+    target: "ecs-cluster",
+    sourceHandle: "source-bottom",
+    targetHandle: "target-top",
     type: "smoothstep",
     animated: true,
+    label: "deploy",
+    style: { stroke: "#6b7280", strokeWidth: 2 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: "#6b7280" },
+  },
+
+  // Client entry points
+  {
+    id: "client-route53",
+    source: "client-app",
+    target: "route53",
+    type: "smoothstep",
+    animated: true,
+    label: "DNS lookup",
+    style: { stroke: "#4f46e5", strokeWidth: 2 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: "#4f46e5" },
+  },
+  {
+    id: "client-api",
+    source: "client-app",
+    target: "api-gateway",
+    type: "smoothstep",
+    animated: true,
+    label: "API calls",
     style: { stroke: "#4f46e5", strokeWidth: 2 },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#4f46e5" },
   },
 
-  // Entry points to ECS Cluster
+  // Route53 to API Gateway
   {
-    id: "route53-ecs",
+    id: "route53-api",
     source: "route53",
-    target: "ecs-cluster",
+    target: "api-gateway",
     type: "smoothstep",
     animated: true,
-    label: "DNS",
+    label: "resolve",
     style: { stroke: "#8b5cf6", strokeWidth: 2 },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#8b5cf6" },
   },
+
+  // API Gateway to Backend Service
   {
-    id: "waf-ecs",
-    source: "waf",
-    target: "ecs-cluster",
-    type: "smoothstep",
-    animated: true,
-    style: { stroke: "#4f46e5", strokeWidth: 2 },
-    markerEnd: { type: MarkerType.ArrowClosed, color: "#4f46e5" },
-  },
-  {
-    id: "api-ecs",
+    id: "api-backend",
     source: "api-gateway",
-    target: "ecs-cluster",
+    target: "backend-service",
     type: "smoothstep",
     animated: true,
+    label: "route requests",
     style: { stroke: "#4f46e5", strokeWidth: 2 },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#4f46e5" },
   },
 
-  // ECS to Supporting Services
-  {
-    id: "ecs-ses",
-    source: "ecs-cluster",
-    target: "ses",
-    type: "smoothstep",
-    animated: true,
-    style: { stroke: "#4f46e5", strokeWidth: 2 },
-    markerEnd: { type: MarkerType.ArrowClosed, color: "#4f46e5" },
-  },
-  {
-    id: "ecs-sns",
-    source: "ecs-cluster",
-    target: "sns",
-    type: "smoothstep",
-    animated: true,
-    style: { stroke: "#4f46e5", strokeWidth: 2 },
-    markerEnd: { type: MarkerType.ArrowClosed, color: "#4f46e5" },
-  },
-  {
-    id: "ecs-sqs",
-    source: "ecs-cluster",
-    target: "sqs",
-    type: "smoothstep",
-    animated: true,
-    style: { stroke: "#4f46e5", strokeWidth: 2 },
-    markerEnd: { type: MarkerType.ArrowClosed, color: "#4f46e5" },
-  },
-  {
-    id: "ecs-s3",
-    source: "ecs-cluster",
-    target: "s3",
-    type: "smoothstep",
-    animated: true,
-    style: { stroke: "#4f46e5", strokeWidth: 2 },
-    markerEnd: { type: MarkerType.ArrowClosed, color: "#4f46e5" },
-  },
-
-  // Backend to Aurora
+  // Backend Service connections
   {
     id: "backend-aurora",
     source: "backend-service",
     target: "aurora",
     type: "smoothstep",
     animated: true,
+    label: "query",
     style: { stroke: "#10b981", strokeWidth: 2 },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#10b981" },
   },
-
-  // Backend to EventBridge
+  {
+    id: "backend-s3",
+    source: "backend-service",
+    target: "s3",
+    type: "smoothstep",
+    animated: true,
+    label: "store files",
+    style: { stroke: "#10b981", strokeWidth: 2 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: "#10b981" },
+  },
+  {
+    id: "backend-ses",
+    source: "backend-service",
+    target: "ses",
+    type: "smoothstep",
+    animated: true,
+    label: "send emails",
+    style: { stroke: "#10b981", strokeWidth: 2 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: "#10b981" },
+  },
+  {
+    id: "backend-sns",
+    source: "backend-service",
+    target: "sns",
+    type: "smoothstep",
+    animated: true,
+    label: "push notifications",
+    style: { stroke: "#10b981", strokeWidth: 2 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: "#10b981" },
+  },
+  {
+    id: "backend-sqs",
+    source: "backend-service",
+    target: "sqs",
+    type: "smoothstep",
+    animated: true,
+    label: "queue jobs",
+    style: { stroke: "#10b981", strokeWidth: 2 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: "#10b981" },
+  },
   {
     id: "backend-eventbridge",
     source: "backend-service",
     target: "eventbridge",
     type: "smoothstep",
     animated: true,
+    label: "emit events",
+    style: { stroke: "#10b981", strokeWidth: 2 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: "#10b981" },
+  },
+  {
+    id: "backend-secrets",
+    source: "backend-service",
+    target: "secrets-manager",
+    type: "smoothstep",
+    animated: true,
+    label: "get params",
     style: { stroke: "#10b981", strokeWidth: 2 },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#10b981" },
   },
 
-  // Authentication flows
+  // Monitoring connections
   {
-    id: "client-auth",
-    source: "client-app",
-    target: "auth-system",
+    id: "backend-xray",
+    source: "backend-service",
+    target: "xray",
     type: "smoothstep",
-    animated: true,
-    label: "authenticate",
-    style: { stroke: "#6b7280", strokeWidth: 2 },
+    animated: false,
+    label: "traces",
+    style: { stroke: "#6b7280", strokeWidth: 1, strokeDasharray: "5,5" },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#6b7280" },
   },
   {
-    id: "auth-ecs",
-    source: "auth-system",
-    target: "ecs-cluster",
+    id: "backend-cloudwatch",
+    source: "backend-service",
+    target: "cloudwatch",
     type: "smoothstep",
-    animated: true,
-    label: "JWT/OIDC",
-    style: { stroke: "#6b7280", strokeWidth: 2 },
+    animated: false,
+    label: "logs/metrics",
+    style: { stroke: "#6b7280", strokeWidth: 1, strokeDasharray: "5,5" },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#6b7280" },
-  },
-
-  // Frontend to Amplify
-  {
-    id: "ecs-amplify",
-    source: "ecs-cluster",
-    target: "amplify",
-    type: "smoothstep",
-    animated: true,
-    style: { stroke: "#4f46e5", strokeWidth: 2 },
-    markerEnd: { type: MarkerType.ArrowClosed, color: "#4f46e5" },
   },
 ];
 
@@ -456,7 +442,11 @@ export function DeploymentCanvas({
   const [savedPositions, setSavedPositions] = React.useState<
     Map<string, { x: number; y: number }>
   >(new Map());
+  const [savedEdgeHandles, setSavedEdgeHandles] = useState<Map<string, EdgeHandlePosition>>(new Map());
+  const [isLoadingPositions, setIsLoadingPositions] = useState(true);
   const [showInactive, setShowInactive] = React.useState(true);
+  const [selectedEdge, setSelectedEdge] = useState<Edge | null>(null);
+  const [edgeSelectorPosition, setEdgeSelectorPosition] = useState<{ x: number; y: number } | null>(null);
 
   // Generate all nodes including dynamic ones
   const allNodes = useMemo(() => {
@@ -494,23 +484,72 @@ export function DeploymentCanvas({
   }, [config, savedPositions]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(allNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+  
+  // Create dynamic edges based on enabled nodes
+  const dynamicEdges = useMemo(() => {
+    // Helper function to check if a node is enabled
+    const isNodeEnabled = (nodeId: string) => {
+      return getNodeState(nodeId, config || null);
+    };
+
+    // Filter initial edges to only include those where both source and target are enabled
+    return initialEdges
+      .filter(edge => {
+        // Always show edges from external nodes (like client-app) or CI/CD nodes
+        const sourceNode = nodes.find(n => n.id === edge.source);
+        if (sourceNode?.data?.isExternal || edge.source === 'github' || edge.source === 'ecr') {
+          return isNodeEnabled(edge.target);
+        }
+        
+        // For other edges, both source and target must be enabled
+        return isNodeEnabled(edge.source) && isNodeEnabled(edge.target);
+      })
+      .map(edge => {
+        // Apply saved handle positions if available
+        const savedHandle = savedEdgeHandles.get(edge.id);
+        if (savedHandle) {
+          return {
+            ...edge,
+            sourceHandle: savedHandle.sourceHandle || edge.sourceHandle,
+            targetHandle: savedHandle.targetHandle || edge.targetHandle,
+          };
+        }
+        return edge;
+      });
+  }, [config, nodes, savedEdgeHandles]);
+  
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
   // Load saved positions when component mounts or environment changes
   useEffect(() => {
     if (environmentName) {
+      setIsLoadingPositions(true);
       infrastructureApi
         .getNodePositions(environmentName)
         .then((data: BoardPositions) => {
+
           const posMap = new Map<string, { x: number; y: number }>();
           data.positions.forEach((pos) => {
             posMap.set(pos.nodeId, { x: pos.x, y: pos.y });
           });
           setSavedPositions(posMap);
+          
+          // Load edge handle positions
+          if (data.edgeHandles) {
+            const handleMap = new Map<string, EdgeHandlePosition>();
+            data.edgeHandles.forEach((handle) => {
+              handleMap.set(handle.edgeId, handle);
+            });
+            setSavedEdgeHandles(handleMap);
+          }
+          setIsLoadingPositions(false);
         })
         .catch((error) => {
           console.error("Failed to load node positions:", error);
+          setIsLoadingPositions(false);
         });
+    } else {
+      setIsLoadingPositions(false);
     }
   }, [environmentName]);
 
@@ -518,6 +557,14 @@ export function DeploymentCanvas({
   useEffect(() => {
     setNodes(allNodes);
   }, [allNodes, setNodes]);
+
+  // Update edges when saved handles change or when initial load completes
+  useEffect(() => {
+    if (!isLoadingPositions) {
+      setEdges(dynamicEdges);
+    }
+  }, [isLoadingPositions, dynamicEdges, setEdges]);
+
 
   // Function to manually trigger layout
   const handleAutoLayout = useCallback(() => {
@@ -537,16 +584,12 @@ export function DeploymentCanvas({
 
   const onNodeClick = useCallback(
     (event: React.MouseEvent, node: Node) => {
-      // Log node position and details
-      console.log("Node clicked:", {
-        id: node.id,
-        type: node.type,
-        position: node.position,
-        data: node.data,
-      });
-
       if (node.type === "service") {
-        onNodeSelect(node.data as ComponentNode);
+        const nodeData = node.data as ComponentNode;
+        // Don't open sidebar for external nodes like client applications
+        if (!nodeData.isExternal) {
+          onNodeSelect(nodeData);
+        }
       }
     },
     [onNodeSelect]
@@ -554,7 +597,16 @@ export function DeploymentCanvas({
 
   const onPaneClick = useCallback(() => {
     onNodeSelect(null);
+    setSelectedEdge(null);
+    setEdgeSelectorPosition(null);
   }, [onNodeSelect]);
+
+  // Handle edge click
+  const onEdgeClick = useCallback((event: React.MouseEvent, edge: Edge) => {
+    event.stopPropagation();
+    setSelectedEdge(edge);
+    setEdgeSelectorPosition({ x: event.clientX, y: event.clientY });
+  }, []);
 
   // Update nodes to show selection state and apply config-based states
   const nodesWithSelection = useMemo(() => {
@@ -623,15 +675,34 @@ export function DeploymentCanvas({
       y: node.position.y,
     }));
 
+    // Convert saved edge handles to array
+    const edgeHandles: EdgeHandlePosition[] = Array.from(savedEdgeHandles.values());
+
     const boardPositions: BoardPositions = {
       environment: environmentName,
       positions,
+      edgeHandles: edgeHandles.length > 0 ? edgeHandles : undefined,
     };
+
 
     infrastructureApi.saveNodePositions(boardPositions).catch((error) => {
       console.error("Failed to save node positions:", error);
     });
-  }, [nodes, environmentName]);
+  }, [nodes, environmentName, savedEdgeHandles]);
+
+  // Handle edge handle change
+  const handleEdgeHandleChange = useCallback((edgeId: string, sourceHandle?: string, targetHandle?: string) => {
+    const newHandle: EdgeHandlePosition = { edgeId, sourceHandle, targetHandle };
+    setSavedEdgeHandles(prev => new Map(prev).set(edgeId, newHandle));
+
+    // Save after a delay
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    saveTimeoutRef.current = setTimeout(() => {
+      savePositions();
+    }, 1000);
+  }, [savePositions]);
 
   // Handle node position changes with debouncing
   const handleNodesChange = useCallback(
@@ -667,6 +738,7 @@ export function DeploymentCanvas({
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onNodeClick={onNodeClick}
+        onEdgeClick={onEdgeClick}
         onPaneClick={onPaneClick}
         nodeTypes={nodeTypes}
         fitView
@@ -694,6 +766,19 @@ export function DeploymentCanvas({
           onToggleInactive={handleToggleInactive}
         />
       </ReactFlow>
+      
+      {/* Edge Handle Selector */}
+      {selectedEdge && edgeSelectorPosition && (
+        <EdgeHandleSelector
+          edge={edges.find(e => e.id === selectedEdge.id) || selectedEdge}
+          position={edgeSelectorPosition}
+          onClose={() => {
+            setSelectedEdge(null);
+            setEdgeSelectorPosition(null);
+          }}
+          onHandleChange={handleEdgeHandleChange}
+        />
+      )}
     </div>
   );
 }

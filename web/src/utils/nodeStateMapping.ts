@@ -32,19 +32,6 @@ export const nodeStateMapping: NodeStateConfig[] = [
 		}),
 	},
 
-	// Authentication Layer
-	{
-		id: "auth-system",
-		name: "Authentication system",
-		type: "auth",
-		enabled: (config) => config.cognito?.enabled === true,
-		properties: (config) => ({
-			userPoolDomain: config.cognito?.user_pool_domain_prefix,
-			webClientEnabled: config.cognito?.enable_web_client,
-			autoVerifiedAttributes: config.cognito?.auto_verified_attributes || [],
-		}),
-	},
-
 	// API Gateway Layer
 	{
 		id: "api-gateway",
@@ -52,13 +39,6 @@ export const nodeStateMapping: NodeStateConfig[] = [
 		type: "api-gateway",
 		enabled: () => true, // Always enabled (default ingress)
 		description: "HTTP API with VPC Links",
-	},
-	{
-		id: "amplify",
-		name: "AWS Amplify",
-		type: "amplify",
-		enabled: () => false, // Not implemented
-		description: "Frontend distribution (not implemented)",
 	},
 
 	// Load Balancing Layer
@@ -73,13 +53,6 @@ export const nodeStateMapping: NodeStateConfig[] = [
 			apiDomainPrefix: config.domain?.api_domain_prefix,
 			addEnvPrefix: config.domain?.add_domain_prefix,
 		}),
-	},
-	{
-		id: "waf",
-		name: "AWS WAF",
-		type: "waf",
-		enabled: () => false, // Not implemented
-		description: "Web Application Firewall (not implemented)",
 	},
 
 	// Container Orchestration

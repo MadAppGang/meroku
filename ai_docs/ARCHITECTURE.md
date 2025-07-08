@@ -68,7 +68,7 @@ services:
 
 #### API Gateway (Default)
 - HTTP API for public access
-- VPC Links for private integration
+- Security group-based access control (VPC Links deprecated for cost savings)
 - Path-based routing: `/{service}/*` → service
 
 #### Application Load Balancer (Optional)

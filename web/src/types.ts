@@ -43,8 +43,9 @@ export interface ComponentNode {
     | "appsync";
   name: string;
   url?: string;
-  status: "running" | "deploying" | "stopped" | "error";
+  status: "running" | "deploying" | "stopped" | "error" | "external";
   description?: string;
+  isExternal?: boolean;
   deploymentType?: string;
   replicas?: number;
   resources?: {

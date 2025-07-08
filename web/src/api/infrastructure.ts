@@ -235,9 +235,16 @@ export interface NodePosition {
 	y: number;
 }
 
+export interface EdgeHandlePosition {
+	edgeId: string;
+	sourceHandle?: string;
+	targetHandle?: string;
+}
+
 export interface BoardPositions {
 	environment: string;
 	positions: NodePosition[];
+	edgeHandles?: EdgeHandlePosition[];
 }
 
 export interface TestEventRequest {

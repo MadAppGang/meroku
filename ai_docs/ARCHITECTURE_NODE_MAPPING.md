@@ -73,7 +73,7 @@ cognito:
 **Properties**:
 
 - HTTP API
-- VPC Links
+- Security group-based access control (VPC Links deprecated)
 - Path-based routing: `/{service}/*`
 - JWT Authorization (if Cognito enabled)
 
