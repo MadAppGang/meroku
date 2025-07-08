@@ -34,6 +34,7 @@ import { DynamicGroupNode } from "./DynamicGroupNode";
 import { GroupNode } from "./GroupNode";
 import { ServiceNode } from "./ServiceNode";
 import { EdgeHandleSelector } from "./EdgeHandleSelector";
+import { CustomEdge } from "./CustomEdge";
 
 interface DeploymentCanvasProps {
   onNodeSelect: (node: ComponentNode | null) => void;
@@ -46,6 +47,10 @@ const nodeTypes = {
   service: ServiceNode,
   group: GroupNode,
   dynamicGroup: DynamicGroupNode,
+};
+
+const edgeTypes = {
+  smoothstep: CustomEdge,
 };
 
 const initialNodes: Node[] = [
@@ -282,8 +287,8 @@ const initialEdges: Edge[] = [
     targetHandle: "target-top",
     type: "smoothstep",
     animated: true,
-    label: "push images",
-    style: { stroke: "#6b7280", strokeWidth: 2 },
+    label: "push",
+    style: { stroke: "#60a5fa", strokeWidth: 2, animated: true },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#6b7280" },
   },
 
@@ -297,7 +302,7 @@ const initialEdges: Edge[] = [
     type: "smoothstep",
     animated: true,
     label: "deploy",
-    style: { stroke: "#6b7280", strokeWidth: 2 },
+    style: { stroke: "#60a5fa", strokeWidth: 2, animated: true },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#6b7280" },
   },
 
@@ -308,8 +313,8 @@ const initialEdges: Edge[] = [
     target: "route53",
     type: "smoothstep",
     animated: true,
-    label: "DNS lookup",
-    style: { stroke: "#4f46e5", strokeWidth: 2 },
+    label: "DNS",
+    style: { stroke: "#8b5cf6", strokeWidth: 2, animated: true },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#4f46e5" },
   },
   {
@@ -318,8 +323,8 @@ const initialEdges: Edge[] = [
     target: "api-gateway",
     type: "smoothstep",
     animated: true,
-    label: "API calls",
-    style: { stroke: "#4f46e5", strokeWidth: 2 },
+    label: "HTTPS",
+    style: { stroke: "#8b5cf6", strokeWidth: 2, animated: true },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#4f46e5" },
   },
 
@@ -331,7 +336,7 @@ const initialEdges: Edge[] = [
     type: "smoothstep",
     animated: true,
     label: "resolve",
-    style: { stroke: "#8b5cf6", strokeWidth: 2 },
+    style: { stroke: "#a78bfa", strokeWidth: 2, animated: true },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#8b5cf6" },
   },
 
@@ -342,8 +347,8 @@ const initialEdges: Edge[] = [
     target: "backend-service",
     type: "smoothstep",
     animated: true,
-    label: "route requests",
-    style: { stroke: "#4f46e5", strokeWidth: 2 },
+    label: "route",
+    style: { stroke: "#6366f1", strokeWidth: 2, animated: true },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#4f46e5" },
   },
 
@@ -354,8 +359,8 @@ const initialEdges: Edge[] = [
     target: "aurora",
     type: "smoothstep",
     animated: true,
-    label: "query",
-    style: { stroke: "#10b981", strokeWidth: 2 },
+    label: "SQL",
+    style: { stroke: "#10b981", strokeWidth: 2, animated: true },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#10b981" },
   },
   {
@@ -364,8 +369,8 @@ const initialEdges: Edge[] = [
     target: "s3",
     type: "smoothstep",
     animated: true,
-    label: "store files",
-    style: { stroke: "#10b981", strokeWidth: 2 },
+    label: "S3",
+    style: { stroke: "#10b981", strokeWidth: 2, animated: true },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#10b981" },
   },
   {
@@ -374,8 +379,8 @@ const initialEdges: Edge[] = [
     target: "ses",
     type: "smoothstep",
     animated: true,
-    label: "send emails",
-    style: { stroke: "#10b981", strokeWidth: 2 },
+    label: "SMTP",
+    style: { stroke: "#10b981", strokeWidth: 2, animated: true },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#10b981" },
   },
   {
@@ -384,8 +389,8 @@ const initialEdges: Edge[] = [
     target: "sns",
     type: "smoothstep",
     animated: true,
-    label: "push notifications",
-    style: { stroke: "#10b981", strokeWidth: 2 },
+    label: "publish",
+    style: { stroke: "#10b981", strokeWidth: 2, animated: true },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#10b981" },
   },
   {
@@ -394,8 +399,8 @@ const initialEdges: Edge[] = [
     target: "sqs",
     type: "smoothstep",
     animated: true,
-    label: "queue jobs",
-    style: { stroke: "#10b981", strokeWidth: 2 },
+    label: "queue",
+    style: { stroke: "#10b981", strokeWidth: 2, animated: true },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#10b981" },
   },
   {
@@ -404,8 +409,8 @@ const initialEdges: Edge[] = [
     target: "eventbridge",
     type: "smoothstep",
     animated: true,
-    label: "emit events",
-    style: { stroke: "#10b981", strokeWidth: 2 },
+    label: "events",
+    style: { stroke: "#10b981", strokeWidth: 2, animated: true },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#10b981" },
   },
   {
@@ -414,8 +419,8 @@ const initialEdges: Edge[] = [
     target: "secrets-manager",
     type: "smoothstep",
     animated: true,
-    label: "get params",
-    style: { stroke: "#10b981", strokeWidth: 2 },
+    label: "secrets",
+    style: { stroke: "#10b981", strokeWidth: 2, animated: true },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#10b981" },
   },
 
@@ -426,9 +431,9 @@ const initialEdges: Edge[] = [
     target: "xray",
     type: "smoothstep",
     animated: false,
-    label: "traces",
-    style: { stroke: "#6b7280", strokeWidth: 1, strokeDasharray: "5,5" },
-    markerEnd: { type: MarkerType.ArrowClosed, color: "#6b7280" },
+    label: "trace",
+    style: { stroke: "#94a3b8", strokeWidth: 1.5, strokeDasharray: "4,4", opacity: 0.6 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: "#94a3b8" },
   },
   {
     id: "backend-cloudwatch",
@@ -436,9 +441,9 @@ const initialEdges: Edge[] = [
     target: "cloudwatch",
     type: "smoothstep",
     animated: false,
-    label: "logs/metrics",
-    style: { stroke: "#6b7280", strokeWidth: 1, strokeDasharray: "5,5" },
-    markerEnd: { type: MarkerType.ArrowClosed, color: "#6b7280" },
+    label: "logs",
+    style: { stroke: "#94a3b8", strokeWidth: 1.5, strokeDasharray: "4,4", opacity: 0.6 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: "#94a3b8" },
   },
 ];
 
@@ -669,6 +674,7 @@ export function DeploymentCanvas({
           style: {
             ...edge.style,
             opacity: isDimmed ? 0.3 : 1,
+            animated: isDimmed ? false : edge.animated,
           },
           animated: isDimmed ? false : edge.animated,
         };
@@ -751,6 +757,7 @@ export function DeploymentCanvas({
         onEdgeClick={onEdgeClick}
         onPaneClick={onPaneClick}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         fitView
         fitViewOptions={{
           padding: 0.3,
