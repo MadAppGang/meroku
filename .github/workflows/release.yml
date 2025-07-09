@@ -36,11 +36,15 @@ jobs:
       - name: Install dependencies
         run: |
           cd web
-          pnpm install
+          # Ensure clean install for CI
+          rm -rf node_modules .pnpm-store
+          pnpm install --frozen-lockfile
 
       - name: Build web app
         run: |
           cd web
+          # Set NODE_ENV to ensure proper module resolution
+          export NODE_ENV=production
           # Skip TypeScript checks and build directly with Vite
           pnpm vite build
 
