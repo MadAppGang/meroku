@@ -38,7 +38,8 @@
       "Bash(./scripts/push-to-tap.sh:*)",
       "Bash(brew untap:*)",
       "Bash(true)",
-      "Bash(brew tap:*)"
+      "Bash(brew tap:*)",
+      "Bash(gh secret list:*)"
     ],
     "deny": []
   }
