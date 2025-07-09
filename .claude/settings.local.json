@@ -34,7 +34,11 @@
       "Bash(brew test:*)",
       "Bash(brew audit:*)",
       "Bash(./scripts/submit-pr-to-homebrew-core.sh:*)",
-      "Bash(gh repo view:*)"
+      "Bash(gh repo view:*)",
+      "Bash(./scripts/push-to-tap.sh:*)",
+      "Bash(brew untap:*)",
+      "Bash(true)",
+      "Bash(brew tap:*)"
     ],
     "deny": []
   }

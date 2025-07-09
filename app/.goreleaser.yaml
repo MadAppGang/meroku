@@ -51,6 +51,7 @@ brews:
     repository:
       owner: MadAppGang
       name: homebrew-meroku
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     dependencies:
       - name: awscli
         type: optional
