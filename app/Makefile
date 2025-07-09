@@ -33,10 +33,10 @@ release-check:
 
 release-snapshot:
 	@echo "Creating snapshot release (local only)..."
-	cd .. && goreleaser release --snapshot --clean
+	goreleaser release --snapshot --clean
 
 release:
 	@echo "Creating release..."
 	@echo "Make sure you've tagged the release: git tag -a v1.0.0 -m 'Release v1.0.0'"
 	@echo "And pushed the tag: git push origin v1.0.0"
-	cd .. && goreleaser release --clean
+	goreleaser release --clean
