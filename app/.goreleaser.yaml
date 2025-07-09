@@ -11,6 +11,8 @@ project_name: meroku
 
 before:
   hooks:
+    # Build the web app first
+    - ./build_web.sh
     # You may remove this if you don't use go modules.
     - go mod tidy
     # you may remove this if you don't need go generate
