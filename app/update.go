@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/blang/semver/v4"
 	"github.com/charmbracelet/huh"
@@ -24,7 +25,7 @@ func updateInfrastructure() error {
 		return fmt.Errorf("failed to read remote version body: %w", err)
 	}
 
-	remoteVersion := string(remoteVersionData)
+	remoteVersion := strings.TrimSpace(string(remoteVersionData))
 
 	// Read the local version.txt file
 	localVersionData, err := os.ReadFile("./infrastructure/version.txt")
@@ -32,7 +33,7 @@ func updateInfrastructure() error {
 		return fmt.Errorf("failed to read local version file: %w", err)
 	}
 
-	localVersion := string(localVersionData)
+	localVersion := strings.TrimSpace(string(localVersionData))
 
 	// Compare versions using semver
 	remoteVer, err := semver.ParseTolerant(remoteVersion)

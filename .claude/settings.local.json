@@ -39,7 +39,8 @@
       "Bash(brew untap:*)",
       "Bash(true)",
       "Bash(brew tap:*)",
-      "Bash(gh secret list:*)"
+      "Bash(gh secret list:*)",
+      "Bash(curl:*)"
     ],
     "deny": []
   }
