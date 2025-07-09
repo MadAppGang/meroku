@@ -48,7 +48,7 @@ export function EdgeHandleSelector({ edge, position, onClose, onHandleChange }: 
           <div className="flex items-center gap-1">
             <LogOut className="w-3 h-3 text-gray-400" />
             <div className="flex gap-1">
-              {['top', 'right', 'bottom', 'left'].map((direction) => {
+              {(['top', 'right', 'bottom', 'left'] as const).map((direction) => {
                 const Icon = HANDLE_ICONS[direction];
                 const handleId = `source-${direction}`;
                 return (
@@ -73,7 +73,7 @@ export function EdgeHandleSelector({ edge, position, onClose, onHandleChange }: 
           <div className="flex items-center gap-1">
             <LogIn className="w-3 h-3 text-gray-400" />
             <div className="flex gap-1">
-              {['top', 'right', 'bottom', 'left'].map((direction) => {
+              {(['top', 'right', 'bottom', 'left'] as const).map((direction) => {
                 const Icon = HANDLE_ICONS[direction];
                 const handleId = `target-${direction}`;
                 return (

@@ -1,4 +1,3 @@
-import React from "react";
 import { YamlInfrastructureConfig } from "../types/yamlConfig";
 import { type AccountInfo } from '../api/infrastructure';
 import { ComponentNode } from '../types';

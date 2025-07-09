@@ -1,10 +1,9 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Switch } from './ui/switch';
 import { Button } from './ui/button';
-import { Badge } from './ui/badge';
 import { Alert, AlertDescription } from './ui/alert';
 import { YamlInfrastructureConfig } from '../types/yamlConfig';
 import { 
@@ -153,7 +152,7 @@ export function SESNodeProperties({ config, onConfigChange }: SESNodePropertiesP
               )}
               
               {!isDomainEnabled && !sesConfig.domain_name && (
-                <Alert variant="warning" className="border-yellow-600">
+                <Alert className="border-yellow-600 bg-yellow-50">
                   <AlertCircle className="h-4 w-4 text-yellow-600" />
                   <AlertDescription>
                     Domain module is not enabled. You must specify a domain name or enable the domain module to use the default mail subdomain.

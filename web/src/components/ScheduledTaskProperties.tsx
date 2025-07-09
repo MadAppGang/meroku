@@ -1,4 +1,3 @@
-import React, { useState } from "react";
 import { YamlInfrastructureConfig } from "../types/yamlConfig";
 import { type AccountInfo } from '../api/infrastructure';
 import { Input } from "./ui/input";
@@ -6,7 +5,7 @@ import { Label } from "./ui/label";
 import { Switch } from "./ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Separator } from "./ui/separator";
-import { Info, Clock, Calendar } from "lucide-react";
+import { Info } from "lucide-react";
 import { ComponentNode } from "../types";
 import { ScheduleExpressionBuilder } from "./ScheduleExpressionBuilder";
 

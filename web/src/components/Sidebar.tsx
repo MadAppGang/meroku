@@ -1,7 +1,6 @@
-import React, { useState, useContext, useRef, useEffect } from 'react';
-import { X, Settings, FileText, BarChart, Zap, Link, Code, Database, Upload, Globe, BookOpen, Key, HardDrive, Shield, Server, Network, Activity, ChevronLeft, ChevronRight, Bell, Microscope, Gauge, Terminal, Cloud, Info, Send, Trash2 } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { X, Settings, FileText, BarChart, Zap, Link, Code, Database, Upload, Globe, BookOpen, Key, HardDrive, Shield, Server, Network, Activity, ChevronLeft, ChevronRight, Bell, Microscope, Gauge, Terminal, Cloud, Send, Trash2 } from 'lucide-react';
 import { ComponentNode } from '../types';
-import { Tabs } from './ui/tabs';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';

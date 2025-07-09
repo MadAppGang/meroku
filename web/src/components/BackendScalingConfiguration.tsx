@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { YamlInfrastructureConfig } from '../types/yamlConfig';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
-import { Info, AlertCircle, Cpu, MemoryStick, Users, Activity } from 'lucide-react';
+import { Info, AlertCircle, Cpu, Users, Activity } from 'lucide-react';
 import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Input } from './ui/input';
@@ -35,10 +35,10 @@ export function BackendScalingConfiguration({ config, onConfigChange, isService 
   const [autoscalingEnabled, setAutoscalingEnabled] = useState(isService ? false : (config.workload?.backend_autoscaling_enabled || false));
   const [minCapacity, setMinCapacity] = useState(config.workload?.backend_autoscaling_min_capacity || 1);
   const [maxCapacity, setMaxCapacity] = useState(config.workload?.backend_autoscaling_max_capacity || 10);
-  const [cpuTarget, setCpuTarget] = useState(config.workload?.backend_autoscaling_cpu_target || 70);
-  const [memoryTarget, setMemoryTarget] = useState(config.workload?.backend_autoscaling_memory_target || 80);
-  const [requestBasedScaling, setRequestBasedScaling] = useState(config.workload?.backend_autoscaling_request_based || false);
-  const [requestsPerTarget, setRequestsPerTarget] = useState(config.workload?.backend_autoscaling_requests_per_target || 1000);
+  const [cpuTarget, setCpuTarget] = useState(70);
+  const [memoryTarget, setMemoryTarget] = useState(80);
+  const [requestBasedScaling, setRequestBasedScaling] = useState(false);
+  const [requestsPerTarget, setRequestsPerTarget] = useState(1000);
 
   // Adjust memory when CPU changes
   useEffect(() => {
@@ -55,9 +55,9 @@ export function BackendScalingConfiguration({ config, onConfigChange, isService 
         service.name === serviceName 
           ? { 
               ...service, 
-              cpu: updates.backend_cpu ? parseInt(updates.backend_cpu) : service.cpu,
-              memory: updates.backend_memory ? parseInt(updates.backend_memory) : service.memory,
-              desired_count: updates.backend_desired_count || service.desired_count
+              cpu: updates?.backend_cpu ? parseInt(updates.backend_cpu) : service.cpu,
+              memory: updates?.backend_memory ? parseInt(updates.backend_memory) : service.memory,
+              desired_count: updates?.backend_desired_count || service.desired_count
             }
           : service
       ) || [];
@@ -75,7 +75,6 @@ export function BackendScalingConfiguration({ config, onConfigChange, isService 
   };
 
   // X-Ray no longer affects resource allocation
-  const xrayEnabled = config.workload?.xray_enabled || false;
 
   return (
     <div className="space-y-6">
@@ -251,7 +250,7 @@ export function BackendScalingConfiguration({ config, onConfigChange, isService 
                     value={[cpuTarget]}
                     onValueChange={([value]) => {
                       setCpuTarget(value);
-                      handleWorkloadChange({ backend_autoscaling_cpu_target: value });
+                      // Note: cpu_target is not persisted in config
                     }}
                     min={0}
                     max={100}
@@ -272,7 +271,7 @@ export function BackendScalingConfiguration({ config, onConfigChange, isService 
                     value={[memoryTarget]}
                     onValueChange={([value]) => {
                       setMemoryTarget(value);
-                      handleWorkloadChange({ backend_autoscaling_memory_target: value });
+                      // Note: memory_target is not persisted in config
                     }}
                     min={0}
                     max={100}
@@ -291,7 +290,7 @@ export function BackendScalingConfiguration({ config, onConfigChange, isService 
                       checked={requestBasedScaling}
                       onCheckedChange={(checked) => {
                         setRequestBasedScaling(checked as boolean);
-                        handleWorkloadChange({ backend_autoscaling_request_based: checked as boolean });
+                        // Note: request_based is not persisted in config
                       }}
                     />
                     <Label htmlFor="request-scaling" className="text-sm font-normal cursor-pointer">
@@ -311,7 +310,7 @@ export function BackendScalingConfiguration({ config, onConfigChange, isService 
                         onChange={(e) => {
                           const value = parseInt(e.target.value) || 1000;
                           setRequestsPerTarget(value);
-                          handleWorkloadChange({ backend_autoscaling_requests_per_target: value });
+                          // Note: requests_per_target is not persisted in config
                         }}
                         className="mt-1 bg-gray-800 border-gray-600 text-white"
                       />

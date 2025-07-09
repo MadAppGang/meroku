@@ -45,8 +45,8 @@ jobs:
           cd web
           # Set NODE_ENV to ensure proper module resolution
           export NODE_ENV=production
-          # Skip TypeScript checks and build directly with Vite
-          pnpm vite build
+          # Build with TypeScript checks
+          pnpm build
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6

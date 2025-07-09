@@ -53,7 +53,7 @@ export function BackendSNS({ config }: BackendSNSProps) {
                 </div>
                 <div className="flex items-center gap-4 mt-2">
                   <Badge variant="outline" className="text-xs">GCM Platform</Badge>
-                  <Badge variant="success" className="text-xs">Active</Badge>
+                  <Badge variant="default" className="text-xs">Active</Badge>
                 </div>
               </div>
             </div>

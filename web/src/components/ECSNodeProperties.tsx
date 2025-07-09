@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { YamlInfrastructureConfig } from '../types/yamlConfig';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Server, Network, Activity, Info, CheckCircle, XCircle, Loader2, AlertCircle, RefreshCw, Bell } from 'lucide-react';

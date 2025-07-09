@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { YamlInfrastructureConfig } from '../types/yamlConfig';
 import { Button } from './ui/button';
 import { Label } from './ui/label';

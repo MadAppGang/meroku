@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -38,7 +38,6 @@ This email confirms that your SES configuration is working correctly.`);
   
   // Determine the from address
   const sesConfig = config.ses || { enabled: false };
-  const isDomainEnabled = config.domain?.enabled;
   const mainDomain = config.domain?.domain_name;
   const isProd = config.env === 'prod' || config.env === 'production';
   const defaultDomain = mainDomain ? 
@@ -59,7 +58,7 @@ This email confirms that your SES configuration is working correctly.`);
     setResponse(null);
 
     try {
-      const result = await infrastructureApi.sendTestEmail(to, subject, body);
+      const result = await infrastructureApi.sendTestEmail(config.env || 'dev', to, subject, body);
       setResponse({
         success: true,
         message: 'Test email sent successfully!',

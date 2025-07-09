@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { Alert, AlertDescription } from './ui/alert';
@@ -112,7 +112,7 @@ export function SESStatus({ config }: SESStatusProps) {
                   </p>
                 </div>
               </div>
-              <Badge variant={status.inSandbox ? 'warning' : 'success'}>
+              <Badge variant={status.inSandbox ? 'outline' : 'default'}>
                 {status.inSandbox ? 'Sandbox' : 'Production'}
               </Badge>
             </div>
@@ -132,7 +132,7 @@ export function SESStatus({ config }: SESStatusProps) {
                   </p>
                 </div>
               </div>
-              <Badge variant={status.sendingEnabled ? 'success' : 'destructive'}>
+              <Badge variant={status.sendingEnabled ? 'default' : 'destructive'}>
                 {status.sendingEnabled ? 'Enabled' : 'Disabled'}
               </Badge>
             </div>
@@ -183,9 +183,9 @@ export function SESStatus({ config }: SESStatusProps) {
               </div>
               <Badge 
                 variant={
-                  status.reputationStatus === 'Healthy' ? 'success' : 
+                  status.reputationStatus === 'Healthy' ? 'default' : 
                   status.reputationStatus === 'Default' ? 'secondary' : 
-                  'warning'
+                  'outline'
                 }
               >
                 {status.reputationStatus}
@@ -285,7 +285,7 @@ export function SESStatus({ config }: SESStatusProps) {
             </div>
 
             {/* Current Limitations */}
-            <Alert variant="warning">
+            <Alert className="border-yellow-600 bg-yellow-50">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
                 <p className="font-medium mb-2">Current Sandbox Limitations:</p>

@@ -1,4 +1,3 @@
-import React from 'react';
 import { YamlInfrastructureConfig } from '../types/yamlConfig';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Lightbulb, Code, Key, Settings, Info } from 'lucide-react';

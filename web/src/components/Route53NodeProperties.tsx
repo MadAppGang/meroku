@@ -1,10 +1,9 @@
-import React from 'react';
 import { YamlInfrastructureConfig } from '../types/yamlConfig';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Switch } from './ui/switch';
-import { Info, Globe, Shield, Link } from 'lucide-react';
+import { Info, Globe, Shield } from 'lucide-react';
 
 interface Route53NodePropertiesProps {
   config: YamlInfrastructureConfig;
@@ -26,6 +25,7 @@ export function Route53NodeProperties({ config, onConfigChange }: Route53NodePro
     onConfigChange({
       ...config,
       domain: {
+        enabled: config.domain?.enabled ?? false,
         ...config.domain,
         domain_name: value,
       },
@@ -36,6 +36,7 @@ export function Route53NodeProperties({ config, onConfigChange }: Route53NodePro
     onConfigChange({
       ...config,
       domain: {
+        enabled: config.domain?.enabled ?? false,
         ...config.domain,
         create_domain_zone: checked,
       },
@@ -46,6 +47,7 @@ export function Route53NodeProperties({ config, onConfigChange }: Route53NodePro
     onConfigChange({
       ...config,
       domain: {
+        enabled: config.domain?.enabled ?? false,
         ...config.domain,
         api_domain_prefix: value,
       },
@@ -56,6 +58,7 @@ export function Route53NodeProperties({ config, onConfigChange }: Route53NodePro
     onConfigChange({
       ...config,
       domain: {
+        enabled: config.domain?.enabled ?? false,
         ...config.domain,
         add_domain_prefix: checked,
       },

@@ -1,7 +1,5 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
-import { Badge } from './ui/badge';
-import { Separator } from './ui/separator';
 import { YamlInfrastructureConfig } from '../types/yamlConfig';
 import { type AccountInfo } from '../api/infrastructure';
 import { Input } from './ui/input';

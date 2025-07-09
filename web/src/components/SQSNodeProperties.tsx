@@ -1,11 +1,9 @@
-import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Switch } from './ui/switch';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Alert, AlertDescription } from './ui/alert';
 import { YamlInfrastructureConfig } from '../types/yamlConfig';
 import { 
   MessageSquare, 

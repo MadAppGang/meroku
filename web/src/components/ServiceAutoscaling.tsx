@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -15,9 +15,7 @@ import {
   TrendingDown,
   Cpu,
   MemoryStick,
-  Users,
   DollarSign,
-  Clock,
   RefreshCw
 } from 'lucide-react';
 import {

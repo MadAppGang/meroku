@@ -1,4 +1,3 @@
-import React from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
 import { 
   Github, 
@@ -7,9 +6,7 @@ import {
   Globe, 
   BarChart3, 
   Zap,
-  CheckCircle,
   Clock,
-  XCircle,
   AlertCircle,
   Copy,
   Network,
@@ -26,7 +23,6 @@ import {
   Siren,
   Users,
   Monitor,
-  Smartphone,
   ShieldCheck,
   Timer,
   Calendar,
@@ -120,27 +116,10 @@ const serviceColors = {
   'appsync': 'bg-purple-600',
 };
 
-const statusIcons = {
-  running: CheckCircle,
-  deploying: Clock,
-  stopped: XCircle,
-  error: AlertCircle,
-  external: Globe,
-};
-
-const statusColors = {
-  running: 'text-green-400',
-  deploying: 'text-yellow-400',
-  stopped: 'text-gray-400',
-  error: 'text-red-400',
-  external: 'text-blue-400',
-};
 
 export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
   const Icon = serviceIcons[data.type];
-  const StatusIcon = statusIcons[data.status];
   const serviceColor = serviceColors[data.type];
-  const statusColor = statusColors[data.status];
   
   // Determine if this is a service node that needs extended display
   const isServiceNode = ['backend', 'service', 'service-regular', 'service-periodic', 'service-event-driven', 

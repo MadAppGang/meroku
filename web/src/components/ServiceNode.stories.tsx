@@ -35,6 +35,7 @@ export const FrontendRunning: Story = {
   args: {
     ...baseNodeProps,
     data: {
+      id: 'frontend-1',
       name: 'frontend',
       type: 'frontend',
       status: 'running',
@@ -49,6 +50,7 @@ export const FrontendDeploying: Story = {
   args: {
     ...baseNodeProps,
     data: {
+      id: 'frontend-2',
       name: 'frontend',
       type: 'frontend',
       status: 'deploying',
@@ -63,6 +65,7 @@ export const FrontendError: Story = {
   args: {
     ...baseNodeProps,
     data: {
+      id: 'frontend-3',
       name: 'frontend',
       type: 'frontend',
       status: 'error',
@@ -78,6 +81,7 @@ export const BackendWithReplicas: Story = {
   args: {
     ...baseNodeProps,
     data: {
+      id: 'backend-1',
       name: 'backend',
       type: 'backend',
       status: 'running',
@@ -93,6 +97,7 @@ export const DatabaseWithResources: Story = {
   args: {
     ...baseNodeProps,
     data: {
+      id: 'database-1',
       name: 'postgres',
       type: 'database',
       status: 'running',
@@ -110,6 +115,7 @@ export const RedisCache: Story = {
   args: {
     ...baseNodeProps,
     data: {
+      id: 'cache-1',
       name: 'redis',
       type: 'cache',
       status: 'running',
@@ -127,6 +133,7 @@ export const APIGateway: Story = {
   args: {
     ...baseNodeProps,
     data: {
+      id: 'api-1',
       name: 'api gateway',
       type: 'api',
       status: 'running',
@@ -141,6 +148,7 @@ export const AnalyticsService: Story = {
   args: {
     ...baseNodeProps,
     data: {
+      id: 'analytics-1',
       name: 'ackee analytics',
       type: 'analytics',
       status: 'running',
@@ -156,6 +164,7 @@ export const SelectedNode: Story = {
     ...baseNodeProps,
     selected: true,
     data: {
+      id: 'backend-2',
       name: 'backend',
       type: 'backend',
       status: 'running',
@@ -173,6 +182,7 @@ export const AllServiceTypes: Story = {
       <ServiceNode
         {...baseNodeProps}
         data={{
+          id: 'frontend-all',
           name: 'frontend',
           type: 'frontend',
           status: 'running',
@@ -184,6 +194,7 @@ export const AllServiceTypes: Story = {
       <ServiceNode
         {...baseNodeProps}
         data={{
+          id: 'backend-all',
           name: 'backend',
           type: 'backend',
           status: 'running',
@@ -195,6 +206,7 @@ export const AllServiceTypes: Story = {
       <ServiceNode
         {...baseNodeProps}
         data={{
+          id: 'database-all',
           name: 'postgres',
           type: 'database',
           status: 'running',
@@ -208,6 +220,7 @@ export const AllServiceTypes: Story = {
       <ServiceNode
         {...baseNodeProps}
         data={{
+          id: 'cache-all',
           name: 'redis',
           type: 'cache',
           status: 'running',
@@ -221,6 +234,7 @@ export const AllServiceTypes: Story = {
       <ServiceNode
         {...baseNodeProps}
         data={{
+          id: 'api-all',
           name: 'api gateway',
           type: 'api',
           status: 'running',
@@ -231,6 +245,7 @@ export const AllServiceTypes: Story = {
       <ServiceNode
         {...baseNodeProps}
         data={{
+          id: 'analytics-all',
           name: 'ackee analytics',
           type: 'analytics',
           status: 'running',
@@ -249,6 +264,7 @@ export const AllStatusStates: Story = {
       <ServiceNode
         {...baseNodeProps}
         data={{
+          id: 'status-running',
           name: 'Running Service',
           type: 'backend',
           status: 'running',
@@ -258,6 +274,7 @@ export const AllStatusStates: Story = {
       <ServiceNode
         {...baseNodeProps}
         data={{
+          id: 'status-deploying',
           name: 'Deploying Service',
           type: 'backend',
           status: 'deploying',
@@ -267,6 +284,7 @@ export const AllStatusStates: Story = {
       <ServiceNode
         {...baseNodeProps}
         data={{
+          id: 'stopped-service',
           name: 'Stopped Service',
           type: 'backend',
           status: 'stopped',
@@ -276,6 +294,7 @@ export const AllStatusStates: Story = {
       <ServiceNode
         {...baseNodeProps}
         data={{
+          id: 'error-service',
           name: 'Error Service',
           type: 'backend',
           status: 'error',

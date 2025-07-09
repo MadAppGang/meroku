@@ -123,16 +123,12 @@ function calculateAdjustment(
   margin: number
 ): { x: number; y: number } {
   // Calculate how much nodes need to be separated
-  const requiredDistanceX = bounds1.width / 2 + bounds2.width / 2 + margin;
-  const requiredDistanceY = bounds1.height / 2 + bounds2.height / 2 + margin;
   
   const centerX1 = bounds1.x + bounds1.width / 2;
   const centerY1 = bounds1.y + bounds1.height / 2;
   const centerX2 = bounds2.x + bounds2.width / 2;
   const centerY2 = bounds2.y + bounds2.height / 2;
   
-  const currentDistanceX = Math.abs(centerX1 - centerX2);
-  const currentDistanceY = Math.abs(centerY1 - centerY2);
   
   // Calculate overlap amounts on each side
   const overlapRight = (bounds2.x + bounds2.width + margin) - bounds1.x;

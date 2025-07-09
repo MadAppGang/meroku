@@ -1,4 +1,3 @@
-import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Bell, AlertCircle, TrendingUp, Zap, Clock } from 'lucide-react';
 import { YamlInfrastructureConfig } from '../types/yamlConfig';
@@ -7,7 +6,7 @@ interface BackendAlertsProps {
   config: YamlInfrastructureConfig;
 }
 
-export function BackendAlerts({ config }: BackendAlertsProps) {
+export function BackendAlerts({ }: BackendAlertsProps) {
   return (
     <div className="space-y-4">
       <Card>

@@ -1,7 +1,6 @@
 import React, { useCallback, useMemo, useEffect, useRef, useState } from "react";
 import ReactFlow, {
   Background,
-  Controls,
   MiniMap,
   type Node,
   type Edge,
@@ -10,9 +9,6 @@ import ReactFlow, {
   addEdge,
   type Connection,
   MarkerType,
-  NodeProps,
-  NodeDragHandler,
-  useReactFlow,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import {
@@ -292,7 +288,7 @@ const initialEdges: Edge[] = [
     type: "smoothstep",
     animated: true,
     label: "push",
-    style: { stroke: "#60a5fa", strokeWidth: 2, animated: true },
+    style: { stroke: "#60a5fa", strokeWidth: 2 },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#6b7280" },
   },
 
@@ -306,7 +302,7 @@ const initialEdges: Edge[] = [
     type: "smoothstep",
     animated: true,
     label: "deploy",
-    style: { stroke: "#60a5fa", strokeWidth: 2, animated: true },
+    style: { stroke: "#60a5fa", strokeWidth: 2 },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#6b7280" },
   },
 
@@ -318,7 +314,7 @@ const initialEdges: Edge[] = [
     type: "smoothstep",
     animated: true,
     label: "DNS",
-    style: { stroke: "#8b5cf6", strokeWidth: 2, animated: true },
+    style: { stroke: "#8b5cf6", strokeWidth: 2 },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#4f46e5" },
   },
   {
@@ -328,7 +324,7 @@ const initialEdges: Edge[] = [
     type: "smoothstep",
     animated: true,
     label: "HTTPS",
-    style: { stroke: "#8b5cf6", strokeWidth: 2, animated: true },
+    style: { stroke: "#8b5cf6", strokeWidth: 2 },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#4f46e5" },
   },
 
@@ -340,7 +336,7 @@ const initialEdges: Edge[] = [
     type: "smoothstep",
     animated: true,
     label: "resolve",
-    style: { stroke: "#a78bfa", strokeWidth: 2, animated: true },
+    style: { stroke: "#a78bfa", strokeWidth: 2 },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#8b5cf6" },
   },
 
@@ -352,7 +348,7 @@ const initialEdges: Edge[] = [
     type: "smoothstep",
     animated: true,
     label: "route",
-    style: { stroke: "#6366f1", strokeWidth: 2, animated: true },
+    style: { stroke: "#6366f1", strokeWidth: 2 },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#4f46e5" },
   },
 
@@ -364,7 +360,7 @@ const initialEdges: Edge[] = [
     type: "smoothstep",
     animated: true,
     label: "SQL",
-    style: { stroke: "#10b981", strokeWidth: 2, animated: true },
+    style: { stroke: "#10b981", strokeWidth: 2 },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#10b981" },
   },
   {
@@ -374,7 +370,7 @@ const initialEdges: Edge[] = [
     type: "smoothstep",
     animated: true,
     label: "S3",
-    style: { stroke: "#10b981", strokeWidth: 2, animated: true },
+    style: { stroke: "#10b981", strokeWidth: 2 },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#10b981" },
   },
   {
@@ -384,7 +380,7 @@ const initialEdges: Edge[] = [
     type: "smoothstep",
     animated: true,
     label: "SMTP",
-    style: { stroke: "#10b981", strokeWidth: 2, animated: true },
+    style: { stroke: "#10b981", strokeWidth: 2 },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#10b981" },
   },
   {
@@ -394,7 +390,7 @@ const initialEdges: Edge[] = [
     type: "smoothstep",
     animated: true,
     label: "publish",
-    style: { stroke: "#10b981", strokeWidth: 2, animated: true },
+    style: { stroke: "#10b981", strokeWidth: 2 },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#10b981" },
   },
   {
@@ -404,7 +400,7 @@ const initialEdges: Edge[] = [
     type: "smoothstep",
     animated: true,
     label: "queue",
-    style: { stroke: "#10b981", strokeWidth: 2, animated: true },
+    style: { stroke: "#10b981", strokeWidth: 2 },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#10b981" },
   },
   {
@@ -414,7 +410,7 @@ const initialEdges: Edge[] = [
     type: "smoothstep",
     animated: true,
     label: "events",
-    style: { stroke: "#10b981", strokeWidth: 2, animated: true },
+    style: { stroke: "#10b981", strokeWidth: 2 },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#10b981" },
   },
   {
@@ -424,7 +420,7 @@ const initialEdges: Edge[] = [
     type: "smoothstep",
     animated: true,
     label: "secrets",
-    style: { stroke: "#10b981", strokeWidth: 2, animated: true },
+    style: { stroke: "#10b981", strokeWidth: 2 },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#10b981" },
   },
 
@@ -477,12 +473,12 @@ export function DeploymentCanvas({
     let combinedNodes = [...initialNodes];
 
     // Add dynamic service nodes
-    const additionalServices = generateAdditionalServiceNodes(config, 292, 459);
+    const additionalServices = generateAdditionalServiceNodes(config || null, 292, 459);
     const additionalServiceIds = additionalServices.map((n) => n.id);
     combinedNodes = [...combinedNodes, ...additionalServices];
 
     // Add hidden component nodes
-    const hiddenComponents = generateHiddenComponentNodes(config);
+    const hiddenComponents = generateHiddenComponentNodes(config || null);
     combinedNodes = [...combinedNodes, ...hiddenComponents];
 
     // Update ECS cluster group to include dynamic services
@@ -609,7 +605,7 @@ export function DeploymentCanvas({
   );
 
   const onNodeClick = useCallback(
-    (event: React.MouseEvent, node: Node) => {
+    (_event: React.MouseEvent, node: Node) => {
       if (node.type === "service") {
         const nodeData = node.data as ComponentNode;
         // Don't open sidebar for external nodes like client applications
@@ -786,7 +782,7 @@ export function DeploymentCanvas({
         snapToGrid={true}
         snapGrid={[10, 10]}
       >
-        <Background color="#374151" gap={20} size={1} variant="dots" />
+        <Background color="#374151" gap={20} size={1} />
         <MiniMap
           nodeColor="#4f46e5"
           nodeStrokeWidth={3}

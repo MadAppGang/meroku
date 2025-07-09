@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Input } from './ui/input';
@@ -16,7 +16,6 @@ import {
   Filter,
   AlertCircle,
   Wifi,
-  WifiOff,
   Maximize,
   X
 } from 'lucide-react';
@@ -147,7 +146,7 @@ export function ServiceLogs({ environment, serviceName }: ServiceLogsProps) {
   const getLevelBadgeVariant = (level: string) => {
     switch (level) {
       case 'error': return 'destructive';
-      case 'warning': return 'warning';
+      case 'warning': return 'outline';
       case 'debug': return 'secondary';
       default: return 'default';
     }

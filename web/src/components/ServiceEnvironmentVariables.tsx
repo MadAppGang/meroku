@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { YamlInfrastructureConfig } from '../types/yamlConfig';
 import { type AccountInfo } from '../api/infrastructure';
 import { ComponentNode } from '../types';
-import { Lock, Info, AlertCircle, FileText, HardDrive, Plus, Trash2, Edit2, Check, X, Settings } from 'lucide-react';
+import { Lock, Info, AlertCircle, Plus, Trash2, Edit2, Check, X, Settings } from 'lucide-react';
 import { Alert, AlertDescription } from './ui/alert';
 import { Input } from './ui/input';
 import { Button } from './ui/button';

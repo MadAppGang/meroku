@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState } from "react";
 import { YamlInfrastructureConfig } from "../types/yamlConfig";
 import { type AccountInfo, infrastructureApi, type ECSTaskInfo } from '../api/infrastructure';
 import { Label } from "./ui/label";

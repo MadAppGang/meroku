@@ -1,8 +1,6 @@
-import React from 'react';
 import { YamlInfrastructureConfig } from '../types/yamlConfig';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
-import { Info, Server, Network, Settings, AlertCircle, CheckCircle, XCircle, Activity } from 'lucide-react';
-import { Badge } from './ui/badge';
+import { Info, Server, Network, Settings, CheckCircle, XCircle, Activity } from 'lucide-react';
 import { Label } from './ui/label';
 import { Switch } from './ui/switch';
 

@@ -1,27 +1,21 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Switch } from './ui/switch';
 import { Button } from './ui/button';
-import { Badge } from './ui/badge';
 import { Alert, AlertDescription } from './ui/alert';
 import { YamlInfrastructureConfig } from '../types/yamlConfig';
-import { infrastructureApi, type SSMParameter } from '../api/infrastructure';
+import { infrastructureApi } from '../api/infrastructure';
 import { 
   Database, 
   Shield, 
-  Globe, 
-  Lock,
   Key,
   CheckCircle,
   Info,
   AlertCircle,
   ExternalLink,
   Server,
-  HardDrive,
-  Zap,
-  Mail,
   FileText,
   Eye,
   EyeOff,
@@ -35,7 +29,7 @@ interface PostgresNodePropertiesProps {
   accountInfo?: { accountId: string; region: string; profile: string };
 }
 
-export function PostgresNodeProperties({ config, onConfigChange, accountInfo }: PostgresNodePropertiesProps) {
+export function PostgresNodeProperties({ config, onConfigChange }: PostgresNodePropertiesProps) {
   const postgresConfig = config.postgres || { enabled: false };
   const workloadConfig = config.workload || {};
   const [passwordVisible, setPasswordVisible] = useState(false);
@@ -123,8 +117,6 @@ export function PostgresNodeProperties({ config, onConfigChange, accountInfo }: 
   // Determine actual values with defaults
   const actualDbName = postgresConfig.dbname || config.project;
   const actualUsername = postgresConfig.username || 'postgres';
-  const actualEngineVersion = postgresConfig.engine_version || '14';
-  const actualPublicAccess = postgresConfig.public_access || false;
 
   return (
     <div className="space-y-6">
@@ -225,7 +217,7 @@ export function PostgresNodeProperties({ config, onConfigChange, accountInfo }: 
               </div>
 
               {postgresConfig.public_access && (
-                <Alert variant="warning" className="border-yellow-600">
+                <Alert className="border-yellow-600 bg-yellow-50">
                   <AlertCircle className="h-4 w-4 text-yellow-600" />
                   <AlertDescription>
                     Enabling public access exposes your database to the internet. Ensure proper security groups and strong passwords.

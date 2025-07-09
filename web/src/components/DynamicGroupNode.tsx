@@ -1,6 +1,7 @@
 import type React from "react";
 import { useMemo } from "react";
 import { type NodeProps, useNodes, useStore } from "reactflow";
+import type { ComponentNode } from "../types";
 
 interface GroupNodeData {
   label: string;
@@ -8,7 +9,7 @@ interface GroupNodeData {
   nodeIds?: string[]; // IDs of nodes that belong to this group
 }
 
-export function DynamicGroupNode({ data, id }: NodeProps<GroupNodeData>) {
+export function DynamicGroupNode({ data }: NodeProps<GroupNodeData>) {
   const nodes = useNodes();
   const nodeInternals = useStore((state) => state.nodeInternals);
 
@@ -22,10 +23,11 @@ export function DynamicGroupNode({ data, id }: NodeProps<GroupNodeData>) {
       if (data.nodeIds?.includes(node.id)) return true;
 
       // For subgroups (Services, Observability), include nodes with matching subgroup
-      if (node.data?.subgroup === data.label) return true;
+      const nodeData = node.data as ComponentNode;
+      if (nodeData?.subgroup === data.label) return true;
 
       // For main groups, include nodes with matching group (but not if they have a subgroup)
-      if (node.data?.group === data.label && !node.data?.subgroup) return true;
+      if (nodeData?.group === data.label && !nodeData?.subgroup) return true;
 
       return false;
     });
@@ -69,12 +71,6 @@ export function DynamicGroupNode({ data, id }: NodeProps<GroupNodeData>) {
     const topPadding = 40; // Space above nodes for label
     const bottomPadding = 20; // Bottom padding
 
-    const _bb = {
-      x: minX - sidePadding,
-      y: minY - topPadding,
-      width: maxX - minX + sidePadding * 2,
-      height: maxY - minY + topPadding + bottomPadding,
-    };
     return {
       x: minX - sidePadding,
       y: minY - topPadding,

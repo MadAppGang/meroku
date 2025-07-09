@@ -16,14 +16,9 @@ if [ ! -d "node_modules" ]; then
     pnpm install
 fi
 
-# Build the web app (skip TypeScript checks in CI)
+# Build the web app
 echo "Running pnpm build..."
-if [ "$CI" = "true" ]; then
-    echo "CI environment detected, skipping TypeScript checks..."
-    pnpm build:skip-tsc
-else
-    pnpm build
-fi
+pnpm build
 
 # Copy dist to app directory
 echo "Copying dist files..."

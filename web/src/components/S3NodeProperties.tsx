@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
-import { Alert, AlertDescription } from './ui/alert';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Switch } from './ui/switch';
@@ -15,12 +14,8 @@ import {
   Plus,
   Trash2,
   ExternalLink,
-  AlertCircle,
-  FileText,
   Shield,
   History,
-  Zap,
-  X,
   Edit2,
   Check
 } from 'lucide-react';
@@ -153,7 +148,7 @@ export function S3NodeProperties({ config, onConfigChange }: S3NodePropertiesPro
                     ) : (
                       <Lock className="w-3 h-3 text-gray-400" />
                     )}
-                    <Badge variant={config.workload?.bucket_public ? "warning" : "secondary"} className="text-xs">
+                    <Badge variant={config.workload?.bucket_public ? "outline" : "secondary"} className="text-xs">
                       {config.workload?.bucket_public ? 'Public Access' : 'Private'}
                     </Badge>
                   </div>

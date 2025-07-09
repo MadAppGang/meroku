@@ -19,7 +19,8 @@
       "Bash(pnpm vite:*)",
       "Bash(make:*)",
       "Bash(goreleaser release:*)",
-      "Bash(./dist/meroku_darwin_arm64_v8.0/meroku --version)"
+      "Bash(./dist/meroku_darwin_arm64_v8.0/meroku --version)",
+      "Bash(npm run build:*)"
     ],
     "deny": []
   }

@@ -23,7 +23,6 @@ export default function App() {
   const [showAddServiceDialog, setShowAddServiceDialog] = useState(false);
   const [showAddScheduledTaskDialog, setShowAddScheduledTaskDialog] = useState(false);
   const [showAddEventTaskDialog, setShowAddEventTaskDialog] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
 
   const handleNodeSelect = useCallback((node: ComponentNode | null) => {
@@ -74,7 +73,6 @@ export default function App() {
   const saveConfigToBackend = async (updatedConfig: YamlInfrastructureConfig) => {
     if (!selectedEnvironment) return;
     
-    setIsSaving(true);
     setSaveStatus('saving');
     
     try {
@@ -95,7 +93,6 @@ export default function App() {
       // Reset status after 3 seconds
       setTimeout(() => setSaveStatus('idle'), 3000);
     } finally {
-      setIsSaving(false);
     }
   };
 

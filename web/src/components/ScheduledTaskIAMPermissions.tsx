@@ -1,4 +1,3 @@
-import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { Alert, AlertDescription } from './ui/alert';
@@ -43,7 +42,7 @@ export function ScheduledTaskIAMPermissions({ config, node }: ScheduledTaskIAMPe
           name: 'SQS Access',
           description: 'Access to SQS queue (when sqs_enable is true)',
           managed: false,
-          policyArn: config.sqs?.policy_arn || 'Configured via sqs_policy_arn'
+          policyArn: (config.sqs as any)?.policy_arn || 'Configured via sqs_policy_arn'
         }] : [])
       ]
     },

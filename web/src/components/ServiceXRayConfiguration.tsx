@@ -1,4 +1,3 @@
-import React from "react";
 import { YamlInfrastructureConfig } from "../types/yamlConfig";
 import { ComponentNode } from '../types';
 import { Switch } from "./ui/switch";

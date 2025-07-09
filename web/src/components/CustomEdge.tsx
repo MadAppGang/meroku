@@ -1,5 +1,4 @@
-import React from 'react';
-import { EdgeProps, getBezierPath, EdgeLabelRenderer, BaseEdge, getSmoothStepPath } from 'reactflow';
+import { EdgeProps, EdgeLabelRenderer, BaseEdge, getSmoothStepPath } from 'reactflow';
 
 export function CustomEdge({
   id,
@@ -10,16 +9,9 @@ export function CustomEdge({
   sourcePosition,
   targetPosition,
   label,
-  labelStyle,
-  labelShowBg,
-  labelBgStyle,
-  labelBgPadding,
-  labelBgBorderRadius,
   markerEnd,
   markerStart,
   style = {},
-  sourceHandleId,
-  targetHandleId,
 }: EdgeProps) {
   const [edgePath, labelX, labelY] = getSmoothStepPath({
     sourceX,
@@ -28,14 +20,12 @@ export function CustomEdge({
     targetX,
     targetY,
     targetPosition,
-    sourceHandleId,
-    targetHandleId,
   });
 
   // Extract stroke color from style to use for label background
   const strokeColor = style.stroke || '#6b7280';
   const isAnimated = (style as any).animated !== false;
-  const isDimmed = style.opacity && style.opacity < 1;
+  const isDimmed = style.opacity && Number(style.opacity) < 1;
 
   return (
     <>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Switch } from './ui/switch';
 import { Label } from './ui/label';
@@ -68,7 +68,7 @@ export function SNSNodeProperties({ config, onConfigChange }: SNSNodePropertiesP
       setError(null);
       setSuccess(false);
       
-      await infrastructureApi.putSSMParameter({
+      await infrastructureApi.createOrUpdateSSMParameter({
         name: parameterPath,
         value: gcmServerKey,
         type: 'SecureString',

@@ -1,11 +1,9 @@
-import React from 'react';
 import { YamlInfrastructureConfig } from '../types/yamlConfig';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Switch } from './ui/switch';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
-import { Badge } from './ui/badge';
 import { Plus, X } from 'lucide-react';
 
 interface GitHubNodePropertiesProps {

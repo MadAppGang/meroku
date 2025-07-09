@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -63,7 +63,7 @@ export function BackendCloudWatch({ config, node }: BackendCloudWatchProps) {
   --start-time $(date -d '1 hour ago' +%s)000`;
   };
 
-  const generateInsightsQuery = (logGroup: string) => {
+  const generateInsightsQuery = () => {
     return `fields @timestamp, @message
 | filter @message like /ERROR/
 | sort @timestamp desc
@@ -230,7 +230,7 @@ export function BackendCloudWatch({ config, node }: BackendCloudWatchProps) {
             <div className="space-y-2">
               <Label className="text-xs font-medium text-gray-400">Find all errors</Label>
               <div className="bg-gray-900 rounded-lg p-3 font-mono text-xs text-gray-300">
-                <pre>{generateInsightsQuery('your-log-group')}</pre>
+                <pre>{generateInsightsQuery()}</pre>
               </div>
             </div>
 

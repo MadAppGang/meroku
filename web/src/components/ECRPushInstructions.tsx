@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { YamlInfrastructureConfig } from '../types/yamlConfig';
 import { type AccountInfo } from '../api/infrastructure';
 import { Button } from './ui/button';

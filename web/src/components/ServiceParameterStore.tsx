@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -6,9 +6,9 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Key, Lock, FolderOpen, FileText, Plus, Trash2, Edit2, Check, X, RefreshCw, Eye, EyeOff, AlertCircle, Loader2, Info } from 'lucide-react';
+import { Key, FolderOpen, FileText, Plus, Trash2, Check, RefreshCw, Eye, AlertCircle, Loader2, Info } from 'lucide-react';
 import { YamlInfrastructureConfig } from '../types/yamlConfig';
-import { infrastructureApi, SSMParameterMetadata, SSMParameter } from '../api/infrastructure';
+import { infrastructureApi, SSMParameterMetadata } from '../api/infrastructure';
 import { Alert, AlertDescription } from './ui/alert';
 import { ComponentNode } from '../types';
 import {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -6,7 +6,7 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { HardDrive, Globe, Lock, Folder, FileText, Plus, Trash2, Edit2, Check, X, Eye, Loader2, AlertCircle } from 'lucide-react';
 import { YamlInfrastructureConfig } from '../types/yamlConfig';
-import { infrastructureApi, S3FileContent } from '../api/infrastructure';
+import { infrastructureApi } from '../api/infrastructure';
 import {
   Dialog,
   DialogContent,
@@ -38,7 +38,6 @@ export function BackendS3Buckets({ config }: BackendS3BucketsProps) {
   // File content dialog state
   const [showFileDialog, setShowFileDialog] = useState(false);
   const [selectedFile, setSelectedFile] = useState<{ bucket: string; key: string } | null>(null);
-  const [fileContent, setFileContent] = useState('');
   const [editingFileContent, setEditingFileContent] = useState('');
   const [loadingFile, setLoadingFile] = useState(false);
   const [savingFile, setSavingFile] = useState(false);
@@ -73,11 +72,9 @@ export function BackendS3Buckets({ config }: BackendS3BucketsProps) {
       
       // Use bucket name directly (it's already the full name)
       const file = await infrastructureApi.getS3File(envFile.bucket, envFile.key);
-      setFileContent(file.content || '');
       setEditingFileContent(file.content || '');
     } catch (err) {
       // If file doesn't exist, start with empty content
-      setFileContent('');
       setEditingFileContent('# Environment variables\n# Add your configuration here\n\n');
       setFileError('File does not exist yet. You can create it by saving.');
     } finally {
@@ -99,7 +96,6 @@ export function BackendS3Buckets({ config }: BackendS3BucketsProps) {
         content: editingFileContent
       });
       
-      setFileContent(editingFileContent);
       setShowFileDialog(false);
     } catch (err) {
       setFileError(err instanceof Error ? err.message : 'Failed to save file');
@@ -129,7 +125,7 @@ export function BackendS3Buckets({ config }: BackendS3BucketsProps) {
                 <div className="flex items-center gap-4 mt-2">
                   <div className="flex items-center gap-2">
                     {isPublic ? <Globe className="w-3 h-3 text-yellow-400" /> : <Lock className="w-3 h-3 text-gray-400" />}
-                    <Badge variant={isPublic ? "warning" : "secondary"} className="text-xs">
+                    <Badge variant={isPublic ? "outline" : "secondary"} className="text-xs">
                       {isPublic ? 'Public Access' : 'Private'}
                     </Badge>
                   </div>
