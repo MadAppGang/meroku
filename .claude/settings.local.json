@@ -14,7 +14,9 @@
       "Bash(rg:*)",
       "Bash(mkdir:*)",
       "Bash(mv:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(pnpm build:*)",
+      "Bash(pnpm vite:*)"
     ],
     "deny": []
   }
