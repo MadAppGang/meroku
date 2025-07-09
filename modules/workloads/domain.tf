@@ -1,16 +1,17 @@
 resource "aws_route53_record" "backend" {
-  count   = var.create_api_domain_record ? 1 : 0
+  count   = var.create_api_domain_record && var.api_domain != "" ? 1 : 0
   name    = var.api_domain
   type    = "A"
   zone_id = var.domain_zone_id
   alias {
-    name                   = aws_apigatewayv2_domain_name.backend.domain_name_configuration[0].target_domain_name
-    zone_id                = aws_apigatewayv2_domain_name.backend.domain_name_configuration[0].hosted_zone_id
+    name                   = aws_apigatewayv2_domain_name.backend[0].domain_name_configuration[0].target_domain_name
+    zone_id                = aws_apigatewayv2_domain_name.backend[0].domain_name_configuration[0].hosted_zone_id
     evaluate_target_health = true
   }
 }
 
 resource "aws_apigatewayv2_domain_name" "backend" {
+  count       = var.api_domain != "" ? 1 : 0
   domain_name = var.api_domain
   domain_name_configuration {
     certificate_arn = var.api_certificate_arn
@@ -74,7 +75,8 @@ resource "aws_apigatewayv2_stage" "backend" {
 }
 
 resource "aws_apigatewayv2_api_mapping" "backend" {
+  count       = var.api_domain != "" ? 1 : 0
   api_id      = aws_apigatewayv2_api.api_gateway.id
-  domain_name = aws_apigatewayv2_domain_name.backend.domain_name
+  domain_name = aws_apigatewayv2_domain_name.backend[0].domain_name
   stage       = aws_apigatewayv2_stage.backend.id
 }
