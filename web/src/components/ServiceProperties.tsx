@@ -86,7 +86,7 @@ export function ServiceProperties({ config, onConfigChange, accountInfo, node }:
           <Input
             id="docker_image"
             value={serviceConfig.docker_image || ""}
-            onChange={(e) => handleServiceChange({ docker_image: e.target.value })}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleServiceChange({ docker_image: e.target.value })}
             placeholder="docker.io/myapp:latest"
             className="bg-gray-800 border-gray-600 text-white font-mono"
           />
@@ -123,8 +123,8 @@ export function ServiceProperties({ config, onConfigChange, accountInfo, node }:
                 ? serviceConfig.container_command.join(", ")
                 : serviceConfig.container_command || ""
             }
-            onChange={(e) => {
-              const commands = e.target.value.split(",").map(cmd => cmd.trim()).filter(cmd => cmd);
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+              const commands = e.target.value.split(",").map((cmd: string) => cmd.trim()).filter((cmd: string) => cmd);
               handleServiceChange({ container_command: commands.length > 0 ? commands : undefined });
             }}
             placeholder='npm, start'
@@ -141,7 +141,7 @@ export function ServiceProperties({ config, onConfigChange, accountInfo, node }:
             id="container_port"
             type="number"
             value={serviceConfig.container_port || 3000}
-            onChange={(e) => handleServiceChange({ container_port: parseInt(e.target.value) || 3000 })}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleServiceChange({ container_port: parseInt(e.target.value) || 3000 })}
             placeholder="3000"
             className="bg-gray-800 border-gray-600 text-white"
           />
@@ -154,7 +154,7 @@ export function ServiceProperties({ config, onConfigChange, accountInfo, node }:
             id="host_port"
             type="number"
             value={serviceConfig.host_port || 3000}
-            onChange={(e) => handleServiceChange({ host_port: parseInt(e.target.value) || 3000 })}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleServiceChange({ host_port: parseInt(e.target.value) || 3000 })}
             placeholder="3000"
             className="bg-gray-800 border-gray-600 text-white"
           />

@@ -234,14 +234,14 @@ export function ScheduledTaskParameterStore({ config, node }: ScheduledTaskParam
                         id="new-param-name"
                         placeholder="parameter_name"
                         value={newParamName}
-                        onChange={(e) => setNewParamName(e.target.value)}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewParamName(e.target.value)}
                         className="mt-1 h-8 text-sm"
                       />
                       <p className="text-xs text-gray-500 mt-1">{parameterPath}/{newParamName}</p>
                     </div>
                     <div>
                       <Label htmlFor="new-param-type" className="text-xs">Type</Label>
-                      <Select value={newParamType} onValueChange={(v) => setNewParamType(v as any)}>
+                      <Select value={newParamType} onValueChange={(v: string) => setNewParamType(v as 'String' | 'StringList' | 'SecureString')}>
                         <SelectTrigger className="mt-1 h-8 text-sm">
                           <SelectValue />
                         </SelectTrigger>
@@ -259,7 +259,7 @@ export function ScheduledTaskParameterStore({ config, node }: ScheduledTaskParam
                       id="new-param-value"
                       placeholder="Parameter value..."
                       value={newParamValue}
-                      onChange={(e) => setNewParamValue(e.target.value)}
+                      onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNewParamValue(e.target.value)}
                       className="mt-1 h-20 text-sm"
                     />
                   </div>
@@ -269,7 +269,7 @@ export function ScheduledTaskParameterStore({ config, node }: ScheduledTaskParam
                       id="new-param-desc"
                       placeholder="What is this parameter for?"
                       value={newParamDescription}
-                      onChange={(e) => setNewParamDescription(e.target.value)}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewParamDescription(e.target.value)}
                       className="mt-1 h-8 text-sm"
                     />
                   </div>
@@ -415,7 +415,7 @@ export function ScheduledTaskParameterStore({ config, node }: ScheduledTaskParam
                   </div>
                   <Textarea
                     value={editingValue}
-                    onChange={(e) => setEditingValue(e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setEditingValue(e.target.value)}
                     className="font-mono text-sm min-h-[400px] resize-y"
                     placeholder="Enter parameter value..."
                   />

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { YamlInfrastructureConfig } from '../types/yamlConfig';
+import type { YamlInfrastructureConfig } from '../types/yamlConfig';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Info, AlertCircle, Cpu, Users, Activity } from 'lucide-react';
 import { Label } from './ui/label';
@@ -55,8 +55,8 @@ export function BackendScalingConfiguration({ config, onConfigChange, isService 
         service.name === serviceName 
           ? { 
               ...service, 
-              cpu: updates?.backend_cpu ? parseInt(updates.backend_cpu) : service.cpu,
-              memory: updates?.backend_memory ? parseInt(updates.backend_memory) : service.memory,
+              cpu: updates?.backend_cpu ? Number.parseInt(updates.backend_cpu) : service.cpu,
+              memory: updates?.backend_memory ? Number.parseInt(updates.backend_memory) : service.memory,
               desired_count: updates?.backend_desired_count || service.desired_count
             }
           : service
@@ -95,7 +95,7 @@ export function BackendScalingConfiguration({ config, onConfigChange, isService 
               <Label htmlFor="cpu-units">CPU Units</Label>
               <Select
                 value={cpu}
-                onValueChange={(value) => {
+                onValueChange={(value: string) => {
                   setCpu(value);
                   handleWorkloadChange({ backend_cpu: value });
                 }}
@@ -117,7 +117,7 @@ export function BackendScalingConfiguration({ config, onConfigChange, isService 
               <Label htmlFor="memory">Memory (MB)</Label>
               <Select
                 value={memory}
-                onValueChange={(value) => {
+                onValueChange={(value: string) => {
                   setMemory(value);
                   handleWorkloadChange({ backend_memory: value });
                 }}
@@ -128,7 +128,7 @@ export function BackendScalingConfiguration({ config, onConfigChange, isService 
                 <SelectContent>
                   {cpuMemoryMap[cpu]?.map(mem => (
                     <SelectItem key={mem} value={mem}>
-                      {mem} MB ({(parseInt(mem) / 1024).toFixed(1)} GB)
+                      {mem} MB ({(Number.parseInt(mem) / 1024).toFixed(1)} GB)
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -144,8 +144,8 @@ export function BackendScalingConfiguration({ config, onConfigChange, isService 
               min="1"
               max="100"
               value={desiredCount}
-              onChange={(e) => {
-                const value = parseInt(e.target.value) || 1;
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                const value = Number.parseInt(e.target.value) || 1;
                 setDesiredCount(value);
                 handleWorkloadChange({ backend_desired_count: value });
               }}
@@ -211,8 +211,8 @@ export function BackendScalingConfiguration({ config, onConfigChange, isService 
                     min="1"
                     max={maxCapacity}
                     value={minCapacity}
-                    onChange={(e) => {
-                      const value = parseInt(e.target.value) || 1;
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                      const value = Number.parseInt(e.target.value) || 1;
                       setMinCapacity(value);
                       handleWorkloadChange({ backend_autoscaling_min_capacity: value });
                     }}
@@ -228,8 +228,8 @@ export function BackendScalingConfiguration({ config, onConfigChange, isService 
                     min={minCapacity}
                     max="100"
                     value={maxCapacity}
-                    onChange={(e) => {
-                      const value = parseInt(e.target.value) || 1;
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                      const value = Number.parseInt(e.target.value) || 1;
                       setMaxCapacity(value);
                       handleWorkloadChange({ backend_autoscaling_max_capacity: value });
                     }}
@@ -248,7 +248,7 @@ export function BackendScalingConfiguration({ config, onConfigChange, isService 
                   </div>
                   <Slider
                     value={[cpuTarget]}
-                    onValueChange={([value]) => {
+                    onValueChange={([value]: number[]) => {
                       setCpuTarget(value);
                       // Note: cpu_target is not persisted in config
                     }}
@@ -269,7 +269,7 @@ export function BackendScalingConfiguration({ config, onConfigChange, isService 
                   </div>
                   <Slider
                     value={[memoryTarget]}
-                    onValueChange={([value]) => {
+                    onValueChange={([value]: number[]) => {
                       setMemoryTarget(value);
                       // Note: memory_target is not persisted in config
                     }}
@@ -307,8 +307,8 @@ export function BackendScalingConfiguration({ config, onConfigChange, isService 
                         min="100"
                         max="10000"
                         value={requestsPerTarget}
-                        onChange={(e) => {
-                          const value = parseInt(e.target.value) || 1000;
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                          const value = Number.parseInt(e.target.value) || 1000;
                           setRequestsPerTarget(value);
                           // Note: requests_per_target is not persisted in config
                         }}
@@ -385,8 +385,8 @@ export function BackendScalingConfiguration({ config, onConfigChange, isService 
             <div className="bg-gray-800 rounded-lg p-3">
               <p className="text-xs text-gray-400 mb-1">Maximum Resources</p>
               <p className="text-sm text-gray-300">
-                {parseInt(cpu) * (autoscalingEnabled ? maxCapacity : desiredCount)} CPU units / 
-                {' '}{(parseInt(memory) * (autoscalingEnabled ? maxCapacity : desiredCount) / 1024).toFixed(1)} GB memory
+                {Number.parseInt(cpu) * (autoscalingEnabled ? maxCapacity : desiredCount)} CPU units / 
+                {' '}{(Number.parseInt(memory) * (autoscalingEnabled ? maxCapacity : desiredCount) / 1024).toFixed(1)} GB memory
               </p>
             </div>
 

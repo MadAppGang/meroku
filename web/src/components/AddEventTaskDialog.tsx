@@ -167,7 +167,7 @@ export function AddEventTaskDialog({ open, onClose, onAdd, existingTasks, availa
               <Input
                 id="name"
                 value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="process-orders"
               />
               {errors.name && <p className="text-sm text-red-500">{errors.name}</p>}
@@ -178,7 +178,7 @@ export function AddEventTaskDialog({ open, onClose, onAdd, existingTasks, availa
               <Input
                 id="rule_name"
                 value={formData.rule_name}
-                onChange={(e) => setFormData({ ...formData, rule_name: e.target.value })}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, rule_name: e.target.value })}
                 placeholder="order-processing-rule"
               />
               {errors.rule_name && <p className="text-sm text-red-500">{errors.rule_name}</p>}
@@ -190,7 +190,7 @@ export function AddEventTaskDialog({ open, onClose, onAdd, existingTasks, availa
                 <div key={index} className="flex gap-2">
                   <Input
                     value={detailType}
-                    onChange={(e) => updateDetailType(index, e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateDetailType(index, e.target.value)}
                     placeholder="order.created"
                   />
                   {formData.detail_types.length > 1 && (
@@ -224,7 +224,7 @@ export function AddEventTaskDialog({ open, onClose, onAdd, existingTasks, availa
                 <div key={index} className="flex gap-2">
                   <Select
                     value={source}
-                    onValueChange={(value) => updateSource(index, value)}
+                    onValueChange={(value: string) => updateSource(index, value)}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select a service" />
@@ -241,7 +241,7 @@ export function AddEventTaskDialog({ open, onClose, onAdd, existingTasks, availa
                   {source === 'custom' && (
                     <Input
                       placeholder="Enter custom source"
-                      onChange={(e) => updateSource(index, e.target.value)}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateSource(index, e.target.value)}
                     />
                   )}
                   {formData.sources.length > 1 && (
@@ -274,7 +274,7 @@ export function AddEventTaskDialog({ open, onClose, onAdd, existingTasks, availa
               <Input
                 id="docker_image"
                 value={formData.docker_image}
-                onChange={(e) => setFormData({ ...formData, docker_image: e.target.value })}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, docker_image: e.target.value })}
                 placeholder="Leave empty to use backend image"
               />
             </div>
@@ -284,7 +284,7 @@ export function AddEventTaskDialog({ open, onClose, onAdd, existingTasks, availa
               <Input
                 id="container_command"
                 value={formData.container_command}
-                onChange={(e) => setFormData({ ...formData, container_command: e.target.value })}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, container_command: e.target.value })}
                 placeholder="node, scripts/process-event.js"
               />
             </div>
@@ -294,7 +294,7 @@ export function AddEventTaskDialog({ open, onClose, onAdd, existingTasks, availa
                 <Label htmlFor="cpu">CPU (units)</Label>
                 <Select
                   value={formData.cpu.toString()}
-                  onValueChange={(value) => setFormData({ ...formData, cpu: parseInt(value) })}
+                  onValueChange={(value: string) => setFormData({ ...formData, cpu: parseInt(value) })}
                 >
                   <SelectTrigger id="cpu">
                     <SelectValue />
@@ -312,7 +312,7 @@ export function AddEventTaskDialog({ open, onClose, onAdd, existingTasks, availa
                 <Label htmlFor="memory">Memory (MB)</Label>
                 <Select
                   value={formData.memory.toString()}
-                  onValueChange={(value) => setFormData({ ...formData, memory: parseInt(value) })}
+                  onValueChange={(value: string) => setFormData({ ...formData, memory: parseInt(value) })}
                 >
                   <SelectTrigger id="memory">
                     <SelectValue />
@@ -332,7 +332,7 @@ export function AddEventTaskDialog({ open, onClose, onAdd, existingTasks, availa
               <Textarea
                 id="environment_variables"
                 value={formData.environment_variables}
-                onChange={(e) => setFormData({ ...formData, environment_variables: e.target.value })}
+                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setFormData({ ...formData, environment_variables: e.target.value })}
                 placeholder="EVENT_PROCESSOR=true&#10;LOG_LEVEL=info"
                 rows={4}
               />

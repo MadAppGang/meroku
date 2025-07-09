@@ -47,7 +47,7 @@ export function BackendServiceProperties({ config, onConfigChange, accountInfo }
           <Input
             id="health_endpoint"
             value={config.workload?.backend_health_endpoint || "/health"}
-            onChange={(e) => handleWorkloadChange({ backend_health_endpoint: e.target.value })}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleWorkloadChange({ backend_health_endpoint: e.target.value })}
             placeholder="/health"
             className="bg-gray-800 border-gray-600 text-white"
           />
@@ -59,7 +59,7 @@ export function BackendServiceProperties({ config, onConfigChange, accountInfo }
           <Input
             id="backend_external_docker_image"
             value={config.workload?.backend_external_docker_image || ""}
-            onChange={(e) => handleWorkloadChange({ backend_external_docker_image: e.target.value })}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleWorkloadChange({ backend_external_docker_image: e.target.value })}
             placeholder="docker.io/myapp:latest"
             className="bg-gray-800 border-gray-600 text-white font-mono"
           />
@@ -96,8 +96,8 @@ export function BackendServiceProperties({ config, onConfigChange, accountInfo }
                 ? config.workload.backend_container_command.join(", ")
                 : config.workload?.backend_container_command || ""
             }
-            onChange={(e) => {
-              const commands = e.target.value.split(",").map(cmd => cmd.trim()).filter(cmd => cmd);
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+              const commands = e.target.value.split(",").map((cmd: string) => cmd.trim()).filter((cmd: string) => cmd);
               handleWorkloadChange({ backend_container_command: commands.length > 0 ? commands : undefined });
             }}
             placeholder='npm, start'
@@ -113,7 +113,7 @@ export function BackendServiceProperties({ config, onConfigChange, accountInfo }
           <Input
             id="bucket_postfix"
             value={config.workload?.bucket_postfix || ""}
-            onChange={(e) => handleWorkloadChange({ bucket_postfix: e.target.value })}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleWorkloadChange({ bucket_postfix: e.target.value })}
             placeholder="backend"
             className="bg-gray-800 border-gray-600 text-white"
           />
@@ -143,7 +143,7 @@ export function BackendServiceProperties({ config, onConfigChange, accountInfo }
             id="backend_image_port"
             type="number"
             value={config.workload?.backend_image_port || 8080}
-            onChange={(e) => handleWorkloadChange({ backend_image_port: parseInt(e.target.value) || 8080 })}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleWorkloadChange({ backend_image_port: parseInt(e.target.value) || 8080 })}
             placeholder="8080"
             className="bg-gray-800 border-gray-600 text-white"
           />

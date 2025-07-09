@@ -191,7 +191,7 @@ export function BackendS3Buckets({ config }: BackendS3BucketsProps) {
                       id="new-bucket"
                       placeholder={primaryBucketName}
                       value={newBucket}
-                      onChange={(e) => setNewBucket(e.target.value)}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewBucket(e.target.value)}
                       className="mt-1 h-8 text-sm"
                     />
                     <p className="text-xs text-gray-500 mt-1">Enter full S3 bucket name</p>
@@ -202,7 +202,7 @@ export function BackendS3Buckets({ config }: BackendS3BucketsProps) {
                       id="new-key"
                       placeholder="backend/.env"
                       value={newKey}
-                      onChange={(e) => setNewKey(e.target.value)}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewKey(e.target.value)}
                       className="mt-1 h-8 text-sm"
                     />
                   </div>
@@ -244,7 +244,7 @@ export function BackendS3Buckets({ config }: BackendS3BucketsProps) {
                           <Label className="text-xs">Bucket Name</Label>
                           <Input
                             value={editBucket}
-                            onChange={(e) => setEditBucket(e.target.value)}
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditBucket(e.target.value)}
                             className="mt-1 h-8 text-sm"
                           />
                           <p className="text-xs text-gray-500 mt-1">Enter full S3 bucket name</p>
@@ -253,7 +253,7 @@ export function BackendS3Buckets({ config }: BackendS3BucketsProps) {
                           <Label className="text-xs">Key</Label>
                           <Input
                             value={editKey}
-                            onChange={(e) => setEditKey(e.target.value)}
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditKey(e.target.value)}
                             className="mt-1 h-8 text-sm"
                           />
                         </div>
@@ -365,7 +365,7 @@ export function BackendS3Buckets({ config }: BackendS3BucketsProps) {
                 <Label>File Content</Label>
                 <Textarea
                   value={editingFileContent}
-                  onChange={(e) => setEditingFileContent(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setEditingFileContent(e.target.value)}
                   className="font-mono text-sm min-h-[400px] resize-y"
                   placeholder="# Environment variables\nKEY=value\nANOTHER_KEY=another_value"
                 />

@@ -118,7 +118,7 @@ export function AddServiceDialog({ open, onClose, onAdd, existingServices }: Add
               <Input
                 id="name"
                 value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="my-service"
               />
               {errors.name && <p className="text-sm text-red-500">{errors.name}</p>}
@@ -129,7 +129,7 @@ export function AddServiceDialog({ open, onClose, onAdd, existingServices }: Add
               <Input
                 id="docker_image"
                 value={formData.docker_image}
-                onChange={(e) => setFormData({ ...formData, docker_image: e.target.value })}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, docker_image: e.target.value })}
                 placeholder="nginx:latest"
               />
               {errors.docker_image && <p className="text-sm text-red-500">{errors.docker_image}</p>}
@@ -140,7 +140,7 @@ export function AddServiceDialog({ open, onClose, onAdd, existingServices }: Add
               <Input
                 id="container_command"
                 value={formData.container_command}
-                onChange={(e) => setFormData({ ...formData, container_command: e.target.value })}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, container_command: e.target.value })}
                 placeholder="npm, start"
               />
             </div>
@@ -152,7 +152,7 @@ export function AddServiceDialog({ open, onClose, onAdd, existingServices }: Add
                   id="container_port"
                   type="number"
                   value={formData.container_port}
-                  onChange={(e) => setFormData({ ...formData, container_port: parseInt(e.target.value) || 8080 })}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, container_port: parseInt(e.target.value) || 8080 })}
                 />
               </div>
               
@@ -162,7 +162,7 @@ export function AddServiceDialog({ open, onClose, onAdd, existingServices }: Add
                   id="desired_count"
                   type="number"
                   value={formData.desired_count}
-                  onChange={(e) => setFormData({ ...formData, desired_count: parseInt(e.target.value) || 1 })}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, desired_count: parseInt(e.target.value) || 1 })}
                   min="0"
                   max="10"
                 />
@@ -174,7 +174,7 @@ export function AddServiceDialog({ open, onClose, onAdd, existingServices }: Add
                 <Label htmlFor="cpu">CPU (units)</Label>
                 <Select
                   value={formData.cpu.toString()}
-                  onValueChange={(value) => setFormData({ ...formData, cpu: parseInt(value) })}
+                  onValueChange={(value: string) => setFormData({ ...formData, cpu: parseInt(value) })}
                 >
                   <SelectTrigger id="cpu">
                     <SelectValue />
@@ -193,7 +193,7 @@ export function AddServiceDialog({ open, onClose, onAdd, existingServices }: Add
                 <Label htmlFor="memory">Memory (MB)</Label>
                 <Select
                   value={formData.memory.toString()}
-                  onValueChange={(value) => setFormData({ ...formData, memory: parseInt(value) })}
+                  onValueChange={(value: string) => setFormData({ ...formData, memory: parseInt(value) })}
                 >
                   <SelectTrigger id="memory">
                     <SelectValue />
@@ -214,7 +214,7 @@ export function AddServiceDialog({ open, onClose, onAdd, existingServices }: Add
               <Input
                 id="health_check_path"
                 value={formData.health_check_path}
-                onChange={(e) => setFormData({ ...formData, health_check_path: e.target.value })}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, health_check_path: e.target.value })}
               />
             </div>
             
@@ -223,7 +223,7 @@ export function AddServiceDialog({ open, onClose, onAdd, existingServices }: Add
               <Textarea
                 id="environment_variables"
                 value={formData.environment_variables}
-                onChange={(e) => setFormData({ ...formData, environment_variables: e.target.value })}
+                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setFormData({ ...formData, environment_variables: e.target.value })}
                 placeholder="NODE_ENV=production&#10;PORT=8080"
                 rows={4}
               />

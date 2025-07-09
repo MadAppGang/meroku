@@ -111,7 +111,7 @@ export function BackendEnvironmentVariables({ config, accountInfo }: BackendEnvi
                     <Input
                       type="text"
                       value={portValue}
-                      onChange={(e) => setPortValue(e.target.value)}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPortValue(e.target.value)}
                       className="w-full h-6 text-xs"
                     />
                     <div className="flex items-center gap-1 mt-1">
@@ -185,7 +185,7 @@ export function BackendEnvironmentVariables({ config, accountInfo }: BackendEnvi
                     <Input
                       type="text"
                       value={editingVarValue}
-                      onChange={(e) => setEditingVarValue(e.target.value)}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditingVarValue(e.target.value)}
                       className="w-full h-6 text-xs"
                     />
                     <div className="flex items-center gap-1 mt-1">
@@ -223,7 +223,7 @@ export function BackendEnvironmentVariables({ config, accountInfo }: BackendEnvi
                     type="text"
                     placeholder="VARIABLE_NAME"
                     value={newVarName}
-                    onChange={(e) => setNewVarName(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '_'))}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewVarName(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '_'))}
                     className="mt-1"
                   />
                 </div>
@@ -234,7 +234,7 @@ export function BackendEnvironmentVariables({ config, accountInfo }: BackendEnvi
                     type="text"
                     placeholder="value"
                     value={newVarValue}
-                    onChange={(e) => setNewVarValue(e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewVarValue(e.target.value)}
                     className="mt-1"
                   />
                 </div>

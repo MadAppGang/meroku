@@ -129,7 +129,7 @@ export function AddScheduledTaskDialog({ open, onClose, onAdd, existingTasks }: 
               <Input
                 id="name"
                 value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="daily-cleanup"
               />
               {errors.name && <p className="text-sm text-red-500">{errors.name}</p>}
@@ -139,7 +139,7 @@ export function AddScheduledTaskDialog({ open, onClose, onAdd, existingTasks }: 
               <Label>Schedule Type</Label>
               <RadioGroup
                 value={formData.schedule_type}
-                onValueChange={(value) => setFormData({ ...formData, schedule_type: value })}
+                onValueChange={(value: string) => setFormData({ ...formData, schedule_type: value })}
               >
                 <div className="flex items-center space-x-2">
                   <RadioGroupItem value="rate" id="rate" />
@@ -160,7 +160,7 @@ export function AddScheduledTaskDialog({ open, onClose, onAdd, existingTasks }: 
                     id="rate_value"
                     type="number"
                     value={formData.rate_value}
-                    onChange={(e) => setFormData({ ...formData, rate_value: e.target.value })}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, rate_value: e.target.value })}
                     min="1"
                   />
                 </div>
@@ -168,7 +168,7 @@ export function AddScheduledTaskDialog({ open, onClose, onAdd, existingTasks }: 
                   <Label htmlFor="rate_unit">Unit</Label>
                   <Select
                     value={formData.rate_unit}
-                    onValueChange={(value) => setFormData({ ...formData, rate_unit: value })}
+                    onValueChange={(value: string) => setFormData({ ...formData, rate_unit: value })}
                   >
                     <SelectTrigger id="rate_unit">
                       <SelectValue />
@@ -187,7 +187,7 @@ export function AddScheduledTaskDialog({ open, onClose, onAdd, existingTasks }: 
                 <Input
                   id="cron_expression"
                   value={formData.cron_expression}
-                  onChange={(e) => setFormData({ ...formData, cron_expression: e.target.value })}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, cron_expression: e.target.value })}
                   placeholder="0 0 * * *"
                 />
                 {errors.cron_expression && <p className="text-sm text-red-500">{errors.cron_expression}</p>}
@@ -202,7 +202,7 @@ export function AddScheduledTaskDialog({ open, onClose, onAdd, existingTasks }: 
               <Input
                 id="docker_image"
                 value={formData.docker_image}
-                onChange={(e) => setFormData({ ...formData, docker_image: e.target.value })}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, docker_image: e.target.value })}
                 placeholder="Leave empty to use backend image"
               />
             </div>
@@ -212,7 +212,7 @@ export function AddScheduledTaskDialog({ open, onClose, onAdd, existingTasks }: 
               <Input
                 id="container_command"
                 value={formData.container_command}
-                onChange={(e) => setFormData({ ...formData, container_command: e.target.value })}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, container_command: e.target.value })}
                 placeholder="node, scripts/cleanup.js"
               />
             </div>
@@ -222,7 +222,7 @@ export function AddScheduledTaskDialog({ open, onClose, onAdd, existingTasks }: 
                 <Label htmlFor="cpu">CPU (units)</Label>
                 <Select
                   value={formData.cpu.toString()}
-                  onValueChange={(value) => setFormData({ ...formData, cpu: parseInt(value) })}
+                  onValueChange={(value: string) => setFormData({ ...formData, cpu: parseInt(value) })}
                 >
                   <SelectTrigger id="cpu">
                     <SelectValue />
@@ -240,7 +240,7 @@ export function AddScheduledTaskDialog({ open, onClose, onAdd, existingTasks }: 
                 <Label htmlFor="memory">Memory (MB)</Label>
                 <Select
                   value={formData.memory.toString()}
-                  onValueChange={(value) => setFormData({ ...formData, memory: parseInt(value) })}
+                  onValueChange={(value: string) => setFormData({ ...formData, memory: parseInt(value) })}
                 >
                   <SelectTrigger id="memory">
                     <SelectValue />
@@ -260,7 +260,7 @@ export function AddScheduledTaskDialog({ open, onClose, onAdd, existingTasks }: 
               <Textarea
                 id="environment_variables"
                 value={formData.environment_variables}
-                onChange={(e) => setFormData({ ...formData, environment_variables: e.target.value })}
+                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setFormData({ ...formData, environment_variables: e.target.value })}
                 placeholder="TASK_TYPE=cleanup&#10;LOG_LEVEL=info"
                 rows={4}
               />
