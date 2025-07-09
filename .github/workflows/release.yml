@@ -23,31 +23,6 @@ jobs:
         with:
           go-version: '1.23'
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
-      - name: Install dependencies
-        run: |
-          cd web
-          # Ensure clean install for CI
-          rm -rf node_modules .pnpm-store
-          pnpm install --frozen-lockfile
-
-      - name: Build web app
-        run: |
-          cd web
-          # Set NODE_ENV to ensure proper module resolution
-          export NODE_ENV=production
-          # Build with TypeScript checks
-          pnpm build
-
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:

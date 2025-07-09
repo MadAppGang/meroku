@@ -1,10 +1,23 @@
-import React, { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
-import { Textarea } from './ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import type React from "react";
+import { useState } from "react";
+import { Button } from "./ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
+import { Textarea } from "./ui/textarea";
 
 interface AddServiceDialogProps {
   open: boolean;
@@ -13,43 +26,49 @@ interface AddServiceDialogProps {
   existingServices: string[];
 }
 
-export function AddServiceDialog({ open, onClose, onAdd, existingServices }: AddServiceDialogProps) {
+export function AddServiceDialog({
+  open,
+  onClose,
+  onAdd,
+  existingServices,
+}: AddServiceDialogProps) {
   const [formData, setFormData] = useState({
-    name: '',
-    docker_image: '',
-    container_command: '',
+    name: "",
+    docker_image: "",
+    container_command: "",
     container_port: 8080,
     cpu: 256,
     memory: 512,
     desired_count: 1,
-    health_check_path: '/health',
-    environment_variables: '',
+    health_check_path: "/health",
+    environment_variables: "",
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     const newErrors: Record<string, string> = {};
-    
+
     if (!formData.name) {
-      newErrors.name = 'Service name is required';
+      newErrors.name = "Service name is required";
     } else if (!/^[a-z0-9-]+$/.test(formData.name)) {
-      newErrors.name = 'Service name must contain only lowercase letters, numbers, and hyphens';
+      newErrors.name =
+        "Service name must contain only lowercase letters, numbers, and hyphens";
     } else if (existingServices.includes(formData.name)) {
-      newErrors.name = 'A service with this name already exists';
+      newErrors.name = "A service with this name already exists";
     }
-    
+
     if (!formData.docker_image) {
-      newErrors.docker_image = 'Docker image is required';
+      newErrors.docker_image = "Docker image is required";
     }
-    
+
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
       return;
     }
-    
+
     const service: any = {
       name: formData.name,
       docker_image: formData.docker_image,
@@ -59,47 +78,52 @@ export function AddServiceDialog({ open, onClose, onAdd, existingServices }: Add
       desired_count: formData.desired_count,
       health_check_path: formData.health_check_path,
     };
-    
+
     if (formData.container_command) {
-      service.container_command = formData.container_command.split(',').map(cmd => cmd.trim()).filter(cmd => cmd);
+      service.container_command = formData.container_command
+        .split(",")
+        .map((cmd) => cmd.trim())
+        .filter((cmd) => cmd);
     }
-    
+
     if (formData.environment_variables) {
       try {
-        const envVars = formData.environment_variables.split('\n')
-          .map(line => line.trim())
-          .filter(line => line && line.includes('='))
+        const envVars = formData.environment_variables
+          .split("\n")
+          .map((line) => line.trim())
+          .filter((line) => line && line.includes("="))
           .reduce((acc, line) => {
-            const [key, ...valueParts] = line.split('=');
-            acc[key.trim()] = valueParts.join('=').trim();
+            const [key, ...valueParts] = line.split("=");
+            acc[key.trim()] = valueParts.join("=").trim();
             return acc;
           }, {} as Record<string, string>);
-        
+
         if (Object.keys(envVars).length > 0) {
           service.environment_variables = envVars;
         }
       } catch (error) {
-        newErrors.environment_variables = 'Invalid environment variables format';
+        newErrors.environment_variables =
+          "Invalid environment variables format";
         setErrors(newErrors);
         return;
       }
     }
-    
+
     onAdd(service);
     handleClose();
   };
 
   const handleClose = () => {
     setFormData({
-      name: '',
-      docker_image: '',
-      container_command: '',
+      name: "",
+      docker_image: "",
+      container_command: "",
       container_port: 8080,
       cpu: 256,
       memory: 512,
       desired_count: 1,
-      health_check_path: '/health',
-      environment_variables: '',
+      health_check_path: "/health",
+      environment_variables: "",
     });
     setErrors({});
     onClose();
@@ -118,33 +142,48 @@ export function AddServiceDialog({ open, onClose, onAdd, existingServices }: Add
               <Input
                 id="name"
                 value={formData.name}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, name: e.target.value })}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setFormData({ ...formData, name: e.target.value })
+                }
                 placeholder="my-service"
               />
-              {errors.name && <p className="text-sm text-red-500">{errors.name}</p>}
+              {errors.name && (
+                <p className="text-sm text-red-500">{errors.name}</p>
+              )}
             </div>
-            
+
             <div className="grid gap-2">
               <Label htmlFor="docker_image">Docker Image</Label>
               <Input
                 id="docker_image"
                 value={formData.docker_image}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, docker_image: e.target.value })}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setFormData({ ...formData, docker_image: e.target.value })
+                }
                 placeholder="nginx:latest"
               />
-              {errors.docker_image && <p className="text-sm text-red-500">{errors.docker_image}</p>}
+              {errors.docker_image && (
+                <p className="text-sm text-red-500">{errors.docker_image}</p>
+              )}
             </div>
-            
+
             <div className="grid gap-2">
-              <Label htmlFor="container_command">Container Command (comma-separated)</Label>
+              <Label htmlFor="container_command">
+                Container Command (comma-separated)
+              </Label>
               <Input
                 id="container_command"
                 value={formData.container_command}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, container_command: e.target.value })}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setFormData({
+                    ...formData,
+                    container_command: e.target.value,
+                  })
+                }
                 placeholder="npm, start"
               />
             </div>
-            
+
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="container_port">Container Port</Label>
@@ -152,29 +191,41 @@ export function AddServiceDialog({ open, onClose, onAdd, existingServices }: Add
                   id="container_port"
                   type="number"
                   value={formData.container_port}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, container_port: parseInt(e.target.value) || 8080 })}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    setFormData({
+                      ...formData,
+                      container_port: Number.parseInt(e.target.value) || 8080,
+                    })
+                  }
                 />
               </div>
-              
+
               <div className="grid gap-2">
                 <Label htmlFor="desired_count">Desired Count</Label>
                 <Input
                   id="desired_count"
                   type="number"
                   value={formData.desired_count}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, desired_count: parseInt(e.target.value) || 1 })}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    setFormData({
+                      ...formData,
+                      desired_count: Number.parseInt(e.target.value) || 1,
+                    })
+                  }
                   min="0"
                   max="10"
                 />
               </div>
             </div>
-            
+
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="cpu">CPU (units)</Label>
                 <Select
                   value={formData.cpu.toString()}
-                  onValueChange={(value: string) => setFormData({ ...formData, cpu: parseInt(value) })}
+                  onValueChange={(value: string) =>
+                    setFormData({ ...formData, cpu: Number.parseInt(value) })
+                  }
                 >
                   <SelectTrigger id="cpu">
                     <SelectValue />
@@ -188,12 +239,14 @@ export function AddServiceDialog({ open, onClose, onAdd, existingServices }: Add
                   </SelectContent>
                 </Select>
               </div>
-              
+
               <div className="grid gap-2">
                 <Label htmlFor="memory">Memory (MB)</Label>
                 <Select
                   value={formData.memory.toString()}
-                  onValueChange={(value: string) => setFormData({ ...formData, memory: parseInt(value) })}
+                  onValueChange={(value: string) =>
+                    setFormData({ ...formData, memory: Number.parseInt(value) })
+                  }
                 >
                   <SelectTrigger id="memory">
                     <SelectValue />
@@ -208,29 +261,45 @@ export function AddServiceDialog({ open, onClose, onAdd, existingServices }: Add
                 </Select>
               </div>
             </div>
-            
+
             <div className="grid gap-2">
               <Label htmlFor="health_check_path">Health Check Path</Label>
               <Input
                 id="health_check_path"
                 value={formData.health_check_path}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, health_check_path: e.target.value })}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setFormData({
+                    ...formData,
+                    health_check_path: e.target.value,
+                  })
+                }
               />
             </div>
-            
+
             <div className="grid gap-2">
-              <Label htmlFor="environment_variables">Environment Variables (KEY=VALUE, one per line)</Label>
+              <Label htmlFor="environment_variables">
+                Environment Variables (KEY=VALUE, one per line)
+              </Label>
               <Textarea
                 id="environment_variables"
                 value={formData.environment_variables}
-                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setFormData({ ...formData, environment_variables: e.target.value })}
+                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                  setFormData({
+                    ...formData,
+                    environment_variables: e.target.value,
+                  })
+                }
                 placeholder="NODE_ENV=production&#10;PORT=8080"
                 rows={4}
               />
-              {errors.environment_variables && <p className="text-sm text-red-500">{errors.environment_variables}</p>}
+              {errors.environment_variables && (
+                <p className="text-sm text-red-500">
+                  {errors.environment_variables}
+                </p>
+              )}
             </div>
           </div>
-          
+
           <DialogFooter>
             <Button type="button" variant="outline" onClick={handleClose}>
               Cancel
