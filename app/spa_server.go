@@ -109,6 +109,16 @@ func mainRouter() http.Handler {
 	mux.HandleFunc("/api/ses/send-test-email", corsMiddleware(sendTestEmail))
 	mux.HandleFunc("/api/ses/request-production", corsMiddleware(submitSESProductionAccess))
 	mux.HandleFunc("/api/ses/production-access-prefill", corsMiddleware(getProductionAccessPrefill))
+	
+	// GitHub OAuth Device Flow endpoints
+	mux.HandleFunc("/api/github/oauth/device", corsMiddleware(initiateGitHubDeviceFlow))
+	mux.HandleFunc("/api/github/oauth/status", corsMiddleware(checkGitHubDeviceFlowStatus))
+	mux.HandleFunc("/api/github/oauth/session", corsMiddleware(deleteGitHubDeviceFlowSession))
+
+	// Amplify endpoints
+	mux.HandleFunc("/api/amplify/apps", corsMiddleware(getAmplifyApps))
+	mux.HandleFunc("/api/amplify/build-logs", corsMiddleware(getAmplifyBuildLogs))
+	mux.HandleFunc("/api/amplify/trigger-build", corsMiddleware(triggerAmplifyBuild))
 
 	// SPA handler for all other routes
 	mux.HandleFunc("/", spaHandler())
@@ -167,13 +177,36 @@ func spaHandler() http.HandlerFunc {
 }
 
 func startSPAServer(port string) {
+	startSPAServerWithAutoOpen(port, true, true)
+}
+
+func startSPAServerWithAutoOpen(port string, autoOpen bool, showTUI bool) {
 	// Create the main router
 	router := mainRouter()
+
+	// Wrap the router with a global CORS handler
+	corsHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Set CORS headers for ALL requests
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
+		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-Requested-With")
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		w.Header().Set("Access-Control-Max-Age", "3600")
+		
+		// Handle preflight requests for any path
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		
+		// Otherwise, serve the request with the router
+		router.ServeHTTP(w, r)
+	})
 
 	// Start server in a goroutine
 	serverURL := "http://localhost:" + port
 	go func() {
-		if err := http.ListenAndServe(":"+port, router); err != nil {
+		if err := http.ListenAndServe(":"+port, corsHandler); err != nil {
 			fmt.Printf("Failed to start server: %v\n", err)
 		}
 	}()
@@ -181,13 +214,19 @@ func startSPAServer(port string) {
 	// Give the server a moment to start
 	time.Sleep(1 * time.Second)
 
-	// Open the web app
-	if err := openBrowser(serverURL); err != nil {
-		fmt.Printf("Failed to open browser: %v\n", err)
+	fmt.Printf("Web server started at %s\n", serverURL)
+
+	// Open the web app if requested
+	if autoOpen {
+		if err := openBrowser(serverURL); err != nil {
+			fmt.Printf("Failed to open browser: %v\n", err)
+		}
 	}
 
-	// Run the TUI
-	if err := runWebServerTUI(serverURL); err != nil {
-		fmt.Printf("Error running TUI: %v\n", err)
+	// Run the TUI if requested
+	if showTUI {
+		if err := runWebServerTUI(serverURL); err != nil {
+			fmt.Printf("Error running TUI: %v\n", err)
+		}
 	}
 }

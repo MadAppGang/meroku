@@ -6,12 +6,14 @@ import { type AccountInfo, infrastructureApi } from "./api/infrastructure";
 import { AddEventTaskDialog } from "./components/AddEventTaskDialog";
 import { AddScheduledTaskDialog } from "./components/AddScheduledTaskDialog";
 import { AddServiceDialog } from "./components/AddServiceDialog";
+import { AddAmplifyDialog } from "./components/AddAmplifyDialog";
 import { DeploymentCanvas } from "./components/DeploymentCanvas";
 import { EnvironmentSelector } from "./components/EnvironmentSelector";
 import { Sidebar } from "./components/Sidebar";
 // Removed Tabs import - no longer needed
 import type { ComponentNode } from "./types";
 import type { YamlInfrastructureConfig } from "./types/yamlConfig";
+import { Toaster } from "./components/ui/sonner";
 
 export default function App() {
   const [selectedNode, setSelectedNode] = useState<ComponentNode | null>(null);
@@ -26,6 +28,7 @@ export default function App() {
   const [showAddScheduledTaskDialog, setShowAddScheduledTaskDialog] =
     useState(false);
   const [showAddEventTaskDialog, setShowAddEventTaskDialog] = useState(false);
+  const [showAddAmplifyDialog, setShowAddAmplifyDialog] = useState(false);
   const [saveStatus, setSaveStatus] = useState<
     "idle" | "saving" | "success" | "error"
   >("idle");
@@ -143,6 +146,17 @@ export default function App() {
     await saveConfigToBackend(updatedConfig);
   };
 
+  const handleAddAmplify = async (amplifyApp: any) => {
+    if (!config) return;
+
+    const updatedConfig = {
+      ...config,
+      amplify_apps: [...(config.amplify_apps || []), amplifyApp],
+    };
+    setConfig(updatedConfig);
+    await saveConfigToBackend(updatedConfig);
+  };
+
   const handleDeleteNode = async (nodeId: string, nodeType: string) => {
     if (!config) return;
 
@@ -163,6 +177,11 @@ export default function App() {
       updatedConfig.event_processor_tasks = (
         config.event_processor_tasks || []
       ).filter((t) => t.name !== taskName);
+    } else if (nodeType === "amplify") {
+      const appName = nodeId.replace("amplify-", "");
+      updatedConfig.amplify_apps = (
+        config.amplify_apps || []
+      ).filter((a) => a.name !== appName);
     }
 
     setConfig(updatedConfig);
@@ -179,6 +198,10 @@ export default function App() {
 
   const getExistingEventTasks = () => {
     return (config?.event_processor_tasks || []).map((t) => t.name);
+  };
+
+  const getExistingAmplifyApps = () => {
+    return (config?.amplify_apps || []).map((a) => a.name);
   };
 
   const getAvailableServices = () => {
@@ -359,6 +382,7 @@ export default function App() {
           onAddService={() => setShowAddServiceDialog(true)}
           onAddScheduledTask={() => setShowAddScheduledTaskDialog(true)}
           onAddEventTask={() => setShowAddEventTaskDialog(true)}
+          onAddAmplify={() => setShowAddAmplifyDialog(true)}
         />
 
         {/* Right Sidebar */}
@@ -398,6 +422,18 @@ export default function App() {
         existingTasks={getExistingEventTasks()}
         availableServices={getAvailableServices()}
       />
+
+      <AddAmplifyDialog
+        open={showAddAmplifyDialog}
+        onClose={() => setShowAddAmplifyDialog(false)}
+        onAdd={handleAddAmplify}
+        existingApps={getExistingAmplifyApps()}
+        environmentName={selectedEnvironment || undefined}
+        projectName={config?.project}
+      />
+      
+      {/* Toast notifications */}
+      <Toaster />
     </div>
   );
 }

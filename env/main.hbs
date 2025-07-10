@@ -342,6 +342,55 @@ module "appsync" {
 }
 {{/if}}
 
+{{#compare (len amplify_apps) ">" 0}}
+module "amplify" {
+  source = "{{modules}}/amplify"
+  project = "{{project}}"
+  env = "{{env}}"
+  
+  amplify_apps = [
+    {{#each amplify_apps}}
+    {
+      name = "{{name}}"
+      github_repository = "{{github_repository}}"
+      branches = [
+        {{#each branches}}
+        {
+          name = "{{name}}"
+          {{#if stage}}
+          stage = "{{stage}}"
+          {{/if}}
+          {{#if enable_auto_build}}
+          enable_auto_build = {{enable_auto_build}}
+          {{/if}}
+          {{#if enable_pull_request_preview}}
+          enable_pull_request_preview = {{enable_pull_request_preview}}
+          {{/if}}
+          {{#if environment_variables}}
+          environment_variables = {
+            {{#each environment_variables}}
+            {{@key}} = "{{this}}"{{#unless @last}},{{/unless}}
+            {{/each}}
+          }
+          {{/if}}
+          {{#if custom_subdomains}}
+          custom_subdomains = {{{array custom_subdomains}}}
+          {{/if}}
+        }{{#unless @last}},{{/unless}}
+        {{/each}}
+      ]
+      {{#if custom_domain}}
+      custom_domain = "{{custom_domain}}"
+      {{/if}}
+      {{#if enable_root_domain}}
+      enable_root_domain = {{enable_root_domain}}
+      {{/if}}
+    }{{#unless @last}},{{/unless}}
+    {{/each}}
+  ]
+}
+{{/compare}}
+
 
 output "backend_ecr_repo_url" {
   value = module.workloads.backend_ecr_repo_url
@@ -363,3 +412,42 @@ output "backend_cloud_map_arn" {
   description = "value of the backend service discovery ARN"
   value       = module.workloads.backend_cloud_map_arn
 }
+
+{{#compare (len amplify_apps) ">" 0}}
+output "amplify_apps" {
+  description = "Map of all Amplify app details including branches"
+  value = module.amplify.amplify_apps
+}
+
+output "amplify_app_urls" {
+  description = "Map of primary URLs to access the Amplify applications"
+  value = module.amplify.app_urls
+}
+
+output "amplify_branch_urls" {
+  description = "Map of all branch URLs for each Amplify app"
+  value = module.amplify.branch_urls
+}
+
+{{#each amplify_apps}}
+output "amplify_{{name}}_app_id" {
+  description = "The unique ID of the {{name}} Amplify app"
+  value       = module.amplify.app_ids["{{name}}"]
+}
+
+output "amplify_{{name}}_app_url" {
+  description = "The URL to access the {{name}} Amplify application"
+  value       = module.amplify.app_urls["{{name}}"]
+}
+
+output "amplify_{{name}}_default_domain" {
+  description = "The default domain for the {{name}} Amplify app"
+  value       = module.amplify.default_domains["{{name}}"]
+}
+
+output "amplify_{{name}}_branches" {
+  description = "All branches for the {{name}} Amplify app"
+  value       = module.amplify.amplify_apps["{{name}}"].branches
+}
+{{/each}}
+{{/compare}}

@@ -87,3 +87,62 @@ ses_test_emails:
 efs:
   - name: uploads
   - name: static
+
+# setup AWS Amplify for frontend deployments
+amplify_apps:
+  - name: main-web
+    github_repository: https://github.com/username/repo
+    # Multiple branches support - new format
+    branches:
+      - name: main
+        stage: PRODUCTION
+        enable_auto_build: true
+        enable_pull_request_preview: true
+        environment_variables:
+          REACT_APP_API_URL: https://api.instagram.madappgang.com.au
+          REACT_APP_COGNITO_REGION: ap-southeast-2
+          REACT_APP_COGNITO_USER_POOL_ID: ${cognito_user_pool_id}
+          REACT_APP_COGNITO_CLIENT_ID: ${cognito_web_client_id}
+          REACT_APP_ENV: production
+      - name: develop
+        stage: DEVELOPMENT
+        enable_auto_build: true
+        enable_pull_request_preview: true
+        environment_variables:
+          REACT_APP_API_URL: https://api-dev.instagram.madappgang.com.au
+          REACT_APP_COGNITO_REGION: ap-southeast-2
+          REACT_APP_COGNITO_USER_POOL_ID: ${cognito_user_pool_id}
+          REACT_APP_COGNITO_CLIENT_ID: ${cognito_web_client_id}
+          REACT_APP_ENV: development
+      - name: staging
+        stage: BETA
+        enable_auto_build: true
+        enable_pull_request_preview: false
+        environment_variables:
+          REACT_APP_API_URL: https://api-staging.instagram.madappgang.com.au
+          REACT_APP_COGNITO_REGION: ap-southeast-2
+          REACT_APP_COGNITO_USER_POOL_ID: ${cognito_user_pool_id}
+          REACT_APP_COGNITO_CLIENT_ID: ${cognito_web_client_id}
+          REACT_APP_ENV: staging
+    # Legacy single branch format (still supported)
+    # branch_name: main
+    custom_domain: instagram.madappgang.com.au
+    sub_domains:
+      - www
+      - app
+    enable_root_domain: true
+    # This is now deprecated when using branches array
+    # enable_pr_preview: true
+    # App-level environment variables (deprecated - use branch-specific vars)
+    # environment_variables:
+    #   REACT_APP_API_URL: https://api.instagram.madappgang.com.au
+  # Example of second app (admin dashboard) with single branch (legacy format)
+  # - name: admin-dashboard
+  #   github_repository: https://github.com/username/admin-repo
+  #   branch_name: main
+  #   custom_domain: admin.instagram.madappgang.com.au
+  #   sub_domains: []
+  #   enable_root_domain: true
+  #   enable_pr_preview: false
+  #   environment_variables:
+  #     VUE_APP_API_URL: https://api.instagram.madappgang.com.au

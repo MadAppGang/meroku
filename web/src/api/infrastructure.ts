@@ -816,4 +816,55 @@ export const infrastructureApi = {
 		}
 		return response.json();
 	},
+
+	// GitHub OAuth Device Flow APIs
+	async initiateGitHubDeviceFlow(params: {
+		app_name: string;
+		project: string;
+		environment: string;
+		scope?: string;
+	}): Promise<{
+		user_code: string;
+		verification_uri: string;
+		expires_in: number;
+		interval: number;
+	}> {
+		const response = await fetch(`${API_BASE_URL}/api/github/oauth/device`, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify(params),
+		});
+		if (!response.ok) {
+			const error: ErrorResponse = await response.json();
+			throw new Error(error.error || "Failed to initiate GitHub device flow");
+		}
+		return response.json();
+	},
+
+	async checkGitHubAuthStatus(userCode: string): Promise<{
+		status: "pending" | "authorized" | "expired" | "error";
+		app_name: string;
+		created_at: string;
+		message?: string;
+		error?: string;
+	}> {
+		const response = await fetch(`${API_BASE_URL}/api/github/oauth/status?user_code=${encodeURIComponent(userCode)}`);
+		if (!response.ok) {
+			const error: ErrorResponse = await response.json();
+			throw new Error(error.error || "Failed to check GitHub auth status");
+		}
+		return response.json();
+	},
+
+	async deleteGitHubOAuthSession(userCode: string): Promise<void> {
+		const response = await fetch(`${API_BASE_URL}/api/github/oauth/session?user_code=${encodeURIComponent(userCode)}`, {
+			method: "DELETE",
+		});
+		if (!response.ok) {
+			const error: ErrorResponse = await response.json();
+			throw new Error(error.error || "Failed to delete GitHub OAuth session");
+		}
+	},
 };

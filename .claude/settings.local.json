@@ -40,7 +40,9 @@
       "Bash(true)",
       "Bash(brew tap:*)",
       "Bash(gh secret list:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(go get:*)",
+      "Bash(go mod:*)"
     ],
     "deny": []
   }

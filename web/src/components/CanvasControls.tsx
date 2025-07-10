@@ -1,4 +1,4 @@
-import { Plus, Minus, Maximize, Grid3x3, Move, MousePointer, Eye, EyeOff, Server, Clock, Zap } from 'lucide-react';
+import { Plus, Minus, Maximize, Grid3x3, Move, MousePointer, Eye, EyeOff, Server, Clock, Zap, Globe } from 'lucide-react';
 import { useReactFlow } from 'reactflow';
 import { Button } from './ui/button';
 
@@ -8,9 +8,10 @@ interface CanvasControlsProps {
   onAddService?: () => void;
   onAddScheduledTask?: () => void;
   onAddEventTask?: () => void;
+  onAddAmplify?: () => void;
 }
 
-export function CanvasControls({ showInactive, onToggleInactive, onAddService, onAddScheduledTask, onAddEventTask }: CanvasControlsProps) {
+export function CanvasControls({ showInactive, onToggleInactive, onAddService, onAddScheduledTask, onAddEventTask, onAddAmplify }: CanvasControlsProps) {
   const { zoomIn, zoomOut, fitView } = useReactFlow();
 
   return (
@@ -96,6 +97,15 @@ export function CanvasControls({ showInactive, onToggleInactive, onAddService, o
           title="Add Event Task"
         >
           <Zap className="w-4 h-4" />
+        </Button>
+        <Button
+          size="icon"
+          variant="ghost"
+          onClick={onAddAmplify}
+          className="w-8 h-8 text-gray-400 hover:text-white hover:bg-orange-700"
+          title="Add Amplify App"
+        >
+          <Globe className="w-4 h-4" />
         </Button>
       </div>
 

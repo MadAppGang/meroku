@@ -7,6 +7,7 @@ import type { YamlInfrastructureConfig } from "../types/yamlConfig";
  */
 export function generateHiddenComponentNodes(
 	config: YamlInfrastructureConfig | null,
+	environment?: string,
 ): Node[] {
 	if (!config) return [];
 
@@ -117,6 +118,36 @@ export function generateHiddenComponentNodes(
 					resolvers: config.pubsub_appsync.resolvers,
 				},
 			},
+		});
+	}
+
+	// Amplify Apps
+	if (config.amplify_apps && config.amplify_apps.length > 0) {
+		config.amplify_apps.forEach((app, index) => {
+			// Get branch info
+			const branches = app.branches || [];
+			const primaryBranch = branches.find(b => b.stage === 'PRODUCTION')?.name || branches[0]?.name || '';
+			const branchCount = branches.length;
+			
+			nodes.push({
+				id: `amplify-${app.name}`,
+				type: "service",
+				position: { x: -639, y: 158 + (index * 120) }, // Position near client apps
+				data: {
+					id: `amplify-${app.name}`,
+					type: "amplify",
+					name: app.name,
+					description: `Amplify app (${branchCount} branch${branchCount !== 1 ? 'es' : ''})`,
+					status: "running",
+					configProperties: {
+						repository: app.github_repository,
+						branch: primaryBranch,
+						branches: branches,
+						customDomain: app.custom_domain,
+						environment: environment || config.env || 'dev',
+					},
+				},
+			});
 		});
 	}
 

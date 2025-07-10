@@ -41,6 +41,7 @@ interface DeploymentCanvasProps {
   onAddService?: () => void;
   onAddScheduledTask?: () => void;
   onAddEventTask?: () => void;
+  onAddAmplify?: () => void;
 }
 
 const nodeTypes = {
@@ -455,6 +456,7 @@ export function DeploymentCanvas({
   onAddService,
   onAddScheduledTask,
   onAddEventTask,
+  onAddAmplify,
 }: DeploymentCanvasProps) {
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [savedPositions, setSavedPositions] = React.useState<
@@ -478,7 +480,7 @@ export function DeploymentCanvas({
     combinedNodes = [...combinedNodes, ...additionalServices];
 
     // Add hidden component nodes
-    const hiddenComponents = generateHiddenComponentNodes(config || null);
+    const hiddenComponents = generateHiddenComponentNodes(config || null, environmentName);
     combinedNodes = [...combinedNodes, ...hiddenComponents];
 
     // Update ECS cluster group to include dynamic services
@@ -519,8 +521,29 @@ export function DeploymentCanvas({
       return getNodeState(nodeId, config || null);
     };
 
-    // Filter initial edges to only include those where both source and target are enabled
-    return initialEdges
+    // Start with initial edges
+    let allEdges = [...initialEdges];
+
+    // Add edges for Amplify apps with custom domains to Route53
+    if (config?.amplify_apps) {
+      config.amplify_apps.forEach((app) => {
+        if (app.custom_domain) {
+          allEdges.push({
+            id: `amplify-${app.name}-route53`,
+            source: `amplify-${app.name}`,
+            target: 'route53',
+            type: 'smoothstep',
+            animated: true,
+            label: 'DNS',
+            style: { stroke: '#8b5cf6', strokeWidth: 2 },
+            markerEnd: { type: MarkerType.ArrowClosed, color: '#4f46e5' },
+          });
+        }
+      });
+    }
+
+    // Filter edges to only include those where both source and target are enabled
+    return allEdges
       .filter(edge => {
         // Always show edges from external nodes (like client-app) or CI/CD nodes
         const sourceNode = nodes.find(n => n.id === edge.source);
@@ -794,6 +817,7 @@ export function DeploymentCanvas({
           onAddService={onAddService}
           onAddScheduledTask={onAddScheduledTask}
           onAddEventTask={onAddEventTask}
+          onAddAmplify={onAddAmplify}
         />
       </ReactFlow>
       

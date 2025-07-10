@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { X, Settings, FileText, BarChart, Zap, Link, Code, Database, Upload, Globe, BookOpen, Key, HardDrive, Shield, Server, Network, Activity, ChevronLeft, ChevronRight, Bell, Microscope, Gauge, Terminal, Cloud, Send, Trash2 } from 'lucide-react';
+import { X, Settings, FileText, BarChart, Zap, Link, Code, Database, Upload, Globe, BookOpen, Key, HardDrive, Shield, Server, Network, Activity, ChevronLeft, ChevronRight, Bell, Microscope, Gauge, Terminal, Cloud, Send, Trash2, GitBranch } from 'lucide-react';
 import { ComponentNode } from '../types';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -49,6 +49,11 @@ import { ServiceXRayConfiguration } from './ServiceXRayConfiguration';
 import { ServiceEnvironmentVariables } from './ServiceEnvironmentVariables';
 import { ServiceParameterStore } from './ServiceParameterStore';
 import { APIGatewayProperties } from './APIGatewayProperties';
+import { AmplifyNodeProperties } from './AmplifyNodeProperties';
+import { AmplifyBuildSettings } from './AmplifyBuildSettings';
+import { AmplifyDomainSettings } from './AmplifyDomainSettings';
+import { AmplifyEnvironmentVariables } from './AmplifyEnvironmentVariables';
+import { AmplifyBranchManagement } from './AmplifyBranchManagement';
 
 interface SidebarProps {
   selectedNode: ComponentNode | null;
@@ -122,7 +127,7 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
           )}
         </div>
         <div className="flex items-center gap-2">
-          {(selectedNode.type === 'service' || selectedNode.type === 'scheduled-task' || selectedNode.type === 'event-task') && onDeleteNode && (
+          {(selectedNode.type === 'service' || selectedNode.type === 'scheduled-task' || selectedNode.type === 'event-task' || selectedNode.type === 'amplify') && onDeleteNode && (
             <Button
               variant="ghost"
               size="icon"
@@ -251,6 +256,12 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
               { id: 'iam', label: 'IAM', icon: Shield },
               { id: 'logs', label: 'Logs', icon: FileText },
               { id: 'cloudwatch', label: 'CloudWatch', icon: Cloud },
+            ] : selectedNode.type === 'amplify' ? [
+              { id: 'settings', label: 'Settings', icon: Settings },
+              { id: 'branches', label: 'Branches', icon: GitBranch },
+              { id: 'build', label: 'Build', icon: Code },
+              { id: 'domain', label: 'Domain', icon: Globe },
+              { id: 'env', label: 'Env Vars', icon: Zap },
             ] : [
               { id: 'settings', label: 'Settings', icon: Settings },
               { id: 'logs', label: 'Logs', icon: FileText },
@@ -343,6 +354,12 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
               onConfigChange={onConfigChange}
               accountInfo={accountInfo}
               node={selectedNode}
+            />
+          ) : selectedNode.type === 'amplify' && config && onConfigChange ? (
+            <AmplifyNodeProperties 
+              config={config} 
+              nodeId={selectedNode.id} 
+              onConfigChange={onConfigChange}
             />
           ) : (
             <div className="space-y-6">
@@ -777,6 +794,35 @@ jobs:
 
         {activeTab === 'notifications' && selectedNode.type === 'ecs' && config && onConfigChange && (
           <ECSNotifications config={config} onConfigChange={onConfigChange} />
+        )}
+
+        {/* Amplify tabs */}
+        {activeTab === 'build' && selectedNode.type === 'amplify' && config && onConfigChange && (
+          <AmplifyBuildSettings 
+            config={config} 
+            nodeId={selectedNode.id} 
+            onConfigChange={onConfigChange}
+          />
+        )}
+
+        {activeTab === 'domain' && selectedNode.type === 'amplify' && config && onConfigChange && (
+          <AmplifyDomainSettings config={config} nodeId={selectedNode.id} onConfigChange={onConfigChange} />
+        )}
+
+        {activeTab === 'env' && selectedNode.type === 'amplify' && config && onConfigChange && (
+          <AmplifyEnvironmentVariables 
+            config={config} 
+            nodeId={selectedNode.id} 
+            onConfigChange={onConfigChange}
+          />
+        )}
+
+        {activeTab === 'branches' && selectedNode.type === 'amplify' && config && onConfigChange && (
+          <AmplifyBranchManagement 
+            config={config} 
+            nodeId={selectedNode.id} 
+            onConfigChange={onConfigChange}
+          />
         )}
       </div>
     </div>

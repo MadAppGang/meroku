@@ -26,9 +26,11 @@ import {
   ShieldCheck,
   Timer,
   Calendar,
-  Workflow
+  Workflow,
+  GitBranch
 } from 'lucide-react';
 import { ComponentNode } from '../types';
+import { AmplifyStatusWidget } from './AmplifyStatusWidget';
 
 const serviceIcons = {
   frontend: Globe,
@@ -123,7 +125,7 @@ export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
   
   // Determine if this is a service node that needs extended display
   const isServiceNode = ['backend', 'service', 'service-regular', 'service-periodic', 'service-event-driven', 
-                        'scheduled-task', 'event-task'].includes(data.type);
+                        'scheduled-task', 'event-task', 'amplify'].includes(data.type);
   const minWidth = 'min-w-64'; // Keep compact width
 
   return (
@@ -131,9 +133,11 @@ export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
       border-2 rounded-lg p-4 ${minWidth} shadow-lg
       ${data.isExternal 
         ? 'bg-gray-900 border-dashed' 
-        : isServiceNode 
-          ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-2'
-          : 'bg-gray-800'
+        : data.type === 'amplify'
+          ? 'bg-gradient-to-br from-red-950/20 to-gray-900 border-2'
+          : isServiceNode 
+            ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-2'
+            : 'bg-gray-800'
       }
       ${selected 
         ? 'border-blue-500 shadow-blue-500/20' 
@@ -148,7 +152,9 @@ export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
                   ? 'border-green-600/50 shadow-green-900/20'
                   : data.type === 'event-task'
                     ? 'border-orange-600/50 shadow-orange-900/20'
-                    : 'border-gray-600'
+                    : data.type === 'amplify'
+                      ? 'border-red-600/50 shadow-red-900/20'
+                      : 'border-gray-600'
             : 'border-gray-600'
       }
       hover:border-gray-400 transition-all duration-200
@@ -223,7 +229,14 @@ export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
           <Icon className="w-4 h-4 text-white" />
         </div>
         <div className="flex-1">
-          <h3 className="font-medium text-white">{data.name}</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="font-medium text-white">{data.name}</h3>
+            {data.type === 'amplify' && (
+              <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">
+                BETA
+              </span>
+            )}
+          </div>
           {data.url && (
             <p className="text-sm text-gray-400 truncate">{data.url}</p>
           )}
@@ -281,16 +294,81 @@ export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
             </div>
           )}
           
-          {/* Resources - always show for all service types */}
+          {/* Amplify-specific information */}
+          {data.type === 'amplify' && data.configProperties && (
+            <>
+              {/* Repository info */}
+              {data.configProperties.repository && (
+                <div className="text-xs bg-gray-900/50 rounded px-2 py-1 mb-2">
+                  <div className="flex items-center gap-1 text-gray-400">
+                    <Github className="w-3 h-3" />
+                    <span className="truncate">{data.configProperties.repository}</span>
+                  </div>
+                </div>
+              )}
+              
+              {/* Custom Domain from YAML config */}
+              {data.configProperties.customDomain && (
+                <div className="text-xs bg-gray-900/50 rounded px-2 py-1 mb-2">
+                  <div className="flex items-center gap-1 text-gray-400">
+                    <Globe className="w-3 h-3" />
+                    <span className="text-gray-500">Custom:</span>
+                    <span className="text-white ml-1">{data.configProperties.customDomain}</span>
+                  </div>
+                </div>
+              )}
+              
+              {/* Branch Info */}
+              {data.configProperties.branches && data.configProperties.branches.length > 0 && (
+                <div className="text-xs bg-gray-900/50 rounded px-2 py-1 mb-2">
+                  <div className="flex items-center gap-1 text-gray-400">
+                    <GitBranch className="w-3 h-3" />
+                    <span>{data.configProperties.branches.length} branch{data.configProperties.branches.length !== 1 ? 'es' : ''}</span>
+                    {data.configProperties.branch && (
+                      <span className="text-white ml-1">({data.configProperties.branch})</span>
+                    )}
+                  </div>
+                </div>
+              )}
+              
+              {/* Amplify Status Widget */}
+              <div className="bg-gray-900/50 rounded px-2 py-1">
+                <div className="text-xs text-gray-400 mb-1">Build Status:</div>
+                <AmplifyStatusWidget
+                  appName={data.name}
+                  environment={data.configProperties.environment || 'dev'}
+                  profile={data.configProperties.profile}
+                  variant="compact"
+                  showRefresh={false}
+                  autoRefresh={true}
+                  className="w-full"
+                />
+              </div>
+            </>
+          )}
+          
+          {/* Resources - show for all service types except Amplify */}
+          {data.type !== 'amplify' && (
           <div className="bg-gray-900/50 rounded px-2 py-1">
             <div className="flex items-center justify-between text-xs">
               <div className="flex items-center gap-2">
                 <span className="text-gray-400">Resources:</span>
-                {data.configProperties.desiredCount && (
+                {data.type === 'backend' && data.configProperties.autoscalingEnabled ? (
                   <div className="flex items-center gap-0.5">
-                    <Copy className="w-3 h-3 text-gray-500" />
-                    <span className="text-white font-medium">{data.configProperties.desiredCount}</span>
+                    <Activity className="w-3 h-3 text-green-500" />
+                    <span className="text-white font-medium">
+                      {data.configProperties.autoscalingMinCapacity || 1}-{data.configProperties.autoscalingMaxCapacity || 10} instances
+                    </span>
                   </div>
+                ) : (
+                  data.configProperties.desiredCount && (
+                    <div className="flex items-center gap-0.5">
+                      <Copy className="w-3 h-3 text-gray-500" />
+                      <span className="text-white font-medium">
+                        {data.configProperties.desiredCount} instance{data.configProperties.desiredCount !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+                  )
                 )}
               </div>
               <div className="flex items-center gap-2 text-gray-300">
@@ -300,6 +378,7 @@ export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
               </div>
             </div>
           </div>
+          )}
           
           {/* Health Status - compact inline */}
           {data.configProperties.healthStatus && (
@@ -368,24 +447,20 @@ export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
       {/* Instance count badges for services */}
       {(['backend', 'service'].includes(data.type)) && data.configProperties && (
         <div className="absolute -top-2 -left-2 flex flex-col gap-1">
-          {/* Instance count badge */}
-          <div className="bg-blue-600 text-white rounded-full px-2 py-0.5 text-xs font-medium flex items-center gap-1">
-            <Copy className="w-3 h-3" />
-            {data.configProperties.desiredCount || 1}
-          </div>
-          
-          {/* Additional badges in a row below */}
-          <div className="flex gap-1">
-            {/* Autoscaling badge (backend service only) */}
-            {data.type === 'backend' && data.configProperties.autoscalingEnabled && (
-              <div className="bg-green-600 text-white rounded-full px-2 py-0.5 text-xs font-medium flex items-center gap-1">
-                <Activity className="w-3 h-3" />
-                Auto
-              </div>
-            )}
-
-
-          </div>
+          {/* Show autoscaling badge OR instance count badge, not both */}
+          {data.type === 'backend' && data.configProperties.autoscalingEnabled ? (
+            /* Autoscaling badge with range */
+            <div className="bg-green-600 text-white rounded-full px-2 py-0.5 text-xs font-medium flex items-center gap-1">
+              <Activity className="w-3 h-3" />
+              {data.configProperties.autoscalingMinCapacity || 1}-{data.configProperties.autoscalingMaxCapacity || 10}
+            </div>
+          ) : (
+            /* Instance count badge */
+            <div className="bg-blue-600 text-white rounded-full px-2 py-0.5 text-xs font-medium flex items-center gap-1">
+              <Copy className="w-3 h-3" />
+              {data.configProperties.desiredCount || 1}
+            </div>
+          )}
         </div>
       )}
     </div>

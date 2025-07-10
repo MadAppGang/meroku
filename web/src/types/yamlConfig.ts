@@ -205,4 +205,20 @@ export interface YamlInfrastructureConfig {
       max_age_seconds?: number;
     }>;
   }>;
+  
+  // AWS Amplify Apps
+  amplify_apps?: Array<{
+    name: string;
+    github_repository: string;
+    branches: Array<{
+      name: string;
+      stage?: 'PRODUCTION' | 'DEVELOPMENT' | 'BETA' | 'EXPERIMENTAL';
+      enable_auto_build?: boolean;
+      enable_pull_request_preview?: boolean;
+      environment_variables?: Record<string, string>;
+      custom_subdomains?: string[];
+    }>;
+    custom_domain?: string;
+    enable_root_domain?: boolean;
+  }>;
 }
