@@ -14,6 +14,8 @@ type Env struct {
 	Env                 string               `yaml:"env"`
 	IsProd              bool                 `yaml:"is_prod"`
 	Region              string               `yaml:"region"`
+	AccountID           string               `yaml:"account_id"`
+	AWSProfile          string               `yaml:"aws_profile"`
 	StateBucket         string               `yaml:"state_bucket"`
 	StateFile           string               `yaml:"state_file"`
 	Workload            Workload             `yaml:"workload"`
@@ -164,6 +166,7 @@ func createEnv(name, env string) Env {
 		Env:         env,
 		IsProd:      false,
 		Region:      "us-east-1",
+		AccountID:   "", // Will be filled when AWS profile is selected
 		StateBucket: fmt.Sprintf("sate-bucket-%s-%s-%s", name, env, generateRandomString(5)),
 		StateFile:   "state.tfstate",
 		Workload: Workload{
@@ -259,6 +262,15 @@ func saveEnv(e Env) error {
 	}
 	filename := e.Env + ".yaml"
 	return os.WriteFile(filename, yamlData, 0o644)
+}
+
+func saveEnvToFile(e Env, filepath string) error {
+	yamlData, err := yaml.Marshal(e)
+	if err != nil {
+		slog.Error("saveEnvToFile", "error", err)
+		return err
+	}
+	return os.WriteFile(filepath, yamlData, 0o644)
 }
 
 // var AWSRegions = []string{

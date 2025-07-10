@@ -23,8 +23,11 @@ import (
 )
 
 type Environment struct {
-	Name    string `json:"name"`
-	Path    string `json:"path"`
+	Name       string `json:"name"`
+	Path       string `json:"path"`
+	IsActive   bool   `json:"isActive"`
+	Profile    string `json:"profile,omitempty"`
+	AccountID  string `json:"accountId,omitempty"`
 }
 
 type ConfigResponse struct {
@@ -73,10 +76,23 @@ func getEnvironments(w http.ResponseWriter, r *http.Request) {
 	for _, file := range files {
 		if !file.IsDir() && strings.HasSuffix(file.Name(), ".yaml") {
 			name := strings.TrimSuffix(file.Name(), ".yaml")
-			environments = append(environments, Environment{
+			env := Environment{
 				Name: name,
 				Path: file.Name(),
-			})
+			}
+			
+			// Check if this is the active environment
+			if name == selectedEnvironment {
+				env.IsActive = true
+				env.Profile = selectedAWSProfile
+				
+				// Load the environment to get account ID
+				if envData, err := loadEnv(name); err == nil {
+					env.AccountID = envData.AccountID
+				}
+			}
+			
+			environments = append(environments, env)
 		}
 	}
 	

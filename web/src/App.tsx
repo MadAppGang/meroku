@@ -21,7 +21,7 @@ export default function App() {
   const [selectedEnvironment, setSelectedEnvironment] = useState<string | null>(
     null
   );
-  const [showEnvSelector, setShowEnvSelector] = useState(true);
+  const [showEnvSelector, setShowEnvSelector] = useState(false);
   const [config, setConfig] = useState<YamlInfrastructureConfig | null>(null);
   const [accountInfo, setAccountInfo] = useState<AccountInfo | null>(null);
   const [showAddServiceDialog, setShowAddServiceDialog] = useState(false);
@@ -32,15 +32,55 @@ export default function App() {
   const [saveStatus, setSaveStatus] = useState<
     "idle" | "saving" | "success" | "error"
   >("idle");
+  const [activeEnvironmentProfile, setActiveEnvironmentProfile] = useState<string | null>(null);
+  const [activeEnvironmentAccountId, setActiveEnvironmentAccountId] = useState<string | null>(null);
 
   const handleNodeSelect = useCallback((node: ComponentNode | null) => {
     setSelectedNode(node);
     setSidebarOpen(!!node);
   }, []);
 
-  const handleEnvironmentSelect = useCallback((environment: string) => {
+  const handleEnvironmentSelect = useCallback(async (environment: string) => {
     setSelectedEnvironment(environment);
     setShowEnvSelector(false);
+    
+    // Fetch the updated environment info to get profile and account ID
+    try {
+      const environments = await infrastructureApi.getEnvironments();
+      const selectedEnv = environments.find(env => env.name === environment);
+      if (selectedEnv) {
+        setActiveEnvironmentProfile(selectedEnv.profile || null);
+        setActiveEnvironmentAccountId(selectedEnv.accountId || null);
+      }
+    } catch (error) {
+      console.error("Failed to fetch environment details:", error);
+    }
+  }, []);
+
+  // Check for active environment on mount
+  useEffect(() => {
+    const checkActiveEnvironment = async () => {
+      try {
+        const environments = await infrastructureApi.getEnvironments();
+        const activeEnv = environments.find(env => env.isActive);
+        
+        if (activeEnv) {
+          // Use the active environment automatically
+          setSelectedEnvironment(activeEnv.name);
+          setActiveEnvironmentProfile(activeEnv.profile || null);
+          setActiveEnvironmentAccountId(activeEnv.accountId || null);
+          setShowEnvSelector(false);
+        } else {
+          // No active environment, show selector
+          setShowEnvSelector(true);
+        }
+      } catch (error) {
+        console.error("Failed to check active environment:", error);
+        setShowEnvSelector(true);
+      }
+    };
+
+    checkActiveEnvironment();
   }, []);
 
   // Load configuration and account info when environment is selected
@@ -224,7 +264,7 @@ export default function App() {
         {selectedEnvironment && (
           <div className="bg-gray-800/95 backdrop-blur-sm rounded-lg border border-gray-700 shadow-lg">
             {/* Horizontal layout for larger screens */}
-            <div className="hidden sm:flex items-center gap-3 px-4 py-2">
+            <div className="hidden xl:flex items-center gap-3 px-4 py-2">
               {/* Environment */}
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
@@ -234,12 +274,6 @@ export default function App() {
                 <span className="text-sm font-semibold text-white">
                   {selectedEnvironment}
                 </span>
-                <button
-                  onClick={() => setShowEnvSelector(true)}
-                  className="ml-1 px-2 py-0.5 text-xs text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 rounded transition-colors"
-                >
-                  Change
-                </button>
               </div>
 
               {config && (
@@ -267,53 +301,154 @@ export default function App() {
                       {config.region}
                     </span>
                   </div>
+
+                  {activeEnvironmentProfile && activeEnvironmentAccountId && (
+                    <>
+                      <div className="h-5 w-px bg-gray-600" />
+
+                      {/* AWS Profile */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-400 uppercase tracking-wide">
+                          Profile
+                        </span>
+                        <span className="text-sm font-semibold text-white">
+                          {activeEnvironmentProfile}
+                        </span>
+                      </div>
+
+                      <div className="h-5 w-px bg-gray-600" />
+
+                      {/* Account ID */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-400 uppercase tracking-wide">
+                          Account
+                        </span>
+                        <span className="text-sm font-semibold text-white">
+                          {activeEnvironmentAccountId}
+                        </span>
+                      </div>
+                    </>
+                  )}
                 </>
               )}
             </div>
 
-            {/* Vertical layout for smaller screens */}
-            <div className="sm:hidden px-3 py-2 space-y-2">
+            {/* Vertical layout for medium screens */}
+            <div className="hidden sm:block xl:hidden px-3 py-2 space-y-1.5">
               {/* Environment */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                  <span className="text-xs text-gray-400 uppercase tracking-wide">
-                    Env
-                  </span>
-                  <span className="text-sm font-semibold text-white">
-                    {selectedEnvironment}
-                  </span>
-                </div>
-                <button
-                  onClick={() => setShowEnvSelector(true)}
-                  className="px-2 py-0.5 text-xs text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 rounded transition-colors"
-                >
-                  Change
-                </button>
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                <span className="text-xs text-gray-400 uppercase tracking-wide">
+                  Environment
+                </span>
+                <span className="text-sm font-semibold text-white">
+                  {selectedEnvironment}
+                </span>
               </div>
 
               {config && (
                 <>
-                  {/* Project */}
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-400 uppercase tracking-wide ml-4">
-                      Project
-                    </span>
-                    <span className="text-sm font-semibold text-white">
-                      {config.project}
-                    </span>
-                  </div>
+                  {/* Two column layout for other info */}
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                    {/* Project */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-400 uppercase tracking-wide">
+                        Project
+                      </span>
+                      <span className="text-sm font-semibold text-white">
+                        {config.project}
+                      </span>
+                    </div>
 
-                  {/* Region */}
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-400 uppercase tracking-wide ml-4">
-                      Region
-                    </span>
-                    <span className="text-sm font-semibold text-white">
-                      {config.region}
-                    </span>
+                    {/* Region */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-400 uppercase tracking-wide">
+                        Region
+                      </span>
+                      <span className="text-sm font-semibold text-white">
+                        {config.region}
+                      </span>
+                    </div>
+
+                    {activeEnvironmentProfile && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-400 uppercase tracking-wide">
+                          Profile
+                        </span>
+                        <span className="text-sm font-semibold text-white truncate">
+                          {activeEnvironmentProfile}
+                        </span>
+                      </div>
+                    )}
+
+                    {activeEnvironmentAccountId && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-400 uppercase tracking-wide">
+                          Account
+                        </span>
+                        <span className="text-sm font-semibold text-white">
+                          {activeEnvironmentAccountId}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </>
+              )}
+            </div>
+
+            {/* Mobile layout for super narrow screens */}
+            <div className="sm:hidden px-3 py-2 space-y-1">
+              {/* Environment */}
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                <span className="text-xs text-gray-400 uppercase tracking-wide">
+                  Env
+                </span>
+                <span className="text-sm font-semibold text-white">
+                  {selectedEnvironment}
+                </span>
+              </div>
+
+              {config && (
+                <div className="space-y-1">
+                  {/* Project & Region on same line */}
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-gray-400">Proj:</span>
+                      <span className="text-xs font-semibold text-white">
+                        {config.project}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-gray-400">Reg:</span>
+                      <span className="text-xs font-semibold text-white">
+                        {config.region}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Profile & Account on same line if both exist */}
+                  {(activeEnvironmentProfile || activeEnvironmentAccountId) && (
+                    <div className="flex items-center gap-4">
+                      {activeEnvironmentProfile && (
+                        <div className="flex items-center gap-1 min-w-0">
+                          <span className="text-xs text-gray-400">Prof:</span>
+                          <span className="text-xs font-semibold text-white truncate">
+                            {activeEnvironmentProfile}
+                          </span>
+                        </div>
+                      )}
+                      {activeEnvironmentAccountId && (
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-gray-400">Acct:</span>
+                          <span className="text-xs font-semibold text-white">
+                            {activeEnvironmentAccountId}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           </div>

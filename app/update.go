@@ -58,12 +58,25 @@ func updateInfrastructure() error {
 			os.Exit(1)
 		}
 		if !confirm {
-			fmt.Println("Update cancelled.")
+			huh.NewNote().
+				Title("Update Cancelled").
+				Description("Infrastructure update was cancelled.").
+				Run()
 			return nil
 		}
 		_ = spinner.New().Title("Updating the infrastructure...").Action(initProject).Run()
+		
+		// Show success message after update
+		huh.NewNote().
+			Title("Update Complete").
+			Description(fmt.Sprintf("Infrastructure updated successfully to version %s", remoteVersion)).
+			Run()
 	} else {
-		fmt.Println("👍 Local version is up-to-date with remote version.")
+		// Show up-to-date message using huh
+		huh.NewNote().
+			Title("Already Up-to-Date").
+			Description(fmt.Sprintf("Your infrastructure is already at the latest version (%s)", localVersion)).
+			Run()
 	}
 
 	return nil

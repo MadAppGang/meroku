@@ -45,7 +45,14 @@ export function EnvironmentSelector({ open, onSelect }: EnvironmentSelectorProps
       
       setEnvironments(envs);
       
-      if (envs.length > 0) {
+      // Check if there's an active environment
+      const activeEnv = envs.find(env => env.isActive);
+      
+      if (activeEnv) {
+        // Pre-select the active environment
+        setSelectedEnv(activeEnv.name);
+      } else if (envs.length > 0) {
+        // Otherwise, select the first one
         setSelectedEnv(envs[0].name);
       }
     } catch (error) {
@@ -105,7 +112,14 @@ export function EnvironmentSelector({ open, onSelect }: EnvironmentSelectorProps
                   <SelectContent>
                     {environments.map((env) => (
                       <SelectItem key={env.name} value={env.name}>
-                        {env.name}
+                        <div className="flex flex-col">
+                          <div className="font-medium">{env.name}</div>
+                          {env.isActive && (
+                            <div className="text-xs text-muted-foreground">
+                              Active • {env.profile} • {env.accountId}
+                            </div>
+                          )}
+                        </div>
                       </SelectItem>
                     ))}
                   </SelectContent>

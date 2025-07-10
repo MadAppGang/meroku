@@ -17,16 +17,27 @@ func mainMenu() string {
 	// check if project is init
 	initProjectIfNeeded()
 
-	options := []huh.Option[string]{huh.NewOption("Create new environment", "create")}
-	options = append(options, huh.NewOption("Deploy environment", "deploy"))
-	options = append(options, huh.NewOption("Check for updates", "update"))
-	options = append(options, huh.NewOption("Open web app", "api"))
-	options = append(options, huh.NewOption("Exit", "exit"))
+	// Show current environment and profile in the menu
+	menuTitle := "Select an action"
+	if selectedEnvironment != "" && selectedAWSProfile != "" {
+		menuTitle = fmt.Sprintf("Select an action (Environment: %s | AWS Profile: %s)", selectedEnvironment, selectedAWSProfile)
+	} else if selectedEnvironment != "" {
+		menuTitle = fmt.Sprintf("Select an action (Environment: %s)", selectedEnvironment)
+	}
+	
+	options := []huh.Option[string]{
+		huh.NewOption("🌐 Edit environment with web UI", "api"),
+		huh.NewOption("🚀 Deploy environment", "deploy"),
+		huh.NewOption("✨ Create new environment", "create"),
+		huh.NewOption("🔄 Change Environment", "change-env"),
+		huh.NewOption("🔍 Check for updates", "update"),
+		huh.NewOption("👋 Exit", "exit"),
+	}
 
 	action := ""
 
 	huh.NewSelect[string]().
-		Title("Select an action.").
+		Title(menuTitle).
 		Options(
 			options...,
 		).
@@ -50,6 +61,13 @@ func mainMenu() string {
 		return mainMenu()
 	case action == "api":
 		startSPAServer("8080")
+		return mainMenu()
+	case action == "change-env":
+		// Change environment
+		err := selectEnvironment()
+		if err != nil {
+			fmt.Printf("Error selecting environment: %v\n", err)
+		}
 		return mainMenu()
 	case action == "exit":
 		os.Exit(0)
@@ -80,11 +98,15 @@ func createEnvMenu() string {
 	}
 
 	e := createEnv(projectName, name)
-	err := saveEnv(e)
+	
+	// Save to current directory
+	err := saveEnvToFile(e, name+".yaml")
 	if err != nil {
 		fmt.Println("Error saving environment:", err)
 		os.Exit(1)
 	}
+	
+	fmt.Printf("Environment '%s' created successfully.\n", name)
 	return name
 }
 

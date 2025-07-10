@@ -1,6 +1,9 @@
 export interface Environment {
 	name: string;
 	path: string;
+	isActive?: boolean;
+	profile?: string;
+	accountId?: string;
 }
 
 export interface ConfigResponse {

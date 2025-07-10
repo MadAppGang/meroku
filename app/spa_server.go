@@ -4,9 +4,12 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
+	"net"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/charmbracelet/huh"
 )
 
 //go:embed all:webapp
@@ -136,8 +139,6 @@ func spaHandler() http.HandlerFunc {
 	}
 
 	fileServer := http.FileServer(http.FS(fsys))
-	// Print the content of the embedded folder for debugging
-	printEmbeddedFiles(fsys, "Embedded webapp files")
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
@@ -203,18 +204,42 @@ func startSPAServerWithAutoOpen(port string, autoOpen bool, showTUI bool) {
 		router.ServeHTTP(w, r)
 	})
 
-	// Start server in a goroutine
+	// Try to listen on the port first to check if it's available
+	listener, err := net.Listen("tcp", ":"+port)
+	if err != nil {
+		if strings.Contains(err.Error(), "address already in use") {
+			// Show error using TUI
+			huh.NewNote().
+				Title("Port Already in Use").
+				Description(fmt.Sprintf("Port %s is already in use.\n\nLooks like another instance of meroku is running.\nPlease close it first before starting a new one.", port)).
+				Run()
+		} else {
+			// Show other errors using TUI
+			huh.NewNote().
+				Title("Server Start Failed").
+				Description(fmt.Sprintf("Failed to start server on port %s:\n%v", port, err)).
+				Run()
+		}
+		return
+	}
+	
 	serverURL := "http://localhost:" + port
+	
+	// Start server in a goroutine using the listener
+	serverStarted := make(chan bool, 1)
 	go func() {
-		if err := http.ListenAndServe(":"+port, corsHandler); err != nil {
-			fmt.Printf("Failed to start server: %v\n", err)
+		server := &http.Server{Handler: corsHandler}
+		serverStarted <- true
+		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
+			fmt.Printf("Server error: %v\n", err)
 		}
 	}()
 
-	// Give the server a moment to start
-	time.Sleep(1 * time.Second)
+	// Wait for server to start
+	<-serverStarted
+	time.Sleep(100 * time.Millisecond) // Small delay to ensure server is ready
 
-	fmt.Printf("Web server started at %s\n", serverURL)
+	fmt.Printf("Web server started successfully at %s\n", serverURL)
 
 	// Open the web app if requested
 	if autoOpen {
