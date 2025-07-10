@@ -54,6 +54,9 @@ import { AmplifyBuildSettings } from './AmplifyBuildSettings';
 import { AmplifyDomainSettings } from './AmplifyDomainSettings';
 import { AmplifyEnvironmentVariables } from './AmplifyEnvironmentVariables';
 import { AmplifyBranchManagement } from './AmplifyBranchManagement';
+import { ALBNodeProperties } from './ALBNodeProperties';
+import { ALBStatus } from './ALBStatus';
+import { ALBRoutingRules } from './ALBRoutingRules';
 
 interface SidebarProps {
   selectedNode: ComponentNode | null;
@@ -70,6 +73,157 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
   const [showLeftScroll, setShowLeftScroll] = useState(false);
   const [showRightScroll, setShowRightScroll] = useState(false);
   const tabsContainerRef = useRef<HTMLDivElement>(null);
+
+  // Function to get available tabs for the current node type
+  const getAvailableTabs = (node: ComponentNode | null) => {
+    if (!node) return [];
+    
+    switch (node.type) {
+      case 'github':
+        return [
+          { id: 'settings', label: 'Settings', icon: Settings },
+          { id: 'example', label: 'Example', icon: Code },
+        ];
+      case 'ecr':
+        return [
+          { id: 'settings', label: 'Settings', icon: Settings },
+          { id: 'repos', label: 'Repos', icon: Database },
+          { id: 'push', label: 'Push', icon: Upload },
+        ];
+      case 'route53':
+        return [
+          { id: 'settings', label: 'Settings', icon: Settings },
+          { id: 'dns', label: 'DNS', icon: Globe },
+        ];
+      case 'aurora':
+        return [
+          { id: 'settings', label: 'Settings', icon: Settings },
+        ];
+      case 'secrets-manager':
+        return [
+          { id: 'settings', label: 'Settings', icon: Settings },
+          { id: 'description', label: 'Description', icon: BookOpen },
+        ];
+      case 'ses':
+        return [
+          { id: 'settings', label: 'Settings', icon: Settings },
+          { id: 'status', label: 'Status', icon: Activity },
+          { id: 'send', label: 'Send Email', icon: Send },
+        ];
+      case 's3':
+        return [
+          { id: 'settings', label: 'Buckets', icon: HardDrive },
+        ];
+      case 'sns':
+        return [
+          { id: 'settings', label: 'Settings', icon: Settings },
+        ];
+      case 'postgres':
+        return [
+          { id: 'settings', label: 'Settings', icon: Settings },
+        ];
+      case 'sqs':
+        return [
+          { id: 'settings', label: 'Settings', icon: Settings },
+        ];
+      case 'eventbridge':
+        return [
+          { id: 'test', label: 'Test Event', icon: Send },
+        ];
+      case 'api-gateway':
+        return [
+          { id: 'settings', label: 'Settings', icon: Settings },
+        ];
+      case 'alb':
+        return [
+          { id: 'settings', label: 'Settings', icon: Settings },
+          { id: 'routing', label: 'Routing', icon: Network },
+        ];
+      case 'ecs':
+        return [
+          { id: 'settings', label: 'Settings', icon: Settings },
+          { id: 'notifications', label: 'Notifications', icon: Bell },
+          { id: 'cluster', label: 'Cluster', icon: Server },
+          { id: 'network', label: 'Network', icon: Network },
+          { id: 'services', label: 'Services', icon: Activity },
+        ];
+      case 'backend':
+        return [
+          { id: 'settings', label: 'Settings', icon: Settings },
+          { id: 'scaling', label: 'Scaling', icon: Gauge },
+          { id: 'xray', label: 'X-Ray', icon: Microscope },
+          { id: 'ssh', label: 'SSH', icon: Terminal },
+          { id: 'env', label: 'Env Vars', icon: Zap },
+          { id: 'params', label: 'Parameters', icon: Key },
+          { id: 's3', label: 'S3 Buckets', icon: HardDrive },
+          { id: 'sns', label: 'SNS', icon: Bell },
+          { id: 'iam', label: 'IAM', icon: Shield },
+          { id: 'logs', label: 'Logs', icon: FileText },
+          { id: 'cloudwatch', label: 'CloudWatch', icon: Cloud },
+          { id: 'alerts', label: 'Alerts', icon: Bell },
+        ];
+      case 'scheduled-task':
+        return [
+          { id: 'settings', label: 'Settings', icon: Settings },
+          { id: 'env', label: 'Env Vars', icon: Zap },
+          { id: 'params', label: 'Parameters', icon: Key },
+          { id: 'iam', label: 'IAM', icon: Shield },
+          { id: 'cloudwatch', label: 'CloudWatch', icon: Cloud },
+          { id: 'logs', label: 'Logs', icon: FileText },
+        ];
+      case 'event-task':
+        return [
+          { id: 'settings', label: 'Settings', icon: Settings },
+          { id: 'test', label: 'Test Event', icon: Send },
+          { id: 'env', label: 'Env Vars', icon: Zap },
+          { id: 'params', label: 'Parameters', icon: Key },
+          { id: 'iam', label: 'IAM', icon: Shield },
+          { id: 'cloudwatch', label: 'CloudWatch', icon: Cloud },
+          { id: 'logs', label: 'Logs', icon: FileText },
+        ];
+      case 'service':
+        return [
+          { id: 'settings', label: 'Settings', icon: Settings },
+          { id: 'scaling', label: 'Scaling', icon: Gauge },
+          { id: 'xray', label: 'X-Ray', icon: Microscope },
+          { id: 'ssh', label: 'SSH', icon: Terminal },
+          { id: 'env', label: 'Env Vars', icon: Zap },
+          { id: 'params', label: 'Parameters', icon: Key },
+          { id: 'iam', label: 'IAM', icon: Shield },
+          { id: 'logs', label: 'Logs', icon: FileText },
+          { id: 'cloudwatch', label: 'CloudWatch', icon: Cloud },
+        ];
+      case 'amplify':
+        return [
+          { id: 'settings', label: 'Settings', icon: Settings },
+          { id: 'branches', label: 'Branches', icon: GitBranch },
+          { id: 'build', label: 'Build', icon: Code },
+          { id: 'domain', label: 'Domain', icon: Globe },
+          { id: 'env', label: 'Env Vars', icon: Zap },
+        ];
+      default:
+        return [
+          { id: 'settings', label: 'Settings', icon: Settings },
+          { id: 'logs', label: 'Logs', icon: FileText },
+          { id: 'metrics', label: 'Metrics', icon: BarChart },
+          { id: 'env', label: 'Environment', icon: Zap },
+          { id: 'connections', label: 'Connections', icon: Link },
+        ];
+    }
+  };
+
+  // Effect to validate and update activeTab when selectedNode changes
+  useEffect(() => {
+    if (selectedNode) {
+      const availableTabs = getAvailableTabs(selectedNode);
+      const tabIds = availableTabs.map(tab => tab.id);
+      
+      // If current activeTab doesn't exist for this node type, set to first available tab
+      if (!tabIds.includes(activeTab) && availableTabs.length > 0) {
+        setActiveTab(availableTabs[0].id);
+      }
+    }
+  }, [selectedNode, activeTab]);
 
   const checkScrollButtons = () => {
     if (tabsContainerRef.current) {
@@ -181,94 +335,7 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
           <div className="flex min-w-max">
-            {(selectedNode.type === 'github' ? [
-              { id: 'settings', label: 'Settings', icon: Settings },
-              { id: 'example', label: 'Example', icon: Code },
-            ] : selectedNode.type === 'ecr' ? [
-              { id: 'settings', label: 'Settings', icon: Settings },
-              { id: 'repos', label: 'Repos', icon: Database },
-              { id: 'push', label: 'Push', icon: Upload },
-            ] : selectedNode.type === 'route53' ? [
-              { id: 'settings', label: 'Settings', icon: Settings },
-              { id: 'dns', label: 'DNS', icon: Globe },
-            ] : selectedNode.type === 'aurora' ? [
-              { id: 'settings', label: 'Settings', icon: Settings },
-            ] : selectedNode.type === 'secrets-manager' ? [
-              { id: 'settings', label: 'Settings', icon: Settings },
-              { id: 'description', label: 'Description', icon: BookOpen },
-            ] : selectedNode.type === 'ses' ? [
-              { id: 'settings', label: 'Settings', icon: Settings },
-              { id: 'status', label: 'Status', icon: Activity },
-              { id: 'send', label: 'Send Email', icon: Send },
-            ] : selectedNode.type === 's3' ? [
-              { id: 'settings', label: 'Buckets', icon: HardDrive },
-            ] : selectedNode.type === 'sns' ? [
-              { id: 'settings', label: 'Settings', icon: Settings },
-            ] : selectedNode.type === 'postgres' ? [
-              { id: 'settings', label: 'Settings', icon: Settings },
-            ] : selectedNode.type === 'sqs' ? [
-              { id: 'settings', label: 'Settings', icon: Settings },
-            ] : selectedNode.type === 'eventbridge' ? [
-              { id: 'test', label: 'Test Event', icon: Send },
-            ] : selectedNode.type === 'api-gateway' ? [
-              { id: 'settings', label: 'Settings', icon: Settings },
-            ] : selectedNode.type === 'ecs' ? [
-              { id: 'settings', label: 'Settings', icon: Settings },
-              { id: 'notifications', label: 'Notifications', icon: Bell },
-              { id: 'cluster', label: 'Cluster', icon: Server },
-              { id: 'network', label: 'Network', icon: Network },
-              { id: 'services', label: 'Services', icon: Activity },
-            ] : selectedNode.type === 'backend' ? [
-              { id: 'settings', label: 'Settings', icon: Settings },
-              { id: 'scaling', label: 'Scaling', icon: Gauge },
-              { id: 'xray', label: 'X-Ray', icon: Microscope },
-              { id: 'ssh', label: 'SSH', icon: Terminal },
-              { id: 'env', label: 'Env Vars', icon: Zap },
-              { id: 'params', label: 'Parameters', icon: Key },
-              { id: 's3', label: 'S3 Buckets', icon: HardDrive },
-              { id: 'sns', label: 'SNS', icon: Bell },
-              { id: 'iam', label: 'IAM', icon: Shield },
-              { id: 'logs', label: 'Logs', icon: FileText },
-              { id: 'cloudwatch', label: 'CloudWatch', icon: Cloud },
-              { id: 'alerts', label: 'Alerts', icon: Bell },
-            ] : selectedNode.type === 'scheduled-task' ? [
-              { id: 'settings', label: 'Settings', icon: Settings },
-              { id: 'env', label: 'Env Vars', icon: Zap },
-              { id: 'params', label: 'Parameters', icon: Key },
-              { id: 'iam', label: 'IAM', icon: Shield },
-              { id: 'cloudwatch', label: 'CloudWatch', icon: Cloud },
-              { id: 'logs', label: 'Logs', icon: FileText },
-            ] : selectedNode.type === 'event-task' ? [
-              { id: 'settings', label: 'Settings', icon: Settings },
-              { id: 'test', label: 'Test Event', icon: Send },
-              { id: 'env', label: 'Env Vars', icon: Zap },
-              { id: 'params', label: 'Parameters', icon: Key },
-              { id: 'iam', label: 'IAM', icon: Shield },
-              { id: 'cloudwatch', label: 'CloudWatch', icon: Cloud },
-              { id: 'logs', label: 'Logs', icon: FileText },
-            ] : selectedNode.type === 'service' ? [
-              { id: 'settings', label: 'Settings', icon: Settings },
-              { id: 'scaling', label: 'Scaling', icon: Gauge },
-              { id: 'xray', label: 'X-Ray', icon: Microscope },
-              { id: 'ssh', label: 'SSH', icon: Terminal },
-              { id: 'env', label: 'Env Vars', icon: Zap },
-              { id: 'params', label: 'Parameters', icon: Key },
-              { id: 'iam', label: 'IAM', icon: Shield },
-              { id: 'logs', label: 'Logs', icon: FileText },
-              { id: 'cloudwatch', label: 'CloudWatch', icon: Cloud },
-            ] : selectedNode.type === 'amplify' ? [
-              { id: 'settings', label: 'Settings', icon: Settings },
-              { id: 'branches', label: 'Branches', icon: GitBranch },
-              { id: 'build', label: 'Build', icon: Code },
-              { id: 'domain', label: 'Domain', icon: Globe },
-              { id: 'env', label: 'Env Vars', icon: Zap },
-            ] : [
-              { id: 'settings', label: 'Settings', icon: Settings },
-              { id: 'logs', label: 'Logs', icon: FileText },
-              { id: 'metrics', label: 'Metrics', icon: BarChart },
-              { id: 'env', label: 'Environment', icon: Zap },
-              { id: 'connections', label: 'Connections', icon: Link },
-            ]).map((tab) => (
+            {getAvailableTabs(selectedNode).map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
@@ -317,6 +384,8 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
             />
           ) : selectedNode.type === 'api-gateway' && config ? (
             <APIGatewayProperties config={config} />
+          ) : selectedNode.type === 'alb' && config && onConfigChange ? (
+            <ALBNodeProperties config={config} onConfigChange={onConfigChange} />
           ) : selectedNode.type === 'aurora' ? (
             <AuroraNodeProperties />
           ) : selectedNode.type === 'secrets-manager' && config ? (
@@ -579,6 +648,14 @@ jobs:
 
         {activeTab === 'status' && selectedNode.type === 'ses' && config && (
           <SESStatus config={config} />
+        )}
+
+        {activeTab === 'status' && selectedNode.type === 'alb' && config && (
+          <ALBStatus config={config} />
+        )}
+
+        {activeTab === 'routing' && selectedNode.type === 'alb' && config && onConfigChange && (
+          <ALBRoutingRules config={config} onConfigChange={onConfigChange} />
         )}
 
         {activeTab === 'send' && selectedNode.type === 'ses' && config && (

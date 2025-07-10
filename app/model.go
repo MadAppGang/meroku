@@ -24,6 +24,7 @@ type Env struct {
 	Cognito             Cognito              `yaml:"cognito"`
 	Ses                 Ses                  `yaml:"ses"`
 	Sqs                 Sqs                  `yaml:"sqs"`
+	ALB                 ALB                  `yaml:"alb"`
 	ScheduledTasks      []ScheduledTask      `yaml:"scheduled_tasks"`
 	EventProcessorTasks []EventProcessorTask `yaml:"event_processor_tasks"`
 	AppSyncPubSub       AppSync              `yaml:"pubsub_appsync"`
@@ -58,6 +59,16 @@ type Workload struct {
 
 	InstallPgAdmin bool   `yaml:"install_pg_admin"`
 	PgAdminEmail   string `yaml:"pg_admin_email"`
+	
+	BackendALBDomainName string `yaml:"backend_alb_domain_name"`
+	
+	// Backend scaling configuration
+	BackendDesiredCount              int32  `yaml:"backend_desired_count"`
+	BackendAutoscalingEnabled        bool   `yaml:"backend_autoscaling_enabled"`
+	BackendAutoscalingMinCapacity    int32  `yaml:"backend_autoscaling_min_capacity"`
+	BackendAutoscalingMaxCapacity    int32  `yaml:"backend_autoscaling_max_capacity"`
+	BackendCPU                       string `yaml:"backend_cpu"`
+	BackendMemory                    string `yaml:"backend_memory"`
 }
 
 type S3EnvFile struct {
@@ -108,6 +119,10 @@ type Ses struct {
 type Sqs struct {
 	Enabled bool   `yaml:"enabled"`
 	Name    string `yaml:"name"`
+}
+
+type ALB struct {
+	Enabled bool `yaml:"enabled"`
 }
 
 type ScheduledTask struct {

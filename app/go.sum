@@ -42,6 +42,8 @@ github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.12.17 h1:t0E6FzRE
 github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.12.17/go.mod h1:ygpklyoaypuyDvOM5ujWGrYWpAK3h7ugnmKCU/76Ys4=
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.17.16 h1:jg16PhLPUiHIj8zYIW6bqzeQSuHVEiWnGA0Brz5Xv2I=
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.17.16/go.mod h1:Uyk1zE1VVdsHSU7096h/rwnXDzOzYQVl+FNPhPw7ShY=
+github.com/aws/aws-sdk-go-v2/service/pricing v1.34.5 h1:VPKHJpSkYojMxD/nN//88/yVauw2lab1q3P6+J0dfvs=
+github.com/aws/aws-sdk-go-v2/service/pricing v1.34.5/go.mod h1:21H9QmAqGSjeskZ7iZkuQ9GNuCOR3j2gt2FBct6wMyg=
 github.com/aws/aws-sdk-go-v2/service/s3 v1.61.0 h1:Wb544Wh+xfSXqJ/j3R4aX9wrKUoZsJNmilBYZb3mKQ4=
 github.com/aws/aws-sdk-go-v2/service/s3 v1.61.0/go.mod h1:BSPI0EfnYUuNHPS0uqIo5VrRwzie+Fp+YhQOUs16sKI=
 github.com/aws/aws-sdk-go-v2/service/servicediscovery v1.35.7 h1:1eaP4/444jrv04HhJdwTHtgnyxWgxwdLjSYBGq+oMB4=

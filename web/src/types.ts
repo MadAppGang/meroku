@@ -1,3 +1,5 @@
+import type { PricingResponse } from './hooks/use-pricing';
+
 export interface ComponentNode {
   id: string;
   type:
@@ -65,6 +67,7 @@ export interface ComponentNode {
   hasTelemetry?: boolean;
   disabled?: boolean;
   configProperties?: Record<string, any>;
+  pricing?: PricingResponse | null;
 }
 
 export interface LogEntry {

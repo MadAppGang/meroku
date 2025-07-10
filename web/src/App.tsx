@@ -14,6 +14,7 @@ import { Sidebar } from "./components/Sidebar";
 import type { ComponentNode } from "./types";
 import type { YamlInfrastructureConfig } from "./types/yamlConfig";
 import { Toaster } from "./components/ui/sonner";
+import { usePricing } from "./hooks/use-pricing";
 
 export default function App() {
   const [selectedNode, setSelectedNode] = useState<ComponentNode | null>(null);
@@ -34,6 +35,10 @@ export default function App() {
   >("idle");
   const [activeEnvironmentProfile, setActiveEnvironmentProfile] = useState<string | null>(null);
   const [activeEnvironmentAccountId, setActiveEnvironmentAccountId] = useState<string | null>(null);
+  const [pricingRefreshTrigger, setPricingRefreshTrigger] = useState(0);
+  
+  // Use pricing hook with refresh trigger
+  const { pricing } = usePricing(selectedEnvironment, pricingRefreshTrigger);
 
   const handleNodeSelect = useCallback((node: ComponentNode | null) => {
     setSelectedNode(node);
@@ -140,6 +145,10 @@ export default function App() {
       );
       console.log("Configuration saved successfully");
       setSaveStatus("success");
+      
+      // Refresh pricing after configuration update
+      setPricingRefreshTrigger(prev => prev + 1);
+      
       // Reset status after 2 seconds
       setTimeout(() => setSaveStatus("idle"), 2000);
     } catch (error) {
@@ -518,6 +527,7 @@ export default function App() {
           onAddScheduledTask={() => setShowAddScheduledTaskDialog(true)}
           onAddEventTask={() => setShowAddEventTaskDialog(true)}
           onAddAmplify={() => setShowAddAmplifyDialog(true)}
+          pricing={pricing}
         />
 
         {/* Right Sidebar */}

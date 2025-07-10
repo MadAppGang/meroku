@@ -37,8 +37,18 @@ export const nodeStateMapping: NodeStateConfig[] = [
 		id: "api-gateway",
 		name: "Amazon API Gateway",
 		type: "api-gateway",
-		enabled: () => true, // Always enabled (default ingress)
+		enabled: (config) => !config.alb?.enabled, // Enabled when ALB is NOT enabled
 		description: "HTTP API with VPC Links",
+	},
+	{
+		id: "alb",
+		name: "Application Load Balancer",
+		type: "alb",
+		enabled: (config) => config.alb?.enabled === true, // Enabled when ALB is enabled
+		properties: (config) => ({
+			domainName: config.workload?.backend_alb_domain_name,
+		}),
+		description: "Application Load Balancer for HTTP/HTTPS routing",
 	},
 
 	// Load Balancing Layer

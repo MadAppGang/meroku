@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import { ComponentNode } from '../types';
 import { AmplifyStatusWidget } from './AmplifyStatusWidget';
+import { PricingBadge } from './PricingBadge';
 
 const serviceIcons = {
   frontend: Globe,
@@ -130,7 +131,7 @@ export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
 
   return (
     <div className={`
-      border-2 rounded-lg p-4 ${minWidth} shadow-lg
+      relative border-2 rounded-lg p-4 ${minWidth} shadow-lg
       ${data.isExternal 
         ? 'bg-gray-900 border-dashed' 
         : data.type === 'amplify'
@@ -221,6 +222,16 @@ export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
             data.type === 'event-task' ? 'bg-orange-500' :
             'bg-gray-500'
           }`} 
+        />
+      )}
+      
+      {/* Pricing badge */}
+      {data.pricing && !data.isExternal && (
+        <PricingBadge 
+          nodeType={data.type} 
+          pricing={data.pricing}
+          serviceName={data.name}
+          level="startup"
         />
       )}
       

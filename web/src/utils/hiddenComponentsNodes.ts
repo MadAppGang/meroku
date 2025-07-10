@@ -81,24 +81,6 @@ export function generateHiddenComponentNodes(
 		});
 	}
 
-	// ALB
-	if (config.alb?.enabled) {
-		nodes.push({
-			id: "alb",
-			type: "service",
-			position: { x: baseX + spacing * 3, y: baseY },
-			data: {
-				id: "alb",
-				type: "alb",
-				name: "Application Load Balancer",
-				description: "HTTP/HTTPS routing",
-				status: "running",
-				configProperties: {
-					domainName: config.workload?.backend_alb_domain_name,
-				},
-			},
-		});
-	}
 
 	// AppSync
 	if (config.pubsub_appsync?.enabled) {

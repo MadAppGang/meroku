@@ -1,3 +1,5 @@
+import type { PricingResponse } from '../hooks/use-pricing';
+
 export interface Environment {
 	name: string;
 	path: string;
@@ -869,5 +871,14 @@ export const infrastructureApi = {
 			const error: ErrorResponse = await response.json();
 			throw new Error(error.error || "Failed to delete GitHub OAuth session");
 		}
+	},
+
+	async getPricing(env: string): Promise<PricingResponse> {
+		const response = await fetch(`${API_BASE_URL}/api/pricing?env=${encodeURIComponent(env)}`);
+		if (!response.ok) {
+			const error: ErrorResponse = await response.json();
+			throw new Error(error.error || "Failed to fetch pricing data");
+		}
+		return response.json();
 	},
 };

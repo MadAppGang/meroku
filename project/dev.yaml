@@ -8,16 +8,32 @@ ecr_account_id:
 ecr_account_region:
 slack_deployment_webhook:
 
-# setup backend, always deployed
-health_endpoint:
-image_bucket_postfix:
-# you can set docker command from here
-# backend_container_command: ["config", "some_value"]
-# backend_image_port: 8765
-# setup push notification FCM SNS for backend
-setup_FCM_SNS: false
-backend_env_variables:
-  env1: value1
+# Workload configuration
+workload:
+  # setup backend, always deployed
+  backend_health_endpoint:
+  bucket_postfix:
+  bucket_public: false
+  # you can set docker command from here
+  # backend_container_command: ["config", "some_value"]
+  backend_image_port: 8080
+  # setup push notification FCM SNS for backend
+  setup_fcnsns: false
+  backend_alb_domain_name: alb.instagram.madappgang.com.au
+  backend_env_variables:
+    env1: value1
+  xray_enabled: false
+  enable_github_oidc: false
+  github_oidc_subjects: []
+  install_pg_admin: false
+  pg_admin_email: admin@admin.com
+  # Backend scaling configuration
+  backend_desired_count: 2
+  backend_autoscaling_enabled: true
+  backend_autoscaling_min_capacity: 2
+  backend_autoscaling_max_capacity: 10
+  backend_cpu: "512"
+  backend_memory: "1024"
 
 # setup services
 services:
@@ -27,36 +43,38 @@ services:
     host_port: 3000
     cpu: 256
     memory: 512
+    desired_count: 3
     xray_enabled: false
     env_vars:
       SERVICE_TEST: PASSED
 
-# Route53 domain management
-setup_domain: true
-domain: instagram.madappgang.com.au
+# Domain configuration
+domain:
+  enabled: true
+  create_domain_zone: false
+  domain_name: instagram.madappgang.com.au
 
-# setup postgres
-setup_postgres: true
-pg_db_name: instagram
-pg_username: dbadmin
-pgadmin: false
-pgadmin_email: admin@admin.com
-## optional postgres
-pg_public: true
-pg_engine: "14"
+# Database configuration
+postgres:
+  enabled: true
+  dbname: instagram
+  username: dbadmin
+  public_access: true
+  engine_version: "14"
 
-# setup cognito
-setup_cognito: true
-# it can be an empty list if we want to skip the verification process
-auto_verified_attributes:
-  - email
-enable_web_client: false
-enable_dashboard_client: false
-dashboard_callback_urls:
-  - https://jwt.io
-enable_user_pool_domain: false
-user_pool_domain_prefix:
-allow_backend_task_to_confirm_signup: false
+# Authentication configuration
+cognito:
+  enabled: true
+  # it can be an empty list if we want to skip the verification process
+  auto_verified_attributes:
+    - email
+  enable_web_client: false
+  enable_dashboard_client: false
+  dashboard_callback_urls:
+    - https://jwt.io
+  enable_user_pool_domain: false
+  user_pool_domain_prefix:
+  backend_confirm_signup: false
 
 # setup scheduled tasks
 scheduled_tasks:
@@ -77,13 +95,21 @@ event_processor_tasks:
       - SERVICE_DEPLOYMENT_FAILED
       - SERVICE_DEPLOYMENT_IN_PROGRESS
 
-# setup AWS SES
-setup_ses: true
-#optional, if ses uses different domain
-ses_domain:
-ses_test_emails:
-  - i@madappgang.com
-  - ivan.holiak@madappgang.com
+# Email service configuration
+ses:
+  enabled: true
+  #optional, if ses uses different domain
+  domain_name:
+  test_emails:
+    - i@madappgang.com
+    - ivan.holiak@madappgang.com
+
+# Message queue configuration
+sqs:
+  enabled: false
+  name: default-queue
+
+# File storage configuration
 efs:
   - name: uploads
   - name: static
@@ -146,3 +172,14 @@ amplify_apps:
   #   enable_pr_preview: false
   #   environment_variables:
   #     VUE_APP_API_URL: https://api.instagram.madappgang.com.au
+
+# GraphQL API configuration
+pubsub_appsync:
+  enabled: false
+  schema: false
+  auth_lambda: false
+  resolvers: false
+
+# Load balancer configuration
+alb:
+  enabled: true

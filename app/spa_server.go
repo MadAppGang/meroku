@@ -103,6 +103,8 @@ func mainRouter() http.Handler {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	}))
+	// Pricing endpoint
+	mux.HandleFunc("/api/pricing", corsMiddleware(getPricing))
 	// EventBridge endpoints
 	mux.HandleFunc("/api/eventbridge/send-test-event", corsMiddleware(sendTestEvent))
 	mux.HandleFunc("/api/eventbridge/event-tasks", corsMiddleware(getEventTaskInfo))

@@ -33,6 +33,7 @@ import { ServiceNode } from "./ServiceNode";
 import { EdgeHandleSelector } from "./EdgeHandleSelector";
 import { CustomEdge } from "./CustomEdge";
 import { defaultNodePositions } from "../config/defaultNodePositions";
+import type { PricingResponse } from '../hooks/use-pricing';
 
 interface DeploymentCanvasProps {
   onNodeSelect: (node: ComponentNode | null) => void;
@@ -43,6 +44,7 @@ interface DeploymentCanvasProps {
   onAddScheduledTask?: () => void;
   onAddEventTask?: () => void;
   onAddAmplify?: () => void;
+  pricing?: PricingResponse | null;
 }
 
 const nodeTypes = {
@@ -113,6 +115,20 @@ const initialNodes: Node[] = [
       type: "api-gateway",
       name: "Amazon API Gateway",
       description: "API routing & throttling",
+      status: "running",
+      deletable: false,
+    },
+    deletable: false,
+  },
+  {
+    id: "alb",
+    type: "service",
+    position: { x: -83, y: 618 }, // Position below API Gateway
+    data: {
+      id: "alb",
+      type: "alb",
+      name: "Application Load Balancer",
+      description: "HTTP/HTTPS routing",
       status: "running",
       deletable: false,
     },
@@ -331,6 +347,18 @@ const initialEdges: Edge[] = [
     style: { stroke: "#8b5cf6", strokeWidth: 2 },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#4f46e5" },
   },
+  {
+    id: "client-alb",
+    source: "client-app",
+    target: "alb",
+    sourceHandle: "source-right",
+    targetHandle: "target-left",
+    type: "smoothstep",
+    animated: true,
+    label: "HTTPS",
+    style: { stroke: "#8b5cf6", strokeWidth: 2 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: "#4f46e5" },
+  },
 
   // Route53 to API Gateway
   {
@@ -348,6 +376,32 @@ const initialEdges: Edge[] = [
   {
     id: "api-backend",
     source: "api-gateway",
+    target: "backend-service",
+    sourceHandle: "source-right",
+    targetHandle: "target-left",
+    type: "smoothstep",
+    animated: true,
+    label: "route",
+    style: { stroke: "#6366f1", strokeWidth: 2 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: "#4f46e5" },
+  },
+
+  // Route53 to ALB
+  {
+    id: "route53-alb",
+    source: "route53",
+    target: "alb",
+    type: "smoothstep",
+    animated: true,
+    label: "resolve",
+    style: { stroke: "#a78bfa", strokeWidth: 2 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: "#8b5cf6" },
+  },
+
+  // ALB to Backend Service
+  {
+    id: "alb-backend",
+    source: "alb",
     target: "backend-service",
     sourceHandle: "source-right",
     targetHandle: "target-left",
@@ -466,6 +520,7 @@ export function DeploymentCanvas({
   onAddScheduledTask,
   onAddEventTask,
   onAddAmplify,
+  pricing,
 }: DeploymentCanvasProps) {
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [savedPositions, setSavedPositions] = React.useState<
@@ -726,6 +781,7 @@ export function DeploymentCanvas({
             ...node.data,
             disabled: !isEnabled,
             configProperties: properties,
+            pricing: pricing,
           },
         };
       })
@@ -740,7 +796,7 @@ export function DeploymentCanvas({
         }
         return true;
       });
-  }, [nodes, selectedNode, config, showInactive]);
+  }, [nodes, selectedNode, config, showInactive, pricing]);
 
   // Update edges to show dimmed state when connected to disabled nodes
   const edgesWithState = useMemo(() => {
