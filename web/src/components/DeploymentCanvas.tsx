@@ -32,6 +32,7 @@ import { GroupNode } from "./GroupNode";
 import { ServiceNode } from "./ServiceNode";
 import { EdgeHandleSelector } from "./EdgeHandleSelector";
 import { CustomEdge } from "./CustomEdge";
+import { defaultNodePositions } from "../config/defaultNodePositions";
 
 interface DeploymentCanvasProps {
   onNodeSelect: (node: ComponentNode | null) => void;
@@ -322,6 +323,8 @@ const initialEdges: Edge[] = [
     id: "client-api",
     source: "client-app",
     target: "api-gateway",
+    sourceHandle: "source-right",
+    targetHandle: "target-left",
     type: "smoothstep",
     animated: true,
     label: "HTTPS",
@@ -346,6 +349,8 @@ const initialEdges: Edge[] = [
     id: "api-backend",
     source: "api-gateway",
     target: "backend-service",
+    sourceHandle: "source-right",
+    targetHandle: "target-left",
     type: "smoothstep",
     animated: true,
     label: "route",
@@ -368,6 +373,8 @@ const initialEdges: Edge[] = [
     id: "backend-s3",
     source: "backend-service",
     target: "s3",
+    sourceHandle: "source-right",
+    targetHandle: "target-left",
     type: "smoothstep",
     animated: true,
     label: "S3",
@@ -408,6 +415,8 @@ const initialEdges: Edge[] = [
     id: "backend-eventbridge",
     source: "backend-service",
     target: "eventbridge",
+    sourceHandle: "source-bottom",
+    targetHandle: "target-top",
     type: "smoothstep",
     animated: true,
     label: "events",
@@ -577,12 +586,28 @@ export function DeploymentCanvas({
       infrastructureApi
         .getNodePositions(environmentName)
         .then((data: BoardPositions) => {
-
           const posMap = new Map<string, { x: number; y: number }>();
-          data.positions.forEach((pos) => {
-            posMap.set(pos.nodeId, { x: pos.x, y: pos.y });
-          });
-          console.log("Loading positions for nodes:", data.positions.filter(p => ['s3', 'ses', 'sqs', 'eventbridge'].includes(p.nodeId)));
+          
+          // If no saved positions exist, use default positions
+          if (!data.positions || data.positions.length === 0) {
+            console.log("No saved positions found, using default layout");
+            // Use default positions from configuration
+            defaultNodePositions.nodes.forEach((defaultNode) => {
+              posMap.set(defaultNode.id, defaultNode.position);
+            });
+          } else {
+            data.positions.forEach((pos) => {
+              posMap.set(pos.nodeId, { x: pos.x, y: pos.y });
+            });
+            console.log("Loading positions for nodes:", data.positions.filter(p => ['s3', 'ses', 'sqs', 'eventbridge'].includes(p.nodeId)));
+          }
+          
+          // Debug: Log all loaded positions
+          if (window.localStorage.getItem('debug_positions') === 'true') {
+            console.log('DEBUG: All loaded positions:', data.positions);
+            console.log('DEBUG: All loaded edge handles:', data.edgeHandles);
+          }
+          
           setSavedPositions(posMap);
           
           // Load edge handle positions
@@ -592,11 +617,44 @@ export function DeploymentCanvas({
               handleMap.set(handle.edgeId, handle);
             });
             setSavedEdgeHandles(handleMap);
+          } else if (!data.positions || data.positions.length === 0) {
+            // Use default edge handles if no saved positions
+            const handleMap = new Map<string, EdgeHandlePosition>();
+            defaultNodePositions.edges.forEach((edge) => {
+              if (edge.sourceHandle || edge.targetHandle) {
+                handleMap.set(edge.id, { 
+                  edgeId: edge.id, 
+                  sourceHandle: edge.sourceHandle, 
+                  targetHandle: edge.targetHandle 
+                });
+              }
+            });
+            setSavedEdgeHandles(handleMap);
           }
           setIsLoadingPositions(false);
         })
         .catch((error) => {
           console.error("Failed to load node positions:", error);
+          // On error, use default positions
+          const posMap = new Map<string, { x: number; y: number }>();
+          defaultNodePositions.nodes.forEach((defaultNode) => {
+            posMap.set(defaultNode.id, defaultNode.position);
+          });
+          setSavedPositions(posMap);
+          
+          // Use default edge handles
+          const handleMap = new Map<string, EdgeHandlePosition>();
+          defaultNodePositions.edges.forEach((edge) => {
+            if (edge.sourceHandle || edge.targetHandle) {
+              handleMap.set(edge.id, { 
+                edgeId: edge.id, 
+                sourceHandle: edge.sourceHandle, 
+                targetHandle: edge.targetHandle 
+              });
+            }
+          });
+          setSavedEdgeHandles(handleMap);
+          
           setIsLoadingPositions(false);
         });
     } else {
@@ -734,6 +792,12 @@ export function DeploymentCanvas({
 
     console.log("Saving positions - total nodes:", positions.length);
     console.log("Saving positions for problematic nodes:", positions.filter(p => ['s3', 'ses', 'sqs', 'eventbridge', 'sns'].includes(p.nodeId)));
+    
+    // Debug: Log all positions being saved
+    if (window.localStorage.getItem('debug_positions') === 'true') {
+      console.log('DEBUG: All positions being saved:', positions);
+      console.log('DEBUG: All edge handles being saved:', edgeHandles);
+    }
 
     infrastructureApi.saveNodePositions(boardPositions).catch((error) => {
       console.error("Failed to save node positions:", error);
