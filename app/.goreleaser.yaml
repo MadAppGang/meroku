@@ -27,8 +27,7 @@ builds:
       - darwin
 
 archives:
-  - format: tar.gz
-    # this name template makes the OS and Arch compatible with the results of `uname`.
+  - # this name template makes the OS and Arch compatible with the results of `uname`.
     name_template: >-
       {{ .ProjectName }}_
       {{- title .Os }}_
@@ -36,11 +35,12 @@ archives:
       {{- else if eq .Arch "386" }}i386
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
+    format: tar.gz
     # use zip for windows archives
     format_overrides:
       - goos: windows
         format: zip
-brews:
+homebrew_casks:
   - name: meroku
     commit_author:
       name: erudenko
@@ -52,13 +52,84 @@ brews:
       owner: MadAppGang
       name: homebrew-meroku
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Casks
+    conflicts:
+      - formula: meroku
+
+# Linux packages via nFPM
+nfpms:
+  - id: meroku
+    package_name: meroku
+    file_name_template: >-
+      {{ .PackageName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    homepage: https://madappgang.com
+    description: Easy infrastructure management
+    maintainer: MadAppGang <i@madappgang.com>
+    license: MIT
+    vendor: MadAppGang
+    formats:
+      - deb
+      - rpm
     dependencies:
-      - name: awscli
-        type: optional
-      - name: terraform
-        type: optional
-      - name: opentofu
-        type: optional
+      - git
+    recommends:
+      - terraform
+      - opentofu
+    suggests:
+      - awscli
+    # Shell completions can be added later when available
+    # contents:
+    #   - src: ./completions/meroku.bash
+    #     dst: /usr/share/bash-completion/completions/meroku
+    #     file_info:
+    #       mode: 0644
+
+# Chocolatey for Windows
+chocolateys:
+  - name: meroku
+    title: Meroku
+    authors: MadAppGang
+    project_url: https://madappgang.com
+    url_template: "https://github.com/MadAppGang/meroku/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+    icon_url: https://madappgang.com/icon.png
+    copyright: 2024 MadAppGang
+    license_url: https://github.com/MadAppGang/meroku/blob/main/LICENSE
+    require_license_acceptance: false
+    project_source_url: https://github.com/MadAppGang/meroku
+    docs_url: https://github.com/MadAppGang/meroku/blob/main/README.md
+    bug_tracker_url: https://github.com/MadAppGang/meroku/issues
+    tags: "infrastructure terraform aws devops"
+    summary: Easy infrastructure management
+    description: |
+      {{ .ProjectName }} is a tool for easy infrastructure management.
+      It provides a simple interface for managing AWS infrastructure using Terraform.
+    release_notes: "https://github.com/MadAppGang/meroku/releases/tag/v{{ .Version }}"
+    api_key: "{{ .Env.CHOCOLATEY_API_KEY }}"
+    source_repo: "https://push.chocolatey.org/"
+    skip_publish: false
+
+# Scoop for Windows
+scoops:
+  - name: meroku
+    homepage: https://madappgang.com
+    description: Easy infrastructure management
+    license: MIT
+    repository:
+      owner: MadAppGang
+      name: scoop-meroku
+      token: "{{ .Env.SCOOP_TAP_GITHUB_TOKEN }}"
+    commit_author:
+      name: erudenko
+      email: i@madappgang.com
+    commit_msg_template: "Scoop update for {{ .ProjectName }} version {{ .Tag }}"
+    persist:
+      - "data"
+      - "config.toml"
 
 changelog:
   sort: asc

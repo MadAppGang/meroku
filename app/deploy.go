@@ -13,32 +13,39 @@ import (
 func deployMenu() {
 	var env string
 
-	envs, err := findFilesWithExts([]string{".yaml", ".yml"})
-	if err != nil {
-		panic(err)
-	}
-	options := lo.Map(envs, func(s string, _ int) huh.Option[string] {
-		return huh.NewOption(fmt.Sprintf("Deploy %s environment", s), s)
-	})
-	options = append(options, huh.NewOption("Back to main menu", "go:back"))
+	// Use already selected environment if available
+	if selectedEnvironment != "" {
+		env = selectedEnvironment
+		fmt.Printf("Deploying environment: %s\n", env)
+	} else {
+		// Only prompt for environment selection if none is selected
+		envs, err := findFilesWithExts([]string{".yaml", ".yml"})
+		if err != nil {
+			panic(err)
+		}
+		options := lo.Map(envs, func(s string, _ int) huh.Option[string] {
+			return huh.NewOption(fmt.Sprintf("Deploy %s environment", s), s)
+		})
+		options = append(options, huh.NewOption("Back to main menu", "go:back"))
 
-	huh.NewSelect[string]().
-		Title("Select an environment to deploy").
-		Options(
-			options...,
-		).
-		Value(&env).
-		Run()
+		huh.NewSelect[string]().
+			Title("Select an environment to deploy").
+			Options(
+				options...,
+			).
+			Value(&env).
+			Run()
 
-	switch env {
-	case "go:back":
-		return
-	case "":
-		fmt.Println("No environment selected")
-		os.Exit(1)
+		switch env {
+		case "go:back":
+			return
+		case "":
+			fmt.Println("No environment selected")
+			os.Exit(1)
+		}
 	}
+	
 	runCommandToDeploy(env)
-	deployMenu()
 }
 
 func runCommandToDeploy(env string) error {

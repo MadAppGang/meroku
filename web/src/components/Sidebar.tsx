@@ -674,8 +674,8 @@ jobs:
           <BackendSSHAccess config={config} onConfigChange={onConfigChange} accountInfo={accountInfo} />
         )}
 
-        {activeTab === 'env' && selectedNode.type === 'backend' && config && (
-          <BackendEnvironmentVariables config={config} accountInfo={accountInfo} />
+        {activeTab === 'env' && selectedNode.type === 'backend' && config && onConfigChange && (
+          <BackendEnvironmentVariables config={config} accountInfo={accountInfo} onConfigChange={onConfigChange} />
         )}
 
         {activeTab === 'params' && selectedNode.type === 'backend' && config && (

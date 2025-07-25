@@ -10,12 +10,16 @@ import { Label } from './ui/label';
 interface BackendEnvironmentVariablesProps {
   config: YamlInfrastructureConfig;
   accountInfo?: AccountInfo;
+  onConfigChange?: (config: Partial<YamlInfrastructureConfig>) => void;
 }
 
-export function BackendEnvironmentVariables({ config, accountInfo }: BackendEnvironmentVariablesProps) {
+export function BackendEnvironmentVariables({ config, accountInfo, onConfigChange }: BackendEnvironmentVariablesProps) {
   const [editingPort, setEditingPort] = useState(false);
   const [portValue, setPortValue] = useState(config.workload?.backend_image_port?.toString() || '8080');
-  const [customVars, setCustomVars] = useState(config.workload?.backend_env_variables || []);
+  const [customVars, setCustomVars] = useState(() => {
+    const envVars = config.workload?.backend_env_variables;
+    return Array.isArray(envVars) ? envVars : [];
+  });
   const [newVarName, setNewVarName] = useState('');
   const [newVarValue, setNewVarValue] = useState('');
   const [editingVar, setEditingVar] = useState<string | null>(null);
@@ -41,19 +45,56 @@ export function BackendEnvironmentVariables({ config, accountInfo }: BackendEnvi
 
   const handleAddCustomVar = () => {
     if (newVarName && newVarValue) {
-      setCustomVars([...customVars, { name: newVarName, value: newVarValue }]);
+      const newVar = { name: newVarName, value: newVarValue };
+      const updatedVars = Array.isArray(customVars) ? [...customVars, newVar] : [newVar];
+      
+      setCustomVars(updatedVars);
       setNewVarName('');
       setNewVarValue('');
+      
+      // Update the config
+      if (onConfigChange) {
+        onConfigChange({
+          workload: {
+            ...config.workload,
+            backend_env_variables: updatedVars
+          }
+        });
+      }
     }
   };
 
   const handleDeleteCustomVar = (name: string) => {
-    setCustomVars(customVars.filter(v => v.name !== name));
+    const updatedVars = Array.isArray(customVars) ? customVars.filter(v => v.name !== name) : [];
+    
+    setCustomVars(updatedVars);
+    
+    // Update the config
+    if (onConfigChange) {
+      onConfigChange({
+        workload: {
+          ...config.workload,
+          backend_env_variables: updatedVars
+        }
+      });
+    }
   };
 
   const handleEditCustomVar = (name: string, newValue: string) => {
-    setCustomVars(customVars.map(v => v.name === name ? { ...v, value: newValue } : v));
+    const updatedVars = Array.isArray(customVars) ? customVars.map(v => v.name === name ? { ...v, value: newValue } : v) : [];
+    
+    setCustomVars(updatedVars);
     setEditingVar(null);
+    
+    // Update the config
+    if (onConfigChange) {
+      onConfigChange({
+        workload: {
+          ...config.workload,
+          backend_env_variables: updatedVars
+        }
+      });
+    }
   };
 
   return (
@@ -154,7 +195,7 @@ export function BackendEnvironmentVariables({ config, accountInfo }: BackendEnvi
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {customVars.map((envVar, index) => (
+            {Array.isArray(customVars) ? customVars.map((envVar, index) => (
               <div key={index} className="p-2 bg-gray-800 rounded">
                 <div className="flex items-center justify-between">
                   <code className="text-xs font-mono text-green-400">{envVar.name}</code>
@@ -211,7 +252,7 @@ export function BackendEnvironmentVariables({ config, accountInfo }: BackendEnvi
                   <div className="text-xs text-gray-300 font-mono mt-1">{envVar.value}</div>
                 )}
               </div>
-            ))}
+            )) : null}
             
             {/* Add new variable form */}
             <div className="border-t border-gray-700 pt-3">
