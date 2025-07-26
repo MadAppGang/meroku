@@ -23,6 +23,13 @@ jobs:
         with:
           go-version: '1.23'
 
+      - name: Install Chocolatey
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mono-devel
+          curl -fsSL https://chocolatey.org/install.sh | sudo bash
+          echo "/opt/chocolatey/bin" >> $GITHUB_PATH
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
