@@ -113,23 +113,23 @@ nfpms:
 #     source_repo: "https://push.chocolatey.org/"
 #     skip_publish: false
 
-# Scoop for Windows
-scoops:
-  - name: meroku
-    homepage: https://madappgang.com
-    description: Easy infrastructure management
-    license: MIT
-    repository:
-      owner: MadAppGang
-      name: scoop-meroku
-      token: "{{ .Env.SCOOP_TAP_GITHUB_TOKEN }}"
-    commit_author:
-      name: erudenko
-      email: i@madappgang.com
-    commit_msg_template: "Scoop update for {{ .ProjectName }} version {{ .Tag }}"
-    persist:
-      - "data"
-      - "config.toml"
+# Scoop for Windows (disabled due to repository access issues)
+# scoops:
+#   - name: meroku
+#     homepage: https://madappgang.com
+#     description: Easy infrastructure management
+#     license: MIT
+#     repository:
+#       owner: MadAppGang
+#       name: scoop-meroku
+#       token: "{{ .Env.SCOOP_TAP_GITHUB_TOKEN }}"
+#     commit_author:
+#       name: erudenko
+#       email: i@madappgang.com
+#     commit_msg_template: "Scoop update for {{ .ProjectName }} version {{ .Tag }}"
+#     persist:
+#       - "data"
+#       - "config.toml"
 
 changelog:
   sort: asc
