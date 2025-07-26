@@ -11,9 +11,10 @@ import { ComponentNode } from '../types';
 interface BackendIAMPermissionsProps {
   config: YamlInfrastructureConfig;
   node?: ComponentNode;
+  onConfigChange?: (config: Partial<YamlInfrastructureConfig>) => void;
 }
 
-export function BackendIAMPermissions({ config, node }: BackendIAMPermissionsProps) {
+export function BackendIAMPermissions({ config, node, onConfigChange }: BackendIAMPermissionsProps) {
   // Determine if this is for a service or backend
   const isService = node?.type === 'service';
   const serviceName = isService ? node.id.replace('service-', '') : null;
@@ -32,10 +33,22 @@ export function BackendIAMPermissions({ config, node }: BackendIAMPermissionsPro
     if (newActions && newResources) {
       const actions = newActions.split('\n').filter(a => a.trim());
       const resources = newResources.split('\n').filter(r => r.trim());
-      setCustomPolicies([...customPolicies, { actions, resources }]);
+      const updatedPolicies = [...customPolicies, { actions, resources }];
+      
+      setCustomPolicies(updatedPolicies);
       setNewActions('');
       setNewResources('');
       setShowNewPolicy(false);
+      
+      // Update the config
+      if (onConfigChange && !isService) {
+        onConfigChange({
+          workload: {
+            ...config.workload,
+            policy: updatedPolicies
+          }
+        });
+      }
     }
   };
 
@@ -44,12 +57,35 @@ export function BackendIAMPermissions({ config, node }: BackendIAMPermissionsPro
     const resources = editResources.split('\n').filter(r => r.trim());
     const updated = [...customPolicies];
     updated[index] = { actions, resources };
+    
     setCustomPolicies(updated);
     setEditingIndex(null);
+    
+    // Update the config
+    if (onConfigChange && !isService) {
+      onConfigChange({
+        workload: {
+          ...config.workload,
+          policy: updated
+        }
+      });
+    }
   };
 
   const handleDeletePolicy = (index: number) => {
-    setCustomPolicies(customPolicies.filter((_, i) => i !== index));
+    const updated = customPolicies.filter((_, i) => i !== index);
+    
+    setCustomPolicies(updated);
+    
+    // Update the config
+    if (onConfigChange && !isService) {
+      onConfigChange({
+        workload: {
+          ...config.workload,
+          policy: updated
+        }
+      });
+    }
   };
 
   const toggleExpanded = (index: number) => {

@@ -145,9 +145,7 @@ module "workloads" {
   pgadmin_email = "{{workload.pg_admin_email}}"   
   {{/if}}
   xray_enabled = {{workload.xray_enabled}}
-  {{#if workload.backend_env_variables}}
   backend_env = {{{ envArray workload.backend_env_variables }}}
-  {{/if}}
   
   # Backend scaling configuration
   {{#if workload.backend_cpu}}

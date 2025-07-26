@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { X, Settings, FileText, BarChart, Zap, Link, Code, Database, Upload, Globe, BookOpen, Key, HardDrive, Shield, Server, Network, Activity, ChevronLeft, ChevronRight, Bell, Microscope, Gauge, Terminal, Cloud, Send, Trash2, GitBranch } from 'lucide-react';
 import { ComponentNode } from '../types';
 import { Button } from './ui/button';
@@ -75,7 +75,7 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
   const tabsContainerRef = useRef<HTMLDivElement>(null);
 
   // Function to get available tabs for the current node type
-  const getAvailableTabs = (node: ComponentNode | null) => {
+  const getAvailableTabs = useCallback((node: ComponentNode | null) => {
     if (!node) return [];
     
     switch (node.type) {
@@ -210,7 +210,7 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
           { id: 'connections', label: 'Connections', icon: Link },
         ];
     }
-  };
+  }, []);
 
   // Effect to validate and update activeTab when selectedNode changes
   useEffect(() => {
@@ -223,15 +223,15 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
         setActiveTab(availableTabs[0].id);
       }
     }
-  }, [selectedNode, activeTab]);
+  }, [selectedNode, activeTab, getAvailableTabs]);
 
-  const checkScrollButtons = () => {
+  const checkScrollButtons = useCallback(() => {
     if (tabsContainerRef.current) {
       const { scrollLeft, scrollWidth, clientWidth } = tabsContainerRef.current;
       setShowLeftScroll(scrollLeft > 0);
       setShowRightScroll(scrollLeft < scrollWidth - clientWidth - 5);
     }
-  };
+  }, []);
 
   useEffect(() => {
     checkScrollButtons();
@@ -244,7 +244,7 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
         window.removeEventListener('resize', checkScrollButtons);
       };
     }
-  }, [selectedNode]);
+  }, [checkScrollButtons]);
 
   const scrollTabs = (direction: 'left' | 'right') => {
     if (tabsContainerRef.current) {
@@ -682,16 +682,16 @@ jobs:
           <BackendParameterStore config={config} />
         )}
 
-        {activeTab === 's3' && selectedNode.type === 'backend' && config && (
-          <BackendS3Buckets config={config} />
+        {activeTab === 's3' && selectedNode.type === 'backend' && config && onConfigChange && (
+          <BackendS3Buckets config={config} onConfigChange={onConfigChange} />
         )}
 
         {activeTab === 'sns' && selectedNode.type === 'backend' && config && (
           <BackendSNS config={config} />
         )}
 
-        {activeTab === 'iam' && selectedNode.type === 'backend' && config && (
-          <BackendIAMPermissions config={config} />
+        {activeTab === 'iam' && selectedNode.type === 'backend' && config && onConfigChange && (
+          <BackendIAMPermissions config={config} onConfigChange={onConfigChange} />
         )}
 
         {activeTab === 'cloudwatch' && selectedNode.type === 'backend' && config && (
@@ -723,8 +723,8 @@ jobs:
           <ServiceParameterStore config={config} node={selectedNode} />
         )}
 
-        {activeTab === 'iam' && selectedNode.type === 'service' && config && (
-          <BackendIAMPermissions config={config} node={selectedNode} />
+        {activeTab === 'iam' && selectedNode.type === 'service' && config && onConfigChange && (
+          <BackendIAMPermissions config={config} node={selectedNode} onConfigChange={onConfigChange} />
         )}
 
 

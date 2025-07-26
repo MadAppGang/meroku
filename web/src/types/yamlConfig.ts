@@ -37,10 +37,7 @@ export interface YamlInfrastructureConfig {
     bucket_public?: boolean;
     
     // Environment configuration
-    backend_env_variables?: Array<{
-      name: string;
-      value: string;
-    }>;
+    backend_env_variables?: Record<string, string>;
     env_files_s3?: Array<{
       bucket: string;
       key: string;

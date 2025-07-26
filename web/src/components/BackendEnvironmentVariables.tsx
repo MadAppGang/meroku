@@ -18,7 +18,7 @@ export function BackendEnvironmentVariables({ config, accountInfo, onConfigChang
   const [portValue, setPortValue] = useState(config.workload?.backend_image_port?.toString() || '8080');
   const [customVars, setCustomVars] = useState(() => {
     const envVars = config.workload?.backend_env_variables;
-    return Array.isArray(envVars) ? envVars : [];
+    return envVars && typeof envVars === 'object' ? envVars : {};
   });
   const [newVarName, setNewVarName] = useState('');
   const [newVarValue, setNewVarValue] = useState('');
@@ -45,8 +45,10 @@ export function BackendEnvironmentVariables({ config, accountInfo, onConfigChang
 
   const handleAddCustomVar = () => {
     if (newVarName && newVarValue) {
-      const newVar = { name: newVarName, value: newVarValue };
-      const updatedVars = Array.isArray(customVars) ? [...customVars, newVar] : [newVar];
+      const updatedVars = {
+        ...customVars,
+        [newVarName]: newVarValue
+      };
       
       setCustomVars(updatedVars);
       setNewVarName('');
@@ -65,7 +67,8 @@ export function BackendEnvironmentVariables({ config, accountInfo, onConfigChang
   };
 
   const handleDeleteCustomVar = (name: string) => {
-    const updatedVars = Array.isArray(customVars) ? customVars.filter(v => v.name !== name) : [];
+    const updatedVars = { ...customVars };
+    delete updatedVars[name];
     
     setCustomVars(updatedVars);
     
@@ -81,7 +84,10 @@ export function BackendEnvironmentVariables({ config, accountInfo, onConfigChang
   };
 
   const handleEditCustomVar = (name: string, newValue: string) => {
-    const updatedVars = Array.isArray(customVars) ? customVars.map(v => v.name === name ? { ...v, value: newValue } : v) : [];
+    const updatedVars = {
+      ...customVars,
+      [name]: newValue
+    };
     
     setCustomVars(updatedVars);
     setEditingVar(null);
@@ -195,17 +201,17 @@ export function BackendEnvironmentVariables({ config, accountInfo, onConfigChang
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {Array.isArray(customVars) ? customVars.map((envVar, index) => (
-              <div key={index} className="p-2 bg-gray-800 rounded">
+            {Object.entries(customVars).map(([name, value]) => (
+              <div key={name} className="p-2 bg-gray-800 rounded">
                 <div className="flex items-center justify-between">
-                  <code className="text-xs font-mono text-green-400">{envVar.name}</code>
+                  <code className="text-xs font-mono text-green-400">{name}</code>
                   <div className="flex items-center gap-1">
                     <Button
                       size="sm"
                       variant="ghost"
                       onClick={() => {
-                        setEditingVar(envVar.name);
-                        setEditingVarValue(envVar.value);
+                        setEditingVar(name);
+                        setEditingVarValue(value);
                       }}
                       className="h-5 w-5 p-0"
                     >
@@ -214,14 +220,14 @@ export function BackendEnvironmentVariables({ config, accountInfo, onConfigChang
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => handleDeleteCustomVar(envVar.name)}
+                      onClick={() => handleDeleteCustomVar(name)}
                       className="h-5 w-5 p-0 text-red-400 hover:text-red-300"
                     >
                       <Trash2 className="w-3 h-3" />
                     </Button>
                   </div>
                 </div>
-                {editingVar === envVar.name ? (
+                {editingVar === name ? (
                   <div className="mt-1">
                     <Input
                       type="text"
@@ -233,7 +239,7 @@ export function BackendEnvironmentVariables({ config, accountInfo, onConfigChang
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => handleEditCustomVar(envVar.name, editingVarValue)}
+                        onClick={() => handleEditCustomVar(name, editingVarValue)}
                         className="h-5 w-5 p-0"
                       >
                         <Check className="w-3 h-3" />
@@ -249,10 +255,10 @@ export function BackendEnvironmentVariables({ config, accountInfo, onConfigChang
                     </div>
                   </div>
                 ) : (
-                  <div className="text-xs text-gray-300 font-mono mt-1">{envVar.value}</div>
+                  <div className="text-xs text-gray-300 font-mono mt-1">{value}</div>
                 )}
               </div>
-            )) : null}
+            ))}
             
             {/* Add new variable form */}
             <div className="border-t border-gray-700 pt-3">

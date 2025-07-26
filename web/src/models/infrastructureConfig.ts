@@ -64,7 +64,7 @@ export interface WorkloadConfig {
   bucket_public?: boolean;
   
   // Environment configuration
-  backend_env_variables?: EnvVariable[];
+  backend_env_variables?: Record<string, string>;
   env_files_s3?: S3EnvFile[];
   
   // Monitoring and observability

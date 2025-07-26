@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -175,7 +176,24 @@ func getAWSAccountID(profile string) (string, error) {
 	stsClient := sts.NewFromConfig(cfg)
 	result, err := stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
 	if err != nil {
-		return "", fmt.Errorf("failed to get caller identity: %w", err)
+		// Check if this is an SSO-related error and try to login automatically
+		if strings.Contains(err.Error(), "SSO") || strings.Contains(err.Error(), "token") || strings.Contains(err.Error(), "expired") {
+			fmt.Printf("AWS SSO session expired for profile '%s'. Attempting automatic login...\n", profile)
+			
+			// Try to run aws sso login
+			loginErr := runAWSSSO(profile)
+			if loginErr != nil {
+				return "", fmt.Errorf("failed to refresh SSO login: %w", loginErr)
+			}
+			
+			// Retry the identity call after login
+			result, err = stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+			if err != nil {
+				return "", fmt.Errorf("failed to get caller identity after SSO login: %w", err)
+			}
+		} else {
+			return "", fmt.Errorf("failed to get caller identity: %w", err)
+		}
 	}
 	
 	if result.Account == nil {
@@ -204,5 +222,19 @@ func findAWSProfileByAccountID(targetAccountID string) (string, error) {
 	}
 	
 	return "", fmt.Errorf("no AWS profile found for account ID: %s", targetAccountID)
+}
+
+func runAWSSSO(profile string) error {
+	cmd := exec.Command("aws", "sso", "login", "--profile", profile)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+	
+	err := cmd.Run()
+	if err != nil {
+		return fmt.Errorf("aws sso login failed: %w", err)
+	}
+	
+	return nil
 }
 

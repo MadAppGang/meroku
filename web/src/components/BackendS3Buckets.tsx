@@ -20,9 +20,10 @@ import { Alert, AlertDescription } from './ui/alert';
 
 interface BackendS3BucketsProps {
   config: YamlInfrastructureConfig;
+  onConfigChange?: (config: Partial<YamlInfrastructureConfig>) => void;
 }
 
-export function BackendS3Buckets({ config }: BackendS3BucketsProps) {
+export function BackendS3Buckets({ config, onConfigChange }: BackendS3BucketsProps) {
   const primaryBucketName = `${config.project}-backend-${config.env}${config.workload?.bucket_postfix || ''}`;
   const isPublic = config.workload?.bucket_public !== false;
   
@@ -45,10 +46,21 @@ export function BackendS3Buckets({ config }: BackendS3BucketsProps) {
   
   const handleAddEnvFile = () => {
     if (newBucket && newKey) {
-      setEnvFiles([...envFiles, { bucket: newBucket, key: newKey }]);
+      const updatedEnvFiles = [...envFiles, { bucket: newBucket, key: newKey }];
+      setEnvFiles(updatedEnvFiles);
       setNewBucket('');
       setNewKey('');
       setShowNewEnvFile(false);
+      
+      // Update the config
+      if (onConfigChange) {
+        onConfigChange({
+          workload: {
+            ...config.workload,
+            env_files_s3: updatedEnvFiles
+          }
+        });
+      }
     }
   };
   
@@ -57,10 +69,31 @@ export function BackendS3Buckets({ config }: BackendS3BucketsProps) {
     updated[index] = { bucket: editBucket, key: editKey };
     setEnvFiles(updated);
     setEditingIndex(null);
+    
+    // Update the config
+    if (onConfigChange) {
+      onConfigChange({
+        workload: {
+          ...config.workload,
+          env_files_s3: updated
+        }
+      });
+    }
   };
   
   const handleDeleteEnvFile = (index: number) => {
-    setEnvFiles(envFiles.filter((_, i) => i !== index));
+    const updated = envFiles.filter((_, i) => i !== index);
+    setEnvFiles(updated);
+    
+    // Update the config
+    if (onConfigChange) {
+      onConfigChange({
+        workload: {
+          ...config.workload,
+          env_files_s3: updated
+        }
+      });
+    }
   };
   
   const handleViewFile = async (envFile: { bucket: string; key: string }) => {

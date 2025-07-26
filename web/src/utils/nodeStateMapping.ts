@@ -90,7 +90,7 @@ export const nodeStateMapping: NodeStateConfig[] = [
 			healthEndpoint: config.workload?.backend_health_endpoint || "/health",
 			cpu: config.workload?.backend_cpu || '256',
 			memory: config.workload?.backend_memory || '512',
-			envVariables: config.workload?.backend_env_variables || [],
+			envVariables: config.workload?.backend_env_variables || {},
 			desiredCount: config.workload?.backend_desired_count || 1,
 			autoscalingEnabled: config.workload?.backend_autoscaling_enabled || false,
 			autoscalingMinCapacity: config.workload?.backend_autoscaling_min_capacity || 1,

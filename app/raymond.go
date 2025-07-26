@@ -274,6 +274,11 @@ func registerCustomHelpers() {
 			for k, v := range m {
 				builder.WriteString(fmt.Sprintf("    { \"name\" : \"%s\", \"value\" : \"%v\" },\n", k, v))
 			}
+		} else if m, ok := value.(map[interface{}]interface{}); ok {
+			// Handle map[interface{}]interface{} from YAML unmarshaling
+			for k, v := range m {
+				builder.WriteString(fmt.Sprintf("    { \"name\" : \"%v\", \"value\" : \"%v\" },\n", k, v))
+			}
 		}
 
 		builder.WriteString("  ]")

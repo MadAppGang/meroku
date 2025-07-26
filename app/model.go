@@ -258,12 +258,22 @@ func loadEnvToMap(name string) (map[string]interface{}, error) {
 
 	data, err := os.ReadFile(name)
 	if err != nil {
-		return nil, fmt.Errorf("error reading YAML file: %v", err)
+		wd, err := os.Getwd()
+		if err != nil {
+			return nil, fmt.Errorf("error getting current working directory: %v", err)
+		}
+		return nil, fmt.Errorf("error reading YAML file: %v, current folder: %s", err, wd)
 	}
 
 	err = yaml.Unmarshal(data, &e)
 	if err != nil {
 		return nil, fmt.Errorf("error unmarshaling YAML: %v", err)
+	}
+
+	// Convert to JSON-compatible format for template rendering
+	converted := convertToJSONCompatible(e)
+	if convertedMap, ok := converted.(map[string]interface{}); ok {
+		return convertedMap, nil
 	}
 
 	return e, nil
