@@ -89,29 +89,29 @@ nfpms:
     #     file_info:
     #       mode: 0644
 
-# Chocolatey for Windows
-chocolateys:
-  - name: meroku
-    title: Meroku
-    authors: MadAppGang
-    project_url: https://madappgang.com
-    url_template: "https://github.com/MadAppGang/meroku/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
-    icon_url: https://madappgang.com/icon.png
-    copyright: 2024 MadAppGang
-    license_url: https://github.com/MadAppGang/meroku/blob/main/LICENSE
-    require_license_acceptance: false
-    project_source_url: https://github.com/MadAppGang/meroku
-    docs_url: https://github.com/MadAppGang/meroku/blob/main/README.md
-    bug_tracker_url: https://github.com/MadAppGang/meroku/issues
-    tags: "infrastructure terraform aws devops"
-    summary: Easy infrastructure management
-    description: |
-      {{ .ProjectName }} is a tool for easy infrastructure management.
-      It provides a simple interface for managing AWS infrastructure using Terraform.
-    release_notes: "https://github.com/MadAppGang/meroku/releases/tag/v{{ .Version }}"
-    api_key: "{{ .Env.CHOCOLATEY_API_KEY }}"
-    source_repo: "https://push.chocolatey.org/"
-    skip_publish: false
+# Chocolatey for Windows (disabled due to installation issues in CI)
+# chocolateys:
+#   - name: meroku
+#     title: Meroku
+#     authors: MadAppGang
+#     project_url: https://madappgang.com
+#     url_template: "https://github.com/MadAppGang/meroku/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+#     icon_url: https://madappgang.com/icon.png
+#     copyright: 2024 MadAppGang
+#     license_url: https://github.com/MadAppGang/meroku/blob/main/LICENSE
+#     require_license_acceptance: false
+#     project_source_url: https://github.com/MadAppGang/meroku
+#     docs_url: https://github.com/MadAppGang/meroku/blob/main/README.md
+#     bug_tracker_url: https://github.com/MadAppGang/meroku/issues
+#     tags: "infrastructure terraform aws devops"
+#     summary: Easy infrastructure management
+#     description: |
+#       {{ .ProjectName }} is a tool for easy infrastructure management.
+#       It provides a simple interface for managing AWS infrastructure using Terraform.
+#     release_notes: "https://github.com/MadAppGang/meroku/releases/tag/v{{ .Version }}"
+#     api_key: "{{ .Env.CHOCOLATEY_API_KEY }}"
+#     source_repo: "https://push.chocolatey.org/"
+#     skip_publish: false
 
 # Scoop for Windows
 scoops:
