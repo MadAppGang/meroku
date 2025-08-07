@@ -42,7 +42,11 @@
       "Bash(gh secret list:*)",
       "Bash(curl:*)",
       "Bash(go get:*)",
-      "Bash(go mod:*)"
+      "Bash(go mod:*)",
+      "Bash(git tag:*)",
+      "Bash(git push:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ],
     "deny": []
   }

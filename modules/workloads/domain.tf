@@ -20,7 +20,7 @@ resource "aws_apigatewayv2_domain_name" "backend" {
   }
 
   tags = {
-    Name        = var.api_domain
+    Name        = "${var.project}-${var.env}-api-domain"
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
