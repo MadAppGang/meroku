@@ -53,6 +53,24 @@ variable "engine_version" {
   default = "14"
 }
 
+variable "aurora" {
+  type        = bool
+  default     = false
+  description = "Enable Aurora Serverless v2 instead of standard RDS"
+}
+
+variable "min_capacity" {
+  type        = number
+  default     = 0.5
+  description = "Minimum capacity for Aurora Serverless v2 (in ACUs)"
+}
+
+variable "max_capacity" {
+  type        = number
+  default     = 1
+  description = "Maximum capacity for Aurora Serverless v2 (in ACUs)"
+}
+
 resource "random_password" "postgres" {
   length           = 16
   special          = true

@@ -61,6 +61,10 @@ postgres:
   username: dbadmin
   public_access: true
   engine_version: "14"
+  # Aurora Serverless v2 configuration (optional)
+  aurora: true  # Set to true to use Aurora Serverless v2 instead of RDS
+  min_capacity: 0.5  # Optional: defaults to 0.5 ACUs if not specified
+  max_capacity: 2    # Optional: defaults to 1 ACU if not specified
 
 # Authentication configuration
 cognito:

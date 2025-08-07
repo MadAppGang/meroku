@@ -50,10 +50,20 @@ module "postgres" {
   project = "{{project}}"
   env = "{{env}}"
   vpc_id     = data.aws_vpc.default.id
+  subnet_ids = data.aws_subnets.all.ids
   db_name = "{{postgres.dbname}}"
   username = "{{postgres.username}}"
   public_access = {{ postgres.public_access }}
   engine_version = "{{ postgres.engine_version}}"
+  {{#if postgres.aurora}}
+  aurora = true
+  {{#if postgres.min_capacity}}
+  min_capacity = {{postgres.min_capacity}}
+  {{/if}}
+  {{#if postgres.max_capacity}}
+  max_capacity = {{postgres.max_capacity}}
+  {{/if}}
+  {{/if}}
 }
 {{/if}}
 
