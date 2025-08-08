@@ -7,13 +7,58 @@ interface PricingBadgeProps {
   pricing: PricingResponse | null;
   level?: 'startup' | 'scaleup' | 'highload';
   serviceName?: string;
+  configProperties?: any;
 }
 
-export function PricingBadge({ nodeType, pricing, level = 'startup', serviceName }: PricingBadgeProps) {
+export function PricingBadge({ nodeType, pricing, level = 'startup', serviceName, configProperties }: PricingBadgeProps) {
   if (!pricing) return null;
   
   // Handle both pricing.nodes and direct pricing object structures
   const pricingData = pricing.nodes || pricing;
+  
+  // Special handling for PostgreSQL/Aurora database pricing
+  if (nodeType === 'postgres' && configProperties) {
+    if (configProperties.aurora) {
+      // Aurora Serverless v2 pricing calculation
+      // ACU pricing: ~$0.12 per ACU-hour in us-east-1
+      const ACU_HOURLY_PRICE = 0.12;
+      const minCapacity = configProperties.minCapacity ?? 0;
+      const maxCapacity = configProperties.maxCapacity || 1;
+      
+      // Calculate based on average expected usage for each level
+      let avgACUs = 0;
+      if (level === 'startup') {
+        // Assume 20% average utilization for startup
+        avgACUs = minCapacity + (maxCapacity - minCapacity) * 0.2;
+      } else if (level === 'scaleup') {
+        // Assume 50% average utilization for scaleup
+        avgACUs = minCapacity + (maxCapacity - minCapacity) * 0.5;
+      } else {
+        // Assume 80% average utilization for highload
+        avgACUs = minCapacity + (maxCapacity - minCapacity) * 0.8;
+      }
+      
+      // If min is 0, adjust calculation (database might be paused part of the time)
+      if (minCapacity === 0) {
+        // Assume database is active 75% of the time for startup, 90% for scaleup, 100% for highload
+        const activeTime = level === 'startup' ? 0.75 : level === 'scaleup' ? 0.9 : 1.0;
+        avgACUs = avgACUs * activeTime;
+      }
+      
+      const monthlyPrice = avgACUs * ACU_HOURLY_PRICE * 24 * 30; // 24 hours * 30 days
+      
+      return (
+        <Badge 
+          variant="secondary" 
+          className="absolute -top-2 -right-2 bg-green-600/90 text-white border-green-700 text-xs px-1 py-0.5"
+        >
+          <DollarSign className="w-3 h-3 mr-0.5" />
+          ${monthlyPrice < 1 ? monthlyPrice.toFixed(2) : monthlyPrice.toFixed(0)}/mo
+        </Badge>
+      );
+    }
+    // For standard RDS, use the existing pricing
+  }
 
   // Map node types to pricing keys (matching API response keys)
   const pricingMap: Record<string, string> = {

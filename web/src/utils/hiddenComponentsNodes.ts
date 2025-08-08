@@ -16,29 +16,6 @@ export function generateHiddenComponentNodes(
 	const baseY = 1000;
 	const spacing = 200;
 
-	// PostgreSQL (replaces Aurora)
-	if (config.postgres?.enabled) {
-		nodes.push({
-			id: "postgres",
-			type: "service",
-			position: { x: baseX, y: baseY },
-			data: {
-				id: "postgres",
-				type: "postgres",
-				name: "RDS PostgreSQL",
-				description: "Managed database",
-				status: "running",
-				configProperties: {
-					dbname: config.postgres.dbname,
-					username: config.postgres.username,
-					engineVersion: config.postgres.engine_version,
-					publicAccess: config.postgres.public_access,
-					pgAdminEnabled: config.workload?.install_pg_admin,
-				},
-			},
-		});
-	}
-
 	// SQS
 	if (config.sqs?.enabled) {
 		nodes.push({

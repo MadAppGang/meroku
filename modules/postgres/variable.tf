@@ -50,7 +50,8 @@ variable "public_access" {
 }
 
 variable "engine_version" {
-  default = "14"
+  default = "16"
+  description = "PostgreSQL major version (13, 14, 15, 16, 17)"
 }
 
 variable "aurora" {
@@ -61,8 +62,8 @@ variable "aurora" {
 
 variable "min_capacity" {
   type        = number
-  default     = 0.5
-  description = "Minimum capacity for Aurora Serverless v2 (in ACUs)"
+  default     = 0
+  description = "Minimum capacity for Aurora Serverless v2 (in ACUs) - 0 allows pausing when idle"
 }
 
 variable "max_capacity" {

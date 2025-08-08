@@ -90,6 +90,9 @@ export interface YamlInfrastructureConfig {
     username?: string;
     public_access?: boolean;
     engine_version?: string;
+    aurora?: boolean;
+    min_capacity?: number;
+    max_capacity?: number;
   };
   
   // Authentication Configuration

@@ -121,11 +121,16 @@ export const nodeStateMapping: NodeStateConfig[] = [
 			dbname: config.postgres?.dbname || config.project,
 			username: config.postgres?.username || 'postgres',
 			publicAccess: config.postgres?.public_access || false,
-			engineVersion: config.postgres?.engine_version || '14',
+			engineVersion: config.postgres?.engine_version || '16',
+			aurora: config.postgres?.aurora || false,
+			minCapacity: config.postgres?.min_capacity ?? 0,
+			maxCapacity: config.postgres?.max_capacity || 1,
 			pgAdminEnabled: config.workload?.install_pg_admin || false,
 			pgAdminEmail: config.workload?.pg_admin_email || 'admin@madappgang.com',
 		}),
-		description: "AWS RDS Aurora PostgreSQL Serverless v2",
+		description: (config) => config.postgres?.aurora 
+			? "AWS Aurora PostgreSQL Serverless v2" 
+			: "AWS RDS PostgreSQL Instance",
 	},
 
 	// Storage Layer
@@ -303,6 +308,25 @@ export function getNodeState(
 	}
 
 	return true; // Unknown nodes default to enabled
+}
+
+/**
+ * Get node description based on configuration
+ */
+export function getNodeDescription(
+	nodeId: string,
+	config: YamlInfrastructureConfig | null,
+): string | undefined {
+	if (!config) return undefined;
+
+	const nodeConfig = nodeStateMapping.find((n) => n.id === nodeId);
+	if (nodeConfig && nodeConfig.description) {
+		return typeof nodeConfig.description === 'function' 
+			? nodeConfig.description(config)
+			: nodeConfig.description;
+	}
+
+	return undefined;
 }
 
 /**

@@ -1,2 +1,2 @@
-export * from "./infrastructure";
 export * from "./amplify";
+export * from "./infrastructure";

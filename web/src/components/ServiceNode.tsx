@@ -232,6 +232,7 @@ export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
           pricing={data.pricing}
           serviceName={data.name}
           level="startup"
+          configProperties={data.configProperties}
         />
       )}
       

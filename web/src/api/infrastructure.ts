@@ -1,5 +1,5 @@
-import type { PricingResponse } from '../hooks/use-pricing';
-import { fetchWithRetry, fetchWithTokenRetry } from '../utils/fetchWithRetry';
+import type { PricingResponse } from "../hooks/use-pricing";
+import { fetchWithTokenRetry } from "../utils/fetchWithRetry";
 
 export interface Environment {
 	name: string;
@@ -66,6 +66,12 @@ export interface ECSServicesInfo {
 	scheduledTasks: TaskInfo[];
 	eventTasks: TaskInfo[];
 	totalTasks: number;
+}
+
+export interface DatabaseConfig {
+	type: 'rds' | 'aurora';
+	minCapacity?: number;
+	maxCapacity?: number;
 }
 
 export interface ServiceInfo {
@@ -160,7 +166,7 @@ export interface SSHCapability {
 }
 
 export interface SSHMessage {
-	type: 'input' | 'output' | 'error' | 'connected' | 'disconnected';
+	type: "input" | "output" | "error" | "connected" | "disconnected";
 	data: string;
 }
 
@@ -168,7 +174,7 @@ export interface SSHMessage {
 export interface LogEntry {
 	timestamp: string;
 	message: string;
-	level: 'info' | 'warning' | 'error' | 'debug';
+	level: "info" | "warning" | "error" | "debug";
 	stream: string;
 }
 
@@ -198,7 +204,7 @@ export interface ECSTasksResponse {
 export interface SSMParameter {
 	name: string;
 	value: string;
-	type: 'String' | 'StringList' | 'SecureString';
+	type: "String" | "StringList" | "SecureString";
 	version: number;
 	description?: string;
 	lastModifiedDate?: string;
@@ -207,7 +213,7 @@ export interface SSMParameter {
 
 export interface SSMParameterMetadata {
 	name: string;
-	type: 'String' | 'StringList' | 'SecureString';
+	type: "String" | "StringList" | "SecureString";
 	lastModifiedDate: string;
 	version: number;
 	description?: string;
@@ -216,7 +222,7 @@ export interface SSMParameterMetadata {
 export interface SSMParameterCreateRequest {
 	name: string;
 	value: string;
-	type: 'String' | 'StringList' | 'SecureString';
+	type: "String" | "StringList" | "SecureString";
 	description?: string;
 	overwrite?: boolean;
 }
@@ -295,7 +301,7 @@ export interface SESSandboxInfo {
 
 export interface S3BucketInfo {
 	name: string;
-	type: 'static' | 'configured';
+	type: "static" | "configured";
 	publicAccess: boolean;
 	versioning: string;
 	corsRules?: Array<{
@@ -314,7 +320,9 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || "";
 
 export const infrastructureApi = {
 	async getEnvironments(): Promise<Environment[]> {
-		const response = await fetchWithTokenRetry(`${API_BASE_URL}/api/environments`);
+		const response = await fetchWithTokenRetry(
+			`${API_BASE_URL}/api/environments`,
+		);
 		if (!response.ok) {
 			throw new Error("Failed to fetch environments");
 		}
@@ -322,7 +330,9 @@ export const infrastructureApi = {
 	},
 
 	async getEnvironmentConfig(name: string): Promise<string> {
-		const response = await fetchWithTokenRetry(`${API_BASE_URL}/api/environment?name=${encodeURIComponent(name)}`);
+		const response = await fetchWithTokenRetry(
+			`${API_BASE_URL}/api/environment?name=${encodeURIComponent(name)}`,
+		);
 		if (!response.ok) {
 			const error: ErrorResponse = await response.json();
 			throw new Error(error.error || "Failed to fetch environment config");
@@ -332,13 +342,16 @@ export const infrastructureApi = {
 	},
 
 	async updateEnvironmentConfig(name: string, content: string): Promise<void> {
-		const response = await fetchWithTokenRetry(`${API_BASE_URL}/api/environment/update?name=${encodeURIComponent(name)}`, {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
+		const response = await fetchWithTokenRetry(
+			`${API_BASE_URL}/api/environment/update?name=${encodeURIComponent(name)}`,
+			{
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({ content }),
 			},
-			body: JSON.stringify({ content }),
-		});
+		);
 		if (!response.ok) {
 			const error: ErrorResponse = await response.json();
 			throw new Error(error.error || "Failed to update environment config");
@@ -354,7 +367,9 @@ export const infrastructureApi = {
 	},
 
 	async getECSClusterInfo(env: string): Promise<ECSClusterInfo> {
-		const response = await fetch(`${API_BASE_URL}/api/ecs/cluster?env=${encodeURIComponent(env)}`);
+		const response = await fetch(
+			`${API_BASE_URL}/api/ecs/cluster?env=${encodeURIComponent(env)}`,
+		);
 		if (!response.ok) {
 			throw new Error("Failed to fetch ECS cluster info");
 		}
@@ -362,7 +377,9 @@ export const infrastructureApi = {
 	},
 
 	async getECSNetworkInfo(env: string): Promise<ECSNetworkInfo> {
-		const response = await fetch(`${API_BASE_URL}/api/ecs/network?env=${encodeURIComponent(env)}`);
+		const response = await fetch(
+			`${API_BASE_URL}/api/ecs/network?env=${encodeURIComponent(env)}`,
+		);
 		if (!response.ok) {
 			throw new Error("Failed to fetch ECS network info");
 		}
@@ -370,16 +387,21 @@ export const infrastructureApi = {
 	},
 
 	async getECSServicesInfo(env: string): Promise<ECSServicesInfo> {
-		const response = await fetch(`${API_BASE_URL}/api/ecs/services?env=${encodeURIComponent(env)}`);
+		const response = await fetch(
+			`${API_BASE_URL}/api/ecs/services?env=${encodeURIComponent(env)}`,
+		);
 		if (!response.ok) {
 			throw new Error("Failed to fetch ECS services info");
 		}
 		return response.json();
 	},
 
-	async getServiceAutoscaling(env: string, serviceName: string): Promise<ServiceAutoscalingInfo> {
+	async getServiceAutoscaling(
+		env: string,
+		serviceName: string,
+	): Promise<ServiceAutoscalingInfo> {
 		const response = await fetch(
-			`${API_BASE_URL}/api/ecs/autoscaling?env=${encodeURIComponent(env)}&service=${encodeURIComponent(serviceName)}`
+			`${API_BASE_URL}/api/ecs/autoscaling?env=${encodeURIComponent(env)}&service=${encodeURIComponent(serviceName)}`,
 		);
 		if (!response.ok) {
 			throw new Error("Failed to fetch autoscaling info");
@@ -390,10 +412,10 @@ export const infrastructureApi = {
 	async getServiceScalingHistory(
 		env: string,
 		serviceName: string,
-		hours: number = 24
+		hours: number = 24,
 	): Promise<ServiceScalingHistory> {
 		const response = await fetch(
-			`${API_BASE_URL}/api/ecs/scaling-history?env=${encodeURIComponent(env)}&service=${encodeURIComponent(serviceName)}&hours=${hours}`
+			`${API_BASE_URL}/api/ecs/scaling-history?env=${encodeURIComponent(env)}&service=${encodeURIComponent(serviceName)}&hours=${hours}`,
 		);
 		if (!response.ok) {
 			throw new Error("Failed to fetch scaling history");
@@ -401,9 +423,12 @@ export const infrastructureApi = {
 		return response.json();
 	},
 
-	async getServiceMetrics(env: string, serviceName: string): Promise<ServiceMetrics> {
+	async getServiceMetrics(
+		env: string,
+		serviceName: string,
+	): Promise<ServiceMetrics> {
 		const response = await fetch(
-			`${API_BASE_URL}/api/ecs/metrics?env=${encodeURIComponent(env)}&service=${encodeURIComponent(serviceName)}`
+			`${API_BASE_URL}/api/ecs/metrics?env=${encodeURIComponent(env)}&service=${encodeURIComponent(serviceName)}`,
 		);
 		if (!response.ok) {
 			throw new Error("Failed to fetch service metrics");
@@ -411,9 +436,12 @@ export const infrastructureApi = {
 		return response.json();
 	},
 
-	async getECSTasks(clusterName: string, serviceName: string): Promise<ECSTasksResponse> {
+	async getECSTasks(
+		clusterName: string,
+		serviceName: string,
+	): Promise<ECSTasksResponse> {
 		const response = await fetch(
-			`${API_BASE_URL}/api/ecs/tasks?cluster=${encodeURIComponent(clusterName)}&service=${encodeURIComponent(serviceName)}`
+			`${API_BASE_URL}/api/ecs/tasks?cluster=${encodeURIComponent(clusterName)}&service=${encodeURIComponent(serviceName)}`,
 		);
 		if (!response.ok) {
 			throw new Error("Failed to fetch ECS tasks");
@@ -425,7 +453,7 @@ export const infrastructureApi = {
 		env: string,
 		serviceName: string,
 		limit: number = 100,
-		nextToken?: string
+		nextToken?: string,
 	): Promise<LogsResponse> {
 		const params = new URLSearchParams({
 			env,
@@ -435,7 +463,7 @@ export const infrastructureApi = {
 		if (nextToken) {
 			params.append("nextToken", nextToken);
 		}
-		
+
 		const response = await fetch(`${API_BASE_URL}/api/logs?${params}`);
 		if (!response.ok) {
 			throw new Error("Failed to fetch logs");
@@ -449,58 +477,61 @@ export const infrastructureApi = {
 		serviceName: string,
 		onMessage: (logs: LogEntry[]) => void,
 		onError?: (error: Error) => void,
-		onConnect?: () => void
+		onConnect?: () => void,
 	): WebSocket {
 		// Handle both relative and absolute URLs
 		let wsUrl: string;
 		if (API_BASE_URL) {
-			wsUrl = `${API_BASE_URL.replace(/^http/, 'ws')}/ws/logs?env=${encodeURIComponent(env)}&service=${encodeURIComponent(serviceName)}`;
+			wsUrl = `${API_BASE_URL.replace(/^http/, "ws")}/ws/logs?env=${encodeURIComponent(env)}&service=${encodeURIComponent(serviceName)}`;
 		} else {
 			// If no base URL, use current host with ws protocol
-			const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+			const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
 			const host = window.location.host;
 			wsUrl = `${protocol}//${host}/ws/logs?env=${encodeURIComponent(env)}&service=${encodeURIComponent(serviceName)}`;
 		}
-		
+
 		const ws = new WebSocket(wsUrl);
 
 		ws.onopen = () => {
-			console.log('Connected to log stream');
+			console.log("Connected to log stream");
 			onConnect?.();
 		};
 
 		ws.onmessage = (event) => {
 			try {
 				const data = JSON.parse(event.data);
-				if (data.type === 'logs' && data.data) {
+				if (data.type === "logs" && data.data) {
 					onMessage(data.data);
 				} else if (data.error) {
 					onError?.(new Error(data.error));
 				}
 			} catch (err) {
-				console.error('Failed to parse log message:', err);
+				console.error("Failed to parse log message:", err);
 			}
 		};
 
 		ws.onerror = (event) => {
-			console.error('WebSocket error:', event);
-			onError?.(new Error('WebSocket connection error'));
+			console.error("WebSocket error:", event);
+			onError?.(new Error("WebSocket connection error"));
 		};
 
 		ws.onclose = () => {
-			console.log('Disconnected from log stream');
+			console.log("Disconnected from log stream");
 		};
 
 		return ws;
 	},
 
 	// Get tasks for a service
-	async getServiceTasks(env: string, serviceName: string): Promise<ServiceTasksResponse> {
+	async getServiceTasks(
+		env: string,
+		serviceName: string,
+	): Promise<ServiceTasksResponse> {
 		const params = new URLSearchParams({
 			env,
 			service: serviceName,
 		});
-		
+
 		const response = await fetch(`${API_BASE_URL}/api/ecs/tasks?${params}`);
 		if (!response.ok) {
 			throw new Error("Failed to fetch service tasks");
@@ -509,14 +540,20 @@ export const infrastructureApi = {
 	},
 
 	// Check SSH capability for a task
-	async checkSSHCapability(env: string, serviceName: string, taskArn: string): Promise<SSHCapability> {
+	async checkSSHCapability(
+		env: string,
+		serviceName: string,
+		taskArn: string,
+	): Promise<SSHCapability> {
 		const params = new URLSearchParams({
 			env,
 			service: serviceName,
 			taskArn,
 		});
-		
-		const response = await fetch(`${API_BASE_URL}/api/ssh/capability?${params}`);
+
+		const response = await fetch(
+			`${API_BASE_URL}/api/ssh/capability?${params}`,
+		);
 		if (!response.ok) {
 			throw new Error("Failed to check SSH capability");
 		}
@@ -531,7 +568,7 @@ export const infrastructureApi = {
 		containerName: string | undefined,
 		onMessage: (message: SSHMessage) => void,
 		onError?: (error: Error) => void,
-		onClose?: () => void
+		onClose?: () => void,
 	): WebSocket {
 		const params = new URLSearchParams({
 			env,
@@ -539,81 +576,88 @@ export const infrastructureApi = {
 			taskArn,
 		});
 		if (containerName) {
-			params.append('container', containerName);
+			params.append("container", containerName);
 		}
 
 		// Handle both relative and absolute URLs
 		let wsUrl: string;
 		if (API_BASE_URL) {
-			wsUrl = `${API_BASE_URL.replace(/^http/, 'ws')}/ws/ssh?${params}`;
+			wsUrl = `${API_BASE_URL.replace(/^http/, "ws")}/ws/ssh?${params}`;
 		} else {
 			// If no base URL, use current host with ws protocol
-			const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+			const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
 			const host = window.location.host;
 			wsUrl = `${protocol}//${host}/ws/ssh?${params}`;
 		}
-		
-		console.log('Connecting to SSH WebSocket:', wsUrl);
-		
+
+		console.log("Connecting to SSH WebSocket:", wsUrl);
+
 		// First check if the backend is reachable
 		try {
 			const ws = new WebSocket(wsUrl);
-			
+
 			// Add a connection timeout
 			const connectionTimeout = setTimeout(() => {
 				if (ws.readyState !== WebSocket.OPEN) {
 					ws.close();
-					onError?.(new Error('SSH connection timeout. Please check if the backend server is running.'));
+					onError?.(
+						new Error(
+							"SSH connection timeout. Please check if the backend server is running.",
+						),
+					);
 				}
 			}, 5000);
 
 			ws.onopen = () => {
 				clearTimeout(connectionTimeout);
-				console.log('SSH WebSocket connected');
+				console.log("SSH WebSocket connected");
 			};
 
-		ws.onmessage = (event) => {
-			try {
-				const message: SSHMessage = JSON.parse(event.data);
-				onMessage(message);
-			} catch (err) {
-				console.error('Failed to parse SSH message:', err);
-			}
-		};
+			ws.onmessage = (event) => {
+				try {
+					const message: SSHMessage = JSON.parse(event.data);
+					onMessage(message);
+				} catch (err) {
+					console.error("Failed to parse SSH message:", err);
+				}
+			};
 
-		ws.onerror = (event) => {
-			console.error('SSH WebSocket error:', event);
-			// Provide more context about the error
-			let errorMessage = 'SSH WebSocket connection error';
-			if (ws.readyState === WebSocket.CLOSED) {
-				errorMessage = 'Unable to connect to SSH WebSocket. The backend server may not be running or the /ws/ssh endpoint is not available.';
-			}
-			onError?.(new Error(errorMessage));
-		};
+			ws.onerror = (event) => {
+				console.error("SSH WebSocket error:", event);
+				// Provide more context about the error
+				let errorMessage = "SSH WebSocket connection error";
+				if (ws.readyState === WebSocket.CLOSED) {
+					errorMessage =
+						"Unable to connect to SSH WebSocket. The backend server may not be running or the /ws/ssh endpoint is not available.";
+				}
+				onError?.(new Error(errorMessage));
+			};
 
-		ws.onclose = () => {
-			console.log('SSH WebSocket disconnected');
-			onClose?.();
-		};
+			ws.onclose = () => {
+				console.log("SSH WebSocket disconnected");
+				onClose?.();
+			};
 
 			// Add send method for input
 			(ws as any).sendInput = (input: string) => {
 				if (ws.readyState === WebSocket.OPEN) {
-					ws.send(JSON.stringify({ type: 'input', data: input }));
+					ws.send(JSON.stringify({ type: "input", data: input }));
 				}
 			};
 
 			return ws;
 		} catch (error) {
-			console.error('Failed to create WebSocket:', error);
-			onError?.(new Error('Failed to create SSH WebSocket connection'));
+			console.error("Failed to create WebSocket:", error);
+			onError?.(new Error("Failed to create SSH WebSocket connection"));
 			throw error;
 		}
 	},
 
 	// SSM Parameter Store APIs
 	async getSSMParameter(name: string): Promise<SSMParameter> {
-		const response = await fetch(`${API_BASE_URL}/api/ssm/parameter?name=${encodeURIComponent(name)}`);
+		const response = await fetch(
+			`${API_BASE_URL}/api/ssm/parameter?name=${encodeURIComponent(name)}`,
+		);
 		if (!response.ok) {
 			const error: ErrorResponse = await response.json();
 			throw new Error(error.error || "Failed to fetch SSM parameter");
@@ -621,7 +665,9 @@ export const infrastructureApi = {
 		return response.json();
 	},
 
-	async createOrUpdateSSMParameter(params: SSMParameterCreateRequest): Promise<void> {
+	async createOrUpdateSSMParameter(
+		params: SSMParameterCreateRequest,
+	): Promise<void> {
 		const response = await fetch(`${API_BASE_URL}/api/ssm/parameter`, {
 			method: "PUT",
 			headers: {
@@ -636,9 +682,12 @@ export const infrastructureApi = {
 	},
 
 	async deleteSSMParameter(name: string): Promise<void> {
-		const response = await fetch(`${API_BASE_URL}/api/ssm/parameter?name=${encodeURIComponent(name)}`, {
-			method: "DELETE",
-		});
+		const response = await fetch(
+			`${API_BASE_URL}/api/ssm/parameter?name=${encodeURIComponent(name)}`,
+			{
+				method: "DELETE",
+			},
+		);
 		if (!response.ok) {
 			const error: ErrorResponse = await response.json();
 			throw new Error(error.error || "Failed to delete SSM parameter");
@@ -650,7 +699,9 @@ export const infrastructureApi = {
 		if (prefix) {
 			params.append("prefix", prefix);
 		}
-		const response = await fetch(`${API_BASE_URL}/api/ssm/parameters?${params}`);
+		const response = await fetch(
+			`${API_BASE_URL}/api/ssm/parameters?${params}`,
+		);
 		if (!response.ok) {
 			const error: ErrorResponse = await response.json();
 			throw new Error(error.error || "Failed to list SSM parameters");
@@ -685,7 +736,9 @@ export const infrastructureApi = {
 
 	// Node Positions APIs
 	async getNodePositions(environment: string): Promise<BoardPositions> {
-		const response = await fetch(`${API_BASE_URL}/api/positions?environment=${encodeURIComponent(environment)}`);
+		const response = await fetch(
+			`${API_BASE_URL}/api/positions?environment=${encodeURIComponent(environment)}`,
+		);
 		if (!response.ok) {
 			const error: ErrorResponse = await response.json();
 			throw new Error(error.error || "Failed to fetch node positions");
@@ -709,13 +762,16 @@ export const infrastructureApi = {
 
 	// EventBridge APIs
 	async sendTestEvent(event: TestEventRequest): Promise<TestEventResponse> {
-		const response = await fetch(`${API_BASE_URL}/api/eventbridge/send-test-event`, {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
+		const response = await fetch(
+			`${API_BASE_URL}/api/eventbridge/send-test-event`,
+			{
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify(event),
 			},
-			body: JSON.stringify(event),
-		});
+		);
 		if (!response.ok) {
 			const error: ErrorResponse = await response.json();
 			throw new Error(error.error || "Failed to send test event");
@@ -724,7 +780,9 @@ export const infrastructureApi = {
 	},
 
 	async getEventTasks(env: string): Promise<EventTaskInfo[]> {
-		const response = await fetch(`${API_BASE_URL}/api/eventbridge/event-tasks?env=${encodeURIComponent(env)}`);
+		const response = await fetch(
+			`${API_BASE_URL}/api/eventbridge/event-tasks?env=${encodeURIComponent(env)}`,
+		);
 		if (!response.ok) {
 			const error: ErrorResponse = await response.json();
 			throw new Error(error.error || "Failed to fetch event tasks");
@@ -751,14 +809,22 @@ export const infrastructureApi = {
 		return response.json();
 	},
 
-	async sendTestEmail(env: string, to: string, subject: string, body: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
-		const response = await fetch(`${API_BASE_URL}/api/ses/send-test-email?env=${encodeURIComponent(env)}`, {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
+	async sendTestEmail(
+		env: string,
+		to: string,
+		subject: string,
+		body: string,
+	): Promise<{ success: boolean; messageId?: string; error?: string }> {
+		const response = await fetch(
+			`${API_BASE_URL}/api/ses/send-test-email?env=${encodeURIComponent(env)}`,
+			{
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({ to, subject, body }),
 			},
-			body: JSON.stringify({ to, subject, body }),
-		});
+		);
 		if (!response.ok) {
 			const error: ErrorResponse = await response.json();
 			throw new Error(error.error || "Failed to send test email");
@@ -776,36 +842,46 @@ export const infrastructureApi = {
 		expectedPeakVolume: string;
 		domainName: string;
 	}> {
-		const response = await fetch(`${API_BASE_URL}/api/ses/production-access-prefill?env=${encodeURIComponent(env)}`);
+		const response = await fetch(
+			`${API_BASE_URL}/api/ses/production-access-prefill?env=${encodeURIComponent(env)}`,
+		);
 		if (!response.ok) {
 			const error: ErrorResponse = await response.json();
-			throw new Error(error.error || "Failed to fetch production access prefill");
+			throw new Error(
+				error.error || "Failed to fetch production access prefill",
+			);
 		}
 		return response.json();
 	},
 
-	async requestSESProductionAccess(env: string, data: {
-		websiteUrl: string;
-		useCaseDescription: string;
-		mailingListBuildProcess: string;
-		bounceComplaintProcess: string;
-		additionalInfo: string;
-		expectedDailyVolume: string;
-		expectedPeakVolume: string;
-		contactLanguage?: string;
-	}): Promise<{
+	async requestSESProductionAccess(
+		env: string,
+		data: {
+			websiteUrl: string;
+			useCaseDescription: string;
+			mailingListBuildProcess: string;
+			bounceComplaintProcess: string;
+			additionalInfo: string;
+			expectedDailyVolume: string;
+			expectedPeakVolume: string;
+			contactLanguage?: string;
+		},
+	): Promise<{
 		success: boolean;
 		caseId?: string;
 		error?: string;
 		message?: string;
 	}> {
-		const response = await fetch(`${API_BASE_URL}/api/ses/request-production?env=${encodeURIComponent(env)}`, {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
+		const response = await fetch(
+			`${API_BASE_URL}/api/ses/request-production?env=${encodeURIComponent(env)}`,
+			{
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify(data),
 			},
-			body: JSON.stringify(data),
-		});
+		);
 		if (!response.ok) {
 			const error: ErrorResponse = await response.json();
 			throw new Error(error.error || "Failed to request SES production access");
@@ -815,7 +891,9 @@ export const infrastructureApi = {
 
 	// S3 Buckets API
 	async getS3Buckets(env: string): Promise<S3BucketInfo[]> {
-		const response = await fetch(`${API_BASE_URL}/api/s3/buckets?env=${encodeURIComponent(env)}`);
+		const response = await fetch(
+			`${API_BASE_URL}/api/s3/buckets?env=${encodeURIComponent(env)}`,
+		);
 		if (!response.ok) {
 			const error: ErrorResponse = await response.json();
 			throw new Error(error.error || "Failed to fetch S3 buckets");
@@ -856,7 +934,9 @@ export const infrastructureApi = {
 		message?: string;
 		error?: string;
 	}> {
-		const response = await fetch(`${API_BASE_URL}/api/github/oauth/status?user_code=${encodeURIComponent(userCode)}`);
+		const response = await fetch(
+			`${API_BASE_URL}/api/github/oauth/status?user_code=${encodeURIComponent(userCode)}`,
+		);
 		if (!response.ok) {
 			const error: ErrorResponse = await response.json();
 			throw new Error(error.error || "Failed to check GitHub auth status");
@@ -865,9 +945,12 @@ export const infrastructureApi = {
 	},
 
 	async deleteGitHubOAuthSession(userCode: string): Promise<void> {
-		const response = await fetch(`${API_BASE_URL}/api/github/oauth/session?user_code=${encodeURIComponent(userCode)}`, {
-			method: "DELETE",
-		});
+		const response = await fetch(
+			`${API_BASE_URL}/api/github/oauth/session?user_code=${encodeURIComponent(userCode)}`,
+			{
+				method: "DELETE",
+			},
+		);
 		if (!response.ok) {
 			const error: ErrorResponse = await response.json();
 			throw new Error(error.error || "Failed to delete GitHub OAuth session");
@@ -875,7 +958,9 @@ export const infrastructureApi = {
 	},
 
 	async getPricing(env: string): Promise<PricingResponse> {
-		const response = await fetch(`${API_BASE_URL}/api/pricing?env=${encodeURIComponent(env)}`);
+		const response = await fetch(
+			`${API_BASE_URL}/api/pricing?env=${encodeURIComponent(env)}`,
+		);
 		if (!response.ok) {
 			const error: ErrorResponse = await response.json();
 			throw new Error(error.error || "Failed to fetch pricing data");

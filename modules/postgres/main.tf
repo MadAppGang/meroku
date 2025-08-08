@@ -1,3 +1,14 @@
+# Map user-friendly versions to Aurora-specific versions
+locals {
+  aurora_version_map = {
+    "17" = "17.2"
+    "16" = "16.4" 
+    "15" = "15.6"
+    "14" = "14.11"
+    "13" = "13.14"
+  }
+}
+
 # Standard RDS Instance (when aurora = false)
 resource "aws_db_instance" "database" {
   count                  = var.aurora ? 0 : 1
@@ -28,7 +39,7 @@ resource "aws_rds_cluster" "aurora" {
   cluster_identifier      = "${var.project}-aurora-${var.env}"
   engine                  = "aurora-postgresql"
   engine_mode             = "provisioned"
-  engine_version          = "15.4"
+  engine_version          = lookup(local.aurora_version_map, var.engine_version, "16.4")
   database_name           = var.db_name
   master_username         = var.username
   master_password         = aws_ssm_parameter.postgres_password.value

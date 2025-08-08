@@ -25,7 +25,7 @@ import {
 } from "../utils/additionalServicesNodes";
 import { generateHiddenComponentNodes } from "../utils/hiddenComponentsNodes";
 import { layoutNodesWithGroups } from "../utils/layoutUtils";
-import { getNodeProperties, getNodeState } from "../utils/nodeStateMapping";
+import { getNodeProperties, getNodeState, getNodeDescription } from "../utils/nodeStateMapping";
 import { CanvasControls } from "./CanvasControls";
 import { DynamicGroupNode } from "./DynamicGroupNode";
 import { GroupNode } from "./GroupNode";
@@ -773,12 +773,14 @@ export function DeploymentCanvas({
         // Apply configuration-based state
         const isEnabled = getNodeState(node.id, config || null);
         const properties = getNodeProperties(node.id, config || null);
+        const description = getNodeDescription(node.id, config || null);
 
         return {
           ...node,
           selected: selectedNode?.id === node.id,
           data: {
             ...node.data,
+            description: description || node.data.description,
             disabled: !isEnabled,
             configProperties: properties,
             pricing: pricing,

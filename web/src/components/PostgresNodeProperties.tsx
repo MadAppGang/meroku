@@ -20,7 +20,8 @@ import {
   Eye,
   EyeOff,
   RefreshCw,
-  Copy
+  Copy,
+  Zap
 } from 'lucide-react';
 
 interface PostgresNodePropertiesProps {
@@ -128,7 +129,7 @@ export function PostgresNodeProperties({ config, onConfigChange }: PostgresNodeP
             PostgreSQL Database
           </CardTitle>
           <CardDescription>
-            AWS RDS Aurora PostgreSQL Serverless v2 cluster
+            {postgresConfig.aurora ? 'AWS Aurora PostgreSQL Serverless v2 cluster' : 'AWS RDS PostgreSQL database instance'}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -162,6 +163,67 @@ export function PostgresNodeProperties({ config, onConfigChange }: PostgresNodeP
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="flex items-center justify-between p-3 bg-gray-800 rounded-lg">
+                <div className="space-y-1">
+                  <Label className="text-sm font-medium flex items-center gap-2">
+                    <Zap className="w-4 h-4 text-yellow-400" />
+                    Aurora Serverless v2
+                  </Label>
+                  <p className="text-xs text-gray-400">Use auto-scaling Aurora Serverless v2 instead of standard RDS</p>
+                </div>
+                <Switch
+                  checked={postgresConfig.aurora || false}
+                  onCheckedChange={(checked) => handleUpdateConfig({ aurora: checked })}
+                />
+              </div>
+
+              {postgresConfig.aurora && (
+                <div className="grid grid-cols-2 gap-4 p-3 bg-gray-800 rounded-lg">
+                  <div className="space-y-2">
+                    <Label htmlFor="min-capacity">Min Capacity (ACUs)</Label>
+                    <Input
+                      id="min-capacity"
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      max="128"
+                      value={postgresConfig.min_capacity ?? 0}
+                      onChange={(e) => handleUpdateConfig({ min_capacity: parseFloat(e.target.value) })}
+                    />
+                    <p className="text-xs text-gray-500">
+                      Minimum: 0 ACU (scales to zero)
+                    </p>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="max-capacity">Max Capacity (ACUs)</Label>
+                    <Input
+                      id="max-capacity"
+                      type="number"
+                      step="0.5"
+                      min="1"
+                      max="128"
+                      value={postgresConfig.max_capacity || 1}
+                      onChange={(e) => handleUpdateConfig({ max_capacity: Math.max(1, parseFloat(e.target.value)) })}
+                    />
+                    <p className="text-xs text-gray-500">
+                      Minimum: 1 ACU, Maximum: 128 ACUs
+                    </p>
+                  </div>
+                  
+                  <div className="col-span-2">
+                    <Alert>
+                      <Info className="h-4 w-4" />
+                      <AlertDescription>
+                        <strong>ACU (Aurora Capacity Unit):</strong> Each ACU provides 2 GiB of memory and corresponding compute. 
+                        Aurora Serverless v2 automatically scales between your min and max capacity based on workload. 
+                        Setting min capacity to 0 allows the database to pause when idle, significantly reducing costs.
+                      </AlertDescription>
+                    </Alert>
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="db-name">Database Name</Label>
@@ -194,15 +256,21 @@ export function PostgresNodeProperties({ config, onConfigChange }: PostgresNodeP
                 <Label htmlFor="engine-version">PostgreSQL Version</Label>
                 <select
                   id="engine-version"
-                  value={postgresConfig.engine_version || '14'}
+                  value={postgresConfig.engine_version || '16'}
                   onChange={(e) => handleUpdateConfig({ engine_version: e.target.value })}
                   className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="16">PostgreSQL 16.x (Latest)</option>
+                  <option value="17">PostgreSQL 17.x (Latest)</option>
+                  <option value="16">PostgreSQL 16.x</option>
                   <option value="15">PostgreSQL 15.x</option>
                   <option value="14">PostgreSQL 14.x</option>
                   <option value="13">PostgreSQL 13.x</option>
                 </select>
+                {postgresConfig.aurora && (
+                  <p className="text-xs text-gray-500">
+                    Aurora Serverless v2 supports PostgreSQL 13.x through 17.x
+                  </p>
+                )}
               </div>
 
               <div className="flex items-center justify-between p-3 bg-gray-800 rounded-lg">
@@ -481,9 +549,13 @@ export function PostgresNodeProperties({ config, onConfigChange }: PostgresNodeP
                   <div className="flex items-start gap-3 p-3 bg-gray-800 rounded-lg">
                     <CheckCircle className="w-5 h-5 text-green-400 mt-0.5" />
                     <div className="flex-1">
-                      <h4 className="text-sm font-medium text-gray-200">Aurora Serverless v2 Cluster</h4>
+                      <h4 className="text-sm font-medium text-gray-200">
+                        {postgresConfig.aurora ? 'Aurora Serverless v2 Cluster' : 'RDS PostgreSQL Instance'}
+                      </h4>
                       <p className="text-xs text-gray-400 mt-1">
-                        Auto-scaling PostgreSQL cluster (0.5 - 1 ACU)
+                        {postgresConfig.aurora 
+                          ? `Auto-scaling PostgreSQL cluster (${postgresConfig.min_capacity ?? 0} - ${postgresConfig.max_capacity || 1} ACU)`
+                          : 'Managed PostgreSQL database instance'}
                       </p>
                     </div>
                   </div>
@@ -556,8 +628,19 @@ export function PostgresNodeProperties({ config, onConfigChange }: PostgresNodeP
               <div className="space-y-2 text-sm text-gray-300">
                 <p>• Database endpoint is automatically provided to backend via DATABASE_URL</p>
                 <p>• Password is auto-generated and stored in SSM Parameter Store</p>
-                <p>• Aurora Serverless v2 scales automatically based on workload</p>
-                <p>• Minimum capacity is 0.5 ACU (can scale to zero when idle)</p>
+                {postgresConfig.aurora ? (
+                  <>
+                    <p>• Aurora Serverless v2 scales automatically based on workload</p>
+                    <p>• Scales between {postgresConfig.min_capacity ?? 0} and {postgresConfig.max_capacity || 1} ACUs</p>
+                    <p>• Each ACU provides 2 GiB of memory and corresponding compute</p>
+                    <p>• Can scale to 0 ACUs when idle to minimize costs</p>
+                  </>
+                ) : (
+                  <>
+                    <p>• Standard RDS instance with fixed compute and memory</p>
+                    <p>• Suitable for predictable workloads</p>
+                  </>
+                )}
                 <p>• Database is created in private subnets by default</p>
               </div>
 
