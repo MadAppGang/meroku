@@ -295,126 +295,6 @@ export function PostgresNodeProperties({ config, onConfigChange }: PostgresNodeP
             </CardContent>
           </Card>
 
-          {/* Connection Details */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Key className="w-5 h-5" />
-                Connection Details
-              </CardTitle>
-              <CardDescription>
-                How to connect to your database
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-3">
-                <div className="bg-gray-800 rounded-lg p-3">
-                  <h4 className="text-sm font-medium text-gray-200 mb-2">Environment Variable</h4>
-                  <code className="text-xs text-blue-400">DATABASE_URL</code>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Automatically injected into backend service
-                  </p>
-                </div>
-
-                <div className="bg-gray-800 rounded-lg p-3">
-                  <h4 className="text-sm font-medium text-gray-200 mb-2">Connection String Format</h4>
-                  <code className="text-xs text-gray-400 break-all">
-                    postgresql://{actualUsername}:[PASSWORD]@[ENDPOINT]:5432/{actualDbName}
-                  </code>
-                </div>
-
-                <div className="bg-gray-800 rounded-lg p-3">
-                  <h4 className="text-sm font-medium text-gray-200 mb-2">Password Location</h4>
-                  <div className="space-y-1">
-                    <code className="text-xs text-gray-400 block">
-                      /{config.env}/{config.project}/postgres_password
-                    </code>
-                    <code className="text-xs text-gray-400 block">
-                      /{config.env}/{config.project}/backend/pg_database_password
-                    </code>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Stored in AWS Systems Manager Parameter Store
-                  </p>
-                  
-                  {/* Password Viewer */}
-                  <div className="mt-3 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={fetchPassword}
-                        disabled={passwordLoading}
-                        className="text-xs"
-                      >
-                        {passwordLoading ? (
-                          <>
-                            <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
-                            Loading...
-                          </>
-                        ) : (
-                          <>
-                            <Key className="w-3 h-3 mr-1" />
-                            Fetch Password
-                          </>
-                        )}
-                      </Button>
-                      
-                      {passwordValue && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setPasswordVisible(!passwordVisible)}
-                          className="text-xs"
-                        >
-                          {passwordVisible ? (
-                            <EyeOff className="w-3 h-3" />
-                          ) : (
-                            <Eye className="w-3 h-3" />
-                          )}
-                        </Button>
-                      )}
-                      
-                      {passwordValue && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => copyToClipboard(passwordValue)}
-                          className="text-xs"
-                        >
-                          <Copy className="w-3 h-3" />
-                        </Button>
-                      )}
-                    </div>
-                    
-                    {passwordError && (
-                      <div className="text-xs text-red-400 bg-red-900/20 border border-red-700 rounded p-2">
-                        {passwordError}
-                      </div>
-                    )}
-                    
-                    {passwordValue && (
-                      <div className="text-xs bg-gray-900 p-2 rounded border">
-                        {passwordVisible ? (
-                          <span className="font-mono text-green-400">{passwordValue}</span>
-                        ) : (
-                          <span className="font-mono text-gray-400">{'•'.repeat(20)}</span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <Alert>
-                <Info className="h-4 w-4" />
-                <AlertDescription>
-                  The database password is automatically generated and stored securely. Access it via AWS SSM Parameter Store.
-                </AlertDescription>
-              </Alert>
-            </CardContent>
-          </Card>
-
           {/* pgAdmin Configuration */}
           <Card>
             <CardHeader>
@@ -439,7 +319,7 @@ export function PostgresNodeProperties({ config, onConfigChange }: PostgresNodeP
               </div>
 
               {workloadConfig.install_pg_admin && (
-                <>
+                <div className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="pgadmin-email">pgAdmin Login Email</Label>
                     <Input
@@ -454,15 +334,14 @@ export function PostgresNodeProperties({ config, onConfigChange }: PostgresNodeP
                     </p>
                   </div>
 
-                  {/* pgAdmin Password Section */}
-                  <div className="bg-gray-800 rounded-lg p-3">
-                    <h4 className="text-sm font-medium text-gray-200 mb-2">pgAdmin Password</h4>
-                    <p className="text-xs text-gray-500 mb-3">
-                      Stored in Parameter Store: <code>/{config.env}/{config.project}/pgadmin_password</code>
-                    </p>
-                    
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2">
+                  <div className="space-y-2">
+                    <Label>pgAdmin Password</Label>
+                    <div className="bg-gray-800 rounded-lg p-3">
+                      <p className="text-xs text-gray-500 mb-3">
+                        Stored in Parameter Store: <code>/{config.env}/{config.project}/pgadmin_password</code>
+                      </p>
+                      
+                      <div className="flex items-center gap-2 mb-2">
                         <Button
                           size="sm"
                           variant="outline"
@@ -484,34 +363,34 @@ export function PostgresNodeProperties({ config, onConfigChange }: PostgresNodeP
                         </Button>
                         
                         {pgAdminPasswordValue && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setPgAdminPasswordVisible(!pgAdminPasswordVisible)}
-                            className="text-xs"
-                          >
-                            {pgAdminPasswordVisible ? (
-                              <EyeOff className="w-3 h-3" />
-                            ) : (
-                              <Eye className="w-3 h-3" />
-                            )}
-                          </Button>
-                        )}
-                        
-                        {pgAdminPasswordValue && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => copyToClipboard(pgAdminPasswordValue)}
-                            className="text-xs"
-                          >
-                            <Copy className="w-3 h-3" />
-                          </Button>
+                          <>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setPgAdminPasswordVisible(!pgAdminPasswordVisible)}
+                              className="text-xs"
+                            >
+                              {pgAdminPasswordVisible ? (
+                                <EyeOff className="w-3 h-3" />
+                              ) : (
+                                <Eye className="w-3 h-3" />
+                              )}
+                            </Button>
+                            
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => copyToClipboard(pgAdminPasswordValue)}
+                              className="text-xs"
+                            >
+                              <Copy className="w-3 h-3" />
+                            </Button>
+                          </>
                         )}
                       </div>
                       
                       {pgAdminPasswordError && (
-                        <div className="text-xs text-red-400 bg-red-900/20 border border-red-700 rounded p-2">
+                        <div className="text-xs text-red-400 bg-red-900/20 border border-red-700 rounded p-2 mb-2">
                           {pgAdminPasswordError}
                         </div>
                       )}
@@ -527,135 +406,12 @@ export function PostgresNodeProperties({ config, onConfigChange }: PostgresNodeP
                       )}
                     </div>
                   </div>
-                </>
+                </div>
               )}
             </CardContent>
           </Card>
 
-          {/* Resources Created */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Shield className="w-5 h-5" />
-                AWS Resources Created
-              </CardTitle>
-              <CardDescription>
-                Resources that will be created when PostgreSQL is enabled
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 gap-3">
-                  <div className="flex items-start gap-3 p-3 bg-gray-800 rounded-lg">
-                    <CheckCircle className="w-5 h-5 text-green-400 mt-0.5" />
-                    <div className="flex-1">
-                      <h4 className="text-sm font-medium text-gray-200">
-                        {postgresConfig.aurora ? 'Aurora Serverless v2 Cluster' : 'RDS PostgreSQL Instance'}
-                      </h4>
-                      <p className="text-xs text-gray-400 mt-1">
-                        {postgresConfig.aurora 
-                          ? `Auto-scaling PostgreSQL cluster (${postgresConfig.min_capacity ?? 0} - ${postgresConfig.max_capacity || 1} ACU)`
-                          : 'Managed PostgreSQL database instance'}
-                      </p>
-                    </div>
-                  </div>
 
-                  <div className="flex items-start gap-3 p-3 bg-gray-800 rounded-lg">
-                    <CheckCircle className="w-5 h-5 text-green-400 mt-0.5" />
-                    <div className="flex-1">
-                      <h4 className="text-sm font-medium text-gray-200">Automated Backups</h4>
-                      <p className="text-xs text-gray-400 mt-1">
-                        7-day retention with point-in-time recovery
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-3 p-3 bg-gray-800 rounded-lg">
-                    <CheckCircle className="w-5 h-5 text-green-400 mt-0.5" />
-                    <div className="flex-1">
-                      <h4 className="text-sm font-medium text-gray-200">Encryption</h4>
-                      <p className="text-xs text-gray-400 mt-1">
-                        At-rest encryption and SSL/TLS for connections
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-3 p-3 bg-gray-800 rounded-lg">
-                    <CheckCircle className="w-5 h-5 text-green-400 mt-0.5" />
-                    <div className="flex-1">
-                      <h4 className="text-sm font-medium text-gray-200">High Availability</h4>
-                      <p className="text-xs text-gray-400 mt-1">
-                        Multi-AZ deployment for automatic failover
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-3 p-3 bg-gray-800 rounded-lg">
-                    <CheckCircle className="w-5 h-5 text-green-400 mt-0.5" />
-                    <div className="flex-1">
-                      <h4 className="text-sm font-medium text-gray-200">Performance Insights</h4>
-                      <p className="text-xs text-gray-400 mt-1">
-                        Database performance monitoring and analysis
-                      </p>
-                    </div>
-                  </div>
-
-                  {workloadConfig.install_pg_admin && (
-                    <div className="flex items-start gap-3 p-3 bg-gray-800 rounded-lg">
-                      <CheckCircle className="w-5 h-5 text-green-400 mt-0.5" />
-                      <div className="flex-1">
-                        <h4 className="text-sm font-medium text-gray-200">pgAdmin Container</h4>
-                        <p className="text-xs text-gray-400 mt-1">
-                          Web interface for database management
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Important Notes */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Info className="w-5 h-5" />
-                Important Notes
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="space-y-2 text-sm text-gray-300">
-                <p>• Database endpoint is automatically provided to backend via DATABASE_URL</p>
-                <p>• Password is auto-generated and stored in SSM Parameter Store</p>
-                {postgresConfig.aurora ? (
-                  <>
-                    <p>• Aurora Serverless v2 scales automatically based on workload</p>
-                    <p>• Scales between {postgresConfig.min_capacity ?? 0} and {postgresConfig.max_capacity || 1} ACUs</p>
-                    <p>• Each ACU provides 2 GiB of memory and corresponding compute</p>
-                    <p>• Can scale to 0 ACUs when idle to minimize costs</p>
-                  </>
-                ) : (
-                  <>
-                    <p>• Standard RDS instance with fixed compute and memory</p>
-                    <p>• Suitable for predictable workloads</p>
-                  </>
-                )}
-                <p>• Database is created in private subnets by default</p>
-              </div>
-
-              <div className="pt-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => window.open(`https://console.aws.amazon.com/rds/home?region=${config.region}#databases:`, '_blank')}
-                >
-                  <ExternalLink className="w-4 h-4 mr-2" />
-                  Open RDS Console
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
         </>
       )}
     </div>

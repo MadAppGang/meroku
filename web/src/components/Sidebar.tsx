@@ -42,6 +42,7 @@ import { SESSendTestEmail } from './SESSendTestEmail';
 import { S3NodeProperties } from './S3NodeProperties';
 import { SNSNodeProperties } from './SNSNodeProperties';
 import { PostgresNodeProperties } from './PostgresNodeProperties';
+import { PostgresConnectionInfo } from './PostgresConnectionInfo';
 import { SQSNodeProperties } from './SQSNodeProperties';
 import { EventBridgeTestEvent } from './EventBridgeTestEvent';
 import { ServiceProperties } from './ServiceProperties';
@@ -121,6 +122,7 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
       case 'postgres':
         return [
           { id: 'settings', label: 'Settings', icon: Settings },
+          { id: 'connection', label: 'Connection', icon: Link },
         ];
       case 'sqs':
         return [
@@ -354,7 +356,14 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 min-h-0">
-        {activeTab === 'settings' && (
+        {/* Special handling for postgres with connection tab */}
+        {selectedNode.type === 'postgres' && config && onConfigChange ? (
+          activeTab === 'connection' ? (
+            <PostgresConnectionInfo config={config} />
+          ) : activeTab === 'settings' ? (
+            <PostgresNodeProperties config={config} onConfigChange={onConfigChange} accountInfo={accountInfo} />
+          ) : null
+        ) : activeTab === 'settings' && (
           selectedNode.type === 'ecs' && config && onConfigChange ? (
             <ECSNodeProperties 
               config={config}
@@ -399,8 +408,6 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
             <S3NodeProperties config={config} onConfigChange={onConfigChange} />
           ) : selectedNode.type === 'sns' && config && onConfigChange ? (
             <SNSNodeProperties config={config} onConfigChange={onConfigChange} />
-          ) : selectedNode.type === 'postgres' && config && onConfigChange ? (
-            <PostgresNodeProperties config={config} onConfigChange={onConfigChange} accountInfo={accountInfo} />
           ) : selectedNode.type === 'sqs' && config && onConfigChange ? (
             <SQSNodeProperties config={config} onConfigChange={onConfigChange} accountInfo={accountInfo} />
           ) : selectedNode.type === 'scheduled-task' && config && onConfigChange ? (
