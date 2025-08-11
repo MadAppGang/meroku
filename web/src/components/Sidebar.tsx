@@ -565,8 +565,8 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
                   variant="ghost" 
                   className="text-xs"
                   onClick={() => {
-                    const accountId = accountInfo?.accountId || config.ecr_account_id || '123456789012';
-                    const scriptContent = `name: Deploy to AWS (${config.env})
+                    const accountId = accountInfo?.accountId || config?.ecr_account_id || '123456789012';
+                    const scriptContent = `name: Deploy to AWS (${config?.env || 'dev'})
 
 on:
   push:
@@ -577,12 +577,12 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  AWS_REGION: ${config.region || 'us-east-1'}
+  AWS_REGION: ${config?.region || 'us-east-1'}
   AWS_ACCOUNT_ID: ${accountId}
-  ECR_REPOSITORY: ${config.project}-${config.env}-backend
-  ECS_CLUSTER: ${config.project}-${config.env}-cluster
-  ECS_SERVICE: ${config.project}-${config.env}-backend
-  IAM_ROLE: arn:aws:iam::${accountId}:role/${config.project}-${config.env}-github-actions-role
+  ECR_REPOSITORY: ${config?.project || 'project'}-${config?.env || 'dev'}-backend
+  ECS_CLUSTER: ${config?.project || 'project'}-${config?.env || 'dev'}-cluster
+  ECS_SERVICE: ${config?.project || 'project'}-${config?.env || 'dev'}-backend
+  IAM_ROLE: arn:aws:iam::${accountId}:role/${config?.project || 'project'}-${config?.env || 'dev'}-github-actions-role
 
 permissions:
   id-token: write
@@ -640,8 +640,8 @@ jobs:
               </div>
               <pre className="text-xs text-gray-300 overflow-x-auto">
 {(() => {
-  const accountId = accountInfo?.accountId || config.ecr_account_id || '123456789012';
-  return `name: Deploy to AWS (${config.env})
+  const accountId = accountInfo?.accountId || config?.ecr_account_id || '123456789012';
+  return `name: Deploy to AWS (${config?.env || 'dev'})
 
 on:
   push:
@@ -652,12 +652,12 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  AWS_REGION: ${config.region || 'us-east-1'}
+  AWS_REGION: ${config?.region || 'us-east-1'}
   AWS_ACCOUNT_ID: ${accountId}
-  ECR_REPOSITORY: ${config.project}-${config.env}-backend
-  ECS_CLUSTER: ${config.project}-${config.env}-cluster
-  ECS_SERVICE: ${config.project}-${config.env}-backend
-  IAM_ROLE: arn:aws:iam::${accountId}:role/${config.project}-${config.env}-github-actions-role
+  ECR_REPOSITORY: ${config?.project || 'project'}-${config?.env || 'dev'}-backend
+  ECS_CLUSTER: ${config?.project || 'project'}-${config?.env || 'dev'}-cluster
+  ECS_SERVICE: ${config?.project || 'project'}-${config?.env || 'dev'}-backend
+  IAM_ROLE: arn:aws:iam::${accountId}:role/${config?.project || 'project'}-${config?.env || 'dev'}-github-actions-role
 
 permissions:
   id-token: write
@@ -711,13 +711,13 @@ jobs:
             </div>
             
             {(() => {
-              const accountId = accountInfo?.accountId || config.ecr_account_id;
+              const accountId = accountInfo?.accountId || config?.ecr_account_id;
               return accountId ? (
                 <div className="bg-green-900/20 border border-green-700 rounded-lg p-3">
                   <h4 className="text-sm font-medium text-green-400 mb-2">AWS Account Configuration</h4>
                   <ul className="text-xs text-gray-400 space-y-1">
                     <li>• <code className="text-green-300">AWS Account ID</code>: {accountId}</li>
-                    <li>• <code className="text-green-300">Region</code>: {config.region || 'us-east-1'}</li>
+                    <li>• <code className="text-green-300">Region</code>: {config?.region || 'us-east-1'}</li>
                   </ul>
                 </div>
               ) : (
@@ -733,10 +733,10 @@ jobs:
             <div className="bg-green-900/20 border border-green-700 rounded-lg p-3">
               <h4 className="text-sm font-medium text-green-400 mb-2">Generated Resources</h4>
               <ul className="text-xs text-gray-400 space-y-1">
-                <li>• <code className="text-green-300">ECR Repository</code>: {config.project}-{config.env}-backend</li>
-                <li>• <code className="text-green-300">ECS Cluster</code>: {config.project}-{config.env}-cluster</li>
-                <li>• <code className="text-green-300">ECS Service</code>: {config.project}-{config.env}-backend</li>
-                <li>• <code className="text-green-300">IAM Role</code>: {config.project}-{config.env}-github-actions-role</li>
+                <li>• <code className="text-green-300">ECR Repository</code>: {config?.project || 'project'}-{config?.env || 'dev'}-backend</li>
+                <li>• <code className="text-green-300">ECS Cluster</code>: {config?.project || 'project'}-{config?.env || 'dev'}-cluster</li>
+                <li>• <code className="text-green-300">ECS Service</code>: {config?.project || 'project'}-{config?.env || 'dev'}-backend</li>
+                <li>• <code className="text-green-300">IAM Role</code>: {config?.project || 'project'}-{config?.env || 'dev'}-github-actions-role</li>
               </ul>
             </div>
             

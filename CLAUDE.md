@@ -128,3 +128,4 @@ infrastructure/
 - Use appropriate instance sizes for ECS tasks
 - Enable auto-scaling where appropriate
 - Monitor CloudWatch costs (logs retention is set to 30 days)
+- when we bump version number,we need to create tag and change version.txt file content
