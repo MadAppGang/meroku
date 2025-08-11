@@ -92,8 +92,26 @@ func selectEnvironment() error {
 						Run()
 					return fmt.Errorf("no AWS profile found for account ID: %s", env.AccountID)
 				}
+				// Validate region if environment already has one configured
+				if env.Region != "" {
+					profileRegion, err := getAWSRegion(profile)
+					if err == nil && profileRegion != "" && profileRegion != env.Region {
+						huh.NewNote().
+							Title("Region Mismatch Error").
+							Description(fmt.Sprintf("The AWS profile '%s' is configured for region '%s', but the environment '%s' requires region '%s'.\n\nPlease use a profile configured for the correct region or update the environment configuration.", profile, profileRegion, selected, env.Region)).
+							Run()
+						return fmt.Errorf("region mismatch: profile region %s != environment region %s", profileRegion, env.Region)
+					}
+				}
 				// Update the environment with the correct profile
 				env.AWSProfile = profile
+				// Set region if it's empty
+				if env.Region == "" {
+					region, err := getAWSRegion(profile)
+					if err == nil && region != "" {
+						env.Region = region
+					}
+				}
 				saveEnvToFile(env, selected+".yaml")
 			}
 		} else {
@@ -106,17 +124,44 @@ func selectEnvironment() error {
 					Run()
 				return fmt.Errorf("no AWS profile found for account ID: %s", env.AccountID)
 			}
+			// Validate region if environment already has one configured
+			if env.Region != "" {
+				profileRegion, err := getAWSRegion(profile)
+				if err == nil && profileRegion != "" && profileRegion != env.Region {
+					huh.NewNote().
+						Title("Region Mismatch Error").
+						Description(fmt.Sprintf("The AWS profile '%s' is configured for region '%s', but the environment '%s' requires region '%s'.\n\nPlease use a profile configured for the correct region or update the environment configuration.", profile, profileRegion, selected, env.Region)).
+						Run()
+					return fmt.Errorf("region mismatch: profile region %s != environment region %s", profileRegion, env.Region)
+				}
+			}
 			// Update the environment with the found profile
 			env.AWSProfile = profile
+			// Set region if it's empty
+			if env.Region == "" {
+				region, err := getAWSRegion(profile)
+				if err == nil && region != "" {
+					env.Region = region
+				}
+			}
 			saveEnvToFile(env, selected+".yaml")
 		}
 	}
 
+	// Check if region is empty and try to get it from the profile
+	if env.Region == "" && env.AWSProfile != "" {
+		region, err := getAWSRegion(env.AWSProfile)
+		if err == nil && region != "" {
+			env.Region = region
+			saveEnvToFile(env, selected+".yaml")
+		}
+	}
+	
 	// Set AWS_PROFILE environment variable
 	if env.AWSProfile != "" {
 		os.Setenv("AWS_PROFILE", env.AWSProfile)
 		selectedAWSProfile = env.AWSProfile
-		fmt.Printf("Using AWS Profile: %s (Account: %s)\n", env.AWSProfile, env.AccountID)
+		fmt.Printf("Using AWS Profile: %s (Account: %s, Region: %s)\n", env.AWSProfile, env.AccountID, env.Region)
 	}
 
 	return nil

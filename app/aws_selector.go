@@ -75,6 +75,13 @@ func selectAWSProfileForEnv(envName string) error {
 			}
 		}
 		
+		// Get the region for this profile
+		region, err := getAWSRegion(selectedProfile)
+		if err != nil {
+			fmt.Printf("Warning: failed to get AWS region: %v\n", err)
+			region = "us-east-1" // Default fallback
+		}
+		
 		// Save the account_id to the environment file if envName is provided
 		if envName != "" {
 			env, err := loadEnv(envName)
@@ -82,15 +89,28 @@ func selectAWSProfileForEnv(envName string) error {
 				return fmt.Errorf("failed to load environment %s: %w", envName, err)
 			}
 			
+			// Check for region mismatch if environment already has a region configured
+			if env.Region != "" && env.Region != region {
+				huh.NewNote().
+					Title("Region Mismatch Error").
+					Description(fmt.Sprintf("The AWS profile '%s' is configured for region '%s', but the environment '%s' requires region '%s'.\n\nPlease select a profile configured for the correct region.", selectedProfile, region, envName, env.Region)).
+					Run()
+				return fmt.Errorf("region mismatch: profile region %s != environment region %s", region, env.Region)
+			}
+			
 			env.AccountID = accountID
 			env.AWSProfile = selectedProfile
+			// Only update region if it was empty
+			if env.Region == "" {
+				env.Region = region
+			}
 			
 			// Save the updated environment
 			if err := saveEnvToFile(env, envName+".yaml"); err != nil {
 				return fmt.Errorf("failed to save environment: %w", err)
 			}
 			
-			fmt.Printf("AWS profile '%s' selected successfully (Account: %s) and saved to %s.yaml\n", selectedProfile, accountID, envName)
+			fmt.Printf("AWS profile '%s' selected successfully (Account: %s, Region: %s) and saved to %s.yaml\n", selectedProfile, accountID, region, envName)
 		} else {
 			// If no specific environment, try to update all environments that don't have account_id
 			envFiles, _ := findFilesWithExts([]string{".yaml", ".yml"})
@@ -111,8 +131,17 @@ func selectAWSProfileForEnv(envName string) error {
 				
 				// Only update if account_id is empty
 				if env.AccountID == "" {
+					// Check for region mismatch if environment already has a region configured
+					if env.Region != "" && env.Region != region {
+						fmt.Printf("Warning: Skipping %s - region mismatch (profile: %s, env: %s)\n", envName, region, env.Region)
+						continue
+					}
 					env.AccountID = accountID
 					env.AWSProfile = selectedProfile
+					// Only update region if it was empty
+					if env.Region == "" {
+						env.Region = region
+					}
 					if err := saveEnvToFile(env, envName+".yaml"); err == nil {
 						updatedEnvs = append(updatedEnvs, envName)
 					}
@@ -236,5 +265,21 @@ func runAWSSSO(profile string) error {
 	}
 	
 	return nil
+}
+
+// getAWSRegion retrieves the region configured for the given AWS profile
+func getAWSRegion(profile string) (string, error) {
+	// Set the profile temporarily
+	oldProfile := os.Getenv("AWS_PROFILE")
+	os.Setenv("AWS_PROFILE", profile)
+	defer os.Setenv("AWS_PROFILE", oldProfile)
+	
+	ctx := context.TODO()
+	cfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to load AWS config: %w", err)
+	}
+	
+	return cfg.Region, nil
 }
 

@@ -2614,7 +2614,7 @@ func (m *modernPlanModel) renderApplyCompleted(width int) string {
 		start := 0
 		if len(m.applyState.completed) > displayCount {
 			start = len(m.applyState.completed) - displayCount
-			content += dimStyle.Render(fmt.Sprintf("↑ %d earlier completed\n", start))
+			content += dimStyle.Render(fmt.Sprintf("↑ %d earlier completed", start)) + "\n"
 		}
 		
 		for _, res := range m.applyState.completed[start:] {

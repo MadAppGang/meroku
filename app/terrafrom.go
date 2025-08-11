@@ -161,8 +161,15 @@ func terraformError(output string) ([]string, error) {
 	if strings.Contains(clean, "Error: Backend configuration changed") {
 		return []string{"terraform", "init", "-reconfigure"}, nil
 	} else if strings.Contains(clean, "Error: Backend initialization required: please run \"terraform init\"") ||
+		strings.Contains(clean, "Backend initialization required, please run \"terraform init\"") ||
 		strings.Contains(clean, "Reason: Backend configuration block has changed") ||
+		strings.Contains(clean, "Reason: Initial configuration of the requested backend") ||
 		strings.Contains(clean, "Error: Module not installed") {
+		// Check if we need -reconfigure or -migrate-state flags
+		if strings.Contains(clean, "Reason: Initial configuration of the requested backend") &&
+			(strings.Contains(clean, "\"-reconfigure\"") || strings.Contains(clean, "\"-migrate-state\"")) {
+			return []string{"terraform", "init", "-reconfigure"}, nil
+		}
 		return []string{"terraform", "init"}, nil
 	}
 	return []string{}, errors.New("unknown error, I could not check it. please provide the output to us–....")

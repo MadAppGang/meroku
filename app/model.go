@@ -183,7 +183,7 @@ func createEnv(name, env string) Env {
 		Project:     name,
 		Env:         env,
 		IsProd:      false,
-		Region:      "us-east-1",
+		Region:      "", // Will be filled when AWS profile is selected
 		AccountID:   "", // Will be filled when AWS profile is selected
 		StateBucket: fmt.Sprintf("sate-bucket-%s-%s-%s", name, env, generateRandomString(5)),
 		StateFile:   "state.tfstate",

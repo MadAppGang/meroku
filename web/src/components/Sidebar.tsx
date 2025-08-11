@@ -560,16 +560,29 @@ export function Sidebar({ selectedNode, isOpen, onClose, config, onConfigChange,
             <div className="bg-gray-800 rounded-lg p-4">
               <div className="flex items-center justify-between mb-3">
                 <span className="text-sm text-gray-400 font-mono">.github/workflows/deploy.yml</span>
-                <Button size="sm" variant="ghost" className="text-xs">
-                  Copy
-                </Button>
-              </div>
-              <pre className="text-xs text-gray-300 overflow-x-auto">
-{`name: Deploy to AWS
+                <Button 
+                  size="sm" 
+                  variant="ghost" 
+                  className="text-xs"
+                  onClick={() => {
+                    const accountId = accountInfo?.accountId || config.ecr_account_id || '123456789012';
+                    const scriptContent = `name: Deploy to AWS (${config.env})
 
 on:
   push:
     branches: [ main ]
+
+concurrency:
+  group: deploy-\${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  AWS_REGION: ${config.region || 'us-east-1'}
+  AWS_ACCOUNT_ID: ${accountId}
+  ECR_REPOSITORY: ${config.project}-${config.env}-backend
+  ECS_CLUSTER: ${config.project}-${config.env}-cluster
+  ECS_SERVICE: ${config.project}-${config.env}-backend
+  IAM_ROLE: arn:aws:iam::${accountId}:role/${config.project}-${config.env}-github-actions-role
 
 permissions:
   id-token: write
@@ -580,35 +593,170 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v4
       
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
-          role-to-assume: arn:aws:iam::\${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-role
-          aws-region: us-east-1
+          role-to-assume: \${{ env.IAM_ROLE }}
+          aws-region: \${{ env.AWS_REGION }}
+      
+      - name: Compute ECR registry
+        id: ecr
+        run: echo "ECR_REGISTRY=\${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.\${{ env.AWS_REGION }}.amazonaws.com" >> "\$GITHUB_ENV"
+      
+      - name: Ensure ECR repository exists
+        run: |
+          aws ecr describe-repositories --repository-names "\$ECR_REPOSITORY" >/dev/null 2>&1 || \\
+          aws ecr create-repository --repository-name "\$ECR_REPOSITORY" >/dev/null
       
       - name: Login to ECR
         run: |
-          aws ecr get-login-password | docker login --username AWS --password-stdin \${{ secrets.ECR_URI }}
+          aws ecr get-login-password --region \$AWS_REGION | \\
+          docker login --username AWS --password-stdin \$ECR_REGISTRY
       
       - name: Build and push Docker image
         run: |
-          docker build -t my-app .
-          docker tag my-app:latest \${{ secrets.ECR_URI }}/my-app:latest
-          docker push \${{ secrets.ECR_URI }}/my-app:latest
+          docker build -t \$ECR_REPOSITORY .
+          docker tag \$ECR_REPOSITORY:latest \$ECR_REGISTRY/\$ECR_REPOSITORY:latest
+          docker tag \$ECR_REPOSITORY:latest \$ECR_REGISTRY/\$ECR_REPOSITORY:\${{ github.sha }}
+          docker push \$ECR_REGISTRY/\$ECR_REPOSITORY:latest
+          docker push \$ECR_REGISTRY/\$ECR_REPOSITORY:\${{ github.sha }}
       
-      - name: Deploy to ECS
+      - name: Deploy to ECS (force new deployment)
         run: |
-          aws ecs update-service --cluster my-cluster --service my-service --force-new-deployment`}</pre>
+          aws ecs update-service \\
+            --cluster "\$ECS_CLUSTER" \\
+            --service "\$ECS_SERVICE" \\
+            --force-new-deployment \\
+            --region "\$AWS_REGION"
+          aws ecs wait services-stable --cluster "\$ECS_CLUSTER" --services "\$ECS_SERVICE"`;
+                    navigator.clipboard.writeText(scriptContent);
+                  }}
+                >
+                  Copy
+                </Button>
+              </div>
+              <pre className="text-xs text-gray-300 overflow-x-auto">
+{(() => {
+  const accountId = accountInfo?.accountId || config.ecr_account_id || '123456789012';
+  return `name: Deploy to AWS (${config.env})
+
+on:
+  push:
+    branches: [ main ]
+
+concurrency:
+  group: deploy-\${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  AWS_REGION: ${config.region || 'us-east-1'}
+  AWS_ACCOUNT_ID: ${accountId}
+  ECR_REPOSITORY: ${config.project}-${config.env}-backend
+  ECS_CLUSTER: ${config.project}-${config.env}-cluster
+  ECS_SERVICE: ${config.project}-${config.env}-backend
+  IAM_ROLE: arn:aws:iam::${accountId}:role/${config.project}-${config.env}-github-actions-role
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: \${{ env.IAM_ROLE }}
+          aws-region: \${{ env.AWS_REGION }}
+      
+      - name: Compute ECR registry
+        id: ecr
+        run: echo "ECR_REGISTRY=\${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.\${{ env.AWS_REGION }}.amazonaws.com" >> "\$GITHUB_ENV"
+      
+      - name: Ensure ECR repository exists
+        run: |
+          aws ecr describe-repositories --repository-names "\$ECR_REPOSITORY" >/dev/null 2>&1 || \\
+          aws ecr create-repository --repository-name "\$ECR_REPOSITORY" >/dev/null
+      
+      - name: Login to ECR
+        run: |
+          aws ecr get-login-password --region \$AWS_REGION | \\
+          docker login --username AWS --password-stdin \$ECR_REGISTRY
+      
+      - name: Build and push Docker image
+        run: |
+          docker build -t \$ECR_REPOSITORY .
+          docker tag \$ECR_REPOSITORY:latest \$ECR_REGISTRY/\$ECR_REPOSITORY:latest
+          docker tag \$ECR_REPOSITORY:latest \$ECR_REGISTRY/\$ECR_REPOSITORY:\${{ github.sha }}
+          docker push \$ECR_REGISTRY/\$ECR_REPOSITORY:latest
+          docker push \$ECR_REGISTRY/\$ECR_REPOSITORY:\${{ github.sha }}
+      
+      - name: Deploy to ECS (force new deployment)
+        run: |
+          aws ecs update-service \\
+            --cluster "\$ECS_CLUSTER" \\
+            --service "\$ECS_SERVICE" \\
+            --force-new-deployment \\
+            --region "\$AWS_REGION"
+          aws ecs wait services-stable --cluster "\$ECS_CLUSTER" --services "\$ECS_SERVICE"`;
+})()}</pre>
+            </div>
+            
+            {(() => {
+              const accountId = accountInfo?.accountId || config.ecr_account_id;
+              return accountId ? (
+                <div className="bg-green-900/20 border border-green-700 rounded-lg p-3">
+                  <h4 className="text-sm font-medium text-green-400 mb-2">AWS Account Configuration</h4>
+                  <ul className="text-xs text-gray-400 space-y-1">
+                    <li>• <code className="text-green-300">AWS Account ID</code>: {accountId}</li>
+                    <li>• <code className="text-green-300">Region</code>: {config.region || 'us-east-1'}</li>
+                  </ul>
+                </div>
+              ) : (
+                <div className="bg-yellow-900/20 border border-yellow-700 rounded-lg p-3">
+                  <h4 className="text-sm font-medium text-yellow-400 mb-2">Configuration Required</h4>
+                  <p className="text-xs text-gray-400">
+                    AWS Account ID not detected. Deploy infrastructure first to populate account information.
+                  </p>
+                </div>
+              );
+            })()}
+            
+            <div className="bg-green-900/20 border border-green-700 rounded-lg p-3">
+              <h4 className="text-sm font-medium text-green-400 mb-2">Generated Resources</h4>
+              <ul className="text-xs text-gray-400 space-y-1">
+                <li>• <code className="text-green-300">ECR Repository</code>: {config.project}-{config.env}-backend</li>
+                <li>• <code className="text-green-300">ECS Cluster</code>: {config.project}-{config.env}-cluster</li>
+                <li>• <code className="text-green-300">ECS Service</code>: {config.project}-{config.env}-backend</li>
+                <li>• <code className="text-green-300">IAM Role</code>: {config.project}-{config.env}-github-actions-role</li>
+              </ul>
             </div>
             
             <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-3">
-              <h4 className="text-sm font-medium text-blue-400 mb-2">Required Secrets</h4>
+              <h4 className="text-sm font-medium text-blue-400 mb-2">Workflow Features</h4>
               <ul className="text-xs text-gray-400 space-y-1">
-                <li>• <code className="text-blue-300">AWS_ACCOUNT_ID</code> - Your AWS account ID</li>
-                <li>• <code className="text-blue-300">ECR_URI</code> - Your ECR repository URI</li>
+                <li>✓ <span className="text-blue-300">Concurrency control</span> - Prevents overlapping deployments</li>
+                <li>✓ <span className="text-blue-300">Auto-create ECR repo</span> - Creates repository if it doesn't exist</li>
+                <li>✓ <span className="text-blue-300">Dual tagging</span> - Tags with both :latest and :sha for rollback</li>
+                <li>✓ <span className="text-blue-300">Deployment verification</span> - Waits for service stability</li>
+                <li>✓ <span className="text-blue-300">OIDC authentication</span> - Passwordless AWS access</li>
+              </ul>
+            </div>
+            
+            <div className="bg-gray-800 rounded-lg p-3">
+              <h4 className="text-sm font-medium text-gray-300 mb-2">Important Notes</h4>
+              <ul className="text-xs text-gray-400 space-y-1">
+                <li>• Ensure your ECS task definition uses the <code>:latest</code> tag for auto-updates</li>
+                <li>• The workflow will cancel any in-progress deployments when a new push occurs</li>
+                <li>• Service stability check will fail the workflow if deployment fails</li>
               </ul>
             </div>
 

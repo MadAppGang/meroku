@@ -25,6 +25,16 @@ workload:
   xray_enabled: false
   enable_github_oidc: false
   github_oidc_subjects: []
+  # GitHub Actions CI/CD configuration
+  github_actions:
+    workflow_name: "Deploy to AWS"
+    workflow_file: ".github/workflows/deploy.yml"
+    branch: "main"
+    aws_region: "ap-southeast-2"
+    ecr_repository: "instagram-dev"
+    ecs_cluster: "instagram-dev-cluster"
+    ecs_service: "instagram-dev-backend"
+    iam_role_name: "github-actions-role"
   install_pg_admin: false
   pg_admin_email: admin@admin.com
   # Backend scaling configuration

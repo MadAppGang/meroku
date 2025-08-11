@@ -39,10 +39,105 @@ func printEmbeddedFiles(fsys fs.FS, title string) {
 func mainRouter() http.Handler {
 	mux := http.NewServeMux()
 
-	// Register API routes
+	// Register API routes - Environment Management
 	mux.HandleFunc("/api/environments", corsMiddleware(getEnvironments))
 	mux.HandleFunc("/api/environment", corsMiddleware(getEnvironmentConfig))
 	mux.HandleFunc("/api/environment/update", corsMiddleware(updateEnvironmentConfig))
+	
+	// Account & AWS
+	mux.HandleFunc("/api/account", corsMiddleware(getCurrentAccount))
+	mux.HandleFunc("/api/aws/profiles", corsMiddleware(getAWSProfiles))
+	
+	// Positions
+	mux.HandleFunc("/api/positions", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			getNodePositions(w, r)
+		} else {
+			saveNodePositions(w, r)
+		}
+	}))
+	
+	// ECS
+	mux.HandleFunc("/api/ecs/cluster", corsMiddleware(getECSClusterInfo))
+	mux.HandleFunc("/api/ecs/network", corsMiddleware(getECSNetworkInfo))
+	mux.HandleFunc("/api/ecs/services", corsMiddleware(getECSServicesInfo))
+	mux.HandleFunc("/api/ecs/tasks", corsMiddleware(getServiceTasks))
+	mux.HandleFunc("/api/ecs/autoscaling", corsMiddleware(getServiceAutoscaling))
+	mux.HandleFunc("/api/ecs/scaling-history", corsMiddleware(getServiceScalingHistory))
+	mux.HandleFunc("/api/ecs/metrics", corsMiddleware(getServiceMetrics))
+	
+	// RDS
+	mux.HandleFunc("/api/rds/endpoint", corsMiddleware(getDatabaseEndpoint))
+	mux.HandleFunc("/api/rds/info", corsMiddleware(getDatabaseInfo))
+	
+	// SSM Parameters
+	mux.HandleFunc("/api/ssm/parameter", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			getSSMParameter(w, r)
+		case http.MethodPut:
+			putSSMParameter(w, r)
+		case http.MethodDelete:
+			deleteSSMParameter(w, r)
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))
+	mux.HandleFunc("/api/ssm/parameters", corsMiddleware(listSSMParameters))
+	
+	// S3
+	mux.HandleFunc("/api/s3/file", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			getS3File(w, r)
+		case http.MethodPut:
+			putS3File(w, r)
+		case http.MethodDelete:
+			deleteS3File(w, r)
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))
+	mux.HandleFunc("/api/s3/files", corsMiddleware(listS3Files))
+	mux.HandleFunc("/api/s3/buckets", corsMiddleware(listProjectS3Buckets))
+	
+	// SES
+	mux.HandleFunc("/api/ses/status", corsMiddleware(getSESStatus))
+	mux.HandleFunc("/api/ses/sandbox-info", corsMiddleware(getSESSandboxInfo))
+	mux.HandleFunc("/api/ses/send-test-email", corsMiddleware(sendTestEmail))
+	mux.HandleFunc("/api/ses/production-access-prefill", corsMiddleware(getProductionAccessPrefill))
+	mux.HandleFunc("/api/ses/request-production", corsMiddleware(submitSESProductionAccess))
+	
+	// EventBridge
+	mux.HandleFunc("/api/eventbridge/send-test-event", corsMiddleware(sendTestEvent))
+	mux.HandleFunc("/api/eventbridge/event-tasks", corsMiddleware(getEventTaskInfo))
+	
+	// GitHub OAuth
+	mux.HandleFunc("/api/github/oauth/device", corsMiddleware(initiateGitHubDeviceFlow))
+	mux.HandleFunc("/api/github/oauth/status", corsMiddleware(checkGitHubDeviceFlowStatus))
+	mux.HandleFunc("/api/github/oauth/session", corsMiddleware(deleteGitHubDeviceFlowSession))
+	
+	// Amplify
+	mux.HandleFunc("/api/amplify/apps", corsMiddleware(getAmplifyApps))
+	mux.HandleFunc("/api/amplify/build-logs", corsMiddleware(getAmplifyBuildLogs))
+	mux.HandleFunc("/api/amplify/trigger-build", corsMiddleware(triggerAmplifyBuild))
+	
+	// SSH
+	mux.HandleFunc("/api/ssh/capability", corsMiddleware(getSSHCapability))
+	
+	// Logs
+	mux.HandleFunc("/api/logs", corsMiddleware(getServiceLogs))
+	
+	// Pricing
+	mux.HandleFunc("/api/pricing", corsMiddleware(getPricing))
+	
+	// Buckets
+	mux.HandleFunc("/api/buckets", corsMiddleware(listBuckets))
+	
+	// WebSocket endpoints (these handle their own CORS)
+	mux.HandleFunc("/ws/logs", streamServiceLogs)
+	mux.HandleFunc("/ws/ssh", startSSHSession)
+	mux.HandleFunc("/ws/ssh-pty", startSSHSessionPTY)
 
 	// SPA handler for all other routes
 	mux.HandleFunc("/", spaHandler())
