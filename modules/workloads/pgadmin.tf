@@ -1,3 +1,25 @@
+resource "random_password" "pgadmin" {
+  count            = var.pgadmin_enabled ? 1 : 0
+  length           = 8
+  special          = true
+  override_special = "!#$%&*()-_=+[]{}<>:?"
+}
+
+resource "aws_ssm_parameter" "pgadmin_password" {
+  count = var.pgadmin_enabled ? 1 : 0
+  name  = "/${var.env}/${var.project}/pgadmin_password"
+  type  = "SecureString"
+  value = random_password.pgadmin[0].result
+
+  tags = {
+    Name        = "${var.project}-pgadmin-password-${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
+}
+
 resource "aws_ecs_service" "pgadmin" {
   count                              = var.pgadmin_enabled ? 1 : 0
   name                               = "pgadmin_service_${var.env}"
@@ -14,12 +36,9 @@ resource "aws_ecs_service" "pgadmin" {
     assign_public_ip = true
   }
 
-
-
   service_connect_configuration {
     enabled   = true
     namespace = aws_service_discovery_private_dns_namespace.local.name
-    //TODO: logs
     service {
       port_name      = "pgadmin_service_${var.env}"
       discovery_name = "pgadmin_service_${var.env}"
@@ -37,7 +56,6 @@ resource "aws_ecs_service" "pgadmin" {
     ManagedBy   = "meroku"
     Application = "${var.project}-${var.env}"
   }
-
 }
 
 resource "aws_ecs_task_definition" "pgadmin" {
@@ -79,11 +97,9 @@ resource "aws_ecs_task_definition" "pgadmin" {
   }
 }
 
-
-
 resource "aws_security_group" "pgadmin" {
   count  = var.pgadmin_enabled ? 1 : 0
-  name   = "${var.project}_mockoon_${var.env}"
+  name   = "${var.project}_pgadmin_${var.env}"
   vpc_id = var.vpc_id
 
   ingress {
@@ -126,7 +142,6 @@ resource "aws_cloudwatch_log_group" "pgadmin" {
   }
 }
 
-
 resource "aws_iam_role" "pgadmin_task" {
   count              = var.pgadmin_enabled ? 1 : 0
   name               = "${var.project}_pgadmin_task_${var.env}"
@@ -155,7 +170,6 @@ resource "aws_iam_role" "pgadmin_task_execution" {
   }
 }
 
-
 resource "aws_iam_role_policy_attachment" "pgadmin_task_execution" {
   count      = var.pgadmin_enabled ? 1 : 0
   role       = aws_iam_role.pgadmin_task_execution[0].name
@@ -167,4 +181,3 @@ resource "aws_iam_role_policy_attachment" "pgadmin_task_cloudwatch" {
   role       = aws_iam_role.pgadmin_task[0].name
   policy_arn = "arn:aws:iam::aws:policy/CloudWatchFullAccess"
 }
-

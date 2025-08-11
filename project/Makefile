@@ -29,12 +29,12 @@ update:
 
 dev: 
 	# Uses Handlebars templating via Raymond to generate Terraform files
-	meroku template -c vars=dev.yaml -f ./infrastructure/env/main.tmpl -o ./env/dev/main.tf
+	meroku template -c vars=dev.yaml -f ./infrastructure/env/main.hbs -o ./env/dev/main.tf
 
 
 prod: 
 	# Uses Handlebars templating via Raymond to generate Terraform files
-	meroku template -c vars=prod.yaml -f ./infrastructure/env/main.tmpl -o ./env/prod/main.tf
+	meroku template -c vars=prod.yaml -f ./infrastructure/env/main.hbs -o ./env/prod/main.tf
 
 version:
 	cat ./infrastructure/version.txt

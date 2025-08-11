@@ -34,6 +34,12 @@ export function PostgresConnectionInfo({ config }: PostgresConnectionInfoProps) 
   const [passwordValue, setPasswordValue] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   
+  const [hostValue, setHostValue] = useState<string | null>(null);
+  const [hostLoading, setHostLoading] = useState(false);
+  const [hostError, setHostError] = useState<string | null>(null);
+  
+  const [connectionStringVisible, setConnectionStringVisible] = useState(false);
+  
   const fetchPassword = async () => {
     setPasswordLoading(true);
     setPasswordError(null);
@@ -48,6 +54,48 @@ export function PostgresConnectionInfo({ config }: PostgresConnectionInfoProps) 
     } finally {
       setPasswordLoading(false);
     }
+  };
+  
+  const fetchHost = async () => {
+    setHostLoading(true);
+    setHostError(null);
+    
+    try {
+      // Fetch database info directly from AWS RDS/Aurora API
+      const dbInfo = await infrastructureApi.getDatabaseInfo(
+        config.project,
+        config.env
+      );
+      
+      if (dbInfo.endpoint) {
+        setHostValue(dbInfo.endpoint);
+        // Also set the port if it differs from default
+        if (dbInfo.port && dbInfo.port !== 5432) {
+          setHostValue(`${dbInfo.endpoint}:${dbInfo.port}`);
+        }
+      } else {
+        throw new Error('No endpoint found in database info');
+      }
+    } catch (error: any) {
+      setHostError(error.message || 'Failed to fetch database endpoint');
+      // Fallback to a reasonable default pattern
+      const defaultHost = postgresConfig.aurora 
+        ? `${config.project}-aurora-${config.env}.cluster-xxxxx.${config.region}.rds.amazonaws.com`
+        : `${config.project}-postgres-${config.env}.xxxxx.${config.region}.rds.amazonaws.com`;
+      setHostValue(defaultHost);
+    } finally {
+      setHostLoading(false);
+    }
+  };
+  
+  const buildConnectionString = () => {
+    if (passwordValue && hostValue) {
+      // Check if port is already included in hostValue
+      const hasPort = hostValue.includes(':');
+      const connectionHost = hasPort ? hostValue : `${hostValue}:5432`;
+      return `postgresql://${actualUsername}:${passwordValue}@${connectionHost}/${actualDbName}`;
+    }
+    return null;
   };
   
   const copyToClipboard = (text: string) => {
@@ -128,6 +176,54 @@ export function PostgresConnectionInfo({ config }: PostgresConnectionInfoProps) 
               <p className="text-xs text-gray-500 mt-1">
                 {postgresConfig.aurora ? 'Aurora cluster endpoint' : 'RDS instance address'}
               </p>
+              
+              {/* Host Viewer */}
+              <div className="mt-3 pt-2 border-t border-gray-700">
+                <div className="flex items-center gap-2 mb-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={fetchHost}
+                    disabled={hostLoading}
+                    className="text-xs"
+                  >
+                    {hostLoading ? (
+                      <>
+                        <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
+                        Loading...
+                      </>
+                    ) : (
+                      <>
+                        <Server className="w-3 h-3 mr-1" />
+                        Get Host
+                      </>
+                    )}
+                  </Button>
+                  
+                  {hostValue && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => copyToClipboard(hostValue)}
+                      className="text-xs"
+                    >
+                      <Copy className="w-3 h-3" />
+                    </Button>
+                  )}
+                </div>
+                
+                {hostError && (
+                  <div className="text-xs text-yellow-400 bg-yellow-900/20 border border-yellow-700 rounded p-2 mb-2">
+                    {hostError}
+                  </div>
+                )}
+                
+                {hostValue && (
+                  <div className="text-xs bg-gray-900 p-2 rounded border">
+                    <span className="font-mono text-green-400 break-all">{hostValue}</span>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="bg-gray-800 rounded-lg p-3">
@@ -315,6 +411,98 @@ export function PostgresConnectionInfo({ config }: PostgresConnectionInfoProps) 
               <code className="text-xs text-green-400 whitespace-pre">
 {`postgresql://\${PG_DATABASE_USERNAME}:\${PG_DATABASE_PASSWORD}@\${PG_DATABASE_HOST}:5432/\${PG_DATABASE_NAME}`}
               </code>
+            </div>
+            
+            {/* Interactive Connection String Builder */}
+            <div className="mt-4 pt-3 border-t border-gray-700">
+              <div className="flex items-center justify-between mb-2">
+                <h5 className="text-xs font-medium text-gray-300">Build Full Connection String</h5>
+                {(!hostValue || !passwordValue) && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={async () => {
+                      if (!hostValue) await fetchHost();
+                      if (!passwordValue) await fetchPassword();
+                    }}
+                    disabled={hostLoading || passwordLoading}
+                    className="text-xs"
+                  >
+                    {(hostLoading || passwordLoading) ? (
+                      <>
+                        <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
+                        Loading...
+                      </>
+                    ) : (
+                      <>
+                        <Database className="w-3 h-3 mr-1" />
+                        Get Connection Details
+                      </>
+                    )}
+                  </Button>
+                )}
+              </div>
+              
+              {/* Show any errors */}
+              {(passwordError || hostError) && (
+                <div className="mb-2">
+                  {passwordError && (
+                    <div className="text-xs text-red-400 bg-red-900/20 border border-red-700 rounded p-2 mb-2">
+                      <strong>Password Error:</strong> {passwordError}
+                    </div>
+                  )}
+                  {hostError && hostValue && (
+                    <div className="text-xs text-yellow-400 bg-yellow-900/20 border border-yellow-700 rounded p-2">
+                      <strong>Host Notice:</strong> {hostError}
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {hostValue && passwordValue && (
+                <>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setConnectionStringVisible(!connectionStringVisible)}
+                      className="text-xs"
+                    >
+                      {connectionStringVisible ? (
+                        <><EyeOff className="w-3 h-3 mr-1" /> Hide</>  
+                      ) : (
+                        <><Eye className="w-3 h-3 mr-1" /> Show</>  
+                      )}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        const connStr = buildConnectionString();
+                        if (connStr) copyToClipboard(connStr);
+                      }}
+                      className="text-xs"
+                    >
+                      <Copy className="w-3 h-3 mr-1" />
+                      Copy
+                    </Button>
+                  </div>
+                  
+                  {connectionStringVisible && (
+                    <div className="bg-gray-900 rounded p-3 overflow-x-auto">
+                      <code className="text-xs text-green-400 break-all">
+                        {buildConnectionString()}
+                      </code>
+                    </div>
+                  )}
+                </>
+              )}
+              
+              {(!hostValue || !passwordValue) && !hostLoading && !passwordLoading && (
+                <div className="text-xs text-gray-500">
+                  Click "Get Connection Details" to build the connection string
+                </div>
+              )}
             </div>
           </div>
 

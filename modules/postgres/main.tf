@@ -7,6 +7,10 @@ locals {
     "14" = "14.11"
     "13" = "13.14"
   }
+  
+  # Use default values if variables are empty
+  db_username = var.username != "" ? var.username : "postgres"
+  db_name = var.db_name != "" ? var.db_name : var.project
 }
 
 # Standard RDS Instance (when aurora = false)
@@ -17,8 +21,8 @@ resource "aws_db_instance" "database" {
   engine_version         = var.engine_version
   instance_class         = var.instance
   allocated_storage      = var.storage
-  username               = var.username
-  db_name                = var.db_name
+  username               = local.db_username
+  db_name                = local.db_name
   password               = aws_ssm_parameter.postgres_password.value
   skip_final_snapshot    = true
   vpc_security_group_ids = [aws_security_group.database.id]
@@ -40,8 +44,8 @@ resource "aws_rds_cluster" "aurora" {
   engine                  = "aurora-postgresql"
   engine_mode             = "provisioned"
   engine_version          = lookup(local.aurora_version_map, var.engine_version, "16.4")
-  database_name           = var.db_name
-  master_username         = var.username
+  database_name           = local.db_name
+  master_username         = local.db_username
   master_password         = aws_ssm_parameter.postgres_password.value
   skip_final_snapshot     = true
   vpc_security_group_ids  = [aws_security_group.database.id]
@@ -50,6 +54,10 @@ resource "aws_rds_cluster" "aurora" {
   serverlessv2_scaling_configuration {
     min_capacity = var.min_capacity
     max_capacity = var.max_capacity
+  }
+  
+  lifecycle {
+    ignore_changes = [master_password]
   }
 
   tags = {
@@ -69,6 +77,11 @@ resource "aws_rds_cluster_instance" "aurora" {
   instance_class     = "db.serverless"
   engine             = aws_rds_cluster.aurora[0].engine
   engine_version     = aws_rds_cluster.aurora[0].engine_version
+  publicly_accessible = var.public_access
+  
+  lifecycle {
+    create_before_destroy = true
+  }
 
   tags = {
     Name        = "${var.project}-aurora-instance-${var.env}"

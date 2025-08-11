@@ -150,11 +150,9 @@ module "workloads" {
   {{#if workload.backend_container_command}}
   backend_container_command = {{array backend_container_command}}
   {{/if}}
-  {{#if postgres.enabled}}
-  pgadmin_enabled = {{workload.install_pg_admin}}
-  pgadmin_email = "{{workload.pg_admin_email}}"   
-  {{/if}}
   xray_enabled = {{workload.xray_enabled}}
+  pgadmin_enabled = {{workload.install_pg_admin}}
+  pgadmin_email = "{{workload.pg_admin_email}}"
   backend_env = {{{ envArray workload.backend_env_variables }}}
   
   # Backend scaling configuration

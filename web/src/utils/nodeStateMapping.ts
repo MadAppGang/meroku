@@ -6,7 +6,7 @@ export interface NodeStateConfig {
 	type: string;
 	enabled: (config: YamlInfrastructureConfig) => boolean;
 	properties?: (config: YamlInfrastructureConfig) => Record<string, any>;
-	description?: string;
+	description?: string | ((config: YamlInfrastructureConfig) => string);
 }
 
 /**

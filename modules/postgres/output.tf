@@ -11,7 +11,7 @@ output "port" {
 }
 
 output "user" {
-  value = var.username
+  value = local.db_username
 }
 
 output "password" {
@@ -19,7 +19,7 @@ output "password" {
 }
 
 output "db_name" {
-  value = var.db_name
+  value = local.db_name
 }
 
 output "is_aurora" {

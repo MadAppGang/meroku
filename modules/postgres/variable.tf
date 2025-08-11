@@ -11,27 +11,20 @@ variable "subnet_ids" {
   type = list(string)
 }
 
-
-variable "pgadmin_enabled" {
-  type    = bool
-  default = "false"
-}
-variable "pgadmin_email" {
-  type    = string
-  default = "admin@madappgang.com"
-}
-
 variable "project" {
   type = string
 }
 
 variable "db_name" {
   type = string
+  default = ""
+  description = "Database name. If empty, uses project name as default"
 }
 
 variable "username" {
   type    = string
-  default = "postgres"
+  default = ""
+  description = "Master username. If empty, defaults to 'postgres'"
 }
 
 variable "instance" {
@@ -108,26 +101,4 @@ resource "aws_ssm_parameter" "postgres_password_backend" {
   }
 }
 
-resource "random_password" "pgadmin" {
-  length           = 8
-  special          = true
-  override_special = "!#$%&*()-_=+[]{}<>:?"
-}
-
-
-
-resource "aws_ssm_parameter" "pgadmin_password" {
-  count = var.pgadmin_enabled ? 1 : 0
-  name  = "/${var.env}/${var.project}/pgadmin_password"
-  type  = "SecureString"
-  value = random_password.pgadmin.result
-
-  tags = {
-    Name        = "${var.project}-pgadmin-password-${var.env}"
-    Environment = var.env
-    Project     = var.project
-    ManagedBy   = "meroku"
-    Application = "${var.project}-${var.env}"
-  }
-}
 

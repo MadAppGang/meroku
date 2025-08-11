@@ -9,12 +9,9 @@ import { YamlInfrastructureConfig } from '../types/yamlConfig';
 import { infrastructureApi } from '../api/infrastructure';
 import { 
   Database, 
-  Shield, 
   Key,
-  CheckCircle,
   Info,
   AlertCircle,
-  ExternalLink,
   Server,
   FileText,
   Eye,
@@ -33,10 +30,7 @@ interface PostgresNodePropertiesProps {
 export function PostgresNodeProperties({ config, onConfigChange }: PostgresNodePropertiesProps) {
   const postgresConfig = config.postgres || { enabled: false };
   const workloadConfig = config.workload || {};
-  const [passwordVisible, setPasswordVisible] = useState(false);
-  const [passwordLoading, setPasswordLoading] = useState(false);
-  const [passwordValue, setPasswordValue] = useState<string | null>(null);
-  const [passwordError, setPasswordError] = useState<string | null>(null);
+  // Remove unused password state variables that are only needed in PostgresConnectionInfo component
   
   const handleTogglePostgres = (enabled: boolean) => {
     onConfigChange({
@@ -74,21 +68,7 @@ export function PostgresNodeProperties({ config, onConfigChange }: PostgresNodeP
     });
   };
 
-  const fetchPassword = async () => {
-    setPasswordLoading(true);
-    setPasswordError(null);
-    
-    try {
-      const parameter = await infrastructureApi.getSSMParameter(
-        `/${config.env}/${config.project}/postgres_password`
-      );
-      setPasswordValue(parameter.value);
-    } catch (error: any) {
-      setPasswordError(error.message || 'Failed to fetch password');
-    } finally {
-      setPasswordLoading(false);
-    }
-  };
+  // Password fetching moved to PostgresConnectionInfo component
 
   const [pgAdminPasswordVisible, setPgAdminPasswordVisible] = useState(false);
   const [pgAdminPasswordLoading, setPgAdminPasswordLoading] = useState(false);
@@ -115,9 +95,7 @@ export function PostgresNodeProperties({ config, onConfigChange }: PostgresNodeP
     navigator.clipboard.writeText(text);
   };
 
-  // Determine actual values with defaults
-  const actualDbName = postgresConfig.dbname || config.project;
-  const actualUsername = postgresConfig.username || 'postgres';
+  // These values are now used only in PostgresConnectionInfo component
 
   return (
     <div className="space-y-6">

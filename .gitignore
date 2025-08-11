@@ -41,3 +41,4 @@ modules/appsync/auth_lambda.zip
 dist/
 app/meroku
 .positions/
+env/dev/.terraform.lock.hcl

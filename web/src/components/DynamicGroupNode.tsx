@@ -1,7 +1,6 @@
 import type React from "react";
 import { useMemo } from "react";
 import { type NodeProps, useNodes, useStore } from "reactflow";
-import type { ComponentNode } from "../types";
 
 interface GroupNodeData {
   label: string;
@@ -9,7 +8,7 @@ interface GroupNodeData {
   nodeIds?: string[]; // IDs of nodes that belong to this group
 }
 
-export function DynamicGroupNode({ data }: NodeProps<GroupNodeData>) {
+export function DynamicGroupNode({ data, id }: NodeProps<GroupNodeData>) {
   const nodes = useNodes();
   const nodeInternals = useStore((state) => state.nodeInternals);
 
@@ -23,11 +22,10 @@ export function DynamicGroupNode({ data }: NodeProps<GroupNodeData>) {
       if (data.nodeIds?.includes(node.id)) return true;
 
       // For subgroups (Services, Observability), include nodes with matching subgroup
-      const nodeData = node.data as ComponentNode;
-      if (nodeData?.subgroup === data.label) return true;
+      if (node.data?.subgroup === data.label) return true;
 
       // For main groups, include nodes with matching group (but not if they have a subgroup)
-      if (nodeData?.group === data.label && !nodeData?.subgroup) return true;
+      if (node.data?.group === data.label && !node.data?.subgroup) return true;
 
       return false;
     });
@@ -68,9 +66,16 @@ export function DynamicGroupNode({ data }: NodeProps<GroupNodeData>) {
 
     // Add padding
     const sidePadding = 20;
-    const topPadding = 40; // Space above nodes for label
-    const bottomPadding = 20; // Bottom padding
+    const topPadding = 0; // Space above nodes for label
+    const bottomPadding = 0; // Minimal bottom padding
 
+    const bb = {
+      x: minX - sidePadding,
+      y: minY - topPadding,
+      width: maxX - minX + sidePadding * 2,
+      height: maxY - minY + topPadding + bottomPadding,
+    };
+    console.log(bb);
     return {
       x: minX - sidePadding,
       y: minY - topPadding,
@@ -97,7 +102,7 @@ export function DynamicGroupNode({ data }: NodeProps<GroupNodeData>) {
       <div
         style={{
           position: "absolute",
-          top: 12,
+          top: 8,
           left: 20,
           backgroundColor: "#0a0a0a",
           padding: "4px 12px",

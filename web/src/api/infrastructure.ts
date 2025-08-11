@@ -665,6 +665,42 @@ export const infrastructureApi = {
 		return response.json();
 	},
 
+	async getDatabaseInfo(project: string, env: string): Promise<{
+		endpoint: string;
+		port: number;
+		isAurora: boolean;
+		status: string;
+		engine: string;
+		engineVersion?: string;
+	}> {
+		const response = await fetch(
+			`${API_BASE_URL}/api/rds/info?project=${encodeURIComponent(project)}&env=${encodeURIComponent(env)}`,
+		);
+		if (!response.ok) {
+			const error: ErrorResponse = await response.json();
+			throw new Error(error.error || "Failed to fetch database info");
+		}
+		return response.json();
+	},
+
+	async getDatabaseEndpoint(project: string, env: string, isAurora: boolean): Promise<{
+		endpoint: string;
+		port: number;
+		isAurora: boolean;
+		status: string;
+		engine: string;
+		engineVersion?: string;
+	}> {
+		const response = await fetch(
+			`${API_BASE_URL}/api/rds/endpoint?project=${encodeURIComponent(project)}&env=${encodeURIComponent(env)}&aurora=${isAurora}`,
+		);
+		if (!response.ok) {
+			const error: ErrorResponse = await response.json();
+			throw new Error(error.error || "Failed to fetch database endpoint");
+		}
+		return response.json();
+	},
+
 	async createOrUpdateSSMParameter(
 		params: SSMParameterCreateRequest,
 	): Promise<void> {

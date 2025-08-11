@@ -4,12 +4,9 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
-	"net"
 	"net/http"
 	"strings"
 	"time"
-
-	"github.com/charmbracelet/huh"
 )
 
 //go:embed all:webapp
@@ -46,84 +43,6 @@ func mainRouter() http.Handler {
 	mux.HandleFunc("/api/environments", corsMiddleware(getEnvironments))
 	mux.HandleFunc("/api/environment", corsMiddleware(getEnvironmentConfig))
 	mux.HandleFunc("/api/environment/update", corsMiddleware(updateEnvironmentConfig))
-	mux.HandleFunc("/api/account", corsMiddleware(getCurrentAccount))
-	mux.HandleFunc("/api/profiles", corsMiddleware(getAWSProfiles))
-	mux.HandleFunc("/api/ecs/cluster", corsMiddleware(getECSClusterInfo))
-	mux.HandleFunc("/api/ecs/network", corsMiddleware(getECSNetworkInfo))
-	mux.HandleFunc("/api/ecs/services", corsMiddleware(getECSServicesInfo))
-	// Autoscaling endpoints
-	mux.HandleFunc("/api/ecs/autoscaling", corsMiddleware(getServiceAutoscaling))
-	mux.HandleFunc("/api/ecs/scaling-history", corsMiddleware(getServiceScalingHistory))
-	mux.HandleFunc("/api/ecs/metrics", corsMiddleware(getServiceMetrics))
-	// Logs endpoints
-	mux.HandleFunc("/api/logs", corsMiddleware(getServiceLogs))
-	mux.HandleFunc("/ws/logs", streamServiceLogs) // WebSocket doesn't need CORS middleware
-	// Tasks endpoints
-	mux.HandleFunc("/api/ecs/tasks", corsMiddleware(getServiceTasks))
-	// SSH endpoints
-	mux.HandleFunc("/api/ssh/capability", corsMiddleware(getSSHCapability))
-	mux.HandleFunc("/ws/ssh", startSSHSessionPTY) // WebSocket doesn't need CORS middleware - Using PTY version
-	// SSM Parameter endpoints
-	mux.HandleFunc("/api/ssm/parameter", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			getSSMParameter(w, r)
-		case http.MethodPut, http.MethodPost:
-			putSSMParameter(w, r)
-		case http.MethodDelete:
-			deleteSSMParameter(w, r)
-		default:
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		}
-	}))
-	mux.HandleFunc("/api/ssm/parameters", corsMiddleware(listSSMParameters))
-	// S3 File Management endpoints
-	mux.HandleFunc("/api/s3/file", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			getS3File(w, r)
-		case http.MethodPut, http.MethodPost:
-			putS3File(w, r)
-		case http.MethodDelete:
-			deleteS3File(w, r)
-		default:
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		}
-	}))
-	mux.HandleFunc("/api/s3/files", corsMiddleware(listS3Files))
-	mux.HandleFunc("/api/s3/buckets", corsMiddleware(listBuckets))
-	// Node positions endpoints
-	mux.HandleFunc("/api/positions", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			getNodePositions(w, r)
-		case http.MethodPost, http.MethodPut:
-			saveNodePositions(w, r)
-		default:
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		}
-	}))
-	// Pricing endpoint
-	mux.HandleFunc("/api/pricing", corsMiddleware(getPricing))
-	// EventBridge endpoints
-	mux.HandleFunc("/api/eventbridge/send-test-event", corsMiddleware(sendTestEvent))
-	mux.HandleFunc("/api/eventbridge/event-tasks", corsMiddleware(getEventTaskInfo))
-	// SES endpoints
-	mux.HandleFunc("/api/ses/status", corsMiddleware(getSESStatus))
-	mux.HandleFunc("/api/ses/sandbox-info", corsMiddleware(getSESSandboxInfo))
-	mux.HandleFunc("/api/ses/send-test-email", corsMiddleware(sendTestEmail))
-	mux.HandleFunc("/api/ses/request-production", corsMiddleware(submitSESProductionAccess))
-	mux.HandleFunc("/api/ses/production-access-prefill", corsMiddleware(getProductionAccessPrefill))
-	
-	// GitHub OAuth Device Flow endpoints
-	mux.HandleFunc("/api/github/oauth/device", corsMiddleware(initiateGitHubDeviceFlow))
-	mux.HandleFunc("/api/github/oauth/status", corsMiddleware(checkGitHubDeviceFlowStatus))
-	mux.HandleFunc("/api/github/oauth/session", corsMiddleware(deleteGitHubDeviceFlowSession))
-
-	// Amplify endpoints
-	mux.HandleFunc("/api/amplify/apps", corsMiddleware(getAmplifyApps))
-	mux.HandleFunc("/api/amplify/build-logs", corsMiddleware(getAmplifyBuildLogs))
-	mux.HandleFunc("/api/amplify/trigger-build", corsMiddleware(triggerAmplifyBuild))
 
 	// SPA handler for all other routes
 	mux.HandleFunc("/", spaHandler())
@@ -141,6 +60,8 @@ func spaHandler() http.HandlerFunc {
 	}
 
 	fileServer := http.FileServer(http.FS(fsys))
+	// Print the content of the embedded folder for debugging
+	printEmbeddedFiles(fsys, "Embedded webapp files")
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
@@ -180,68 +101,45 @@ func spaHandler() http.HandlerFunc {
 }
 
 func startSPAServer(port string) {
-	startSPAServerWithAutoOpen(port, true, true)
-}
-
-func startSPAServerWithAutoOpen(port string, autoOpen bool, showTUI bool) {
 	// Create the main router
 	router := mainRouter()
 
-	// Wrap the router with a global CORS handler
-	corsHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Set CORS headers for ALL requests
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
-		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-Requested-With")
-		w.Header().Set("Access-Control-Allow-Credentials", "true")
-		w.Header().Set("Access-Control-Max-Age", "3600")
-		
-		// Handle preflight requests for any path
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		
-		// Otherwise, serve the request with the router
-		router.ServeHTTP(w, r)
-	})
-
-	// Try to listen on the port first to check if it's available
-	listener, err := net.Listen("tcp", ":"+port)
-	if err != nil {
-		if strings.Contains(err.Error(), "address already in use") {
-			// Show error using TUI
-			huh.NewNote().
-				Title("Port Already in Use").
-				Description(fmt.Sprintf("Port %s is already in use.\n\nLooks like another instance of meroku is running.\nPlease close it first before starting a new one.", port)).
-				Run()
-		} else {
-			// Show other errors using TUI
-			huh.NewNote().
-				Title("Server Start Failed").
-				Description(fmt.Sprintf("Failed to start server on port %s:\n%v", port, err)).
-				Run()
-		}
-		return
-	}
-	
+	// Start server in a goroutine
 	serverURL := "http://localhost:" + port
-	
-	// Start server in a goroutine using the listener
-	serverStarted := make(chan bool, 1)
 	go func() {
-		server := &http.Server{Handler: corsHandler}
-		serverStarted <- true
-		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
-			fmt.Printf("Server error: %v\n", err)
+		if err := http.ListenAndServe(":"+port, router); err != nil {
+			fmt.Printf("Failed to start server: %v\n", err)
 		}
 	}()
 
-	// Wait for server to start
-	<-serverStarted
-	time.Sleep(100 * time.Millisecond) // Small delay to ensure server is ready
+	// Give the server a moment to start
+	time.Sleep(1 * time.Second)
 
-	fmt.Printf("Web server started successfully at %s\n", serverURL)
+	// Open the web app
+	if err := openBrowser(serverURL); err != nil {
+		fmt.Printf("Failed to open browser: %v\n", err)
+	}
+
+	// Run the TUI
+	if err := runWebServerTUI(serverURL); err != nil {
+		fmt.Printf("Error running TUI: %v\n", err)
+	}
+}
+
+func startSPAServerWithAutoOpen(port string, autoOpen bool, runTUI bool) {
+	// Create the main router
+	router := mainRouter()
+
+	// Start server in a goroutine
+	serverURL := "http://localhost:" + port
+	go func() {
+		if err := http.ListenAndServe(":"+port, router); err != nil {
+			fmt.Printf("Failed to start server: %v\n", err)
+		}
+	}()
+
+	// Give the server a moment to start
+	time.Sleep(1 * time.Second)
 
 	// Open the web app if requested
 	if autoOpen {
@@ -251,7 +149,7 @@ func startSPAServerWithAutoOpen(port string, autoOpen bool, showTUI bool) {
 	}
 
 	// Run the TUI if requested
-	if showTUI {
+	if runTUI {
 		if err := runWebServerTUI(serverURL); err != nil {
 			fmt.Printf("Error running TUI: %v\n", err)
 		}

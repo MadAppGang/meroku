@@ -348,3 +348,15 @@ variable "backend_autoscaling_target_memory" {
   type        = number
   default     = 80
 }
+
+variable "pgadmin_enabled" {
+  description = "Enable pgAdmin deployment"
+  type        = bool
+  default     = false
+}
+
+variable "pgadmin_email" {
+  description = "Default email for pgAdmin login"
+  type        = string
+  default     = "admin@example.com"
+}
