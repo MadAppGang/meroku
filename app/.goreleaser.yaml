@@ -21,6 +21,8 @@ before:
 builds:
   - env:
       - CGO_ENABLED=0
+    ldflags:
+      - -X main.version={{.Version}}
     goos:
       - linux
       - windows
@@ -35,26 +37,30 @@ archives:
       {{- else if eq .Arch "386" }}i386
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
-    format: tar.gz
-    # use zip for windows archives
-    format_overrides:
-      - goos: windows
-        format: zip
-homebrew_casks:
+brews:
   - name: meroku
-    commit_author:
-      name: erudenko
-      email: i@madappgang.com
-    homepage: "https://madappgang.com"
-    description: "Easy infrastructure management"
-    license: "MIT"
     repository:
       owner: MadAppGang
       name: homebrew-meroku
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    directory: Casks
-    conflicts:
-      - formula: meroku
+      branch: main
+    directory: Formula
+    commit_author:
+      name: erudenko
+      email: i@madappgang.com
+    commit_msg_template: "Brew formula update for {{ .ProjectName }} version {{ .Tag }}"
+    homepage: "https://madappgang.com"
+    description: "Easy infrastructure management"
+    license: "MIT"
+    dependencies:
+      - name: terraform
+        type: optional
+      - name: opentofu
+        type: optional
+    test: |
+      system "#{bin}/meroku", "--version"
+    install: |
+      bin.install "meroku"
 
 # Linux packages via nFPM
 nfpms:

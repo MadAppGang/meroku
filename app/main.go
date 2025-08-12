@@ -5,17 +5,28 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 )
+
+// version will be set at compile time using ldflags
+var version = "dev"
 
 var (
 	profileFlag = flag.String("profile", "", "AWS profile to use (skips profile selection)")
 	webFlag     = flag.Bool("web", false, "Open web app immediately")
 	envFlag     = flag.String("env", "", "Environment to use (e.g., dev, prod)")
+	versionFlag = flag.Bool("version", false, "Show version information")
 )
 
 func main() {
 	// Parse command line flags
 	flag.Parse()
+
+	// Handle version flag
+	if *versionFlag {
+		fmt.Printf("meroku version %s\n", strings.TrimSpace(version))
+		os.Exit(0)
+	}
 
 	registerCustomHelpers()
 	file, err := os.OpenFile("app.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666)

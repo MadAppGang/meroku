@@ -13,6 +13,8 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.229.0
 	github.com/aws/aws-sdk-go-v2/service/ecs v1.58.1
 	github.com/aws/aws-sdk-go-v2/service/eventbridge v1.40.0
+	github.com/aws/aws-sdk-go-v2/service/pricing v1.34.5
+	github.com/aws/aws-sdk-go-v2/service/rds v1.102.0
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.61.0
 	github.com/aws/aws-sdk-go-v2/service/servicediscovery v1.35.7
 	github.com/aws/aws-sdk-go-v2/service/ses v1.30.5
@@ -44,8 +46,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.3.18 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.2 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.17.16 // indirect
-	github.com/aws/aws-sdk-go-v2/service/pricing v1.34.5 // indirect
-	github.com/aws/aws-sdk-go-v2/service/rds v1.102.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.22.5 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.26.5 // indirect
 	github.com/aws/smithy-go v1.22.5 // indirect
@@ -69,5 +69,4 @@ require (
 	golang.org/x/sync v0.8.0 // indirect
 	golang.org/x/sys v0.24.0 // indirect
 	golang.org/x/text v0.17.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
