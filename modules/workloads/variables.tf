@@ -59,7 +59,7 @@ variable "subnet_ids" {
 
 variable "github_subjects" {
   type    = list(string)
-  default = ["repo:MadAppGang/*"]
+  default = ["repo:MadAppGang/*:*"]
 }
 
 variable "github_oidc_enabled" {

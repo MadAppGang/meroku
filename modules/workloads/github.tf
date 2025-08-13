@@ -73,6 +73,10 @@ data "aws_iam_policy_document" "github" {
       "ecr:InitiateLayerUpload",
       "ecr:BatchCheckLayerAvailability",
       "ecr:PutImage",
+      "ecr:DescribeRepositories",
+      "ecr:CreateRepository",
+      "ecs:UpdateService",
+      "ecs:DescribeServices",
       "events:PutEvents"
     ]
     resources = ["*"]
