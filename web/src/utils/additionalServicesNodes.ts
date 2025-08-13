@@ -68,10 +68,10 @@ export function generateAdditionalServiceNodes(
 					schedule: task.schedule,
 					publicAccess: task.allow_public_access,
 					taskCount: 1, // Scheduled tasks run as single instances
-					cpu: task.cpu?.toString() || '256',
-					memory: task.memory?.toString() || '512',
-					serviceType: 'Scheduled Task',
-					purpose: getTaskPurpose(task.name, 'scheduled'),
+					cpu: task.cpu?.toString() || "256",
+					memory: task.memory?.toString() || "512",
+					serviceType: "Scheduled Task",
+					purpose: getTaskPurpose(task.name, "scheduled"),
 					healthStatus: {
 						critical: false,
 						monitored: true,
@@ -102,10 +102,10 @@ export function generateAdditionalServiceNodes(
 					sources: task.sources,
 					publicAccess: task.allow_public_access,
 					taskCount: 1, // Event tasks run as single instances
-					cpu: task.cpu?.toString() || '256',
-					memory: task.memory?.toString() || '512',
-					serviceType: 'Event Processor',
-					purpose: getTaskPurpose(task.name, 'event'),
+					cpu: task.cpu?.toString() || "256",
+					memory: task.memory?.toString() || "512",
+					serviceType: "Event Processor",
+					purpose: getTaskPurpose(task.name, "event"),
 					healthStatus: {
 						critical: true,
 						monitored: true,
@@ -150,19 +150,23 @@ export function updateEcsClusterGroup(
  */
 function getServiceType(serviceName: string): string {
 	const name = serviceName.toLowerCase();
-	if (name.includes('monitor') || name.includes('metric') || name.includes('log')) {
-		return 'Monitoring';
+	if (
+		name.includes("monitor") ||
+		name.includes("metric") ||
+		name.includes("log")
+	) {
+		return "Monitoring";
 	}
-	if (name.includes('cache') || name.includes('redis')) {
-		return 'Cache';
+	if (name.includes("cache") || name.includes("redis")) {
+		return "Cache";
 	}
-	if (name.includes('auth') || name.includes('notif')) {
-		return 'Auxiliary';
+	if (name.includes("auth") || name.includes("notif")) {
+		return "Auxiliary";
 	}
-	if (name.includes('api') || name.includes('core') || name.includes('main')) {
-		return 'Core Service';
+	if (name.includes("api") || name.includes("core") || name.includes("main")) {
+		return "Core Service";
 	}
-	return 'Service';
+	return "Service";
 }
 
 /**
@@ -170,18 +174,18 @@ function getServiceType(serviceName: string): string {
  */
 function getServiceDescription(serviceName: string): string {
 	const name = serviceName.toLowerCase();
-	if (name.includes('api')) return 'REST/GraphQL API';
-	if (name.includes('auth')) return 'User authentication';
-	if (name.includes('notification')) return 'Push & email alerts';
-	if (name.includes('cache')) return 'Redis cache layer';
-	if (name.includes('monitor')) return 'System monitoring';
-	if (name.includes('analytics')) return 'Data analytics';
-	if (name.includes('worker')) return 'Async processing';
-	if (name.includes('chat') || name.includes('ai')) return 'AI chat service';
-	if (name.includes('payment')) return 'Payment processing';
-	if (name.includes('search')) return 'Search engine';
-	if (name.includes('media')) return 'Media processing';
-	return 'Container service';
+	if (name.includes("api")) return "REST/GraphQL API";
+	if (name.includes("auth")) return "User authentication";
+	if (name.includes("notification")) return "Push & email alerts";
+	if (name.includes("cache")) return "Redis cache layer";
+	if (name.includes("monitor")) return "System monitoring";
+	if (name.includes("analytics")) return "Data analytics";
+	if (name.includes("worker")) return "Async processing";
+	if (name.includes("chat") || name.includes("ai")) return "AI chat service";
+	if (name.includes("payment")) return "Payment processing";
+	if (name.includes("search")) return "Search engine";
+	if (name.includes("media")) return "Media processing";
+	return "Container service";
 }
 
 /**
@@ -189,36 +193,40 @@ function getServiceDescription(serviceName: string): string {
  */
 function getServicePurpose(serviceName: string): string {
 	const name = serviceName.toLowerCase();
-	if (name.includes('api')) return 'Core API backend';
-	if (name.includes('auth')) return 'Authentication & authorization';
-	if (name.includes('notification')) return 'Email & push notifications';
-	if (name.includes('cache')) return 'High-performance caching';
-	if (name.includes('monitor')) return 'Metrics collection';
-	if (name.includes('analytics')) return 'Analytics data processing';
-	if (name.includes('worker')) return 'Asynchronous job processing';
-	if (name.includes('chat') || name.includes('ai')) return 'AI/Chat functionality';
-	return 'Application service';
+	if (name.includes("api")) return "Core API backend";
+	if (name.includes("auth")) return "Authentication & authorization";
+	if (name.includes("notification")) return "Email & push notifications";
+	if (name.includes("cache")) return "High-performance caching";
+	if (name.includes("monitor")) return "Metrics collection";
+	if (name.includes("analytics")) return "Analytics data processing";
+	if (name.includes("worker")) return "Asynchronous job processing";
+	if (name.includes("chat") || name.includes("ai"))
+		return "AI/Chat functionality";
+	return "Application service";
 }
 
 /**
  * Get task purpose based on task type and name
  */
-function getTaskPurpose(taskName: string, taskType: 'scheduled' | 'event'): string {
+function getTaskPurpose(
+	taskName: string,
+	taskType: "scheduled" | "event",
+): string {
 	const name = taskName.toLowerCase();
-	if (taskType === 'scheduled') {
-		if (name.includes('backup')) return 'Periodic data backup';
-		if (name.includes('cleanup')) return 'Resource cleanup';
-		if (name.includes('report')) return 'Report generation';
-		if (name.includes('sync')) return 'Data synchronization';
-		if (name.includes('reconcil')) return 'Data reconciliation';
-		if (name.includes('fee')) return 'Fee calculation';
-		return 'Scheduled job execution';
+	if (taskType === "scheduled") {
+		if (name.includes("backup")) return "Periodic data backup";
+		if (name.includes("cleanup")) return "Resource cleanup";
+		if (name.includes("report")) return "Report generation";
+		if (name.includes("sync")) return "Data synchronization";
+		if (name.includes("reconcil")) return "Data reconciliation";
+		if (name.includes("fee")) return "Fee calculation";
+		return "Scheduled job execution";
 	} else {
-		if (name.includes('order')) return 'Order processing';
-		if (name.includes('payment')) return 'Payment processing';
-		if (name.includes('notification')) return 'Event notifications';
-		if (name.includes('audit')) return 'Audit logging';
-		return 'Event processing';
+		if (name.includes("order")) return "Order processing";
+		if (name.includes("payment")) return "Payment processing";
+		if (name.includes("notification")) return "Event notifications";
+		if (name.includes("audit")) return "Audit logging";
+		return "Event processing";
 	}
 }
 
@@ -227,16 +235,16 @@ function getTaskPurpose(taskName: string, taskType: 'scheduled' | 'event'): stri
  */
 function getScheduledTaskDescription(taskName: string): string {
 	const name = taskName.toLowerCase();
-	if (name.includes('backup')) return 'Database backup';
-	if (name.includes('cleanup')) return 'Cleanup old data';
-	if (name.includes('report')) return 'Generate reports';
-	if (name.includes('sync')) return 'Data synchronization';
-	if (name.includes('reconcil')) return 'Reconcile records';
-	if (name.includes('fee')) return 'Calculate fees';
-	if (name.includes('export')) return 'Export data';
-	if (name.includes('import')) return 'Import data';
-	if (name.includes('notification')) return 'Send notifications';
-	return 'Scheduled task';
+	if (name.includes("backup")) return "Database backup";
+	if (name.includes("cleanup")) return "Cleanup old data";
+	if (name.includes("report")) return "Generate reports";
+	if (name.includes("sync")) return "Data synchronization";
+	if (name.includes("reconcil")) return "Reconcile records";
+	if (name.includes("fee")) return "Calculate fees";
+	if (name.includes("export")) return "Export data";
+	if (name.includes("import")) return "Import data";
+	if (name.includes("notification")) return "Send notifications";
+	return "Scheduled task";
 }
 
 /**
@@ -244,13 +252,13 @@ function getScheduledTaskDescription(taskName: string): string {
  */
 function getEventTaskDescription(taskName: string): string {
 	const name = taskName.toLowerCase();
-	if (name.includes('order')) return 'Process orders';
-	if (name.includes('payment')) return 'Handle payments';
-	if (name.includes('notification')) return 'Send notifications';
-	if (name.includes('audit')) return 'Audit events';
-	if (name.includes('webhook')) return 'Process webhooks';
-	if (name.includes('email')) return 'Email processor';
-	if (name.includes('sms')) return 'SMS processor';
-	if (name.includes('analytics')) return 'Analytics events';
-	return 'Event processor';
+	if (name.includes("order")) return "Process orders";
+	if (name.includes("payment")) return "Handle payments";
+	if (name.includes("notification")) return "Send notifications";
+	if (name.includes("audit")) return "Audit events";
+	if (name.includes("webhook")) return "Process webhooks";
+	if (name.includes("email")) return "Email processor";
+	if (name.includes("sms")) return "SMS processor";
+	if (name.includes("analytics")) return "Analytics events";
+	return "Event processor";
 }

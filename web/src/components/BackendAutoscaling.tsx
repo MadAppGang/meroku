@@ -1,9 +1,9 @@
-import { ServiceAutoscaling } from './ServiceAutoscaling';
+import { ServiceAutoscaling } from "./ServiceAutoscaling";
 
 interface BackendAutoscalingProps {
-  environment: string;
+	environment: string;
 }
 
 export function BackendAutoscaling({ environment }: BackendAutoscalingProps) {
-  return <ServiceAutoscaling environment={environment} serviceName="backend" />;
+	return <ServiceAutoscaling environment={environment} serviceName="backend" />;
 }

@@ -69,7 +69,7 @@ export interface ECSServicesInfo {
 }
 
 export interface DatabaseConfig {
-	type: 'rds' | 'aurora';
+	type: "rds" | "aurora";
 	minCapacity?: number;
 	maxCapacity?: number;
 }
@@ -262,7 +262,7 @@ export interface BoardPositions {
 export interface TestEventRequest {
 	source: string;
 	detailType: string;
-	detail?: Record<string, any>;
+	detail?: Record<string, unknown>;
 }
 
 export interface TestEventResponse {
@@ -639,7 +639,9 @@ export const infrastructureApi = {
 			};
 
 			// Add send method for input
-			(ws as any).sendInput = (input: string) => {
+			(ws as WebSocket & { sendInput?: (input: string) => void }).sendInput = (
+				input: string,
+			) => {
 				if (ws.readyState === WebSocket.OPEN) {
 					ws.send(JSON.stringify({ type: "input", data: input }));
 				}
@@ -665,7 +667,10 @@ export const infrastructureApi = {
 		return response.json();
 	},
 
-	async getDatabaseInfo(project: string, env: string): Promise<{
+	async getDatabaseInfo(
+		project: string,
+		env: string,
+	): Promise<{
 		endpoint: string;
 		port: number;
 		isAurora: boolean;
@@ -683,7 +688,11 @@ export const infrastructureApi = {
 		return response.json();
 	},
 
-	async getDatabaseEndpoint(project: string, env: string, isAurora: boolean): Promise<{
+	async getDatabaseEndpoint(
+		project: string,
+		env: string,
+		isAurora: boolean,
+	): Promise<{
 		endpoint: string;
 		port: number;
 		isAurora: boolean;

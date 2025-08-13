@@ -88,13 +88,15 @@ export const nodeStateMapping: NodeStateConfig[] = [
 			serviceName: `${config.project}_backend_${config.env}`,
 			port: config.workload?.backend_image_port || 8080,
 			healthEndpoint: config.workload?.backend_health_endpoint || "/health",
-			cpu: config.workload?.backend_cpu || '256',
-			memory: config.workload?.backend_memory || '512',
+			cpu: config.workload?.backend_cpu || "256",
+			memory: config.workload?.backend_memory || "512",
 			envVariables: config.workload?.backend_env_variables || {},
 			desiredCount: config.workload?.backend_desired_count || 1,
 			autoscalingEnabled: config.workload?.backend_autoscaling_enabled || false,
-			autoscalingMinCapacity: config.workload?.backend_autoscaling_min_capacity || 1,
-			autoscalingMaxCapacity: config.workload?.backend_autoscaling_max_capacity || 10,
+			autoscalingMinCapacity:
+				config.workload?.backend_autoscaling_min_capacity || 1,
+			autoscalingMaxCapacity:
+				config.workload?.backend_autoscaling_max_capacity || 10,
 			domain: config.api_domain || `api.${config.project}.com`,
 		}),
 	},
@@ -119,18 +121,19 @@ export const nodeStateMapping: NodeStateConfig[] = [
 		enabled: (config) => config.postgres?.enabled === true,
 		properties: (config) => ({
 			dbname: config.postgres?.dbname || config.project,
-			username: config.postgres?.username || 'postgres',
+			username: config.postgres?.username || "postgres",
 			publicAccess: config.postgres?.public_access || false,
-			engineVersion: config.postgres?.engine_version || '16',
+			engineVersion: config.postgres?.engine_version || "16",
 			aurora: config.postgres?.aurora || false,
 			minCapacity: config.postgres?.min_capacity ?? 0,
 			maxCapacity: config.postgres?.max_capacity || 1,
 			pgAdminEnabled: config.workload?.install_pg_admin || false,
-			pgAdminEmail: config.workload?.pg_admin_email || 'admin@madappgang.com',
+			pgAdminEmail: config.workload?.pg_admin_email || "admin@madappgang.com",
 		}),
-		description: (config) => config.postgres?.aurora 
-			? "AWS Aurora PostgreSQL Serverless v2" 
-			: "AWS RDS PostgreSQL Instance",
+		description: (config) =>
+			config.postgres?.aurora
+				? "AWS Aurora PostgreSQL Serverless v2"
+				: "AWS RDS PostgreSQL Instance",
 	},
 
 	// Storage Layer
@@ -170,8 +173,8 @@ export const nodeStateMapping: NodeStateConfig[] = [
 		type: "sqs",
 		enabled: (config) => config.sqs?.enabled === true,
 		properties: (config) => ({
-			queueName: config.sqs?.name || 'default-queue',
-			queueUrl: `https://sqs.${config.region}.amazonaws.com/${config.region}/${config.project}-${config.env}-${config.sqs?.name || 'default-queue'}`,
+			queueName: config.sqs?.name || "default-queue",
+			queueUrl: `https://sqs.${config.region}.amazonaws.com/${config.region}/${config.project}-${config.env}-${config.sqs?.name || "default-queue"}`,
 		}),
 		description: "Simple Queue Service for async task processing",
 	},
@@ -221,12 +224,14 @@ export const nodeStateMapping: NodeStateConfig[] = [
 /**
  * Dynamic node state mappings for services that are created from config
  */
-export function getDynamicNodeStateMapping(config: YamlInfrastructureConfig): NodeStateConfig[] {
+export function getDynamicNodeStateMapping(
+	config: YamlInfrastructureConfig,
+): NodeStateConfig[] {
 	const dynamicMappings: NodeStateConfig[] = [];
 
 	// Add mappings for additional services
 	if (config.services) {
-		config.services.forEach(service => {
+		config.services.forEach((service) => {
 			dynamicMappings.push({
 				id: `service-${service.name}`,
 				name: service.name,
@@ -247,7 +252,7 @@ export function getDynamicNodeStateMapping(config: YamlInfrastructureConfig): No
 
 	// Add mappings for event processor tasks
 	if (config.event_processor_tasks) {
-		config.event_processor_tasks.forEach(task => {
+		config.event_processor_tasks.forEach((task) => {
 			dynamicMappings.push({
 				id: `event-${task.name}`,
 				name: `Event: ${task.name}`,
@@ -266,7 +271,7 @@ export function getDynamicNodeStateMapping(config: YamlInfrastructureConfig): No
 
 	// Add mappings for scheduled tasks
 	if (config.scheduled_tasks) {
-		config.scheduled_tasks.forEach(task => {
+		config.scheduled_tasks.forEach((task) => {
 			dynamicMappings.push({
 				id: `scheduled-${task.name}`,
 				name: `Scheduled: ${task.name}`,
@@ -320,8 +325,8 @@ export function getNodeDescription(
 	if (!config) return undefined;
 
 	const nodeConfig = nodeStateMapping.find((n) => n.id === nodeId);
-	if (nodeConfig && nodeConfig.description) {
-		return typeof nodeConfig.description === 'function' 
+	if (nodeConfig?.description) {
+		return typeof nodeConfig.description === "function"
 			? nodeConfig.description(config)
 			: nodeConfig.description;
 	}
@@ -340,14 +345,14 @@ export function getNodeProperties(
 
 	// Check static mappings first
 	const nodeConfig = nodeStateMapping.find((n) => n.id === nodeId);
-	if (nodeConfig && nodeConfig.properties) {
+	if (nodeConfig?.properties) {
 		return nodeConfig.properties(config);
 	}
 
 	// Check dynamic mappings for services and tasks
 	const dynamicMappings = getDynamicNodeStateMapping(config);
 	const dynamicNodeConfig = dynamicMappings.find((n) => n.id === nodeId);
-	if (dynamicNodeConfig && dynamicNodeConfig.properties) {
+	if (dynamicNodeConfig?.properties) {
 		return dynamicNodeConfig.properties(config);
 	}
 

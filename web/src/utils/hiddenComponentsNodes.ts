@@ -58,7 +58,6 @@ export function generateHiddenComponentNodes(
 		});
 	}
 
-
 	// AppSync
 	if (config.pubsub_appsync?.enabled) {
 		nodes.push({
@@ -85,25 +84,28 @@ export function generateHiddenComponentNodes(
 		config.amplify_apps.forEach((app, index) => {
 			// Get branch info
 			const branches = app.branches || [];
-			const primaryBranch = branches.find(b => b.stage === 'PRODUCTION')?.name || branches[0]?.name || '';
+			const primaryBranch =
+				branches.find((b) => b.stage === "PRODUCTION")?.name ||
+				branches[0]?.name ||
+				"";
 			const branchCount = branches.length;
-			
+
 			nodes.push({
 				id: `amplify-${app.name}`,
 				type: "service",
-				position: { x: -639, y: 158 + (index * 120) }, // Position near client apps
+				position: { x: -639, y: 158 + index * 120 }, // Position near client apps
 				data: {
 					id: `amplify-${app.name}`,
 					type: "amplify",
 					name: app.name,
-					description: `Amplify app (${branchCount} branch${branchCount !== 1 ? 'es' : ''})`,
+					description: `Amplify app (${branchCount} branch${branchCount !== 1 ? "es" : ""})`,
 					status: "running",
 					configProperties: {
 						repository: app.github_repository,
 						branch: primaryBranch,
 						branches: branches,
 						customDomain: app.custom_domain,
-						environment: environment || config.env || 'dev',
+						environment: environment || config.env || "dev",
 					},
 				},
 			});

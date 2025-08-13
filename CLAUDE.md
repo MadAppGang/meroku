@@ -5,6 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 This is a comprehensive Terraform Infrastructure as Code (IaC) repository that provides a reusable, modular AWS infrastructure setup. It includes:
+
 - Terraform modules for AWS services (20+ modules including ECS, RDS, ALB, Cognito, Lambda, etc.)
 - Go CLI application ("meroku") for interactive infrastructure management using Bubble Tea TUI framework
 - React+TypeScript web frontend for visual infrastructure management
@@ -14,7 +15,9 @@ This is a comprehensive Terraform Infrastructure as Code (IaC) repository that p
 ## Important Architecture Decisions
 
 ### VPC Endpoints (Deprecated)
+
 **Note**: VPC endpoints are NO LONGER USED in this infrastructure due to cost considerations (~$27/month per interface endpoint). Instead, we rely on:
+
 - Security groups for access control
 - Internet Gateway for outbound connectivity
 - Service-to-service communication through the VPC
@@ -22,7 +25,9 @@ This is a comprehensive Terraform Infrastructure as Code (IaC) repository that p
 All VPC endpoint code in `modules/workloads/ecs_endpoints.tf` is commented out and should remain so.
 
 ### API Gateway vs ALB
+
 The infrastructure supports two ingress patterns:
+
 - **Default (enable_alb: false)**: API Gateway → ECS Services
 - **Alternative (enable_alb: true)**: ALB → ECS Services
 
@@ -35,6 +40,7 @@ Note: Currently, both resources are created regardless of the setting, but only 
 ## Common Commands
 
 ### Infrastructure Management
+
 ```bash
 # Initialize Terraform (run after creating env/*.tf files)
 make infra-init env=dev
@@ -63,6 +69,7 @@ make infra-import env=dev
 ```
 
 ### Development Commands
+
 ```bash
 # Run the TUI application
 make tui
@@ -120,6 +127,7 @@ infrastructure/
 ## Terraform Plan Viewer
 
 The meroku CLI includes an advanced Terraform plan viewer with the following features:
+
 - Visual tree view of resources organized by provider and service
 - Detailed attribute diff display with proper formatting
 - Support for resource replacements (shows both delete and create phases)
@@ -127,11 +135,13 @@ The meroku CLI includes an advanced Terraform plan viewer with the following fea
 - Color-coded changes (green for create, yellow for update, red for delete)
 
 To test the plan viewer with a JSON file:
+
 ```bash
 ./meroku --renderdiff path/to/terraform-plan.json
 ```
 
 The viewer properly handles:
+
 - Replace operations by showing both delete and create as separate items
 - Complex nested attributes and arrays
 - Long strings and multi-line values
@@ -152,3 +162,23 @@ The viewer properly handles:
 - Enable auto-scaling where appropriate
 - Monitor CloudWatch costs (logs retention is set to 30 days)
 - when we bump version number,we need to create tag and change version.txt file content
+-
+
+# Codebase Navigation Rule
+
+**ALWAYS use CodebaseDetective subagent when finding or locating code.**
+
+When you need to:
+
+- Find any function, class, or implementation
+- Locate endpoints, configs, or specific logic
+- Understand code flow or dependencies
+
+Do this:
+
+1. Activate Detective mode: `[Detective Mode: Finding X]`
+2. Index: `index_codebase` (if MCP available)
+3. Search: `search_code with query: "semantic description"`
+4. Fallback to grep/find only if MCP unavailable
+
+Never manually browse files randomly. Always use Detective for systematic code navigation.
