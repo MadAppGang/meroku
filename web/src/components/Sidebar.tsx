@@ -360,6 +360,7 @@ export function Sidebar({
 				{/* Left scroll button */}
 				{showLeftScroll && (
 					<button
+						type="button"
 						onClick={() => scrollTabs("left")}
 						className="absolute left-0 top-0 bottom-0 z-10 px-2 bg-gradient-to-r from-gray-900 via-gray-900 to-transparent flex items-center justify-center"
 					>
@@ -370,6 +371,7 @@ export function Sidebar({
 				{/* Right scroll button */}
 				{showRightScroll && (
 					<button
+						type="button"
 						onClick={() => scrollTabs("right")}
 						className="absolute right-0 top-0 bottom-0 z-10 px-2 bg-gradient-to-l from-gray-900 via-gray-900 to-transparent flex items-center justify-center"
 					>
@@ -385,6 +387,7 @@ export function Sidebar({
 					<div className="flex min-w-max">
 						{getAvailableTabs(selectedNode).map((tab) => (
 							<button
+								type="button"
 								key={tab.id}
 								onClick={() => setActiveTab(tab.id)}
 								className={`flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
