@@ -1521,7 +1521,7 @@ func (m *modernPlanModel) renderFullDiffContent(resource *ResourceChange) string
 			
 			if resource.Change.Before != nil {
 				b.WriteString(sectionStyle.Render("Current Configuration (to be deleted):") + "\n")
-				b.WriteString(m.renderAttributesDiff(resource.Change.Before, nil, false))
+				b.WriteString(m.renderExpandedAttributes(resource.Change.Before, lipgloss.NewStyle().Foreground(dangerColor), ""))
 			}
 			
 		case "create":
@@ -1530,7 +1530,7 @@ func (m *modernPlanModel) renderFullDiffContent(resource *ResourceChange) string
 			
 			if resource.Change.After != nil {
 				b.WriteString(sectionStyle.Render("Configuration:") + "\n")
-				b.WriteString(m.renderAttributesDiff(nil, resource.Change.After, false))
+				b.WriteString(m.renderExpandedAttributes(resource.Change.After, lipgloss.NewStyle().Foreground(successColor), ""))
 			}
 			
 		case "update":
@@ -1539,13 +1539,13 @@ func (m *modernPlanModel) renderFullDiffContent(resource *ResourceChange) string
 			
 			// Show changed attributes
 			b.WriteString(sectionStyle.Render("Changes:") + "\n")
-			b.WriteString(m.renderUpdateDiff(resource.Change.Before, resource.Change.After))
+			b.WriteString(m.renderExpandedUpdateDiff(resource.Change.Before, resource.Change.After))
 			
 			// Show unchanged attributes if there are any
 			unchanged := m.getUnchangedAttributes(resource.Change.Before, resource.Change.After)
 			if len(unchanged) > 0 && len(unchanged) < 20 { // Only show if not too many
 				b.WriteString("\n" + sectionStyle.Render("Unchanged Attributes:") + "\n")
-				b.WriteString(m.renderUnchangedAttributes(unchanged))
+				b.WriteString(m.renderExpandedAttributes(unchanged, lipgloss.NewStyle().Foreground(mutedColor).Faint(true), "  "))
 			}
 			
 		case "read":
@@ -1556,14 +1556,41 @@ func (m *modernPlanModel) renderFullDiffContent(resource *ResourceChange) string
 	}
 	
 	// Add metadata section if we have provider info
-	if resource.ProviderName != "" {
+	if resource.ProviderName != "" || resource.Type != "" || resource.Name != "" {
 		b.WriteString("\n" + sectionStyle.Render("Metadata:") + "\n")
 		
 		metaStyle := lipgloss.NewStyle().Foreground(mutedColor)
-		b.WriteString(metaStyle.Render(fmt.Sprintf("Provider: %s\n", resource.ProviderName)))
-		b.WriteString(metaStyle.Render(fmt.Sprintf("Mode: %s\n", resource.Mode)))
-		b.WriteString(metaStyle.Render(fmt.Sprintf("Type: %s\n", resource.Type)))
-		b.WriteString(metaStyle.Render(fmt.Sprintf("Name: %s\n", resource.Name)))
+		keyStyle := lipgloss.NewStyle().Foreground(mutedColor)
+		
+		// Use consistent formatting for metadata
+		if resource.ProviderName != "" {
+			b.WriteString("  ")
+			b.WriteString(keyStyle.Render(fmt.Sprintf("%-10s", "Provider:")))
+			b.WriteString(" ")
+			b.WriteString(metaStyle.Render(resource.ProviderName))
+			b.WriteString("\n")
+		}
+		if resource.Mode != "" {
+			b.WriteString("  ")
+			b.WriteString(keyStyle.Render(fmt.Sprintf("%-10s", "Mode:")))
+			b.WriteString(" ")
+			b.WriteString(metaStyle.Render(resource.Mode))
+			b.WriteString("\n")
+		}
+		if resource.Type != "" {
+			b.WriteString("  ")
+			b.WriteString(keyStyle.Render(fmt.Sprintf("%-10s", "Type:")))
+			b.WriteString(" ")
+			b.WriteString(metaStyle.Render(resource.Type))
+			b.WriteString("\n")
+		}
+		if resource.Name != "" {
+			b.WriteString("  ")
+			b.WriteString(keyStyle.Render(fmt.Sprintf("%-10s", "Name:")))
+			b.WriteString(" ")
+			b.WriteString(metaStyle.Render(resource.Name))
+			b.WriteString("\n")
+		}
 	}
 	
 	return b.String()
@@ -1660,6 +1687,616 @@ func (m *modernPlanModel) getUnchangedAttributes(before, after map[string]interf
 	}
 	
 	return unchanged
+}
+
+// renderExpandedAttributes renders attributes with full expansion of nested structures
+func (m *modernPlanModel) renderExpandedAttributes(attributes map[string]interface{}, style lipgloss.Style, prefix string) string {
+	var b strings.Builder
+	
+	keyStyle := lipgloss.NewStyle().Foreground(accentColor)
+	
+	// Sort keys for consistent display
+	var keys []string
+	for k := range attributes {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	
+	for _, key := range keys {
+		value := attributes[key]
+		b.WriteString(prefix)
+		
+		if prefix == "" {
+			// For added items
+			b.WriteString(style.Render("+ "))
+		}
+		
+		b.WriteString(keyStyle.Render(fmt.Sprintf("%-30s", key+":")))
+		b.WriteString(" ")
+		
+		// Always expand arrays and maps in full-screen view
+		switch v := value.(type) {
+		case []interface{}:
+			if len(v) == 0 {
+				b.WriteString(style.Render("[]"))
+			} else {
+				b.WriteString(m.renderExpandedArray(v, style, prefix+"  "))
+			}
+		case map[string]interface{}:
+			if len(v) == 0 {
+				b.WriteString(style.Render("{}"))
+			} else {
+				b.WriteString(m.renderExpandedMap(v, style, prefix+"  "))
+			}
+		default:
+			b.WriteString(m.renderExpandedValue(value, style, prefix+"  "))
+		}
+		b.WriteString("\n")
+	}
+	
+	return b.String()
+}
+
+// renderExpandedArray always expands arrays to show their full content
+func (m *modernPlanModel) renderExpandedArray(arr []interface{}, style lipgloss.Style, indent string) string {
+	// Check if all items are simple
+	allSimple := true
+	for _, item := range arr {
+		switch item.(type) {
+		case string, bool, float64, nil:
+			// simple
+		default:
+			allSimple = false
+			break
+		}
+	}
+	
+	// Simple arrays can be inline
+	if allSimple {
+		items := make([]string, len(arr))
+		for i, item := range arr {
+			items[i] = fmt.Sprintf("%v", item)
+		}
+		return style.Render("[" + strings.Join(items, ", ") + "]")
+	}
+	
+	// For single item arrays with a map, try to show inline if simple
+	if len(arr) == 1 {
+		if mp, ok := arr[0].(map[string]interface{}); ok && len(mp) <= 4 && isSimpleMap(mp) {
+			// Show simple single map inline
+			items := make([]string, 0, len(mp))
+			for k, v := range mp {
+				items = append(items, fmt.Sprintf("%s: %v", k, v))
+			}
+			sort.Strings(items)
+			return style.Render("[{" + strings.Join(items, ", ") + "}]")
+		}
+	}
+	
+	// Complex arrays need full expansion
+	var b strings.Builder
+	b.WriteString(style.Render("["))
+	b.WriteString("\n")
+	
+	for i, item := range arr {
+		b.WriteString(indent + "    ")
+		
+		// Render each item with full expansion
+		switch v := item.(type) {
+		case map[string]interface{}:
+			// Expand maps within arrays properly
+			b.WriteString(m.renderExpandedMap(v, style, indent+"    "))
+		case []interface{}:
+			// Nested arrays
+			b.WriteString(m.renderExpandedArray(v, style, indent+"    "))
+		default:
+			// Simple values
+			b.WriteString(style.Render(m.formatSimpleValue(item)))
+		}
+		
+		if i < len(arr)-1 {
+			b.WriteString(",")
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString(indent + "  " + style.Render("]"))
+	return b.String()
+}
+
+// renderExpandedMap always expands maps to show their full content
+func (m *modernPlanModel) renderExpandedMap(mp map[string]interface{}, style lipgloss.Style, indent string) string {
+	// Check if it's a simple map that can be shown inline
+	if len(mp) <= 3 && isSimpleMap(mp) {
+		items := make([]string, 0, len(mp))
+		for k, v := range mp {
+			items = append(items, fmt.Sprintf("%s: %v", k, v))
+		}
+		sort.Strings(items)
+		result := "{" + strings.Join(items, ", ") + "}"
+		if len(result) <= 80 {
+			return style.Render(result)
+		}
+	}
+	
+	// Complex maps need expansion
+	var b strings.Builder
+	b.WriteString(style.Render("{"))
+	
+	sortedKeys := make([]string, 0, len(mp))
+	for k := range mp {
+		sortedKeys = append(sortedKeys, k)
+	}
+	sort.Strings(sortedKeys)
+	
+	// Always start on new line for complex objects
+	b.WriteString("\n")
+	
+	for i, k := range sortedKeys {
+		b.WriteString(indent + "    ")
+		b.WriteString(lipgloss.NewStyle().Foreground(accentColor).Render(k + ": "))
+		
+		// Recursively render the value
+		val := mp[k]
+		switch v := val.(type) {
+		case []interface{}:
+			// Arrays get their own handling
+			result := m.renderExpandedArray(v, style, indent+"    ")
+			b.WriteString(result)
+		case map[string]interface{}:
+			// Nested maps
+			result := m.renderExpandedMap(v, style, indent+"    ")
+			b.WriteString(result)
+		default:
+			// Simple values
+			b.WriteString(style.Render(m.formatSimpleValue(val)))
+		}
+		
+		if i < len(sortedKeys)-1 {
+			b.WriteString(",")
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString(indent + "  " + style.Render("}"))
+	return b.String()
+}
+
+// formatSimpleValue formats a simple value for display
+func (m *modernPlanModel) formatSimpleValue(value interface{}) string {
+	switch v := value.(type) {
+	case string:
+		if v == "" {
+			return "(empty)"
+		}
+		return v
+	case bool:
+		return fmt.Sprintf("%t", v)
+	case nil:
+		return "null"
+	case float64:
+		if v == float64(int64(v)) {
+			return fmt.Sprintf("%d", int64(v))
+		}
+		return fmt.Sprintf("%.2f", v)
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}
+
+// renderInlineMap renders a map, attempting to show full details when possible
+func (m *modernPlanModel) renderInlineMap(mp map[string]interface{}, style lipgloss.Style) string {
+	items := make([]string, 0, len(mp))
+	
+	// Sort keys for consistent output
+	sortedKeys := make([]string, 0, len(mp))
+	for k := range mp {
+		sortedKeys = append(sortedKeys, k)
+	}
+	sort.Strings(sortedKeys)
+	
+	for _, k := range sortedKeys {
+		v := mp[k]
+		valStr := ""
+		
+		// Render values with more detail
+		switch val := v.(type) {
+		case string:
+			valStr = val
+		case bool:
+			valStr = fmt.Sprintf("%t", val)
+		case float64:
+			if val == float64(int64(val)) {
+				valStr = fmt.Sprintf("%d", int64(val))
+			} else {
+				valStr = fmt.Sprintf("%.2f", val)
+			}
+		case nil:
+			valStr = "null"
+		case []interface{}:
+			if len(val) == 0 {
+				valStr = "[]"
+			} else {
+				// Try to render simple arrays inline
+				allSimple := true
+				for _, item := range val {
+					switch item.(type) {
+					case string, bool, float64, nil:
+						// continue
+					default:
+						allSimple = false
+						break
+					}
+				}
+				if allSimple && len(val) <= 3 {
+					simpleItems := make([]string, len(val))
+					for i, item := range val {
+						simpleItems[i] = fmt.Sprintf("%v", item)
+					}
+					valStr = "[" + strings.Join(simpleItems, ", ") + "]"
+				} else {
+					// For complex arrays, we need to expand them
+					valStr = fmt.Sprintf("[%d items]", len(val))
+				}
+			}
+		case map[string]interface{}:
+			if len(val) == 0 {
+				valStr = "{}"
+			} else {
+				// Try to render simple maps inline
+				if len(val) <= 2 && isSimpleMap(val) {
+					subItems := make([]string, 0, len(val))
+					for sk, sv := range val {
+						subItems = append(subItems, fmt.Sprintf("%s: %v", sk, sv))
+					}
+					sort.Strings(subItems)
+					valStr = "{" + strings.Join(subItems, ", ") + "}"
+				} else {
+					valStr = fmt.Sprintf("{%d keys}", len(val))
+				}
+			}
+		default:
+			valStr = fmt.Sprintf("%v", v)
+		}
+		
+		items = append(items, fmt.Sprintf("%s: %s", k, valStr))
+	}
+	
+	return style.Render("{" + strings.Join(items, ", ") + "}")
+}
+
+// renderExpandedValue renders a value with full expansion of nested structures
+func (m *modernPlanModel) renderExpandedValue(value interface{}, style lipgloss.Style, indent string) string {
+	switch v := value.(type) {
+	case string:
+		if v == "" {
+			return style.Render("(empty)")
+		}
+		return style.Render(v)
+	case bool:
+		return style.Render(fmt.Sprintf("%t", v))
+	case nil:
+		return style.Render("null")
+	case float64:
+		if v == float64(int64(v)) {
+			return style.Render(fmt.Sprintf("%d", int64(v)))
+		}
+		return style.Render(fmt.Sprintf("%.2f", v))
+	case []interface{}:
+		if len(v) == 0 {
+			return style.Render("[]")
+		}
+		
+		// Check if it's a simple array or array of maps
+		allMaps := true
+		allSimple := true
+		for _, item := range v {
+			if _, isMap := item.(map[string]interface{}); !isMap {
+				allMaps = false
+			}
+			switch item.(type) {
+			case string, bool, float64, nil:
+				// simple type
+			default:
+				allSimple = false
+			}
+		}
+		
+		// For arrays of simple values, always show inline
+		if allSimple {
+			items := make([]string, len(v))
+			for i, item := range v {
+				items[i] = fmt.Sprintf("%v", item)
+			}
+			return style.Render("[" + strings.Join(items, ", ") + "]")
+		}
+		
+		// For single map in array, show more compact
+		if len(v) == 1 && allMaps {
+			if m, ok := v[0].(map[string]interface{}); ok && isSimpleMap(m) {
+				// Single simple map, show inline
+				items := make([]string, 0, len(m))
+				for k, val := range m {
+					items = append(items, fmt.Sprintf("%s: %v", k, val))
+				}
+				sort.Strings(items)
+				return style.Render("[{" + strings.Join(items, ", ") + "}]")
+			}
+		}
+		
+		// For complex arrays or multiple items, show expanded but more compact
+		var b strings.Builder
+		b.WriteString(style.Render("["))
+		
+		// If it's an array of maps, use compact formatting for small simple maps
+		if allMaps && len(v) <= 2 {
+			allSimpleMaps := true
+			for _, item := range v {
+				if m, ok := item.(map[string]interface{}); ok {
+					if !isSimpleMap(m) || len(m) > 4 {
+						allSimpleMaps = false
+						break
+					}
+				}
+			}
+			
+			if allSimpleMaps {
+				// Inline format for simple maps
+				for i, item := range v {
+					if i > 0 {
+						b.WriteString(", ")
+					}
+					if m, ok := item.(map[string]interface{}); ok {
+						items := make([]string, 0, len(m))
+						for k, val := range m {
+							// Use actual values, not formatCompactValue
+							valStr := fmt.Sprintf("%v", val)
+							if s, ok := val.(string); ok && s != "" {
+								valStr = s
+							}
+							items = append(items, fmt.Sprintf("%s: %s", k, valStr))
+						}
+						sort.Strings(items)
+						b.WriteString("{" + strings.Join(items, ", ") + "}")
+					}
+				}
+				b.WriteString(style.Render("]"))
+				return b.String()
+			}
+		}
+		
+		// Full expansion for complex structures
+		b.WriteString("\n")
+		for i, item := range v {
+			b.WriteString(indent + "  ")
+			b.WriteString(m.renderExpandedValue(item, style, indent+"  "))
+			if i < len(v)-1 {
+				b.WriteString(",")
+			}
+			b.WriteString("\n")
+		}
+		b.WriteString(indent + style.Render("]"))
+		return b.String()
+		
+	case map[string]interface{}:
+		if len(v) == 0 {
+			return style.Render("{}")
+		}
+		
+		// For tags and other simple maps, always show inline
+		if _, hasName := v["Name"]; hasName && len(v) <= 3 {
+			// Likely tags, show inline
+			items := make([]string, 0, len(v))
+			for key, val := range v {
+				items = append(items, fmt.Sprintf("%s: %v", key, formatCompactValue(val)))
+			}
+			sort.Strings(items)
+			return style.Render("{" + strings.Join(items, ", ") + "}")
+		}
+		
+		// For small simple maps, show inline
+		if len(v) <= 4 && isSimpleMap(v) {
+			items := make([]string, 0, len(v))
+			for k, val := range v {
+				items = append(items, fmt.Sprintf("%s: %v", k, formatCompactValue(val)))
+			}
+			sort.Strings(items)
+			result := "{" + strings.Join(items, ", ") + "}"
+			// If it's not too long, show inline
+			if len(result) <= 80 {
+				return style.Render(result)
+			}
+		}
+		
+		// For complex maps, show expanded with proper indentation
+		var b strings.Builder
+		b.WriteString(style.Render("{"))
+		
+		sortedKeys := make([]string, 0, len(v))
+		for k := range v {
+			sortedKeys = append(sortedKeys, k)
+		}
+		sort.Strings(sortedKeys)
+		
+		// Check if we can show in compact form
+		canBeCompact := true
+		for _, k := range sortedKeys {
+			switch v[k].(type) {
+			case []interface{}, map[string]interface{}:
+				if !isSimpleValue(v[k]) {
+					canBeCompact = false
+					break
+				}
+			}
+		}
+		
+		if canBeCompact && len(v) <= 4 {
+			// Compact inline form
+			items := make([]string, 0, len(v))
+			for _, k := range sortedKeys {
+				items = append(items, fmt.Sprintf("%s: %v", k, formatCompactValue(v[k])))
+			}
+			return style.Render("{" + strings.Join(items, ", ") + "}")
+		}
+		
+		// Full expansion
+		b.WriteString("\n")
+		for i, k := range sortedKeys {
+			b.WriteString(indent + "  ")
+			b.WriteString(lipgloss.NewStyle().Foreground(accentColor).Render(k + ": "))
+			b.WriteString(m.renderExpandedValue(v[k], style, indent+"  "))
+			if i < len(sortedKeys)-1 {
+				b.WriteString(",")
+			}
+			b.WriteString("\n")
+		}
+		b.WriteString(indent + style.Render("}"))
+		return b.String()
+		
+	default:
+		return style.Render(fmt.Sprintf("%v", v))
+	}
+}
+
+// formatCompactValue formats a value in compact form (used for inline display)
+func formatCompactValue(value interface{}) string {
+	switch v := value.(type) {
+	case string:
+		if v == "" {
+			return "(empty)"
+		}
+		if len(v) > 30 {
+			return v[:27] + "..."
+		}
+		return v
+	case bool:
+		return fmt.Sprintf("%t", v)
+	case nil:
+		return "null"
+	case float64:
+		if v == float64(int64(v)) {
+			return fmt.Sprintf("%d", int64(v))
+		}
+		return fmt.Sprintf("%.2f", v)
+	case []interface{}:
+		if len(v) == 0 {
+			return "[]"
+		}
+		return fmt.Sprintf("[%d items]", len(v))
+	case map[string]interface{}:
+		if len(v) == 0 {
+			return "{}"
+		}
+		return fmt.Sprintf("{%d keys}", len(v))
+	default:
+		str := fmt.Sprintf("%v", v)
+		if len(str) > 30 {
+			return str[:27] + "..."
+		}
+		return str
+	}
+}
+
+// isSimpleValue checks if a value is simple enough for inline display
+func isSimpleValue(value interface{}) bool {
+	switch v := value.(type) {
+	case string, bool, float64, nil:
+		return true
+	case []interface{}:
+		return len(v) == 0 || (len(v) <= 3 && isSimpleArray(v))
+	case map[string]interface{}:
+		return len(v) == 0 || (len(v) <= 2 && isSimpleMap(v))
+	default:
+		return false
+	}
+}
+
+// renderExpandedUpdateDiff renders an expanded diff for updates
+func (m *modernPlanModel) renderExpandedUpdateDiff(before, after map[string]interface{}) string {
+	var b strings.Builder
+	
+	// Styles for diff
+	addedStyle := lipgloss.NewStyle().Foreground(successColor)
+	removedStyle := lipgloss.NewStyle().Foreground(dangerColor)
+	modifiedStyle := lipgloss.NewStyle().Foreground(warningColor)
+	keyStyle := lipgloss.NewStyle().Foreground(accentColor)
+	
+	// Collect all keys
+	allKeys := make(map[string]bool)
+	for k := range before {
+		allKeys[k] = true
+	}
+	for k := range after {
+		allKeys[k] = true
+	}
+	
+	// Sort keys for consistent display
+	var keys []string
+	for k := range allKeys {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	
+	for _, key := range keys {
+		beforeVal, beforeExists := before[key]
+		afterVal, afterExists := after[key]
+		
+		if !beforeExists && afterExists {
+			// Added attribute
+			b.WriteString(addedStyle.Render("+ "))
+			b.WriteString(keyStyle.Render(fmt.Sprintf("%-30s", key+":")))
+			b.WriteString(" ")
+			b.WriteString(m.renderExpandedValue(afterVal, addedStyle, "  "))
+			b.WriteString("\n")
+		} else if beforeExists && !afterExists {
+			// Removed attribute
+			b.WriteString(removedStyle.Render("- "))
+			b.WriteString(keyStyle.Render(fmt.Sprintf("%-30s", key+":")))
+			b.WriteString(" ")
+			b.WriteString(m.renderExpandedValue(beforeVal, removedStyle, "  "))
+			b.WriteString("\n")
+		} else if !m.valuesEqual(beforeVal, afterVal) {
+			// Modified attribute
+			b.WriteString(modifiedStyle.Render("~ "))
+			b.WriteString(keyStyle.Render(fmt.Sprintf("%-30s", key+":")))
+			b.WriteString("\n")
+			b.WriteString(removedStyle.Render("    - "))
+			b.WriteString(m.renderExpandedValue(beforeVal, removedStyle, "      "))
+			b.WriteString("\n")
+			b.WriteString(addedStyle.Render("    + "))
+			b.WriteString(m.renderExpandedValue(afterVal, addedStyle, "      "))
+			b.WriteString("\n")
+		}
+	}
+	
+	if b.Len() == 0 {
+		return lipgloss.NewStyle().Foreground(mutedColor).Render("No changes detected")
+	}
+	
+	return b.String()
+}
+
+// Helper functions to determine if values are simple
+func isSimpleArray(arr []interface{}) bool {
+	for _, item := range arr {
+		switch item.(type) {
+		case string, bool, float64, nil:
+			continue
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func isSimpleMap(m map[string]interface{}) bool {
+	for _, val := range m {
+		switch val.(type) {
+		case string, bool, float64, nil:
+			continue
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // valuesEqual compares two values for equality
