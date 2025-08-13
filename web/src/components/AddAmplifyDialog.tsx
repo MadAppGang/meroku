@@ -34,7 +34,7 @@ import { Textarea } from "./ui/textarea";
 interface AddAmplifyDialogProps {
   open: boolean;
   onClose: () => void;
-  onAdd: (amplifyApp: any) => void;
+  onAdd: (amplifyApp: unknown) => void;
   existingApps?: string[];
   environmentName?: string;
   projectName?: string;

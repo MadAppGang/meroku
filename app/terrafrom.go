@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"os"
 	"os/exec"
 	"regexp"
@@ -49,11 +48,11 @@ func terraformInitIfNeeded() {
 }
 
 func runTerraformApply() error {
-	// Run plan and save to file
-	errString, err := runCommandWithOutput("terraform", "plan", "-out=tfplan")
+	// Run the new progress TUI for terraform plan
+	err := runTerraformPlanWithProgress()
 	if err != nil {
-		slog.Error("error running terraform plan", "error", err, "output", errString)
-		// trying to recover:
+		// Check if we can recover from the error
+		errString := err.Error()
 		var recoverErr error
 		retryCount := 0
 		maxRetries := 5
@@ -62,17 +61,19 @@ func runTerraformApply() error {
 		for recoverErr == nil && retryCount < maxRetries {
 			commands, recoverErr = terraformError(errString)
 			if recoverErr != nil {
-				fmt.Println("🛑 terraform error recovery unable to handle output with error: ", recoverErr.Error())
-				fmt.Println(errString)
-				return fmt.Errorf("error checking terraform error: %w", recoverErr)
+				// Cannot recover, error was already shown in TUI
+				return fmt.Errorf("terraform plan failed: %w", err)
 			}
 			fmt.Printf("✳️ terraform error recovery attempt %d/%d suggests to run: %v\n", retryCount+1, maxRetries, commands)
-			errString, err = runCommandWithOutput(commands[0], commands[1:]...)
-			if err != nil {
-				fmt.Printf("❌ Attempt %d failed. Error: %v\n", retryCount+1, err)
+			recoveryOutput, err2 := runCommandWithOutput(commands[0], commands[1:]...)
+			if err2 != nil {
+				fmt.Printf("❌ Attempt %d failed. Error: %v\n", retryCount+1, err2)
+				err = err2
+				errString = recoveryOutput // Update errString for next iteration
 			} else {
 				fmt.Printf("✅ Attempt %d succeeded.\n", retryCount+1)
-				break
+				// Retry the plan with progress TUI
+				return runTerraformApply()
 			}
 			retryCount++
 		}
@@ -80,8 +81,6 @@ func runTerraformApply() error {
 		if err != nil {
 			return fmt.Errorf("error running terraform command after %d attempts: %w", retryCount, err)
 		}
-
-		return runTerraformApply()
 	}
 
 	// Parse and format the plan
@@ -118,16 +117,25 @@ func runTerraformApply() error {
 				change.Change.Actions[0] != "read" {
 				filteredPlan.ResourceChanges = append(filteredPlan.ResourceChanges, change)
 
-				// Update summary
-				switch change.Change.Actions[0] {
-				case "create":
-					filteredPlan.Summary.Create++
-				case "update":
-					filteredPlan.Summary.Update++
-				case "delete":
-					filteredPlan.Summary.Delete++
-				case "replace":
+				// Update summary - handle replace operations specially
+				// Replace operations have ["delete", "create"] actions
+				if len(change.Change.Actions) == 2 && 
+					change.Change.Actions[0] == "delete" && 
+					change.Change.Actions[1] == "create" {
+					// This is a replace operation
 					filteredPlan.Summary.Replace++
+					filteredPlan.Summary.Delete++
+					filteredPlan.Summary.Create++
+				} else {
+					// Single action
+					switch change.Change.Actions[0] {
+					case "create":
+						filteredPlan.Summary.Create++
+					case "update":
+						filteredPlan.Summary.Update++
+					case "delete":
+						filteredPlan.Summary.Delete++
+					}
 				}
 			}
 		}

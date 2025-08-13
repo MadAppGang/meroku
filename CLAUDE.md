@@ -78,6 +78,9 @@ make test
 
 # Generate code from templates
 make generate
+
+# Test terraform plan diff viewer (for debugging)
+./meroku --renderdiff terraform-plan.json
 ```
 
 ## Project Structure
@@ -113,6 +116,26 @@ infrastructure/
 - Test infrastructure changes in dev environment first
 - Use `make test` to run Go tests
 - Frontend tests: `cd web && npm test`
+
+## Terraform Plan Viewer
+
+The meroku CLI includes an advanced Terraform plan viewer with the following features:
+- Visual tree view of resources organized by provider and service
+- Detailed attribute diff display with proper formatting
+- Support for resource replacements (shows both delete and create phases)
+- Scrollable detail views for reviewing all changes
+- Color-coded changes (green for create, yellow for update, red for delete)
+
+To test the plan viewer with a JSON file:
+```bash
+./meroku --renderdiff path/to/terraform-plan.json
+```
+
+The viewer properly handles:
+- Replace operations by showing both delete and create as separate items
+- Complex nested attributes and arrays
+- Long strings and multi-line values
+- Null values and empty collections
 
 ## Security Considerations
 

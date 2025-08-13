@@ -1,0 +1,65 @@
+{
+  "terraform_version": "1.5.7",
+  "resource_changes": [
+    {
+      "address": "aws_instance.web_server",
+      "type": "aws_instance",
+      "provider_config_key": "aws",
+      "change": {
+        "actions": ["delete", "create"],
+        "before": {
+          "ami": "ami-0c55b159cbfafe1f0",
+          "instance_type": "t2.micro",
+          "availability_zone": "us-west-2a",
+          "subnet_id": "subnet-12345",
+          "tags": {"Name": "WebServer", "Environment": "dev"}
+        },
+        "after": {
+          "ami": "ami-0a91cd140a1fc148a",
+          "instance_type": "t3.micro",
+          "availability_zone": "us-west-2b",
+          "subnet_id": "subnet-67890",
+          "tags": {"Name": "WebServer", "Environment": "dev"}
+        }
+      }
+    },
+    {
+      "address": "aws_security_group.web_sg",
+      "type": "aws_security_group",
+      "provider_config_key": "aws",
+      "change": {
+        "actions": ["update"],
+        "before": {
+          "name": "web-security-group",
+          "description": "Security group for web servers",
+          "ingress": [
+            {"from_port": 80, "to_port": 80, "protocol": "tcp", "cidr_blocks": ["0.0.0.0/0"]}
+          ]
+        },
+        "after": {
+          "name": "web-security-group",
+          "description": "Security group for web servers",
+          "ingress": [
+            {"from_port": 80, "to_port": 80, "protocol": "tcp", "cidr_blocks": ["0.0.0.0/0"]},
+            {"from_port": 443, "to_port": 443, "protocol": "tcp", "cidr_blocks": ["0.0.0.0/0"]}
+          ]
+        }
+      }
+    },
+    {
+      "address": "aws_s3_bucket.static",
+      "type": "aws_s3_bucket",
+      "provider_config_key": "aws",
+      "change": {
+        "actions": ["create"],
+        "before": null,
+        "after": {
+          "bucket": "my-static-content-bucket",
+          "acl": "private",
+          "versioning": {"enabled": true},
+          "tags": {"Purpose": "Static Content", "Environment": "dev"}
+        }
+      }
+    }
+  ]
+}

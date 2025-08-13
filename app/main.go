@@ -12,10 +12,11 @@ import (
 var version = "dev"
 
 var (
-	profileFlag = flag.String("profile", "", "AWS profile to use (skips profile selection)")
-	webFlag     = flag.Bool("web", false, "Open web app immediately")
-	envFlag     = flag.String("env", "", "Environment to use (e.g., dev, prod)")
-	versionFlag = flag.Bool("version", false, "Show version information")
+	profileFlag    = flag.String("profile", "", "AWS profile to use (skips profile selection)")
+	webFlag        = flag.Bool("web", false, "Open web app immediately")
+	envFlag        = flag.String("env", "", "Environment to use (e.g., dev, prod)")
+	versionFlag    = flag.Bool("version", false, "Show version information")
+	renderDiffFlag = flag.String("renderdiff", "", "Render terraform plan diff view from JSON file (for testing)")
 )
 
 func main() {
@@ -25,6 +26,15 @@ func main() {
 	// Handle version flag
 	if *versionFlag {
 		fmt.Printf("meroku version %s\n", strings.TrimSpace(version))
+		os.Exit(0)
+	}
+
+	// Handle renderdiff flag for testing terraform plan diff view
+	if *renderDiffFlag != "" {
+		if err := runRenderDiff(*renderDiffFlag); err != nil {
+			fmt.Printf("Error rendering diff: %v\n", err)
+			os.Exit(1)
+		}
 		os.Exit(0)
 	}
 
@@ -121,4 +131,11 @@ func main() {
 	}
 	
 	os.Exit(0)
+}
+
+// runRenderDiff renders the terraform plan diff view from a JSON file
+func runRenderDiff(planFile string) error {
+	// For now, always use text-based output when running with --renderdiff
+	// This ensures it works in all environments including CI/CD
+	return renderDiffToText(planFile)
 }

@@ -19,7 +19,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-const AppVersion = "v2.2.5"
+const AppVersion = "v3.5.6" // Should match version.txt
 
 type viewMode int
 
@@ -545,7 +545,31 @@ func initModernTerraformPlanTUI(planJSON string) (tea.Model, error) {
 		if providerMap[provider] == nil {
 			providerMap[provider] = make(map[string][]ResourceChange)
 		}
-		providerMap[provider][service] = append(providerMap[provider][service], change)
+		
+		// Handle replace operations specially - split into delete and create
+		if len(change.Change.Actions) == 2 && 
+		   change.Change.Actions[0] == "delete" && 
+		   change.Change.Actions[1] == "create" {
+			// Create a delete entry
+			deleteChange := change
+			deleteChange.Change.Actions = []string{"delete"}
+			deleteChange.Change.After = nil  // Delete only has before state
+			
+			// Create a create entry
+			createChange := change
+			createChange.Change.Actions = []string{"create"}
+			createChange.Change.Before = nil  // Create only has after state
+			
+			// Append both with modified addresses to distinguish them
+			deleteChange.Address = change.Address + " (destroy)"
+			createChange.Address = change.Address + " (create)"
+			
+			providerMap[provider][service] = append(providerMap[provider][service], deleteChange)
+			providerMap[provider][service] = append(providerMap[provider][service], createChange)
+		} else {
+			// Regular change - just append as-is
+			providerMap[provider][service] = append(providerMap[provider][service], change)
+		}
 	}
 	
 	// Create provider groups with service subgroups
@@ -1229,11 +1253,31 @@ func (m *modernPlanModel) renderTreeContent() string {
 							iconStyle = lipgloss.NewStyle()
 						}
 						
-						// Resource name
-						parts := strings.Split(resource.Address, ".")
+						// Resource name - handle replacement suffixes specially
+						displayName := resource.Address
+						isReplacement := false
+						replacementType := ""
+						
+						if strings.HasSuffix(resource.Address, " (destroy)") {
+							displayName = strings.TrimSuffix(resource.Address, " (destroy)")
+							isReplacement = true
+							replacementType = " [DELETE]"
+						} else if strings.HasSuffix(resource.Address, " (create)") {
+							displayName = strings.TrimSuffix(resource.Address, " (create)")
+							isReplacement = true
+							replacementType = " [CREATE]"
+						}
+						
+						// Extract just the resource name from the full address
+						parts := strings.Split(displayName, ".")
 						name := parts[len(parts)-1]
 						if len(parts) > 1 {
 							name = parts[len(parts)-2] + "." + name
+						}
+						
+						// Add replacement indicator to the name
+						if isReplacement {
+							name = name + replacementType
 						}
 						
 						connector := "├"
@@ -1241,9 +1285,9 @@ func (m *modernPlanModel) renderTreeContent() string {
 							connector = "└"
 						}
 						
-						// Check if resource is marked for replacement
+						// Check if resource is marked for replacement (using clean address)
 						replaceMarker := ""
-						if m.markedForReplace[resource.Address] {
+						if m.markedForReplace[displayName] {
 							replaceMarker = " ↻"
 						}
 						
@@ -1296,17 +1340,28 @@ func (m *modernPlanModel) updateDetailViewport() {
 func (m *modernPlanModel) renderResourceDetails(resource *ResourceChange) string {
 	var b strings.Builder
 	
+	// Clean up the address for display (remove suffixes we added)
+	displayAddress := resource.Address
+	displayAddress = strings.TrimSuffix(displayAddress, " (destroy)")
+	displayAddress = strings.TrimSuffix(displayAddress, " (create)")
+	
 	// Resource header with icon
 	icon := getResourceIcon(resource.Type)
 	actionStyle := getActionStyle(resource.Change.Actions[0])
 	
-	b.WriteString(fmt.Sprintf("%s %s\n", icon, titleStyle.Render(resource.Address)))
-	b.WriteString(strings.Repeat("─", 60) + "\n\n")
+	b.WriteString(fmt.Sprintf("%s %s\n\n", icon, titleStyle.Render(displayAddress)))
 	
-	// Action badge
-	actionBadge := actionStyle.Padding(0, 1).Render(strings.ToUpper(resource.Change.Actions[0]))
+	// Action badge - show special indicator for replacement parts
+	actionText := strings.ToUpper(resource.Change.Actions[0])
+	if strings.HasSuffix(resource.Address, " (destroy)") {
+		actionText = "DELETE (REPLACEMENT)"
+	} else if strings.HasSuffix(resource.Address, " (create)") {
+		actionText = "CREATE (REPLACEMENT)"
+	}
+	
+	actionBadge := actionStyle.Padding(0, 1).Render(actionText)
 	replaceBadge := ""
-	if m.markedForReplace[resource.Address] {
+	if m.markedForReplace[displayAddress] {
 		replaceBadge = "  " + lipgloss.NewStyle().
 			Background(primaryColor).
 			Foreground(lipgloss.Color("#ffffff")).
@@ -1319,13 +1374,85 @@ func (m *modernPlanModel) renderResourceDetails(resource *ResourceChange) string
 	// Render based on action type
 	switch resource.Change.Actions[0] {
 	case "create":
-		b.WriteString(m.renderCreateDetails(resource))
+		if strings.HasSuffix(resource.Address, " (create)") {
+			// This is the create part of a replacement
+			b.WriteString(m.renderReplacementCreateDetails(resource))
+		} else {
+			b.WriteString(m.renderCreateDetails(resource))
+		}
 	case "update":
 		b.WriteString(m.renderUpdateDetails(resource))
 	case "delete":
-		b.WriteString(m.renderDeleteDetails(resource))
+		if strings.HasSuffix(resource.Address, " (destroy)") {
+			// This is the delete part of a replacement
+			b.WriteString(m.renderReplacementDeleteDetails(resource))
+		} else {
+			b.WriteString(m.renderDeleteDetails(resource))
+		}
 	case "replace":
 		b.WriteString(m.renderReplaceDetails(resource))
+	}
+	
+	return b.String()
+}
+
+// renderReplacementDeleteDetails shows the delete part of a replacement
+func (m *modernPlanModel) renderReplacementDeleteDetails(resource *ResourceChange) string {
+	var b strings.Builder
+	
+	// Header indicating this is part of a replacement
+	headerStyle := lipgloss.NewStyle().
+		Foreground(primaryColor).
+		Bold(true).
+		Padding(0, 1).
+		Border(lipgloss.ThickBorder()).
+		BorderForeground(primaryColor)
+	
+	b.WriteString(headerStyle.Render("🔄 REPLACEMENT - DELETE PHASE") + "\n\n")
+	
+	// Warning about replacement
+	infoBox := lipgloss.NewStyle().
+		Background(lipgloss.Color("#1a1a2a")).
+		Foreground(lipgloss.Color("#9999ff")).
+		Padding(0, 1).
+		Width(60)
+	
+	b.WriteString(infoBox.Render("ℹ️  This resource will be deleted and recreated with new configuration.") + "\n\n")
+	
+	if resource.Change.Before != nil {
+		b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(dangerColor).Render("Current Configuration (to be deleted):") + "\n\n")
+		b.WriteString(m.renderFormattedAttributes(resource.Change.Before, lipgloss.NewStyle().Foreground(dangerColor)))
+	}
+	
+	return b.String()
+}
+
+// renderReplacementCreateDetails shows the create part of a replacement
+func (m *modernPlanModel) renderReplacementCreateDetails(resource *ResourceChange) string {
+	var b strings.Builder
+	
+	// Header indicating this is part of a replacement
+	headerStyle := lipgloss.NewStyle().
+		Foreground(primaryColor).
+		Bold(true).
+		Padding(0, 1).
+		Border(lipgloss.ThickBorder()).
+		BorderForeground(primaryColor)
+	
+	b.WriteString(headerStyle.Render("🔄 REPLACEMENT - CREATE PHASE") + "\n\n")
+	
+	// Info about replacement
+	infoBox := lipgloss.NewStyle().
+		Background(lipgloss.Color("#1a2a1a")).
+		Foreground(lipgloss.Color("#99ff99")).
+		Padding(0, 1).
+		Width(60)
+	
+	b.WriteString(infoBox.Render("ℹ️  New configuration that will replace the deleted resource.") + "\n\n")
+	
+	if resource.Change.After != nil {
+		b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(successColor).Render("New Configuration (to be created):") + "\n\n")
+		b.WriteString(m.renderFormattedAttributes(resource.Change.After, lipgloss.NewStyle().Foreground(successColor)))
 	}
 	
 	return b.String()
@@ -1349,10 +1476,8 @@ func getActionStyle(action string) lipgloss.Style {
 func (m *modernPlanModel) renderCreateDetails(resource *ResourceChange) string {
 	var b strings.Builder
 	
-	b.WriteString(createIconStyle.Bold(true).Render("➕ Creating new resource") + "\n\n")
-	
 	if resource.Change.After != nil {
-		b.WriteString(m.renderAttributeTree("Configuration", resource.Change.After, createIconStyle))
+		b.WriteString(m.renderFormattedAttributes(resource.Change.After, lipgloss.NewStyle().Foreground(fgColor)))
 	}
 	
 	return b.String()
@@ -1361,48 +1486,140 @@ func (m *modernPlanModel) renderCreateDetails(resource *ResourceChange) string {
 func (m *modernPlanModel) renderUpdateDetails(resource *ResourceChange) string {
 	var b strings.Builder
 	
-	b.WriteString(updateIconStyle.Bold(true).Render("📝 Updating resource") + "\n\n")
-	
 	// Find changed attributes
 	changes := m.findChangedAttributes(resource.Change.Before, resource.Change.After)
 	
 	if len(changes) > 0 {
-		b.WriteString(lipgloss.NewStyle().Bold(true).Render("Changes:") + "\n\n")
-		for _, change := range changes {
-			b.WriteString(m.renderAttributeChange(change))
-			b.WriteString("\n")
+		changesHeader := lipgloss.NewStyle().
+			Foreground(warningColor).
+			Bold(true)
+		
+		b.WriteString(changesHeader.Render("━━━ Changes ━━━") + "\n\n")
+		
+		for i, change := range changes {
+			b.WriteString(m.renderSimpleChange(change))
+			if i < len(changes)-1 {
+				b.WriteString("\n")
+			}
 		}
 	}
 	
-	// Show unchanged important attributes
-	unchanged := m.findUnchangedImportantAttributes(resource.Type, resource.Change.Before, resource.Change.After)
-	if len(unchanged) > 0 {
-		b.WriteString("\n" + lipgloss.NewStyle().Foreground(mutedColor).Bold(true).Render("Unchanged:") + "\n\n")
-		for key, value := range unchanged {
-			b.WriteString(fmt.Sprintf("  %s %s\n", 
-				labelStyle.Render(key+":"),
-				valueStyle.Render(formatValue(value))))
+	// Show unchanged important attributes (only if there are few changes)
+	if len(changes) < 3 {
+		unchanged := m.findUnchangedImportantAttributes(resource.Type, resource.Change.Before, resource.Change.After)
+		if len(unchanged) > 0 && len(unchanged) < 5 {
+			b.WriteString("\n\n")
+			
+			unchangedHeader := lipgloss.NewStyle().
+				Foreground(dimColor)
+			
+			b.WriteString(unchangedHeader.Render("━━━ Unchanged ━━━") + "\n\n")
+			
+			for _, key := range sortedKeys(unchanged) {
+				b.WriteString(fmt.Sprintf("  %-28s %s\n",
+					lipgloss.NewStyle().Foreground(mutedColor).Render(key + ":"),
+					lipgloss.NewStyle().Foreground(dimColor).Render(formatValue(unchanged[key]))))
+			}
 		}
 	}
 	
 	return b.String()
 }
 
+// renderSimpleChange renders a change in a compact format
+func (m *modernPlanModel) renderSimpleChange(change attributeChange) string {
+	keyStyle := lipgloss.NewStyle().
+		Foreground(accentColor).
+		Bold(true)
+	
+	if change.isNew {
+		return fmt.Sprintf("  %s %-20s %s",
+			createIconStyle.Render("+"),
+			keyStyle.Render(change.key + ":"),
+			createIconStyle.Render(formatValue(change.after)))
+	}
+	
+	if change.isRemoved {
+		return fmt.Sprintf("  %s %-20s %s",
+			deleteIconStyle.Render("-"),
+			keyStyle.Render(change.key + ":"),
+			deleteIconStyle.Render(formatValue(change.before)))
+	}
+	
+	// Changed value - show inline
+	return fmt.Sprintf("  %s %-20s %s → %s",
+		updateIconStyle.Render("~"),
+		keyStyle.Render(change.key + ":"),
+		deleteIconStyle.Render(formatValue(change.before)),
+		createIconStyle.Render(formatValue(change.after)))
+}
+
+// renderFormattedChange renders a single change with better formatting
+func (m *modernPlanModel) renderFormattedChange(change attributeChange) string {
+	keyStyle := lipgloss.NewStyle().
+		Foreground(accentColor).
+		Bold(true)
+	
+	if change.isNew {
+		// New attribute
+		box := lipgloss.NewStyle().
+			Border(lipgloss.NormalBorder()).
+			BorderForeground(successColor).
+			Padding(0, 1)
+		
+		content := fmt.Sprintf("%s %s\n%s",
+			createIconStyle.Render("ADD"),
+			keyStyle.Render(change.key),
+			createIconStyle.Render(formatValue(change.after)))
+		
+		return box.Render(content)
+	}
+	
+	if change.isRemoved {
+		// Removed attribute
+		box := lipgloss.NewStyle().
+			Border(lipgloss.NormalBorder()).
+			BorderForeground(dangerColor).
+			Padding(0, 1)
+		
+		content := fmt.Sprintf("%s %s\n%s",
+			deleteIconStyle.Render("REMOVE"),
+			keyStyle.Render(change.key),
+			deleteIconStyle.Render(formatValue(change.before)))
+		
+		return box.Render(content)
+	}
+	
+	// Modified attribute - show diff
+	box := lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(warningColor).
+		Padding(0, 1)
+	
+	content := fmt.Sprintf("%s %s\n%s %s\n%s %s",
+		updateIconStyle.Render("MODIFY"),
+		keyStyle.Render(change.key),
+		deleteIconStyle.Render("- "),
+		formatValue(change.before),
+		createIconStyle.Render("+ "),
+		formatValue(change.after))
+	
+	return box.Render(content)
+}
+
 func (m *modernPlanModel) renderDeleteDetails(resource *ResourceChange) string {
 	var b strings.Builder
 	
-	b.WriteString(deleteIconStyle.Bold(true).Render("🗑️  Deleting resource") + "\n\n")
+	// Simple, compact warning message
+	warningStyle := lipgloss.NewStyle().
+		Foreground(dangerColor).
+		Bold(true)
+	
+	b.WriteString(warningStyle.Render("⚠️  This resource will be permanently deleted") + "\n\n")
 	
 	if resource.Change.Before != nil {
-		b.WriteString(m.renderAttributeTree("Current Configuration", resource.Change.Before, deleteIconStyle))
+		b.WriteString(m.renderFormattedAttributes(resource.Change.Before, lipgloss.NewStyle().Foreground(fgColor)))
 	}
-	
-	b.WriteString("\n" + lipgloss.NewStyle().
-		Background(dangerColor).
-		Foreground(lipgloss.Color("#ffffff")).
-		Bold(true).
-		Padding(0, 1).
-		Render("⚠️  This resource will be permanently deleted"))
 	
 	return b.String()
 }
@@ -1410,25 +1627,69 @@ func (m *modernPlanModel) renderDeleteDetails(resource *ResourceChange) string {
 func (m *modernPlanModel) renderReplaceDetails(resource *ResourceChange) string {
 	var b strings.Builder
 	
-	b.WriteString(lipgloss.NewStyle().Foreground(primaryColor).Bold(true).Render("🔄 Resource will be replaced (recreated)") + "\n\n")
+	// Header with clear replacement indication
+	headerStyle := lipgloss.NewStyle().
+		Foreground(primaryColor).
+		Bold(true).
+		Padding(0, 1).
+		Border(lipgloss.ThickBorder()).
+		BorderForeground(primaryColor)
+	
+	b.WriteString(headerStyle.Render("⚠️  RESOURCE REPLACEMENT") + "\n\n")
+	
+	// Explain what replacement means
+	warningBox := lipgloss.NewStyle().
+		Background(lipgloss.Color("#2a1a2a")).
+		Foreground(lipgloss.Color("#ff9999")).
+		Padding(0, 1).
+		Width(60)
+	
+	b.WriteString(warningBox.Render("⚠️  Resource will be destroyed and recreated.\n⚠️  Potential data loss - ensure backups exist.") + "\n\n")
 	
 	// Show what's forcing the replacement
 	if resource.Change.Before != nil && resource.Change.After != nil {
 		forceNew := m.findForceNewAttributes(resource.Change.Before, resource.Change.After)
 		if len(forceNew) > 0 {
-			b.WriteString(lipgloss.NewStyle().Bold(true).Render("Forces replacement:") + "\n")
+			reasonHeader := lipgloss.NewStyle().
+				Foreground(dangerColor).
+				Bold(true).
+				MarginBottom(1)
+			
+			b.WriteString(reasonHeader.Render("━━━ Attributes Forcing Replacement ━━━") + "\n\n")
+			
 			for _, attr := range forceNew {
-				b.WriteString(fmt.Sprintf("  %s %s\n", 
-					lipgloss.NewStyle().Foreground(dangerColor).Render("!"),
-					attr))
+				attrBox := lipgloss.NewStyle().
+					Border(lipgloss.NormalBorder()).
+					BorderForeground(dangerColor).
+					Padding(0, 1).
+					Foreground(dangerColor)
+				
+				b.WriteString(attrBox.Render("⚡ " + attr) + "\n")
 			}
 			b.WriteString("\n")
 		}
 	}
 	
-	// Show the new configuration
-	if resource.Change.After != nil {
-		b.WriteString(m.renderAttributeTree("New Configuration", resource.Change.After, createIconStyle))
+	// Show side-by-side comparison if both exist
+	if resource.Change.Before != nil && resource.Change.After != nil {
+		// Current state section
+		deleteHeader := lipgloss.NewStyle().
+			Foreground(dangerColor).
+			Bold(true).
+			MarginBottom(1)
+		
+		b.WriteString(deleteHeader.Render("━━━ Current State (to be destroyed) ━━━") + "\n\n")
+		b.WriteString(m.renderFormattedAttributes(resource.Change.Before, lipgloss.NewStyle().Foreground(dangerColor)))
+		b.WriteString("\n")
+		
+		// New state section
+		createHeader := lipgloss.NewStyle().
+			Foreground(successColor).
+			Bold(true).
+			MarginBottom(1)
+		
+		b.WriteString(createHeader.Render("━━━ New State (to be created) ━━━") + "\n\n")
+		b.WriteString(m.renderFormattedAttributes(resource.Change.After, lipgloss.NewStyle().Foreground(successColor)))
 	}
 	
 	return b.String()
@@ -1437,60 +1698,152 @@ func (m *modernPlanModel) renderReplaceDetails(resource *ResourceChange) string 
 func (m *modernPlanModel) renderAttributeTree(title string, attrs map[string]interface{}, style lipgloss.Style) string {
 	var b strings.Builder
 	
-	b.WriteString(lipgloss.NewStyle().Bold(true).Render(title) + "\n")
+	// Title with underline (only if title is provided)
+	if title != "" {
+		titleStyle := lipgloss.NewStyle().Bold(true).Underline(true)
+		b.WriteString(titleStyle.Render(title) + "\n\n")
+	}
+	
+	// Use the new formatted attributes renderer
+	b.WriteString(m.renderFormattedAttributes(attrs, style))
+	
+	return b.String()
+}
+
+// renderFormattedAttributes renders attributes in a clean, formatted way
+func (m *modernPlanModel) renderFormattedAttributes(attrs map[string]interface{}, style lipgloss.Style) string {
+	var b strings.Builder
 	
 	// Group and sort attributes
 	important, others := m.categorizeAttributes(attrs)
 	
-	// Render important attributes first
+	// Create a table-like layout for better readability
 	if len(important) > 0 {
+		// Important attributes section header
+		sectionStyle := lipgloss.NewStyle().
+			Foreground(primaryColor).
+			Bold(true)
+		
+		b.WriteString(sectionStyle.Render("━━━ Key Attributes ━━━") + "\n\n")
+		
 		for _, key := range sortedKeys(important) {
-			b.WriteString(m.renderAttributeWithStyle(key, important[key], 1, style))
+			b.WriteString(m.renderFormattedAttribute(key, important[key], style))
+			b.WriteString("\n")
 		}
 	}
 	
-	// Render other attributes
-	if len(others) > 0 && len(important) > 0 {
-		b.WriteString("\n")
-	}
-	
-	for _, key := range sortedKeys(others) {
-		b.WriteString(m.renderAttributeWithStyle(key, others[key], 1, lipgloss.NewStyle()))
+	// Other attributes
+	if len(others) > 0 {
+		if len(important) > 0 {
+			b.WriteString("\n")
+		}
+		
+		sectionStyle := lipgloss.NewStyle().
+			Foreground(mutedColor)
+		
+		b.WriteString(sectionStyle.Render("━━━ Other Attributes ━━━") + "\n\n")
+		
+		for _, key := range sortedKeys(others) {
+			b.WriteString(m.renderFormattedAttribute(key, others[key], lipgloss.NewStyle().Foreground(fgColor)))
+			b.WriteString("\n")
+		}
 	}
 	
 	return b.String()
 }
 
-func (m *modernPlanModel) renderAttributeWithStyle(key string, value interface{}, indent int, style lipgloss.Style) string {
-	prefix := strings.Repeat("  ", indent)
-	
+// renderFormattedAttribute renders a single attribute with proper formatting
+func (m *modernPlanModel) renderFormattedAttribute(key string, value interface{}, style lipgloss.Style) string {
+	// Format the value based on its type
+	var formattedValue string
 	switch v := value.(type) {
 	case map[string]interface{}:
-		result := fmt.Sprintf("%s%s %s:\n", prefix, style.Render("▸"), labelStyle.Render(key))
-		for _, k := range sortedKeys(v) {
-			result += m.renderAttributeWithStyle(k, v[k], indent+1, style)
-		}
-		return result
-		
+		// For nested objects, show them indented on next line
+		formattedValue = m.renderNestedObject(v, 1)
+		return fmt.Sprintf("  %s: %s", 
+			lipgloss.NewStyle().Foreground(accentColor).Bold(true).Render(key),
+			style.Render(formattedValue))
 	case []interface{}:
-		if len(v) == 0 {
-			return fmt.Sprintf("%s%s %s: %s\n", prefix, style.Render("•"), labelStyle.Render(key), valueStyle.Render("[]"))
-		}
-		result := fmt.Sprintf("%s%s %s: (%d items)\n", prefix, style.Render("▸"), labelStyle.Render(key), len(v))
-		for i, item := range v {
-			if i >= 3 { // Limit array display
-				result += fmt.Sprintf("%s  %s\n", prefix, lipgloss.NewStyle().Foreground(mutedColor).Render("..."))
-				break
-			}
-			result += m.renderAttributeWithStyle(fmt.Sprintf("[%d]", i), item, indent+1, style)
-		}
-		return result
-		
+		formattedValue = m.renderArray(v)
 	default:
-		valueStr := formatValue(value)
-		return fmt.Sprintf("%s%s %s: %s\n", prefix, style.Render("•"), labelStyle.Render(key), valueStyle.Render(valueStr))
+		formattedValue = formatValue(value)
 	}
+	
+	// Create a properly formatted row with consistent spacing
+	// Use fixed-width formatting for better alignment
+	keyPart := lipgloss.NewStyle().
+		Foreground(accentColor).
+		Bold(true).
+		Render(fmt.Sprintf("  %-28s", key + ":"))
+	
+	valuePart := style.Render(formattedValue)
+	
+	return fmt.Sprintf("%s %s", keyPart, valuePart)
 }
+
+// renderNestedObject renders nested objects with proper indentation
+func (m *modernPlanModel) renderNestedObject(obj map[string]interface{}, indent int) string {
+	if len(obj) == 0 {
+		return "{}"
+	}
+	
+	// For small objects, render inline
+	if len(obj) <= 2 {
+		var parts []string
+		for _, k := range sortedKeys(obj) {
+			parts = append(parts, fmt.Sprintf("%s: %s", k, formatValue(obj[k])))
+		}
+		return fmt.Sprintf("{ %s }", strings.Join(parts, ", "))
+	}
+	
+	// For larger objects, render with indentation
+	var b strings.Builder
+	b.WriteString("\n")
+	indentStr := strings.Repeat("  ", indent+1)
+	for _, k := range sortedKeys(obj) {
+		b.WriteString(fmt.Sprintf("%s%s: %s\n", indentStr, k, formatValue(obj[k])))
+	}
+	return b.String()
+}
+
+// renderArray renders arrays in a compact format
+func (m *modernPlanModel) renderArray(arr []interface{}) string {
+	if len(arr) == 0 {
+		return "[]"
+	}
+	
+	// Check if it's an array of simple values or complex objects
+	isComplex := false
+	for _, item := range arr {
+		if _, ok := item.(map[string]interface{}); ok {
+			isComplex = true
+			break
+		}
+	}
+	
+	if isComplex {
+		// For arrays of objects, just show count
+		return fmt.Sprintf("[%d objects]", len(arr))
+	}
+	
+	if len(arr) <= 3 {
+		// Show all items if 3 or fewer
+		var items []string
+		for _, item := range arr {
+			items = append(items, formatValue(item))
+		}
+		return fmt.Sprintf("[%s]", strings.Join(items, ", "))
+	}
+	
+	// Show first 2 items and count for longer arrays
+	var items []string
+	for i := 0; i < 2; i++ {
+		items = append(items, formatValue(arr[i]))
+	}
+	return fmt.Sprintf("[%s, ... +%d more]", strings.Join(items, ", "), len(arr)-2)
+}
+
+// Removed renderAttributeWithStyle - using new formatting functions instead
 
 type attributeChange struct {
 	key    string
@@ -1548,28 +1901,42 @@ func (m *modernPlanModel) findChangedAttributes(before, after map[string]interfa
 }
 
 func (m *modernPlanModel) renderAttributeChange(change attributeChange) string {
+	// Style for keys with proper padding
+	keyStyle := lipgloss.NewStyle().Bold(true).Foreground(accentColor)
+	
 	if change.isNew {
-		return fmt.Sprintf("  %s %s: %s",
-			createIconStyle.Render("+"),
-			labelStyle.Render(change.key),
+		return fmt.Sprintf("  %s %-20s %s",
+			createIconStyle.Render("✚"),
+			keyStyle.Render(change.key + ":"),
 			createIconStyle.Render(formatValue(change.after)))
 	}
 	
 	if change.isRemoved {
-		return fmt.Sprintf("  %s %s: %s",
-			deleteIconStyle.Render("-"),
-			labelStyle.Render(change.key),
+		return fmt.Sprintf("  %s %-20s %s",
+			deleteIconStyle.Render("✖"),
+			keyStyle.Render(change.key + ":"),
 			deleteIconStyle.Render(formatValue(change.before)))
 	}
 	
-	// Changed value
-	return fmt.Sprintf("  %s %s:\n    %s %s\n    %s %s",
-		updateIconStyle.Render("~"),
-		labelStyle.Render(change.key),
-		deleteIconStyle.Render("-"),
-		deleteIconStyle.Render(formatValue(change.before)),
-		createIconStyle.Render("+"),
-		createIconStyle.Render(formatValue(change.after)))
+	// Changed value - show as a diff with better formatting
+	changeBox := lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(warningColor).
+		Padding(0, 1).
+		Width(70)
+	
+	var changeContent strings.Builder
+	changeContent.WriteString(fmt.Sprintf("%s %s\n",
+		updateIconStyle.Render("⟳"),
+		keyStyle.Render(change.key)))
+	changeContent.WriteString(fmt.Sprintf("  %s %s\n",
+		deleteIconStyle.Render("FROM:"),
+		deleteIconStyle.Render(formatValue(change.before))))
+	changeContent.WriteString(fmt.Sprintf("  %s %s",
+		createIconStyle.Render("  TO:"),
+		createIconStyle.Render(formatValue(change.after))))
+	
+	return changeBox.Render(changeContent.String())
 }
 
 func (m *modernPlanModel) categorizeAttributes(attrs map[string]interface{}) (important, others map[string]interface{}) {
@@ -1577,11 +1944,25 @@ func (m *modernPlanModel) categorizeAttributes(attrs map[string]interface{}) (im
 	others = make(map[string]interface{})
 	
 	importantKeys := map[string]bool{
-		"name": true, "instance_type": true, "ami": true, "image": true,
+		// Core identifiers
+		"name": true, "id": true, "arn": true, "domain_name": true,
+		// Instance/compute
+		"instance_type": true, "ami": true, "image": true,
 		"desired_count": true, "min_size": true, "max_size": true,
-		"cpu": true, "memory": true, "runtime": true, "handler": true,
+		"cpu": true, "memory": true, 
+		// Lambda/functions
+		"runtime": true, "handler": true, "function_name": true,
+		// Database
 		"engine": true, "engine_version": true, "instance_class": true,
-		"allocated_storage": true, "bucket": true, "key": true,
+		"allocated_storage": true, "database_name": true,
+		// Storage
+		"bucket": true, "key": true, "acl": true,
+		// Network
+		"vpc_id": true, "subnet_id": true, "availability_zone": true,
+		"port": true, "protocol": true, "cidr_blocks": true,
+		// SSL/TLS
+		"certificate_body": true, "certificate_chain": true,
+		"validation_method": true, "key_algorithm": true,
 	}
 	
 	for key, value := range attrs {
@@ -1644,9 +2025,23 @@ func sortedKeys(m map[string]interface{}) []string {
 func formatValue(value interface{}) string {
 	switch v := value.(type) {
 	case string:
+		// Handle empty strings
+		if v == "" {
+			return "(empty)"
+		}
+		// Handle multi-line strings
+		if strings.Contains(v, "\n") {
+			lines := strings.Split(v, "\n")
+			if len(lines) > 3 {
+				return fmt.Sprintf("(multiline: %d lines)", len(lines))
+			}
+			return strings.Join(lines, " ")
+		}
+		// Truncate long strings but show more content
 		if len(v) > 60 {
 			return v[:57] + "..."
 		}
+		// Return string as-is for readability
 		return v
 	case bool:
 		if v {
@@ -1655,9 +2050,21 @@ func formatValue(value interface{}) string {
 		return "false"
 	case nil:
 		return "null"
+	case float64:
+		// Format numbers nicely
+		if v == float64(int64(v)) {
+			return fmt.Sprintf("%d", int64(v))
+		}
+		return fmt.Sprintf("%.2f", v)
 	case []interface{}:
+		if len(v) == 0 {
+			return "[]"
+		}
 		return fmt.Sprintf("[%d items]", len(v))
 	case map[string]interface{}:
+		if len(v) == 0 {
+			return "{}"
+		}
 		return fmt.Sprintf("{%d keys}", len(v))
 	default:
 		str := fmt.Sprintf("%v", v)
