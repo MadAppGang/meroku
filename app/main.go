@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 // version will be set at compile time using ldflags
@@ -135,7 +137,30 @@ func main() {
 
 // runRenderDiff renders the terraform plan diff view from a JSON file
 func runRenderDiff(planFile string) error {
-	// For now, always use text-based output when running with --renderdiff
-	// This ensures it works in all environments including CI/CD
-	return renderDiffToText(planFile)
+	// Always run the interactive TUI when --renderdiff is used
+	// The user explicitly wants to test the TUI view
+	return runTerraformPlanTUI(planFile)
+}
+
+// runTerraformPlanTUI runs the interactive TUI for a terraform plan file
+func runTerraformPlanTUI(planFile string) error {
+	// Read the plan file
+	planData, err := os.ReadFile(planFile)
+	if err != nil {
+		return fmt.Errorf("failed to read plan file: %w", err)
+	}
+	
+	// Initialize the TUI model
+	model, err := initModernTerraformPlanTUI(string(planData))
+	if err != nil {
+		return fmt.Errorf("failed to initialize TUI: %w", err)
+	}
+	
+	// Create and run the tea program
+	p := tea.NewProgram(model, tea.WithAltScreen())
+	if _, err := p.Run(); err != nil {
+		return fmt.Errorf("error running TUI: %w", err)
+	}
+	
+	return nil
 }

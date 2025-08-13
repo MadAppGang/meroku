@@ -26,6 +26,7 @@ type viewMode int
 const (
 	dashboardView viewMode = iota
 	applyView
+	fullScreenDiffView
 )
 
 // Type definitions from the original implementation
@@ -105,6 +106,7 @@ type modernPlanModel struct {
 	detailViewport viewport.Model
 	treeViewport   viewport.Model
 	logViewport    viewport.Model
+	diffViewport   viewport.Model  // For full-screen diff view
 	width          int
 	height         int
 	help           help.Model
@@ -117,6 +119,8 @@ type modernPlanModel struct {
 	// Resource replacement tracking
 	markedForReplace map[string]bool
 	showReplaceMode  bool
+	// Full-screen diff state
+	diffResource   *ResourceChange  // Resource being viewed in full-screen
 }
 
 type modernKeyMap struct {
@@ -622,6 +626,7 @@ func initModernTerraformPlanTUI(planJSON string) (tea.Model, error) {
 	detailVp := viewport.New(0, 0)
 	treeVp := viewport.New(0, 0)
 	logVp := viewport.New(0, 0)
+	diffVp := viewport.New(0, 0)
 	
 	// Create progress bar
 	prog := progress.New(progress.WithDefaultGradient())
@@ -634,11 +639,13 @@ func initModernTerraformPlanTUI(planJSON string) (tea.Model, error) {
 		detailViewport: detailVp,
 		treeViewport:   treeVp,
 		logViewport:    logVp,
+		diffViewport:   diffVp,
 		help:           help.New(),
 		keys:           modernKeys,
 		progress:       prog,
 		markedForReplace: make(map[string]bool),
 		showReplaceMode:  false,
+		diffResource:   nil,
 	}, nil
 }
 
@@ -669,6 +676,11 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.detailViewport.Width = detailWidth
 			m.detailViewport.Height = contentHeight - 10
 			
+		case fullScreenDiffView:
+			// Full-screen diff view
+			m.diffViewport.Width = m.width - 4
+			m.diffViewport.Height = m.height - 6 // Leave room for header and footer
+			m.updateDiffViewport()
 			
 		case applyView:
 			m.logViewport.Width = m.width - 4
@@ -690,6 +702,11 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, m.keys.Quit):
+			// Escape from full-screen diff goes back to dashboard
+			if m.currentView == fullScreenDiffView {
+				m.currentView = dashboardView
+				return m, nil
+			}
 			return m, tea.Quit
 			
 		case key.Matches(msg, m.keys.Help):
@@ -737,9 +754,9 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.applyState.selectedSection = (m.applyState.selectedSection + 1) % 3
 			}
 			
-		case key.Matches(msg, m.keys.Space), key.Matches(msg, m.keys.Enter):
+		case key.Matches(msg, m.keys.Space):
 			if m.currentView == dashboardView && len(m.providers) > 0 {
-				// Handle provider/service/resource hierarchy
+				// Space toggles expand/collapse
 				if m.selectedService == -1 {
 					// Toggle provider
 					m.providers[m.selectedProvider].expanded = !m.providers[m.selectedProvider].expanded
@@ -760,11 +777,48 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.updateTreeViewport()
 			}
 			
+		case key.Matches(msg, m.keys.Enter):
+			if m.currentView == dashboardView && len(m.providers) > 0 {
+				// Enter opens full-screen diff for resources
+				if m.selectedResource >= 0 {
+					resource := m.getSelectedResource()
+					if resource != nil {
+						m.diffResource = resource
+						m.currentView = fullScreenDiffView
+						m.updateDiffViewport()
+					}
+				} else if m.selectedService == -1 {
+					// Toggle provider if no resource selected
+					m.providers[m.selectedProvider].expanded = !m.providers[m.selectedProvider].expanded
+					if !m.providers[m.selectedProvider].expanded {
+						m.selectedService = -1
+						m.selectedResource = -1
+					}
+					m.updateTreeViewport()
+				} else if m.selectedResource == -1 {
+					// Toggle service if no resource selected
+					provider := &m.providers[m.selectedProvider]
+					if provider.expanded && m.selectedService < len(provider.services) {
+						provider.services[m.selectedService].expanded = !provider.services[m.selectedService].expanded
+						if !provider.services[m.selectedService].expanded {
+							m.selectedResource = -1
+						}
+					}
+					m.updateTreeViewport()
+				}
+			} else if m.currentView == fullScreenDiffView {
+				// Enter or Escape in full-screen diff goes back to dashboard
+				m.currentView = dashboardView
+			}
+			
 		case key.Matches(msg, m.keys.Down):
 			if m.currentView == dashboardView {
 				m.navigateDown()
 				m.updateTreeViewport()
 				m.updateDetailViewport()
+			} else if m.currentView == fullScreenDiffView {
+				// Scroll down in full-screen diff view
+				m.diffViewport.LineDown(1)
 			} else if m.currentView == applyView && m.applyState != nil {
 				// Only scroll logs if logs section is selected
 				if m.applyState.selectedSection == 2 {
@@ -777,6 +831,9 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.navigateUp()
 				m.updateTreeViewport()
 				m.updateDetailViewport()
+			} else if m.currentView == fullScreenDiffView {
+				// Scroll up in full-screen diff view
+				m.diffViewport.LineUp(1)
 			} else if m.currentView == applyView && m.applyState != nil {
 				// Only scroll logs if logs section is selected
 				if m.applyState.selectedSection == 2 {
@@ -855,6 +912,18 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Toggle error details view
 			if m.currentView == applyView && m.applyState != nil && m.applyState.errorCount > 0 {
 				m.applyState.showErrorDetails = !m.applyState.showErrorDetails
+			}
+			
+		case tea.KeyMsg(msg).String() == "pgup":
+			// Page up in full-screen diff view
+			if m.currentView == fullScreenDiffView {
+				m.diffViewport.HalfViewUp()
+			}
+			
+		case tea.KeyMsg(msg).String() == "pgdown":
+			// Page down in full-screen diff view
+			if m.currentView == fullScreenDiffView {
+				m.diffViewport.HalfViewDown()
 			}
 		}
 		
@@ -1005,6 +1074,8 @@ func (m *modernPlanModel) View() string {
 		return m.renderDashboard()
 	case applyView:
 		return m.renderApplyView()
+	case fullScreenDiffView:
+		return m.renderFullScreenDiff()
 	default:
 		return m.renderDashboard()
 	}
@@ -1337,6 +1408,373 @@ func (m *modernPlanModel) updateDetailViewport() {
 	m.detailViewport.SetContent(content)
 }
 
+func (m *modernPlanModel) updateDiffViewport() {
+	if m.diffResource == nil {
+		m.diffViewport.SetContent("No resource selected")
+		return
+	}
+	
+	content := m.renderFullDiffContent(m.diffResource)
+	m.diffViewport.SetContent(content)
+}
+
+// renderFullScreenDiff renders the full-screen diff view for a selected resource
+func (m *modernPlanModel) renderFullScreenDiff() string {
+	if m.diffResource == nil {
+		return "No resource selected"
+	}
+	
+	// Create header with resource info
+	headerStyle := lipgloss.NewStyle().
+		Background(lipgloss.Color("#1a1a2e")).
+		Foreground(lipgloss.Color("#ffffff")).
+		Padding(1, 2).
+		Width(m.width)
+	
+	// Clean up address for display
+	displayAddress := m.diffResource.Address
+	displayAddress = strings.TrimSuffix(displayAddress, " (destroy)")
+	displayAddress = strings.TrimSuffix(displayAddress, " (create)")
+	
+	// Get action color and text
+	action := ""
+	actionColor := mutedColor
+	if len(m.diffResource.Change.Actions) > 0 {
+		switch m.diffResource.Change.Actions[0] {
+		case "create":
+			action = "CREATE"
+			actionColor = successColor
+		case "update":
+			action = "UPDATE"
+			actionColor = warningColor
+		case "delete":
+			action = "DELETE"
+			actionColor = dangerColor
+		case "read":
+			action = "READ"
+			actionColor = accentColor
+		}
+	}
+	
+	actionBadge := lipgloss.NewStyle().
+		Background(actionColor).
+		Foreground(lipgloss.Color("#ffffff")).
+		Padding(0, 1).
+		Bold(true).
+		Render(action)
+	
+	icon := getResourceIcon(m.diffResource.Type)
+	header := headerStyle.Render(fmt.Sprintf("%s %s  %s  %s", 
+		icon, m.diffResource.Type, actionBadge, displayAddress))
+	
+	// Help text at bottom
+	helpStyle := lipgloss.NewStyle().
+		Foreground(mutedColor).
+		Padding(0, 2)
+	
+	helpText := helpStyle.Render("Press Enter or Esc to return • ↑/↓ to scroll • j/k for vim navigation")
+	
+	// Calculate available height for viewport
+	availableHeight := m.height - lipgloss.Height(header) - lipgloss.Height(helpText) - 1
+	
+	// Update viewport dimensions if needed
+	if m.diffViewport.Height != availableHeight {
+		m.diffViewport.Height = availableHeight
+		m.diffViewport.Width = m.width
+	}
+	
+	// Combine all parts
+	return lipgloss.JoinVertical(
+		lipgloss.Left,
+		header,
+		m.diffViewport.View(),
+		helpText,
+	)
+}
+
+// renderFullDiffContent generates the detailed diff content for a resource
+func (m *modernPlanModel) renderFullDiffContent(resource *ResourceChange) string {
+	if resource == nil {
+		return "No resource selected"
+	}
+	
+	var b strings.Builder
+	
+	// Section style
+	sectionStyle := lipgloss.NewStyle().
+		Foreground(primaryColor).
+		Bold(true).
+		MarginTop(1).
+		MarginBottom(1)
+	
+	// Determine the type of change
+	if len(resource.Change.Actions) > 0 {
+		switch resource.Change.Actions[0] {
+		case "delete":
+			// Deletion - show what's being removed
+			b.WriteString(sectionStyle.Render("🗑️  Resource Deletion") + "\n\n")
+			
+			warningStyle := lipgloss.NewStyle().
+				Foreground(dangerColor).
+				Bold(true)
+			b.WriteString(warningStyle.Render("⚠️  This resource will be permanently deleted") + "\n\n")
+			
+			if resource.Change.Before != nil {
+				b.WriteString(sectionStyle.Render("Current Configuration (to be deleted):") + "\n")
+				b.WriteString(m.renderAttributesDiff(resource.Change.Before, nil, false))
+			}
+			
+		case "create":
+			// Creation - show what's being added
+			b.WriteString(sectionStyle.Render("✨ New Resource Creation") + "\n\n")
+			
+			if resource.Change.After != nil {
+				b.WriteString(sectionStyle.Render("Configuration:") + "\n")
+				b.WriteString(m.renderAttributesDiff(nil, resource.Change.After, false))
+			}
+			
+		case "update":
+			// Update - show the diff
+			b.WriteString(sectionStyle.Render("📝 Resource Update") + "\n\n")
+			
+			// Show changed attributes
+			b.WriteString(sectionStyle.Render("Changes:") + "\n")
+			b.WriteString(m.renderUpdateDiff(resource.Change.Before, resource.Change.After))
+			
+			// Show unchanged attributes if there are any
+			unchanged := m.getUnchangedAttributes(resource.Change.Before, resource.Change.After)
+			if len(unchanged) > 0 && len(unchanged) < 20 { // Only show if not too many
+				b.WriteString("\n" + sectionStyle.Render("Unchanged Attributes:") + "\n")
+				b.WriteString(m.renderUnchangedAttributes(unchanged))
+			}
+			
+		case "read":
+			// Read operation
+			b.WriteString(sectionStyle.Render("🔍 Resource Read") + "\n\n")
+			b.WriteString("This resource will be read from the provider to update the state.\n")
+		}
+	}
+	
+	// Add metadata section if we have provider info
+	if resource.ProviderName != "" {
+		b.WriteString("\n" + sectionStyle.Render("Metadata:") + "\n")
+		
+		metaStyle := lipgloss.NewStyle().Foreground(mutedColor)
+		b.WriteString(metaStyle.Render(fmt.Sprintf("Provider: %s\n", resource.ProviderName)))
+		b.WriteString(metaStyle.Render(fmt.Sprintf("Mode: %s\n", resource.Mode)))
+		b.WriteString(metaStyle.Render(fmt.Sprintf("Type: %s\n", resource.Type)))
+		b.WriteString(metaStyle.Render(fmt.Sprintf("Name: %s\n", resource.Name)))
+	}
+	
+	return b.String()
+}
+
+// renderUpdateDiff renders a detailed diff for updates with syntax highlighting
+func (m *modernPlanModel) renderUpdateDiff(before, after map[string]interface{}) string {
+	var b strings.Builder
+	
+	// Styles for diff
+	addedStyle := lipgloss.NewStyle().Foreground(successColor)
+	removedStyle := lipgloss.NewStyle().Foreground(dangerColor)
+	modifiedStyle := lipgloss.NewStyle().Foreground(warningColor)
+	keyStyle := lipgloss.NewStyle().Foreground(accentColor)
+	
+	// Collect all keys
+	allKeys := make(map[string]bool)
+	for k := range before {
+		allKeys[k] = true
+	}
+	for k := range after {
+		allKeys[k] = true
+	}
+	
+	// Sort keys for consistent display
+	var keys []string
+	for k := range allKeys {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	
+	for _, key := range keys {
+		beforeVal, beforeExists := before[key]
+		afterVal, afterExists := after[key]
+		
+		if !beforeExists && afterExists {
+			// Added attribute
+			b.WriteString(addedStyle.Render("+ "))
+			b.WriteString(keyStyle.Render(fmt.Sprintf("%-28s", key+":")))
+			b.WriteString(addedStyle.Render(fmt.Sprintf(" %v\n", m.formatValue(afterVal))))
+		} else if beforeExists && !afterExists {
+			// Removed attribute
+			b.WriteString(removedStyle.Render("- "))
+			b.WriteString(keyStyle.Render(fmt.Sprintf("%-28s", key+":")))
+			b.WriteString(removedStyle.Render(fmt.Sprintf(" %v\n", m.formatValue(beforeVal))))
+		} else if !m.valuesEqual(beforeVal, afterVal) {
+			// Modified attribute
+			b.WriteString(modifiedStyle.Render("~ "))
+			b.WriteString(keyStyle.Render(fmt.Sprintf("%-28s", key+":")))
+			b.WriteString(removedStyle.Render(fmt.Sprintf(" %v", m.formatValue(beforeVal))))
+			b.WriteString(modifiedStyle.Render(" → "))
+			b.WriteString(addedStyle.Render(fmt.Sprintf("%v\n", m.formatValue(afterVal))))
+		}
+	}
+	
+	if b.Len() == 0 {
+		return lipgloss.NewStyle().Foreground(mutedColor).Render("No changes detected")
+	}
+	
+	return b.String()
+}
+
+// renderUnchangedAttributes renders attributes that haven't changed
+func (m *modernPlanModel) renderUnchangedAttributes(attributes map[string]interface{}) string {
+	var b strings.Builder
+	
+	keyStyle := lipgloss.NewStyle().Foreground(mutedColor)
+	valueStyle := lipgloss.NewStyle().Foreground(mutedColor).Faint(true)
+	
+	// Sort keys for consistent display
+	var keys []string
+	for k := range attributes {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	
+	for _, key := range keys {
+		b.WriteString("  ")
+		b.WriteString(keyStyle.Render(fmt.Sprintf("%-28s", key+":")))
+		b.WriteString(valueStyle.Render(fmt.Sprintf(" %v\n", m.formatValue(attributes[key]))))
+	}
+	
+	return b.String()
+}
+
+// getUnchangedAttributes returns attributes that are the same in before and after
+func (m *modernPlanModel) getUnchangedAttributes(before, after map[string]interface{}) map[string]interface{} {
+	unchanged := make(map[string]interface{})
+	
+	for key, beforeVal := range before {
+		if afterVal, exists := after[key]; exists && m.valuesEqual(beforeVal, afterVal) {
+			unchanged[key] = beforeVal
+		}
+	}
+	
+	return unchanged
+}
+
+// valuesEqual compares two values for equality
+func (m *modernPlanModel) valuesEqual(a, b interface{}) bool {
+	// Handle nil cases
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	
+	// Use formatValue to normalize and compare
+	return m.formatValue(a) == m.formatValue(b)
+}
+
+// formatValue formats a value for display
+func (m *modernPlanModel) formatValue(value interface{}) string {
+	return formatValue(value)
+}
+
+// renderAttributesDiff renders attributes in a diff format
+func (m *modernPlanModel) renderAttributesDiff(before, after map[string]interface{}, showUnchanged bool) string {
+	var b strings.Builder
+	
+	// Styles
+	addedStyle := lipgloss.NewStyle().Foreground(successColor)
+	removedStyle := lipgloss.NewStyle().Foreground(dangerColor)
+	keyStyle := lipgloss.NewStyle().Foreground(accentColor)
+	unchangedStyle := lipgloss.NewStyle().Foreground(mutedColor)
+	
+	// If only showing deletions (before != nil, after == nil)
+	if before != nil && after == nil {
+		var keys []string
+		for k := range before {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		
+		for _, key := range keys {
+			b.WriteString(removedStyle.Render("- "))
+			b.WriteString(keyStyle.Render(fmt.Sprintf("%-28s", key+":")))
+			b.WriteString(removedStyle.Render(fmt.Sprintf(" %v\n", m.formatValue(before[key]))))
+		}
+		return b.String()
+	}
+	
+	// If only showing additions (before == nil, after != nil)
+	if before == nil && after != nil {
+		var keys []string
+		for k := range after {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		
+		for _, key := range keys {
+			b.WriteString(addedStyle.Render("+ "))
+			b.WriteString(keyStyle.Render(fmt.Sprintf("%-28s", key+":")))
+			b.WriteString(addedStyle.Render(fmt.Sprintf(" %v\n", m.formatValue(after[key]))))
+		}
+		return b.String()
+	}
+	
+	// If comparing before and after
+	if before != nil && after != nil {
+		allKeys := make(map[string]bool)
+		for k := range before {
+			allKeys[k] = true
+		}
+		for k := range after {
+			allKeys[k] = true
+		}
+		
+		var keys []string
+		for k := range allKeys {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		
+		for _, key := range keys {
+			beforeVal, beforeExists := before[key]
+			afterVal, afterExists := after[key]
+			
+			if !beforeExists && afterExists {
+				// Added
+				b.WriteString(addedStyle.Render("+ "))
+				b.WriteString(keyStyle.Render(fmt.Sprintf("%-28s", key+":")))
+				b.WriteString(addedStyle.Render(fmt.Sprintf(" %v\n", m.formatValue(afterVal))))
+			} else if beforeExists && !afterExists {
+				// Removed
+				b.WriteString(removedStyle.Render("- "))
+				b.WriteString(keyStyle.Render(fmt.Sprintf("%-28s", key+":")))
+				b.WriteString(removedStyle.Render(fmt.Sprintf(" %v\n", m.formatValue(beforeVal))))
+			} else if showUnchanged || !m.valuesEqual(beforeVal, afterVal) {
+				if m.valuesEqual(beforeVal, afterVal) {
+					// Unchanged
+					b.WriteString(unchangedStyle.Render("  "))
+					b.WriteString(keyStyle.Render(fmt.Sprintf("%-28s", key+":")))
+					b.WriteString(unchangedStyle.Render(fmt.Sprintf(" %v\n", m.formatValue(afterVal))))
+				} else {
+					// Modified
+					b.WriteString(removedStyle.Render("- "))
+					b.WriteString(keyStyle.Render(fmt.Sprintf("%-28s", key+":")))
+					b.WriteString(removedStyle.Render(fmt.Sprintf(" %v\n", m.formatValue(beforeVal))))
+					b.WriteString(addedStyle.Render("+ "))
+					b.WriteString(keyStyle.Render(fmt.Sprintf("%-28s", key+":")))
+					b.WriteString(addedStyle.Render(fmt.Sprintf(" %v\n", m.formatValue(afterVal))))
+				}
+			}
+		}
+	}
+	
+	return b.String()
+}
+
 func (m *modernPlanModel) renderResourceDetails(resource *ResourceChange) string {
 	var b strings.Builder
 	
@@ -1400,27 +1838,11 @@ func (m *modernPlanModel) renderResourceDetails(resource *ResourceChange) string
 func (m *modernPlanModel) renderReplacementDeleteDetails(resource *ResourceChange) string {
 	var b strings.Builder
 	
-	// Header indicating this is part of a replacement
-	headerStyle := lipgloss.NewStyle().
-		Foreground(primaryColor).
-		Bold(true).
-		Padding(0, 1).
-		Border(lipgloss.ThickBorder()).
-		BorderForeground(primaryColor)
-	
-	b.WriteString(headerStyle.Render("🔄 REPLACEMENT - DELETE PHASE") + "\n\n")
-	
-	// Warning about replacement
-	infoBox := lipgloss.NewStyle().
-		Background(lipgloss.Color("#1a1a2a")).
-		Foreground(lipgloss.Color("#9999ff")).
-		Padding(0, 1).
-		Width(60)
-	
-	b.WriteString(infoBox.Render("ℹ️  This resource will be deleted and recreated with new configuration.") + "\n\n")
+	// Simple header - no box, just text
+	warningStyle := lipgloss.NewStyle().Foreground(dangerColor).Bold(true)
+	b.WriteString(warningStyle.Render("🔄 Delete phase (replacement)") + "\n\n")
 	
 	if resource.Change.Before != nil {
-		b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(dangerColor).Render("Current Configuration (to be deleted):") + "\n\n")
 		b.WriteString(m.renderFormattedAttributes(resource.Change.Before, lipgloss.NewStyle().Foreground(dangerColor)))
 	}
 	
@@ -1431,27 +1853,11 @@ func (m *modernPlanModel) renderReplacementDeleteDetails(resource *ResourceChang
 func (m *modernPlanModel) renderReplacementCreateDetails(resource *ResourceChange) string {
 	var b strings.Builder
 	
-	// Header indicating this is part of a replacement
-	headerStyle := lipgloss.NewStyle().
-		Foreground(primaryColor).
-		Bold(true).
-		Padding(0, 1).
-		Border(lipgloss.ThickBorder()).
-		BorderForeground(primaryColor)
-	
-	b.WriteString(headerStyle.Render("🔄 REPLACEMENT - CREATE PHASE") + "\n\n")
-	
-	// Info about replacement
-	infoBox := lipgloss.NewStyle().
-		Background(lipgloss.Color("#1a2a1a")).
-		Foreground(lipgloss.Color("#99ff99")).
-		Padding(0, 1).
-		Width(60)
-	
-	b.WriteString(infoBox.Render("ℹ️  New configuration that will replace the deleted resource.") + "\n\n")
+	// Simple header - no box, just text
+	createStyle := lipgloss.NewStyle().Foreground(successColor).Bold(true)
+	b.WriteString(createStyle.Render("🔄 Create phase (replacement)") + "\n\n")
 	
 	if resource.Change.After != nil {
-		b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(successColor).Render("New Configuration (to be created):") + "\n\n")
 		b.WriteString(m.renderFormattedAttributes(resource.Change.After, lipgloss.NewStyle().Foreground(successColor)))
 	}
 	
