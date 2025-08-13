@@ -310,26 +310,35 @@ func (m *planProgressModel) View() string {
 		content.WriteString(phaseStyle.Render("Live Output:"))
 		content.WriteString("\n")
 		
+		// Calculate dynamic height for output box based on terminal height
+		// Reserve ~15 lines for header, status, and footer
+		outputHeight := 10
+		if m.height > 25 {
+			outputHeight = m.height - 15
+		}
+		
 		// Create a box for output
 		outputBox := lipgloss.NewStyle().
 			Border(lipgloss.NormalBorder()).
 			BorderForeground(lipgloss.Color("240")).
 			Padding(0, 1).
-			Width(80).
-			Height(10)
+			Width(min(m.width-4, 120)).
+			Height(outputHeight)
 		
-		// Get last 8 lines
+		// Get last N lines based on output height
+		linesToShow := outputHeight - 2 // Account for padding
 		start := 0
-		if len(outputCopy) > 8 {
-			start = len(outputCopy) - 8
+		if len(outputCopy) > linesToShow {
+			start = len(outputCopy) - linesToShow
 		}
 		
 		var outputContent strings.Builder
+		maxLineWidth := min(m.width-10, 115) // Account for box borders and padding
 		for i := start; i < len(outputCopy); i++ {
 			line := outputCopy[i]
-			// Truncate long lines
-			if len(line) > 75 {
-				line = line[:75] + "..."
+			// Truncate long lines based on dynamic width
+			if len(line) > maxLineWidth {
+				line = line[:maxLineWidth-3] + "..."
 			}
 			outputContent.WriteString(line + "\n")
 		}
@@ -360,12 +369,12 @@ func (m *planProgressModel) View() string {
 		content.WriteString(timeStyle.Render("Press q or Ctrl+C to cancel"))
 	}
 	
-	// Center the content
+	// Use full terminal height, only center horizontally
 	return lipgloss.Place(
 		m.width,
 		m.height,
 		lipgloss.Center,
-		lipgloss.Center,
+		lipgloss.Top,
 		content.String(),
 	)
 }
@@ -444,12 +453,12 @@ func (m *planProgressModel) renderError() string {
 	// Wrap in error box
 	errorContent := errorBoxStyle.Render(content.String())
 	
-	// Center the error display
+	// Use full height, center horizontally only
 	return lipgloss.Place(
 		m.width,
 		m.height,
 		lipgloss.Center,
-		lipgloss.Center,
+		lipgloss.Top,
 		errorContent,
 	)
 }

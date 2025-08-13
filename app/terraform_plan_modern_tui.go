@@ -668,13 +668,20 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Split pane layout
 			treeWidth := m.width / 2 - 2
 			detailWidth := m.width / 2 - 2
-			contentHeight := m.height - 10 // Header + footer
+			// Calculate height accounting for:
+			// Header: 1 line
+			// Plan summary: 3 lines (with padding)
+			// Split pane borders: 2 lines (top and bottom)
+			// Change summary: 3 lines
+			// Footer: 1 line
+			// Total overhead: ~10 lines
+			contentHeight := m.height - 10
 			
 			m.treeViewport.Width = treeWidth
-			m.treeViewport.Height = contentHeight - 10
+			m.treeViewport.Height = contentHeight
 			
 			m.detailViewport.Width = detailWidth
-			m.detailViewport.Height = contentHeight - 10
+			m.detailViewport.Height = contentHeight
 			
 		case fullScreenDiffView:
 			// Full-screen diff view
@@ -1549,7 +1556,7 @@ func (m *modernPlanModel) renderFullDiffContent(resource *ResourceChange) string
 			
 			if resource.Change.Before != nil {
 				b.WriteString(sectionStyle.Render("Current Configuration (to be deleted):") + "\n")
-				b.WriteString(m.renderExpandedAttributes(resource.Change.Before, lipgloss.NewStyle().Foreground(dangerColor), ""))
+				b.WriteString(m.renderExpandedAttributesWithPrefix(resource.Change.Before, lipgloss.NewStyle().Foreground(dangerColor), "- "))
 			}
 			
 		case "create":
@@ -1718,6 +1725,48 @@ func (m *modernPlanModel) getUnchangedAttributes(before, after map[string]interf
 }
 
 // renderExpandedAttributes renders attributes with full expansion of nested structures
+func (m *modernPlanModel) renderExpandedAttributesWithPrefix(attributes map[string]interface{}, style lipgloss.Style, prefix string) string {
+	var b strings.Builder
+	
+	keyStyle := lipgloss.NewStyle().Foreground(accentColor)
+	
+	// Sort keys for consistent display
+	var keys []string
+	for k := range attributes {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	
+	for _, key := range keys {
+		value := attributes[key]
+		b.WriteString(style.Render(prefix))
+		
+		b.WriteString(keyStyle.Render(fmt.Sprintf("%-30s", key+":")))
+		b.WriteString(" ")
+		
+		// Always expand arrays and maps in full-screen view
+		switch v := value.(type) {
+		case []interface{}:
+			if len(v) == 0 {
+				b.WriteString(style.Render("[]"))
+			} else {
+				b.WriteString(m.renderExpandedArray(v, style, prefix+"  "))
+			}
+		case map[string]interface{}:
+			if len(v) == 0 {
+				b.WriteString(style.Render("{}"))
+			} else {
+				b.WriteString(m.renderExpandedMap(v, style, prefix+"  "))
+			}
+		default:
+			b.WriteString(m.renderExpandedValue(value, style, prefix+"  "))
+		}
+		b.WriteString("\n")
+	}
+	
+	return b.String()
+}
+
 func (m *modernPlanModel) renderExpandedAttributes(attributes map[string]interface{}, style lipgloss.Style, prefix string) string {
 	var b strings.Builder
 	
@@ -1895,6 +1944,14 @@ func (m *modernPlanModel) formatSimpleValue(value interface{}) string {
 		if v == "" {
 			return "(empty)"
 		}
+		// Check if it's a JSON string and parse it
+		if strings.HasPrefix(strings.TrimSpace(v), "[") || strings.HasPrefix(strings.TrimSpace(v), "{") {
+			var parsed interface{}
+			if err := json.Unmarshal([]byte(v), &parsed); err == nil {
+				// Successfully parsed JSON, format it nicely
+				return m.renderParsedJSON(parsed, "", lipgloss.NewStyle().Foreground(fgColor))
+			}
+		}
 		return v
 	case bool:
 		return fmt.Sprintf("%t", v)
@@ -1991,12 +2048,87 @@ func (m *modernPlanModel) renderInlineMap(mp map[string]interface{}, style lipgl
 	return style.Render("{" + strings.Join(items, ", ") + "}")
 }
 
+// renderParsedJSON renders parsed JSON data with proper formatting
+func (m *modernPlanModel) renderParsedJSON(data interface{}, indent string, style lipgloss.Style) string {
+	switch v := data.(type) {
+	case []interface{}:
+		if len(v) == 0 {
+			return style.Render("[]")
+		}
+		var b strings.Builder
+		b.WriteString(style.Render("[\n"))
+		for i, item := range v {
+			b.WriteString(indent + "  ")
+			b.WriteString(m.renderParsedJSON(item, indent+"  ", style))
+			if i < len(v)-1 {
+				b.WriteString(",")
+			}
+			b.WriteString("\n")
+		}
+		b.WriteString(indent + style.Render("]"))
+		return b.String()
+		
+	case map[string]interface{}:
+		if len(v) == 0 {
+			return style.Render("{}")
+		}
+		var b strings.Builder
+		b.WriteString(style.Render("{\n"))
+		
+		// Sort keys for consistent output
+		keys := make([]string, 0, len(v))
+		for k := range v {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		
+		for i, k := range keys {
+			b.WriteString(indent + "  ")
+			b.WriteString(lipgloss.NewStyle().Foreground(accentColor).Render(k + ": "))
+			b.WriteString(m.renderParsedJSON(v[k], indent+"  ", style))
+			if i < len(keys)-1 {
+				b.WriteString(",")
+			}
+			b.WriteString("\n")
+		}
+		b.WriteString(indent + style.Render("}"))
+		return b.String()
+		
+	case string:
+		// Quote strings in JSON output
+		return style.Render(fmt.Sprintf("%q", v))
+		
+	case float64:
+		if v == float64(int64(v)) {
+			return style.Render(fmt.Sprintf("%d", int64(v)))
+		}
+		return style.Render(fmt.Sprintf("%.2f", v))
+		
+	case bool:
+		return style.Render(fmt.Sprintf("%t", v))
+		
+	case nil:
+		return style.Render("null")
+		
+	default:
+		return style.Render(fmt.Sprintf("%v", v))
+	}
+}
+
 // renderExpandedValue renders a value with full expansion of nested structures
 func (m *modernPlanModel) renderExpandedValue(value interface{}, style lipgloss.Style, indent string) string {
 	switch v := value.(type) {
 	case string:
 		if v == "" {
 			return style.Render("(empty)")
+		}
+		// Check if it's a JSON string and parse it
+		if strings.HasPrefix(strings.TrimSpace(v), "[") || strings.HasPrefix(strings.TrimSpace(v), "{") {
+			var parsed interface{}
+			if err := json.Unmarshal([]byte(v), &parsed); err == nil {
+				// Successfully parsed JSON, format it nicely
+				return m.renderParsedJSON(parsed, indent, style)
+			}
 		}
 		return style.Render(v)
 	case bool:
@@ -2835,7 +2967,8 @@ func (m *modernPlanModel) renderFormattedAttribute(key string, value interface{}
 			lipgloss.NewStyle().Foreground(accentColor).Bold(true).Render(key),
 			style.Render(formattedValue))
 	case []interface{}:
-		formattedValue = m.renderArray(v)
+		// Use compact format for dashboard view
+		formattedValue = m.renderArrayCompact(v)
 	default:
 		formattedValue = formatValue(value)
 	}
@@ -2877,7 +3010,48 @@ func (m *modernPlanModel) renderNestedObject(obj map[string]interface{}, indent 
 	return b.String()
 }
 
-// renderArray renders arrays in a compact format
+// renderArrayCompact renders arrays in a compact format for dashboard view
+func (m *modernPlanModel) renderArrayCompact(arr []interface{}) string {
+	if len(arr) == 0 {
+		return "[]"
+	}
+	
+	// Check if it's an array of complex objects
+	isComplex := false
+	for _, item := range arr {
+		switch item.(type) {
+		case map[string]interface{}, []interface{}:
+			isComplex = true
+			break
+		}
+		if isComplex {
+			break
+		}
+	}
+	
+	if isComplex {
+		// For arrays of objects in compact view, just show count
+		return fmt.Sprintf("[%d objects]", len(arr))
+	}
+	
+	// For simple arrays, show items inline
+	if len(arr) <= 3 {
+		var items []string
+		for _, item := range arr {
+			items = append(items, formatValue(item))
+		}
+		return fmt.Sprintf("[%s]", strings.Join(items, ", "))
+	}
+	
+	// Show first 2 items and count for longer arrays
+	var items []string
+	for i := 0; i < min(2, len(arr)); i++ {
+		items = append(items, formatValue(arr[i]))
+	}
+	return fmt.Sprintf("[%s, ... +%d more]", strings.Join(items, ", "), len(arr)-2)
+}
+
+// renderArray renders arrays in a detailed format for full-screen view
 func (m *modernPlanModel) renderArray(arr []interface{}) string {
 	if len(arr) == 0 {
 		return "[]"
@@ -2886,15 +3060,48 @@ func (m *modernPlanModel) renderArray(arr []interface{}) string {
 	// Check if it's an array of simple values or complex objects
 	isComplex := false
 	for _, item := range arr {
-		if _, ok := item.(map[string]interface{}); ok {
+		switch item.(type) {
+		case map[string]interface{}, []interface{}:
 			isComplex = true
+			break
+		}
+		if isComplex {
 			break
 		}
 	}
 	
 	if isComplex {
-		// For arrays of objects, just show count
-		return fmt.Sprintf("[%d objects]", len(arr))
+		// For arrays of objects, render them properly formatted
+		var b strings.Builder
+		b.WriteString("[\n")
+		for i, item := range arr {
+			switch v := item.(type) {
+			case map[string]interface{}:
+				// Render each object on its own lines
+				b.WriteString("    {\n")
+				keys := make([]string, 0, len(v))
+				for k := range v {
+					keys = append(keys, k)
+				}
+				sort.Strings(keys)
+				for j, k := range keys {
+					b.WriteString(fmt.Sprintf("      %s: %v", k, formatValue(v[k])))
+					if j < len(keys)-1 {
+						b.WriteString(",")
+					}
+					b.WriteString("\n")
+				}
+				b.WriteString("    }")
+			default:
+				b.WriteString(fmt.Sprintf("    %v", formatValue(item)))
+			}
+			if i < len(arr)-1 {
+				b.WriteString(",")
+			}
+			b.WriteString("\n")
+		}
+		b.WriteString("  ]")
+		return b.String()
 	}
 	
 	if len(arr) <= 3 {
