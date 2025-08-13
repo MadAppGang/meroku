@@ -6,8 +6,9 @@ import {
 	Github,
 	Loader2,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { infrastructureApi } from "../api/infrastructure";
+import type { UpdateHandler } from "../types/components";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -39,6 +40,23 @@ export function AmplifyNodeProperties({
 	);
 	const [tokenError, setTokenError] = useState("");
 
+	const getSsmParameterPath = useCallback(() => {
+		return `/${config.project}/${config.env}/github/amplify-token`;
+	}, [config.project, config.env]);
+
+	const checkExistingToken = useCallback(async () => {
+		setCheckingToken(true);
+		try {
+			const parameterPath = getSsmParameterPath();
+			await infrastructureApi.getSSMParameter(parameterPath);
+			setTokenSaved(true);
+		} catch (_error) {
+			setTokenSaved(false);
+		} finally {
+			setCheckingToken(false);
+		}
+	}, [getSsmParameterPath]);
+
 	useEffect(() => {
 		if (amplifyApp) {
 			checkExistingToken();
@@ -52,23 +70,6 @@ export function AmplifyNodeProperties({
 			}
 		};
 	}, [pollingInterval]);
-
-	const getSsmParameterPath = () => {
-		return `/${config.project}/${config.env}/github/amplify-token`;
-	};
-
-	const checkExistingToken = async () => {
-		setCheckingToken(true);
-		try {
-			const parameterPath = getSsmParameterPath();
-			await infrastructureApi.getSSMParameter(parameterPath);
-			setTokenSaved(true);
-		} catch (_error) {
-			setTokenSaved(false);
-		} finally {
-			setCheckingToken(false);
-		}
-	};
 
 	const startGitHubDeviceFlow = async () => {
 		setDeviceFlowInProgress(true);
@@ -176,7 +177,7 @@ export function AmplifyNodeProperties({
 		);
 	}
 
-	const handleChange = (field: string, value: any) => {
+	const handleChange: UpdateHandler<string> = (field: string, value) => {
 		if (onConfigChange && config.amplify_apps) {
 			const updatedApps = [...config.amplify_apps];
 			updatedApps[amplifyAppIndex] = {

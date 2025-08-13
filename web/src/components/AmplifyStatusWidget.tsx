@@ -8,9 +8,10 @@ import {
 	RefreshCw,
 	XCircle,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { amplifyApi } from "../api";
 import type { AmplifyAppInfo } from "../types/amplify";
+import type { BuildStatusConfig } from "../types/components";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import {
@@ -32,17 +33,7 @@ interface AmplifyStatusWidgetProps {
 	className?: string;
 }
 
-const buildStatusConfig: Record<
-	string,
-	{
-		color: string;
-		bgColor: string;
-		icon: any;
-		text: string;
-		priority: number;
-		pulse?: boolean;
-	}
-> = {
+const buildStatusConfig: Record<string, BuildStatusConfig> = {
 	SUCCEED: {
 		color: "text-green-500",
 		bgColor: "bg-green-500/10",
@@ -111,31 +102,34 @@ export function AmplifyStatusWidget({
 	const [refreshing, setRefreshing] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
-	const fetchAppStatus = async (isRefresh = false) => {
-		if (isRefresh) {
-			setRefreshing(true);
-		} else {
-			setLoading(true);
-		}
-		setError(null);
-
-		try {
-			const response = await amplifyApi.getApps(environment, profile);
-			const foundApp = response.apps.find((a) => a.name === appName);
-			if (foundApp) {
-				setApp(foundApp);
+	const fetchAppStatus = useCallback(
+		async (isRefresh = false) => {
+			if (isRefresh) {
+				setRefreshing(true);
 			} else {
-				setError("App not found");
+				setLoading(true);
 			}
-		} catch (err) {
-			console.error("Failed to fetch Amplify app status:", err);
-			// Don't show error for API unavailability, just show static content
 			setError(null);
-		} finally {
-			setLoading(false);
-			setRefreshing(false);
-		}
-	};
+
+			try {
+				const response = await amplifyApi.getApps(environment, profile);
+				const foundApp = response.apps.find((a) => a.name === appName);
+				if (foundApp) {
+					setApp(foundApp);
+				} else {
+					setError("App not found");
+				}
+			} catch (err) {
+				console.error("Failed to fetch Amplify app status:", err);
+				// Don't show error for API unavailability, just show static content
+				setError(null);
+			} finally {
+				setLoading(false);
+				setRefreshing(false);
+			}
+		},
+		[environment, profile, appName],
+	);
 
 	useEffect(() => {
 		fetchAppStatus();

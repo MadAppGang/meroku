@@ -12,7 +12,7 @@ import {
 	TrendingUp,
 	XCircle,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
 	infrastructureApi,
 	type SESSandboxInfo,
@@ -40,11 +40,7 @@ export function SESStatus({ config }: SESStatusProps) {
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 
-	useEffect(() => {
-		loadStatus();
-	}, [loadStatus]);
-
-	const loadStatus = async () => {
+	const loadStatus = useCallback(async () => {
 		try {
 			setLoading(true);
 			setError(null);
@@ -63,7 +59,11 @@ export function SESStatus({ config }: SESStatusProps) {
 		} finally {
 			setLoading(false);
 		}
-	};
+	}, []);
+
+	useEffect(() => {
+		loadStatus();
+	}, [loadStatus]);
 
 	if (loading) {
 		return (

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { type Environment, infrastructureApi } from "../api/infrastructure";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
@@ -34,23 +34,7 @@ export function EnvironmentConfig({
 	const [error, setError] = useState<string | null>(null);
 	const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-	useEffect(() => {
-		loadEnvironments();
-	}, [loadEnvironments]);
-
-	useEffect(() => {
-		if (selectedEnvironment && selectedEnvironment !== selectedEnv) {
-			setSelectedEnv(selectedEnvironment);
-		}
-	}, [selectedEnvironment, selectedEnv]);
-
-	useEffect(() => {
-		if (selectedEnv) {
-			loadEnvironmentConfig(selectedEnv);
-		}
-	}, [selectedEnv, loadEnvironmentConfig]);
-
-	const loadEnvironments = async () => {
+	const loadEnvironments = useCallback(async () => {
 		try {
 			setIsLoading(true);
 			setError(null);
@@ -66,9 +50,9 @@ export function EnvironmentConfig({
 		} finally {
 			setIsLoading(false);
 		}
-	};
+	}, [selectedEnv]);
 
-	const loadEnvironmentConfig = async (envName: string) => {
+	const loadEnvironmentConfig = useCallback(async (envName: string) => {
 		try {
 			setIsLoading(true);
 			setError(null);
@@ -81,7 +65,23 @@ export function EnvironmentConfig({
 		} finally {
 			setIsLoading(false);
 		}
-	};
+	}, []);
+
+	useEffect(() => {
+		loadEnvironments();
+	}, [loadEnvironments]);
+
+	useEffect(() => {
+		if (selectedEnvironment && selectedEnvironment !== selectedEnv) {
+			setSelectedEnv(selectedEnvironment);
+		}
+	}, [selectedEnvironment, selectedEnv]);
+
+	useEffect(() => {
+		if (selectedEnv) {
+			loadEnvironmentConfig(selectedEnv);
+		}
+	}, [selectedEnv, loadEnvironmentConfig]);
 
 	const saveConfiguration = async () => {
 		if (!selectedEnv) return;

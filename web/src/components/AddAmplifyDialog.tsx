@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { infrastructureApi } from "../api/infrastructure";
+import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import {
@@ -34,7 +35,9 @@ import { Textarea } from "./ui/textarea";
 interface AddAmplifyDialogProps {
 	open: boolean;
 	onClose: () => void;
-	onAdd: (amplifyApp: unknown) => void;
+	onAdd: (
+		amplifyApp: NonNullable<YamlInfrastructureConfig["amplify_apps"]>[0],
+	) => Promise<void>;
 	existingApps?: string[];
 	environmentName?: string;
 	projectName?: string;
@@ -337,7 +340,7 @@ export const AddAmplifyDialog: React.FC<AddAmplifyDialogProps> = ({
 		}));
 	};
 
-	const handleSubmit = () => {
+	const handleSubmit = async () => {
 		const newErrors: Record<string, string> = {};
 
 		// Validate required fields
@@ -416,7 +419,7 @@ export const AddAmplifyDialog: React.FC<AddAmplifyDialogProps> = ({
 			enable_root_domain: formData.enable_root_domain,
 		};
 
-		onAdd(amplifyApp);
+		await onAdd(amplifyApp);
 		handleClose();
 	};
 

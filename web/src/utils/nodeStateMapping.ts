@@ -1,3 +1,4 @@
+import type { NodeProperties } from "../types/components";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 
 export interface NodeStateConfig {
@@ -5,7 +6,7 @@ export interface NodeStateConfig {
 	name: string;
 	type: string;
 	enabled: (config: YamlInfrastructureConfig) => boolean;
-	properties?: (config: YamlInfrastructureConfig) => Record<string, any>;
+	properties?: (config: YamlInfrastructureConfig) => NodeProperties;
 	description?: string | ((config: YamlInfrastructureConfig) => string);
 }
 
@@ -46,7 +47,7 @@ export const nodeStateMapping: NodeStateConfig[] = [
 		type: "alb",
 		enabled: (config) => config.alb?.enabled === true, // Enabled when ALB is enabled
 		properties: (config) => ({
-			domainName: config.workload?.backend_alb_domain_name,
+			domainName: config.workload?.backend_alb_domain_name || "",
 		}),
 		description: "Application Load Balancer for HTTP/HTTPS routing",
 	},
@@ -58,10 +59,10 @@ export const nodeStateMapping: NodeStateConfig[] = [
 		type: "route53",
 		enabled: (config) => config.domain?.enabled === true,
 		properties: (config) => ({
-			domainName: config.domain?.domain_name,
-			createZone: config.domain?.create_domain_zone,
-			apiDomainPrefix: config.domain?.api_domain_prefix,
-			addEnvPrefix: config.domain?.add_domain_prefix,
+			domainName: config.domain?.domain_name || "",
+			createZone: config.domain?.create_domain_zone || false,
+			apiDomainPrefix: config.domain?.api_domain_prefix || "",
+			addEnvPrefix: config.domain?.add_domain_prefix || false,
 		}),
 	},
 
@@ -109,9 +110,10 @@ export const nodeStateMapping: NodeStateConfig[] = [
 		enabled: () => true, // Always enabled
 		properties: (config) => ({
 			repository: `${config.project}_backend`,
-			crossAccount: config.ecr_account_id && config.ecr_account_region,
-			ecrAccountId: config.ecr_account_id,
-			ecrRegion: config.ecr_account_region,
+			crossAccount:
+				config.ecr_account_id && config.ecr_account_region ? "true" : "false",
+			ecrAccountId: config.ecr_account_id || "",
+			ecrRegion: config.ecr_account_region || "",
 		}),
 	},
 	{
@@ -144,7 +146,7 @@ export const nodeStateMapping: NodeStateConfig[] = [
 		enabled: () => true, // Always enabled (backend bucket required)
 		properties: (config) => ({
 			backendBucket: `${config.project}-backend-${config.env}-${config.workload?.bucket_postfix}`,
-			backendBucketPublic: config.workload?.bucket_public,
+			backendBucketPublic: config.workload?.bucket_public || false,
 			additionalBuckets: config.buckets || [],
 		}),
 	},
@@ -340,7 +342,7 @@ export function getNodeDescription(
 export function getNodeProperties(
 	nodeId: string,
 	config: YamlInfrastructureConfig | null,
-): Record<string, any> {
+): NodeProperties {
 	if (!config) return {};
 
 	// Check static mappings first

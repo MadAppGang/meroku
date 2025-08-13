@@ -1,5 +1,6 @@
 import type React from "react";
 import { useState } from "react";
+import type { ScheduledTask } from "../types/components";
 import { Button } from "./ui/button";
 import {
 	Dialog,
@@ -23,15 +24,7 @@ import { Textarea } from "./ui/textarea";
 interface AddScheduledTaskDialogProps {
 	open: boolean;
 	onClose: () => void;
-	onAdd: (task: {
-		name: string;
-		schedule: string;
-		docker_image?: string;
-		container_command?: string[];
-		cpu?: number;
-		memory?: number;
-		environment_variables?: Record<string, string>;
-	}) => void;
+	onAdd: (task: ScheduledTask) => void;
 	existingTasks: string[];
 }
 
@@ -86,7 +79,7 @@ export function AddScheduledTaskDialog({
 			return;
 		}
 
-		const task = {
+		const task: ScheduledTask = {
 			name: formData.name,
 			schedule: getScheduleExpression(),
 			cpu: formData.cpu,
@@ -98,10 +91,7 @@ export function AddScheduledTaskDialog({
 		}
 
 		if (formData.container_command) {
-			task.container_command = formData.container_command
-				.split(",")
-				.map((cmd) => cmd.trim())
-				.filter((cmd) => cmd);
+			task.container_command = formData.container_command;
 		}
 
 		if (formData.environment_variables) {

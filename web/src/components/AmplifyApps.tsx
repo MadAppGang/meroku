@@ -15,10 +15,11 @@ import {
 	RefreshCw,
 	XCircle,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { amplifyApi } from "../api";
 import { useToast } from "../hooks/use-toast";
 import type { AmplifyAppInfo } from "../types/amplify";
+import type { StatusConfig } from "../types/components";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import {
@@ -39,10 +40,7 @@ interface AmplifyAppsProps {
 	profile?: string;
 }
 
-const buildStatusConfig: Record<
-	string,
-	{ color: string; icon: any; text: string; pulse?: boolean }
-> = {
+const buildStatusConfig: Record<string, StatusConfig> = {
 	SUCCEED: { color: "bg-green-500", icon: CheckCircle, text: "Success" },
 	FAILED: { color: "bg-red-500", icon: XCircle, text: "Failed" },
 	RUNNING: {
@@ -73,28 +71,31 @@ export function AmplifyApps({ environment, profile }: AmplifyAppsProps) {
 	const [triggeringBuild, setTriggeringBuild] = useState<string | null>(null);
 	const { toast } = useToast();
 
-	const fetchApps = async (isRefresh = false) => {
-		if (isRefresh) {
-			setRefreshing(true);
-		} else {
-			setLoading(true);
-		}
+	const fetchApps = useCallback(
+		async (isRefresh = false) => {
+			if (isRefresh) {
+				setRefreshing(true);
+			} else {
+				setLoading(true);
+			}
 
-		try {
-			const response = await amplifyApi.getApps(environment, profile);
-			setApps(response.apps);
-		} catch (error) {
-			console.error("Failed to fetch Amplify apps:", error);
-			toast({
-				title: "Error",
-				description: "Failed to fetch Amplify apps",
-				variant: "destructive",
-			});
-		} finally {
-			setLoading(false);
-			setRefreshing(false);
-		}
-	};
+			try {
+				const response = await amplifyApi.getApps(environment, profile);
+				setApps(response.apps);
+			} catch (error) {
+				console.error("Failed to fetch Amplify apps:", error);
+				toast({
+					title: "Error",
+					description: "Failed to fetch Amplify apps",
+					variant: "destructive",
+				});
+			} finally {
+				setLoading(false);
+				setRefreshing(false);
+			}
+		},
+		[environment, profile, toast],
+	);
 
 	useEffect(() => {
 		fetchApps();

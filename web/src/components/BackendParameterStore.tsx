@@ -10,7 +10,7 @@ import {
 	RefreshCw,
 	Trash2,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
 	infrastructureApi,
 	type SSMParameterMetadata,
@@ -79,11 +79,7 @@ export function BackendParameterStore({ config }: BackendParameterStoreProps) {
 		...(config.workload?.setup_fcnsns ? ["gcm-server-key"] : []),
 	];
 
-	useEffect(() => {
-		loadParameters();
-	}, [loadParameters]);
-
-	const loadParameters = async () => {
+	const loadParameters = useCallback(async () => {
 		try {
 			setLoading(true);
 			setError(null);
@@ -110,7 +106,11 @@ export function BackendParameterStore({ config }: BackendParameterStoreProps) {
 		} finally {
 			setLoading(false);
 		}
-	};
+	}, [parameterPath]);
+
+	useEffect(() => {
+		loadParameters();
+	}, [loadParameters]);
 
 	const handleViewParameter = async (param: SSMParameterMetadata) => {
 		try {

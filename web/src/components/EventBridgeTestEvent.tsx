@@ -243,8 +243,8 @@ export function EventBridgeTestEvent({ config }: EventBridgeTestEventProps) {
 					</CardHeader>
 					<CardContent>
 						<div className="space-y-3">
-							{configuredEventTasks.map((task, index) => (
-								<div key={index} className="p-3 bg-gray-800 rounded-lg">
+							{configuredEventTasks.map((task, _index) => (
+								<div key={task.name} className="p-3 bg-gray-800 rounded-lg">
 									<h4 className="text-sm font-medium text-gray-200 mb-2">
 										{task.name}
 									</h4>

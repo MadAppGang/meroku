@@ -1,5 +1,5 @@
 import { Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { type Environment, infrastructureApi } from "../api/infrastructure";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
@@ -33,13 +33,7 @@ export function EnvironmentSelector({
 	const [isLoading, setIsLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 
-	useEffect(() => {
-		if (open) {
-			loadEnvironments();
-		}
-	}, [open, loadEnvironments]);
-
-	const loadEnvironments = async () => {
+	const loadEnvironments = useCallback(async () => {
 		try {
 			setIsLoading(true);
 			setError(null);
@@ -65,7 +59,13 @@ export function EnvironmentSelector({
 		} finally {
 			setIsLoading(false);
 		}
-	};
+	}, []);
+
+	useEffect(() => {
+		if (open) {
+			loadEnvironments();
+		}
+	}, [open, loadEnvironments]);
 
 	const handleSelect = () => {
 		if (selectedEnv) {

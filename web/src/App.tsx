@@ -165,7 +165,7 @@ export default function App() {
 	};
 
 	const handleAddService = async (
-		service: YamlInfrastructureConfig["services"][0],
+		service: NonNullable<YamlInfrastructureConfig["services"]>[0],
 	) => {
 		if (!config) return;
 
@@ -180,7 +180,7 @@ export default function App() {
 	};
 
 	const handleAddScheduledTask = async (
-		task: YamlInfrastructureConfig["scheduled_tasks"][0],
+		task: NonNullable<YamlInfrastructureConfig["scheduled_tasks"]>[0],
 	) => {
 		if (!config) return;
 
@@ -193,7 +193,7 @@ export default function App() {
 	};
 
 	const handleAddEventTask = async (
-		task: YamlInfrastructureConfig["event_processor_tasks"][0],
+		task: NonNullable<YamlInfrastructureConfig["event_processor_tasks"]>[0],
 	) => {
 		if (!config) return;
 
@@ -206,7 +206,7 @@ export default function App() {
 	};
 
 	const handleAddAmplify = async (
-		amplifyApp: YamlInfrastructureConfig["amplify_apps"][0],
+		amplifyApp: NonNullable<YamlInfrastructureConfig["amplify_apps"]>[0],
 	) => {
 		if (!config) return;
 

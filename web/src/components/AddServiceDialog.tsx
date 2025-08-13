@@ -1,5 +1,6 @@
 import type React from "react";
 import { useState } from "react";
+import type { Service } from "../types/components";
 import { Button } from "./ui/button";
 import {
 	Dialog,
@@ -22,7 +23,7 @@ import { Textarea } from "./ui/textarea";
 interface AddServiceDialogProps {
 	open: boolean;
 	onClose: () => void;
-	onAdd: (service: any) => void;
+	onAdd: (service: Service) => void;
 	existingServices: string[];
 }
 
@@ -69,7 +70,7 @@ export function AddServiceDialog({
 			return;
 		}
 
-		const service: any = {
+		const service: Service = {
 			name: formData.name,
 			docker_image: formData.docker_image,
 			container_port: formData.container_port,

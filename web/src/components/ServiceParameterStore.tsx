@@ -11,7 +11,7 @@ import {
 	RefreshCw,
 	Trash2,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
 	infrastructureApi,
 	type SSMParameterMetadata,
@@ -84,11 +84,7 @@ export function ServiceParameterStore({
 	// Auto-created parameters (detected by convention)
 	const autoCreatedParams = ["env"];
 
-	useEffect(() => {
-		loadParameters();
-	}, [loadParameters]);
-
-	const loadParameters = async () => {
+	const loadParameters = useCallback(async () => {
 		try {
 			setLoading(true);
 			setError(null);
@@ -115,7 +111,11 @@ export function ServiceParameterStore({
 		} finally {
 			setLoading(false);
 		}
-	};
+	}, [parameterPath]);
+
+	useEffect(() => {
+		loadParameters();
+	}, [loadParameters]);
 
 	const handleViewParameter = async (param: SSMParameterMetadata) => {
 		try {

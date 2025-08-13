@@ -12,7 +12,7 @@ interface BackendAlertsProps {
 	config: YamlInfrastructureConfig;
 }
 
-export function BackendAlerts({}: BackendAlertsProps) {
+export function BackendAlerts({ config: _config }: BackendAlertsProps) {
 	return (
 		<div className="space-y-4">
 			<Card>

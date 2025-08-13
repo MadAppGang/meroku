@@ -5,7 +5,7 @@ import {
 	Loader2,
 	RefreshCw,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
@@ -39,7 +39,7 @@ export function ALBStatus({ config }: ALBStatusProps) {
 	const [lastChecked, setLastChecked] = useState<Date | null>(null);
 	const [error, setError] = useState<string | null>(null);
 
-	const fetchALBStatus = async () => {
+	const fetchALBStatus = useCallback(async () => {
 		if (!config.alb?.enabled) return;
 
 		setIsLoading(true);
@@ -75,7 +75,7 @@ export function ALBStatus({ config }: ALBStatusProps) {
 		} finally {
 			setIsLoading(false);
 		}
-	};
+	}, [config.alb?.enabled, config.workload?.backend_desired_count]);
 
 	useEffect(() => {
 		fetchALBStatus();

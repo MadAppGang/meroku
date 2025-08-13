@@ -118,7 +118,10 @@ export function GitHubNodeProperties({
 								) : (
 									<div className="space-y-2">
 										{subjects.map((subject, index) => (
-											<div key={index} className="flex items-center gap-2">
+											<div
+												key={`subject-${index}-${subject}`}
+												className="flex items-center gap-2"
+											>
 												<Input
 													value={subject}
 													onChange={(e) =>

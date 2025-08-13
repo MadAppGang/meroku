@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { infrastructureApi } from "../api/infrastructure";
 
 export interface LevelPrice {
@@ -30,7 +30,7 @@ export function usePricing(
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<Error | null>(null);
 
-	const fetchPricing = async () => {
+	const fetchPricing = useCallback(async () => {
 		if (!environment) {
 			setPricing(null);
 			return;
@@ -47,7 +47,7 @@ export function usePricing(
 		} finally {
 			setLoading(false);
 		}
-	};
+	}, [environment]);
 
 	useEffect(() => {
 		fetchPricing();

@@ -1,6 +1,7 @@
 import { Plus, X } from "lucide-react";
 import type React from "react";
 import { useState } from "react";
+import type { EventTask } from "../types/components";
 import { Button } from "./ui/button";
 import {
 	Dialog,
@@ -23,7 +24,7 @@ import { Textarea } from "./ui/textarea";
 interface AddEventTaskDialogProps {
 	open: boolean;
 	onClose: () => void;
-	onAdd: (task: any) => void;
+	onAdd: (task: EventTask) => void;
 	existingTasks: string[];
 	availableServices: string[];
 }
@@ -82,7 +83,7 @@ export function AddEventTaskDialog({
 			return;
 		}
 
-		const task: any = {
+		const task: EventTask = {
 			name: formData.name,
 			rule_name: formData.rule_name,
 			detail_types: validDetailTypes,
@@ -223,7 +224,10 @@ export function AddEventTaskDialog({
 						<div className="grid gap-2">
 							<Label>Event Detail Types</Label>
 							{formData.detail_types.map((detailType, index) => (
-								<div key={index} className="flex gap-2">
+								<div
+									key={`detail-type-${index}-${detailType}`}
+									className="flex gap-2"
+								>
 									<Input
 										value={detailType}
 										onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
@@ -261,7 +265,7 @@ export function AddEventTaskDialog({
 						<div className="grid gap-2">
 							<Label>Event Sources</Label>
 							{formData.sources.map((source, index) => (
-								<div key={index} className="flex gap-2">
+								<div key={`source-${index}-${source}`} className="flex gap-2">
 									<Select
 										value={source}
 										onValueChange={(value: string) =>

@@ -10,7 +10,7 @@ import {
 	RefreshCw,
 	Trash2,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
 	infrastructureApi,
 	type SSMParameterMetadata,
@@ -80,11 +80,7 @@ export function ScheduledTaskParameterStore({
 	const [newParamDescription, setNewParamDescription] = useState("");
 	const [creating, setCreating] = useState(false);
 
-	useEffect(() => {
-		loadParameters();
-	}, [loadParameters]);
-
-	const loadParameters = async () => {
+	const loadParameters = useCallback(async () => {
 		try {
 			setLoading(true);
 			setError(null);
@@ -111,7 +107,11 @@ export function ScheduledTaskParameterStore({
 		} finally {
 			setLoading(false);
 		}
-	};
+	}, [parameterPath]);
+
+	useEffect(() => {
+		loadParameters();
+	}, [loadParameters]);
 
 	const handleViewParameter = async (param: SSMParameterMetadata) => {
 		try {

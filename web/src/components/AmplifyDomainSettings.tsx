@@ -8,6 +8,7 @@ import {
 import { useEffect, useState } from "react";
 import { amplifyApi } from "../api";
 import type { AmplifyAppInfo } from "../types/amplify";
+import type { UpdateHandler } from "../types/components";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -58,7 +59,10 @@ export function AmplifyDomainSettings({
 		);
 	}
 
-	const handleChange = (field: string, value: any) => {
+	const handleChange: UpdateHandler<string | boolean> = (
+		field: string,
+		value,
+	) => {
 		if (onConfigChange && config.amplify_apps) {
 			const updatedApps = [...config.amplify_apps];
 			updatedApps[amplifyAppIndex] = {

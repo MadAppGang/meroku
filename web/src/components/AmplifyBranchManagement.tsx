@@ -1,5 +1,6 @@
 import { Check, GitBranch, Key, Plus, Trash2, X } from "lucide-react";
 import { useState } from "react";
+import type { AmplifyBranch, BranchUpdateHandler } from "../types/components";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
@@ -33,7 +34,7 @@ export function AmplifyBranchManagement({
 	const [editingBranch, setEditingBranch] = useState<number | null>(null);
 	const [newBranch, setNewBranch] = useState({
 		name: "",
-		stage: "DEVELOPMENT" as const,
+		stage: "DEVELOPMENT" as AmplifyBranch["stage"],
 		enable_auto_build: true,
 		enable_pull_request_preview: false,
 		environment_variables_text: "",
@@ -93,7 +94,7 @@ export function AmplifyBranchManagement({
 		// Reset form
 		setNewBranch({
 			name: "",
-			stage: "DEVELOPMENT",
+			stage: "DEVELOPMENT" as AmplifyBranch["stage"],
 			enable_auto_build: true,
 			enable_pull_request_preview: false,
 			environment_variables_text: "",
@@ -106,7 +107,7 @@ export function AmplifyBranchManagement({
 		handleUpdateBranches(updatedBranches);
 	};
 
-	const handleUpdateBranch = (index: number, updates: any) => {
+	const handleUpdateBranch: BranchUpdateHandler = (index: number, updates) => {
 		const updatedBranches = [...amplifyApp.branches];
 		updatedBranches[index] = {
 			...updatedBranches[index],
@@ -175,7 +176,10 @@ export function AmplifyBranchManagement({
 								<Select
 									value={newBranch.stage}
 									onValueChange={(value) =>
-										setNewBranch({ ...newBranch, stage: value as any })
+										setNewBranch({
+											...newBranch,
+											stage: value as AmplifyBranch["stage"],
+										})
 									}
 								>
 									<SelectTrigger
@@ -287,7 +291,7 @@ export function AmplifyBranchManagement({
 					<div className="space-y-3">
 						{branches.map((branch, index) => (
 							<div
-								key={index}
+								key={`branch-${branch.name}-${index}`}
 								className="bg-gray-800 rounded-lg p-4 border border-gray-700"
 							>
 								{editingBranch === index ? (
@@ -325,7 +329,9 @@ export function AmplifyBranchManagement({
 												<Select
 													value={branch.stage || "DEVELOPMENT"}
 													onValueChange={(value) =>
-														handleUpdateBranch(index, { stage: value })
+														handleUpdateBranch(index, {
+															stage: value as AmplifyBranch["stage"],
+														})
 													}
 												>
 													<SelectTrigger className="mt-1 bg-gray-900 border-gray-600 text-white">
@@ -354,7 +360,7 @@ export function AmplifyBranchManagement({
 													checked={branch.enable_auto_build ?? true}
 													onCheckedChange={(checked) =>
 														handleUpdateBranch(index, {
-															enable_auto_build: checked,
+															enable_auto_build: checked === true,
 														})
 													}
 												/>
@@ -372,7 +378,7 @@ export function AmplifyBranchManagement({
 													checked={branch.enable_pull_request_preview ?? false}
 													onCheckedChange={(checked) =>
 														handleUpdateBranch(index, {
-															enable_pull_request_preview: checked,
+															enable_pull_request_preview: checked === true,
 														})
 													}
 												/>
@@ -389,11 +395,8 @@ export function AmplifyBranchManagement({
 											<Label className="text-sm">Environment Variables</Label>
 											<div className="mt-2 space-y-2">
 												{Object.entries(branch.environment_variables || {}).map(
-													([key, value], envIndex) => (
-														<div
-															key={`${key}-${envIndex}`}
-															className="flex gap-2"
-														>
+													([key, value], _envIndex) => (
+														<div key={key} className="flex gap-2">
 															<Input
 																value={key}
 																onChange={(e) => {
