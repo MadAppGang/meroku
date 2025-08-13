@@ -1340,10 +1340,38 @@ func (m *modernPlanModel) renderTreeContent() string {
 						}
 						
 						// Extract just the resource name from the full address
+						// Handle array notation like module.domain.aws_route53_record.api_domain["api.dev.sava-p.com"]
+						name := displayName
+						
+						// If it contains array notation, extract the key
+						arrayKey := ""
+						if idx := strings.Index(displayName, "["); idx != -1 {
+							// Extract the array key
+							if endIdx := strings.Index(displayName, "]"); endIdx > idx {
+								arrayKey = displayName[idx+1:endIdx]
+								// Remove quotes if present
+								arrayKey = strings.Trim(arrayKey, "\"'")
+								// Use the base name without array notation
+								displayName = displayName[:idx]
+							}
+						}
+						
+						// Now extract the resource name
 						parts := strings.Split(displayName, ".")
-						name := parts[len(parts)-1]
 						if len(parts) > 1 {
-							name = parts[len(parts)-2] + "." + name
+							// Take last two parts for better context (e.g., "aws_route53_record.api_domain")
+							name = parts[len(parts)-2] + "." + parts[len(parts)-1]
+						} else {
+							name = parts[len(parts)-1]
+						}
+						
+						// Add array key if present
+						if arrayKey != "" {
+							// Shorten long array keys for display
+							if len(arrayKey) > 30 {
+								arrayKey = arrayKey[:27] + "..."
+							}
+							name = name + "[" + arrayKey + "]"
 						}
 						
 						// Add replacement indicator to the name
@@ -2878,12 +2906,15 @@ func (m *modernPlanModel) renderArray(arr []interface{}) string {
 		return fmt.Sprintf("[%s]", strings.Join(items, ", "))
 	}
 	
-	// Show first 2 items and count for longer arrays
+	// Show first 3 items and count for longer arrays
 	var items []string
-	for i := 0; i < 2; i++ {
+	for i := 0; i < min(3, len(arr)); i++ {
 		items = append(items, formatValue(arr[i]))
 	}
-	return fmt.Sprintf("[%s, ... +%d more]", strings.Join(items, ", "), len(arr)-2)
+	if len(arr) > 3 {
+		return fmt.Sprintf("[%s, ... +%d more]", strings.Join(items, ", "), len(arr)-3)
+	}
+	return fmt.Sprintf("[%s]", strings.Join(items, ", "))
 }
 
 // Removed renderAttributeWithStyle - using new formatting functions instead

@@ -40,6 +40,7 @@ type planProgressModel struct {
 	cmd             *exec.Cmd
 	done            chan bool
 	ticker          *time.Ticker
+	spinnerFrame    int
 }
 
 type progressMsg struct {
@@ -170,6 +171,9 @@ func (m *planProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 		
 	case tickMsg:
+		// Increment spinner frame
+		m.spinnerFrame++
+		
 		// Process any new output lines
 		m.outputMutex.Lock()
 		lines := make([]string, len(m.outputLines))
@@ -289,8 +293,8 @@ func (m *planProgressModel) View() string {
 		content.WriteString("\n\n")
 	}
 	
-	// Progress bar
-	if m.phase == phaseRefreshing || m.phase == phasePlanning {
+	// Progress indicator (always show during active phases)
+	if m.phase != phaseComplete && m.phase != phaseError {
 		progressBar := m.renderProgressBar()
 		content.WriteString(progressBar)
 		content.WriteString("\n\n")
@@ -468,18 +472,31 @@ func (m *planProgressModel) getPhaseText() string {
 }
 
 func (m *planProgressModel) renderProgressBar() string {
-	width := 50
-	filled := int(m.progress * float64(width))
+	// Spinner frames for infinite loading
+	spinnerFrames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+	frame := spinnerFrames[m.spinnerFrame%len(spinnerFrames)]
 	
-	progressStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("82"))
-	emptyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	spinnerStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("82")).
+		Bold(true)
 	
-	bar := progressStyle.Render(strings.Repeat("█", filled))
-	bar += emptyStyle.Render(strings.Repeat("░", width-filled))
+	countStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("220"))
 	
-	percentage := fmt.Sprintf(" %.0f%%", m.progress*100)
+	// Show spinner with processed items count
+	processedCount := len(m.processedItems)
 	
-	return bar + percentage
+	var status string
+	switch m.phase {
+	case phaseRefreshing:
+		status = fmt.Sprintf("Refreshing state... %d resources processed", processedCount)
+	case phasePlanning:
+		status = fmt.Sprintf("Planning changes... %d resources analyzed", processedCount)
+	default:
+		status = "Processing..."
+	}
+	
+	return spinnerStyle.Render(frame) + " " + countStyle.Render(status)
 }
 
 func (m *planProgressModel) getErrorSuggestions() string {
