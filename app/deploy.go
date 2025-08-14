@@ -23,7 +23,14 @@ func deployMenu() {
 		if err != nil {
 			panic(err)
 		}
-		options := lo.Map(envs, func(s string, _ int) huh.Option[string] {
+		// Filter out DNS config file
+		var filteredEnvs []string
+		for _, env := range envs {
+			if env != "dns.yaml" {
+				filteredEnvs = append(filteredEnvs, env)
+			}
+		}
+		options := lo.Map(filteredEnvs, func(s string, _ int) huh.Option[string] {
 			return huh.NewOption(fmt.Sprintf("Deploy %s environment", s), s)
 		})
 		options = append(options, huh.NewOption("Back to main menu", "go:back"))

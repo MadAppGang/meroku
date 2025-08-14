@@ -138,7 +138,8 @@ func processSelectedProfile(selectedProfile string, envName string) error {
 			
 			for _, envFile := range envFiles {
 				// Only process files in current directory
-				if strings.Contains(envFile, "/") {
+				// Skip DNS config file
+				if strings.Contains(envFile, "/") || envFile == "dns.yaml" {
 					continue
 				}
 				

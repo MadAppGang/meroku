@@ -29,6 +29,7 @@ func mainMenu() string {
 		huh.NewOption("🌐 Edit environment with web UI", "api"),
 		huh.NewOption("🚀 Deploy environment", "deploy"),
 		huh.NewOption("✨ Create new environment", "create"),
+		huh.NewOption("🔧 Setup Custom Domain (DNS)", "dns-setup"),
 		huh.NewOption("🔄 Change Environment", "change-env"),
 		huh.NewOption("🔍 Check for updates", "update"),
 		huh.NewOption("👋 Exit", "exit"),
@@ -61,6 +62,9 @@ func mainMenu() string {
 		return mainMenu()
 	case action == "api":
 		startSPAServer("8080")
+		return mainMenu()
+	case action == "dns-setup":
+		runDNSSetupWizard()
 		return mainMenu()
 	case action == "change-env":
 		// Change environment

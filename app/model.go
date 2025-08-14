@@ -84,9 +84,12 @@ type Policy struct {
 type SetupDomainType string
 
 type Domain struct {
-	Enabled          bool   `yaml:"enabled"`
-	CreateDomainZone bool   `yaml:"create_domain_zone"`
-	DomainName       string `yaml:"domain_name"`
+	Enabled           bool   `yaml:"enabled"`
+	CreateDomainZone  bool   `yaml:"create_domain_zone"`
+	DomainName        string `yaml:"domain_name"`
+	IsDNSRoot         bool   `yaml:"is_dns_root"`
+	DNSRootAccountID  string `yaml:"dns_root_account_id"`
+	DelegationRoleArn string `yaml:"delegation_role_arn"`
 }
 
 type PostgresEngineVersion string
@@ -166,6 +169,26 @@ type Service struct {
 	EnvVars          map[string]string `yaml:"env_vars"`
 	EnvVariables     []EnvVariable     `yaml:"env_variables"`
 	EnvFilesS3       []S3EnvFile       `yaml:"env_files_s3"`
+}
+
+type DNSConfig struct {
+	RootDomain     string           `yaml:"root_domain"`
+	RootAccount    DNSRootAccount   `yaml:"root_account"`
+	DelegatedZones []DelegatedZone  `yaml:"delegated_zones"`
+}
+
+type DNSRootAccount struct {
+	AccountID         string `yaml:"account_id"`
+	ZoneID            string `yaml:"zone_id"`
+	DelegationRoleArn string `yaml:"delegation_role_arn"`
+}
+
+type DelegatedZone struct {
+	Subdomain  string   `yaml:"subdomain"`
+	AccountID  string   `yaml:"account_id"`
+	ZoneID     string   `yaml:"zone_id"`
+	NSRecords  []string `yaml:"ns_records"`
+	Status     string   `yaml:"status"`
 }
 
 // create function which generate random string

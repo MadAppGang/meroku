@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -408,5 +409,8 @@ func cleanupExpiredSessions() {
 
 // Initialize cleanup goroutine
 func init() {
-	go cleanupExpiredSessions()
+	// Only start cleanup if not running DNS commands
+	if len(os.Args) < 2 || os.Args[1] != "dns" {
+		go cleanupExpiredSessions()
+	}
 }

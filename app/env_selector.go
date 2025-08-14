@@ -21,10 +21,14 @@ func selectEnvironment() error {
 	var environments []string
 	for _, envFile := range envFiles {
 		// Only include YAML files in the root directory (not in subdirectories)
-		if !strings.Contains(envFile, "/") {
+		// Exclude DNS config file
+		if !strings.Contains(envFile, "/") && envFile != "dns.yaml" && envFile != "dns.yml" {
 			envName := strings.TrimSuffix(envFile, ".yaml")
 			envName = strings.TrimSuffix(envName, ".yml")
-			environments = append(environments, envName)
+			// Also exclude "dns" as environment name
+			if envName != "dns" {
+				environments = append(environments, envName)
+			}
 		}
 	}
 

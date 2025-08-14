@@ -27,20 +27,51 @@ data "aws_subnets" "all" {
 }
 
 # Locals removed - using direct handlebar resolution in modules
-{{#if domain.enabled}}  
-module "domain" {
-  source = "{{ modules }}/domain"
-  project = "{{ project }}"
-  domain_zone = "{{ domain.domain_name }}"
-  env = "{{ env }}"
-  create_domain_zone = {{ domain.create_domain_zone }}
-  api_domain_prefix = "{{ domain.api_domain_prefix }}"
-  {{#compare env "==" "prod"}}
-  add_env_domain_prefix = false
+{{#if domain.enabled}}
+  {{#if domain.is_dns_root}}
+  # DNS Root Zone Configuration
+  module "dns_root" {
+    source = "{{ modules }}/dns-root"
+    domain_name = "{{ domain.domain_name }}"
+    trusted_account_ids = {{ domain.trusted_account_ids }}
+  }
   {{else}}
-  add_env_domain_prefix = {{default domain.add_env_domain_prefix true}}
-  {{/compare}}
-}
+    {{#if domain.delegation_role_arn}}
+    # DNS Delegated Zone Configuration
+    provider "aws" {
+      alias = "root"
+      assume_role {
+        role_arn = "{{ domain.delegation_role_arn }}"
+      }
+    }
+    
+    module "dns_delegation" {
+      source = "{{ modules }}/dns-delegation"
+      providers = {
+        aws.root = aws.root
+      }
+      subdomain = "{{ domain.domain_name }}"
+      root_domain = "{{ domain.root_domain }}"
+      root_zone_id = "{{ domain.root_zone_id }}"
+      environment = "{{ env }}"
+    }
+    {{else}}
+    # Standard Domain Configuration
+    module "domain" {
+      source = "{{ modules }}/domain"
+      project = "{{ project }}"
+      domain_zone = "{{ domain.domain_name }}"
+      env = "{{ env }}"
+      create_domain_zone = {{ domain.create_domain_zone }}
+      api_domain_prefix = "{{ domain.api_domain_prefix }}"
+      {{#compare env "==" "prod"}}
+      add_env_domain_prefix = false
+      {{else}}
+      add_env_domain_prefix = {{default domain.add_env_domain_prefix true}}
+      {{/compare}}
+    }
+    {{/if}}
+  {{/if}}
 {{/if}}
 
 

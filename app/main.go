@@ -40,6 +40,14 @@ func main() {
 		os.Exit(0)
 	}
 
+	// Handle DNS commands (before environment selection)
+	args := flag.Args()
+	if len(args) > 0 && args[0] == "dns" {
+		// DNS commands don't need environment selection
+		handleDNSCommand(args[1:])
+		os.Exit(0)
+	}
+
 	registerCustomHelpers()
 	file, err := os.OpenFile("app.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666)
 	if err != nil {
@@ -133,6 +141,46 @@ func main() {
 	}
 	
 	os.Exit(0)
+}
+
+// handleDNSCommand handles DNS subcommands
+func handleDNSCommand(args []string) {
+	if len(args) == 0 {
+		fmt.Println("DNS management commands:")
+		fmt.Println("  dns setup    - Run DNS setup wizard")
+		fmt.Println("  dns status   - Show DNS configuration status")
+		fmt.Println("  dns validate - Validate DNS configuration")
+		fmt.Println("  dns remove   - Remove subdomain delegation")
+		return
+	}
+
+	switch args[0] {
+	case "setup":
+		runDNSSetupWizard()
+	case "status":
+		if err := runDNSStatus(nil, args[1:]); err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+	case "validate":
+		if err := runDNSValidate(nil, args[1:]); err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+	case "remove":
+		if len(args) < 2 {
+			fmt.Println("Usage: dns remove [subdomain]")
+			os.Exit(1)
+		}
+		if err := runDNSRemove(nil, args[1:]); err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+	default:
+		fmt.Printf("Unknown DNS command: %s\n", args[0])
+		fmt.Println("Available commands: setup, status, validate, remove")
+		os.Exit(1)
+	}
 }
 
 // runRenderDiff renders the terraform plan diff view from a JSON file
