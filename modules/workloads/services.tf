@@ -394,11 +394,12 @@ resource "null_resource" "create_services_env_files" {
     command = <<-EOT
       set -e
       echo "Checking if file exists: ${each.value.bucket}/${each.value.key}"
-      touch empty.tmp
       if ! aws s3api head-object --bucket ${each.value.bucket} --key ${each.value.key} 2>/dev/null; then
-        aws s3api put-object --bucket ${each.value.bucket} --key ${each.value.key} --body empty.tmp
+        echo "Creating empty file: ${each.value.bucket}/${each.value.key}"
+        echo "" | aws s3 cp - s3://${each.value.bucket}/${each.value.key}
+      else
+        echo "File already exists: ${each.value.bucket}/${each.value.key}"
       fi
-      rm -f empty.tmp
     EOT
   }
 

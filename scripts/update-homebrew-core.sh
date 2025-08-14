@@ -87,9 +87,10 @@ fi
 gh repo clone "${USERNAME}/homebrew-core" "$TEMP_DIR" -- --depth=50
 cd "$TEMP_DIR"
 
-# Sync with upstream
-git remote remove upstream 2>/dev/null || true
-git remote add upstream https://github.com/Homebrew/homebrew-core.git
+# Sync with upstream (optimized)
+if ! git remote | grep -q upstream; then
+    git remote add upstream https://github.com/Homebrew/homebrew-core.git
+fi
 git fetch upstream master --depth=50
 git checkout master
 git reset --hard upstream/master
@@ -123,11 +124,15 @@ rm -f "${FORMULA_PATH}.bak"
 echo -e "\n${YELLOW}Changes made:${NC}"
 git diff --color "$FORMULA_PATH"
 
-# Step 6: Test the formula
+# Step 6: Test the formula (optimized)
 echo -e "\n${YELLOW}Step 6: Testing formula...${NC}"
-brew install --build-from-source "$FORMULA_PATH"
-brew test "$FORMULA_NAME"
-brew audit --new "$FORMULA_NAME" || true
+if command -v brew >/dev/null 2>&1; then
+    brew install --build-from-source "$FORMULA_PATH"
+    brew test "$FORMULA_NAME"
+    brew audit --new "$FORMULA_NAME" || true
+else
+    echo -e "${YELLOW}Brew not available, skipping formula tests${NC}"
+fi
 
 # Step 7: Commit and push
 echo -e "\n${YELLOW}Step 7: Committing changes...${NC}"
