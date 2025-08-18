@@ -2,8 +2,10 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -11,6 +13,7 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"gopkg.in/yaml.v2"
 )
 
 type DNSSetupState int
@@ -26,6 +29,10 @@ const (
 	StateComplete
 	StateError
 	StateValidateConfig
+	StateSetupProduction   // New state for setting up production environment
+	StateInputAccountID     // New state for inputting AWS account ID
+	StateSetupAWSProfile    // New state for setting up AWS profile
+	StateProcessingSetup    // New state for showing progress during setup
 )
 
 type DNSSetupModel struct {
@@ -42,6 +49,9 @@ type DNSSetupModel struct {
 	spinner               spinner.Model
 	progress              progress.Model
 	currentStep           string
+	currentStepIndex      int     // Track which step we're on
+	setupSteps            []string // List of setup steps
+	setupStepStatus       []bool   // Status of each step (completed or not)
 	errorMsg              string
 	dnsConfig             *DNSConfig
 	subdomains            []string
@@ -60,7 +70,14 @@ type DNSSetupModel struct {
 	propagationCheckTimer int      // Timer for auto-checking DNS propagation (counts down from 100)
 	dnsPropagated         bool     // Whether DNS has been propagated
 	actualNameservers     []string // Current nameservers returned by DNS query
+	dnsCacheTTL           uint32   // TTL value from DNS response (indicates caching)
 	isCheckingDNS         bool     // Whether we're currently checking DNS
+	dnsTimerRunning       bool     // Whether a DNS propagation timer is already running
+	accountIDInput        string   // AWS account ID input for production setup
+	accountIDCursorPos    int      // Cursor position for account ID input
+	dnsDebugLogs          []string // DNS debug logs for display
+	dnsDebugScrollOffset  int      // Scroll offset for DNS debug window
+	showDNSDebugLog       bool     // Toggle to show/hide DNS debug log
 }
 
 type DNSEnvironment struct {
@@ -83,12 +100,20 @@ type propagationStatusMsg struct {
 type (
 	animationTickMsg time.Time
 	checkConfigMsg   struct{}
+	dnsPropagationTickMsg time.Time
 )
 
 // animationTickCmd returns a command that ticks every 100ms for animations
 func animationTickCmd() tea.Cmd {
 	return tea.Tick(100*time.Millisecond, func(t time.Time) tea.Msg {
 		return animationTickMsg(t)
+	})
+}
+
+// dnsPropagationTickCmd returns a command that ticks every second for DNS propagation countdown
+func dnsPropagationTickCmd() tea.Cmd {
+	return tea.Tick(1*time.Second, func(t time.Time) tea.Msg {
+		return dnsPropagationTickMsg(t)
 	})
 }
 
@@ -99,18 +124,76 @@ func NewDNSSetupModel() DNSSetupModel {
 
 	p := progress.New(progress.WithDefaultGradient())
 
-	return DNSSetupModel{
+	// Check if we're resuming from a saved state
+	domain, accountID := loadTemporaryDNSState()
+	
+	model := DNSSetupModel{
 		state:             StateCheckExisting,
-		domainInput:       "",
-		cursorPos:         0,
+		domainInput:       domain,
+		cursorPos:         len(domain),
 		spinner:           s,
 		progress:          p,
 		propagationStatus: make(map[string]bool),
 		currentStep:       "Initializing DNS setup wizard...",
 	}
+	
+	// If we have saved state, skip directly to processing
+	if domain != "" && accountID != "" {
+		model.rootDomain = domain
+		model.selectedAccountID = accountID
+		model.accountIDInput = accountID
+		// Jump directly to processing setup
+		model.state = StateProcessingSetup
+		model.setupSteps = []string{
+			"Checking AWS profile",
+			"Creating prod.yaml",
+			"Creating DNS zone",
+			"Setting up IAM role",
+			"Saving configuration",
+		}
+		model.setupStepStatus = make([]bool, len(model.setupSteps))
+		model.currentStepIndex = 0
+	}
+	
+	return model
+}
+
+// saveTemporaryDNSState saves the DNS setup state for resumption
+func saveTemporaryDNSState(domain, accountID string) {
+	data := map[string]string{
+		"domain":    domain,
+		"accountID": accountID,
+	}
+	b, _ := yaml.Marshal(data)
+	os.WriteFile(".dns_setup_temp.yaml", b, 0644)
+}
+
+// loadTemporaryDNSState loads saved DNS setup state
+func loadTemporaryDNSState() (domain, accountID string) {
+	data, err := os.ReadFile(".dns_setup_temp.yaml")
+	if err != nil {
+		return "", ""
+	}
+	
+	var state map[string]string
+	yaml.Unmarshal(data, &state)
+	
+	// Clean up temp file
+	os.Remove(".dns_setup_temp.yaml")
+	
+	return state["domain"], state["accountID"]
 }
 
 func (m DNSSetupModel) Init() tea.Cmd {
+	// If we're resuming from saved state, jump directly to profile check
+	if m.state == StateProcessingSetup && m.selectedAccountID != "" {
+		return tea.Batch(
+			m.spinner.Tick,
+			animationTickCmd(),
+			m.findProductionProfile(),
+		)
+	}
+	
 	return tea.Batch(
 		m.spinner.Tick,
 		animationTickCmd(),
@@ -132,6 +215,9 @@ func (m DNSSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		if m.state == StateInputDomain {
 			return m.handleDomainInput(msg)
+		}
+		if m.state == StateInputAccountID {
+			return m.handleAccountIDInput(msg)
 		}
 		switch msg.String() {
 		case "ctrl+c", "q", "Q":
@@ -156,6 +242,32 @@ func (m DNSSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Copy individual nameserver
 			if m.state == StateDisplayNameservers {
 				return m.handleCopyIndividualNS(msg.String())
+			}
+		case "d", "D":
+			// Toggle DNS debug log
+			if m.state == StateDisplayNameservers && len(m.dnsDebugLogs) > 0 {
+				m.showDNSDebugLog = !m.showDNSDebugLog
+				// Reset scroll position when opening - start from bottom
+				if m.showDNSDebugLog {
+					availableHeight := m.height - 5
+					if availableHeight < 10 {
+						availableHeight = 10
+					}
+					if len(m.dnsDebugLogs) > availableHeight {
+						m.dnsDebugScrollOffset = len(m.dnsDebugLogs) - availableHeight
+					} else {
+						m.dnsDebugScrollOffset = 0
+					}
+				}
+				// Force a full screen refresh by sending a clear screen command
+				return m, tea.ClearScreen
+			}
+		case "esc":
+			// Close debug log if open
+			if m.state == StateDisplayNameservers && m.showDNSDebugLog {
+				m.showDNSDebugLog = false
+				// Force a full screen refresh
+				return m, tea.ClearScreen
 			}
 		}
 
@@ -188,6 +300,28 @@ func (m DNSSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
 
+	case dnsPropagationTickMsg:
+		// Handle DNS propagation countdown timer (every second)
+		if m.state == StateDisplayNameservers && !m.dnsPropagated {
+			// Only decrement if not currently checking
+			if !m.isCheckingDNS && m.propagationCheckTimer > 0 {
+				m.propagationCheckTimer--
+			}
+			
+			// Check when timer reaches 0 and not already checking
+			if m.propagationCheckTimer == 0 && !m.isCheckingDNS {
+				m.isCheckingDNS = true
+				// Start the DNS check and continue the timer chain
+				return m, tea.Batch(m.checkDNSPropagatedSimple(), dnsPropagationTickCmd())
+			}
+			
+			// Continue the timer chain (only one chain running)
+			return m, dnsPropagationTickCmd()
+		}
+		// Stop the timer if we've left the state or DNS has propagated
+		m.dnsTimerRunning = false
+		return m, nil
+		
 	case animationTickMsg:
 		// Update animation frame
 		m.animationFrame++
@@ -224,18 +358,6 @@ func (m DNSSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		// Handle DNS propagation check timer
-		if m.state == StateDisplayNameservers && !m.dnsPropagated {
-			if m.propagationCheckTimer > 0 {
-				m.propagationCheckTimer--
-			}
-			// Check when timer reaches 0
-			if m.propagationCheckTimer == 0 && !m.isCheckingDNS {
-				m.propagationCheckTimer = 100 // Reset to 10 seconds (100 ticks at 100ms)
-				m.isCheckingDNS = true
-				cmds = append(cmds, m.checkDNSPropagatedSimple())
-			}
-		}
 
 		// Keep animation running for loading states or when showing copy feedback or selection animation
 		// Also continue for one more tick if we just cleared something (needsFinalRender)
@@ -286,6 +408,14 @@ func (m DNSSetupModel) View() string {
 		content = m.viewError()
 	case StateValidateConfig:
 		content = m.viewValidateConfig()
+	case StateSetupProduction:
+		content = m.viewSetupProduction()
+	case StateInputAccountID:
+		content = m.viewInputAccountID()
+	case StateProcessingSetup:
+		content = m.viewProcessingSetup()
+	case StateSetupAWSProfile:
+		content = m.viewSetupAWSProfile()
 	}
 
 	return m.renderBox("DNS Custom Domain Setup", content)
@@ -497,8 +627,6 @@ func (m DNSSetupModel) viewSelectRootAccount() string {
 		Foreground(lipgloss.Color("#000")).
 		Background(lipgloss.Color("87")).
 		Padding(0, 1)
-	normalStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("252"))
 	recommendedStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("82")).
 		Italic(true)
@@ -511,33 +639,40 @@ func (m DNSSetupModel) viewSelectRootAccount() string {
 		Foreground(lipgloss.Color("99"))
 
 	b.WriteString("Domain: " + domainStyle.Render(" "+m.rootDomain+" ") + "\n\n")
-	b.WriteString(questionStyle.Render("🔑 Which AWS account should host the root DNS zone?") + "\n\n")
+	b.WriteString(questionStyle.Render("🔐 Configuring Production Account for Root DNS Zone") + "\n\n")
 
-	for i, env := range m.environments {
-		prefix := "  "
-		if i == 0 {
-			prefix = "▸ "
-		}
-		recommended := ""
+	if len(m.environments) > 0 {
+		env := m.environments[0] // Should only be production
 		if env.Name == "prod" {
-			recommended = " (Recommended)"
-		}
-
-		line := fmt.Sprintf("%s%s (%s)", prefix, env.Name, env.AccountID)
-		if i == 0 {
+			line := fmt.Sprintf("▸ %s (%s)", env.Name, env.AccountID)
 			b.WriteString(selectedStyle.Render(line))
+			b.WriteString(recommendedStyle.Render(" (Required)"))
+			b.WriteString("\n")
 		} else {
-			b.WriteString(normalStyle.Render(line))
+			// This shouldn't happen, but show error if it does
+			errorStyle := lipgloss.NewStyle().
+				Foreground(lipgloss.Color("196")).
+				Bold(true)
+			b.WriteString(errorStyle.Render("⚠️  Error: Only production environment can host root zone"))
+			b.WriteString("\n")
 		}
-		if recommended != "" {
-			b.WriteString(recommendedStyle.Render(recommended))
-		}
+	} else {
+		errorStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("196")).
+			Bold(true)
+		b.WriteString(errorStyle.Render("⚠️  Production environment not configured"))
 		b.WriteString("\n")
 	}
 
-	b.WriteString("\n" + infoStyle.Render("ℹ️ The root account will:") + "\n")
+	b.WriteString("\n" + infoStyle.Render("ℹ️ The production account will:") + "\n")
 	b.WriteString(bulletStyle.Render("▸") + detailStyle.Render(" Own the main domain zone") + "\n")
-	b.WriteString(bulletStyle.Render("▸") + detailStyle.Render(" Delegate subdomains to other environments") + "\n\n")
+	b.WriteString(bulletStyle.Render("▸") + detailStyle.Render(" Manage all DNS delegations") + "\n")
+	b.WriteString(bulletStyle.Render("▸") + detailStyle.Render(" Control subdomain NS records") + "\n\n")
+	
+	requiredStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("226")).
+		Bold(true)
+	b.WriteString(requiredStyle.Render("⚠️  Note: Root zone MUST be in production for security") + "\n\n")
 	b.WriteString(m.renderKeyHelp("Enter", "to continue", "B", "to go back", "Q", "to quit"))
 
 	return b.String()
@@ -595,7 +730,143 @@ func (m DNSSetupModel) viewCreateRootZone() string {
 	return b.String()
 }
 
+// viewDNSDebugFullscreen displays the DNS debug log in fullscreen mode
+func (m DNSSetupModel) viewDNSDebugFullscreen() string {
+	var b strings.Builder
+	
+	// Clear screen first by filling with spaces if needed
+	// This ensures no leftover content from previous view
+	
+	// Styles for fullscreen debug view
+	headerStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("87")).
+		Background(lipgloss.Color("235")).
+		Width(m.width).
+		Padding(0, 2)
+	
+	contentStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("252"))
+	
+	lineNumberStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("240"))
+	
+	highlightStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("226"))
+	
+	errorStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("196"))
+	
+	successStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("82"))
+	
+	infoStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("33"))
+	
+	// Use a safe width that accounts for terminal size
+	safeWidth := m.width
+	if safeWidth > 120 {
+		safeWidth = 120 // Cap at reasonable width
+	}
+	if safeWidth < 80 {
+		safeWidth = 80 // Minimum width
+	}
+	
+	// Header
+	b.WriteString(headerStyle.Render("🔍 DNS Query Debug Log - Full View") + "\n")
+	b.WriteString(strings.Repeat("─", safeWidth) + "\n")
+	
+	// Calculate how many lines we can display (leave room for header and footer)
+	availableHeight := m.height - 5 // Reserve lines for header and footer
+	if availableHeight < 10 {
+		availableHeight = 10
+	}
+	
+	// Determine the range of logs to show
+	startIdx := m.dnsDebugScrollOffset
+	endIdx := startIdx + availableHeight
+	if endIdx > len(m.dnsDebugLogs) {
+		endIdx = len(m.dnsDebugLogs)
+		// Adjust start if we're at the end
+		if endIdx-startIdx < availableHeight && len(m.dnsDebugLogs) > availableHeight {
+			startIdx = len(m.dnsDebugLogs) - availableHeight
+			if startIdx < 0 {
+				startIdx = 0
+			}
+		}
+	}
+	
+	// Display logs with syntax highlighting
+	for i := startIdx; i < endIdx; i++ {
+		lineNum := fmt.Sprintf("%4d │ ", i+1)
+		b.WriteString(lineNumberStyle.Render(lineNum))
+		
+		line := m.dnsDebugLogs[i]
+		
+		// Apply syntax highlighting based on content
+		switch {
+		case strings.Contains(line, "Response code: NOERROR"):
+			// NOERROR is a success response
+			b.WriteString(successStyle.Render(line))
+		case strings.Contains(line, "ERROR") && !strings.Contains(line, "NOERROR") || strings.Contains(line, "❌"):
+			b.WriteString(errorStyle.Render(line))
+		case strings.Contains(line, "✅") || strings.Contains(line, "Success") || strings.Contains(line, "✓"):
+			b.WriteString(successStyle.Render(line))
+		case strings.Contains(line, "---") || strings.Contains(line, "==="):
+			b.WriteString(highlightStyle.Render(line))
+		case strings.HasPrefix(line, "Expected") || strings.HasPrefix(line, "Actual"):
+			b.WriteString(infoStyle.Render(line))
+		case strings.Contains(line, "Query:") || strings.Contains(line, "Response:") && !strings.Contains(line, "NOERROR"):
+			b.WriteString(highlightStyle.Render(line))
+		case strings.Contains(line, "Found") && strings.Contains(line, "NS records"):
+			b.WriteString(successStyle.Render(line))
+		case strings.Contains(line, "TCP failed"):
+			b.WriteString(errorStyle.Render(line))
+		default:
+			b.WriteString(contentStyle.Render(line))
+		}
+		b.WriteString("\n")
+	}
+	
+	// Fill remaining space with empty lines
+	for i := endIdx - startIdx; i < availableHeight; i++ {
+		b.WriteString("\n")
+	}
+	
+	// Footer with scroll info and controls
+	b.WriteString(strings.Repeat("─", safeWidth) + "\n")
+	
+	footerStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("245"))
+	
+	scrollInfo := fmt.Sprintf("Lines %d-%d of %d", startIdx+1, endIdx, len(m.dnsDebugLogs))
+	scrollPercent := 0
+	if len(m.dnsDebugLogs) > availableHeight {
+		scrollPercent = (startIdx * 100) / (len(m.dnsDebugLogs) - availableHeight)
+	}
+	scrollBar := fmt.Sprintf(" [%d%%]", scrollPercent)
+	
+	controls := "↑↓: Scroll │ D: Close │ ESC: Back"
+	
+	// Build footer content that fits within width
+	footerContent := fmt.Sprintf("%s%s │ %s", scrollInfo, scrollBar, controls)
+	
+	// Truncate if too long
+	if len(footerContent) > safeWidth {
+		footerContent = footerContent[:safeWidth-3] + "..."
+	}
+	
+	b.WriteString(footerStyle.Render(footerContent))
+	
+	return b.String()
+}
+
 func (m DNSSetupModel) viewDisplayNameservers() string {
+	// If showing debug log fullscreen, display only that
+	if m.showDNSDebugLog && len(m.dnsDebugLogs) > 0 {
+		return m.viewDNSDebugFullscreen()
+	}
+	
 	var b strings.Builder
 
 	warningStyle := lipgloss.NewStyle().
@@ -698,14 +969,37 @@ func (m DNSSetupModel) viewDisplayNameservers() string {
 		if m.isCheckingDNS {
 			timeInfo = " (checking now...)"
 		} else if m.propagationCheckTimer > 0 {
-			seconds := m.propagationCheckTimer / 10
+			seconds := m.propagationCheckTimer
 			timeInfo = fmt.Sprintf(" (next check in %ds)", seconds)
 		}
 		b.WriteString(notPropagatedStyle.Render("⏳ Checking DNS propagation...") + statusStyle.Render(timeInfo) + "\n")
 
 		// Show current NS values
 		if len(m.actualNameservers) > 0 {
-			b.WriteString("\n" + statusStyle.Render("Current nameservers returned by DNS:") + "\n")
+			b.WriteString("\n" + statusStyle.Render("Current nameservers from DNS:") + "\n")
+			
+			// Show TTL warning if present (only for standard DNS)
+			if m.dnsCacheTTL > 0 {
+				ttlWarningStyle := lipgloss.NewStyle().
+					Foreground(lipgloss.Color("226")).
+					Bold(true)
+				hours := m.dnsCacheTTL / 3600
+				minutes := (m.dnsCacheTTL % 3600) / 60
+				
+				if hours > 0 {
+					b.WriteString(ttlWarningStyle.Render(fmt.Sprintf("⚠️ CACHED RESPONSE (TTL: %dh %dm remaining)", hours, minutes)) + "\n")
+				} else {
+					b.WriteString(ttlWarningStyle.Render(fmt.Sprintf("⚠️ CACHED RESPONSE (TTL: %d minutes remaining)", minutes)) + "\n")
+				}
+				b.WriteString(statusStyle.Render("DNS servers are returning cached values that won't update until TTL expires") + "\n\n")
+			} else {
+				// TTL is 0, meaning we got DoH results
+				dohSuccessStyle := lipgloss.NewStyle().
+					Foreground(lipgloss.Color("82")).
+					Italic(true)
+				b.WriteString(dohSuccessStyle.Render("✓ Using DNS-over-HTTPS (real-time results)") + "\n\n")
+			}
+			
 			for _, ns := range m.actualNameservers {
 				// Check if this NS matches any expected
 				isMatch := false
@@ -721,14 +1015,24 @@ func (m DNSSetupModel) viewDisplayNameservers() string {
 					b.WriteString(wrongNSStyle.Render("  ✗ "+ns) + "\n")
 				}
 			}
-		} else if m.propagationCheckTimer < 100 {
-			// We've done at least one check
+		} else if !m.isCheckingDNS && m.propagationCheckTimer == 0 {
+			// Only show "No nameservers" if we're not currently checking and the timer has reached 0
+			// This means we've completed at least one check with no results
 			b.WriteString("\n" + wrongNSStyle.Render("❌ No nameservers returned by DNS query") + "\n")
 		}
 		b.WriteString("\n")
 	}
 
-	b.WriteString(m.renderKeyHelp("C", "copy all", "1-4", "copy NS", "R", "refresh", "Enter", "done"))
+	b.WriteString(m.renderKeyHelp("C", "copy all", "1-4", "copy NS", "R", "refresh", "D", "debug log", "Enter", "done"))
+
+	// Show a small indicator that debug logs are available
+	if !m.showDNSDebugLog && len(m.dnsDebugLogs) > 0 {
+		b.WriteString("\n\n")
+		infoStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("240")).
+			Italic(true)
+		b.WriteString(infoStyle.Render(fmt.Sprintf("💡 %d debug log entries available. Press D to view.", len(m.dnsDebugLogs))))
+	}
 
 	return b.String()
 }
@@ -936,6 +1240,202 @@ func (m DNSSetupModel) viewError() string {
 	return b.String()
 }
 
+func (m DNSSetupModel) viewSetupProduction() string {
+	var b strings.Builder
+	
+	headerStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("214"))
+	sectionStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("87"))
+	explanationStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("245"))
+	exampleStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("123")).
+		Italic(true)
+	importantStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("226"))
+	bulletStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("99"))
+	dimStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("240")).
+		Italic(true)
+	domainStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("#FFF")).
+		Background(lipgloss.Color("33")).
+		Padding(0, 1)
+	
+	b.WriteString(headerStyle.Render("🏗️  Production Environment Setup Required") + "\n\n")
+	b.WriteString("Domain: " + domainStyle.Render(" "+m.rootDomain+" ") + "\n\n")
+	
+	b.WriteString(sectionStyle.Render("📖 DNS Architecture Overview:") + "\n")
+	b.WriteString(explanationStyle.Render("Our DNS management follows a hub-and-spoke model:") + "\n\n")
+	
+	b.WriteString(bulletStyle.Render("•") + explanationStyle.Render(" Production account hosts the root DNS zone (") + exampleStyle.Render(m.rootDomain) + explanationStyle.Render(")") + "\n")
+	b.WriteString(bulletStyle.Render("•") + explanationStyle.Render(" Other environments receive delegated subdomains") + "\n")
+	b.WriteString(bulletStyle.Render("•") + explanationStyle.Render(" Cross-account IAM roles enable secure delegation") + "\n\n")
+	
+	b.WriteString(sectionStyle.Render("🌐 Domain Naming Convention:") + "\n\n")
+	b.WriteString(explanationStyle.Render("Base domains:") + "\n")
+	b.WriteString(bulletStyle.Render("  Production: ") + exampleStyle.Render(m.rootDomain) + "\n")
+	b.WriteString(bulletStyle.Render("  Development: ") + exampleStyle.Render("dev."+m.rootDomain) + "\n")
+	b.WriteString(bulletStyle.Render("  Staging: ") + exampleStyle.Render("staging."+m.rootDomain) + dimStyle.Render(" (managed separately)") + "\n\n")
+	
+	b.WriteString(explanationStyle.Render("Service endpoints (examples):") + "\n")
+	b.WriteString(bulletStyle.Render("  APP: ") + exampleStyle.Render("app."+m.rootDomain) + explanationStyle.Render(" / ") + exampleStyle.Render("app.dev."+m.rootDomain) + "\n")
+	b.WriteString(bulletStyle.Render("  API: ") + exampleStyle.Render("api."+m.rootDomain) + explanationStyle.Render(" / ") + exampleStyle.Render("api.dev."+m.rootDomain) + "\n")
+	b.WriteString(bulletStyle.Render("  Landing: ") + exampleStyle.Render(m.rootDomain) + explanationStyle.Render(" / ") + exampleStyle.Render("dev."+m.rootDomain) + "\n\n")
+	
+	b.WriteString(importantStyle.Render("⚠️  Important:") + "\n")
+	b.WriteString(explanationStyle.Render("• Root zone MUST be in production for security") + "\n")
+	b.WriteString(explanationStyle.Render("• This will create DNS zone only (no deployment)") + "\n")
+	b.WriteString(explanationStyle.Render("• You'll update your registrar's nameservers later") + "\n\n")
+	
+	b.WriteString(sectionStyle.Render("To continue, we need your production AWS account ID.") + "\n\n")
+	b.WriteString(m.renderKeyHelp("Enter", "provide account ID", "Q", "to quit"))
+	
+	return b.String()
+}
+
+func (m DNSSetupModel) viewSetupAWSProfile() string {
+	var b strings.Builder
+	
+	headerStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("214"))
+	sectionStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("87"))
+	descStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("245"))
+	highlightStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("226"))
+	exampleStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("123")).
+		Italic(true)
+	bulletStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("99"))
+	
+	b.WriteString(headerStyle.Render("🔧 AWS Profile Setup Required") + "\n\n")
+	b.WriteString(descStyle.Render("No AWS profile found for account ID: ") + highlightStyle.Render(m.selectedAccountID) + "\n\n")
+	
+	b.WriteString(sectionStyle.Render("What will happen next:") + "\n\n")
+	
+	b.WriteString(bulletStyle.Render("1.") + descStyle.Render(" AWS profile creation wizard will launch") + "\n")
+	b.WriteString(bulletStyle.Render("2.") + descStyle.Render(" You'll set up SSO session or credentials") + "\n")
+	b.WriteString(bulletStyle.Render("3.") + descStyle.Render(" Profile will be configured for account ") + highlightStyle.Render(m.selectedAccountID) + "\n")
+	b.WriteString(bulletStyle.Render("4.") + descStyle.Render(" DNS setup will continue automatically") + "\n\n")
+	
+	b.WriteString(sectionStyle.Render("You'll be asked for:") + "\n")
+	b.WriteString(bulletStyle.Render("•") + descStyle.Render(" SSO start URL (e.g., ") + exampleStyle.Render("https://myorg.awsapps.com/start") + descStyle.Render(")") + "\n")
+	b.WriteString(bulletStyle.Render("•") + descStyle.Render(" SSO region (e.g., ") + exampleStyle.Render("us-east-1") + descStyle.Render(")") + "\n")
+	b.WriteString(bulletStyle.Render("•") + descStyle.Render(" Profile name (suggested: ") + exampleStyle.Render(fmt.Sprintf("prod-%s", m.selectedAccountID[:4])) + descStyle.Render(")") + "\n")
+	b.WriteString(bulletStyle.Render("•") + descStyle.Render(" IAM role (default: ") + exampleStyle.Render("AdministratorAccess") + descStyle.Render(")") + "\n\n")
+	
+	b.WriteString(m.renderKeyHelp("Enter", "launch AWS profile setup", "Q", "to quit"))
+	
+	return b.String()
+}
+
+func (m DNSSetupModel) viewInputAccountID() string {
+	var b strings.Builder
+	
+	headerStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("86"))
+	descStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("245"))
+	tipStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("214"))
+	bulletStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("99"))
+	inputStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("#FFF")).
+		Background(lipgloss.Color("235")).
+		Padding(0, 1)
+	labelStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("87"))
+	exampleStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("123")).
+		Italic(true)
+	
+	b.WriteString(headerStyle.Render("🔐 Enter Production AWS Account ID:") + "\n\n")
+	b.WriteString(descStyle.Render("This is your 12-digit AWS account ID where the root") + "\n")
+	b.WriteString(descStyle.Render("DNS zone will be created.") + "\n\n")
+	
+	// Create input field with cursor
+	inputLine := m.accountIDInput
+	if m.accountIDCursorPos < len(inputLine) {
+		inputLine = inputLine[:m.accountIDCursorPos] + "█" + inputLine[m.accountIDCursorPos:]
+	} else {
+		inputLine = inputLine + "█"
+	}
+	
+	b.WriteString(labelStyle.Render("Account ID: ") + inputStyle.Render(" "+inputLine+" ") + "\n\n")
+	
+	b.WriteString(tipStyle.Render("💡 How to find your AWS Account ID:") + "\n")
+	b.WriteString(bulletStyle.Render("•") + descStyle.Render(" AWS Console: Top-right corner dropdown") + "\n")
+	b.WriteString(bulletStyle.Render("•") + descStyle.Render(" CLI: ") + exampleStyle.Render("aws sts get-caller-identity") + "\n")
+	b.WriteString(bulletStyle.Render("•") + descStyle.Render(" Format: ") + exampleStyle.Render("123456789012") + descStyle.Render(" (12 digits)") + "\n\n")
+	
+	b.WriteString(m.renderKeyHelp("Enter", "to continue", "Esc", "to go back", "Q", "to quit"))
+	
+	return b.String()
+}
+
+func (m DNSSetupModel) viewProcessingSetup() string {
+	var b strings.Builder
+	
+	accountStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("214"))
+	doneStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("82"))
+	currentStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("226")).
+		Bold(true)
+	pendingStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("240"))
+	
+	// Clean, simple header without duplication
+	if m.rootDomain != "" {
+		b.WriteString("Domain: " + accountStyle.Render(m.rootDomain) + "\n")
+	}
+	b.WriteString("\n")
+	
+	// Show progress of each step
+	for i, step := range m.setupSteps {
+		var icon string
+		var style lipgloss.Style
+		
+		if m.setupStepStatus[i] {
+			// Step completed
+			icon = "✓"
+			style = doneStyle
+		} else if i == m.currentStepIndex {
+			// Current step
+			icon = m.spinner.View()
+			style = currentStyle
+		} else {
+			// Pending step
+			icon = "○"
+			style = pendingStyle
+		}
+		
+		b.WriteString(fmt.Sprintf("%s %s\n", icon, style.Render(step)))
+	}
+	
+	
+	b.WriteString("\n")
+	
+	return b.String()
+}
+
 func (m DNSSetupModel) handleEnter() (DNSSetupModel, tea.Cmd) {
 	switch m.state {
 	case StateCheckExisting:
@@ -953,18 +1453,26 @@ func (m DNSSetupModel) handleEnter() (DNSSetupModel, tea.Cmd) {
 		}
 		m.rootDomain = m.domainInput
 		m.state = StateSelectRootAccount
-		return m, m.loadEnvironments()
+		return m, m.loadProductionEnvironment()
 	case StateSelectRootAccount:
-		// Set the selected environment (first one in the list)
+		// Production environment is required for root zone
 		if len(m.environments) > 0 {
-			selected := m.environments[0]
+			selected := m.environments[0] // Should only be prod at this point
+			
+			// Double-check this is production
+			if selected.Name != "prod" {
+				m.state = StateError
+				m.errorMsg = "Root DNS zone must be created in production environment.\nPlease configure a production environment first."
+				return m, nil
+			}
+			
 			m.selectedProfile = selected.Profile
 			m.selectedAccountID = selected.AccountID
 
 			// Validate the profile exists and works
 			if m.selectedProfile == "" {
 				m.state = StateError
-				m.errorMsg = fmt.Sprintf("No AWS profile configured for %s environment", selected.Name)
+				m.errorMsg = "No AWS profile configured for production environment.\nPlease configure AWS access for production account."
 				return m, nil
 			}
 
@@ -972,7 +1480,7 @@ func (m DNSSetupModel) handleEnter() (DNSSetupModel, tea.Cmd) {
 			accountID, err := getAWSAccountID(m.selectedProfile)
 			if err != nil {
 				m.state = StateError
-				m.errorMsg = fmt.Sprintf("AWS profile '%s' is not working: %v\nPlease configure AWS access for this profile", m.selectedProfile, err)
+				m.errorMsg = fmt.Sprintf("AWS profile '%s' for production is not working: %v\nPlease configure AWS access for production account", m.selectedProfile, err)
 				return m, nil
 			}
 
@@ -980,7 +1488,7 @@ func (m DNSSetupModel) handleEnter() (DNSSetupModel, tea.Cmd) {
 			m.selectedAccountID = accountID
 		} else {
 			m.state = StateError
-			m.errorMsg = "No environments found. Please create an environment first."
+			m.errorMsg = "Production environment not found.\nPlease create prod.yaml first."
 			return m, nil
 		}
 		m.state = StateCreateRootZone
@@ -1000,27 +1508,107 @@ func (m DNSSetupModel) handleEnter() (DNSSetupModel, tea.Cmd) {
 		return m, m.saveConfiguration()
 	case StateComplete, StateError:
 		return m, tea.Quit
+	case StateSetupProduction:
+		// Move to input account ID
+		m.state = StateInputAccountID
+		m.accountIDInput = ""
+		m.accountIDCursorPos = 0
+		return m, nil
+	case StateInputAccountID:
+		// Validate account ID
+		accountID := strings.TrimSpace(m.accountIDInput)
+		if len(accountID) != 12 {
+			m.errorMsg = "AWS Account ID must be exactly 12 digits"
+			return m, nil
+		}
+		// Check if it's all digits
+		for _, char := range accountID {
+			if char < '0' || char > '9' {
+				m.errorMsg = "AWS Account ID must contain only digits"
+				return m, nil
+			}
+		}
+		m.selectedAccountID = accountID
+		
+		// Initialize setup steps
+		m.setupSteps = []string{
+			"Checking AWS profile",
+			"Creating prod.yaml",
+			"Creating DNS zone",
+			"Setting up IAM role",
+			"Saving configuration",
+		}
+		m.setupStepStatus = make([]bool, len(m.setupSteps))
+		m.currentStepIndex = 0
+		m.state = StateProcessingSetup
+		
+		// Start the setup process
+		return m, tea.Batch(
+			m.spinner.Tick,
+			animationTickCmd(),
+			m.findProductionProfile(),
+		)
+	case StateSetupAWSProfile:
+		// Exit DNS setup to create AWS profile
+		// The main loop will handle profile creation and restart
+		return m, tea.Quit
+	case StateProcessingSetup:
+		// Don't allow any input during processing
+		return m, nil
 	}
 	return m, nil
 }
 
 func (m DNSSetupModel) handleUp() (DNSSetupModel, tea.Cmd) {
-	if m.state == StateAddSubdomain && len(m.subdomains) > 0 {
-		if m.currentSubdomainIndex > 0 {
-			m.currentSubdomainIndex--
-		} else {
-			m.currentSubdomainIndex = len(m.subdomains) - 1
+	switch m.state {
+	case StateAddSubdomain:
+		if len(m.subdomains) > 0 {
+			if m.currentSubdomainIndex > 0 {
+				m.currentSubdomainIndex--
+			} else {
+				m.currentSubdomainIndex = len(m.subdomains) - 1
+			}
+		}
+	case StateDisplayNameservers:
+		// If debug log is shown, scroll it up
+		if m.showDNSDebugLog {
+			if m.dnsDebugScrollOffset > 0 {
+				m.dnsDebugScrollOffset--
+			}
 		}
 	}
 	return m, nil
 }
 
 func (m DNSSetupModel) handleDown() (DNSSetupModel, tea.Cmd) {
-	if m.state == StateAddSubdomain && len(m.subdomains) > 0 {
-		if m.currentSubdomainIndex < len(m.subdomains)-1 {
-			m.currentSubdomainIndex++
-		} else {
-			m.currentSubdomainIndex = 0
+	switch m.state {
+	case StateAddSubdomain:
+		if len(m.subdomains) > 0 {
+			if m.currentSubdomainIndex < len(m.subdomains)-1 {
+				m.currentSubdomainIndex++
+			} else {
+				m.currentSubdomainIndex = 0
+			}
+		}
+	case StateDisplayNameservers:
+		// If debug log is shown, scroll it down
+		if m.showDNSDebugLog {
+			// Calculate available height for fullscreen
+			availableHeight := m.height - 5
+			if availableHeight < 10 {
+				availableHeight = 10
+			}
+			
+			// Calculate maximum scroll offset
+			maxOffset := len(m.dnsDebugLogs) - availableHeight
+			if maxOffset < 0 {
+				maxOffset = 0
+			}
+			
+			// Scroll down if not at bottom
+			if m.dnsDebugScrollOffset < maxOffset {
+				m.dnsDebugScrollOffset++
+			}
 		}
 	}
 	return m, nil
@@ -1084,7 +1672,7 @@ func (m DNSSetupModel) handleRefresh() (DNSSetupModel, tea.Cmd) {
 	case StateDisplayNameservers:
 		// Manually check DNS propagation
 		if !m.isCheckingDNS {
-			m.propagationCheckTimer = 100 // Reset timer to 10 seconds
+			m.propagationCheckTimer = 10 // Reset timer to 10 seconds
 			m.isCheckingDNS = true
 			return m, m.checkDNSPropagatedSimple()
 		}
@@ -1146,7 +1734,13 @@ func (m DNSSetupModel) handleCopyIndividualNS(key string) (DNSSetupModel, tea.Cm
 func (m DNSSetupModel) handleDNSOperation(msg dnsOperationMsg) (DNSSetupModel, tea.Cmd) {
 	if !msg.Success {
 		m.state = StateError
-		m.errorMsg = msg.Error.Error()
+		if msg.Error != nil {
+			m.errorMsg = fmt.Sprintf("DNS Setup Error: %v", msg.Error)
+		} else if msg.Type != "" {
+			m.errorMsg = fmt.Sprintf("DNS operation failed: %s", msg.Type)
+		} else {
+			m.errorMsg = "An unknown error occurred during DNS setup"
+		}
 		return m, nil
 	}
 
@@ -1187,7 +1781,10 @@ func (m DNSSetupModel) handleDNSOperation(msg dnsOperationMsg) (DNSSetupModel, t
 		if msg.Success {
 			// Zone validation successful, proceed to subdomain management
 			data := msg.Data.(map[string]interface{})
-			m.nameservers = data["nameservers"].([]string)
+			nameservers := data["nameservers"].([]string)
+			// Sort nameservers to ensure consistent ordering
+			sort.Strings(nameservers)
+			m.nameservers = nameservers
 			actualDomain := data["domain"].(string)
 			isPropagated := data["propagated"].(bool)
 
@@ -1204,10 +1801,12 @@ func (m DNSSetupModel) handleDNSOperation(msg dnsOperationMsg) (DNSSetupModel, t
 				// DNS not propagated, show nameserver setup screen
 				m.state = StateDisplayNameservers
 				m.dnsPropagated = false
-				m.propagationCheckTimer = 1 // Start with 1 to trigger immediate check
-				m.isCheckingDNS = false
-				// Start animation ticker for DNS propagation checks
-				return m, animationTickCmd()
+				m.propagationCheckTimer = 0 // Start with 0 for immediate check
+				m.isCheckingDNS = true // Mark as checking immediately
+				m.dnsTimerRunning = false // Timer will be started after first check
+				// Start animation ticker and immediate check
+				// The DNS timer will be started after the first check completes
+				return m, tea.Batch(animationTickCmd(), m.checkDNSPropagatedSimple())
 			}
 
 			m.state = StateAddSubdomain
@@ -1222,37 +1821,148 @@ func (m DNSSetupModel) handleDNSOperation(msg dnsOperationMsg) (DNSSetupModel, t
 	case "create_zone":
 		data := msg.Data.(map[string]interface{})
 		m.zoneID = data["zoneID"].(string)
-		m.nameservers = data["nameservers"].([]string)
-		m.currentStep = "Creating delegation IAM role"
+		nameservers := data["nameservers"].([]string)
+		// Sort nameservers to ensure consistent ordering
+		sort.Strings(nameservers)
+		m.nameservers = nameservers
+		
+		// Update progress - DNS zone created
+		m.setupStepStatus[2] = true
+		m.currentStepIndex = 3
+		
 		return m, m.createDelegationRole()
 
 	case "create_role":
 		m.delegationRoleArn = msg.Data.(string)
-		m.currentStep = "Saving configuration"
-		m.state = StateDisplayNameservers
+		
+		// Update progress - IAM role created
+		m.setupStepStatus[3] = true
+		m.currentStepIndex = 4
+		
 		return m, m.saveConfiguration()
 
 	case "save_config":
-		if m.state != StateComplete {
-			m.state = StateDisplayNameservers
-			m.dnsPropagated = false
-			m.propagationCheckTimer = 1 // Start with 1 to trigger immediate check
-			m.isCheckingDNS = false
-			// Start animation ticker for DNS propagation checks
-			return m, animationTickCmd()
-		}
-		return m, nil
+		// Update progress - all steps complete
+		m.setupStepStatus[4] = true
+		
+		// Move to nameserver display
+		m.state = StateDisplayNameservers
+		m.dnsPropagated = false
+		m.propagationCheckTimer = 0 // Start with 0 for immediate check
+		m.isCheckingDNS = true // Mark as checking immediately
+		m.dnsTimerRunning = false // Timer will be started after first check
+		
+		// Start animation ticker and immediate check
+		// The DNS timer will be started after the first check completes
+		return m, tea.Batch(animationTickCmd(), m.checkDNSPropagatedSimple())
 
 	case "load_environments":
+		if !msg.Success {
+			m.state = StateError
+			m.errorMsg = msg.Error.Error()
+			return m, nil
+		}
 		data := msg.Data.(map[string]interface{})
 		m.environments = data["environments"].([]DNSEnvironment)
 		m.subdomains = data["subdomains"].([]string)
 		m.selectedSubdomains = make([]bool, len(m.subdomains))
 		m.currentSubdomainIndex = 0 // Initialize the current index
 		return m, nil
+	
+	case "need_production_setup":
+		// Production environment doesn't exist, show setup screen
+		m.state = StateSetupProduction
+		return m, nil
+	
+	case "profile_found":
+		// Profile was found for the account ID
+		data := msg.Data.(map[string]interface{})
+		m.selectedProfile = data["profile"].(string)
+		
+		// Update progress - profile check complete
+		m.setupStepStatus[0] = true
+		m.currentStepIndex = 1
+		
+		// Create prod.yaml with the provided account ID and profile
+		if err := ensureProductionEnvironmentWithAccountID(m.rootDomain, m.selectedAccountID, m.selectedProfile); err != nil {
+			m.state = StateError
+			m.errorMsg = fmt.Sprintf("Failed to create prod.yaml: %v", err)
+			return m, nil
+		}
+		
+		// Update progress - prod.yaml created
+		m.setupStepStatus[1] = true
+		m.currentStepIndex = 2
+		
+		// Set up environment info
+		m.environments = []DNSEnvironment{{
+			Name:      "prod",
+			Profile:   m.selectedProfile,
+			AccountID: m.selectedAccountID,
+		}}
+		
+		// Continue with zone creation
+		return m, m.createRootZone()
+	
+	case "profile_not_found":
+		// No AWS profile found - we need to create one
+		// Save state and exit cleanly to create profile
+		saveTemporaryDNSState(m.rootDomain, m.selectedAccountID)
+		m.state = StateSetupAWSProfile
+		return m, tea.Quit
+	
+	case "profile_created":
+		// Profile was successfully created, continue with DNS setup
+		data := msg.Data.(map[string]interface{})
+		m.selectedProfile = data["profile"].(string)
+		
+		// Update progress - profile check complete
+		m.setupStepStatus[0] = true
+		m.currentStepIndex = 1
+		
+		// Create prod.yaml with the new profile
+		if err := ensureProductionEnvironmentWithAccountID(m.rootDomain, m.selectedAccountID, m.selectedProfile); err != nil {
+			m.state = StateError
+			m.errorMsg = fmt.Sprintf("Failed to create prod.yaml: %v", err)
+			return m, nil
+		}
+		
+		// Update progress - prod.yaml created
+		m.setupStepStatus[1] = true
+		m.currentStepIndex = 2
+		
+		// Set up environments for DNS creation
+		m.environments = []DNSEnvironment{{
+			Name:      "prod",
+			Profile:   m.selectedProfile,
+			AccountID: m.selectedAccountID,
+		}}
+		
+		// Continue with DNS zone creation
+		return m, m.createRootZone()
 
 	case "create_delegations":
 		m.state = StateComplete
+		return m, nil
+	
+	case "profile_creation_failed":
+		// Profile creation failed, show the error
+		m.state = StateError
+		m.errorMsg = msg.Error.Error()
+		return m, nil
+	
+	case "sso_sessions_loaded":
+		// SSO sessions loaded, show selection
+		// SSO session selection is now handled in separate TUI
+		return m, nil
+	
+	case "sso_session_created":
+		// SSO session creation is now handled in separate TUI
+		return m, nil
+	
+	case "iam_roles_loaded":
+		// IAM roles loaded, show selection
+		// Role selection is now handled in separate TUI
 		return m, nil
 
 	case "clipboard_copy":
@@ -1269,12 +1979,51 @@ func (m DNSSetupModel) handleDNSOperation(msg dnsOperationMsg) (DNSSetupModel, t
 		if msg.Data != nil {
 			data := msg.Data.(map[string]interface{})
 			m.dnsPropagated = data["propagated"].(bool)
-			m.actualNameservers = data["actualNS"].([]string)
+			actualNS := data["actualNS"].([]string)
+			// Sort nameservers to ensure consistent ordering
+			sort.Strings(actualNS)
+			m.actualNameservers = actualNS
+			
+			// Store TTL if present
+			if ttl, ok := data["ttl"].(uint32); ok {
+				m.dnsCacheTTL = ttl
+			}
+			
+			// Update debug logs if present
+			if debugLogs, ok := data["debugLogs"].([]string); ok {
+				// Append new debug logs
+				m.dnsDebugLogs = append(m.dnsDebugLogs, debugLogs...)
+				// Keep a reasonable limit to prevent memory issues (500 lines)
+				if len(m.dnsDebugLogs) > 500 {
+					m.dnsDebugLogs = m.dnsDebugLogs[len(m.dnsDebugLogs)-500:]
+				}
+				// Auto-scroll to bottom if in debug view
+				if m.showDNSDebugLog {
+					availableHeight := m.height - 5
+					if availableHeight < 10 {
+						availableHeight = 10
+					}
+					if len(m.dnsDebugLogs) > availableHeight {
+						m.dnsDebugScrollOffset = len(m.dnsDebugLogs) - availableHeight
+					}
+				}
+			}
 
 			if m.dnsPropagated && m.state == StateDisplayNameservers {
 				// DNS has propagated! Automatically proceed to next step
+				m.dnsTimerRunning = false // Stop the timer
 				m.state = StateAddSubdomain
 				return m, m.loadEnvironments()
+			}
+			
+			// DNS not propagated yet, reset timer for next check
+			if !m.dnsPropagated && m.state == StateDisplayNameservers {
+				m.propagationCheckTimer = 10 // Reset to 10 seconds for next check
+				// Start the timer ONLY if not already running
+				if !m.dnsTimerRunning {
+					m.dnsTimerRunning = true
+					return m, dnsPropagationTickCmd()
+				}
 			}
 		}
 		return m, nil
@@ -1376,13 +2125,78 @@ func (m DNSSetupModel) validateExistingZone() tea.Cmd {
 	}
 }
 
+// loadProductionEnvironment loads only the production environment for root zone creation
+func (m DNSSetupModel) loadProductionEnvironment() tea.Cmd {
+	return func() tea.Msg {
+		// Try to load production environment
+		env, err := loadEnv("prod")
+		if err != nil {
+			// Production environment doesn't exist - we'll need to create it
+			// Go directly to production setup flow
+			return dnsOperationMsg{
+				Type: "need_production_setup", 
+				Success: true,
+				Data: nil,
+			}
+		}
+		
+		// Get AWS account ID for production
+		accountID := env.AccountID
+		profile := env.AWSProfile
+		
+		// If account ID is not in YAML, try to get it from the AWS profile
+		if accountID == "" && profile != "" {
+			if id, err := getAWSAccountID(profile); err == nil {
+				accountID = id
+			}
+		}
+		
+		// If we still don't have profile/account, check if there's a "prod" AWS profile
+		if profile == "" {
+			// Try common production profile names
+			prodProfiles := []string{"prod", "production", "prd"}
+			for _, p := range prodProfiles {
+				if id, err := getAWSAccountID(p); err == nil {
+					profile = p
+					accountID = id
+					break
+				}
+			}
+		}
+		
+		// Validate we have production environment configured
+		if profile == "" && accountID == "" {
+			return dnsOperationMsg{
+				Type: "load_environments",
+				Success: false,
+				Error: fmt.Errorf("production AWS profile not configured. Please set up AWS credentials for production account"),
+			}
+		}
+		
+		// Create the production environment entry
+		envs := []DNSEnvironment{{
+			Name:      "prod",
+			Profile:   profile,
+			AccountID: accountID,
+		}}
+		
+		data := map[string]interface{}{
+			"environments": envs,
+			"subdomains":   []string{}, // No subdomains at this stage
+		}
+		
+		return dnsOperationMsg{Type: "load_environments", Success: true, Data: data}
+	}
+}
+
 func (m DNSSetupModel) loadEnvironments() tea.Cmd {
 	return func() tea.Msg {
 		// Get list of project YAML files
 		envs := []DNSEnvironment{}
 
 		// Check for common environment files in current working directory
-		envFiles := []string{"dev", "prod", "staging"}
+		// For DNS setup, we only handle dev and prod environments
+		envFiles := []string{"dev", "prod"}
 		for _, envName := range envFiles {
 			// Try to load the environment file from current directory
 			env, err := loadEnv(envName)
@@ -1430,10 +2244,11 @@ func (m DNSSetupModel) loadEnvironments() tea.Cmd {
 			})
 		}
 
-		// Generate subdomain suggestions
+		// Generate subdomain suggestions (exclude production)
 		subdomains := []string{}
 		for _, env := range envs {
-			if env.Name != m.selectedProfile {
+			// Only suggest subdomains for non-production environments
+			if env.Name != "prod" && env.Name != m.selectedProfile {
 				subdomains = append(subdomains, fmt.Sprintf("%s.%s", env.Name, m.rootDomain))
 			}
 		}
@@ -1561,27 +2376,79 @@ func (m DNSSetupModel) checkDNSPropagatedSimple() tea.Cmd {
 		result := map[string]interface{}{
 			"propagated": false,
 			"actualNS":   []string{},
+			"debugLogs":  []string{},
+			"ttl":        uint32(0),
 		}
+
+		debugLogs := []string{}
+		debugLogs = append(debugLogs, "============================================")
+		debugLogs = append(debugLogs, fmt.Sprintf("DNS CHECK: %s", time.Now().Format("15:04:05")))
+		debugLogs = append(debugLogs, "============================================")
+		debugLogs = append(debugLogs, "")
+		
+		// Debug: Show expected nameservers
+		debugLogs = append(debugLogs, fmt.Sprintf("Expected AWS nameservers for %s:", m.rootDomain))
+		for i, ns := range m.nameservers {
+			debugLogs = append(debugLogs, fmt.Sprintf("  %d. %s", i+1, ns))
+		}
+		debugLogs = append(debugLogs, "")
 
 		// Simple check if DNS has propagated
 		if len(m.nameservers) > 0 && m.rootDomain != "" {
-			actualNS, err := queryNameservers(m.rootDomain)
-			if err == nil && len(actualNS) > 0 {
+			// Use the debug version that returns logs and TTL
+			actualNS, queryDebugLogs, ttl, err := queryNameserversWithDebug(m.rootDomain)
+			debugLogs = append(debugLogs, queryDebugLogs...)
+			result["ttl"] = ttl
+			if err != nil {
+				debugLogs = append(debugLogs, fmt.Sprintf("Error querying nameservers: %v", err))
+			} else if len(actualNS) > 0 {
+				// Sort the actual nameservers for consistent display
+				sort.Strings(actualNS)
+				debugLogs = append(debugLogs, "")
+				if ttl == 0 {
+					debugLogs = append(debugLogs, "✅ Current nameservers (via DoH - real-time):")
+				} else {
+					debugLogs = append(debugLogs, fmt.Sprintf("⚠️ Current nameservers (CACHED - TTL: %ds):", ttl))
+				}
+				for i, ns := range actualNS {
+					debugLogs = append(debugLogs, fmt.Sprintf("  %d. %s", i+1, ns))
+				}
+				debugLogs = append(debugLogs, "")
+				
 				result["actualNS"] = actualNS
 				// Check if at least one of the actual nameservers matches our AWS nameservers
+				matchCount := 0
 				for _, actual := range actualNS {
 					for _, expected := range m.nameservers {
-						if strings.EqualFold(strings.TrimSuffix(actual, "."), strings.TrimSuffix(expected, ".")) {
+						actualClean := strings.TrimSuffix(strings.ToLower(actual), ".")
+						expectedClean := strings.TrimSuffix(strings.ToLower(expected), ".")
+						if actualClean == expectedClean {
+							matchCount++
+							debugLogs = append(debugLogs, fmt.Sprintf("Match found: %s == %s", actualClean, expectedClean))
 							result["propagated"] = true
 							break
 						}
 					}
-					if result["propagated"].(bool) {
-						break
-					}
 				}
+				
+				if !result["propagated"].(bool) {
+					debugLogs = append(debugLogs, "❌ No matches found! DNS not propagated yet.")
+					debugLogs = append(debugLogs, "")
+					if ttl > 0 {
+						debugLogs = append(debugLogs, "Note: This could be due to DNS caching.")
+						debugLogs = append(debugLogs, "The nameserver update may have already occurred,")
+						debugLogs = append(debugLogs, "but cached values are being returned.")
+					}
+				} else {
+					debugLogs = append(debugLogs, fmt.Sprintf("✅ Found %d matching nameservers!", matchCount))
+					debugLogs = append(debugLogs, "✅ DNS HAS PROPAGATED SUCCESSFULLY!")
+				}
+			} else {
+				debugLogs = append(debugLogs, "No nameservers returned")
 			}
 		}
+		
+		result["debugLogs"] = debugLogs
 		return dnsOperationMsg{Type: "dns_propagated", Success: true, Data: result}
 	}
 }
@@ -1705,6 +2572,18 @@ func (m DNSSetupModel) saveConfiguration() tea.Cmd {
 			return dnsOperationMsg{Type: "save_config", Success: false, Error: err}
 		}
 
+		// Ensure production environment is configured
+		if err = ensureProductionEnvironment(m.rootDomain, m.zoneID, accountID); err != nil {
+			// Log the error but don't fail - this is optional
+			fmt.Printf("Warning: Could not update prod.yaml: %v\n", err)
+		}
+
+		// Propagate DNS info to all environments
+		if err = propagateRootZoneInfo(config); err != nil {
+			// Log the error but don't fail - this is optional
+			fmt.Printf("Warning: Could not propagate DNS info to environments: %v\n", err)
+		}
+
 		return dnsOperationMsg{Type: "save_config", Success: true}
 	}
 }
@@ -1764,6 +2643,99 @@ func (m DNSSetupModel) handleDomainInput(msg tea.KeyMsg) (DNSSetupModel, tea.Cmd
 	return m, nil
 }
 
+func (m DNSSetupModel) handleAccountIDInput(msg tea.KeyMsg) (DNSSetupModel, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c", "esc":
+		// Go back to setup production screen
+		m.state = StateSetupProduction
+		return m, nil
+	case "enter":
+		return m.handleEnter()
+	case "backspace":
+		if m.accountIDCursorPos > 0 {
+			m.accountIDInput = m.accountIDInput[:m.accountIDCursorPos-1] + m.accountIDInput[m.accountIDCursorPos:]
+			m.accountIDCursorPos--
+		}
+	case "left":
+		if m.accountIDCursorPos > 0 {
+			m.accountIDCursorPos--
+		}
+	case "right":
+		if m.accountIDCursorPos < len(m.accountIDInput) {
+			m.accountIDCursorPos++
+		}
+	case "home":
+		m.accountIDCursorPos = 0
+	case "end":
+		m.accountIDCursorPos = len(m.accountIDInput)
+	default:
+		// Handle regular input including pasted text
+		input := msg.String()
+		
+		// Filter input to only allow digits
+		validInput := ""
+		for _, char := range input {
+			if char >= '0' && char <= '9' {
+				validInput += string(char)
+			}
+		}
+		
+		// Insert valid input at cursor position
+		if validInput != "" {
+			// Calculate how much we can add without exceeding 12 characters
+			currentLen := len(m.accountIDInput)
+			spaceLeft := 12 - currentLen
+			
+			if spaceLeft > 0 {
+				// Truncate if pasted text would exceed 12 characters
+				if len(validInput) > spaceLeft {
+					validInput = validInput[:spaceLeft]
+				}
+				
+				// Insert at cursor position
+				m.accountIDInput = m.accountIDInput[:m.accountIDCursorPos] + validInput + m.accountIDInput[m.accountIDCursorPos:]
+				m.accountIDCursorPos += len(validInput)
+			}
+		}
+	}
+	return m, nil
+}
+
+func (m DNSSetupModel) findProductionProfile() tea.Cmd {
+	return func() tea.Msg {
+		// Try to find an AWS profile that matches the account ID
+		profile, err := findAWSProfileByAccountID(m.selectedAccountID)
+		if err != nil {
+			// No matching profile found, need to create one
+			return dnsOperationMsg{
+				Type: "profile_not_found",
+				Success: true,  // Set to true so it reaches the handler
+				Data: map[string]interface{}{
+					"accountID": m.selectedAccountID,
+				},
+			}
+		}
+		
+		data := map[string]interface{}{
+			"profile": profile,
+		}
+		return dnsOperationMsg{Type: "profile_found", Success: true, Data: data}
+	}
+}
+
+// AWS Profile Creation Views
+
+
+
+
+
+
+
+// Commands for AWS profile creation
+
+
+
+
 func isValidDomain(domain string) bool {
 	// Basic domain validation
 	if len(domain) < 3 || len(domain) > 253 {
@@ -1815,9 +2787,166 @@ func (m DNSSetupModel) copyToClipboard(text string) tea.Cmd {
 	}
 }
 
+// ensureProductionEnvironmentWithAccountID creates prod.yaml with provided account ID
+func ensureProductionEnvironmentWithAccountID(rootDomain, accountID, profile string) error {
+	prodPath := "prod.yaml"
+	
+	// Get project name from existing files or use a default
+	projectName := getProjectNameForDNS()
+	
+	// Try to get the region from the AWS profile
+	region := "us-east-1" // Default region
+	if profile != "" {
+		// Try to get the region from AWS profile config
+		if profileRegion, err := getAWSRegion(profile); err == nil && profileRegion != "" {
+			region = profileRegion
+		}
+	}
+	
+	// Create new production environment
+	env := createEnv(projectName, "prod")
+	env.IsProd = true
+	env.AccountID = accountID
+	env.AWSProfile = profile
+	env.Region = region
+	
+	// Set up domain configuration (zone will be created later)
+	env.Domain.Enabled = true
+	env.Domain.DomainName = rootDomain
+	env.Domain.CreateDomainZone = true  // Will be created
+	env.Domain.AddEnvDomainPrefix = false // No prefix for production
+	
+	// Save the configuration
+	return saveEnvToFile(env, prodPath)
+}
+
+// getProjectNameForDNS gets the project name from existing environment files
+func getProjectNameForDNS() string {
+	// Try to load any existing environment file to get project name
+	envFiles := []string{"dev", "prod"}
+	for _, envName := range envFiles {
+		env, err := loadEnv(envName)
+		if err == nil && env.Project != "" {
+			return env.Project
+		}
+	}
+	// If no files exist, use a generic name
+	return "myproject"
+}
+
+// ensureProductionEnvironment creates or updates prod.yaml with DNS configuration
+func ensureProductionEnvironment(rootDomain, zoneID, accountID string) error {
+	prodPath := "prod.yaml"
+	
+	// Try to load existing prod.yaml
+	var env Env
+	if data, err := os.ReadFile(prodPath); err == nil {
+		// File exists, unmarshal it
+		if err := yaml.Unmarshal(data, &env); err != nil {
+			return fmt.Errorf("error parsing existing prod.yaml: %v", err)
+		}
+	} else {
+		// File doesn't exist, create new environment
+		env = createEnv("project", "prod")
+		env.IsProd = true
+	}
+	
+	// Update domain configuration
+	env.Domain.Enabled = true
+	env.Domain.DomainName = rootDomain
+	env.Domain.ZoneID = zoneID
+	env.Domain.CreateDomainZone = false  // We already have the zone
+	env.Domain.AddEnvDomainPrefix = false // No prefix for production
+	
+	// Save the updated configuration
+	return saveEnvToFile(env, prodPath)
+}
+
+// propagateRootZoneInfo updates all environment files with root zone information
+func propagateRootZoneInfo(dnsConfig *DNSConfig) error {
+	// Only update dev environment, prod already has the root zone
+	envFiles := []string{"dev"}
+	
+	for _, envName := range envFiles {
+		path := fmt.Sprintf("%s.yaml", envName)
+		
+		// Try to load existing environment
+		var env Env
+		if data, err := os.ReadFile(path); err == nil {
+			// File exists, unmarshal it
+			if err := yaml.Unmarshal(data, &env); err != nil {
+				// Skip this file if we can't parse it
+				continue
+			}
+		} else {
+			// File doesn't exist, create new environment
+			projectName := getProjectNameForDNS()
+			env = createEnv(projectName, envName)
+		}
+		
+		// CRITICAL: Keep domain_name as root domain!
+		env.Domain.Enabled = true
+		env.Domain.DomainName = dnsConfig.RootDomain
+		env.Domain.CreateDomainZone = true  // Will create subdomain zone
+		env.Domain.AddEnvDomainPrefix = true // This makes it dev.example.com
+		
+		// Add DNS info for delegation
+		env.Domain.RootZoneID = dnsConfig.RootAccount.ZoneID
+		env.Domain.RootAccountID = dnsConfig.RootAccount.AccountID
+		
+		// Save the updated configuration
+		if err := saveEnvToFile(env, path); err != nil {
+			// Log error but continue with other files
+			fmt.Printf("Warning: Could not update %s: %v\n", path, err)
+		}
+	}
+	
+	return nil
+}
+
 func runDNSSetupWizard() {
-	p := tea.NewProgram(NewDNSSetupModel(), tea.WithAltScreen())
-	if _, err := p.Run(); err != nil {
-		fmt.Printf("Error running DNS setup wizard: %v\n", err)
+	for {
+		p := tea.NewProgram(NewDNSSetupModel(), tea.WithAltScreen())
+		finalModel, err := p.Run()
+		if err != nil {
+			fmt.Printf("Error running DNS setup wizard: %v\n", err)
+			return
+		}
+		
+		// Check if we need to create an AWS profile
+		if model, ok := finalModel.(DNSSetupModel); ok {
+			if model.state == StateSetupAWSProfile {
+				// Get project name for suggested profile name
+				projectName := getProjectNameForDNS()
+				suggestedName := fmt.Sprintf("%s-prod", projectName)
+				
+				// Run AWS profile creation in Bubble Tea
+				profileModel := NewAWSProfileCreationModel(model.selectedAccountID, suggestedName)
+				profileProgram := tea.NewProgram(profileModel, tea.WithAltScreen())
+				profileFinalModel, err := profileProgram.Run()
+				if err != nil {
+					fmt.Printf("\nFailed to run AWS profile creation: %v\n", err)
+					return
+				}
+				
+				// Check if profile was created successfully
+				if profileResult, ok := profileFinalModel.(AWSProfileCreationModel); ok {
+					if profileResult.createdProfile != "" {
+						// Create prod.yaml with the new profile
+						if err := ensureProductionEnvironmentWithAccountID(model.rootDomain, model.selectedAccountID, profileResult.createdProfile); err != nil {
+							fmt.Printf("Failed to create prod.yaml: %v\n", err)
+							return
+						}
+						
+						// Continue DNS setup - it will now find the profile and prod.yaml
+						continue
+					}
+				}
+				// User cancelled or error occurred
+				return
+			}
+		}
+		// Normal exit
+		return
 	}
 }

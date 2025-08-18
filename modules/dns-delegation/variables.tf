@@ -18,6 +18,11 @@ variable "environment" {
   type        = string
 }
 
+variable "root_account_id" {
+  description = "The AWS account ID that owns the root zone"
+  type        = string
+}
+
 variable "tags" {
   description = "Tags to apply to all resources"
   type        = map(string)

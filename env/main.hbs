@@ -28,20 +28,31 @@ data "aws_subnets" "all" {
 
 # Locals removed - using direct handlebar resolution in modules
 {{#if domain.enabled}}
-  {{#if domain.is_dns_root}}
-  # DNS Root Zone Configuration
-  module "dns_root" {
-    source = "{{ modules }}/dns-root"
-    domain_name = "{{ domain.domain_name }}"
-    trusted_account_ids = {{ domain.trusted_account_ids }}
-  }
+  {{#compare env "==" "prod"}}
+    {{#if domain.zone_id}}
+    # PROD: Use existing root zone
+    data "aws_route53_zone" "main" {
+      zone_id = "{{ domain.zone_id }}"
+    }
+    {{/if}}
+    
+    module "domain" {
+      source = "{{ modules }}/domain"
+      project = "{{ project }}"
+      domain_zone = "{{ domain.domain_name }}"
+      env = "{{ env }}"
+      create_domain_zone = false  # Zone already exists
+      zone_id = "{{ domain.zone_id }}"  # Pass existing zone ID
+      api_domain_prefix = "{{ domain.api_domain_prefix }}"
+      add_env_domain_prefix = false  # No prefix for production
+    }
   {{else}}
-    {{#if domain.delegation_role_arn}}
-    # DNS Delegated Zone Configuration
+    {{#if domain.root_zone_id}}
+    # NON-PROD: Create subdomain with delegation
     provider "aws" {
       alias = "root"
       assume_role {
-        role_arn = "{{ domain.delegation_role_arn }}"
+        role_arn = "arn:aws:iam::{{ domain.root_account_id }}:role/dns-delegation"
       }
     }
     
@@ -50,13 +61,30 @@ data "aws_subnets" "all" {
       providers = {
         aws.root = aws.root
       }
-      subdomain = "{{ domain.domain_name }}"
-      root_domain = "{{ domain.root_domain }}"
+      subdomain = "{{ env }}.{{ domain.domain_name }}"
+      root_domain = "{{ domain.domain_name }}"
       root_zone_id = "{{ domain.root_zone_id }}"
+      root_account_id = "{{ domain.root_account_id }}"
       environment = "{{ env }}"
+      tags = {
+        Project = "{{ project }}"
+        Environment = "{{ env }}"
+      }
+    }
+    
+    module "domain" {
+      source = "{{ modules }}/domain"
+      project = "{{ project }}"
+      domain_zone = "{{ env }}.{{ domain.domain_name }}"  # Use subdomain
+      env = "{{ env }}"
+      create_domain_zone = false  # Zone created by dns_delegation
+      zone_id = module.dns_delegation.zone_id  # Use delegated zone
+      api_domain_prefix = "{{ domain.api_domain_prefix }}"
+      add_env_domain_prefix = false  # Already prefixed
+      depends_on = [module.dns_delegation]
     }
     {{else}}
-    # Standard Domain Configuration
+    # Fallback: Standard domain configuration
     module "domain" {
       source = "{{ modules }}/domain"
       project = "{{ project }}"
@@ -64,14 +92,10 @@ data "aws_subnets" "all" {
       env = "{{ env }}"
       create_domain_zone = {{ domain.create_domain_zone }}
       api_domain_prefix = "{{ domain.api_domain_prefix }}"
-      {{#compare env "==" "prod"}}
-      add_env_domain_prefix = false
-      {{else}}
       add_env_domain_prefix = {{default domain.add_env_domain_prefix true}}
-      {{/compare}}
     }
     {{/if}}
-  {{/if}}
+  {{/compare}}
 {{/if}}
 
 

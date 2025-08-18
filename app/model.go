@@ -84,12 +84,22 @@ type Policy struct {
 type SetupDomainType string
 
 type Domain struct {
-	Enabled           bool   `yaml:"enabled"`
-	CreateDomainZone  bool   `yaml:"create_domain_zone"`
-	DomainName        string `yaml:"domain_name"`
-	IsDNSRoot         bool   `yaml:"is_dns_root"`
-	DNSRootAccountID  string `yaml:"dns_root_account_id"`
-	DelegationRoleArn string `yaml:"delegation_role_arn"`
+	// EXISTING FIELDS - DON'T TOUCH
+	Enabled            bool   `yaml:"enabled"`
+	CreateDomainZone   bool   `yaml:"create_domain_zone"`
+	DomainName         string `yaml:"domain_name"`  // Keep as-is - always root
+	IsDNSRoot          bool   `yaml:"is_dns_root"`
+	DNSRootAccountID   string `yaml:"dns_root_account_id"`
+	DelegationRoleArn  string `yaml:"delegation_role_arn"`
+	
+	// Additional fields from original structure (if missing)
+	APIDomainPrefix    string `yaml:"api_domain_prefix,omitempty"`
+	AddEnvDomainPrefix bool   `yaml:"add_env_domain_prefix,omitempty"`
+	
+	// NEW DNS MANAGEMENT FIELDS
+	ZoneID        string `yaml:"zone_id,omitempty"`         // For existing zones
+	RootZoneID    string `yaml:"root_zone_id,omitempty"`    // For subdomain delegation
+	RootAccountID string `yaml:"root_account_id,omitempty"` // For cross-account access
 }
 
 type PostgresEngineVersion string

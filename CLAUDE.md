@@ -147,6 +147,54 @@ The viewer properly handles:
 - Long strings and multi-line values
 - Null values and empty collections
 
+## DNS Management
+
+The infrastructure includes a comprehensive DNS management system that handles cross-account zone delegation:
+
+### DNS Setup Workflow
+
+1. **Initial Setup**: Run `./meroku` and select "DNS Setup" from the menu
+2. **Root Zone Creation**: The wizard creates the root zone in the production account
+3. **Automatic Configuration**: Environment files (dev.yaml, prod.yaml, staging.yaml) are automatically updated
+4. **Subdomain Delegation**: Non-production environments get delegated subdomains (dev.example.com, staging.example.com)
+
+### DNS Commands
+
+```bash
+# Run interactive DNS setup wizard
+./meroku
+# Then select "DNS Setup" from menu
+
+# Check DNS configuration status
+./meroku dns status
+
+# Validate DNS propagation
+./meroku dns validate
+
+# Remove subdomain delegation
+./meroku dns remove <subdomain>
+```
+
+### DNS Architecture
+
+- **Root Zone**: Created in production account with delegation IAM role
+- **Subdomain Zones**: Created in respective environment accounts
+- **Cross-Account Access**: Uses IAM role assumption for NS record management
+- **Automatic Delegation**: NS records are automatically created in root zone
+
+### Configuration Files
+
+- `dns.yaml`: Stores root zone information and delegated zones
+- `project/*.yaml`: Environment files contain zone IDs and delegation info
+- Domain names ALWAYS use root domain (e.g., "example.com") in all environments
+- Environment prefixes are added automatically based on `add_env_domain_prefix` flag
+
+### Documentation
+
+For comprehensive DNS management details, refer to:
+- [DNS Architecture Design](./docs/DNS_ARCHITECTURE.md) - System design and architecture documentation
+- [DNS Management Instructions](./DNS_MANAGEMENT_INSTRUCTIONS.md) - Step-by-step operational guide
+
 ## Security Considerations
 
 - Never commit secrets or credentials

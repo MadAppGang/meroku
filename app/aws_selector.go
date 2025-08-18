@@ -254,21 +254,46 @@ func getAWSAccountID(profile string) (string, error) {
 }
 
 func findAWSProfileByAccountID(targetAccountID string) (string, error) {
-	profiles, err := getLocalAWSProfiles()
+	// Read the AWS config file directly - MUCH faster than making API calls
+	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return "", fmt.Errorf("failed to get AWS profiles: %w", err)
+		return "", fmt.Errorf("failed to get home directory: %w", err)
 	}
 	
-	for _, profile := range profiles {
-		accountID, err := getAWSAccountID(profile)
-		if err != nil {
-			// Skip profiles that can't be accessed (might need SSO login)
-			continue
-		}
+	configPath := filepath.Join(homeDir, ".aws", "config")
+	configFile, err := os.Open(configPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to open AWS config file: %w", err)
+	}
+	defer configFile.Close()
+	
+	scanner := bufio.NewScanner(configFile)
+	currentProfile := ""
+	
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
 		
-		if accountID == targetAccountID {
-			return profile, nil
+		// Check for profile section header
+		if strings.HasPrefix(line, "[profile ") && strings.HasSuffix(line, "]") {
+			currentProfile = strings.TrimPrefix(line, "[profile ")
+			currentProfile = strings.TrimSuffix(currentProfile, "]")
+		} else if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") && line != "[default]" {
+			// Skip non-profile sections
+			currentProfile = ""
+		} else if currentProfile != "" && strings.HasPrefix(line, "sso_account_id") {
+			// Found sso_account_id line
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) == 2 {
+				accountID := strings.TrimSpace(parts[1])
+				if accountID == targetAccountID {
+					return currentProfile, nil
+				}
+			}
 		}
+	}
+	
+	if err := scanner.Err(); err != nil {
+		return "", fmt.Errorf("error reading config file: %w", err)
 	}
 	
 	return "", fmt.Errorf("no AWS profile found for account ID: %s", targetAccountID)
@@ -767,6 +792,256 @@ func appendSSOSessionToConfig(session *SSOSession) error {
 }
 
 // createAWSProfile creates a new AWS profile with SSO configuration
+// createSSOSessionDirectly creates an SSO session without using huh forms
+func createSSOSessionDirectly(sessionName, startURL, region string) error {
+	// Create the AWS config directory if it doesn't exist
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get home directory: %w", err)
+	}
+	
+	configPath := filepath.Join(homeDir, ".aws", "config")
+	
+	// Read existing config
+	configData, err := os.ReadFile(configPath)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to read AWS config: %w", err)
+	}
+	
+	// Check if session already exists
+	configStr := string(configData)
+	if strings.Contains(configStr, fmt.Sprintf("[sso-session %s]", sessionName)) {
+		// Session already exists, skip creation
+		return nil
+	}
+	
+	// Append new SSO session configuration
+	ssoConfig := fmt.Sprintf("\n[sso-session %s]\nsso_start_url = %s\nsso_region = %s\nsso_registration_scopes = sso:account:access\n",
+		sessionName, startURL, region)
+	
+	// Append to config file
+	f, err := os.OpenFile(configPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return fmt.Errorf("failed to open config file: %w", err)
+	}
+	defer f.Close()
+	
+	if _, err := f.WriteString(ssoConfig); err != nil {
+		return fmt.Errorf("failed to write SSO session config: %w", err)
+	}
+	
+	return nil
+}
+
+// createAWSProfileDirectly creates an AWS profile without using huh forms
+func createAWSProfileDirectly(profileName, sessionName, accountID, roleName string) error {
+	// Create the AWS config directory if it doesn't exist
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get home directory: %w", err)
+	}
+	
+	configPath := filepath.Join(homeDir, ".aws", "config")
+	
+	// Read existing config
+	configData, err := os.ReadFile(configPath)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to read AWS config: %w", err)
+	}
+	
+	// Check if profile already exists
+	configStr := string(configData)
+	if strings.Contains(configStr, fmt.Sprintf("[profile %s]", profileName)) {
+		// Profile already exists, skip creation
+		return nil
+	}
+	
+	// Create profile configuration
+	profileConfig := fmt.Sprintf("\n[profile %s]\nsso_session = %s\nsso_account_id = %s\nsso_role_name = %s\nregion = us-east-1\n",
+		profileName, sessionName, accountID, roleName)
+	
+	// Append to config file
+	f, err := os.OpenFile(configPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return fmt.Errorf("failed to open config file: %w", err)
+	}
+	defer f.Close()
+	
+	if _, err := f.WriteString(profileConfig); err != nil {
+		return fmt.Errorf("failed to write profile config: %w", err)
+	}
+	
+	// Trigger SSO login for the new profile
+	cmd := exec.Command("aws", "sso", "login", "--profile", profileName)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+	
+	if err := cmd.Run(); err != nil {
+		// Login might fail but profile is created, so we don't return error
+		fmt.Printf("Note: SSO login failed, you may need to login manually: aws sso login --profile %s\n", profileName)
+	}
+	
+	return nil
+}
+
+// createAWSProfileForAccountID creates an AWS profile for a specific account ID
+// This is used by DNS setup wizard when no profile exists for the entered account
+func createAWSProfileForAccountID(accountID string) (string, error) {
+	// Get project name for suggestion
+	projectName := getProjectNameForDNS()
+	suggestedName := fmt.Sprintf("%s-prod", projectName)
+	return createAWSProfileForAccountIDWithSuggestion(accountID, suggestedName)
+}
+
+// createAWSProfileForAccountIDWithSuggestion creates an AWS profile with a suggested name
+func createAWSProfileForAccountIDWithSuggestion(accountID, suggestedName string) (string, error) {
+	// Check for existing SSO sessions
+	sessions, err := checkSSOSessions()
+	if err != nil {
+		return "", fmt.Errorf("failed to check SSO sessions: %w", err)
+	}
+	
+	var selectedSession *SSOSession
+	
+	if len(sessions) == 0 {
+		// No SSO sessions found, need to create one
+		fmt.Println("\n📋 Setting up AWS SSO for production account...")
+		session, err := createSSOSession()
+		if err != nil {
+			return "", err
+		}
+		selectedSession = session
+	} else {
+		// Select from existing SSO sessions
+		var sessionName string
+		sessionOptions := make([]huh.Option[string], len(sessions))
+		for i, session := range sessions {
+			sessionOptions[i] = huh.NewOption(
+				fmt.Sprintf("%s (%s)", session.Name, session.StartURL),
+				session.Name,
+			)
+		}
+		
+		sessionForm := huh.NewForm(
+			huh.NewGroup(
+				huh.NewSelect[string]().
+					Title("Select SSO Session").
+					Description(fmt.Sprintf("For AWS Account %s", accountID)).
+					Options(sessionOptions...).
+					Value(&sessionName),
+			),
+		)
+		
+		if err := sessionForm.Run(); err != nil {
+			return "", err
+		}
+		
+		// Find the selected session
+		for i := range sessions {
+			if sessions[i].Name == sessionName {
+				selectedSession = &sessions[i]
+				break
+			}
+		}
+	}
+	
+	if selectedSession == nil {
+		return "", fmt.Errorf("no SSO session selected")
+	}
+	
+	// Profile configuration
+	var profileName, roleName, region string
+	
+	// Profile name
+	profileForm := huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Title("Enter Profile Name").
+				Description(fmt.Sprintf("Name for AWS profile (account %s)", accountID)).
+				Value(&profileName).
+				Placeholder(suggestedName).
+				Validate(func(str string) error {
+					if strings.TrimSpace(str) == "" {
+						profileName = suggestedName // Use suggested name if empty
+						return nil
+					}
+					// Check if profile already exists
+					profiles, _ := getLocalAWSProfiles()
+					for _, p := range profiles {
+						if p == str {
+							return fmt.Errorf("profile '%s' already exists", str)
+						}
+					}
+					return nil
+				}),
+		),
+	)
+	
+	if err := profileForm.Run(); err != nil {
+		return "", err
+	}
+	
+	if profileName == "" {
+		profileName = suggestedName
+	}
+	
+	// Role name - default to AdministratorAccess
+	roleName = "AdministratorAccess"
+	roleForm := huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Title("Enter SSO Role Name").
+				Description("Press Enter for default: AdministratorAccess").
+				Value(&roleName).
+				Placeholder("AdministratorAccess"),
+		),
+	)
+	
+	if err := roleForm.Run(); err != nil {
+		return "", err
+	}
+	
+	if roleName == "" {
+		roleName = "AdministratorAccess"
+	}
+	
+	// Region - use a searchable select list
+	regions := getAWSRegions()
+	regionOptions := make([]huh.Option[string], len(regions))
+	for i, r := range regions {
+		display := fmt.Sprintf("%s - %s", r.Code, r.Name)
+		regionOptions[i] = huh.NewOption(display, r.Code)
+	}
+	
+	// Default to us-east-1
+	region = "us-east-1"
+	regionForm := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Select AWS Region").
+				Description("Type to search for a region").
+				Options(regionOptions...).
+				Value(&region).
+				Filtering(true),
+		),
+	)
+	
+	if err := regionForm.Run(); err != nil {
+		return "", err
+	}
+	
+	// Write the profile to AWS config
+	if err := appendProfileToConfig(profileName, selectedSession.Name, accountID, roleName, region); err != nil {
+		return "", fmt.Errorf("failed to write profile to config: %w", err)
+	}
+	
+	fmt.Printf("✅ Profile '%s' created successfully for account %s\n", profileName, accountID)
+	fmt.Println("\nYou may need to run 'aws sso login' to authenticate with this profile.")
+	
+	return profileName, nil
+}
+
 func createAWSProfile() (string, error) {
 	// Check for existing SSO sessions
 	sessions, err := checkSSOSessions()

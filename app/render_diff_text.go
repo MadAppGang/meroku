@@ -24,7 +24,7 @@ func renderDiffToText(planFile string) error {
 	fmt.Println("\n╔══════════════════════════════════════════════════════════════════════╗")
 	fmt.Printf("║                    TERRAFORM PLAN DIFF VIEWER                       ║\n")
 	fmt.Printf("║                        Meroku v3.5.6                                ║\n")
-	fmt.Println("╚══════════════════════════════════════════════════════════════════════╝\n")
+	fmt.Printf("╚══════════════════════════════════════════════════════════════════════╝\n\n")
 
 	// Count changes
 	createCount := 0

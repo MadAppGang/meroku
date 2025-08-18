@@ -42,3 +42,4 @@ dist/
 app/meroku
 .positions/
 env/dev/.terraform.lock.hcl
+meroku
