@@ -32,12 +32,21 @@ func selectEnvironment() error {
 		}
 	}
 
-	// Add option to create new environment
+	// Add environment options
 	options := []huh.Option[string]{}
+	
 	for _, env := range environments {
 		options = append(options, huh.NewOption(fmt.Sprintf("Use existing: %s", env), env))
 	}
 	options = append(options, huh.NewOption("Create new environment", "create-new"))
+	
+	// Check DNS configuration status and add DNS option at the end
+	dnsConfig, _ := loadDNSConfig()
+	dnsLabel := "🌐 DNS Setup - Configure custom domain"
+	if dnsConfig != nil && dnsConfig.RootDomain != "" {
+		dnsLabel = fmt.Sprintf("🌐 DNS Setup - Domain: %s ✓", dnsConfig.RootDomain)
+	}
+	options = append(options, huh.NewOption(dnsLabel, "dns-setup"))
 
 	var selected string
 	form := huh.NewForm(
@@ -52,6 +61,13 @@ func selectEnvironment() error {
 	err = form.Run()
 	if err != nil {
 		return fmt.Errorf("error selecting environment: %w", err)
+	}
+
+	if selected == "dns-setup" {
+		// Run DNS setup wizard
+		runDNSSetupWizard()
+		// After DNS setup, return to environment selection
+		return selectEnvironment()
 	}
 
 	if selected == "create-new" {

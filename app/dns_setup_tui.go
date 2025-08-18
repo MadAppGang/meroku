@@ -1,7 +1,10 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"runtime"
@@ -9,6 +12,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/iam"
 	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
@@ -25,7 +31,7 @@ const (
 	StateCreateRootZone
 	StateDisplayNameservers
 	StateWaitPropagation
-	StateAddSubdomain
+	StateCheckIAMPermissions // Check and fix IAM permissions
 	StateComplete
 	StateError
 	StateValidateConfig
@@ -54,8 +60,8 @@ type DNSSetupModel struct {
 	setupStepStatus       []bool   // Status of each step (completed or not)
 	errorMsg              string
 	dnsConfig             *DNSConfig
-	subdomains            []string
-	selectedSubdomains    []bool
+	envPermissions        map[string]bool // Maps environment name to whether it has IAM access
+	missingPermissions    []string        // Environments missing IAM permissions
 	propagationCheckCount int
 	delegationRoleArn     string
 	width                 int
@@ -65,8 +71,7 @@ type DNSSetupModel struct {
 	animationFrame        int
 	copiedNSIndex         int      // Which nameserver was copied (1-4, 0 = all)
 	copiedNSTimer         int      // Timer for individual NS copy animation
-	currentSubdomainIndex int      // Currently selected subdomain index
-	selectionTimer        int      // Timer for selection animation
+	fixPermissions        bool     // Whether user wants to fix missing permissions
 	propagationCheckTimer int      // Timer for auto-checking DNS propagation (counts down from 100)
 	dnsPropagated         bool     // Whether DNS has been propagated
 	actualNameservers     []string // Current nameservers returned by DNS query
@@ -123,6 +128,8 @@ func NewDNSSetupModel() DNSSetupModel {
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 
 	p := progress.New(progress.WithDefaultGradient())
+	
+	envPermissions := make(map[string]bool)
 
 	// Check if we're resuming from a saved state
 	domain, accountID := loadTemporaryDNSState()
@@ -134,6 +141,7 @@ func NewDNSSetupModel() DNSSetupModel {
 		spinner:           s,
 		progress:          p,
 		propagationStatus: make(map[string]bool),
+		envPermissions:    envPermissions,
 		currentStep:       "Initializing DNS setup wizard...",
 	}
 	
@@ -234,6 +242,8 @@ func (m DNSSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleBack()
 		case "s", "S":
 			return m.handleSkip()
+		case " ":
+			return m.handleSpace()
 		case "r", "R":
 			return m.handleRefresh()
 		case "c", "C":
@@ -243,6 +253,16 @@ func (m DNSSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.state == StateDisplayNameservers {
 				return m.handleCopyIndividualNS(msg.String())
 			}
+		case "y", "Y":
+			if m.state == StateCheckIAMPermissions && len(m.missingPermissions) > 0 {
+				// Fix IAM permissions for missing environments
+				m.currentStep = "Fixing IAM permissions..."
+				m.errorMsg = "" // Clear any previous error
+				// Start spinner for visual feedback
+				cmd := m.spinner.Tick
+				return m, tea.Batch(m.fixIAMPermissions(), cmd)
+			}
+			return m, nil
 		case "d", "D":
 			// Toggle DNS debug log
 			if m.state == StateDisplayNameservers && len(m.dnsDebugLogs) > 0 {
@@ -285,8 +305,8 @@ func (m DNSSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			if allPropagated || m.propagationCheckCount > 30 {
-				m.state = StateAddSubdomain
-				return m, m.loadEnvironments()
+				m.state = StateCheckIAMPermissions
+				return m, m.checkIAMPermissions()
 			}
 			m.propagationCheckCount++
 			return m, tea.Tick(time.Second*10, func(t time.Time) tea.Msg {
@@ -345,18 +365,7 @@ func (m DNSSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				needsFinalRender = true
 			}
 		}
-		// Decrement selection timer for subdomain animation
-		if m.selectionTimer > 0 {
-			m.selectionTimer--
-			if m.selectionTimer == 0 && m.state == StateAddSubdomain {
-				// Deselect the subdomain after animation
-				if m.currentSubdomainIndex >= 0 && m.currentSubdomainIndex < len(m.selectedSubdomains) {
-					m.selectedSubdomains[m.currentSubdomainIndex] = false
-					m.currentSubdomainIndex = -1
-				}
-				needsFinalRender = true
-			}
-		}
+		// No selection timer logic needed
 
 
 		// Keep animation running for loading states or when showing copy feedback or selection animation
@@ -364,7 +373,7 @@ func (m DNSSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Or if we're checking DNS propagation
 		if m.state == StateCheckExisting || m.state == StateValidateConfig ||
 			m.state == StateDisplayNameservers && (m.copiedNSTimer > 0 || m.copyFeedbackTimer > 0 || needsFinalRender || !m.dnsPropagated) ||
-			m.state == StateAddSubdomain && (m.selectionTimer > 0 || needsFinalRender) {
+			m.state == StateCheckIAMPermissions && needsFinalRender {
 			cmds = append(cmds, animationTickCmd())
 		}
 
@@ -400,8 +409,8 @@ func (m DNSSetupModel) View() string {
 		content = m.viewDisplayNameservers()
 	case StateWaitPropagation:
 		content = m.viewWaitPropagation()
-	case StateAddSubdomain:
-		content = m.viewAddSubdomain()
+	case StateCheckIAMPermissions:
+		content = m.viewCheckIAMPermissions()
 	case StateComplete:
 		content = m.viewComplete()
 	case StateError:
@@ -418,7 +427,14 @@ func (m DNSSetupModel) View() string {
 		content = m.viewSetupAWSProfile()
 	}
 
-	return m.renderBox("DNS Custom Domain Setup", content)
+	// Use different titles based on state for clarity
+	title := "DNS Custom Domain Setup"
+	if m.state == StateCheckIAMPermissions {
+		title = "IAM Permissions Check"
+	} else if m.state == StateComplete {
+		title = "DNS Setup Complete"
+	}
+	return m.renderBox(title, content)
 }
 
 func (m DNSSetupModel) renderBox(title, content string) string {
@@ -1071,122 +1087,251 @@ func (m DNSSetupModel) viewWaitPropagation() string {
 	return b.String()
 }
 
-func (m DNSSetupModel) viewAddSubdomain() string {
+func (m DNSSetupModel) viewCheckIAMPermissions() string {
 	var b strings.Builder
 
 	// Styles
-	headerStyle := lipgloss.NewStyle().
+	successBadgeStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("213")).
-		Background(lipgloss.Color("57")).
+		Foreground(lipgloss.Color("#000")).
+		Background(lipgloss.Color("82")).
+		Padding(0, 1)
+	warningBadgeStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("#000")).
+		Background(lipgloss.Color("214")).
 		Padding(0, 1)
 	domainStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("226"))
-	profileStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("87"))
 	sectionStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("245")).
 		Bold(true)
-	focusedStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("226")).
-		Bold(true)
-	normalStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("252"))
-	checkboxSelectedStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("82")).
-		Bold(true)
-	checkboxNormalStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("245"))
-	animatedStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#000")).
-		Background(lipgloss.Color("82")).
-		Bold(true)
-	bulletStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("99"))
+	successStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("82"))
+	errorStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("196"))
 	infoStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("245"))
+	fixStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("220")).
+		Bold(true)
 
-	// Header with domain
-	b.WriteString(headerStyle.Render("🌐 DNS Subdomain Delegation") + "\n\n")
-	b.WriteString("Root Domain: " + domainStyle.Render(m.rootDomain) + "\n")
-	b.WriteString("Account: " + profileStyle.Render(m.selectedProfile) + "\n\n")
-	b.WriteString(sectionStyle.Render("Select environments to delegate:") + "\n\n")
-
-	// List subdomains with selection animation
-	for i, subdomain := range m.subdomains {
-		var line string
-
-		// Checkbox
-		checkbox := "☐"
-		checkboxStyle := checkboxNormalStyle
-		if m.selectedSubdomains[i] {
-			checkbox = "☑"
-			checkboxStyle = checkboxSelectedStyle
+	// Show root zone status
+	b.WriteString(successBadgeStyle.Render("✓ ROOT ZONE CONFIGURED") + "\n\n")
+	b.WriteString("Domain: " + domainStyle.Render(m.rootDomain) + "\n")
+	b.WriteString("Production Account: " + infoStyle.Render(m.selectedProfile) + "\n\n")
+	
+	// Check IAM permissions section
+	b.WriteString(sectionStyle.Render("Checking IAM Permissions for Non-Production Environments") + "\n\n")
+	
+	if len(m.environments) <= 1 {
+		// Only production environment
+		b.WriteString(infoStyle.Render("No non-production environments detected.") + "\n")
+		b.WriteString(infoStyle.Render("IAM cross-account permissions not needed.") + "\n\n")
+		b.WriteString(m.renderKeyHelp("Enter", "continue", "Q", "quit"))
+		return b.String()
+	}
+	
+	// Show permission status for each environment
+	b.WriteString("Environment Access Status:\n\n")
+	
+	hasIssues := false
+	for _, env := range m.environments {
+		if env.Name == "prod" {
+			continue // Skip production
 		}
-
-		// Selection indicator
-		prefix := "  "
-		if i == m.currentSubdomainIndex {
-			prefix = "▸ "
-		}
-
-		// Apply animation style if this item is selected and animating
-		domainDisplay := subdomain
-		if m.selectedSubdomains[i] && i == m.currentSubdomainIndex && m.selectionTimer > 0 {
-			// Pulsing effect by alternating styles
-			if (m.selectionTimer/5)%2 == 0 {
-				line = prefix + checkboxStyle.Render(checkbox) + " " + animatedStyle.Render(" "+domainDisplay+" ")
+		
+		envDisplay := fmt.Sprintf("%s.%s", env.Name, m.rootDomain)
+		if hasAccess, ok := m.envPermissions[env.Name]; ok {
+			if hasAccess {
+				b.WriteString(successStyle.Render("  ✓ ") + envDisplay + " - " + 
+					successStyle.Render("Has IAM access") + "\n")
 			} else {
-				line = prefix + checkboxStyle.Render(checkbox) + " " + focusedStyle.Render(domainDisplay)
+				b.WriteString(errorStyle.Render("  ✗ ") + envDisplay + " - " + 
+					errorStyle.Render("Missing IAM access") + "\n")
+				hasIssues = true
 			}
-		} else if i == m.currentSubdomainIndex {
-			// Currently focused item
-			line = prefix + checkboxStyle.Render(checkbox) + " " + focusedStyle.Render(domainDisplay)
 		} else {
-			// Normal item
-			line = prefix + checkboxStyle.Render(checkbox) + " " + normalStyle.Render(domainDisplay)
+			// Permission check in progress
+			b.WriteString("  ⏳ " + envDisplay + " - Checking...\n")
 		}
-
-		b.WriteString(line + "\n")
 	}
-
-	// Info section
-	b.WriteString("\n" + sectionStyle.Render("Selected delegations will:") + "\n")
-	b.WriteString(bulletStyle.Render("•") + infoStyle.Render(" Create hosted zones in target accounts") + "\n")
-	b.WriteString(bulletStyle.Render("•") + infoStyle.Render(" Add NS records to root zone") + "\n")
-	b.WriteString(bulletStyle.Render("•") + infoStyle.Render(" Configure cross-account access") + "\n\n")
-
-	// Show timer if animating
-	if m.selectionTimer > 0 {
-		timerStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("214")).
-			Italic(true)
-		seconds := m.selectionTimer / 10
-		b.WriteString(timerStyle.Render(fmt.Sprintf("⏱  Auto-deselect in %d seconds...", seconds)) + "\n\n")
+	b.WriteString("\n")
+	
+	// Show fix option if there are issues
+	if hasIssues && len(m.missingPermissions) > 0 {
+		b.WriteString(warningBadgeStyle.Render("⚠️  IAM PERMISSIONS MISSING") + "\n\n")
+		b.WriteString("The following environments cannot manage their subdomains:\n")
+		for _, env := range m.missingPermissions {
+			b.WriteString("  • " + errorStyle.Render(env) + "\n")
+		}
+		b.WriteString("\n")
+		
+		// Show current step if fixing
+		if m.currentStep != "" && strings.Contains(m.currentStep, "Fixing") {
+			b.WriteString(m.spinner.View() + " " + infoStyle.Render(m.currentStep) + "\n\n")
+			b.WriteString(infoStyle.Render("Creating/updating dns-delegation-role...") + "\n")
+			b.WriteString(infoStyle.Render("Adding trust policy for account: ") + errorStyle.Render(strings.Join(m.missingPermissions, ", ")) + "\n")
+		} else if m.errorMsg != "" {
+			// Show error if fix failed
+			b.WriteString(errorStyle.Render("❌ Error: " + m.errorMsg) + "\n\n")
+			b.WriteString(fixStyle.Render("Would you like to retry fixing permissions?") + "\n")
+			b.WriteString(m.renderKeyHelp("Y", "retry fix", "S", "skip", "Q", "quit"))
+		} else {
+			b.WriteString(fixStyle.Render("Would you like to fix these permissions?") + "\n")
+			b.WriteString(infoStyle.Render("This will update the delegation role trust policy.") + "\n\n")
+			b.WriteString(m.renderKeyHelp("Y", "fix permissions", "S", "skip", "Q", "quit"))
+		}
+	} else if !hasIssues && len(m.envPermissions) > 0 {
+		// All permissions OK
+		b.WriteString(successBadgeStyle.Render("✅ ALL PERMISSIONS CONFIGURED") + "\n\n")
+		b.WriteString(m.renderKeyHelp("Enter", "continue", "Q", "quit"))
+	} else {
+		// Still checking
+		b.WriteString(infoStyle.Render("Checking IAM permissions...") + "\n\n")
+		b.WriteString(m.renderKeyHelp("Q", "quit"))
 	}
-
-	b.WriteString(m.renderKeyHelp("↑↓", "navigate", "Space", "toggle", "Enter", "proceed", "S", "skip"))
-
+	
 	return b.String()
 }
 
+
 func (m DNSSetupModel) viewComplete() string {
-	return fmt.Sprintf(`✓ DNS Setup Complete! 🎉
+	var b strings.Builder
 
-✓ Root zone created: %s
-✓ DNS propagation verified
-✓ Configuration saved to: %s
-
-Next Steps:
-1. Run 'make infra-plan' for each environment
-2. Apply Terraform changes
-3. Deploy your applications
-
-DNS Status Dashboard:
-Run: ./meroku dns status
-
-Press Enter or Q to exit`, m.rootDomain, DNSConfigFile)
+	// Styles
+	successBannerStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("#000")).
+		Background(lipgloss.Color("82")).
+		Padding(0, 2).
+		Align(lipgloss.Center).
+		Width(60)
+	
+	sectionTitleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("213")).
+		Background(lipgloss.Color("57")).
+		Padding(0, 1).
+		MarginTop(1)
+	
+	domainStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("226"))
+	
+	zoneIDStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("87"))
+	
+	nsBoxStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("82")).
+		Padding(0, 1).
+		Width(60)
+	
+	nsStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("159"))
+	
+	successStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("82"))
+	
+	infoStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("245"))
+	
+	stepStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("252"))
+	
+	commandStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("220")).
+		Bold(true)
+	
+	acccessStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("99"))
+	
+	// Success Banner
+	b.WriteString(successBannerStyle.Render("🎉 DNS SETUP COMPLETE! 🎉") + "\n\n")
+	
+	// Root Zone Information
+	b.WriteString(sectionTitleStyle.Render("🌐 DNS Zone Configuration") + "\n\n")
+	b.WriteString("Domain: " + domainStyle.Render(m.rootDomain) + "\n")
+	b.WriteString("Zone ID: " + zoneIDStyle.Render(m.zoneID) + "\n")
+	
+	if m.selectedProfile != "" {
+		b.WriteString("AWS Profile: " + infoStyle.Render(m.selectedProfile) + "\n")
+	}
+	if m.selectedAccountID != "" {
+		b.WriteString("AWS Account: " + infoStyle.Render(m.selectedAccountID) + "\n")
+	}
+	b.WriteString("\n")
+	
+	// Nameservers
+	b.WriteString(sectionTitleStyle.Render("📡 Active Nameservers") + "\n\n")
+	if len(m.nameservers) > 0 {
+		var nsList strings.Builder
+		for i, ns := range m.nameservers {
+			nsList.WriteString(successStyle.Render("✓ ") + nsStyle.Render(ns))
+			if i < len(m.nameservers)-1 {
+				nsList.WriteString("\n")
+			}
+		}
+		b.WriteString(nsBoxStyle.Render(nsList.String()) + "\n\n")
+		
+		// DNS Propagation Status
+		if m.dnsPropagated {
+			b.WriteString(successStyle.Render("✅ DNS fully propagated globally") + "\n")
+		} else {
+			b.WriteString(infoStyle.Render("⏳ DNS propagation in progress...") + "\n")
+		}
+	} else {
+		b.WriteString(infoStyle.Render("No nameservers configured") + "\n")
+	}
+	b.WriteString("\n")
+	
+	// IAM Configuration
+	b.WriteString(sectionTitleStyle.Render("🔐 IAM Cross-Account Access") + "\n\n")
+	
+	if m.delegationRoleArn != "" {
+		b.WriteString(successStyle.Render("✓") + " Delegation Role: " + acccessStyle.Render("Configured") + "\n")
+		b.WriteString(infoStyle.Render("   Allows subdomain environments to create NS records") + "\n")
+	} else {
+		b.WriteString(infoStyle.Render("No cross-account IAM role configured") + "\n")
+		b.WriteString(infoStyle.Render("Subdomain environments will manage zones independently") + "\n")
+	}
+	b.WriteString("\n")
+	
+	// Configuration Files
+	b.WriteString(sectionTitleStyle.Render("📁 Configuration Status") + "\n\n")
+	b.WriteString(successStyle.Render("✓") + " DNS config saved to: " + commandStyle.Render(DNSConfigFile) + "\n")
+	
+	// Check for environment files
+	envFiles := []string{"prod.yaml", "dev.yaml", "staging.yaml"}
+	for _, file := range envFiles {
+		if _, err := os.Stat(file); err == nil {
+			b.WriteString(successStyle.Render("✓") + " Environment file: " + commandStyle.Render(file) + "\n")
+		}
+	}
+	b.WriteString("\n")
+	
+	// Next Steps
+	b.WriteString(sectionTitleStyle.Render("🚀 Next Steps") + "\n\n")
+	b.WriteString(stepStyle.Render("1.") + " Generate Terraform configuration:\n")
+	b.WriteString("   " + commandStyle.Render("make infra-gen-prod") + "\n")
+	b.WriteString("   " + commandStyle.Render("make infra-gen-dev") + " (if dev environment exists)\n\n")
+	
+	b.WriteString(stepStyle.Render("2.") + " Initialize and plan infrastructure:\n")
+	b.WriteString("   " + commandStyle.Render("make infra-init env=prod") + "\n")
+	b.WriteString("   " + commandStyle.Render("make infra-plan env=prod") + "\n\n")
+	
+	b.WriteString(stepStyle.Render("3.") + " Apply infrastructure changes:\n")
+	b.WriteString("   " + commandStyle.Render("make infra-apply env=prod") + "\n\n")
+	
+	b.WriteString(stepStyle.Render("4.") + " Monitor DNS status:\n")
+	b.WriteString("   " + commandStyle.Render("./meroku dns status") + "\n\n")
+	
+	// Footer
+	b.WriteString(m.renderKeyHelp("Enter", "exit", "Q", "quit"))
+	
+	return b.String()
 }
 
 func (m DNSSetupModel) viewValidateConfig() string {
@@ -1498,11 +1643,12 @@ func (m DNSSetupModel) handleEnter() (DNSSetupModel, tea.Cmd) {
 		m.propagationCheckCount = 0
 		return m, m.checkPropagation()
 	case StateWaitPropagation:
-		m.state = StateAddSubdomain
-		return m, m.loadEnvironments()
-	case StateAddSubdomain:
-		if m.hasSelectedSubdomains() {
-			return m, m.createDelegations()
+		m.state = StateCheckIAMPermissions
+		return m, m.checkIAMPermissions()
+	case StateCheckIAMPermissions:
+		if m.fixPermissions && len(m.missingPermissions) > 0 {
+			m.fixPermissions = false
+			return m, m.fixIAMPermissions()
 		}
 		m.state = StateComplete
 		return m, m.saveConfiguration()
@@ -1561,14 +1707,8 @@ func (m DNSSetupModel) handleEnter() (DNSSetupModel, tea.Cmd) {
 
 func (m DNSSetupModel) handleUp() (DNSSetupModel, tea.Cmd) {
 	switch m.state {
-	case StateAddSubdomain:
-		if len(m.subdomains) > 0 {
-			if m.currentSubdomainIndex > 0 {
-				m.currentSubdomainIndex--
-			} else {
-				m.currentSubdomainIndex = len(m.subdomains) - 1
-			}
-		}
+	case StateCheckIAMPermissions:
+		// No scrolling needed in IAM check view
 	case StateDisplayNameservers:
 		// If debug log is shown, scroll it up
 		if m.showDNSDebugLog {
@@ -1582,14 +1722,8 @@ func (m DNSSetupModel) handleUp() (DNSSetupModel, tea.Cmd) {
 
 func (m DNSSetupModel) handleDown() (DNSSetupModel, tea.Cmd) {
 	switch m.state {
-	case StateAddSubdomain:
-		if len(m.subdomains) > 0 {
-			if m.currentSubdomainIndex < len(m.subdomains)-1 {
-				m.currentSubdomainIndex++
-			} else {
-				m.currentSubdomainIndex = 0
-			}
-		}
+	case StateCheckIAMPermissions:
+		// No scrolling needed in IAM check view
 	case StateDisplayNameservers:
 		// If debug log is shown, scroll it down
 		if m.showDNSDebugLog {
@@ -1615,19 +1749,8 @@ func (m DNSSetupModel) handleDown() (DNSSetupModel, tea.Cmd) {
 }
 
 func (m DNSSetupModel) handleSpace() (DNSSetupModel, tea.Cmd) {
-	if m.state == StateAddSubdomain && len(m.selectedSubdomains) > 0 {
-		// Toggle subdomain selection with animation
-		if m.currentSubdomainIndex < 0 || m.currentSubdomainIndex >= len(m.selectedSubdomains) {
-			m.currentSubdomainIndex = 0
-		}
-		m.selectedSubdomains[m.currentSubdomainIndex] = !m.selectedSubdomains[m.currentSubdomainIndex]
-
-		// If selecting, start the animation timer
-		if m.selectedSubdomains[m.currentSubdomainIndex] {
-			m.selectionTimer = 50 // 5 seconds at 100ms intervals
-			return m, animationTickCmd()
-		}
-	}
+	// Space key no longer used for manual subdomain selection
+	// IAM permissions are checked automatically
 	return m, nil
 }
 
@@ -1643,8 +1766,8 @@ func (m DNSSetupModel) handleBack() (DNSSetupModel, tea.Cmd) {
 		m.state = StateCreateRootZone
 	case StateWaitPropagation:
 		m.state = StateDisplayNameservers
-	case StateAddSubdomain:
-		m.state = StateWaitPropagation
+	case StateCheckIAMPermissions:
+		m.state = StateDisplayNameservers
 	}
 	return m, nil
 }
@@ -1656,8 +1779,8 @@ func (m DNSSetupModel) handleSkip() (DNSSetupModel, tea.Cmd) {
 		m.state = StateWaitPropagation
 		m.propagationCheckCount = 0
 		return m, m.checkPropagation()
-	case StateAddSubdomain:
-		// Skip subdomain delegation and complete
+	case StateCheckIAMPermissions:
+		// Skip IAM permission fixes and complete
 		m.state = StateComplete
 		return m, m.saveConfiguration()
 	}
@@ -1809,8 +1932,8 @@ func (m DNSSetupModel) handleDNSOperation(msg dnsOperationMsg) (DNSSetupModel, t
 				return m, tea.Batch(animationTickCmd(), m.checkDNSPropagatedSimple())
 			}
 
-			m.state = StateAddSubdomain
-			return m, m.loadEnvironments()
+			m.state = StateCheckIAMPermissions
+			return m, m.checkIAMPermissions()
 		} else {
 			// Zone doesn't exist or is invalid
 			m.state = StateError
@@ -1864,9 +1987,7 @@ func (m DNSSetupModel) handleDNSOperation(msg dnsOperationMsg) (DNSSetupModel, t
 		}
 		data := msg.Data.(map[string]interface{})
 		m.environments = data["environments"].([]DNSEnvironment)
-		m.subdomains = data["subdomains"].([]string)
-		m.selectedSubdomains = make([]bool, len(m.subdomains))
-		m.currentSubdomainIndex = 0 // Initialize the current index
+		// Removed subdomain selection - now handled automatically in IAM check
 		return m, nil
 	
 	case "need_production_setup":
@@ -1941,8 +2062,42 @@ func (m DNSSetupModel) handleDNSOperation(msg dnsOperationMsg) (DNSSetupModel, t
 		// Continue with DNS zone creation
 		return m, m.createRootZone()
 
-	case "create_delegations":
+	case "update_delegation_role":
+		// IAM role updated with trusted accounts
 		m.state = StateComplete
+		return m, nil
+	
+	case "iam_check_complete":
+		// IAM permission check completed
+		if msg.Data != nil {
+			data := msg.Data.(map[string]interface{})
+			m.environments = data["environments"].([]DNSEnvironment)
+			m.envPermissions = data["permissions"].(map[string]bool)
+			m.missingPermissions = data["missing"].([]string)
+		}
+		return m, nil
+	
+	case "iam_fix_complete":
+		// IAM permissions fixed, re-check them
+		if msg.Data != nil {
+			data := msg.Data.(map[string]interface{})
+			if roleArn, ok := data["roleArn"].(string); ok {
+				m.delegationRoleArn = roleArn
+			}
+		}
+		// Clear the fixing status
+		m.currentStep = ""
+		// Re-check permissions after fix
+		return m, m.checkIAMPermissions()
+	
+	case "iam_fix_failed":
+		// IAM fix failed, show error but stay on same screen
+		// Clear the fixing status
+		m.currentStep = ""
+		if msg.Error != nil {
+			m.errorMsg = msg.Error.Error()
+		}
+		// User can skip or try again
 		return m, nil
 	
 	case "profile_creation_failed":
@@ -2012,8 +2167,8 @@ func (m DNSSetupModel) handleDNSOperation(msg dnsOperationMsg) (DNSSetupModel, t
 			if m.dnsPropagated && m.state == StateDisplayNameservers {
 				// DNS has propagated! Automatically proceed to next step
 				m.dnsTimerRunning = false // Stop the timer
-				m.state = StateAddSubdomain
-				return m, m.loadEnvironments()
+				m.state = StateCheckIAMPermissions
+				return m, m.checkIAMPermissions()
 			}
 			
 			// DNS not propagated yet, reset timer for next check
@@ -2032,14 +2187,7 @@ func (m DNSSetupModel) handleDNSOperation(msg dnsOperationMsg) (DNSSetupModel, t
 	return m, nil
 }
 
-func (m DNSSetupModel) hasSelectedSubdomains() bool {
-	for _, selected := range m.selectedSubdomains {
-		if selected {
-			return true
-		}
-	}
-	return false
-}
+// hasSelectedSubdomains removed - replaced by automatic IAM permission checking
 
 // Command functions
 func (m DNSSetupModel) checkExistingConfig() tea.Cmd {
@@ -2195,8 +2343,8 @@ func (m DNSSetupModel) loadEnvironments() tea.Cmd {
 		envs := []DNSEnvironment{}
 
 		// Check for common environment files in current working directory
-		// For DNS setup, we only handle dev and prod environments
-		envFiles := []string{"dev", "prod"}
+		// For DNS setup, we handle dev, staging, and prod environments
+		envFiles := []string{"dev", "staging", "prod"}
 		for _, envName := range envFiles {
 			// Try to load the environment file from current directory
 			env, err := loadEnv(envName)
@@ -2453,68 +2601,271 @@ func (m DNSSetupModel) checkDNSPropagatedSimple() tea.Cmd {
 	}
 }
 
-func (m DNSSetupModel) createDelegations() tea.Cmd {
+func (m DNSSetupModel) checkIAMPermissions() tea.Cmd {
 	return func() tea.Msg {
-		// Get the root profile to use for creating NS records
+		// Load environments to check
+		envs := []DNSEnvironment{}
+		envFiles := []string{"dev", "staging", "prod"}
+		
+		for _, envName := range envFiles {
+			env, err := loadEnv(envName)
+			if err != nil {
+				continue // Skip if not found
+			}
+			
+			accountID := env.AccountID
+			profile := env.AWSProfile
+			
+			// Get account ID from profile if not in YAML
+			if accountID == "" && profile != "" {
+				if id, err := getAWSAccountID(profile); err == nil {
+					accountID = id
+				}
+			}
+			
+			if accountID != "" || profile != "" {
+				envs = append(envs, DNSEnvironment{
+					Name:      envName,
+					Profile:   profile,
+					AccountID: accountID,
+				})
+			}
+		}
+		
+		// Check each environment's IAM permissions
+		permissions := make(map[string]bool)
+		var missing []string
+		
+		// Check if delegation role exists - use stored ARN or try to get it
+		delegationRoleArn := m.delegationRoleArn
+		if delegationRoleArn == "" && m.selectedProfile != "" {
+			// Try to get the existing delegation role
+			cfg, _ := config.LoadDefaultConfig(context.Background(),
+				config.WithSharedConfigProfile(m.selectedProfile),
+			)
+			iamClient := iam.NewFromConfig(cfg)
+			getRoleResp, err := iamClient.GetRole(context.Background(), &iam.GetRoleInput{
+				RoleName: aws.String("dns-delegation-role"),
+			})
+			if err == nil && getRoleResp.Role != nil {
+				delegationRoleArn = *getRoleResp.Role.Arn
+			}
+		}
+		
+		if delegationRoleArn != "" {
+			// Check which accounts are trusted
+			trustedAccounts := getTrustedAccountsFromRole(m.selectedProfile, delegationRoleArn)
+			
+			for _, env := range envs {
+				if env.Name == "prod" {
+					continue // Skip production
+				}
+				
+				if env.AccountID != "" {
+					hasTrust := false
+					for _, trusted := range trustedAccounts {
+						if trusted == env.AccountID {
+							hasTrust = true
+							break
+						}
+					}
+					permissions[env.Name] = hasTrust
+					if !hasTrust {
+						missing = append(missing, env.Name)
+					}
+				}
+			}
+		} else {
+			// No delegation role exists, all non-prod need permissions
+			for _, env := range envs {
+				if env.Name != "prod" && env.AccountID != "" {
+					permissions[env.Name] = false
+					missing = append(missing, env.Name)
+				}
+			}
+		}
+		
+		return dnsOperationMsg{
+			Type:    "iam_check_complete",
+			Success: true,
+			Data: map[string]interface{}{
+				"environments": envs,
+				"permissions":  permissions,
+				"missing":      missing,
+			},
+		}
+	}
+}
+
+func (m DNSSetupModel) fixIAMPermissions() tea.Cmd {
+	return func() tea.Msg {
+		// Collect account IDs that need access
+		var trustedAccounts []string
+		accountsToFix := make(map[string]string) // env name -> account ID
+		
+		for _, env := range m.environments {
+			if env.Name != "prod" {
+				// Check if this env is in missing permissions
+				for _, missing := range m.missingPermissions {
+					if missing == env.Name {
+						// Get account ID if we don't have it yet
+						accountID := env.AccountID
+						if accountID == "" && env.Profile != "" {
+							// Try to get account ID from profile
+							if id, err := getAWSAccountID(env.Profile); err == nil {
+								accountID = id
+							}
+						}
+						
+						if accountID != "" {
+							trustedAccounts = append(trustedAccounts, accountID)
+							accountsToFix[env.Name] = accountID
+						}
+						break
+					}
+				}
+			}
+		}
+		
+		// Update or create the delegation role
+		if len(trustedAccounts) > 0 && m.selectedProfile != "" {
+			roleArn, err := createDNSDelegationRole(m.selectedProfile, trustedAccounts)
+			if err != nil {
+				return dnsOperationMsg{
+					Type:    "iam_fix_failed",
+					Success: false,
+					Error:   err,
+				}
+			}
+			// Return success message to trigger re-check
+			return dnsOperationMsg{
+				Type:    "iam_fix_complete",
+				Success: true,
+				Data: map[string]interface{}{
+					"roleArn": roleArn,
+					"fixed":   accountsToFix,
+				},
+			}
+		}
+		
+		// No accounts to fix (no account IDs found)
+		return dnsOperationMsg{
+			Type:    "iam_fix_failed",
+			Success: false,
+			Error:   fmt.Errorf("Could not determine account IDs for environments: %v", m.missingPermissions),
+		}
+	}
+}
+
+func getTrustedAccountsFromRole(profile, roleArn string) []string {
+	ctx := context.Background()
+	
+	cfg, err := config.LoadDefaultConfig(ctx,
+		config.WithSharedConfigProfile(profile),
+	)
+	if err != nil {
+		return []string{}
+	}
+	
+	iamClient := iam.NewFromConfig(cfg)
+	
+	// Get the role to check its trust policy
+	getRoleResp, err := iamClient.GetRole(ctx, &iam.GetRoleInput{
+		RoleName: aws.String("dns-delegation-role"),
+	})
+	if err != nil {
+		return []string{}
+	}
+	
+	// Parse the trust policy to get trusted accounts
+	// The policy document might be URL encoded
+	policyDoc := *getRoleResp.Role.AssumeRolePolicyDocument
+	// URL decode if needed
+	if strings.Contains(policyDoc, "%7B") || strings.Contains(policyDoc, "%22") {
+		if decoded, err := url.QueryUnescape(policyDoc); err == nil {
+			policyDoc = decoded
+		}
+	}
+	
+	var trustPolicy map[string]interface{}
+	if err := json.Unmarshal([]byte(policyDoc), &trustPolicy); err != nil {
+		return []string{}
+	}
+	
+	var trustedAccounts []string
+	if statements, ok := trustPolicy["Statement"].([]interface{}); ok {
+		for _, stmt := range statements {
+			if stmtMap, ok := stmt.(map[string]interface{}); ok {
+				if principal, ok := stmtMap["Principal"].(map[string]interface{}); ok {
+					if awsArns, ok := principal["AWS"].([]interface{}); ok {
+						for _, arn := range awsArns {
+							if arnStr, ok := arn.(string); ok {
+								// Extract account ID from ARN
+								// Format: arn:aws:iam::123456789012:root
+								parts := strings.Split(arnStr, ":")
+								if len(parts) >= 5 {
+									trustedAccounts = append(trustedAccounts, parts[4])
+								}
+							}
+						}
+					} else if awsArn, ok := principal["AWS"].(string); ok {
+						// Single ARN case
+						parts := strings.Split(awsArn, ":")
+						if len(parts) >= 5 {
+							trustedAccounts = append(trustedAccounts, parts[4])
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	return trustedAccounts
+}
+
+func (m DNSSetupModel) updateDelegationRole() tea.Cmd {
+	return func() tea.Msg {
+		// Get the root profile
 		rootProfile := m.selectedProfile
 		if rootProfile == "" && m.selectedAccountID != "" {
 			matchingProfile, err := findAWSProfileByAccountID(m.selectedAccountID)
 			if err != nil {
+				// Role update is optional, can continue without it
 				return dnsOperationMsg{
-					Type: "create_delegations", Success: false,
-					Error: fmt.Errorf("cannot find AWS profile for root account %s: %v", m.selectedAccountID, err),
+					Type: "update_delegation_role", Success: true,
 				}
 			}
 			rootProfile = matchingProfile
 		}
 
-		if rootProfile == "" || m.zoneID == "" {
+		if rootProfile == "" {
+			// No profile available, skip role update
 			return dnsOperationMsg{
-				Type: "create_delegations", Success: false,
-				Error: fmt.Errorf("missing profile or zone ID for delegation"),
+				Type: "update_delegation_role", Success: true,
 			}
 		}
 
-		// Create NS records for each selected subdomain
-		for i, subdomain := range m.subdomains {
-			if m.selectedSubdomains[i] && i < len(m.environments) {
-				env := m.environments[i]
+		// Collect account IDs that need IAM trust relationship
+		var trustedAccounts []string
+		for _, env := range m.environments {
+			if env.Name != "prod" && env.AccountID != "" && env.AccountID != m.selectedAccountID {
+				// Add all non-production accounts to trust relationship
+				trustedAccounts = append(trustedAccounts, env.AccountID)
+			}
+		}
 
-				// Find the profile for the subdomain environment
-				subProfile := env.Profile
-				if subProfile == "" && env.AccountID != "" {
-					if matchingProfile, err := findAWSProfileByAccountID(env.AccountID); err == nil {
-						subProfile = matchingProfile
-					}
-				}
-
-				if subProfile != "" {
-					// Create hosted zone for subdomain
-					subZoneID, subNS, err := createHostedZone(subProfile, subdomain)
-					if err == nil && len(subNS) > 0 {
-						// Create NS records in the root zone for delegation
-						err = createNSRecordDelegation(rootProfile, subProfile, m.zoneID, subdomain, subNS)
-						if err != nil {
-							// Log error but continue with other subdomains
-							continue
-						}
-
-						// Update the DNS config with the new subdomain zone
-						if m.dnsConfig != nil {
-							addOrUpdateDelegatedZone(m.dnsConfig, DelegatedZone{
-								Subdomain: subdomain,
-								AccountID: env.AccountID,
-								ZoneID:    subZoneID,
-								Status:    "active",
-							})
-							saveDNSConfig(m.dnsConfig)
-						}
-					}
+		// Update the delegation role with new trusted accounts
+		if len(trustedAccounts) > 0 {
+			_, err := createDNSDelegationRole(rootProfile, trustedAccounts)
+			if err != nil {
+				// Role update is optional, won't block completion
+				return dnsOperationMsg{
+					Type: "update_delegation_role", Success: true,
 				}
 			}
 		}
 
-		return dnsOperationMsg{Type: "create_delegations", Success: true}
+		return dnsOperationMsg{Type: "update_delegation_role", Success: true}
 	}
 }
 
@@ -2558,15 +2909,8 @@ func (m DNSSetupModel) saveConfiguration() tea.Cmd {
 			DelegatedZones: []DelegatedZone{},
 		}
 
-		for i, subdomain := range m.subdomains {
-			if m.selectedSubdomains[i] {
-				config.DelegatedZones = append(config.DelegatedZones, DelegatedZone{
-					Subdomain: subdomain,
-					AccountID: m.environments[i].AccountID,
-					Status:    "pending",
-				})
-			}
-		}
+		// Delegated zones are now created by Terraform, not by the DNS setup tool
+		// We only record which environments exist, not create zones for them
 
 		if err = saveDNSConfig(config); err != nil {
 			return dnsOperationMsg{Type: "save_config", Success: false, Error: err}
@@ -2823,7 +3167,7 @@ func ensureProductionEnvironmentWithAccountID(rootDomain, accountID, profile str
 // getProjectNameForDNS gets the project name from existing environment files
 func getProjectNameForDNS() string {
 	// Try to load any existing environment file to get project name
-	envFiles := []string{"dev", "prod"}
+	envFiles := []string{"dev", "staging", "prod"}
 	for _, envName := range envFiles {
 		env, err := loadEnv(envName)
 		if err == nil && env.Project != "" {
