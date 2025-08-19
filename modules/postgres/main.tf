@@ -1,11 +1,13 @@
 # Map user-friendly versions to Aurora-specific versions
+# These are the latest available versions as of Jan 2025
+# AWS will auto-update to newer minor versions within the same major version
 locals {
   aurora_version_map = {
-    "17" = "17.2"
-    "16" = "16.4" 
-    "15" = "15.6"
-    "14" = "14.11"
-    "13" = "13.14"
+    "17" = "17.5"   # Latest PostgreSQL 17 with 256 TiB storage support
+    "16" = "16.9"   # Latest PostgreSQL 16 with 256 TiB storage support
+    "15" = "15.13"  # Latest PostgreSQL 15 with 256 TiB storage support
+    "14" = "14.18"  # Latest PostgreSQL 14
+    "13" = "13.18"  # Latest PostgreSQL 13 (approaching end of support)
   }
   
   # Use default values if variables are empty
@@ -39,17 +41,18 @@ resource "aws_db_instance" "database" {
 
 # Aurora Serverless v2 Cluster (when aurora = true)
 resource "aws_rds_cluster" "aurora" {
-  count                   = var.aurora ? 1 : 0
-  cluster_identifier      = "${var.project}-aurora-${var.env}"
-  engine                  = "aurora-postgresql"
-  engine_mode             = "provisioned"
-  engine_version          = lookup(local.aurora_version_map, var.engine_version, "16.4")
-  database_name           = local.db_name
-  master_username         = local.db_username
-  master_password         = aws_ssm_parameter.postgres_password.value
-  skip_final_snapshot     = true
-  vpc_security_group_ids  = [aws_security_group.database.id]
-  db_subnet_group_name    = aws_db_subnet_group.aurora[0].name
+  count                      = var.aurora ? 1 : 0
+  cluster_identifier         = "${var.project}-aurora-${var.env}"
+  engine                     = "aurora-postgresql"
+  engine_mode                = "provisioned"
+  engine_version             = lookup(local.aurora_version_map, var.engine_version, "17.5")
+  database_name              = local.db_name
+  master_username            = local.db_username
+  master_password            = aws_ssm_parameter.postgres_password.value
+  skip_final_snapshot        = true
+  vpc_security_group_ids     = [aws_security_group.database.id]
+  db_subnet_group_name       = aws_db_subnet_group.aurora[0].name
+  auto_minor_version_upgrade = true  # Always enable automatic minor version updates
   
   serverlessv2_scaling_configuration {
     min_capacity = var.min_capacity
@@ -57,7 +60,10 @@ resource "aws_rds_cluster" "aurora" {
   }
   
   lifecycle {
-    ignore_changes = [master_password]
+    ignore_changes = [
+      master_password,
+      engine_version  # Allow AWS to manage minor version updates
+    ]
   }
 
   tags = {
@@ -71,16 +77,20 @@ resource "aws_rds_cluster" "aurora" {
 
 # Aurora Serverless v2 Instance
 resource "aws_rds_cluster_instance" "aurora" {
-  count              = var.aurora ? 1 : 0
-  identifier         = "${var.project}-aurora-instance-${var.env}"
-  cluster_identifier = aws_rds_cluster.aurora[0].id
-  instance_class     = "db.serverless"
-  engine             = aws_rds_cluster.aurora[0].engine
-  engine_version     = aws_rds_cluster.aurora[0].engine_version
-  publicly_accessible = var.public_access
+  count                      = var.aurora ? 1 : 0
+  identifier                 = "${var.project}-aurora-instance-${var.env}"
+  cluster_identifier         = aws_rds_cluster.aurora[0].id
+  instance_class             = "db.serverless"
+  engine                     = aws_rds_cluster.aurora[0].engine
+  engine_version             = aws_rds_cluster.aurora[0].engine_version
+  publicly_accessible        = var.public_access
+  auto_minor_version_upgrade = true  # Always enable automatic minor version updates
   
   lifecycle {
     create_before_destroy = true
+    ignore_changes = [
+      engine_version  # Allow AWS to manage minor version updates
+    ]
   }
 
   tags = {

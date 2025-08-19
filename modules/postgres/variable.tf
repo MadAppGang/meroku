@@ -43,7 +43,7 @@ variable "public_access" {
 }
 
 variable "engine_version" {
-  default = "16"
+  default = "17"
   description = "PostgreSQL major version (13, 14, 15, 16, 17)"
 }
 
