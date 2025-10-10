@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log/slog"
 	"math/rand"
 	"os"
 
@@ -318,7 +317,6 @@ func loadEnvToMap(name string) (map[string]interface{}, error) {
 func saveEnv(e Env) error {
 	yamlData, err := yaml.Marshal(e)
 	if err != nil {
-		slog.Error("saveEnv", "error", err)
 		return err
 	}
 	filename := e.Env + ".yaml"
@@ -328,7 +326,6 @@ func saveEnv(e Env) error {
 func saveEnvToFile(e Env, filepath string) error {
 	yamlData, err := yaml.Marshal(e)
 	if err != nil {
-		slog.Error("saveEnvToFile", "error", err)
 		return err
 	}
 	return os.WriteFile(filepath, yamlData, 0o644)

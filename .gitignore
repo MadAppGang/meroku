@@ -7,6 +7,7 @@
 
 # Crash log files
 crash.log
+*.log
 
 # Ignore any .tfvars files that are generated automatically for each Terraform run. Most
 # .tfvars files are managed as part of configuration and so should be included in
@@ -29,12 +30,10 @@ override.tf.json
 # example: *tfplan*
 .supermaven
 modules/workloads/ci_lambda/bootstrap
-app/app.log
 app/infrastructure
 app/dev.yaml
 app/prod.yaml
 app/prod.yaml
-app.log
 modules/appsync/auth_lambda/.yarn
 modules/appsync/auth_lambda/node_modules
 modules/appsync/auth_lambda.zip

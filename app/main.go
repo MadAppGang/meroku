@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log/slog"
 	"os"
 	"strings"
 	
@@ -49,14 +48,6 @@ func main() {
 	}
 
 	registerCustomHelpers()
-	file, err := os.OpenFile("app.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666)
-	if err != nil {
-		panic(err)
-	}
-	defer file.Close()
-	jsonHandler := slog.NewJSONHandler(file, nil)
-	logger := slog.New(jsonHandler)
-	slog.SetDefault(logger)
 
 	// Handle environment and profile selection
 	if *envFlag != "" {
@@ -115,15 +106,10 @@ func main() {
 		// Use the provided profile directly (backward compatibility)
 		selectedAWSProfile = *profileFlag
 		fmt.Printf("Using AWS profile: %s\n", selectedAWSProfile)
-		err = os.Setenv("AWS_PROFILE", selectedAWSProfile)
-		if err != nil {
-			fmt.Printf("Failed to set AWS_PROFILE: %v\n", err)
-			os.Exit(1)
-		}
+		os.Setenv("AWS_PROFILE", selectedAWSProfile)
 	} else {
 		// Interactive environment selection
-		err = selectEnvironment()
-		if err != nil {
+		if err := selectEnvironment(); err != nil {
 			fmt.Println("Error selecting environment:", err)
 			os.Exit(1)
 		}
