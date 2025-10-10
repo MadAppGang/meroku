@@ -32,6 +32,7 @@ const (
 	StateDisplayNameservers
 	StateWaitPropagation
 	StateCheckIAMPermissions // Check and fix IAM permissions
+	StateDNSDetails          // New state for showing detailed DNS configuration
 	StateComplete
 	StateError
 	StateValidateConfig
@@ -62,6 +63,7 @@ type DNSSetupModel struct {
 	dnsConfig             *DNSConfig
 	envPermissions        map[string]bool // Maps environment name to whether it has IAM access
 	missingPermissions    []string        // Environments missing IAM permissions
+	checkingEnvironment   string          // Environment currently being checked for IAM permissions
 	propagationCheckCount int
 	delegationRoleArn     string
 	width                 int
@@ -81,6 +83,7 @@ type DNSSetupModel struct {
 	accountIDInput        string   // AWS account ID input for production setup
 	accountIDCursorPos    int      // Cursor position for account ID input
 	dnsDebugLogs          []string // DNS debug logs for display
+	isViewingExisting     bool     // Whether we're viewing existing config (not creating new)
 	dnsDebugScrollOffset  int      // Scroll offset for DNS debug window
 	showDNSDebugLog       bool     // Toggle to show/hide DNS debug log
 }
@@ -306,7 +309,7 @@ func (m DNSSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if allPropagated || m.propagationCheckCount > 30 {
 				m.state = StateCheckIAMPermissions
-				return m, m.checkIAMPermissions()
+				return m, tea.Batch(m.spinner.Tick, animationTickCmd(), m.checkIAMPermissions())
 			}
 			m.propagationCheckCount++
 			return m, tea.Tick(time.Second*10, func(t time.Time) tea.Msg {
@@ -371,9 +374,12 @@ func (m DNSSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Keep animation running for loading states or when showing copy feedback or selection animation
 		// Also continue for one more tick if we just cleared something (needsFinalRender)
 		// Or if we're checking DNS propagation
+		// Or if we're checking IAM permissions (environments not loaded OR permissions incomplete OR fixing in progress)
+		isCheckingIAM := len(m.environments) == 0 || len(m.envPermissions) < len(m.environments)-1 || m.currentStep != ""
 		if m.state == StateCheckExisting || m.state == StateValidateConfig ||
 			m.state == StateDisplayNameservers && (m.copiedNSTimer > 0 || m.copyFeedbackTimer > 0 || needsFinalRender || !m.dnsPropagated) ||
-			m.state == StateCheckIAMPermissions && needsFinalRender {
+			m.state == StateCheckIAMPermissions && (needsFinalRender || isCheckingIAM) ||
+			m.state == StateProcessingSetup {
 			cmds = append(cmds, animationTickCmd())
 		}
 
@@ -411,6 +417,8 @@ func (m DNSSetupModel) View() string {
 		content = m.viewWaitPropagation()
 	case StateCheckIAMPermissions:
 		content = m.viewCheckIAMPermissions()
+	case StateDNSDetails:
+		content = m.viewDNSDetails()
 	case StateComplete:
 		content = m.viewComplete()
 	case StateError:
@@ -1117,56 +1125,59 @@ func (m DNSSetupModel) viewCheckIAMPermissions() string {
 		Foreground(lipgloss.Color("220")).
 		Bold(true)
 
-	// Show root zone status
+	// Show root zone status (more compact)
 	b.WriteString(successBadgeStyle.Render("✓ ROOT ZONE CONFIGURED") + "\n\n")
-	b.WriteString("Domain: " + domainStyle.Render(m.rootDomain) + "\n")
-	b.WriteString("Production Account: " + infoStyle.Render(m.selectedProfile) + "\n\n")
-	
-	// Check IAM permissions section
-	b.WriteString(sectionStyle.Render("Checking IAM Permissions for Non-Production Environments") + "\n\n")
+	b.WriteString("Domain: " + domainStyle.Render(m.rootDomain) + " | Production Account: " + infoStyle.Render(m.selectedProfile) + "\n\n")
+
+	// Check IAM permissions section (more compact title)
+	b.WriteString(sectionStyle.Render("Checking IAM Permissions for Non-Production Environments") + "\n")
 	
 	if len(m.environments) <= 1 {
 		// Only production environment
-		b.WriteString(infoStyle.Render("No non-production environments detected.") + "\n")
-		b.WriteString(infoStyle.Render("IAM cross-account permissions not needed.") + "\n\n")
+		b.WriteString("\n" + infoStyle.Render("No non-production environments. IAM permissions not needed.") + "\n\n")
 		b.WriteString(m.renderKeyHelp("Enter", "continue", "Q", "quit"))
 		return b.String()
 	}
-	
-	// Show permission status for each environment
-	b.WriteString("Environment Access Status:\n\n")
-	
+
+	// Show permission status for each environment (more compact)
+	b.WriteString("\nEnvironment Access Status:\n")
+
 	hasIssues := false
 	for _, env := range m.environments {
 		if env.Name == "prod" {
 			continue // Skip production
 		}
-		
+
 		envDisplay := fmt.Sprintf("%s.%s", env.Name, m.rootDomain)
-		if hasAccess, ok := m.envPermissions[env.Name]; ok {
+
+		// Check if this environment is currently being checked
+		if m.checkingEnvironment == env.Name {
+			b.WriteString("  " + m.spinner.View() + " " + envDisplay + " - " +
+				infoStyle.Render("Checking IAM permissions...") + "\n")
+		} else if hasAccess, ok := m.envPermissions[env.Name]; ok {
 			if hasAccess {
-				b.WriteString(successStyle.Render("  ✓ ") + envDisplay + " - " + 
+				b.WriteString(successStyle.Render("  ✓ ") + envDisplay + " - " +
 					successStyle.Render("Has IAM access") + "\n")
 			} else {
-				b.WriteString(errorStyle.Render("  ✗ ") + envDisplay + " - " + 
+				b.WriteString(errorStyle.Render("  ✗ ") + envDisplay + " - " +
 					errorStyle.Render("Missing IAM access") + "\n")
 				hasIssues = true
 			}
 		} else {
-			// Permission check in progress
-			b.WriteString("  ⏳ " + envDisplay + " - Checking...\n")
+			// Not yet checked - show waiting state
+			b.WriteString(infoStyle.Render("  ⋯ ") + envDisplay + " - " +
+				infoStyle.Render("Waiting...") + "\n")
 		}
 	}
 	b.WriteString("\n")
 	
 	// Show fix option if there are issues
 	if hasIssues && len(m.missingPermissions) > 0 {
-		b.WriteString(warningBadgeStyle.Render("⚠️  IAM PERMISSIONS MISSING") + "\n\n")
+		b.WriteString("\n" + warningBadgeStyle.Render("⚠️  IAM PERMISSIONS MISSING") + "\n\n")
 		b.WriteString("The following environments cannot manage their subdomains:\n")
 		for _, env := range m.missingPermissions {
 			b.WriteString("  • " + errorStyle.Render(env) + "\n")
 		}
-		b.WriteString("\n")
 		
 		// Show current step if fixing
 		if m.currentStep != "" && strings.Contains(m.currentStep, "Fixing") {
@@ -1185,17 +1196,110 @@ func (m DNSSetupModel) viewCheckIAMPermissions() string {
 		}
 	} else if !hasIssues && len(m.envPermissions) > 0 {
 		// All permissions OK
-		b.WriteString(successBadgeStyle.Render("✅ ALL PERMISSIONS CONFIGURED") + "\n\n")
-		b.WriteString(m.renderKeyHelp("Enter", "continue", "Q", "quit"))
+		b.WriteString("\n" + successBadgeStyle.Render("✅ ALL PERMISSIONS CONFIGURED") + "\n\n")
+		if m.isViewingExisting {
+			b.WriteString(m.renderKeyHelp("Enter", "view DNS details", "Q", "quit"))
+		} else {
+			b.WriteString(m.renderKeyHelp("Enter", "continue", "Q", "quit"))
+		}
 	} else {
-		// Still checking
-		b.WriteString(infoStyle.Render("Checking IAM permissions...") + "\n\n")
+		// Still checking - show loading indicator
+		b.WriteString("\n" + m.spinner.View() + " " + infoStyle.Render("Checking IAM permissions...") + "\n\n")
 		b.WriteString(m.renderKeyHelp("Q", "quit"))
 	}
 	
 	return b.String()
 }
 
+func (m DNSSetupModel) viewDNSDetails() string {
+	var b strings.Builder
+
+	// Styles
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("#000")).
+		Background(lipgloss.Color("39")).
+		Padding(0, 1)
+	sectionTitleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("213")).
+		MarginTop(1)
+	labelStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("245"))
+	valueStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("226")).
+		Bold(true)
+	successStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("82"))
+	infoStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("245"))
+
+	// Header
+	b.WriteString(titleStyle.Render("📋 DNS Configuration Details") + "\n\n")
+
+	// Root Zone Configuration
+	b.WriteString(sectionTitleStyle.Render("🌐 Root Zone") + "\n")
+	b.WriteString(labelStyle.Render("Domain:         ") + valueStyle.Render(m.rootDomain) + "\n")
+	b.WriteString(labelStyle.Render("Zone ID:        ") + valueStyle.Render(m.zoneID) + "\n")
+	b.WriteString(labelStyle.Render("AWS Account:    ") + valueStyle.Render(m.selectedProfile) + "\n")
+
+	// Nameservers
+	b.WriteString("\n" + sectionTitleStyle.Render("📡 Nameservers") + "\n")
+	if len(m.nameservers) > 0 {
+		for i, ns := range m.nameservers {
+			b.WriteString(fmt.Sprintf("%s NS%d: %s\n", successStyle.Render("✓"), i+1, valueStyle.Render(ns)))
+		}
+	} else {
+		b.WriteString(infoStyle.Render("No nameservers configured\n"))
+	}
+
+	// IAM Delegation Role
+	b.WriteString("\n" + sectionTitleStyle.Render("🔐 IAM Delegation") + "\n")
+	if m.delegationRoleArn != "" {
+		b.WriteString(successStyle.Render("✓ Configured\n"))
+		b.WriteString(labelStyle.Render("Role ARN: ") + infoStyle.Render(m.delegationRoleArn) + "\n")
+	} else {
+		b.WriteString(infoStyle.Render("No delegation role configured\n"))
+	}
+
+	// Environments
+	b.WriteString("\n" + sectionTitleStyle.Render("🏗️  Environments") + "\n")
+	if len(m.environments) > 0 {
+		for _, env := range m.environments {
+			subdomain := env.Name
+			if env.Name == "prod" {
+				subdomain = m.rootDomain
+			} else {
+				subdomain = fmt.Sprintf("%s.%s", env.Name, m.rootDomain)
+			}
+
+			hasAccess := ""
+			if access, ok := m.envPermissions[env.Name]; ok {
+				if access {
+					hasAccess = successStyle.Render(" ✓ IAM access")
+				} else {
+					hasAccess = infoStyle.Render(" ✗ No IAM access")
+				}
+			}
+
+			b.WriteString(fmt.Sprintf("  %s %s%s\n",
+				successStyle.Render("•"),
+				valueStyle.Render(subdomain),
+				hasAccess))
+		}
+	} else {
+		b.WriteString(infoStyle.Render("No environments configured\n"))
+	}
+
+	// DNS Propagation Status
+	if m.dnsPropagated {
+		b.WriteString("\n" + successStyle.Render("✅ DNS fully propagated globally") + "\n")
+	}
+
+	b.WriteString("\n" + labelStyle.Render("Press ") + valueStyle.Render("Q") + labelStyle.Render(" to exit"))
+
+	return b.String()
+}
 
 func (m DNSSetupModel) viewComplete() string {
 	var b strings.Builder
@@ -1557,8 +1661,9 @@ func (m DNSSetupModel) viewProcessingSetup() string {
 	for i, step := range m.setupSteps {
 		var icon string
 		var style lipgloss.Style
-		
-		if m.setupStepStatus[i] {
+
+		// Check if status array is properly initialized
+		if i < len(m.setupStepStatus) && m.setupStepStatus[i] {
 			// Step completed
 			icon = "✓"
 			style = doneStyle
@@ -1644,14 +1749,22 @@ func (m DNSSetupModel) handleEnter() (DNSSetupModel, tea.Cmd) {
 		return m, m.checkPropagation()
 	case StateWaitPropagation:
 		m.state = StateCheckIAMPermissions
-		return m, m.checkIAMPermissions()
+		return m, tea.Batch(m.spinner.Tick, animationTickCmd(), m.checkIAMPermissions())
 	case StateCheckIAMPermissions:
 		if m.fixPermissions && len(m.missingPermissions) > 0 {
 			m.fixPermissions = false
 			return m, m.fixIAMPermissions()
 		}
+		// If viewing existing config, show DNS details. Otherwise save config and go through setup flow
+		if m.isViewingExisting {
+			m.state = StateDNSDetails
+			return m, nil
+		}
 		m.state = StateComplete
 		return m, m.saveConfiguration()
+	case StateDNSDetails:
+		// From DNS details, quit
+		return m, tea.Quit
 	case StateComplete, StateError:
 		return m, tea.Quit
 	case StateSetupProduction:
@@ -1891,6 +2004,8 @@ func (m DNSSetupModel) handleDNSOperation(msg dnsOperationMsg) (DNSSetupModel, t
 		if msg.Success {
 			data := msg.Data.(map[string]interface{})
 			m.selectedProfile = data["profile"].(string)
+			// Mark that we're viewing existing config
+			m.isViewingExisting = true
 			// Now validate the zone
 			m.state = StateValidateConfig
 			return m, m.validateExistingZone()
@@ -1933,7 +2048,7 @@ func (m DNSSetupModel) handleDNSOperation(msg dnsOperationMsg) (DNSSetupModel, t
 			}
 
 			m.state = StateCheckIAMPermissions
-			return m, m.checkIAMPermissions()
+			return m, tea.Batch(m.spinner.Tick, animationTickCmd(), m.checkIAMPermissions())
 		} else {
 			// Zone doesn't exist or is invalid
 			m.state = StateError
@@ -1948,33 +2063,43 @@ func (m DNSSetupModel) handleDNSOperation(msg dnsOperationMsg) (DNSSetupModel, t
 		// Sort nameservers to ensure consistent ordering
 		sort.Strings(nameservers)
 		m.nameservers = nameservers
-		
-		// Update progress - DNS zone created
-		m.setupStepStatus[2] = true
-		m.currentStepIndex = 3
-		
+
+		// Update progress - DNS zone created (only if array is initialized)
+		if len(m.setupStepStatus) > 2 {
+			m.setupStepStatus[2] = true
+		}
+		if len(m.setupStepStatus) > 0 {
+			m.currentStepIndex = 3
+		}
+
 		return m, m.createDelegationRole()
 
 	case "create_role":
 		m.delegationRoleArn = msg.Data.(string)
-		
-		// Update progress - IAM role created
-		m.setupStepStatus[3] = true
-		m.currentStepIndex = 4
-		
+
+		// Update progress - IAM role created (only if array is initialized)
+		if len(m.setupStepStatus) > 3 {
+			m.setupStepStatus[3] = true
+		}
+		if len(m.setupStepStatus) > 0 {
+			m.currentStepIndex = 4
+		}
+
 		return m, m.saveConfiguration()
 
 	case "save_config":
-		// Update progress - all steps complete
-		m.setupStepStatus[4] = true
-		
+		// Update progress - all steps complete (only if array is initialized)
+		if len(m.setupStepStatus) > 4 {
+			m.setupStepStatus[4] = true
+		}
+
 		// Move to nameserver display
 		m.state = StateDisplayNameservers
 		m.dnsPropagated = false
 		m.propagationCheckTimer = 0 // Start with 0 for immediate check
 		m.isCheckingDNS = true // Mark as checking immediately
 		m.dnsTimerRunning = false // Timer will be started after first check
-		
+
 		// Start animation ticker and immediate check
 		// The DNS timer will be started after the first check completes
 		return m, tea.Batch(animationTickCmd(), m.checkDNSPropagatedSimple())
@@ -1999,21 +2124,25 @@ func (m DNSSetupModel) handleDNSOperation(msg dnsOperationMsg) (DNSSetupModel, t
 		// Profile was found for the account ID
 		data := msg.Data.(map[string]interface{})
 		m.selectedProfile = data["profile"].(string)
-		
-		// Update progress - profile check complete
-		m.setupStepStatus[0] = true
-		m.currentStepIndex = 1
-		
+
+		// Update progress - profile check complete (only if array is initialized)
+		if len(m.setupStepStatus) > 0 {
+			m.setupStepStatus[0] = true
+			m.currentStepIndex = 1
+		}
+
 		// Create prod.yaml with the provided account ID and profile
 		if err := ensureProductionEnvironmentWithAccountID(m.rootDomain, m.selectedAccountID, m.selectedProfile); err != nil {
 			m.state = StateError
 			m.errorMsg = fmt.Sprintf("Failed to create prod.yaml: %v", err)
 			return m, nil
 		}
-		
-		// Update progress - prod.yaml created
-		m.setupStepStatus[1] = true
-		m.currentStepIndex = 2
+
+		// Update progress - prod.yaml created (only if array is initialized)
+		if len(m.setupStepStatus) > 1 {
+			m.setupStepStatus[1] = true
+			m.currentStepIndex = 2
+		}
 		
 		// Set up environment info
 		m.environments = []DNSEnvironment{{
@@ -2036,21 +2165,25 @@ func (m DNSSetupModel) handleDNSOperation(msg dnsOperationMsg) (DNSSetupModel, t
 		// Profile was successfully created, continue with DNS setup
 		data := msg.Data.(map[string]interface{})
 		m.selectedProfile = data["profile"].(string)
-		
-		// Update progress - profile check complete
-		m.setupStepStatus[0] = true
-		m.currentStepIndex = 1
-		
+
+		// Update progress - profile check complete (only if array is initialized)
+		if len(m.setupStepStatus) > 0 {
+			m.setupStepStatus[0] = true
+			m.currentStepIndex = 1
+		}
+
 		// Create prod.yaml with the new profile
 		if err := ensureProductionEnvironmentWithAccountID(m.rootDomain, m.selectedAccountID, m.selectedProfile); err != nil {
 			m.state = StateError
 			m.errorMsg = fmt.Sprintf("Failed to create prod.yaml: %v", err)
 			return m, nil
 		}
-		
-		// Update progress - prod.yaml created
-		m.setupStepStatus[1] = true
-		m.currentStepIndex = 2
+
+		// Update progress - prod.yaml created (only if array is initialized)
+		if len(m.setupStepStatus) > 1 {
+			m.setupStepStatus[1] = true
+			m.currentStepIndex = 2
+		}
 		
 		// Set up environments for DNS creation
 		m.environments = []DNSEnvironment{{
@@ -2067,15 +2200,98 @@ func (m DNSSetupModel) handleDNSOperation(msg dnsOperationMsg) (DNSSetupModel, t
 		m.state = StateComplete
 		return m, nil
 	
-	case "iam_check_complete":
-		// IAM permission check completed
+	case "iam_check_init":
+		// IAM check initialized - start checking environments
 		if msg.Data != nil {
 			data := msg.Data.(map[string]interface{})
 			m.environments = data["environments"].([]DNSEnvironment)
-			m.envPermissions = data["permissions"].(map[string]bool)
-			m.missingPermissions = data["missing"].([]string)
+			if roleArn, ok := data["delegationRoleArn"].(string); ok {
+				m.delegationRoleArn = roleArn
+			}
+
+			// Initialize permissions map
+			if m.envPermissions == nil {
+				m.envPermissions = make(map[string]bool)
+			}
+
+			// Start checking first environment
+			if len(m.environments) > 0 {
+				// Set first non-prod environment as checking
+				for i, env := range m.environments {
+					if env.Name != "prod" {
+						m.checkingEnvironment = env.Name
+						return m, tea.Batch(
+							m.spinner.Tick,
+							m.checkSingleEnvironmentPermission(env, m.delegationRoleArn, i, len(m.environments)),
+						)
+					}
+				}
+			}
 		}
-		return m, nil
+		return m, m.spinner.Tick
+
+	case "iam_check_progress":
+		// One environment check completed
+		if msg.Data != nil {
+			data := msg.Data.(map[string]interface{})
+			envName := data["envName"].(string)
+			envIndex := data["envIndex"].(int)
+			totalEnvs := data["totalEnvs"].(int)
+			skip := data["skip"].(bool)
+
+			if !skip {
+				// Update permission status for this environment
+				hasAccess := data["hasAccess"].(bool)
+				m.envPermissions[envName] = hasAccess
+
+				// Track missing permissions
+				if !hasAccess {
+					found := false
+					for _, existing := range m.missingPermissions {
+						if existing == envName {
+							found = true
+							break
+						}
+					}
+					if !found {
+						m.missingPermissions = append(m.missingPermissions, envName)
+					}
+				}
+			}
+
+			// Check if we're done
+			isComplete := data["isComplete"].(bool)
+			if isComplete {
+				// All checks complete
+				m.checkingEnvironment = ""
+				return m, m.spinner.Tick
+			}
+
+			// Find and check next environment
+			nextIndex := envIndex + 1
+			if nextIndex < totalEnvs {
+				nextEnv := m.environments[nextIndex]
+				// Skip to next non-prod environment
+				for nextIndex < totalEnvs && nextEnv.Name == "prod" {
+					nextIndex++
+					if nextIndex < totalEnvs {
+						nextEnv = m.environments[nextIndex]
+					}
+				}
+
+				if nextIndex < totalEnvs {
+					m.checkingEnvironment = nextEnv.Name
+					return m, tea.Batch(
+						m.spinner.Tick,
+						m.checkSingleEnvironmentPermission(nextEnv, m.delegationRoleArn, nextIndex, totalEnvs),
+					)
+				}
+			}
+
+			// No more environments to check
+			m.checkingEnvironment = ""
+		}
+		return m, m.spinner.Tick
 	
 	case "iam_fix_complete":
 		// IAM permissions fixed, re-check them
@@ -2088,7 +2304,7 @@ func (m DNSSetupModel) handleDNSOperation(msg dnsOperationMsg) (DNSSetupModel, t
 		// Clear the fixing status
 		m.currentStep = ""
 		// Re-check permissions after fix
-		return m, m.checkIAMPermissions()
+		return m, tea.Batch(m.spinner.Tick, animationTickCmd(), m.checkIAMPermissions())
 	
 	case "iam_fix_failed":
 		// IAM fix failed, show error but stay on same screen
@@ -2168,7 +2384,7 @@ func (m DNSSetupModel) handleDNSOperation(msg dnsOperationMsg) (DNSSetupModel, t
 				// DNS has propagated! Automatically proceed to next step
 				m.dnsTimerRunning = false // Stop the timer
 				m.state = StateCheckIAMPermissions
-				return m, m.checkIAMPermissions()
+				return m, tea.Batch(m.spinner.Tick, animationTickCmd(), m.checkIAMPermissions())
 			}
 			
 			// DNS not propagated yet, reset timer for next check
@@ -2601,28 +2817,29 @@ func (m DNSSetupModel) checkDNSPropagatedSimple() tea.Cmd {
 	}
 }
 
+// Initialize IAM permissions check by loading environments and delegation role
 func (m DNSSetupModel) checkIAMPermissions() tea.Cmd {
 	return func() tea.Msg {
 		// Load environments to check
 		envs := []DNSEnvironment{}
 		envFiles := []string{"dev", "staging", "prod"}
-		
+
 		for _, envName := range envFiles {
 			env, err := loadEnv(envName)
 			if err != nil {
 				continue // Skip if not found
 			}
-			
+
 			accountID := env.AccountID
 			profile := env.AWSProfile
-			
+
 			// Get account ID from profile if not in YAML
 			if accountID == "" && profile != "" {
 				if id, err := getAWSAccountID(profile); err == nil {
 					accountID = id
 				}
 			}
-			
+
 			if accountID != "" || profile != "" {
 				envs = append(envs, DNSEnvironment{
 					Name:      envName,
@@ -2631,11 +2848,7 @@ func (m DNSSetupModel) checkIAMPermissions() tea.Cmd {
 				})
 			}
 		}
-		
-		// Check each environment's IAM permissions
-		permissions := make(map[string]bool)
-		var missing []string
-		
+
 		// Check if delegation role exists - use stored ARN or try to get it
 		delegationRoleArn := m.delegationRoleArn
 		if delegationRoleArn == "" && m.selectedProfile != "" {
@@ -2651,47 +2864,66 @@ func (m DNSSetupModel) checkIAMPermissions() tea.Cmd {
 				delegationRoleArn = *getRoleResp.Role.Arn
 			}
 		}
-		
-		if delegationRoleArn != "" {
-			// Check which accounts are trusted
+
+		// Return initialization message with environments and delegation role info
+		return dnsOperationMsg{
+			Type:    "iam_check_init",
+			Success: true,
+			Data: map[string]interface{}{
+				"environments":       envs,
+				"delegationRoleArn":  delegationRoleArn,
+			},
+		}
+	}
+}
+
+// Check IAM permissions for a single environment
+func (m DNSSetupModel) checkSingleEnvironmentPermission(env DNSEnvironment, delegationRoleArn string, envIndex int, totalEnvs int) tea.Cmd {
+	return func() tea.Msg {
+		// Skip production environment
+		if env.Name == "prod" {
+			return dnsOperationMsg{
+				Type:    "iam_check_progress",
+				Success: true,
+				Data: map[string]interface{}{
+					"envName":   env.Name,
+					"skip":      true,
+					"envIndex":  envIndex,
+					"totalEnvs": totalEnvs,
+				},
+			}
+		}
+
+		// Add a small delay for visual effect (100ms)
+		time.Sleep(100 * time.Millisecond)
+
+		var hasAccess bool
+
+		if delegationRoleArn != "" && env.AccountID != "" {
+			// Check if this account is in the trust policy
 			trustedAccounts := getTrustedAccountsFromRole(m.selectedProfile, delegationRoleArn)
-			
-			for _, env := range envs {
-				if env.Name == "prod" {
-					continue // Skip production
-				}
-				
-				if env.AccountID != "" {
-					hasTrust := false
-					for _, trusted := range trustedAccounts {
-						if trusted == env.AccountID {
-							hasTrust = true
-							break
-						}
-					}
-					permissions[env.Name] = hasTrust
-					if !hasTrust {
-						missing = append(missing, env.Name)
-					}
+
+			for _, trusted := range trustedAccounts {
+				if trusted == env.AccountID {
+					hasAccess = true
+					break
 				}
 			}
 		} else {
-			// No delegation role exists, all non-prod need permissions
-			for _, env := range envs {
-				if env.Name != "prod" && env.AccountID != "" {
-					permissions[env.Name] = false
-					missing = append(missing, env.Name)
-				}
-			}
+			// No delegation role or no account ID = no access
+			hasAccess = false
 		}
-		
+
 		return dnsOperationMsg{
-			Type:    "iam_check_complete",
+			Type:    "iam_check_progress",
 			Success: true,
 			Data: map[string]interface{}{
-				"environments": envs,
-				"permissions":  permissions,
-				"missing":      missing,
+				"envName":    env.Name,
+				"hasAccess":  hasAccess,
+				"skip":       false,
+				"envIndex":   envIndex,
+				"totalEnvs":  totalEnvs,
+				"isComplete": envIndex >= totalEnvs-1,
 			},
 		}
 	}
