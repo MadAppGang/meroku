@@ -20,7 +20,34 @@ var (
 	renderDiffFlag = flag.String("renderdiff", "", "Render terraform plan diff view from JSON file (for testing)")
 )
 
+// getVersion returns the actual version, reading from version.txt if needed
+func getVersion() string {
+	// If version was set at compile time (not "dev"), use it
+	if version != "dev" {
+		return version
+	}
+
+	// Try to read from version.txt file
+	// Look in parent directory (since binary runs from project root)
+	versionPaths := []string{
+		"version.txt",
+		"../version.txt",
+	}
+
+	for _, path := range versionPaths {
+		if data, err := os.ReadFile(path); err == nil {
+			return strings.TrimSpace(string(data))
+		}
+	}
+
+	// Fallback to "dev" if file not found
+	return "dev"
+}
+
 func main() {
+	// Load actual version from file if needed
+	version = getVersion()
+
 	// Parse command line flags
 	flag.Parse()
 
