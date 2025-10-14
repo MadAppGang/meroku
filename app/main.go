@@ -36,7 +36,13 @@ func GetVersion() string {
 		return cachedVersion
 	}
 
-	// Try to read from version.txt in current working directory only
+	// Try to read from infrastructure/version.txt (standard location)
+	if data, err := os.ReadFile("infrastructure/version.txt"); err == nil {
+		cachedVersion = strings.TrimSpace(string(data))
+		return cachedVersion
+	}
+
+	// Fallback: try current directory for backward compatibility
 	if data, err := os.ReadFile("version.txt"); err == nil {
 		cachedVersion = strings.TrimSpace(string(data))
 		return cachedVersion
