@@ -350,7 +350,9 @@ func (m *nukeModel) viewShowDetails() string {
 		MarginBottom(1)
 
 	labelStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("241"))
+		Foreground(lipgloss.Color("241")).
+		Width(15).
+		Align(lipgloss.Right)
 
 	valueStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("15")).
@@ -369,13 +371,13 @@ func (m *nukeModel) viewShowDetails() string {
 	var content strings.Builder
 	content.WriteString(titleStyle.Render("🔥 Environment Destruction Details\n\n"))
 
-	// Right-align labels, left-align values
-	content.WriteString(fmt.Sprintf("%18s  %s\n", labelStyle.Render("Version:"), versionValueStyle.Render(GetVersion())))
-	content.WriteString(fmt.Sprintf("%18s  %s\n", labelStyle.Render("Environment:"), valueStyle.Render(m.selectedEnv)))
-	content.WriteString(fmt.Sprintf("%18s  %s\n", labelStyle.Render("Project:"), valueStyle.Render(m.envData.Project)))
-	content.WriteString(fmt.Sprintf("%18s  %s\n", labelStyle.Render("Region:"), valueStyle.Render(m.envData.Region)))
+	// Use lipgloss alignment for proper spacing
+	content.WriteString(labelStyle.Render("Version:") + " " + versionValueStyle.Render(GetVersion()) + "\n")
+	content.WriteString(labelStyle.Render("Environment:") + " " + valueStyle.Render(m.selectedEnv) + "\n")
+	content.WriteString(labelStyle.Render("Project:") + " " + valueStyle.Render(m.envData.Project) + "\n")
+	content.WriteString(labelStyle.Render("Region:") + " " + valueStyle.Render(m.envData.Region) + "\n")
 	if m.envData.AccountID != "" {
-		content.WriteString(fmt.Sprintf("%18s  %s\n", labelStyle.Render("AWS Account:"), valueStyle.Render(m.envData.AccountID)))
+		content.WriteString(labelStyle.Render("AWS Account:") + " " + valueStyle.Render(m.envData.AccountID) + "\n")
 	}
 
 	content.WriteString("\n")
