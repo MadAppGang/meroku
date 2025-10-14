@@ -23,7 +23,7 @@ var (
 	renderDiffFlag = flag.String("renderdiff", "", "Render terraform plan diff view from JSON file (for testing)")
 )
 
-// GetVersion returns the actual version, reading from version.txt
+// GetVersion returns the actual version, reading from infrastructure/version.txt
 func GetVersion() string {
 	// Return cached version if already computed
 	if cachedVersion != "" {
@@ -36,19 +36,10 @@ func GetVersion() string {
 		return cachedVersion
 	}
 
-	// Check standard locations for version.txt:
-	// - infrastructure/version.txt (when infrastructure is a subdirectory in user projects)
-	// - version.txt (when running from infrastructure repo itself)
-	versionPaths := []string{
-		"infrastructure/version.txt",
-		"version.txt",
-	}
-
-	for _, path := range versionPaths {
-		if data, err := os.ReadFile(path); err == nil {
-			cachedVersion = strings.TrimSpace(string(data))
-			return cachedVersion
-		}
+	// Read from infrastructure/version.txt (standard project structure)
+	if data, err := os.ReadFile("infrastructure/version.txt"); err == nil {
+		cachedVersion = strings.TrimSpace(string(data))
+		return cachedVersion
 	}
 
 	// No version file found, use global default
