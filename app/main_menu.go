@@ -30,6 +30,7 @@ func mainMenu() string {
 		huh.NewOption("🚀 Deploy environment", "deploy"),
 		huh.NewOption("✨ Create new environment", "create"),
 		huh.NewOption("🔄 Change Environment", "change-env"),
+		huh.NewOption("💥 Nuke/Destroy Environment", "nuke"),
 		huh.NewOption("🔍 Check for updates", "update"),
 		huh.NewOption("👋 Exit", "exit"),
 	}
@@ -51,6 +52,9 @@ func mainMenu() string {
 		return createEnvMenu()
 	case action == "deploy":
 		deployMenu()
+		return mainMenu()
+	case action == "nuke":
+		nukeMenu()
 		return mainMenu()
 	case action == "update":
 		err := updateInfrastructure()

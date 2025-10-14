@@ -248,3 +248,58 @@ func stripAnsiEscapeCodes(input string) string {
 	re := regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
 	return re.ReplaceAllString(input, "")
 }
+
+func runTerraformDestroy() error {
+	fmt.Println("\n🔍 Running terraform plan -destroy to preview changes...")
+
+	// First, run terraform plan -destroy to show what will be destroyed
+	cmd := exec.Command("terraform", "plan", "-destroy", "-out=destroy.tfplan")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("terraform plan -destroy failed: %w", err)
+	}
+
+	fmt.Println("\n📊 Destroy plan created successfully.")
+	fmt.Println("🔥 Proceeding with destruction...\n")
+
+	// Now run terraform apply with the destroy plan
+	// Use -auto-approve since we already confirmed multiple times
+	destroyCmd := exec.Command("terraform", "apply", "-auto-approve", "destroy.tfplan")
+	destroyCmd.Stdout = os.Stdout
+	destroyCmd.Stderr = os.Stderr
+
+	if err := destroyCmd.Run(); err != nil {
+		// Try to recover from errors
+		errString := err.Error()
+		var recoverErr error
+		retryCount := 0
+		maxRetries := 3
+		var commands []string
+
+		for recoverErr == nil && retryCount < maxRetries {
+			commands, recoverErr = terraformError(errString)
+			if recoverErr != nil {
+				return fmt.Errorf("terraform destroy failed: %w", err)
+			}
+			fmt.Printf("✳️ terraform error recovery attempt %d/%d suggests to run: %v\n", retryCount+1, maxRetries, commands)
+			recoveryOutput, err2 := runCommandWithOutput(commands[0], commands[1:]...)
+			if err2 != nil {
+				fmt.Printf("❌ Attempt %d failed. Error: %v\n", retryCount+1, err2)
+				errString = recoveryOutput
+			} else {
+				fmt.Printf("✅ Attempt %d succeeded. Retrying destroy...\n", retryCount+1)
+				return runTerraformDestroy()
+			}
+			retryCount++
+		}
+
+		return fmt.Errorf("terraform destroy failed after %d recovery attempts: %w", retryCount, err)
+	}
+
+	// Clean up the destroy plan file
+	os.Remove("destroy.tfplan")
+
+	return nil
+}
