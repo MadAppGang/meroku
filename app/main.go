@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	
+
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -36,18 +36,10 @@ func GetVersion() string {
 		return cachedVersion
 	}
 
-	// Try to read from version.txt file
-	// Look in parent directory (since binary runs from project root)
-	versionPaths := []string{
-		"version.txt",
-		"../version.txt",
-	}
-
-	for _, path := range versionPaths {
-		if data, err := os.ReadFile(path); err == nil {
-			cachedVersion = strings.TrimSpace(string(data))
-			return cachedVersion
-		}
+	// Try to read from version.txt in current working directory only
+	if data, err := os.ReadFile("version.txt"); err == nil {
+		cachedVersion = strings.TrimSpace(string(data))
+		return cachedVersion
 	}
 
 	// Fallback to "dev" if file not found
