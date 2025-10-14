@@ -12,6 +12,9 @@ import (
 // version will be set at compile time using ldflags
 var version = "dev"
 
+// cachedVersion stores the computed version to avoid re-reading files
+var cachedVersion string
+
 var (
 	profileFlag    = flag.String("profile", "", "AWS profile to use (skips profile selection)")
 	webFlag        = flag.Bool("web", false, "Open web app immediately")
@@ -20,11 +23,17 @@ var (
 	renderDiffFlag = flag.String("renderdiff", "", "Render terraform plan diff view from JSON file (for testing)")
 )
 
-// getVersion returns the actual version, reading from version.txt if needed
-func getVersion() string {
+// GetVersion returns the actual version, reading from version.txt if needed
+func GetVersion() string {
+	// Return cached version if already computed
+	if cachedVersion != "" {
+		return cachedVersion
+	}
+
 	// If version was set at compile time (not "dev"), use it
 	if version != "dev" {
-		return version
+		cachedVersion = version
+		return cachedVersion
 	}
 
 	// Try to read from version.txt file
@@ -36,24 +45,23 @@ func getVersion() string {
 
 	for _, path := range versionPaths {
 		if data, err := os.ReadFile(path); err == nil {
-			return strings.TrimSpace(string(data))
+			cachedVersion = strings.TrimSpace(string(data))
+			return cachedVersion
 		}
 	}
 
 	// Fallback to "dev" if file not found
-	return "dev"
+	cachedVersion = "dev"
+	return cachedVersion
 }
 
 func main() {
-	// Load actual version from file if needed
-	version = getVersion()
-
 	// Parse command line flags
 	flag.Parse()
 
 	// Handle version flag
 	if *versionFlag {
-		fmt.Printf("meroku version %s\n", strings.TrimSpace(version))
+		fmt.Printf("meroku version %s\n", strings.TrimSpace(GetVersion()))
 		os.Exit(0)
 	}
 

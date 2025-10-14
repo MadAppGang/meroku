@@ -366,7 +366,7 @@ func (m *nukeModel) viewShowDetails() string {
 	var content strings.Builder
 	content.WriteString(titleStyle.Render("🔥 Environment Destruction Details\n\n"))
 
-	content.WriteString(labelStyle.Render("Version:") + " " + valueStyle.Render(version) + "\n")
+	content.WriteString(labelStyle.Render("Version:") + " " + valueStyle.Render(GetVersion()) + "\n")
 	content.WriteString(labelStyle.Render("Environment:") + " " + valueStyle.Render(m.selectedEnv) + "\n")
 	content.WriteString(labelStyle.Render("Project:") + " " + valueStyle.Render(m.envData.Project) + "\n")
 	content.WriteString(labelStyle.Render("Region:") + " " + valueStyle.Render(m.envData.Region) + "\n")
