@@ -369,13 +369,13 @@ func (m *nukeModel) viewShowDetails() string {
 	var content strings.Builder
 	content.WriteString(titleStyle.Render("🔥 Environment Destruction Details\n\n"))
 
-	// Format with consistent spacing - labels on left, values on right
-	content.WriteString(labelStyle.Render("Version:") + "          " + versionValueStyle.Render(GetVersion()) + "\n")
-	content.WriteString(labelStyle.Render("Environment:") + "     " + valueStyle.Render(m.selectedEnv) + "\n")
-	content.WriteString(labelStyle.Render("Project:") + "          " + valueStyle.Render(m.envData.Project) + "\n")
-	content.WriteString(labelStyle.Render("Region:") + "           " + valueStyle.Render(m.envData.Region) + "\n")
+	// Right-align labels, left-align values
+	content.WriteString(fmt.Sprintf("%18s  %s\n", labelStyle.Render("Version:"), versionValueStyle.Render(GetVersion())))
+	content.WriteString(fmt.Sprintf("%18s  %s\n", labelStyle.Render("Environment:"), valueStyle.Render(m.selectedEnv)))
+	content.WriteString(fmt.Sprintf("%18s  %s\n", labelStyle.Render("Project:"), valueStyle.Render(m.envData.Project)))
+	content.WriteString(fmt.Sprintf("%18s  %s\n", labelStyle.Render("Region:"), valueStyle.Render(m.envData.Region)))
 	if m.envData.AccountID != "" {
-		content.WriteString(labelStyle.Render("AWS Account:") + "    " + valueStyle.Render(m.envData.AccountID) + "\n")
+		content.WriteString(fmt.Sprintf("%18s  %s\n", labelStyle.Render("AWS Account:"), valueStyle.Render(m.envData.AccountID)))
 	}
 
 	content.WriteString("\n")
