@@ -29,6 +29,12 @@ const (
 	fullScreenDiffView
 )
 
+// AI visualization messages
+type aiSuccessMsg struct{}
+type aiErrorMsg struct {
+	err error
+}
+
 // Type definitions from the original implementation
 type PlannedResource struct {
 	Address      string                 `json:"address"`
@@ -121,6 +127,10 @@ type modernPlanModel struct {
 	showReplaceMode  bool
 	// Full-screen diff state
 	diffResource   *ResourceChange  // Resource being viewed in full-screen
+	// AI error display
+	aiError        string
+	showAIError    bool
+	aiLoading      bool
 }
 
 type modernKeyMap struct {
@@ -657,11 +667,25 @@ func (m *modernPlanModel) Init() tea.Cmd {
 
 func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case aiSuccessMsg:
+		m.aiLoading = false
+		m.showAIError = false
+		// Clear screen and force redraw
+		return m, tea.Batch(tea.ClearScreen, func() tea.Msg {
+			return tea.WindowSizeMsg{Width: m.width, Height: m.height}
+		})
+
+	case aiErrorMsg:
+		m.aiLoading = false
+		m.aiError = msg.err.Error()
+		m.showAIError = true
+		return m, nil
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
 		m.help.Width = msg.Width
-		
+
 		// Update viewport sizes based on view
 		switch m.currentView {
 		case dashboardView:
@@ -707,6 +731,13 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updateDetailViewport()
 		
 	case tea.KeyMsg:
+		// If showing AI error, any key dismisses it
+		if m.showAIError {
+			m.showAIError = false
+			m.aiError = ""
+			return m, nil
+		}
+
 		switch {
 		case key.Matches(msg, m.keys.Quit):
 			// Escape from full-screen diff goes back to dashboard
@@ -726,17 +757,14 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			
 		case key.Matches(msg, m.keys.AskAI):
 			if os.Getenv("ANTHROPIC_API_KEY") != "" {
-				m.askAIToExplain()
-				// Force a full redraw when returning
-				return m, tea.Batch(
-					tea.ClearScreen,
-					func() tea.Msg {
-						return tea.WindowSizeMsg{
-							Width:  m.width,
-							Height: m.height,
-						}
-					},
-				)
+				m.aiLoading = true
+				m.showAIError = false
+				m.aiError = ""
+				return m, m.askAIToExplainCmd()
+			} else {
+				m.aiError = "ANTHROPIC_API_KEY environment variable not set. Set it with: export ANTHROPIC_API_KEY=your_key_here"
+				m.showAIError = true
+				return m, nil
 			}
 			
 		case key.Matches(msg, m.keys.Copy):
@@ -1075,7 +1103,17 @@ func (m *modernPlanModel) View() string {
 	if m.width == 0 || m.height == 0 {
 		return "Loading..."
 	}
-	
+
+	// Show AI loading indicator
+	if m.aiLoading {
+		return m.renderAILoading()
+	}
+
+	// Show AI error overlay
+	if m.showAIError {
+		return m.renderAIError()
+	}
+
 	switch m.currentView {
 	case dashboardView:
 		return m.renderDashboard()
@@ -3513,79 +3551,55 @@ func (m *modernPlanModel) copyChangesToClipboard() {
 	}
 }
 
-func (m *modernPlanModel) askAIToExplain() {
-	// Exit TUI temporarily and clear screen
-	fmt.Print("\033[H\033[2J") // Clear screen
-	fmt.Print("\033[0;0H")     // Move cursor to top
-	
-	// Get only the changes (not no-ops)
-	changes := []ResourceChange{}
-	for _, change := range m.plan.ResourceChanges {
-		if len(change.Change.Actions) > 0 && change.Change.Actions[0] != "no-op" && change.Change.Actions[0] != "read" {
-			changes = append(changes, change)
-		}
-	}
-	
-	// Debug: Print first few resources to see what we're sending
-	fmt.Printf("\n📋 Debug: Found %d resources to send\n", len(changes))
-	if len(changes) > 0 {
-		fmt.Printf("   First resource: %s (%s) - Action: %v\n", 
-			changes[0].Address, 
-			changes[0].Type,
-			changes[0].Change.Actions)
-		fmt.Printf("     Before: %v fields, After: %v fields\n",
-			len(changes[0].Change.Before),
-			len(changes[0].Change.After))
-		if len(changes) > 1 {
-			fmt.Printf("   Second resource: %s (%s) - Action: %v\n", 
-				changes[1].Address, 
-				changes[1].Type,
-				changes[1].Change.Actions)
-			fmt.Printf("     Before: %v fields, After: %v fields\n",
-				len(changes[1].Change.Before),
-				len(changes[1].Change.After))
-		}
-	}
-	
-	// Prepare the data for Anthropic
-	planData := struct {
-		TerraformVersion string           `json:"terraform_version"`
-		ResourceChanges  []ResourceChange `json:"resource_changes"`
-		Summary          struct {
-			Total   int `json:"total"`
-			Create  int `json:"create"`
-			Update  int `json:"update"`
-			Delete  int `json:"delete"`
-			Replace int `json:"replace"`
-		} `json:"summary"`
-	}{
-		TerraformVersion: m.plan.TerraformVersion,
-		ResourceChanges:  changes,
-	}
-	
-	// Calculate summary
-	for _, change := range changes {
-		if len(change.Change.Actions) > 0 {
-			switch change.Change.Actions[0] {
-			case "create":
-				planData.Summary.Create++
-			case "update":
-				planData.Summary.Update++
-			case "delete":
-				planData.Summary.Delete++
-			case "replace":
-				planData.Summary.Replace++
+func (m *modernPlanModel) askAIToExplainCmd() tea.Cmd {
+	return func() tea.Msg {
+		// Get only the changes (not no-ops)
+		changes := []ResourceChange{}
+		for _, change := range m.plan.ResourceChanges {
+			if len(change.Change.Actions) > 0 && change.Change.Actions[0] != "no-op" && change.Change.Actions[0] != "read" {
+				changes = append(changes, change)
 			}
 		}
-	}
-	planData.Summary.Total = len(changes)
-	
-	// Call Anthropic API with loading indicator
-	err := callAnthropicForVisualizationWithProgress(planData)
-	if err != nil {
-		fmt.Printf("\n❌ Error creating visual view: %v\n", err)
-		fmt.Println("\nPress ENTER to return to the TUI...")
-		bufio.NewReader(os.Stdin).ReadBytes('\n')
+
+		// Prepare the data for Anthropic
+		planData := struct {
+			TerraformVersion string           `json:"terraform_version"`
+			ResourceChanges  []ResourceChange `json:"resource_changes"`
+			Summary          struct {
+				Total   int `json:"total"`
+				Create  int `json:"create"`
+				Update  int `json:"update"`
+				Delete  int `json:"delete"`
+				Replace int `json:"replace"`
+			} `json:"summary"`
+		}{
+			TerraformVersion: m.plan.TerraformVersion,
+			ResourceChanges:  changes,
+		}
+
+		// Calculate summary
+		for _, change := range changes {
+			if len(change.Change.Actions) > 0 {
+				switch change.Change.Actions[0] {
+				case "create":
+					planData.Summary.Create++
+				case "update":
+					planData.Summary.Update++
+				case "delete":
+					planData.Summary.Delete++
+				case "replace":
+					planData.Summary.Replace++
+				}
+			}
+		}
+		planData.Summary.Total = len(changes)
+
+		// Call Anthropic API - this will handle its own output
+		err := callAnthropicForVisualizationWithProgress(planData)
+		if err != nil {
+			return aiErrorMsg{err: err}
+		}
+		return aiSuccessMsg{}
 	}
 }
 
@@ -4891,4 +4905,68 @@ func (m *modernPlanModel) tickCmd() tea.Cmd {
 	return tea.Tick(time.Millisecond*100, func(t time.Time) tea.Msg {
 		return applyTickMsg{}
 	})
+}
+
+// renderAILoading shows a loading indicator while AI is processing
+func (m *modernPlanModel) renderAILoading() string {
+	loadingStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("39")).
+		Padding(2, 4)
+
+	content := "🤖 Asking AI to explain your infrastructure changes...\n\n"
+	content += "This may take a moment. The browser will open automatically when ready.\n\n"
+	content += "Press Ctrl+C to cancel"
+
+	return lipgloss.Place(
+		m.width,
+		m.height,
+		lipgloss.Center,
+		lipgloss.Center,
+		loadingStyle.Render(content),
+	)
+}
+
+// renderAIError shows an error message overlay
+func (m *modernPlanModel) renderAIError() string {
+	// Create a full-screen background overlay
+	backgroundStyle := lipgloss.NewStyle().
+		Background(lipgloss.Color("0")).
+		Width(m.width).
+		Height(m.height)
+
+	errorBoxStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("196")).
+		Background(lipgloss.Color("235")).
+		Padding(1, 2).
+		Width(m.width - 10)
+
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("196")).
+		Padding(0, 0, 1, 0)
+
+	errorStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("251")).
+		Padding(0, 0, 1, 0)
+
+	helpStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("241")).
+		Italic(true)
+
+	content := titleStyle.Render("❌ AI Visualization Error") + "\n\n"
+	content += errorStyle.Render(m.aiError) + "\n\n"
+	content += helpStyle.Render("Press any key to continue...")
+
+	errorBox := lipgloss.Place(
+		m.width,
+		m.height,
+		lipgloss.Center,
+		lipgloss.Center,
+		errorBoxStyle.Render(content),
+	)
+
+	// Render the background with the error box on top
+	return backgroundStyle.Render(errorBox)
 }

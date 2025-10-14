@@ -288,6 +288,37 @@ func loadEnv(name string) (Env, error) {
 	return e, nil
 }
 
+// loadEnvFromPath loads environment config from multiple possible paths
+// This is useful when running from env/dev or env/prod subdirectories
+func loadEnvFromPath(name string) (Env, error) {
+	var e Env
+
+	// Try multiple possible paths
+	possiblePaths := []string{
+		name + ".yaml",           // Current directory
+		"../../" + name + ".yaml", // From env/dev or env/prod
+		"../" + name + ".yaml",    // From env directory
+	}
+
+	var lastErr error
+	for _, path := range possiblePaths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		err = yaml.Unmarshal(data, &e)
+		if err != nil {
+			return e, fmt.Errorf("error unmarshaling YAML from %s: %v", path, err)
+		}
+
+		return e, nil
+	}
+
+	return e, fmt.Errorf("error reading YAML file from any location: %v", lastErr)
+}
+
 func loadEnvToMap(name string) (map[string]interface{}, error) {
 	var e map[string]interface{}
 

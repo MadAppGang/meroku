@@ -559,9 +559,14 @@ func runTerraformPlanWithProgress() error {
 	// Check if there was an error in the plan
 	if finalModel, ok := model.(*planProgressModel); ok {
 		if finalModel.phase == phaseError {
-			return fmt.Errorf("terraform plan failed: %s", finalModel.errorDetails)
+			// Include both the error details and the full output for error recovery
+			errorMsg := finalModel.errorDetails
+			if len(finalModel.errorOutput) > 0 {
+				errorMsg = strings.Join(finalModel.errorOutput, "\n")
+			}
+			return fmt.Errorf("terraform plan failed: %s", errorMsg)
 		}
 	}
-	
+
 	return nil
 }

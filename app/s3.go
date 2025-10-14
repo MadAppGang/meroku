@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
 
 func checkBucketStateForEnv(env Env) error {
@@ -45,13 +46,24 @@ func checkBucketStateForEnvWithRetry(env Env, isRetry bool) error {
 
 	// If bucket doesn't exist, create it
 	if !bucketExists {
-		_, err = client.CreateBucket(ctx, &s3.CreateBucketInput{
+		createBucketInput := &s3.CreateBucketInput{
 			Bucket: aws.String(env.StateBucket),
-		})
-		if err != nil {
-			return fmt.Errorf("failed to create bucket %s: %v", env.StateBucket, err)
 		}
-		fmt.Printf("Bucket %s created successfully\n", env.StateBucket)
+
+		// For regions other than us-east-1, we need to specify the LocationConstraint
+		if env.Region != "us-east-1" {
+			createBucketInput.CreateBucketConfiguration = &s3types.CreateBucketConfiguration{
+				LocationConstraint: s3types.BucketLocationConstraint(env.Region),
+			}
+		}
+
+		_, err = client.CreateBucket(ctx, createBucketInput)
+		if err != nil {
+			return fmt.Errorf("failed to create bucket %s in region %s: %v", env.StateBucket, env.Region, err)
+		}
+		fmt.Printf("✅ Bucket %s created successfully in region %s\n", env.StateBucket, env.Region)
+	} else {
+		fmt.Printf("✅ Bucket %s already exists\n", env.StateBucket)
 	}
 	return nil
 }

@@ -79,7 +79,7 @@ type streamEvent struct {
 func callAnthropicForVisualizationWithProgress(planData interface{}) error {
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")
 	if apiKey == "" {
-		return fmt.Errorf("ANTHROPIC_API_KEY environment variable not set")
+		return fmt.Errorf("ANTHROPIC_API_KEY environment variable not set. Set it with: export ANTHROPIC_API_KEY=your_key_here")
 	}
 
 	// Create context with cancellation
@@ -188,6 +188,9 @@ func callAnthropicForVisualizationWithProgress(planData interface{}) error {
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+			return fmt.Errorf("authentication failed (status %d): Invalid API key. Please check your ANTHROPIC_API_KEY environment variable. Get your API key from: https://console.anthropic.com/settings/keys\nError details: %s", resp.StatusCode, string(body))
+		}
 		return fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 

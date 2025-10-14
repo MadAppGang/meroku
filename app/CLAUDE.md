@@ -1,0 +1,1 @@
+- this is a meroku app, the app is helping to combine yaml files with files with terraform infrastructure scrits from infrastructure folder to create proper terraform script with some aws project architecture based on aws ecs. this folder is meroku app sourve folder, it runs from different folder- from the folder of specific project infrastructure

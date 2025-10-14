@@ -34,6 +34,32 @@ func terraformInit(flags ...string) (string, error) {
 }
 
 func terraformInitIfNeeded() {
+	// Get the environment from selectedEnvironment global variable or current directory
+	envName := selectedEnvironment
+	if envName == "" {
+		// Try to extract environment name from current working directory
+		// Expected format: .../env/dev or .../env/prod
+		wd, err := os.Getwd()
+		if err == nil {
+			parts := strings.Split(wd, string(os.PathSeparator))
+			if len(parts) >= 2 && parts[len(parts)-2] == "env" {
+				envName = parts[len(parts)-1]
+			}
+		}
+	}
+
+	// Ensure S3 state bucket exists before terraform init
+	if envName != "" {
+		env, err := loadEnvFromPath(envName)
+		if err == nil && env.StateBucket != "" && env.Region != "" {
+			fmt.Printf("Checking S3 state bucket for environment: %s\n", envName)
+			if err := checkBucketStateForEnv(env); err != nil {
+				fmt.Printf("⚠️  Warning: Failed to check/create S3 bucket: %v\n", err)
+				fmt.Println("Continuing with terraform init...")
+			}
+		}
+	}
+
 	if _, err := os.Stat(".terraform"); os.IsNotExist(err) {
 		_, err = terraformInit()
 		if err != nil {
@@ -166,20 +192,54 @@ func terraformError(output string) ([]string, error) {
 	fmt.Println("Recovering from error ... ")
 
 	clean := stripAnsiEscapeCodes(output)
-	if strings.Contains(clean, "Error: Backend configuration changed") {
-		return []string{"terraform", "init", "-reconfigure"}, nil
-	} else if strings.Contains(clean, "Error: Backend initialization required: please run \"terraform init\"") ||
-		strings.Contains(clean, "Backend initialization required, please run \"terraform init\"") ||
-		strings.Contains(clean, "Reason: Backend configuration block has changed") ||
-		strings.Contains(clean, "Reason: Initial configuration of the requested backend") ||
-		strings.Contains(clean, "Error: Module not installed") {
-		// Check if we need -reconfigure or -migrate-state flags
-		if strings.Contains(clean, "Reason: Initial configuration of the requested backend") &&
-			(strings.Contains(clean, "\"-reconfigure\"") || strings.Contains(clean, "\"-migrate-state\"")) {
+
+	// Check for errors that require terraform init -reconfigure
+	reconfigurePatterns := []string{
+		"Error: Backend configuration changed",
+		"backend configuration changed",
+		"Backend configuration has changed",
+		"backend type changed",
+		"Backend type has changed",
+		"-reconfigure", // Terraform suggests using -reconfigure
+		"terraform init -reconfigure",
+		"run \"terraform init -reconfigure\"",
+	}
+
+	for _, pattern := range reconfigurePatterns {
+		if strings.Contains(clean, pattern) {
 			return []string{"terraform", "init", "-reconfigure"}, nil
 		}
-		return []string{"terraform", "init"}, nil
 	}
+
+	// Check for errors that require standard terraform init
+	initPatterns := []string{
+		"Error: Backend initialization required: please run \"terraform init\"",
+		"Backend initialization required, please run \"terraform init\"",
+		"Backend initialization required",
+		"Reason: Backend configuration block has changed",
+		"Reason: Initial configuration of the requested backend",
+		"Error: Module not installed",
+		"terraform init",
+		"run \"terraform init\"",
+		"Terraform has been successfully initialized",
+		"Backend has not been initialized",
+		"No backend is configured",
+		"Error: Could not load plugin",
+		"Provider requirements cannot be satisfied",
+		"Required plugins are not installed",
+		"terraform providers lock",
+	}
+
+	for _, pattern := range initPatterns {
+		if strings.Contains(clean, pattern) {
+			// Check if terraform suggests -reconfigure specifically
+			if strings.Contains(clean, "\"-reconfigure\"") || strings.Contains(clean, "\"-migrate-state\"") {
+				return []string{"terraform", "init", "-reconfigure"}, nil
+			}
+			return []string{"terraform", "init"}, nil
+		}
+	}
+
 	return []string{}, errors.New("unknown error, I could not check it. please provide the output to us–....")
 }
 
