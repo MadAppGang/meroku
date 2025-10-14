@@ -352,7 +352,7 @@ func (m *nukeModel) viewShowDetails() string {
 	labelStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("241")).
 		Width(15).
-		Align(lipgloss.Right)
+		Align(lipgloss.Left)
 
 	valueStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("15")).
