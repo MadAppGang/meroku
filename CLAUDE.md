@@ -195,6 +195,54 @@ For comprehensive DNS management details, refer to:
 - [DNS Architecture Design](./docs/DNS_ARCHITECTURE.md) - System design and architecture documentation
 - [DNS Management Instructions](./DNS_MANAGEMENT_INSTRUCTIONS.md) - Step-by-step operational guide
 
+## YAML Schema Migration System
+
+The infrastructure includes an automatic migration system for YAML configuration files to ensure backward compatibility as the schema evolves.
+
+### Migration Features
+
+- **Automatic Migration**: YAML files are automatically migrated when loaded
+- **Backup Creation**: Creates timestamped backups before making changes
+- **Version Tracking**: Tracks schema version in `schema_version` field
+- **Safe Migrations**: Only adds new fields, never modifies existing data
+
+### Migration Commands
+
+```bash
+# Migrate all YAML files in project directory
+./meroku migrate all
+
+# Migrate a specific file
+./meroku migrate dev.yaml
+
+# Show migration help and current version
+./meroku migrate
+```
+
+### Current Schema Version
+
+**Version 5** - Includes:
+- Aurora Serverless v2 support (v2)
+- DNS management fields (v3)
+- Backend scaling configuration (v4)
+- Account ID and AWS profile tracking (v5)
+
+### How It Works
+
+When you load a YAML file, the system:
+1. Detects the current schema version
+2. Creates a timestamped backup if migration needed
+3. Applies all necessary migrations sequentially
+4. Updates the `schema_version` field
+5. Saves the migrated file
+
+Example backup: `dev.yaml.backup_20251015_211246`
+
+### Documentation
+
+For detailed migration information, refer to:
+- [YAML Schema Migrations](./ai_docs/MIGRATIONS.md) - Complete migration system documentation
+
 ## Security Considerations
 
 - Never commit secrets or credentials

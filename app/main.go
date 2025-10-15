@@ -74,6 +74,12 @@ func main() {
 		os.Exit(0)
 	}
 
+	// Handle migrate commands (before environment selection)
+	if len(args) > 0 && args[0] == "migrate" {
+		handleMigrateCommand(args[1:])
+		os.Exit(0)
+	}
+
 	registerCustomHelpers()
 
 	// Handle environment and profile selection
@@ -193,6 +199,35 @@ func handleDNSCommand(args []string) {
 		fmt.Printf("Unknown DNS command: %s\n", args[0])
 		fmt.Println("Available commands: setup, status, validate, remove")
 		os.Exit(1)
+	}
+}
+
+// handleMigrateCommand handles migration subcommands
+func handleMigrateCommand(args []string) {
+	if len(args) == 0 {
+		fmt.Println("YAML Schema Migration Commands:")
+		fmt.Println("  migrate all      - Migrate all YAML files in project directory")
+		fmt.Println("  migrate <file>   - Migrate a specific YAML file")
+		fmt.Println()
+		fmt.Printf("Current schema version: v%d\n", CurrentSchemaVersion)
+		return
+	}
+
+	switch args[0] {
+	case "all":
+		if err := MigrateAllYAMLFiles(); err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("\nAll migrations completed successfully!")
+	default:
+		// Treat as filename
+		filename := args[0]
+		if err := MigrateYAMLFile(filename); err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("Migration completed successfully!")
 	}
 }
 

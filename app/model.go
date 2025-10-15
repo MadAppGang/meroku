@@ -269,54 +269,16 @@ func createEnv(name, env string) Env {
 }
 
 func loadEnv(name string) (Env, error) {
-	var e Env
-
-	data, err := os.ReadFile(name + ".yaml")
-	if err != nil {
-		wd, err := os.Getwd()
-		if err != nil {
-			return e, fmt.Errorf("error getting current working directory: %v", err)
-		}
-		return e, fmt.Errorf("error reading YAML file: %v, current folder: %s", err, wd)
-	}
-
-	err = yaml.Unmarshal(data, &e)
-	if err != nil {
-		return e, fmt.Errorf("error unmarshaling YAML: %v", err)
-	}
-
-	return e, nil
+	// Use the migration-aware loader
+	return loadEnvWithMigration(name)
 }
 
 // loadEnvFromPath loads environment config from multiple possible paths
 // This is useful when running from env/dev or env/prod subdirectories
+// Now uses migration-aware loading
 func loadEnvFromPath(name string) (Env, error) {
-	var e Env
-
-	// Try multiple possible paths
-	possiblePaths := []string{
-		name + ".yaml",           // Current directory
-		"../../" + name + ".yaml", // From env/dev or env/prod
-		"../" + name + ".yaml",    // From env directory
-	}
-
-	var lastErr error
-	for _, path := range possiblePaths {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-
-		err = yaml.Unmarshal(data, &e)
-		if err != nil {
-			return e, fmt.Errorf("error unmarshaling YAML from %s: %v", path, err)
-		}
-
-		return e, nil
-	}
-
-	return e, fmt.Errorf("error reading YAML file from any location: %v", lastErr)
+	// Use the migration-aware loader which handles multiple paths
+	return loadEnvWithMigration(name)
 }
 
 func loadEnvToMap(name string) (map[string]interface{}, error) {

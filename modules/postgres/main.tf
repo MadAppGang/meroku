@@ -52,17 +52,16 @@ resource "aws_rds_cluster" "aurora" {
   skip_final_snapshot        = true
   vpc_security_group_ids     = [aws_security_group.database.id]
   db_subnet_group_name       = aws_db_subnet_group.aurora[0].name
-  auto_minor_version_upgrade = true  # Always enable automatic minor version updates
-  
+
   serverlessv2_scaling_configuration {
     min_capacity = var.min_capacity
     max_capacity = var.max_capacity
   }
-  
+
   lifecycle {
     ignore_changes = [
       master_password,
-      engine_version  # Allow AWS to manage minor version updates
+      engine_version  # Allow AWS to manage minor version updates automatically
     ]
   }
 

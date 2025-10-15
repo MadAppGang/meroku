@@ -322,7 +322,7 @@ func runTerraformDestroyWithRetry(retryCount int) error {
 	}
 
 	fmt.Println("\n📊 Destroy plan created successfully.")
-	fmt.Println("🔥 Proceeding with destruction...\n")
+	fmt.Println("🔥 Proceeding with destruction...")
 
 	// Now run terraform apply with the destroy plan
 	// Use -auto-approve since we already confirmed multiple times
