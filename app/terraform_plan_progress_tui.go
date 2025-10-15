@@ -256,126 +256,165 @@ func (m *planProgressModel) View() string {
 	if m.phase == phaseError {
 		return m.renderError()
 	}
-	
-	// Styles
-	titleStyle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("220")).
-		MarginBottom(1)
-	
-	phaseStyle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("86"))
-	
-	resourceStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("39"))
-	
-	timeStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("245"))
-	
-	// Calculate elapsed time
-	elapsed := time.Since(m.startTime).Round(time.Second)
-	
-	// Build the view
-	var content strings.Builder
-	
-	content.WriteString(titleStyle.Render("🔄 Terraform Plan Progress"))
-	content.WriteString("\n\n")
-	
-	// Current phase
-	phaseText := m.getPhaseText()
-	content.WriteString(phaseStyle.Render("Phase: ") + phaseText)
-	content.WriteString("\n\n")
-	
-	// Current resource being processed
-	if m.currentResource != "" {
-		content.WriteString(resourceStyle.Render("Processing: ") + m.currentResource)
-		content.WriteString("\n\n")
-	}
-	
-	// Progress indicator (always show during active phases)
-	if m.phase != phaseComplete && m.phase != phaseError {
-		progressBar := m.renderProgressBar()
-		content.WriteString(progressBar)
-		content.WriteString("\n\n")
-	}
-	
-	// Show recent output lines (last 10)
+
+	// Get output copy
 	m.outputMutex.Lock()
 	outputCopy := make([]string, len(m.outputLines))
 	copy(outputCopy, m.outputLines)
 	m.outputMutex.Unlock()
-	
-	if len(outputCopy) > 0 {
-		content.WriteString(phaseStyle.Render("Live Output:"))
-		content.WriteString("\n")
-		
-		// Calculate dynamic height for output box based on terminal height
-		// Reserve ~15 lines for header, status, and footer
-		outputHeight := 10
-		if m.height > 25 {
-			outputHeight = m.height - 15
-		}
-		
-		// Create a box for output
-		outputBox := lipgloss.NewStyle().
-			Border(lipgloss.NormalBorder()).
-			BorderForeground(lipgloss.Color("240")).
-			Padding(0, 1).
-			Width(min(m.width-4, 120)).
-			Height(outputHeight)
-		
-		// Get last N lines based on output height
-		linesToShow := outputHeight - 2 // Account for padding
+
+	// Calculate content width - leave margins on sides
+	contentWidth := min(m.width-8, 120)
+
+	var content strings.Builder
+
+	// ═══════════════════════════════════════
+	// TITLE SECTION
+	// ═══════════════════════════════════════
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("220")).
+		Align(lipgloss.Center).
+		Width(contentWidth)
+
+	content.WriteString(titleStyle.Render("🔄 Terraform Plan Progress"))
+	content.WriteString("\n\n")
+
+	// ═══════════════════════════════════════
+	// STATUS SECTION
+	// ═══════════════════════════════════════
+	phaseText := m.getPhaseText()
+
+	statusStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("86")).
+		Align(lipgloss.Center).
+		Width(contentWidth)
+
+	content.WriteString(statusStyle.Render(phaseText))
+	content.WriteString("\n")
+
+	// Current resource being processed
+	if m.currentResource != "" {
+		resourceStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("39")).
+			Align(lipgloss.Center).
+			Width(contentWidth)
+
+		content.WriteString(resourceStyle.Render("Processing: " + m.currentResource))
+	}
+	content.WriteString("\n")
+
+	// ═══════════════════════════════════════
+	// OUTPUT BOX (ALWAYS SHOWN)
+	// ═══════════════════════════════════════
+	labelStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("86")).
+		Width(contentWidth)
+
+	content.WriteString(labelStyle.Render("Terraform Output:"))
+	content.WriteString("\n")
+
+	// Calculate dynamic height for output box
+	outputHeight := 15
+	if m.height > 30 {
+		outputHeight = m.height - 15
+	} else if m.height > 20 {
+		outputHeight = m.height - 10
+	}
+
+	// Create bordered output box
+	outputBoxStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("240")).
+		Padding(1, 2).
+		Width(contentWidth).
+		Height(outputHeight)
+
+	var outputContent strings.Builder
+
+	if len(outputCopy) == 0 {
+		// Show waiting message when no output yet
+		waitingStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("241")).
+			Italic(true).
+			Align(lipgloss.Center).
+			Width(contentWidth - 6)
+
+		outputContent.WriteString(waitingStyle.Render("Waiting for Terraform output..."))
+	} else {
+		// Show actual output
+		linesToShow := outputHeight - 4 // Account for padding and borders
 		start := 0
 		if len(outputCopy) > linesToShow {
 			start = len(outputCopy) - linesToShow
 		}
-		
-		var outputContent strings.Builder
-		maxLineWidth := min(m.width-10, 115) // Account for box borders and padding
+
+		maxLineWidth := contentWidth - 6 // Account for padding
 		for i := start; i < len(outputCopy); i++ {
 			line := outputCopy[i]
-			// Truncate long lines based on dynamic width
+
+			// Truncate long lines
 			if len(line) > maxLineWidth {
 				line = line[:maxLineWidth-3] + "..."
 			}
+
+			// Color-code important lines
+			if strings.Contains(line, "Plan:") {
+				line = lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Bold(true).Render(line)
+			} else if strings.Contains(line, "No changes") {
+				line = lipgloss.NewStyle().Foreground(lipgloss.Color("82")).Render(line)
+			} else if strings.Contains(line, "ERROR") || strings.Contains(line, "Error") {
+				line = lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(line)
+			}
+
 			outputContent.WriteString(line + "\n")
 		}
-		
-		content.WriteString(outputBox.Render(outputContent.String()))
-		content.WriteString("\n")
 	}
-	
-	// Show processed resources count
+
+	content.WriteString(outputBoxStyle.Render(outputContent.String()))
+	content.WriteString("\n")
+
+	// ═══════════════════════════════════════
+	// FOOTER SECTION (Stats & Instructions)
+	// ═══════════════════════════════════════
+	var footerParts []string
+
+	// Progress stats
 	if len(m.processedItems) > 0 {
-		content.WriteString(fmt.Sprintf("%s %d resources processed\n", 
-			phaseStyle.Render("Progress:"), 
-			len(m.processedItems)))
-		content.WriteString("\n")
+		footerParts = append(footerParts,
+			fmt.Sprintf("Processed: %d resources", len(m.processedItems)))
 	}
-	
+
 	// Elapsed time
-	content.WriteString(timeStyle.Render(fmt.Sprintf("Elapsed: %s", elapsed)))
-	content.WriteString("\n\n")
-	
+	elapsed := time.Since(m.startTime).Round(time.Second)
+	footerParts = append(footerParts, fmt.Sprintf("Elapsed: %s", elapsed))
+
 	// Instructions
 	if m.phase == phaseComplete {
-		content.WriteString(lipgloss.NewStyle().
-			Foreground(lipgloss.Color("82")).
-			Bold(true).
-			Render("✅ Plan completed! Press Enter to continue..."))
+		footerParts = append(footerParts, "✅ Press Enter to continue")
 	} else {
-		content.WriteString(timeStyle.Render("Press q or Ctrl+C to cancel"))
+		footerParts = append(footerParts, "Press q or Ctrl+C to cancel")
 	}
-	
-	// Use full terminal height, only center horizontally
+
+	footerStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("241")).
+		Align(lipgloss.Center).
+		Width(contentWidth)
+
+	content.WriteString(footerStyle.Render(strings.Join(footerParts, " • ")))
+
+	// ═══════════════════════════════════════
+	// CENTER EVERYTHING HORIZONTALLY
+	// ═══════════════════════════════════════
 	return lipgloss.Place(
 		m.width,
 		m.height,
 		lipgloss.Center,
 		lipgloss.Top,
 		content.String(),
+		lipgloss.WithWhitespaceChars(" "),
 	)
 }
 

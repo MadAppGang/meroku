@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"regexp"
@@ -240,6 +242,34 @@ func terraformError(output string) ([]string, error) {
 		}
 	}
 
+	// Check for archive creation errors (missing files for lambda, etc.)
+	// These typically occur during destroy when lambda source files have been moved/deleted
+	archiveErrorPatterns := []string{
+		"Error: Archive creation error",
+		"error creating archive",
+		"could not archive missing file",
+		"error archiving file",
+	}
+
+	for _, pattern := range archiveErrorPatterns {
+		if strings.Contains(clean, pattern) {
+			fmt.Println("\n⚠️  Detected missing file error for archive creation.")
+			fmt.Println("💡 This usually means a lambda function references files that no longer exist.")
+			fmt.Println("🔄 Attempting destroy with -refresh=false to skip validation...")
+
+			// During destroy, we don't need to validate/create archives
+			// Skip refresh phase which tries to read these files
+			return []string{"terraform", "apply", "-destroy", "-refresh=false", "-auto-approve"}, nil
+		}
+	}
+
+	// Check for inline_policy deprecation warnings (can be safely ignored during destroy)
+	if strings.Contains(clean, "inline_policy is deprecated") {
+		fmt.Println("⚠️  Detected deprecation warning (safe to ignore during destroy)")
+		// Return an empty error to indicate we should continue without recovery
+		return []string{}, errors.New("deprecation warning, continuing without recovery")
+	}
+
 	return []string{}, errors.New("unknown error, I could not check it. please provide the output to us–....")
 }
 
@@ -250,14 +280,44 @@ func stripAnsiEscapeCodes(input string) string {
 }
 
 func runTerraformDestroy() error {
+	return runTerraformDestroyWithRetry(0)
+}
+
+func runTerraformDestroyWithRetry(retryCount int) error {
+	const maxRetries = 3
+
 	fmt.Println("\n🔍 Running terraform plan -destroy to preview changes...")
 
 	// First, run terraform plan -destroy to show what will be destroyed
+	// Use a combined output buffer to capture errors for recovery
+	var stderrBuf bytes.Buffer
 	cmd := exec.Command("terraform", "plan", "-destroy", "-out=destroy.tfplan")
 	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stderr = io.MultiWriter(os.Stderr, &stderrBuf)
 
 	if err := cmd.Run(); err != nil {
+		// Try to recover from errors
+		stderrOutput := stderrBuf.String()
+
+		// Check if this is a recoverable error
+		if retryCount < maxRetries {
+			commands, recoverErr := terraformError(stderrOutput)
+			if recoverErr == nil {
+				fmt.Printf("\n✳️ Detected recoverable error. Running recovery command (attempt %d/%d): %v\n", retryCount+1, maxRetries, commands)
+
+				// Run the recovery command
+				recoveryOutput, err2 := runCommandWithOutput(commands[0], commands[1:]...)
+				if err2 != nil {
+					fmt.Printf("❌ Recovery attempt %d failed: %v\n", retryCount+1, err2)
+					fmt.Printf("Output: %s\n", recoveryOutput)
+				} else {
+					fmt.Printf("✅ Recovery successful. Retrying destroy operation...\n\n")
+					// Retry the destroy operation
+					return runTerraformDestroyWithRetry(retryCount + 1)
+				}
+			}
+		}
+
 		return fmt.Errorf("terraform plan -destroy failed: %w", err)
 	}
 
