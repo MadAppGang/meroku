@@ -1,5 +1,6 @@
 import { Globe, Info, Shield } from "lucide-react";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
+import { Alert, AlertDescription } from "./ui/alert";
 import {
 	Card,
 	CardContent,
@@ -26,6 +27,8 @@ export function Route53NodeProperties({
 			domain: {
 				...config.domain,
 				enabled: checked,
+				// Auto-clear domain_name when disabling to prevent API domain creation
+				domain_name: checked ? (config.domain?.domain_name || "") : "",
 			},
 		});
 	};
@@ -119,6 +122,16 @@ export function Route53NodeProperties({
 							onCheckedChange={handleDomainEnabledChange}
 						/>
 					</div>
+
+					{!isEnabled && domainName && (
+						<Alert className="border-yellow-600 bg-yellow-900/20">
+							<Info className="h-4 w-4 text-yellow-400" />
+							<AlertDescription className="text-yellow-200 text-sm">
+								Domain name will be cleared when domain module is disabled to
+								prevent API Gateway domain creation without certificate.
+							</AlertDescription>
+						</Alert>
+					)}
 
 					{isEnabled && (
 						<>

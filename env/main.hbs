@@ -104,10 +104,11 @@ module "postgres" {
   engine_version = "{{ postgres.engine_version}}"
   {{#if postgres.aurora}}
   aurora = true
-  {{#if postgres.min_capacity}}
+  {{!-- Handle zero values explicitly for Aurora capacity --}}
+  {{#if (or postgres.min_capacity (eq postgres.min_capacity 0))}}
   min_capacity = {{postgres.min_capacity}}
   {{/if}}
-  {{#if postgres.max_capacity}}
+  {{#if (or postgres.max_capacity (eq postgres.max_capacity 0))}}
   max_capacity = {{postgres.max_capacity}}
   {{/if}}
   {{/if}}
@@ -163,7 +164,8 @@ module "workloads" {
   create_api_domain_record = false
   {{/compare}}
   {{else}}
-  api_domain = "{{ domain.domain_name }}"
+  {{!-- Don't set api_domain when domain module is disabled to prevent API Gateway domain creation without certificate --}}
+  api_domain = ""
   create_api_domain_record = false
   {{/if}}
   domain = "{{ domain.domain_name }}"

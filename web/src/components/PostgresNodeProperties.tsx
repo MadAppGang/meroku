@@ -41,6 +41,29 @@ export function PostgresNodeProperties({
 	const workloadConfig = config.workload || {};
 	// Remove unused password state variables that are only needed in PostgresConnectionInfo component
 
+	// Aurora capacity validation state
+	const [capacityWarning, setCapacityWarning] = useState<string | null>(null);
+
+	// Validate Aurora capacity configuration
+	const validateCapacity = (min: number, max: number): string | null => {
+		// Rule 1: max must be >= 1
+		if (max < 1) {
+			return "Maximum capacity must be at least 1 ACU (AWS requirement)";
+		}
+
+		// Rule 2: min and max cannot both be 0.5
+		if (min === 0.5 && max === 0.5) {
+			return "Minimum and maximum cannot both be 0.5 ACU. Set maximum to 1 or higher.";
+		}
+
+		// Rule 3: max must be >= min
+		if (max < min) {
+			return "Maximum capacity must be greater than or equal to minimum capacity";
+		}
+
+		return null;
+	};
+
 	const handleTogglePostgres = (enabled: boolean) => {
 		onConfigChange({
 			postgres: {
@@ -190,14 +213,26 @@ export function PostgresNodeProperties({
 											min="0"
 											max="128"
 											value={postgresConfig.min_capacity ?? 0}
-											onChange={(e) =>
+											onChange={(e) => {
+												const newMin = parseFloat(e.target.value);
+												const newMax = postgresConfig.max_capacity || 1;
+
+												// Auto-correct max if it would be invalid
+												const correctedMax =
+													newMin === 0.5 && newMax === 0.5 ? 1 : newMax;
+
 												handleUpdateConfig({
-													min_capacity: parseFloat(e.target.value),
-												})
-											}
+													min_capacity: newMin,
+													...(correctedMax !== newMax && {
+														max_capacity: correctedMax,
+													}),
+												});
+
+												setCapacityWarning(validateCapacity(newMin, correctedMax));
+											}}
 										/>
 										<p className="text-xs text-gray-500">
-											Minimum: 0 ACU (scales to zero)
+											Minimum: 0 ACU (enables automatic pause when idle)
 										</p>
 									</div>
 
@@ -210,16 +245,32 @@ export function PostgresNodeProperties({
 											min="1"
 											max="128"
 											value={postgresConfig.max_capacity || 1}
-											onChange={(e) =>
+											onChange={(e) => {
+												const newMax = Math.max(1, parseFloat(e.target.value)); // Always >= 1
+												const newMin = postgresConfig.min_capacity ?? 0;
+
 												handleUpdateConfig({
-													max_capacity: Math.max(1, parseFloat(e.target.value)),
-												})
-											}
+													max_capacity: newMax,
+												});
+
+												setCapacityWarning(validateCapacity(newMin, newMax));
+											}}
 										/>
 										<p className="text-xs text-gray-500">
-											Minimum: 1 ACU, Maximum: 128 ACUs
+											Minimum: 1 ACU (AWS requirement), Maximum: 128 ACUs
 										</p>
 									</div>
+
+									{capacityWarning && (
+										<div className="col-span-2">
+											<Alert className="border-yellow-600 bg-yellow-900/20">
+												<AlertCircle className="h-4 w-4 text-yellow-400" />
+												<AlertDescription className="text-yellow-200">
+													{capacityWarning}
+												</AlertDescription>
+											</Alert>
+										</div>
+									)}
 
 									<div className="col-span-2">
 										<Alert>
