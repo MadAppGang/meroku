@@ -924,6 +924,15 @@ export function DeploymentCanvas({
 			};
 			setSavedEdgeHandles((prev) => new Map(prev).set(edgeId, newHandle));
 
+			// IMMEDIATELY update edges state to reflect the change
+			setEdges((currentEdges) =>
+				currentEdges.map((edge) =>
+					edge.id === edgeId
+						? { ...edge, sourceHandle, targetHandle }
+						: edge,
+				),
+			);
+
 			// Save after a delay
 			if (saveTimeoutRef.current) {
 				clearTimeout(saveTimeoutRef.current);
@@ -932,7 +941,7 @@ export function DeploymentCanvas({
 				savePositions();
 			}, 1000);
 		},
-		[savePositions],
+		[setEdges, savePositions],
 	);
 
 	// Handle node position changes with debouncing

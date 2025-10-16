@@ -28,7 +28,6 @@ import {
   Workflow,
   Zap,
 } from "lucide-react";
-import { useId } from "react";
 import { Handle, type NodeProps, Position } from "reactflow";
 import type { ComponentNode } from "../types";
 import { AmplifyStatusWidget } from "./AmplifyStatusWidget";
@@ -123,7 +122,6 @@ const serviceColors = {
 export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
   const Icon = serviceIcons[data.type];
   const serviceColor = serviceColors[data.type];
-  const baseId = useId();
 
   // Determine if this is a service node that needs extended display
   const isServiceNode = [
@@ -178,25 +176,25 @@ export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
       <Handle
         type="target"
         position={Position.Top}
-        id={`${baseId}-target-top`}
+        id="target-top"
         className="w-3 h-3 bg-gray-600 border-2 border-gray-700"
       />
       <Handle
         type="target"
         position={Position.Left}
-        id={`${baseId}-target-left`}
+        id="target-left"
         className="w-3 h-3 bg-gray-600 border-2 border-gray-700"
       />
       <Handle
         type="target"
         position={Position.Bottom}
-        id={`${baseId}-target-bottom`}
+        id="target-bottom"
         className="w-3 h-3 bg-gray-600 border-2 border-gray-700"
       />
       <Handle
         type="target"
         position={Position.Right}
-        id={`${baseId}-target-right`}
+        id="target-right"
         className="w-3 h-3 bg-gray-600 border-2 border-gray-700"
       />
 
@@ -204,25 +202,25 @@ export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
       <Handle
         type="source"
         position={Position.Top}
-        id={`${baseId}-source-top`}
+        id="source-top"
         className="w-3 h-3 bg-gray-600 border-2 border-gray-700"
       />
       <Handle
         type="source"
         position={Position.Left}
-        id={`${baseId}-source-left`}
+        id="source-left"
         className="w-3 h-3 bg-gray-600 border-2 border-gray-700"
       />
       <Handle
         type="source"
         position={Position.Bottom}
-        id={`${baseId}-source-bottom`}
+        id="source-bottom"
         className="w-3 h-3 bg-gray-600 border-2 border-gray-700"
       />
       <Handle
         type="source"
         position={Position.Right}
-        id={`${baseId}-source-right`}
+        id="source-right"
         className="w-3 h-3 bg-gray-600 border-2 border-gray-700"
       />
 
