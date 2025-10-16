@@ -122,10 +122,23 @@ func migrateToV3(data map[string]interface{}) error {
 
 	// Add domain fields if domain exists
 	if domain, ok := data["domain"].(map[interface{}]interface{}); ok {
-		// Add new DNS fields only if they don't exist
-		if _, exists := domain["zone_id"]; !exists {
-			domain["zone_id"] = ""
+		// Only add zone_id if create_domain_zone is false (using existing zone)
+		// Don't add it for new zones - the domain module handles this internally
+		createDomainZone := true // Default to true
+		if val, exists := domain["create_domain_zone"]; exists {
+			if boolVal, ok := val.(bool); ok {
+				createDomainZone = boolVal
+			}
 		}
+
+		// Only add zone_id for existing zones
+		if !createDomainZone {
+			if _, exists := domain["zone_id"]; !exists {
+				domain["zone_id"] = ""
+			}
+		}
+
+		// Add other DNS management fields
 		if _, exists := domain["root_zone_id"]; !exists {
 			domain["root_zone_id"] = ""
 		}

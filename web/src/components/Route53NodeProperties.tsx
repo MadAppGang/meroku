@@ -74,6 +74,17 @@ export function Route53NodeProperties({
 		});
 	};
 
+	const handleZoneIdChange = (value: string) => {
+		onConfigChange({
+			...config,
+			domain: {
+				enabled: config.domain?.enabled ?? false,
+				...config.domain,
+				zone_id: value,
+			},
+		});
+	};
+
 	const isEnabled = config.domain?.enabled ?? false;
 	const domainName = config.domain?.domain_name || "";
 	const apiPrefix = config.domain?.api_domain_prefix || "api";
@@ -140,6 +151,23 @@ export function Route53NodeProperties({
 									onCheckedChange={handleCreateZoneChange}
 								/>
 							</div>
+
+							{/* Zone ID - Only show when using existing zone */}
+							{!(config.domain?.create_domain_zone ?? true) && (
+								<div>
+									<Label htmlFor="zone-id">Zone ID (Optional)</Label>
+									<Input
+										id="zone-id"
+										value={config.domain?.zone_id || ""}
+										onChange={(e) => handleZoneIdChange(e.target.value)}
+										placeholder="Z1234567890ABC"
+										className="mt-1 bg-gray-800 border-gray-600 text-white"
+									/>
+									<p className="text-xs text-gray-400 mt-1">
+										Route 53 zone ID for existing hosted zone (leave empty to lookup by name)
+									</p>
+								</div>
+							)}
 
 							{/* API Domain Prefix */}
 							<div>

@@ -29,20 +29,13 @@ data "aws_subnets" "all" {
 # Locals removed - using direct handlebar resolution in modules
 {{#if domain.enabled}}
   {{#compare env "==" "prod"}}
-    {{#if domain.zone_id}}
-    # PROD: Use existing root zone
-    data "aws_route53_zone" "main" {
-      zone_id = "{{ domain.zone_id }}"
-    }
-    {{/if}}
-    
+    # PROD: Standard domain configuration
     module "domain" {
       source = "{{ modules }}/domain"
       project = "{{ project }}"
       domain_zone = "{{ domain.domain_name }}"
       env = "{{ env }}"
-      create_domain_zone = false  # Zone already exists
-      zone_id = "{{ domain.zone_id }}"  # Pass existing zone ID
+      create_domain_zone = {{ domain.create_domain_zone }}
       api_domain_prefix = "{{ domain.api_domain_prefix }}"
       add_env_domain_prefix = false  # No prefix for production
     }
@@ -78,7 +71,6 @@ data "aws_subnets" "all" {
       domain_zone = "{{ env }}.{{ domain.domain_name }}"  # Use subdomain
       env = "{{ env }}"
       create_domain_zone = false  # Zone created by dns_delegation
-      zone_id = module.dns_delegation.zone_id  # Use delegated zone
       api_domain_prefix = "{{ domain.api_domain_prefix }}"
       add_env_domain_prefix = false  # Already prefixed
       depends_on = [module.dns_delegation]

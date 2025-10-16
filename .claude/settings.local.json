@@ -46,7 +46,8 @@
       "Bash(git tag:*)",
       "Bash(git push:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Read(//Users/jack/dev/salpha/sava-p-infra/**)"
     ],
     "deny": []
   }

@@ -81,6 +81,12 @@ export interface YamlInfrastructureConfig {
 		domain_name?: string;
 		api_domain_prefix?: string;
 		add_domain_prefix?: boolean;
+		zone_id?: string;
+		root_zone_id?: string;
+		root_account_id?: string;
+		is_dns_root?: boolean;
+		dns_root_account_id?: string;
+		delegation_role_arn?: string;
 	};
 
 	// Database Configuration
