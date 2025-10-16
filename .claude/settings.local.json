@@ -47,7 +47,9 @@
       "Bash(git push:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Read(//Users/jack/dev/salpha/sava-p-infra/**)"
+      "Read(//Users/jack/dev/salpha/sava-p-infra/**)",
+      "mcp__claude-context__index_codebase",
+      "mcp__claude-context__search_code"
     ],
     "deny": []
   }

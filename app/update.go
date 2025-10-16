@@ -81,3 +81,94 @@ func updateInfrastructure() error {
 
 	return nil
 }
+
+// VersionCheckResult holds the result of a version check
+type VersionCheckResult struct {
+	LocalVersion     string
+	RemoteVersion    string
+	UpdateAvailable  bool
+	Error            error
+}
+
+// checkVersionAtStartup performs a silent version check without blocking UI
+func checkVersionAtStartup() VersionCheckResult {
+	result := VersionCheckResult{}
+
+	// Fetch the remote version.txt file from GitHub repository
+	resp, err := http.Get("https://raw.githubusercontent.com/MadAppGang/infrastructure/main/version.txt")
+	if err != nil {
+		result.Error = fmt.Errorf("failed to fetch remote version: %w", err)
+		return result
+	}
+	defer resp.Body.Close()
+
+	remoteVersionData, err := io.ReadAll(resp.Body)
+	if err != nil {
+		result.Error = fmt.Errorf("failed to read remote version body: %w", err)
+		return result
+	}
+
+	result.RemoteVersion = strings.TrimSpace(string(remoteVersionData))
+
+	// Read the local version.txt file
+	localVersionData, err := os.ReadFile("./infrastructure/version.txt")
+	if err != nil {
+		result.Error = fmt.Errorf("failed to read local version file: %w", err)
+		return result
+	}
+
+	result.LocalVersion = strings.TrimSpace(string(localVersionData))
+
+	// Compare versions using semver
+	remoteVer, err := semver.ParseTolerant(result.RemoteVersion)
+	if err != nil {
+		result.Error = fmt.Errorf("failed to parse remote version: %w", err)
+		return result
+	}
+
+	localVer, err := semver.ParseTolerant(result.LocalVersion)
+	if err != nil {
+		result.Error = fmt.Errorf("failed to parse local version: %w", err)
+		return result
+	}
+
+	result.UpdateAvailable = remoteVer.GT(localVer)
+	return result
+}
+
+// promptForUpdate prompts the user to update if a new version is available
+func promptForUpdate(result VersionCheckResult) error {
+	if !result.UpdateAvailable {
+		return nil
+	}
+
+	confirm := false
+	if err := huh.NewConfirm().
+		Title("New infrastructure version available!").
+		Description(fmt.Sprintf("Current version: %s, Available version: %s", result.LocalVersion, result.RemoteVersion)).
+		Affirmative("Update Now").
+		Negative("Skip").
+		Value(&confirm).
+		Run(); err != nil {
+		return err
+	}
+
+	if !confirm {
+		huh.NewNote().
+			Title("Update Skipped").
+			Description("You can update later by selecting 'Check for updates' from the menu.").
+			Run()
+		return nil
+	}
+
+	// Run the update
+	_ = spinner.New().Title("Updating the infrastructure...").Action(initProject).Run()
+
+	// Show success message after update
+	huh.NewNote().
+		Title("Update Complete").
+		Description(fmt.Sprintf("Infrastructure updated successfully to version %s", result.RemoteVersion)).
+		Run()
+
+	return nil
+}

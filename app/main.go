@@ -148,6 +148,17 @@ func main() {
 		}
 	}
 
+	// Check for updates at startup (only in interactive mode)
+	versionCheckResult := checkVersionAtStartup()
+	if versionCheckResult.Error == nil && versionCheckResult.UpdateAvailable {
+		// Silently prompt for update if available
+		if err := promptForUpdate(versionCheckResult); err != nil {
+			// Don't exit on error, just log and continue
+			fmt.Printf("Note: Update check encountered an issue: %v\n", err)
+		}
+	}
+	// Silently ignore errors from version check to not disrupt startup
+
 	// If --web flag is set, open web app directly
 	if *webFlag {
 		startSPAServerWithAutoOpen("8080", true, false)
@@ -158,7 +169,7 @@ func main() {
 		// Run normal interactive menu
 		mainMenu()
 	}
-	
+
 	os.Exit(0)
 }
 
