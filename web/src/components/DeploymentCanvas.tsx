@@ -641,17 +641,19 @@ export function DeploymentCanvas({
 		// Filter edges to only include those where both source and target are enabled
 		return allEdges
 			.filter((edge) => {
-				// Always show edges from external nodes (like client-app) or CI/CD nodes
+				// For truly external nodes (client-app), show edge if target is enabled
 				const sourceNode = nodes.find((n) => n.id === edge.source);
-				if (
-					sourceNode?.data?.isExternal ||
-					edge.source === "github" ||
-					edge.source === "ecr"
-				) {
+				if (sourceNode?.data?.isExternal) {
 					return isNodeEnabled(edge.target);
 				}
 
-				// For other edges, both source and target must be enabled
+				// For CI/CD nodes (github, ecr), check BOTH source and target
+				// These are conditionally enabled based on configuration
+				if (edge.source === "github" || edge.source === "ecr") {
+					return isNodeEnabled(edge.source) && isNodeEnabled(edge.target);
+				}
+
+				// For all other edges, both source and target must be enabled
 				return isNodeEnabled(edge.source) && isNodeEnabled(edge.target);
 			})
 			.map((edge) => {
