@@ -18,5 +18,5 @@ func GetServiceNameFromRepoName(str string, projectName string) (string, error) 
 	if len(match) == 2 {
 		return match[1], nil
 	}
-	return "", errors.New("Unable to extract service name")
+	return "", errors.New("unable to extract service name")
 }

@@ -270,7 +270,7 @@ func terraformError(output string) ([]string, error) {
 		return []string{}, errors.New("deprecation warning, continuing without recovery")
 	}
 
-	return []string{}, errors.New("unknown error, I could not check it. please provide the output to us–....")
+	return []string{}, errors.New("unknown error, unable to analyze. Please provide the output to us for debugging")
 }
 
 func stripAnsiEscapeCodes(input string) string {

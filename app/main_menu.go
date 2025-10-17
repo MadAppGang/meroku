@@ -127,7 +127,7 @@ func getProjectName() string {
 
 	var name string
 	huh.NewInput().
-		Title("What is the proejct name?").
+		Title("What is the project name?").
 		Value(&name).
 		Run() // this is blocking.
 

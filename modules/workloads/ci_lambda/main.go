@@ -47,7 +47,7 @@ func getServiceName(str string) (string, error) {
 	if len(match) == 3 {
 		return match[2], nil
 	}
-	return "", errors.New("Unable to extract service name")
+	return "", errors.New("unable to extract service name")
 }
 
 func main() {
