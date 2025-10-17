@@ -877,7 +877,9 @@ func (m *destroyProgressModel) View() string {
 		}
 
 		maxLineWidth := contentWidth - 6 // Account for padding
-		for i := start; i < len(outputCopy); i++ {
+		linesRendered := 0               // Track actual lines rendered (including wrapped)
+
+		for i := start; i < len(outputCopy) && linesRendered < linesToShow; i++ {
 			line := outputCopy[i]
 
 			// Check if this is an error line before truncating
@@ -888,9 +890,14 @@ func (m *destroyProgressModel) View() string {
 				if isError {
 					// For errors, wrap to multiple lines to show full message
 					wrapped := wrapText(line, maxLineWidth)
+					// Only show wrapped lines if we have space
 					for _, wrappedLine := range wrapped {
+						if linesRendered >= linesToShow {
+							break
+						}
 						styledLine := lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(wrappedLine)
 						outputContent.WriteString(styledLine + "\n")
+						linesRendered++
 					}
 					continue
 				} else {
@@ -909,6 +916,7 @@ func (m *destroyProgressModel) View() string {
 			}
 
 			outputContent.WriteString(line + "\n")
+			linesRendered++
 		}
 	}
 
