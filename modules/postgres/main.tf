@@ -92,7 +92,6 @@ resource "aws_rds_cluster_instance" "aurora" {
   auto_minor_version_upgrade = true # Always enable automatic minor version updates
 
   lifecycle {
-    create_before_destroy = true
     ignore_changes = [
       engine_version # Allow AWS to manage minor version updates
     ]
