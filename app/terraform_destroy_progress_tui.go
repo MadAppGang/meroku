@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/atotto/clipboard"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -40,6 +42,9 @@ type destroyProgressModel struct {
 	explosionFrame  int
 	terraformCmd    *exec.Cmd // Store command reference for cleanup
 	interrupted     bool      // Track if user interrupted
+	errorViewport   viewport.Model
+	showFullError   bool      // Track if showing full error view
+	copiedToClip    bool      // Track if error was copied
 }
 
 // Blast wave rings that expand outward
@@ -465,9 +470,73 @@ func (m *destroyProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 
-		// Allow quitting with any key when complete or error
+		// Special handling when in error or complete state
 		if m.phase == destroyComplete || m.phase == destroyError {
-			return m, tea.Quit
+			// Toggle full error view with 'e' or 'f' key (only in error state)
+			if m.phase == destroyError && (msg.String() == "e" || msg.String() == "f") {
+				m.showFullError = !m.showFullError
+				if m.showFullError {
+					// Initialize viewport with full error content
+					m.errorViewport = viewport.New(m.width-8, m.height-10)
+					fullError := strings.Join(m.errorOutput, "\n")
+					if fullError == "" {
+						fullError = m.errorDetails
+					}
+					m.errorViewport.SetContent(fullError)
+				}
+				return m, nil
+			}
+
+			// Copy error to clipboard with 'c' key (only in error state)
+			if m.phase == destroyError && msg.String() == "c" {
+				fullError := strings.Join(m.errorOutput, "\n")
+				if fullError == "" {
+					fullError = m.errorDetails
+				}
+				err := clipboard.WriteAll(fullError)
+				if err == nil {
+					m.copiedToClip = true
+					// Reset the copied flag after 2 seconds
+					return m, tea.Tick(time.Second*2, func(t time.Time) tea.Msg {
+						m.copiedToClip = false
+						return nil
+					})
+				}
+				return m, nil
+			}
+
+			// Handle viewport scrolling when showing full error
+			if m.showFullError {
+				switch msg.String() {
+				case "up", "k":
+					m.errorViewport.LineUp(1)
+					return m, nil
+				case "down", "j":
+					m.errorViewport.LineDown(1)
+					return m, nil
+				case "pgup", "b":
+					m.errorViewport.ViewUp()
+					return m, nil
+				case "pgdown", "f":
+					m.errorViewport.ViewDown()
+					return m, nil
+				case "home", "g":
+					m.errorViewport.GotoTop()
+					return m, nil
+				case "end", "G":
+					m.errorViewport.GotoBottom()
+					return m, nil
+				case "esc":
+					// Exit full error view
+					m.showFullError = false
+					return m, nil
+				}
+			}
+
+			// Allow quitting with any key when not in special modes
+			if !m.showFullError {
+				return m, tea.Quit
+			}
 		}
 	}
 
@@ -477,6 +546,11 @@ func (m *destroyProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *destroyProgressModel) View() string {
 	if m.width == 0 {
 		return "Initializing..."
+	}
+
+	// Show full error view if enabled
+	if m.showFullError {
+		return m.renderFullErrorView()
 	}
 
 	// Spinner frames
@@ -752,8 +826,15 @@ func (m *destroyProgressModel) View() string {
 	footerParts = append(footerParts, fmt.Sprintf("Elapsed: %.1fs", elapsed))
 
 	// Instructions
-	if m.phase == destroyComplete || m.phase == destroyError {
+	if m.phase == destroyComplete {
 		footerParts = append(footerParts, "Press any key to continue")
+	} else if m.phase == destroyError {
+		// Show error-specific options
+		if m.copiedToClip {
+			footerParts = append(footerParts, "✓ Copied!")
+		} else {
+			footerParts = append(footerParts, "[E] Full Error • [C] Copy • Press any key to exit")
+		}
 	} else {
 		// Show cancel instruction during active phases
 		footerParts = append(footerParts, "Press Ctrl+C or Q to cancel")
@@ -777,6 +858,53 @@ func (m *destroyProgressModel) View() string {
 		content.String(),
 		lipgloss.WithWhitespaceChars(" "),
 	)
+}
+
+func (m *destroyProgressModel) renderFullErrorView() string {
+	var content strings.Builder
+
+	// Title
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("196")).
+		Align(lipgloss.Center).
+		Width(m.width)
+
+	content.WriteString(titleStyle.Render("❌ FULL ERROR OUTPUT"))
+	content.WriteString("\n\n")
+
+	// Viewport with error content
+	viewportStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("240")).
+		Padding(1, 2).
+		Width(m.width - 4).
+		Height(m.height - 8)
+
+	content.WriteString(viewportStyle.Render(m.errorViewport.View()))
+	content.WriteString("\n")
+
+	// Footer with instructions
+	footerParts := []string{}
+
+	// Show scroll position
+	scrollInfo := fmt.Sprintf("%3.f%%", m.errorViewport.ScrollPercent()*100)
+	footerParts = append(footerParts, scrollInfo)
+
+	if m.copiedToClip {
+		footerParts = append(footerParts, "✓ Copied to clipboard!")
+	} else {
+		footerParts = append(footerParts, "[↑↓] Scroll • [PgUp/PgDn] Page • [C] Copy • [ESC] Back")
+	}
+
+	footerStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("241")).
+		Align(lipgloss.Center).
+		Width(m.width)
+
+	content.WriteString(footerStyle.Render(strings.Join(footerParts, " • ")))
+
+	return content.String()
 }
 
 func runTerraformDestroyWithProgress(env string) error {
