@@ -1,5 +1,13 @@
 import { DollarSign } from "lucide-react";
 import type { PricingResponse } from "../hooks/use-pricing";
+import { usePricingRates } from "../contexts/PricingContext";
+import {
+	calculateAuroraPrice,
+	calculateRDSPrice,
+	formatPrice,
+	type AuroraConfig,
+	type RDSConfig,
+} from "../utils/awsPricing";
 import { Badge } from "./ui/badge";
 
 interface PricingBadgeProps {
@@ -17,6 +25,9 @@ export function PricingBadge({
 	serviceName,
 	configProperties,
 }: PricingBadgeProps) {
+	// Get pricing rates from context (unified source of truth)
+	const rates = usePricingRates();
+
 	if (!pricing) return null;
 
 	// Handle both pricing.nodes and direct pricing object structures
@@ -25,34 +36,29 @@ export function PricingBadge({
 	// Special handling for PostgreSQL/Aurora database pricing
 	if (nodeType === "postgres" && configProperties) {
 		if (configProperties.aurora) {
-			// Aurora Serverless v2 pricing calculation
-			// ACU pricing: ~$0.12 per ACU-hour in us-east-1
-			const ACU_HOURLY_PRICE = 0.12;
-			const minCapacity = configProperties.minCapacity ?? 0;
-			const maxCapacity = configProperties.maxCapacity || 1;
-
-			// Calculate based on average expected usage for each level
-			let avgACUs = 0;
-			if (level === "startup") {
-				// Assume 20% average utilization for startup
-				avgACUs = minCapacity + (maxCapacity - minCapacity) * 0.2;
-			} else if (level === "scaleup") {
-				// Assume 50% average utilization for scaleup
-				avgACUs = minCapacity + (maxCapacity - minCapacity) * 0.5;
-			} else {
-				// Assume 80% average utilization for highload
-				avgACUs = minCapacity + (maxCapacity - minCapacity) * 0.8;
+			// Aurora Serverless v2 pricing - use unified calculator
+			// This ensures consistency with backend calculations
+			if (!rates) {
+				// Show loading state while fetching rates
+				return (
+					<Badge
+						variant="secondary"
+						className="absolute -top-2 -right-2 bg-gray-600/90 text-gray-300 border-gray-700 text-xs px-1 py-0.5"
+					>
+						<DollarSign className="w-3 h-3 mr-0.5" />
+						...
+					</Badge>
+				);
 			}
 
-			// If min is 0, adjust calculation (database might be paused part of the time)
-			if (minCapacity === 0) {
-				// Assume database is active 75% of the time for startup, 90% for scaleup, 100% for highload
-				const activeTime =
-					level === "startup" ? 0.75 : level === "scaleup" ? 0.9 : 1.0;
-				avgACUs = avgACUs * activeTime;
-			}
+			const config: AuroraConfig = {
+				minCapacity: configProperties.minCapacity ?? 0,
+				maxCapacity: configProperties.maxCapacity || 1,
+				level: level,
+			};
 
-			const monthlyPrice = avgACUs * ACU_HOURLY_PRICE * 24 * 30; // 24 hours * 30 days
+			// Use unified calculator (matches backend exactly)
+			const monthlyPrice = calculateAuroraPrice(config, rates);
 
 			return (
 				<Badge
@@ -60,12 +66,44 @@ export function PricingBadge({
 					className="absolute -top-2 -right-2 bg-green-600/90 text-white border-green-700 text-xs px-1 py-0.5"
 				>
 					<DollarSign className="w-3 h-3 mr-0.5" />$
-					{monthlyPrice < 1 ? monthlyPrice.toFixed(2) : monthlyPrice.toFixed(0)}
-					/mo
+					{formatPrice(monthlyPrice)}/mo
 				</Badge>
 			);
 		}
-		// For standard RDS, use the existing pricing
+
+		// For standard RDS, also use unified calculator for consistency
+		if (configProperties.instanceClass) {
+			if (!rates) {
+				return (
+					<Badge
+						variant="secondary"
+						className="absolute -top-2 -right-2 bg-gray-600/90 text-gray-300 border-gray-700 text-xs px-1 py-0.5"
+					>
+						<DollarSign className="w-3 h-3 mr-0.5" />
+						...
+					</Badge>
+				);
+			}
+
+			const rdsConfig: RDSConfig = {
+				instanceClass: configProperties.instanceClass || "db.t4g.micro",
+				allocatedStorage: configProperties.allocatedStorage || 20,
+				multiAz: configProperties.multiAz || false,
+			};
+
+			// Use unified calculator (matches backend exactly)
+			const monthlyPrice = calculateRDSPrice(rdsConfig, rates);
+
+			return (
+				<Badge
+					variant="secondary"
+					className="absolute -top-2 -right-2 bg-green-600/90 text-white border-green-700 text-xs px-1 py-0.5"
+				>
+					<DollarSign className="w-3 h-3 mr-0.5" />$
+					{formatPrice(monthlyPrice)}/mo
+				</Badge>
+			);
+		}
 	}
 
 	// Map node types to pricing keys (matching API response keys)

@@ -49,7 +49,15 @@
       "Bash(git commit:*)",
       "Read(//Users/jack/dev/salpha/sava-p-infra/**)",
       "mcp__claude-context__index_codebase",
-      "mcp__claude-context__search_code"
+      "mcp__claude-context__search_code",
+      "Read(//Users/jack/merokudemo1/**)",
+      "Bash(terraform show:*)",
+      "Bash(terraform plan:*)",
+      "WebSearch",
+      "mcp__Firecrawl__firecrawl_scrape",
+      "WebFetch(domain:aws.amazon.com)",
+      "WebFetch(domain:www.dbcost.com)",
+      "WebFetch(domain:pilotcore.io)"
     ],
     "deny": []
   }

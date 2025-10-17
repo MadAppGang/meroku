@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	
+
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/pricing"
 )
@@ -909,4 +909,37 @@ func parsePriceFromProduct(product string) (float64, error) {
 	}
 
 	return 0, fmt.Errorf("price not found in product data")
+}
+
+// getPricingRates returns raw pricing rates from the pricing service
+// GET /api/pricing/rates?region=us-east-1
+//
+// This endpoint provides the single source of truth for all AWS pricing data.
+// The frontend fetches these rates once and uses them for all calculations.
+//
+// Response format matches pricing.PriceRates struct with all service pricing.
+// Pricing is cached with 24h TTL and refreshed automatically in the background.
+func getPricingRates(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Get region from query params (default to us-east-1)
+	region := r.URL.Query().Get("region")
+	if region == "" {
+		region = "us-east-1"
+	}
+
+	// Get rates from pricing service (cached, fast!)
+	rates, err := globalPricingService.GetRates(region)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: fmt.Sprintf("Failed to get pricing rates: %v", err)})
+		return
+	}
+
+	// Return pricing rates as JSON
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(rates)
 }

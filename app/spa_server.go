@@ -130,6 +130,7 @@ func mainRouter() http.Handler {
 	
 	// Pricing
 	mux.HandleFunc("/api/pricing", corsMiddleware(getPricing))
+	mux.HandleFunc("/api/pricing/rates", corsMiddleware(getPricingRates))
 	
 	// Buckets
 	mux.HandleFunc("/api/buckets", corsMiddleware(listBuckets))

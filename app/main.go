@@ -1,12 +1,16 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	pricingpkg "madappgang.com/meroku/pricing"
 )
 
 // version will be set at compile time using ldflags
@@ -14,6 +18,10 @@ var version = "dev"
 
 // cachedVersion stores the computed version to avoid re-reading files
 var cachedVersion string
+
+// globalPricingService is the centralized pricing service instance
+// Initialized once at startup and used by all API endpoints
+var globalPricingService *pricingpkg.Service
 
 var (
 	profileFlag    = flag.String("profile", "", "AWS profile to use (skips profile selection)")
@@ -50,6 +58,18 @@ func GetVersion() string {
 func main() {
 	// Parse command line flags
 	flag.Parse()
+
+	// Initialize pricing service early (needed for web API)
+	// This runs in background and caches pricing data
+	ctx := context.Background()
+	regions := []string{"us-east-1", "us-west-2", "eu-west-1"}
+
+	var err error
+	globalPricingService, err = pricingpkg.NewService(ctx, regions)
+	if err != nil {
+		log.Printf("[Pricing] Warning: Failed to initialize pricing service: %v", err)
+		log.Printf("[Pricing] Continuing with fallback prices only")
+	}
 
 	// Handle version flag
 	if *versionFlag {

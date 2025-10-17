@@ -9,9 +9,11 @@ import { AddScheduledTaskDialog } from "./components/AddScheduledTaskDialog";
 import { AddServiceDialog } from "./components/AddServiceDialog";
 import { DeploymentCanvas } from "./components/DeploymentCanvas";
 import { EnvironmentSelector } from "./components/EnvironmentSelector";
+import { PricingInfo } from "./components/PricingInfo";
 import { Sidebar } from "./components/Sidebar";
 import { TopPanel } from "./components/TopPanel";
 import { Toaster } from "./components/ui/sonner";
+import { PricingProvider } from "./contexts/PricingContext";
 import { usePricing } from "./hooks/use-pricing";
 import type { ComponentNode } from "./types";
 import type { YamlInfrastructureConfig } from "./types/yamlConfig";
@@ -274,11 +276,12 @@ export default function App() {
   };
 
   return (
-    <div className="size-full bg-gray-950 text-white relative overflow-hidden">
-      <EnvironmentSelector
-        open={showEnvSelector}
-        onSelect={handleEnvironmentSelect}
-      />
+    <PricingProvider>
+      <div className="size-full bg-gray-950 text-white relative overflow-hidden">
+        <EnvironmentSelector
+          open={showEnvSelector}
+          onSelect={handleEnvironmentSelect}
+        />
 
       {/* Top Panel */}
       <TopPanel
@@ -402,8 +405,14 @@ export default function App() {
         projectName={config?.project}
       />
 
+      {/* Pricing Info Footer */}
+      <div className="absolute bottom-4 left-4 z-40">
+        <PricingInfo />
+      </div>
+
       {/* Toast notifications */}
       <Toaster />
-    </div>
+      </div>
+    </PricingProvider>
   );
 }
