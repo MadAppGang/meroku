@@ -38,6 +38,8 @@ type destroyProgressModel struct {
 	env             string
 	spinnerFrame    int
 	explosionFrame  int
+	terraformCmd    *exec.Cmd // Store command reference for cleanup
+	interrupted     bool      // Track if user interrupted
 }
 
 // Blast wave rings that expand outward
@@ -284,6 +286,9 @@ func (m *destroyProgressModel) runTerraformDestroy() tea.Cmd {
 		// Run terraform destroy with no color output for easier parsing
 		cmd := exec.Command("terraform", "destroy", "-auto-approve", "-no-color")
 
+		// Store command reference for interrupt handling
+		m.terraformCmd = cmd
+
 		// Create pipes for stdout and stderr
 		stdout, err := cmd.StdoutPipe()
 		if err != nil {
@@ -444,9 +449,25 @@ func (m *destroyProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(msg.output) > 0 {
 			m.errorOutput = msg.output
 		}
-		return m, nil
+		// Auto-quit after a short delay to show error message
+		return m, tea.Tick(time.Second*3, func(t time.Time) tea.Msg {
+			return tea.Quit()
+		})
 
 	case tea.KeyMsg:
+		// Handle Ctrl+C during ANY phase
+		if msg.String() == "ctrl+c" || msg.String() == "q" {
+			// Kill terraform process if running
+			if m.terraformCmd != nil && m.terraformCmd.Process != nil {
+				m.terraformCmd.Process.Kill()
+			}
+			m.interrupted = true
+			m.phase = destroyError
+			m.errorDetails = "Operation interrupted by user"
+			return m, tea.Quit
+		}
+
+		// Allow quitting with any key when complete or error
 		if m.phase == destroyComplete || m.phase == destroyError {
 			return m, tea.Quit
 		}
@@ -624,8 +645,13 @@ func (m *destroyProgressModel) View() string {
 		statusText = "✅ Destruction complete!"
 		statusColor = "82"
 	case destroyError:
-		statusText = "❌ Destruction failed!"
-		statusColor = "196"
+		if m.interrupted {
+			statusText = "⚠️  Operation cancelled by user"
+			statusColor = "214"
+		} else {
+			statusText = "❌ Destruction failed!"
+			statusColor = "196"
+		}
 	}
 
 	statusStyle := lipgloss.NewStyle().
@@ -730,6 +756,9 @@ func (m *destroyProgressModel) View() string {
 	// Instructions
 	if m.phase == destroyComplete || m.phase == destroyError {
 		footerParts = append(footerParts, "Press any key to continue")
+	} else {
+		// Show cancel instruction during active phases
+		footerParts = append(footerParts, "Press Ctrl+C or Q to cancel")
 	}
 
 	footerStyle := lipgloss.NewStyle().
