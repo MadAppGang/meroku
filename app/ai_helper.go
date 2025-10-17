@@ -107,7 +107,7 @@ Important:
 	defer cancel()
 
 	message, err := client.Messages.New(timeoutCtx, anthropic.MessageNewParams{
-		Model:     anthropic.ModelClaude3_5Sonnet20241022,
+		Model:     "claude-sonnet-4-5-20250929", // Latest Claude Sonnet 4.5 - best for coding and agents
 		MaxTokens: 1024,
 		Messages: []anthropic.MessageParam{
 			anthropic.NewUserMessage(anthropic.NewTextBlock(prompt)),
