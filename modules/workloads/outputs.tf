@@ -16,6 +16,6 @@ output "account_id" {
 
 output "backend_cloud_map_arn" {
   description = "value of the backend service discovery ARN"
-  value       = try(data.aws_service_discovery_service.backend[0].arn, "")
+  value       = try(aws_service_discovery_service.backend[0].arn, "")
 }
 

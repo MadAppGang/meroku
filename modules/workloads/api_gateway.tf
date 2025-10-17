@@ -68,7 +68,7 @@ resource "aws_apigatewayv2_integration" "backend" {
   api_id             = aws_apigatewayv2_api.api_gateway.id
   integration_type   = "HTTP_PROXY"
   integration_method = "ANY"
-  integration_uri    = data.aws_service_discovery_service.backend[0].arn
+  integration_uri    = aws_service_discovery_service.backend[0].arn
   connection_id      = aws_apigatewayv2_vpc_link.backend.id
   connection_type    = "VPC_LINK"
 }

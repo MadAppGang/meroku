@@ -33,18 +33,12 @@ resource "aws_ecs_service" "backend" {
     }
   }
 
-  service_connect_configuration {
-    enabled   = true
-    namespace = aws_service_discovery_private_dns_namespace.local.name
-
-    //TODO: logs
-    service {
-      port_name      = local.backend_name
-      discovery_name = local.backend_name
-      client_alias {
-        port     = var.backend_image_port
-        dns_name = local.backend_name
-      }
+  # Use service_registries with explicitly created Cloud Map service
+  # This allows API Gateway to reference the service ARN directly
+  dynamic "service_registries" {
+    for_each = var.enable_alb ? [] : [1]  # Only when using API Gateway
+    content {
+      registry_arn = aws_service_discovery_service.backend[0].arn
     }
   }
 
@@ -58,14 +52,34 @@ resource "aws_ecs_service" "backend" {
   }
 }
 
-data "aws_service_discovery_service" "backend" {
+# Create the Cloud Map service explicitly (instead of letting ECS Service Connect create it)
+resource "aws_service_discovery_service" "backend" {
   count = var.enable_alb ? 0 : 1  # Only needed for API Gateway integration
 
-  namespace_id = aws_service_discovery_private_dns_namespace.local.id
-  name         = local.backend_name
+  name = local.backend_name
 
-  # Depend on the ECS service to ensure it's created first
-  depends_on = [aws_ecs_service.backend]
+  dns_config {
+    namespace_id = aws_service_discovery_private_dns_namespace.local.id
+
+    dns_records {
+      ttl  = 10
+      type = "A"
+    }
+
+    routing_policy = "MULTIVALUE"
+  }
+
+  health_check_custom_config {
+    failure_threshold = 1
+  }
+
+  tags = {
+    Name        = local.backend_name
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
 }
 
 
