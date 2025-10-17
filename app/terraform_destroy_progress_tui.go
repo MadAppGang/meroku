@@ -671,10 +671,11 @@ func (m *destroyProgressModel) View() string {
 	blastWaveHeight := 2 // Reserve space for blast wave
 
 	blastWave := getBlastWave(m.explosionFrame)
+	// Use TOP alignment to prevent vertical jumping when wave appears/disappears
 	waveContainer := lipgloss.NewStyle().
 		Height(blastWaveHeight).
 		Width(contentWidth).
-		Align(lipgloss.Center, lipgloss.Center)
+		Align(lipgloss.Center, lipgloss.Top)
 
 	if blastWave != "" {
 		waveStyle := lipgloss.NewStyle().
@@ -745,10 +746,11 @@ func (m *destroyProgressModel) View() string {
 		}
 
 		// Create fixed-height container for explosion
+		// Use TOP alignment instead of CENTER to prevent vertical jumping
 		explosionContainer := lipgloss.NewStyle().
 			Height(explosionHeight).
 			Width(contentWidth).
-			Align(lipgloss.Center, lipgloss.Center)
+			Align(lipgloss.Center, lipgloss.Top)
 
 		// Style the explosion frame
 		explosionStyle := lipgloss.NewStyle().
@@ -756,7 +758,7 @@ func (m *destroyProgressModel) View() string {
 			Bold(frameIndex < 10). // Bold for intense frames, normal for smoke
 			Align(lipgloss.Center)
 
-		// Render frame inside container (vertically centered)
+		// Render frame inside container (top-aligned to prevent jumping)
 		styledFrame := explosionStyle.Render(explosionFrames[frameIndex])
 		content.WriteString(explosionContainer.Render(styledFrame))
 		content.WriteString("\n")
@@ -815,11 +817,11 @@ func (m *destroyProgressModel) View() string {
 		Align(lipgloss.Center).
 		Width(contentWidth)
 
-	// Use fixed-height container for status
+	// Use fixed-height container for status with TOP alignment
 	statusContainer := lipgloss.NewStyle().
 		Height(statusHeight).
 		Width(contentWidth).
-		Align(lipgloss.Center, lipgloss.Center)
+		Align(lipgloss.Center, lipgloss.Top)
 
 	content.WriteString(statusContainer.Render(statusStyle.Render(statusText)))
 	content.WriteString("\n")
