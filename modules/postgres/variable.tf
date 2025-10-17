@@ -16,25 +16,27 @@ variable "project" {
 }
 
 variable "db_name" {
-  type = string
-  default = ""
+  type        = string
+  default     = ""
   description = "Database name. If empty, uses project name as default"
 }
 
 variable "username" {
-  type    = string
-  default = ""
+  type        = string
+  default     = ""
   description = "Master username. If empty, defaults to 'postgres'"
 }
 
 variable "instance" {
-  type    = string
-  default = "db.t3.micro"
+  type        = string
+  default     = "db.t3.micro"
+  description = "DEPRECATED: Use instance_class instead. RDS instance type for standard (non-Aurora) deployment"
 }
 
 variable "storage" {
-  type    = string
-  default = "20"
+  type        = string
+  default     = "20"
+  description = "DEPRECATED: Use allocated_storage instead. Storage size in GB"
 }
 
 variable "public_access" {
@@ -43,7 +45,7 @@ variable "public_access" {
 }
 
 variable "engine_version" {
-  default = "17"
+  default     = "17"
   description = "PostgreSQL major version (13, 14, 15, 16, 17)"
 }
 
@@ -63,6 +65,49 @@ variable "max_capacity" {
   type        = number
   default     = 1
   description = "Maximum capacity for Aurora Serverless v2 (in ACUs)"
+}
+
+# RDS-specific configuration (when aurora is false)
+variable "instance_class" {
+  type        = string
+  default     = "db.t4g.micro"
+  description = "RDS instance class (db.t4g.micro, db.m6i.large, etc.)"
+}
+
+variable "allocated_storage" {
+  type        = number
+  default     = 20
+  description = "Allocated storage size in GB (20-65536)"
+}
+
+variable "storage_type" {
+  type        = string
+  default     = "gp3"
+  description = "Storage type - gp3 (General Purpose SSD)"
+}
+
+variable "multi_az" {
+  type        = bool
+  default     = false
+  description = "Enable Multi-AZ deployment for high availability"
+}
+
+variable "storage_encrypted" {
+  type        = bool
+  default     = true
+  description = "Enable storage encryption at rest"
+}
+
+variable "deletion_protection" {
+  type        = bool
+  default     = false
+  description = "Enable deletion protection to prevent accidental deletion"
+}
+
+variable "skip_final_snapshot" {
+  type        = bool
+  default     = true
+  description = "Skip final snapshot when deleting (not recommended for production)"
 }
 
 resource "random_password" "postgres" {

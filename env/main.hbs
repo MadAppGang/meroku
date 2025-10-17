@@ -91,7 +91,7 @@ data "aws_subnets" "all" {
 {{/if}}
 
 
-{{#if postgres.enabled}} 
+{{#if postgres.enabled}}
 module "postgres" {
   source = "{{modules}}/postgres"
   project = "{{project}}"
@@ -110,6 +110,29 @@ module "postgres" {
   {{/if}}
   {{#if (or postgres.max_capacity (eq postgres.max_capacity 0))}}
   max_capacity = {{postgres.max_capacity}}
+  {{/if}}
+  {{else}}
+  {{!-- RDS-specific configuration (when aurora is false) --}}
+  {{#if postgres.instance_class}}
+  instance_class = "{{postgres.instance_class}}"
+  {{/if}}
+  {{#if postgres.allocated_storage}}
+  allocated_storage = {{postgres.allocated_storage}}
+  {{/if}}
+  {{#if postgres.storage_type}}
+  storage_type = "{{postgres.storage_type}}"
+  {{/if}}
+  {{#if (or postgres.multi_az (eq postgres.multi_az false))}}
+  multi_az = {{postgres.multi_az}}
+  {{/if}}
+  {{#if (or postgres.storage_encrypted (eq postgres.storage_encrypted false))}}
+  storage_encrypted = {{postgres.storage_encrypted}}
+  {{/if}}
+  {{#if (or postgres.deletion_protection (eq postgres.deletion_protection false))}}
+  deletion_protection = {{postgres.deletion_protection}}
+  {{/if}}
+  {{#if (or postgres.skip_final_snapshot (eq postgres.skip_final_snapshot false))}}
+  skip_final_snapshot = {{postgres.skip_final_snapshot}}
   {{/if}}
   {{/if}}
 }

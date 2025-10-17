@@ -104,14 +104,22 @@ type Domain struct {
 type PostgresEngineVersion string
 
 type Postgres struct {
-	Enabled       bool    `yaml:"enabled"`
-	Dbname        string  `yaml:"dbname"`
-	Username      string  `yaml:"username"`
-	PublicAccess  bool    `yaml:"public_access"`
-	EngineVersion string  `yaml:"engine_version"`
-	Aurora        bool    `yaml:"aurora"`
-	MinCapacity   float64 `yaml:"min_capacity"`
-	MaxCapacity   float64 `yaml:"max_capacity"`
+	Enabled            bool    `yaml:"enabled"`
+	Dbname             string  `yaml:"dbname"`
+	Username           string  `yaml:"username"`
+	PublicAccess       bool    `yaml:"public_access"`
+	EngineVersion      string  `yaml:"engine_version"`
+	Aurora             bool    `yaml:"aurora"`
+	MinCapacity        float64 `yaml:"min_capacity"`
+	MaxCapacity        float64 `yaml:"max_capacity"`
+	// RDS-specific fields (when aurora is false)
+	InstanceClass      string  `yaml:"instance_class"`
+	AllocatedStorage   int     `yaml:"allocated_storage"`
+	StorageType        string  `yaml:"storage_type"`
+	MultiAZ            bool    `yaml:"multi_az"`
+	StorageEncrypted   bool    `yaml:"storage_encrypted"`
+	DeletionProtection bool    `yaml:"deletion_protection"`
+	SkipFinalSnapshot  bool    `yaml:"skip_final_snapshot"`
 }
 
 type Cognito struct {

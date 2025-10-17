@@ -288,6 +288,235 @@ export function PostgresNodeProperties({
 								</div>
 							)}
 
+							{!postgresConfig.aurora && (
+								<div className="space-y-4 p-3 bg-gray-800 rounded-lg">
+									<h3 className="text-sm font-semibold text-gray-300 mb-3">
+										RDS Instance Configuration
+									</h3>
+
+									{/* Instance Class Dropdown */}
+									<div className="space-y-2">
+										<Label htmlFor="instance-class">Instance Class</Label>
+										<select
+											id="instance-class"
+											value={postgresConfig.instance_class || "db.t4g.micro"}
+											onChange={(e) =>
+												handleUpdateConfig({ instance_class: e.target.value })
+											}
+											className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+										>
+											<optgroup label="T4g - Burstable (ARM, Cost-effective)">
+												<option value="db.t4g.micro">
+													db.t4g.micro (2 vCPU, 1GB) - ~$12/mo
+												</option>
+												<option value="db.t4g.small">
+													db.t4g.small (2 vCPU, 2GB) - ~$23/mo
+												</option>
+												<option value="db.t4g.medium">
+													db.t4g.medium (2 vCPU, 4GB) - ~$47/mo
+												</option>
+												<option value="db.t4g.large">
+													db.t4g.large (2 vCPU, 8GB) - ~$94/mo
+												</option>
+											</optgroup>
+											<optgroup label="M6i - Balanced Production">
+												<option value="db.m6i.large">
+													db.m6i.large (2 vCPU, 8GB) - ~$130/mo
+												</option>
+												<option value="db.m6i.xlarge">
+													db.m6i.xlarge (4 vCPU, 16GB) - ~$260/mo
+												</option>
+												<option value="db.m6i.2xlarge">
+													db.m6i.2xlarge (8 vCPU, 32GB) - ~$520/mo
+												</option>
+											</optgroup>
+											<optgroup label="R6i - Memory-Optimized">
+												<option value="db.r6i.large">
+													db.r6i.large (2 vCPU, 16GB) - ~$175/mo
+												</option>
+												<option value="db.r6i.xlarge">
+													db.r6i.xlarge (4 vCPU, 32GB) - ~$350/mo
+												</option>
+											</optgroup>
+										</select>
+										<p className="text-xs text-gray-500">
+											Choose instance size based on your workload requirements
+										</p>
+									</div>
+
+									{/* Storage Size */}
+									<div className="space-y-2">
+										<Label htmlFor="allocated-storage">
+											Allocated Storage (GB)
+										</Label>
+										<Input
+											id="allocated-storage"
+											type="number"
+											min={20}
+											max={65536}
+											value={postgresConfig.allocated_storage || 20}
+											onChange={(e) =>
+												handleUpdateConfig({
+													allocated_storage: Number(e.target.value),
+												})
+											}
+										/>
+										<p className="text-xs text-gray-500">
+											gp3 SSD - $0.115/GB/month (20 GB minimum, 65,536 GB
+											maximum)
+										</p>
+									</div>
+
+									{/* Multi-AZ Toggle */}
+									<div className="flex items-center justify-between p-3 bg-gray-900 rounded-lg">
+										<div className="space-y-1">
+											<Label className="text-sm font-medium">
+												Multi-AZ Deployment
+											</Label>
+											<p className="text-xs text-gray-400">
+												High availability with automatic failover (doubles
+												instance cost)
+											</p>
+										</div>
+										<Switch
+											checked={postgresConfig.multi_az || false}
+											onCheckedChange={(checked) =>
+												handleUpdateConfig({ multi_az: checked })
+											}
+										/>
+									</div>
+
+									{/* Storage Encryption */}
+									<div className="flex items-center justify-between p-3 bg-gray-900 rounded-lg">
+										<div className="space-y-1">
+											<Label className="text-sm font-medium">
+												Storage Encryption
+											</Label>
+											<p className="text-xs text-gray-400">
+												Encrypt data at rest (recommended)
+											</p>
+										</div>
+										<Switch
+											checked={
+												postgresConfig.storage_encrypted !== false
+											}
+											onCheckedChange={(checked) =>
+												handleUpdateConfig({ storage_encrypted: checked })
+											}
+										/>
+									</div>
+
+									{/* Deletion Protection */}
+									<div className="flex items-center justify-between p-3 bg-gray-900 rounded-lg">
+										<div className="space-y-1">
+											<Label className="text-sm font-medium">
+												Deletion Protection
+											</Label>
+											<p className="text-xs text-gray-400">
+												Prevent accidental database deletion
+											</p>
+										</div>
+										<Switch
+											checked={postgresConfig.deletion_protection || false}
+											onCheckedChange={(checked) =>
+												handleUpdateConfig({ deletion_protection: checked })
+											}
+										/>
+									</div>
+
+									{/* Skip Final Snapshot */}
+									<div className="flex items-center justify-between p-3 bg-gray-900 rounded-lg">
+										<div className="space-y-1">
+											<Label className="text-sm font-medium">
+												Skip Final Snapshot
+											</Label>
+											<p className="text-xs text-gray-400">
+												Skip creating snapshot when deleting (not recommended
+												for production)
+											</p>
+										</div>
+										<Switch
+											checked={
+												postgresConfig.skip_final_snapshot !== false
+											}
+											onCheckedChange={(checked) =>
+												handleUpdateConfig({ skip_final_snapshot: checked })
+											}
+										/>
+									</div>
+
+									{/* Cost Estimate */}
+									<div className="p-3 bg-blue-900/20 border border-blue-700 rounded-lg">
+										<h4 className="text-sm font-semibold text-blue-300 mb-2">
+											💰 Estimated Monthly Cost
+										</h4>
+										<p className="text-2xl font-bold text-white mb-2">
+											${(() => {
+												const instancePrices: Record<string, number> = {
+													"db.t4g.micro": 11.68,
+													"db.t4g.small": 23.36,
+													"db.t4g.medium": 47.45,
+													"db.t4g.large": 94.17,
+													"db.m6i.large": 129.94,
+													"db.m6i.xlarge": 259.88,
+													"db.m6i.2xlarge": 519.76,
+													"db.r6i.large": 175.2,
+													"db.r6i.xlarge": 350.4,
+												};
+
+												const instanceClass =
+													postgresConfig.instance_class || "db.t4g.micro";
+												let instanceCost = instancePrices[instanceClass] || 23.36;
+
+												if (postgresConfig.multi_az) {
+													instanceCost *= 2;
+												}
+
+												const storage = postgresConfig.allocated_storage || 20;
+												const storageCost = storage * 0.115;
+
+												return (instanceCost + storageCost).toFixed(2);
+											})()}
+											/month
+										</p>
+										<div className="text-xs text-gray-400 space-y-1">
+											<div>
+												Instance:{" "}
+												{postgresConfig.instance_class || "db.t4g.micro"}{" "}
+												{postgresConfig.multi_az && "(Multi-AZ)"} - $
+												{(() => {
+													const instancePrices: Record<string, number> = {
+														"db.t4g.micro": 11.68,
+														"db.t4g.small": 23.36,
+														"db.t4g.medium": 47.45,
+														"db.t4g.large": 94.17,
+														"db.m6i.large": 129.94,
+														"db.m6i.xlarge": 259.88,
+														"db.m6i.2xlarge": 519.76,
+														"db.r6i.large": 175.2,
+														"db.r6i.xlarge": 350.4,
+													};
+													const instanceClass =
+														postgresConfig.instance_class || "db.t4g.micro";
+													let cost = instancePrices[instanceClass] || 23.36;
+													if (postgresConfig.multi_az) cost *= 2;
+													return cost.toFixed(2);
+												})()}
+												/mo
+											</div>
+											<div>
+												Storage: {postgresConfig.allocated_storage || 20}GB gp3
+												- $
+												{((postgresConfig.allocated_storage || 20) * 0.115).toFixed(
+													2,
+												)}
+												/mo
+											</div>
+										</div>
+									</div>
+								</div>
+							)}
+
 							<div className="grid grid-cols-2 gap-4">
 								<div className="space-y-2">
 									<Label htmlFor="db-name">Database Name</Label>

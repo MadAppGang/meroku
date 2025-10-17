@@ -99,6 +99,14 @@ export interface YamlInfrastructureConfig {
 		aurora?: boolean;
 		min_capacity?: number;
 		max_capacity?: number;
+		// RDS-specific configuration (when aurora is false)
+		instance_class?: string; // db.t4g.micro, db.m6i.large, etc.
+		allocated_storage?: number; // 20-65536 GB
+		storage_type?: string; // gp3 (only option)
+		multi_az?: boolean; // High availability deployment
+		storage_encrypted?: boolean; // Encryption at rest
+		deletion_protection?: boolean; // Prevent accidental deletion
+		skip_final_snapshot?: boolean; // Snapshot on delete
 	};
 
 	// Authentication Configuration

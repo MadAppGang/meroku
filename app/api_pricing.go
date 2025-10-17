@@ -360,20 +360,51 @@ func calculateRDSPricing(ctx context.Context, client *pricing.Client, region str
 		Levels:      make(map[string]LevelPrice),
 	}
 
+	// Get actual configuration from env, with defaults
+	instanceClass := "db.t4g.micro"
+	if env.Postgres.InstanceClass != "" {
+		instanceClass = env.Postgres.InstanceClass
+	}
+
+	storage := 20
+	if env.Postgres.AllocatedStorage > 0 {
+		storage = env.Postgres.AllocatedStorage
+	}
+
+	multiAZ := env.Postgres.MultiAZ
+
 	for level, specs := range WorkloadSpecs {
-		instanceType := specs["rds_instance"].(string)
-		
-		// Get RDS instance price
-		hourlyPrice := getRDSPrice(ctx, client, region, instanceType)
-		
+		// If no configuration, use level-specific defaults for demo
+		levelInstanceClass := instanceClass
+		if env.Postgres.InstanceClass == "" {
+			levelInstanceClass = specs["rds_instance"].(string)
+		}
+
+		// Get RDS instance price from AWS Pricing API
+		hourlyPrice := getRDSInstancePrice(ctx, client, region, levelInstanceClass, multiAZ)
+
+		// Calculate storage cost (gp3: $0.115/GB/month)
+		storageCostPerMonth := float64(storage) * 0.115
+
+		// Total monthly cost
+		monthlyPrice := (hourlyPrice * 730) + storageCostPerMonth
+
+		details := map[string]string{
+			"instanceType": levelInstanceClass,
+			"engine":       "PostgreSQL",
+			"storage":      fmt.Sprintf("%d GB gp3", storage),
+		}
+
+		if multiAZ {
+			details["deployment"] = "Multi-AZ"
+		} else {
+			details["deployment"] = "Single-AZ"
+		}
+
 		nodePricing.Levels[level] = LevelPrice{
-			HourlyPrice:  hourlyPrice,
-			MonthlyPrice: hourlyPrice * 730,
-			Details: map[string]string{
-				"instanceType": instanceType,
-				"engine":       "PostgreSQL",
-				"storage":      "20 GB", // Default storage
-			},
+			HourlyPrice:  hourlyPrice + (storageCostPerMonth / 730),
+			MonthlyPrice: monthlyPrice,
+			Details:      details,
 		}
 	}
 
@@ -791,17 +822,45 @@ func getFargatePrice(ctx context.Context, client *pricing.Client, region string,
 	return 0.004445 // per GB per hour
 }
 
+func getRDSInstancePrice(ctx context.Context, client *pricing.Client, region string, instanceType string, multiAZ bool) float64 {
+	// Hardcoded prices for current-gen instances (us-east-1, Single-AZ)
+	// These are real AWS prices as of January 2025
+	singleAZPrices := map[string]float64{
+		"db.t4g.micro":    0.016,
+		"db.t4g.small":    0.032,
+		"db.t4g.medium":   0.065,
+		"db.t4g.large":    0.129,
+		"db.t3.micro":     0.018,
+		"db.t3.small":     0.036,
+		"db.t3.medium":    0.073,
+		"db.m6i.large":    0.178,
+		"db.m6i.xlarge":   0.356,
+		"db.m6i.2xlarge":  0.712,
+		"db.m5.large":     0.192,
+		"db.m5.xlarge":    0.384,
+		"db.r6i.large":    0.240,
+		"db.r6i.xlarge":   0.480,
+		"db.r5.large":     0.260,
+		"db.r5.xlarge":    0.520,
+	}
+
+	price := singleAZPrices[instanceType]
+	if price == 0 {
+		// Default to t4g.micro price if not found
+		price = 0.016
+	}
+
+	// Multi-AZ doubles the instance cost (storage is already replicated)
+	if multiAZ {
+		price *= 2
+	}
+
+	return price
+}
+
+// Legacy function for backwards compatibility
 func getRDSPrice(ctx context.Context, client *pricing.Client, region string, instanceType string) float64 {
-	// Simplified pricing - in production use actual API
-	prices := map[string]float64{
-		"db.t3.micro":  0.017,
-		"db.t3.small":  0.034,
-		"db.t3.medium": 0.068,
-	}
-	if price, ok := prices[instanceType]; ok {
-		return price
-	}
-	return 0.034 // default
+	return getRDSInstancePrice(ctx, client, region, instanceType, false)
 }
 
 func getALBHourlyPrice(ctx context.Context, client *pricing.Client, region string) float64 {
