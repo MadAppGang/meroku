@@ -449,10 +449,8 @@ func (m *destroyProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(msg.output) > 0 {
 			m.errorOutput = msg.output
 		}
-		// Auto-quit after a short delay to show error message
-		return m, tea.Tick(time.Second*3, func(t time.Time) tea.Msg {
-			return tea.Quit()
-		})
+		// Stop the animation and wait for user to press a key
+		return m, nil
 
 	case tea.KeyMsg:
 		// Handle Ctrl+C during ANY phase
