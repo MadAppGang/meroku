@@ -40,7 +40,6 @@ type destroyProgressModel struct {
 	startTime          time.Time
 	env                string
 	spinnerFrame       int
-	explosionFrame     int
 	terraformCmd       *exec.Cmd // Store command reference for cleanup
 	interrupted        bool      // Track if user interrupted
 	errorViewport      viewport.Model
@@ -89,194 +88,22 @@ func wrapText(text string, maxWidth int) []string {
 	return lines
 }
 
-// Blast wave rings that expand outward
-func getBlastWave(frame int) string {
-	waves := []string{
-		"",                                    // 0: No wave yet
-		"",                                    // 1: Still building
-		"",                                    // 2: Starting
-		"- - - - - - - -",                    // 3: First wave
-		"- - - - - - - - - - - -",            // 4: Expanding
-		"~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~",        // 5: Second wave
-		"· · ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ · ·",      // 6: Particles
-		"  · · · ~ ~ ~ ~ ~ ~ ~ · · · ·",      // 7: Dissipating
-		"    · · · · ~ ~ ~ · · · ·",          // 8: Fading
-		"      · · · · · · · ·",              // 9: Almost gone
-		"        · · · ·",                     // 10: Traces
-		"",                                    // 11+: Gone
+// Simple emoji for destruction - no complex animation
+func getDestructionEmoji(phase destroyPhase) string {
+	switch phase {
+	case destroyInitializing:
+		return "🔧"
+	case destroyPlanning:
+		return "📋"
+	case destroyDestroying:
+		return "💥"
+	case destroyComplete:
+		return "✅"
+	case destroyError:
+		return "❌"
+	default:
+		return "💥"
 	}
-
-	if frame < len(waves) {
-		return waves[frame]
-	}
-	return ""
-}
-
-// Nuclear explosion animation - Ultra-detailed Braille/Unicode art
-var explosionFrames = []string{
-	// Frame 0: Impact point
-	`
-       ⠀⠀⢀⠀⠀
-       ⠀⢀⣀⡀⠀
-       ⠀⠈⠁⠀⠀
-`,
-	// Frame 1: Initial flash
-	`
-       ⠀⢀⣀⡀⠀
-       ⢀⣿⣿⡀
-       ⠈⠻⠟⠁
-       ⠀⠀⠁⠀⠀
-`,
-	// Frame 2: Fireball burst
-	`
-      ⠀⢀⣤⣤⡀⠀
-      ⢠⣿⣿⣿⣿⡄
-      ⢸⣿⣿⣿⣿⡇
-      ⠈⠻⣿⣿⠟⠁
-       ⠀⠈⠁⠀⠀
-`,
-	// Frame 3: Expanding blast
-	`
-     ⢀⣠⣤⣤⣤⣄⡀
-    ⣠⣿⣿⣿⣿⣿⣿⣄
-    ⣿⣿⣿⣿⣿⣿⣿⣿
-    ⠙⢿⣿⣿⣿⣿⡿⠋
-     ⠀⠈⠛⠛⠁⠀⠀
-      ⠀⠀⣿⠀⠀⠀
-`,
-	// Frame 4: Rising column
-	`
-    ⢀⣠⣴⣶⣶⣶⣦⣄⡀
-   ⣴⣿⣿⣿⣿⣿⣿⣿⣿⣦
-   ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
-   ⠹⣿⣿⣿⣿⣿⣿⣿⣿⠏
-    ⠈⠙⠻⣿⠿⠛⠋⠁
-      ⠀⢸⣿⡇⠀⠀
-      ⠀⢸⣿⡇⠀⠀
-      ⠀⣸⣿⣇⠀⠀
-`,
-	// Frame 5: Mushroom forming
-	`
-   ⠀⢀⣀⣀⣀⣀⣀⣀⣀⡀⠀
-   ⣠⣾⣿⣿⣿⣿⣿⣿⣿⣷⣄
-  ⣰⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣆
-  ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
-  ⠹⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠏
-   ⠈⠙⠻⢿⣿⣿⡿⠟⠋⠁
-     ⠀⢀⣿⣿⣿⡀⠀
-     ⠀⢸⣿⣿⣿⡇⠀
-     ⠀⣸⣿⣿⣿⣇⠀
-     ⠀⣿⣿⣿⣿⣿⠀
-`,
-	// Frame 6: Mushroom cap expanding
-	`
-  ⠀⢀⣀⣀⣀⣀⣀⣀⣀⣀⣀⡀⠀
-  ⣠⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣄
- ⣰⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣆
- ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
- ⠹⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠏
-  ⠈⠙⠻⢿⣿⣿⣿⣿⡿⠟⠋⠁
-    ⠀⢀⣿⣿⣿⣿⣿⡀⠀
-    ⠀⢸⣿⣿⣿⣿⣿⡇⠀
-    ⠀⣸⣿⣿⣿⣿⣿⣇⠀
-    ⠀⣿⣿⣿⣿⣿⣿⣿⠀
-`,
-	// Frame 7: Large mushroom cloud
-	`
- ⢀⣠⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣄⡀
- ⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷
-⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
-⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
-⠹⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠏
- ⠈⠙⠻⢿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠋⠁
-   ⠀⢀⣿⣿⣿⣿⣿⣿⣿⣿⡀
-   ⠀⢸⣿⣿⣿⣿⣿⣿⣿⣿⡇
-   ⠀⣸⣿⣿⣿⣿⣿⣿⣿⣿⣇
-   ⠀⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
-`,
-	// Frame 8: Massive cloud
-	`
-⢀⣴⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣦⡀
-⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷
-⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
-⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
-⠹⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠏
- ⠈⠙⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠋
-  ⠀⢀⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡀
-  ⠀⢸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇
-  ⠀⣸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣇
-  ⠀⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
-`,
-	// Frame 9: Peak mushroom
-	`
-⣴⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣦
-⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
-⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
-⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
-⠹⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠏
- ⠈⠙⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠋
-  ⠀⢀⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡀
-  ⠀⢸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇
-  ⠀⣸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣇
-  ⠀⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
-`,
-	// Frame 10: Billowing edges
-	`
-⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
-⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
-⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
-⠹⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠏
- ⠈⠙⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠋
-  ⠀⢀⣀⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣀⡀
-  ⠀⢸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇
-  ⠀⣸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣇
-  ⠀⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
-`,
-	// Frame 11: Smoke spreading
-	`
-⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
-⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
-⠹⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠏
- ⠈⠙⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠋
-  ⠀⢀⣀⣀⣿⣿⣿⣿⣿⣿⣿⣿⣀⣀⡀
-  ⠀⠈⠛⠛⣿⣿⣿⣿⣿⣿⣿⣿⠛⠛⠁
-  ⠀⠀⠀⢸⣿⣿⣿⣿⣿⣿⣿⣿⡇⠀
-  ⠀⠀⠀⣸⣿⣿⣿⣿⣿⣿⣿⣿⣇⠀
-  ⠀⠀⠀⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠀
-`,
-	// Frame 12: Dissipating
-	`
-⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
-⠹⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠏
- ⠈⠙⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠋
-  ⠀⢀⣀⣀⣿⣿⣿⣿⣿⣿⣿⣿⣀⣀⡀
-  ⠀⠈⠉⠉⣿⣿⣿⣿⣿⣿⣿⣿⠉⠉⠁
-  ⠀⠀⠀⠀⣿⣿⣿⣿⣿⣿⣿⣿⠀⠀
-  ⠀⠀⠀⠀⣿⣿⣿⣿⣿⣿⣿⣿⠀⠀
-  ⠀⠀⠀⠀⣿⣿⣿⣿⣿⣿⣿⣿⠀⠀
-  ⠀⠀⠀⠀⠿⠿⠿⠿⠿⠿⠿⠿⠀⠀
-`,
-	// Frame 13: Fading smoke
-	`
-⠹⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠏
- ⠈⠙⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠋
-  ⠀⠀⢀⣀⣿⣿⣿⣿⣿⣿⣿⣿⣀⡀⠀
-  ⠀⠀⠈⠉⣿⣿⣿⣿⣿⣿⣿⣿⠉⠁⠀
-  ⠀⠀⠀⠀⣿⣿⣿⣿⣿⣿⣿⣿⠀⠀⠀
-  ⠀⠀⠀⠀⠿⣿⣿⣿⣿⣿⣿⠿⠀⠀⠀
-  ⠀⠀⠀⠀⠀⠈⠛⠛⠛⠛⠁⠀⠀⠀⠀
-  ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-`,
-	// Frame 14: Final traces
-	`
- ⠈⠙⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠋
-  ⠀⠀⠀⠀⣿⣿⣿⣿⣿⣿⣿⣿⠀⠀⠀
-  ⠀⠀⠀⠀⣿⣿⣿⣿⣿⣿⣿⣿⠀⠀⠀
-  ⠀⠀⠀⠀⣿⣿⣿⣿⣿⣿⣿⣿⠀⠀⠀
-  ⠀⠀⠀⠀⠿⢿⣿⣿⣿⣿⡿⠿⠀⠀⠀
-  ⠀⠀⠀⠀⠀⠈⠉⠉⠉⠁⠀⠀⠀⠀⠀
-  ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-`,
 }
 
 type destroyTickMsg time.Time
@@ -495,25 +322,6 @@ func (m *destroyProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		// Animate explosion continuously (except when complete/error)
-		// Loops infinitely through all frames
-		if m.phase != destroyComplete && m.phase != destroyError {
-			// Cycle through explosion frames (every 2 ticks = 200ms per frame for smoother animation)
-			if m.spinnerFrame%2 == 0 {
-				m.explosionFrame++
-
-				// Loop back to start when reaching the end
-				if m.explosionFrame >= len(explosionFrames) {
-					m.explosionFrame = 0
-				}
-
-				// Terminal bell at dramatic moments for audio feedback
-				if m.explosionFrame == 2 || m.explosionFrame == 7 {
-					fmt.Print("\a") // Bell sound at flash and mushroom formation
-				}
-			}
-		}
-
 		// Continue ticking if not complete
 		if m.phase != destroyComplete && m.phase != destroyError {
 			return m, m.tickCmd()
@@ -645,7 +453,7 @@ func (m *destroyProgressModel) View() string {
 	var content strings.Builder
 
 	// ═══════════════════════════════════════
-	// TITLE SECTION
+	// TITLE & ICON SECTION
 	// ═══════════════════════════════════════
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
@@ -653,123 +461,19 @@ func (m *destroyProgressModel) View() string {
 		Align(lipgloss.Center).
 		Width(contentWidth)
 
-	// Add screen shake effect during intense frames
-	var titleText string
-	if m.explosionFrame >= 3 && m.explosionFrame <= 7 && m.spinnerFrame%3 == 0 {
-		// Subtle shake by adding random spacing
-		titleText = "💥  INFRASTRUCTURE  DESTRUCTION  IN  PROGRESS"
-	} else {
-		titleText = "💥 INFRASTRUCTURE DESTRUCTION IN PROGRESS"
-	}
+	titleText := "INFRASTRUCTURE DESTRUCTION IN PROGRESS"
 
 	content.WriteString(titleStyle.Render(titleText))
 	content.WriteString("\n\n")
 
-	// ═══════════════════════════════════════
-	// BLAST WAVE (Fixed-Height Container)
-	// ═══════════════════════════════════════
-	blastWaveHeight := 2 // Reserve space for blast wave
+	// Simple emoji icon (no complex animation)
+	emoji := getDestructionEmoji(m.phase)
+	emojiStyle := lipgloss.NewStyle().
+		Align(lipgloss.Center).
+		Width(contentWidth)
 
-	blastWave := getBlastWave(m.explosionFrame)
-	// Use TOP alignment to prevent vertical jumping when wave appears/disappears
-	waveContainer := lipgloss.NewStyle().
-		Height(blastWaveHeight).
-		Width(contentWidth).
-		Align(lipgloss.Center, lipgloss.Top)
-
-	if blastWave != "" {
-		waveStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("242")).
-			Align(lipgloss.Center)
-
-		content.WriteString(waveContainer.Render(waveStyle.Render(blastWave)))
-	} else {
-		content.WriteString(waveContainer.Render(""))
-	}
-	content.WriteString("\n")
-
-	// ═══════════════════════════════════════
-	// EXPLOSION ANIMATION (Fixed-Height Container)
-	// ═══════════════════════════════════════
-	// Reserve fixed space for explosion to prevent layout shifts
-	explosionHeight := 11 // Height of largest frame + padding
-
-	if m.phase != destroyComplete && m.phase != destroyError {
-		// Get current explosion frame
-		frameIndex := m.explosionFrame
-		if frameIndex >= len(explosionFrames) {
-			frameIndex = len(explosionFrames) - 1
-		}
-
-		// Enhanced color progression with detailed transitions
-		var explosionColor string
-
-		switch frameIndex {
-		case 0:
-			explosionColor = "231" // White flash (brightest)
-		case 1:
-			explosionColor = "227" // Bright yellow (flash peak)
-		case 2:
-			explosionColor = "226" // Yellow (burst)
-		case 3:
-			explosionColor = "220" // Golden yellow (expanding)
-		case 4:
-			explosionColor = "214" // Orange-yellow (heating)
-		case 5:
-			explosionColor = "208" // Orange (fireball)
-		case 6:
-			explosionColor = "202" // Deep orange (rising heat)
-		case 7:
-			explosionColor = "196" // Red (mushroom forming)
-		case 8:
-			explosionColor = "160" // Dark red (cloud solidifying)
-		case 9:
-			explosionColor = "124" // Deep red (massive cloud)
-		case 10:
-			explosionColor = "88"  // Burgundy (peak intensity)
-		case 11:
-			explosionColor = "240" // Dark gray (smoke starting)
-		case 12:
-			explosionColor = "244" // Medium gray (dissipating)
-		case 13:
-			explosionColor = "248" // Light gray (spreading smoke)
-		default:
-			explosionColor = "250" // Very light gray (final fade)
-		}
-
-		// Add subtle pulsing effect during peak frames by alternating intensity
-		if frameIndex >= 6 && frameIndex <= 10 && m.spinnerFrame%4 < 2 {
-			// Pulse effect: slightly brighter every other beat
-			if frameIndex == 8 {
-				explosionColor = "196" // Brighten during pulse
-			}
-		}
-
-		// Create fixed-height container for explosion
-		// Use TOP alignment instead of CENTER to prevent vertical jumping
-		explosionContainer := lipgloss.NewStyle().
-			Height(explosionHeight).
-			Width(contentWidth).
-			Align(lipgloss.Center, lipgloss.Top)
-
-		// Style the explosion frame
-		explosionStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color(explosionColor)).
-			Bold(frameIndex < 10). // Bold for intense frames, normal for smoke
-			Align(lipgloss.Center)
-
-		// Render frame inside container (top-aligned to prevent jumping)
-		styledFrame := explosionStyle.Render(explosionFrames[frameIndex])
-		content.WriteString(explosionContainer.Render(styledFrame))
-		content.WriteString("\n")
-	} else {
-		// Show empty space of same height when complete/error
-		emptyContainer := lipgloss.NewStyle().
-			Height(explosionHeight).
-			Width(contentWidth)
-		content.WriteString(emptyContainer.Render(""))
-		content.WriteString("\n")
-	}
+	content.WriteString(emojiStyle.Render(emoji))
+	content.WriteString("\n\n")
 
 	// ═══════════════════════════════════════
 	// STATUS SECTION (Fixed-Height Container)
@@ -839,14 +543,13 @@ func (m *destroyProgressModel) View() string {
 
 	// Calculate dynamic height for output box based on available space
 	// Account for all fixed-height elements:
-	// - Title section: 3 lines (title + 2 newlines)
-	// - Blast wave: 2 lines + 1 newline = 3 lines
-	// - Explosion: 11 lines + 1 newline = 12 lines
+	// - Title section: 1 line + 2 newlines = 3 lines
+	// - Emoji: 1 line + 2 newlines = 3 lines
 	// - Status: 3 lines + 1 newline = 4 lines
 	// - Output label: 1 line + 1 newline = 2 lines
 	// - Footer: 1 line
-	// Total fixed: 25 lines
-	fixedContentHeight := 25
+	// Total fixed: 13 lines
+	fixedContentHeight := 13
 	outputHeight := max(5, m.height-fixedContentHeight-4) // Minimum 5 lines for output, -4 for padding/borders
 
 	// Create bordered output box
