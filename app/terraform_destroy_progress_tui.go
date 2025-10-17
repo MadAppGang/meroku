@@ -49,6 +49,46 @@ type destroyProgressModel struct {
 	lastProcessedLines int  // Track how many lines we've processed
 }
 
+// wrapText wraps a long text string to fit within maxWidth
+// Returns a slice of wrapped lines
+func wrapText(text string, maxWidth int) []string {
+	if len(text) <= maxWidth {
+		return []string{text}
+	}
+
+	var lines []string
+	for len(text) > maxWidth {
+		// Find last space before maxWidth
+		breakPoint := maxWidth
+		for i := maxWidth - 1; i >= 0; i-- {
+			if text[i] == ' ' {
+				breakPoint = i
+				break
+			}
+		}
+
+		// If no space found, force break at maxWidth
+		if breakPoint == maxWidth {
+			for i := maxWidth - 1; i >= 0; i-- {
+				if i < len(text) {
+					breakPoint = i
+					break
+				}
+			}
+		}
+
+		lines = append(lines, text[:breakPoint])
+		text = strings.TrimSpace(text[breakPoint:])
+	}
+
+	// Add remaining text
+	if len(text) > 0 {
+		lines = append(lines, text)
+	}
+
+	return lines
+}
+
 // Blast wave rings that expand outward
 func getBlastWave(frame int) string {
 	waves := []string{
@@ -838,15 +878,29 @@ func (m *destroyProgressModel) View() string {
 		for i := start; i < len(outputCopy); i++ {
 			line := outputCopy[i]
 
-			// Truncate long lines
+			// Check if this is an error line before truncating
+			isError := strings.Contains(line, "ERROR") || strings.Contains(line, "Error")
+
+			// Word-wrap long lines instead of truncating (especially errors)
 			if len(line) > maxLineWidth {
-				line = line[:maxLineWidth-3] + "..."
+				if isError {
+					// For errors, wrap to multiple lines to show full message
+					wrapped := wrapText(line, maxLineWidth)
+					for _, wrappedLine := range wrapped {
+						styledLine := lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(wrappedLine)
+						outputContent.WriteString(styledLine + "\n")
+					}
+					continue
+				} else {
+					// For non-errors, truncate as before
+					line = line[:maxLineWidth-3] + "..."
+				}
 			}
 
 			// Color-code important lines
 			if strings.Contains(line, "Destroying...") || strings.Contains(line, "Destruction complete") {
 				line = lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Render(line)
-			} else if strings.Contains(line, "ERROR") || strings.Contains(line, "Error") {
+			} else if isError {
 				line = lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(line)
 			} else if strings.Contains(line, "Success") || strings.Contains(line, "complete!") {
 				line = lipgloss.NewStyle().Foreground(lipgloss.Color("82")).Render(line)
