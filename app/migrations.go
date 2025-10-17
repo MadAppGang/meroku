@@ -15,7 +15,8 @@ import (
 // 3: Added DNS management fields (zone_id, root_zone_id, etc.)
 // 4: Added backend scaling configuration
 // 5: Added ALB configuration
-const CurrentSchemaVersion = 5
+// 6: Added custom VPC configuration
+const CurrentSchemaVersion = 6
 
 // EnvWithVersion extends Env with a schema version field
 type EnvWithVersion struct {
@@ -51,6 +52,11 @@ var AllMigrations = []Migration{
 		Version:     5,
 		Description: "Add Account ID and AWS Profile fields",
 		Apply:       migrateToV5,
+	},
+	{
+		Version:     6,
+		Description: "Add custom VPC configuration",
+		Apply:       migrateToV6,
 	},
 }
 
@@ -206,6 +212,32 @@ func migrateToV5(data map[string]interface{}) error {
 	}
 	if _, exists := data["aws_profile"]; !exists {
 		data["aws_profile"] = ""
+	}
+
+	return nil
+}
+
+// migrateToV6 adds custom VPC configuration
+func migrateToV6(data map[string]interface{}) error {
+	fmt.Println("  → Migrating to v6: Adding custom VPC configuration")
+
+	// Add use_default_vpc flag (true for backward compatibility)
+	if _, exists := data["use_default_vpc"]; !exists {
+		data["use_default_vpc"] = true
+	}
+
+	// Add VPC configuration fields (only used when use_default_vpc = false)
+	if _, exists := data["vpc_cidr"]; !exists {
+		data["vpc_cidr"] = "10.0.0.0/16"
+	}
+	if _, exists := data["az_count"]; !exists {
+		data["az_count"] = 2
+	}
+	if _, exists := data["create_private_subnets"]; !exists {
+		data["create_private_subnets"] = false
+	}
+	if _, exists := data["enable_nat_gateway"]; !exists {
+		data["enable_nat_gateway"] = false
 	}
 
 	return nil

@@ -13,18 +13,33 @@ terraform {
   required_version = ">= 1.2.6"
 }
 
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
+
+{{#if use_default_vpc}}
+# Using default VPC (backward compatibility)
 data "aws_vpc" "default" {
   default = true
 }
 
-data "aws_caller_identity" "current" {}
-data "aws_region" "current" {}
 data "aws_subnets" "all" {
   filter {
     name   = "vpc-id"
     values = [data.aws_vpc.default.id]
   }
 }
+{{else}}
+# Create custom VPC
+module "vpc" {
+  source                  = "{{ modules }}/vpc"
+  project                 = "{{ project }}"
+  env                     = "{{ env }}"
+  vpc_cidr                = "{{ vpc_cidr }}"
+  az_count                = {{ az_count }}
+  create_private_subnets  = {{ create_private_subnets }}
+  enable_nat_gateway      = {{ enable_nat_gateway }}
+}
+{{/if}}
 
 # Locals removed - using direct handlebar resolution in modules
 {{#if domain.enabled}}
@@ -96,8 +111,8 @@ module "postgres" {
   source = "{{modules}}/postgres"
   project = "{{project}}"
   env = "{{env}}"
-  vpc_id     = data.aws_vpc.default.id
-  subnet_ids = data.aws_subnets.all.ids
+  vpc_id     = {{#if use_default_vpc}}data.aws_vpc.default.id{{else}}module.vpc.vpc_id{{/if}}
+  subnet_ids = {{#if use_default_vpc}}data.aws_subnets.all.ids{{else}}module.vpc.subnet_ids{{/if}}
   db_name = "{{postgres.dbname}}"
   username = "{{postgres.username}}"
   public_access = {{ postgres.public_access }}
@@ -152,7 +167,7 @@ module "efs" {
   source = "{{modules}}/efs"
   project = "{{project}}"
   env = "{{env}}"
-  vpc_id = data.aws_vpc.default.id
+  vpc_id = {{#if use_default_vpc}}data.aws_vpc.default.id{{else}}module.vpc.vpc_id{{/if}}
   private_subnets = data.aws_subnets.all.ids
   efs_configs = {{{array efs}}}
 }
@@ -170,7 +185,7 @@ module "alb" {
   source = "{{modules}}/alb"
   project = "{{project}}"
   env = "{{env}}"
-  vpc_id = data.aws_vpc.default.id
+  vpc_id = {{#if use_default_vpc}}data.aws_vpc.default.id{{else}}module.vpc.vpc_id{{/if}}
   private_subnets = data.aws_subnets.all.ids
 }
 {{/if}}
@@ -192,8 +207,8 @@ module "workloads" {
   create_api_domain_record = false
   {{/if}}
   domain = "{{ domain.domain_name }}"
-  vpc_id     = data.aws_vpc.default.id
-  subnet_ids = data.aws_subnets.all.ids
+  vpc_id     = {{#if use_default_vpc}}data.aws_vpc.default.id{{else}}module.vpc.vpc_id{{/if}}
+  subnet_ids = {{#if use_default_vpc}}data.aws_subnets.all.ids{{else}}module.vpc.subnet_ids{{/if}}
   lambda_path = "{{modules}}/workloads/ci_lambda/bootstrap"
   slack_deployment_webhook = "{{workload.slack_webhook}}"
   backend_bucket_postfix = "{{workload.bucket_postfix}}"
@@ -333,7 +348,7 @@ module "schedule_task_{{name}}" {
   {{/if}}
   # https://docs.aws.amazon.com/scheduler/latest/UserGuide/schedule-types.html?icmpid=docs_console_unmapped#rate-based
   schedule = "{{schedule}}"
-  subnet_ids = data.aws_subnets.all.ids
+  subnet_ids = {{#if use_default_vpc}}data.aws_subnets.all.ids{{else}}module.vpc.subnet_ids{{/if}}
   vpc_id     = data.aws_vpc.default.id
   cluster = module.workloads.ecr_cluster.arn
   allow_public_access = {{#if allow_public_access}}{{allow_public_access}}{{else}}false{{/if}}
@@ -363,7 +378,7 @@ module "event_bus_task_{{name}}" {
   {{#if container_command}}
   container_command = {{{ container_command }}}
   {{/if}}
-  subnet_ids = data.aws_subnets.all.ids
+  subnet_ids = {{#if use_default_vpc}}data.aws_subnets.all.ids{{else}}module.vpc.subnet_ids{{/if}}
   vpc_id     = data.aws_vpc.default.id
   cluster = module.workloads.ecr_cluster.arn
   {{#if sqs.enabled}}

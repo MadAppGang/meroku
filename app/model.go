@@ -17,6 +17,13 @@ type Env struct {
 	AWSProfile          string               `yaml:"aws_profile"`
 	StateBucket         string               `yaml:"state_bucket"`
 	StateFile           string               `yaml:"state_file"`
+	// VPC Configuration
+	UseDefaultVPC        bool   `yaml:"use_default_vpc"`
+	VPCCIDR              string `yaml:"vpc_cidr"`
+	AZCount              int    `yaml:"az_count"`
+	CreatePrivateSubnets bool   `yaml:"create_private_subnets"`
+	EnableNATGateway     bool   `yaml:"enable_nat_gateway"`
+	// Services
 	Workload            Workload             `yaml:"workload"`
 	Domain              Domain               `yaml:"domain"`
 	Postgres            Postgres             `yaml:"postgres"`
