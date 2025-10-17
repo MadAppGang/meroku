@@ -48,11 +48,6 @@ resource "aws_iam_role" "github_role" {
   name               = "GithubActionsRole"
   assume_role_policy = data.aws_iam_policy_document.github_trust_relationship[0].json
 
-  inline_policy {
-    name   = "GithubAccessPolicy"
-    policy = data.aws_iam_policy_document.github.json
-  }
-
   tags = {
     Name        = "GithubActionsRole"
     Environment = var.env
@@ -60,6 +55,14 @@ resource "aws_iam_role" "github_role" {
     ManagedBy   = "meroku"
     Application = "${var.project}-${var.env}"
   }
+}
+
+# Separate policy attachment (replaces deprecated inline_policy)
+resource "aws_iam_role_policy" "github_access" {
+  count  = var.github_oidc_enabled ? 1 : 0
+  name   = "GithubAccessPolicy"
+  role   = aws_iam_role.github_role[0].id
+  policy = data.aws_iam_policy_document.github.json
 }
 
 data "aws_iam_policy_document" "github" {

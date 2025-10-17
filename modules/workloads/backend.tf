@@ -59,8 +59,13 @@ resource "aws_ecs_service" "backend" {
 }
 
 data "aws_service_discovery_service" "backend" {
+  count = var.enable_alb ? 0 : 1  # Only needed for API Gateway integration
+
   namespace_id = aws_service_discovery_private_dns_namespace.local.id
   name         = local.backend_name
+
+  # Depend on the ECS service to ensure it's created first
+  depends_on = [aws_ecs_service.backend]
 }
 
 
