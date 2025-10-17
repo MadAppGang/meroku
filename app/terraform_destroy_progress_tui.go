@@ -188,6 +188,10 @@ func (m *destroyProgressModel) runTerraformDestroy() tea.Cmd {
 		// Process stdout in a goroutine
 		go func() {
 			scanner := bufio.NewScanner(stdout)
+			// Increase buffer size to handle long output lines (default is 64KB)
+			buf := make([]byte, 0, 64*1024)
+			scanner.Buffer(buf, 1024*1024) // Allow up to 1MB per line
+
 			for scanner.Scan() {
 				line := scanner.Text()
 				m.outputMutex.Lock()
@@ -198,11 +202,22 @@ func (m *destroyProgressModel) runTerraformDestroy() tea.Cmd {
 				}
 				m.outputMutex.Unlock()
 			}
+
+			// Check if scanner had an error (like buffer overflow)
+			if err := scanner.Err(); err != nil {
+				m.outputMutex.Lock()
+				m.outputLines = append(m.outputLines, fmt.Sprintf("Scanner error: %v", err))
+				m.outputMutex.Unlock()
+			}
 		}()
 
 		// Process stderr in a goroutine
 		go func() {
 			scanner := bufio.NewScanner(stderr)
+			// Increase buffer size to handle long error lines (default is 64KB)
+			buf := make([]byte, 0, 64*1024)
+			scanner.Buffer(buf, 1024*1024) // Allow up to 1MB per line
+
 			for scanner.Scan() {
 				line := scanner.Text()
 				m.outputMutex.Lock()
@@ -211,6 +226,13 @@ func (m *destroyProgressModel) runTerraformDestroy() tea.Cmd {
 				if len(m.outputLines) > 100 {
 					m.outputLines = m.outputLines[len(m.outputLines)-100:]
 				}
+				m.outputMutex.Unlock()
+			}
+
+			// Check if scanner had an error (like buffer overflow)
+			if err := scanner.Err(); err != nil {
+				m.outputMutex.Lock()
+				m.errorOutput = append(m.errorOutput, fmt.Sprintf("Scanner error: %v", err))
 				m.outputMutex.Unlock()
 			}
 		}()
