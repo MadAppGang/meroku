@@ -27,24 +27,26 @@ const (
 )
 
 type destroyProgressModel struct {
-	phase           destroyPhase
-	currentResource string
-	destroyedItems  []string
-	outputLines     []string
-	outputMutex     sync.Mutex
-	errorDetails    string
-	errorOutput     []string
-	width           int
-	height          int
-	startTime       time.Time
-	env             string
-	spinnerFrame    int
-	explosionFrame  int
-	terraformCmd    *exec.Cmd // Store command reference for cleanup
-	interrupted     bool      // Track if user interrupted
-	errorViewport   viewport.Model
-	showFullError   bool      // Track if showing full error view
-	copiedToClip    bool      // Track if error was copied
+	phase              destroyPhase
+	currentResource    string
+	destroyedItems     map[string]bool // Use map to track unique destroyed resources
+	destroyedCount     int             // Actual count of destroyed resources
+	outputLines        []string
+	outputMutex        sync.Mutex
+	errorDetails       string
+	errorOutput        []string
+	width              int
+	height             int
+	startTime          time.Time
+	env                string
+	spinnerFrame       int
+	explosionFrame     int
+	terraformCmd       *exec.Cmd // Store command reference for cleanup
+	interrupted        bool      // Track if user interrupted
+	errorViewport      viewport.Model
+	showFullError      bool // Track if showing full error view
+	copiedToClip       bool // Track if error was copied
+	lastProcessedLines int  // Track how many lines we've processed
 }
 
 // Blast wave rings that expand outward
@@ -246,11 +248,13 @@ type destroyErrorMsg struct {
 
 func newDestroyProgressModel(env string) *destroyProgressModel {
 	return &destroyProgressModel{
-		phase:          destroyInitializing,
-		destroyedItems: []string{},
-		outputLines:    []string{},
-		startTime:      time.Now(),
-		env:            env,
+		phase:              destroyInitializing,
+		destroyedItems:     make(map[string]bool),
+		destroyedCount:     0,
+		outputLines:        []string{},
+		startTime:          time.Now(),
+		env:                env,
+		lastProcessedLines: 0,
 	}
 }
 
@@ -381,18 +385,26 @@ func (m *destroyProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case destroyTickMsg:
 		m.spinnerFrame++
 
-		// Process output lines to determine phase and current resource
+		// Process only NEW output lines to determine phase and current resource
 		m.outputMutex.Lock()
-		lines := make([]string, len(m.outputLines))
-		copy(lines, m.outputLines)
+		allLines := m.outputLines
+		totalLines := len(allLines)
+
+		// Get only the new lines since last tick
+		var newLines []string
+		if totalLines > m.lastProcessedLines {
+			newLines = allLines[m.lastProcessedLines:]
+			m.lastProcessedLines = totalLines
+		}
 		m.outputMutex.Unlock()
 
 		// If we have output and still initializing, move to planning
-		if len(lines) > 0 && m.phase == destroyInitializing {
+		if totalLines > 0 && m.phase == destroyInitializing {
 			m.phase = destroyPlanning
 		}
 
-		for _, line := range lines {
+		// Process only new lines
+		for _, line := range newLines {
 			if strings.Contains(line, "Initializing") {
 				if m.phase != destroyPlanning && m.phase != destroyDestroying {
 					m.phase = destroyInitializing
@@ -400,15 +412,35 @@ func (m *destroyProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			} else if strings.Contains(line, "Destroy complete!") {
 				m.phase = destroyComplete
-			} else if strings.Contains(line, "Destroying...") || strings.Contains(line, "Still destroying") {
+			} else if strings.Contains(line, "Destroying...") {
 				m.phase = destroyDestroying
-				// Extract resource name
+				// Extract resource name from "Destroying... [resource_name]"
+				parts := strings.Fields(line)
+				if len(parts) >= 2 {
+					resourceName := parts[1]
+					m.currentResource = resourceName
+					// Track as in-progress (not yet destroyed)
+				}
+			} else if strings.Contains(line, "Destruction complete after") || strings.Contains(line, "Destroyed:") {
+				// This is the actual completion message - count it
 				parts := strings.Fields(line)
 				if len(parts) > 0 {
-					m.currentResource = parts[0]
-					// Add to destroyed items
-					if len(m.destroyedItems) == 0 || m.destroyedItems[len(m.destroyedItems)-1] != parts[0] {
-						m.destroyedItems = append(m.destroyedItems, parts[0])
+					// Extract resource name (usually second field)
+					var resourceName string
+					if strings.Contains(line, "Destruction complete") {
+						// Format: "resource_type.resource_name: Destruction complete after 1s"
+						resourceName = strings.Split(parts[0], ":")[0]
+					} else if strings.Contains(line, "Destroyed:") {
+						// Format: "Destroyed: resource_type.resource_name"
+						if len(parts) >= 2 {
+							resourceName = parts[1]
+						}
+					}
+
+					// Add to destroyed items map (automatically deduplicates)
+					if resourceName != "" && !m.destroyedItems[resourceName] {
+						m.destroyedItems[resourceName] = true
+						m.destroyedCount++
 					}
 				}
 			} else if strings.Contains(line, "Refreshing state") || strings.Contains(line, "Reading...") {
@@ -698,8 +730,10 @@ func (m *destroyProgressModel) View() string {
 	}
 
 	// ═══════════════════════════════════════
-	// STATUS SECTION
+	// STATUS SECTION (Fixed-Height Container)
 	// ═══════════════════════════════════════
+	statusHeight := 3 // Reserve fixed space for status to prevent layout shifts
+
 	var statusText string
 	var statusColor string
 
@@ -714,6 +748,11 @@ func (m *destroyProgressModel) View() string {
 		resourceName := m.currentResource
 		if resourceName == "" {
 			resourceName = m.env
+		}
+		// Truncate long resource names to prevent layout shifts
+		maxResourceNameLen := contentWidth - 15 // Reserve space for spinner and "Destroying: "
+		if len(resourceName) > maxResourceNameLen {
+			resourceName = resourceName[:maxResourceNameLen-3] + "..."
 		}
 		statusText = fmt.Sprintf("%s Destroying: %s", spinner, resourceName)
 		statusColor = "196"
@@ -736,8 +775,14 @@ func (m *destroyProgressModel) View() string {
 		Align(lipgloss.Center).
 		Width(contentWidth)
 
-	content.WriteString(statusStyle.Render(statusText))
-	content.WriteString("\n\n")
+	// Use fixed-height container for status
+	statusContainer := lipgloss.NewStyle().
+		Height(statusHeight).
+		Width(contentWidth).
+		Align(lipgloss.Center, lipgloss.Center)
+
+	content.WriteString(statusContainer.Render(statusStyle.Render(statusText)))
+	content.WriteString("\n")
 
 	// ═══════════════════════════════════════
 	// OUTPUT BOX (ALWAYS SHOWN)
@@ -755,11 +800,11 @@ func (m *destroyProgressModel) View() string {
 	// - Title section: 3 lines (title + 2 newlines)
 	// - Blast wave: 2 lines + 1 newline = 3 lines
 	// - Explosion: 11 lines + 1 newline = 12 lines
-	// - Status: 2 lines (status + 2 newlines)
+	// - Status: 3 lines + 1 newline = 4 lines
 	// - Output label: 1 line + 1 newline = 2 lines
 	// - Footer: 1 line
-	// Total fixed: 23 lines
-	fixedContentHeight := 23
+	// Total fixed: 25 lines
+	fixedContentHeight := 25
 	outputHeight := max(5, m.height-fixedContentHeight-4) // Minimum 5 lines for output, -4 for padding/borders
 
 	// Create bordered output box
@@ -820,9 +865,9 @@ func (m *destroyProgressModel) View() string {
 	var footerParts []string
 
 	// Progress stats
-	if len(m.destroyedItems) > 0 {
+	if m.destroyedCount > 0 {
 		footerParts = append(footerParts,
-			fmt.Sprintf("Destroyed: %d resources", len(m.destroyedItems)))
+			fmt.Sprintf("Destroyed: %d resources", m.destroyedCount))
 	}
 
 	// Elapsed time
