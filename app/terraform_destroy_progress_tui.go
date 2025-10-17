@@ -595,15 +595,35 @@ func (m *destroyProgressModel) View() string {
 		// Note: outputHeight is the CONTENT height in lipgloss (padding/borders are added on top)
 		// But we need to account for the internal padding space
 		linesToShow := outputHeight - 2 // Account for top/bottom padding only
-		start := 0
-		if len(outputCopy) > linesToShow {
-			start = len(outputCopy) - linesToShow
+		maxLineWidth := contentWidth - 6 // Account for left/right padding
+
+		// First pass: calculate actual line count needed (accounting for wrapping)
+		actualLineCounts := make([]int, len(outputCopy))
+		for i, line := range outputCopy {
+			isError := strings.Contains(line, "ERROR") || strings.Contains(line, "Error")
+			if len(line) > maxLineWidth && isError {
+				// Error will be wrapped
+				wrapped := wrapText(line, maxLineWidth)
+				actualLineCounts[i] = len(wrapped)
+			} else {
+				actualLineCounts[i] = 1
+			}
 		}
 
-		maxLineWidth := contentWidth - 6 // Account for left/right padding
-		linesRendered := 0               // Track actual lines rendered (including wrapped)
+		// Calculate start position to fit the last N lines (including wrapped errors)
+		start := 0
+		totalLines := 0
+		for i := len(outputCopy) - 1; i >= 0; i-- {
+			totalLines += actualLineCounts[i]
+			if totalLines > linesToShow {
+				start = i + 1 // Start from next line
+				break
+			}
+		}
 
-		for i := start; i < len(outputCopy) && linesRendered < linesToShow; i++ {
+		// Render lines
+		linesRendered := 0
+		for i := start; i < len(outputCopy); i++ {
 			line := outputCopy[i]
 
 			// Check if this is an error line before truncating
@@ -614,11 +634,8 @@ func (m *destroyProgressModel) View() string {
 				if isError {
 					// For errors, wrap to multiple lines to show full message
 					wrapped := wrapText(line, maxLineWidth)
-					// Only show wrapped lines if we have space
+					// Show ALL wrapped lines for errors (we pre-calculated space)
 					for _, wrappedLine := range wrapped {
-						if linesRendered >= linesToShow {
-							break
-						}
 						styledLine := lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(wrappedLine)
 						outputContent.WriteString(styledLine + "\n")
 						linesRendered++
