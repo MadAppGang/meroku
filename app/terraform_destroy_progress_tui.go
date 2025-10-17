@@ -543,10 +543,11 @@ func (m *destroyProgressModel) View() string {
 	// - Emoji: 1 line + 2 newlines = 3 lines
 	// - Status: 3 lines + 1 newline = 4 lines
 	// - Output label: 1 line + 1 newline = 2 lines
+	// - Output box newline: 1 line
 	// - Footer: 1 line
-	// Total fixed: 13 lines
-	fixedContentHeight := 13
-	outputHeight := max(5, m.height-fixedContentHeight-4) // Minimum 5 lines for output, -4 for padding/borders
+	// Total fixed: 14 lines
+	fixedContentHeight := 14
+	outputHeight := max(10, m.height-fixedContentHeight-4) // Minimum 10 lines for output, -4 for padding/borders
 
 	// Create bordered output box
 	outputBoxStyle := lipgloss.NewStyle().
@@ -569,13 +570,15 @@ func (m *destroyProgressModel) View() string {
 		outputContent.WriteString(waitingStyle.Render("Waiting for Terraform output..."))
 	} else {
 		// Show actual output
-		linesToShow := outputHeight - 4 // Account for padding and borders
+		// Note: outputHeight is the CONTENT height in lipgloss (padding/borders are added on top)
+		// But we need to account for the internal padding space
+		linesToShow := outputHeight - 2 // Account for top/bottom padding only
 		start := 0
 		if len(outputCopy) > linesToShow {
 			start = len(outputCopy) - linesToShow
 		}
 
-		maxLineWidth := contentWidth - 6 // Account for padding
+		maxLineWidth := contentWidth - 6 // Account for left/right padding
 		linesRendered := 0               // Track actual lines rendered (including wrapped)
 
 		for i := start; i < len(outputCopy) && linesRendered < linesToShow; i++ {
