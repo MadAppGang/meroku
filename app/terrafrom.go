@@ -313,9 +313,10 @@ func runTerraformDestroyWithRetry(retryCount int) error {
 	fmt.Println("\n🔍 Running terraform plan -destroy to preview changes...")
 
 	// First, run terraform plan -destroy to show what will be destroyed
+	// Use -refresh=false to skip data source reads and prevent errors from already-deleted resources
 	// Use a combined output buffer to capture errors for recovery
 	var stderrBuf bytes.Buffer
-	cmd := exec.Command("terraform", "plan", "-destroy", "-out=destroy.tfplan")
+	cmd := exec.Command("terraform", "plan", "-destroy", "-out=destroy.tfplan", "-refresh=false")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = io.MultiWriter(os.Stderr, &stderrBuf)
 

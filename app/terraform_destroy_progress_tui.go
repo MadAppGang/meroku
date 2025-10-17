@@ -164,7 +164,8 @@ func (m *destroyProgressModel) runTerraformDestroy() tea.Cmd {
 		m.outputMutex.Unlock()
 
 		// Run terraform destroy with no color output for easier parsing
-		cmd := exec.Command("terraform", "destroy", "-auto-approve", "-no-color")
+		// Use -refresh=false to skip data source reads and prevent errors from already-deleted resources
+		cmd := exec.Command("terraform", "destroy", "-auto-approve", "-no-color", "-refresh=false")
 
 		// Store command reference for interrupt handling
 		m.terraformCmd = cmd
