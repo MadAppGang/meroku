@@ -21,7 +21,7 @@ variable "backend_bucket_public" {
 
 variable "lambda_path" {
   type    = string
-  default = "../../infrastructure/modules/workloads/ci_lambda/bootstrap"
+  default = ""  # Will be set dynamically using path.module in lambda.tf
 }
 
 variable "docker_image" {
