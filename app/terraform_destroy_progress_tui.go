@@ -515,19 +515,15 @@ func (m *destroyProgressModel) View() string {
 		}
 	}
 
-	statusStyle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color(statusColor)).
-		Align(lipgloss.Center).
-		Width(contentWidth)
-
-	// Use fixed-height container for status with TOP alignment
+	// Use fixed-height container for status with centered text
 	statusContainer := lipgloss.NewStyle().
 		Height(statusHeight).
 		Width(contentWidth).
-		Align(lipgloss.Center, lipgloss.Top)
+		Align(lipgloss.Center, lipgloss.Top).
+		Bold(true).
+		Foreground(lipgloss.Color(statusColor))
 
-	content.WriteString(statusContainer.Render(statusStyle.Render(statusText)))
+	content.WriteString(statusContainer.Render(statusText))
 	content.WriteString("\n")
 
 	// ═══════════════════════════════════════
