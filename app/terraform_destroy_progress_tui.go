@@ -276,6 +276,10 @@ func (m *destroyProgressModel) runTerraformDestroy() tea.Cmd {
 		}
 		defer os.Chdir(wd)
 
+		// Ensure lambda bootstrap file exists before running terraform
+		// This prevents errors when the archive_file data source tries to archive a missing file
+		ensureLambdaBootstrapExists()
+
 		envPath := filepath.Join("env", m.env)
 		if err := os.Chdir(envPath); err != nil {
 			return destroyErrorMsg{err: err, output: []string{err.Error()}}

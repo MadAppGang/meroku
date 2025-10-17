@@ -35,7 +35,31 @@ func terraformInit(flags ...string) (string, error) {
 	return "", nil
 }
 
+// ensureLambdaBootstrapExists checks if the lambda bootstrap file exists
+// and creates a dummy one if it doesn't. The bootstrap file is gitignored,
+// so it won't exist in project copies. This prevents terraform errors during
+// destroy operations when the archive_file data source tries to create an archive.
+func ensureLambdaBootstrapExists() {
+	bootstrapPath := "infrastructure/modules/workloads/ci_lambda/bootstrap"
+
+	// Check if file exists
+	if _, err := os.Stat(bootstrapPath); os.IsNotExist(err) {
+		// Create dummy bootstrap file with random content
+		dummyContent := []byte("# Dummy bootstrap file created by meroku\n# This file is created to prevent terraform errors\n")
+
+		// Create the file
+		if err := os.WriteFile(bootstrapPath, dummyContent, 0755); err != nil {
+			fmt.Printf("⚠️  Warning: Failed to create dummy bootstrap file: %v\n", err)
+		} else {
+			fmt.Println("✅ Created dummy lambda bootstrap file")
+		}
+	}
+}
+
 func terraformInitIfNeeded() {
+	// Ensure lambda bootstrap file exists before running terraform
+	ensureLambdaBootstrapExists()
+
 	// Get the environment from selectedEnvironment global variable or current directory
 	envName := selectedEnvironment
 	if envName == "" {

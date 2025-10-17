@@ -1,22 +1,7 @@
-locals {
-  # Use path.module to get absolute path to the module directory
-  # This ensures the bootstrap file can be found regardless of where terraform is executed
-  lambda_source_path = var.lambda_path != "" ? var.lambda_path : "${path.module}/ci_lambda/bootstrap"
-
-  # Service configuration for lambda
-  service_config = jsonencode({
-    "${var.project}" = [
-      for file in local.env_files_s3 : {
-        bucket = file.bucket
-        key    = file.key
-      }
-    ]
-  })
-}
 
 data "archive_file" "lambda" {
   type        = "zip"
-  source_file = local.lambda_source_path
+  source_file = var.lambda_path
   output_path = "ci_lambda.zip"
 }
 
@@ -206,4 +191,13 @@ resource "aws_lambda_permission" "allow_eventbridge" {
 
 // pass a list of services and env files to the lambda
 // to know which service to restart on file change
-// Moved to top locals block
+locals {
+  service_config = jsonencode({
+    "${var.project}" = [
+      for file in local.env_files_s3 : {
+        bucket = file.bucket
+        key    = file.key
+      }
+    ]
+  })
+}
