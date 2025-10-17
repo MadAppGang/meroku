@@ -776,6 +776,9 @@ func runTerraformDestroyWithProgress(env string) error {
 	// Check if there was an error
 	if finalModel, ok := model.(*destroyProgressModel); ok {
 		if finalModel.phase == destroyError {
+			// Offer AI help if available
+			offerAIHelpForDestroyErrors(finalModel)
+
 			errorMsg := finalModel.errorDetails
 			if len(finalModel.errorOutput) > 0 {
 				errorMsg = strings.Join(finalModel.errorOutput, "\n")
@@ -785,4 +788,40 @@ func runTerraformDestroyWithProgress(env string) error {
 	}
 
 	return nil
+}
+
+// offerAIHelpForDestroyErrors offers AI assistance after destroy errors
+func offerAIHelpForDestroyErrors(m *destroyProgressModel) {
+	if len(m.errorOutput) == 0 {
+		return
+	}
+
+	// Get current directory
+	workingDir, _ := os.Getwd()
+
+	// Get AWS profile from environment or use default
+	awsProfile := os.Getenv("AWS_PROFILE")
+	if awsProfile == "" {
+		awsProfile = "default"
+	}
+
+	// Get region from environment variable or use default
+	awsRegion := os.Getenv("AWS_REGION")
+	if awsRegion == "" {
+		awsRegion = os.Getenv("AWS_DEFAULT_REGION")
+	}
+	if awsRegion == "" {
+		awsRegion = "us-east-1" // fallback
+	}
+
+	ctx := ErrorContext{
+		Operation:   "destroy",
+		Environment: m.env,
+		AWSProfile:  awsProfile,
+		AWSRegion:   awsRegion,
+		Errors:      m.errorOutput,
+		WorkingDir:  workingDir,
+	}
+
+	offerAIHelp(ctx)
 }

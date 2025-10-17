@@ -4767,18 +4767,83 @@ func showModernTerraformPlanTUI(planJSON string) error {
 	if err != nil {
 		return err
 	}
-	
+
 	p := tea.NewProgram(model, tea.WithAltScreen())
 	// Store program reference for sending messages during apply
 	if m, ok := model.(*modernPlanModel); ok {
 		m.program = p
 	}
-	
-	if _, err := p.Run(); err != nil {
+
+	finalModel, err := p.Run()
+	if err != nil {
 		return fmt.Errorf("error running TUI: %w", err)
 	}
-	
+
+	// Check if there were apply errors and offer AI help
+	if m, ok := finalModel.(*modernPlanModel); ok {
+		if m.applyState != nil && m.applyState.hasErrors {
+			offerAIHelpForApplyErrors(m)
+		}
+	}
+
 	return nil
+}
+
+// offerAIHelpForApplyErrors offers AI assistance after apply errors
+func offerAIHelpForApplyErrors(m *modernPlanModel) {
+	// Collect error messages
+	var errorMessages []string
+	for _, res := range m.applyState.completed {
+		if !res.Success && res.Error != "" {
+			errorMessages = append(errorMessages, fmt.Sprintf("Resource: %s\nAction: %s\nError: %s",
+				res.Address, res.Action, res.Error))
+		}
+	}
+
+	if len(errorMessages) == 0 {
+		return
+	}
+
+	// Get current directory
+	workingDir, _ := os.Getwd()
+
+	// Get AWS profile from environment or use default
+	awsProfile := os.Getenv("AWS_PROFILE")
+	if awsProfile == "" {
+		awsProfile = "default"
+	}
+
+	// Get region from environment variable or use default
+	awsRegion := os.Getenv("AWS_REGION")
+	if awsRegion == "" {
+		awsRegion = os.Getenv("AWS_DEFAULT_REGION")
+	}
+	if awsRegion == "" {
+		awsRegion = "us-east-1" // fallback
+	}
+
+	// Extract environment from working directory (e.g., env/dev)
+	envName := "unknown"
+	if strings.Contains(workingDir, "/env/") {
+		parts := strings.Split(workingDir, "/env/")
+		if len(parts) > 1 {
+			envParts := strings.Split(parts[1], "/")
+			if len(envParts) > 0 {
+				envName = envParts[0]
+			}
+		}
+	}
+
+	ctx := ErrorContext{
+		Operation:   "apply",
+		Environment: envName,
+		AWSProfile:  awsProfile,
+		AWSRegion:   awsRegion,
+		Errors:      errorMessages,
+		WorkingDir:  workingDir,
+	}
+
+	offerAIHelp(ctx)
 }
 
 func (m *modernPlanModel) renderApplyErrorDetailsView(header, elapsed string) string {
