@@ -29,15 +29,14 @@ data "aws_subnets" "all" {
   }
 }
 {{else}}
-# Create custom VPC
+# Create custom VPC (2 AZs with public subnets only)
 module "vpc" {
-  source                  = "{{ modules }}/vpc"
-  project                 = "{{ project }}"
-  env                     = "{{ env }}"
-  vpc_cidr                = "{{ vpc_cidr }}"
-  az_count                = {{ az_count }}
-  create_private_subnets  = {{ create_private_subnets }}
-  enable_nat_gateway      = {{ enable_nat_gateway }}
+  source   = "{{ modules }}/vpc"
+  project  = "{{ project }}"
+  env      = "{{ env }}"
+  {{#if vpc_cidr}}
+  vpc_cidr = "{{ vpc_cidr }}"
+  {{/if}}
 }
 {{/if}}
 

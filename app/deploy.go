@@ -78,7 +78,15 @@ func runCommandToDeploy(env string) error {
 		fmt.Println("Error loading environment:", err)
 		os.Exit(1)
 	}
-	checkBucketStateForEnv(e)
+
+	// Run comprehensive AWS pre-flight checks BEFORE changing directory
+	// This validates credentials, checks/creates S3 bucket, and handles SSO refresh
+	fmt.Printf("\n🚀 Starting deployment for environment: %s\n", env)
+	if err := AWSPreflightCheck(e); err != nil {
+		fmt.Printf("\n%v\n\n", err)
+		fmt.Println("❌ Pre-flight checks failed. Please fix the issues above and try again.")
+		os.Exit(1)
+	}
 
 	err = os.Chdir(filepath.Join("env", env))
 	if err != nil {

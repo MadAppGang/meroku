@@ -57,7 +57,9 @@
       "mcp__Firecrawl__firecrawl_scrape",
       "WebFetch(domain:aws.amazon.com)",
       "WebFetch(domain:www.dbcost.com)",
-      "WebFetch(domain:pilotcore.io)"
+      "WebFetch(domain:pilotcore.io)",
+      "Bash(./meroku migrate project/dev.yaml)",
+      "Read(//Users/jackrudenko/meroku2/**)"
     ],
     "deny": []
   }
