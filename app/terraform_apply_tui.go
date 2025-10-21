@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -331,8 +332,21 @@ func (m *modernPlanModel) startTerraformApply() tea.Cmd {
 func (m *modernPlanModel) parseTerraformOutput(stdout interface{}) {
 	scanner := bufio.NewScanner(stdout.(interface{ Read([]byte) (int, error) }))
 
+	// Open debug log file
+	debugFile, err := os.Create("/tmp/terraform_debug.log")
+	if err == nil {
+		defer debugFile.Close()
+	}
+
 	for scanner.Scan() {
 		line := scanner.Text()
+
+		// Write to debug file with timestamp
+		if debugFile != nil {
+			timestamp := time.Now().Format("2006-01-02 15:04:05.000")
+			fmt.Fprintf(debugFile, "[%s] %s\n", timestamp, line)
+		}
+
 		var msg TerraformJSONMessage
 
 		if err := json.Unmarshal([]byte(line), &msg); err != nil {
