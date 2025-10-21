@@ -4689,31 +4689,31 @@ func (m *modernPlanModel) updateApplyLogViewport() {
 
 		var icon string
 		var style lipgloss.Style
-		var levelStr string
+		var levelStr string // Keep as plain text, don't pre-render
 		switch log.Level {
 		case "error":
 			icon = "❌"
 			style = deleteIconStyle.Bold(true)
-			levelStr = style.Render("[ERROR]")
+			levelStr = "[ERROR]"
 		case "warning":
 			icon = "⚠️"
 			style = updateIconStyle
-			levelStr = style.Render("[WARN] ")
+			levelStr = "[WARN] "
 		case "info":
 			icon = "ℹ️"
 			style = dimStyle
-			levelStr = dimStyle.Render("[INFO] ")
+			levelStr = "[INFO] "
 		case "debug":
 			icon = "🔍"
 			style = dimStyle.Faint(true)
-			levelStr = style.Render("[DEBUG]")
+			levelStr = "[DEBUG]"
 		default:
 			icon = "•"
 			style = dimStyle
-			levelStr = dimStyle.Render("[INFO] ")
+			levelStr = "[INFO] "
 		}
 
-		// Format the log line prefix (timestamp, level, icon)
+		// Format the log line prefix (timestamp, level, icon) - plain text only
 		prefix := fmt.Sprintf("%s %s %s ", timestamp, levelStr, icon)
 
 		// Calculate available width for the message (viewport width - prefix width - margins)
@@ -4721,7 +4721,7 @@ func (m *modernPlanModel) updateApplyLogViewport() {
 		if viewportWidth == 0 {
 			viewportWidth = m.width - 4 // fallback
 		}
-		prefixWidth := lipgloss.Width(prefix)
+		prefixWidth := len(prefix) // Use raw length since it's plain text now
 		availableWidth := viewportWidth - prefixWidth - 2 // -2 for safety margin
 		if availableWidth < 40 {
 			availableWidth = 40 // minimum width
@@ -4744,13 +4744,14 @@ func (m *modernPlanModel) updateApplyLogViewport() {
 				fullLine = strings.Repeat(" ", prefixWidth) + msgLine
 			}
 
+			// Now apply styling to the complete line
 			if log.IsDiagnostic && log.Level == "error" {
 				// Diagnostic errors: BRIGHT RED background to stand out
-				diagnosticStyle := style.Background(lipgloss.Color("#8B0000")).Bold(true)
+				diagnosticStyle := lipgloss.NewStyle().Background(lipgloss.Color("#8B0000")).Bold(true)
 				content.WriteString(diagnosticStyle.Render(fullLine) + "\n")
 			} else if log.Level == "error" {
 				// Regular errors: dark red background
-				errorStyle := style.Background(lipgloss.Color("#3D0000"))
+				errorStyle := lipgloss.NewStyle().Background(lipgloss.Color("#3D0000"))
 				content.WriteString(errorStyle.Render(fullLine) + "\n")
 			} else {
 				content.WriteString(style.Render(fullLine) + "\n")
