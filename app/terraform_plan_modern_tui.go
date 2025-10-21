@@ -765,6 +765,25 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.logViewport.Height = viewportHeight
 				m.updateApplyLogViewport()
 			}
+
+		case aiHelpView:
+			// Resize AI help viewports
+			availableHeight := m.height - 2
+			errorsHeight := int(float64(availableHeight) * 0.6) - 2
+			commandsHeight := availableHeight - errorsHeight - 4
+
+			// Ensure minimum heights
+			if errorsHeight < 10 {
+				errorsHeight = 10
+			}
+			if commandsHeight < 6 {
+				commandsHeight = 6
+			}
+
+			m.aiHelpViewport.Width = m.width - 4
+			m.aiHelpViewport.Height = errorsHeight
+			m.aiHelpCommandsViewport.Width = m.width - 4
+			m.aiHelpCommandsViewport.Height = commandsHeight
 		}
 		
 		m.updateTreeViewport()
@@ -5553,7 +5572,11 @@ func (m *modernPlanModel) renderAIHelpView() string {
 		Render(m.aiHelpCommandsViewport.View())
 
 	// Footer with help text
-	scrollPercent := int((float64(m.aiHelpViewport.YOffset) / float64(max(1, m.aiHelpViewport.TotalLineCount()-m.aiHelpViewport.Height))) * 100)
+	totalLines := m.aiHelpViewport.TotalLineCount() - m.aiHelpViewport.Height
+	if totalLines < 1 {
+		totalLines = 1
+	}
+	scrollPercent := int((float64(m.aiHelpViewport.YOffset) / float64(totalLines)) * 100)
 	if scrollPercent > 100 {
 		scrollPercent = 100
 	}
