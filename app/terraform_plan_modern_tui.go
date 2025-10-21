@@ -4702,22 +4702,10 @@ func (m *modernPlanModel) updateApplyLogViewport() {
 		content.WriteString(dimStyle.Render("No non-debug logs yet. Press 'l' to show all logs.\n"))
 	}
 
-	// Calculate available width for message text once (outside loop for efficiency)
-	// Use the actual log viewport width, then subtract space for:
-	// timestamp (8) + space (1) + level (7) + space (1) + icon (2) + space (1) = 20 chars
-	viewportWidth := m.logViewport.Width
-	if viewportWidth < 60 {
-		viewportWidth = m.width - 4 // Fallback if viewport not initialized
-	}
-	availableWidth := viewportWidth - 22 // 20 for prefix + 2 for padding
-	if availableWidth < 40 {
-		availableWidth = 40 // Minimum width for readability
-	}
-
 	for _, log := range logsToShow[start:] {
-		
+
 		timestamp := log.Timestamp.Format("15:04:05")
-		
+
 		var icon string
 		var style lipgloss.Style
 		var levelStr string
@@ -4744,40 +4732,15 @@ func (m *modernPlanModel) updateApplyLogViewport() {
 			levelStr = dimStyle.Render("[INFO] ")
 		}
 
-		// Wrap the message text using lipgloss
-		wrappedMsg := lipgloss.NewStyle().Width(availableWidth).Render(log.Message)
+		// Format the log line - let viewport handle wrapping naturally
+		logLine := fmt.Sprintf("%s %s %s %s", timestamp, levelStr, icon, log.Message)
 
-		// Split wrapped message into lines for proper formatting
-		msgLines := strings.Split(wrappedMsg, "\n")
-
-		// Format the first line with timestamp, level, and icon
-		firstLine := fmt.Sprintf("%s %s %s %s", timestamp, levelStr, icon, msgLines[0])
-
-		// For errors, highlight the entire line
+		// For errors, highlight the entire line with background color
 		if log.Level == "error" {
-			// Add background color for better visibility
 			errorStyle := style.Background(lipgloss.Color("#3D0000"))
-			content.WriteString(errorStyle.Render(firstLine) + "\n")
-
-			// Add continuation lines with proper indentation
-			indent := "                    " // 20 spaces to align with message start
-			for i := 1; i < len(msgLines); i++ {
-				if strings.TrimSpace(msgLines[i]) != "" {
-					continuationLine := indent + msgLines[i]
-					content.WriteString(errorStyle.Render(continuationLine) + "\n")
-				}
-			}
+			content.WriteString(errorStyle.Render(logLine) + "\n")
 		} else {
-			content.WriteString(style.Render(firstLine) + "\n")
-
-			// Add continuation lines with proper indentation
-			indent := "                    " // 20 spaces to align with message start
-			for i := 1; i < len(msgLines); i++ {
-				if strings.TrimSpace(msgLines[i]) != "" {
-					continuationLine := indent + msgLines[i]
-					content.WriteString(style.Render(continuationLine) + "\n")
-				}
-			}
+			content.WriteString(style.Render(logLine) + "\n")
 		}
 	}
 	
