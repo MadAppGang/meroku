@@ -83,10 +83,11 @@ type currentOperation struct {
 }
 
 type logEntry struct {
-	Timestamp time.Time
-	Level     string // info, warning, error
-	Message   string
-	Resource  string // optional resource address
+	Timestamp    time.Time
+	Level        string // info, warning, error
+	Message      string
+	Resource     string // optional resource address
+	IsDiagnostic bool   // true if this is a diagnostic error/warning (should be highlighted)
 }
 
 // Messages for apply state updates
@@ -116,9 +117,10 @@ type resourceCompleteMsg struct {
 }
 
 type logMsg struct {
-	Level    string
-	Message  string
-	Resource string
+	Level        string
+	Message      string
+	Resource     string
+	IsDiagnostic bool
 }
 
 // TerraformJSONMessage represents the JSON output from terraform apply -json
@@ -621,12 +623,10 @@ func (m *modernPlanModel) handleDiagnostic(msg *TerraformJSONMessage) {
 	}
 
 	level := "info"
-	icon := "ℹ️"
 
 	switch msg.Diagnostic.Severity {
 	case "error":
 		level = "error"
-		icon = "❌"
 		// Store diagnostic for later association with failed resource
 		if msg.Diagnostic.Address != "" {
 			m.applyState.mu.Lock()
@@ -644,18 +644,17 @@ func (m *modernPlanModel) handleDiagnostic(msg *TerraformJSONMessage) {
 		}
 	case "warning":
 		level = "warning"
-		icon = "⚠️"
 	}
 
-	// Log both summary and detail separately so they can be extracted
+	// Log diagnostic summary with special formatting (red background for errors)
 	if msg.Diagnostic.Summary != "" {
-		summaryMsg := fmt.Sprintf("%s %s", icon, msg.Diagnostic.Summary)
-		m.sendLogMessage(level, summaryMsg, msg.Diagnostic.Address)
+		summaryMsg := fmt.Sprintf("Error: %s", msg.Diagnostic.Summary)
+		m.sendLogMessageWithFlags(level, summaryMsg, msg.Diagnostic.Address, true)
 	}
 
-	// Log the detail as a separate message for better extraction
+	// Log the detail as a separate message if present
 	if msg.Diagnostic.Detail != "" {
-		m.sendLogMessage(level, msg.Diagnostic.Detail, msg.Diagnostic.Address)
+		m.sendLogMessageWithFlags(level, msg.Diagnostic.Detail, msg.Diagnostic.Address, true)
 	}
 }
 
@@ -676,10 +675,15 @@ func (m *modernPlanModel) handleProvisionMessage(msg *TerraformJSONMessage) {
 }
 
 func (m *modernPlanModel) sendLogMessage(level, message, resource string) {
+	m.sendLogMessageWithFlags(level, message, resource, false)
+}
+
+func (m *modernPlanModel) sendLogMessageWithFlags(level, message, resource string, isDiagnostic bool) {
 	m.sendMsg(logMsg{
-		Level:    level,
-		Message:  message,
-		Resource: resource,
+		Level:        level,
+		Message:      message,
+		Resource:     resource,
+		IsDiagnostic: isDiagnostic,
 	})
 }
 

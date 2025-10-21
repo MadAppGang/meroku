@@ -1134,10 +1134,11 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case logMsg:
 		if m.applyState != nil {
 			m.applyState.logs = append(m.applyState.logs, logEntry{
-				Timestamp: time.Now(),
-				Level:     msg.Level,
-				Message:   msg.Message,
-				Resource:  msg.Resource,
+				Timestamp:    time.Now(),
+				Level:        msg.Level,
+				Message:      msg.Message,
+				Resource:     msg.Resource,
+				IsDiagnostic: msg.IsDiagnostic,
 			})
 			
 			if msg.Level == "warning" {
@@ -4715,8 +4716,13 @@ func (m *modernPlanModel) updateApplyLogViewport() {
 		// Format the log line - let viewport handle wrapping naturally
 		logLine := fmt.Sprintf("%s %s %s %s", timestamp, levelStr, icon, log.Message)
 
-		// For errors, highlight the entire line with background color
-		if log.Level == "error" {
+		// Apply styling based on error type
+		if log.IsDiagnostic && log.Level == "error" {
+			// Diagnostic errors: BRIGHT RED background to stand out
+			diagnosticStyle := style.Background(lipgloss.Color("#8B0000")).Bold(true)
+			content.WriteString(diagnosticStyle.Render(logLine) + "\n")
+		} else if log.Level == "error" {
+			// Regular errors: dark red background
 			errorStyle := style.Background(lipgloss.Color("#3D0000"))
 			content.WriteString(errorStyle.Render(logLine) + "\n")
 		} else {
