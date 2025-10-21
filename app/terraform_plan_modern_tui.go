@@ -5232,6 +5232,24 @@ func (m *modernPlanModel) fetchAIHelp() tea.Cmd {
 		m.applyState.mu.Lock()
 		defer m.applyState.mu.Unlock()
 
+		// Debug: Log what's in the diagnostics map
+		if debugFile, err := os.OpenFile("/tmp/terraform_debug.log", os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+			fmt.Fprintf(debugFile, "[AI HELP DEBUG] Diagnostics map contents:\n")
+			for addr, diag := range m.applyState.diagnostics {
+				if diag != nil {
+					fmt.Fprintf(debugFile, "  Address: %s\n  Summary: %s\n  Detail: %s\n", addr, diag.Summary, diag.Detail)
+				}
+			}
+			fmt.Fprintf(debugFile, "[AI HELP DEBUG] Completed resources:\n")
+			for _, res := range m.applyState.completed {
+				if !res.Success {
+					fmt.Fprintf(debugFile, "  Address: %s\n  Error: %s\n  ErrorSummary: %s\n  ErrorDetail: %s\n",
+						res.Address, res.Error, res.ErrorSummary, res.ErrorDetail)
+				}
+			}
+			debugFile.Close()
+		}
+
 		for _, res := range m.applyState.completed {
 			if !res.Success {
 				// Get the actual error message - check diagnostics map FIRST for latest info
@@ -5239,11 +5257,33 @@ func (m *modernPlanModel) fetchAIHelp() tea.Cmd {
 
 				// Check if we have diagnostic info in the map (most recent/complete)
 				if diagnostic, exists := m.applyState.diagnostics[res.Address]; exists && diagnostic != nil {
+					// Build comprehensive error message with all available diagnostic info
+					var diagParts []string
+
+					// Main error message
 					if diagnostic.Summary != "" {
-						errorMsg = diagnostic.Summary
-					} else if diagnostic.Detail != "" {
-						errorMsg = diagnostic.Detail
+						diagParts = append(diagParts, diagnostic.Summary)
 					}
+
+					// Additional details
+					if diagnostic.Detail != "" {
+						diagParts = append(diagParts, fmt.Sprintf("\nDetails: %s", diagnostic.Detail))
+					}
+
+					// File location
+					if diagnostic.Range != nil {
+						diagParts = append(diagParts, fmt.Sprintf("\nFile: %s:%d", diagnostic.Range.Filename, diagnostic.Range.Start.Line))
+					}
+
+					// Code snippet
+					if diagnostic.Snippet != nil {
+						diagParts = append(diagParts, fmt.Sprintf("\nCode: %s", diagnostic.Snippet.Code))
+						if diagnostic.Snippet.Context != "" {
+							diagParts = append(diagParts, fmt.Sprintf("Context: %s", diagnostic.Snippet.Context))
+						}
+					}
+
+					errorMsg = strings.Join(diagParts, "")
 				}
 
 				// Fallback to stored values if no diagnostic in map

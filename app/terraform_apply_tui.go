@@ -125,7 +125,7 @@ type logMsg struct {
 
 // TerraformJSONMessage represents the JSON output from terraform apply -json
 type TerraformJSONMessage struct {
-	Type       string          `json:"@type"`
+	Type       string          `json:"type"`       // Changed from @type
 	Level      string          `json:"@level"`
 	Message    string          `json:"@message"`
 	Module     string          `json:"@module"`
@@ -135,11 +135,36 @@ type TerraformJSONMessage struct {
 	Change     *ChangeInfo     `json:"change,omitempty"`
 }
 
+type DiagnosticRange struct {
+	Filename string `json:"filename"`
+	Start    struct {
+		Line   int `json:"line"`
+		Column int `json:"column"`
+		Byte   int `json:"byte"`
+	} `json:"start"`
+	End struct {
+		Line   int `json:"line"`
+		Column int `json:"column"`
+		Byte   int `json:"byte"`
+	} `json:"end"`
+}
+
+type DiagnosticSnippet struct {
+	Context              string        `json:"context"`
+	Code                 string        `json:"code"`
+	StartLine            int           `json:"start_line"`
+	HighlightStartOffset int           `json:"highlight_start_offset"`
+	HighlightEndOffset   int           `json:"highlight_end_offset"`
+	Values               []interface{} `json:"values"`
+}
+
 type DiagnosticInfo struct {
-	Severity string `json:"severity"`
-	Summary  string `json:"summary"`
-	Detail   string `json:"detail"`
-	Address  string `json:"address,omitempty"`
+	Severity string             `json:"severity"`
+	Summary  string             `json:"summary"`
+	Detail   string             `json:"detail"`
+	Address  string             `json:"address,omitempty"`
+	Range    *DiagnosticRange   `json:"range,omitempty"`
+	Snippet  *DiagnosticSnippet `json:"snippet,omitempty"`
 }
 
 type HookInfo struct {
@@ -622,6 +647,16 @@ func (m *modernPlanModel) handleDiagnostic(msg *TerraformJSONMessage) {
 		return
 	}
 
+	// Debug logging
+	if debugFile, err := os.OpenFile("/tmp/terraform_debug.log", os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+		fmt.Fprintf(debugFile, "[DIAGNOSTIC] Received diagnostic:\n")
+		fmt.Fprintf(debugFile, "  Address: '%s'\n", msg.Diagnostic.Address)
+		fmt.Fprintf(debugFile, "  Severity: %s\n", msg.Diagnostic.Severity)
+		fmt.Fprintf(debugFile, "  Summary: %s\n", msg.Diagnostic.Summary)
+		fmt.Fprintf(debugFile, "  Detail: %s\n", msg.Diagnostic.Detail)
+		debugFile.Close()
+	}
+
 	level := "info"
 
 	switch msg.Diagnostic.Severity {
@@ -630,16 +665,40 @@ func (m *modernPlanModel) handleDiagnostic(msg *TerraformJSONMessage) {
 		// Store diagnostic for later association with failed resource
 		if msg.Diagnostic.Address != "" {
 			m.applyState.mu.Lock()
+
+			// Debug: log the storage
+			if debugFile, err := os.OpenFile("/tmp/terraform_debug.log", os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+				fmt.Fprintf(debugFile, "[DIAGNOSTIC] Storing diagnostic for address: %s\n", msg.Diagnostic.Address)
+				debugFile.Close()
+			}
+
 			m.applyState.diagnostics[msg.Diagnostic.Address] = msg.Diagnostic
 
 			// Update completed resource with diagnostic details if it already failed
+			foundMatch := false
 			for i := range m.applyState.completed {
 				if m.applyState.completed[i].Address == msg.Diagnostic.Address && !m.applyState.completed[i].Success {
 					m.applyState.completed[i].ErrorSummary = msg.Diagnostic.Summary
 					m.applyState.completed[i].ErrorDetail = msg.Diagnostic.Detail
+					foundMatch = true
+
+					// Debug: log the backfill
+					if debugFile, err := os.OpenFile("/tmp/terraform_debug.log", os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+						fmt.Fprintf(debugFile, "[DIAGNOSTIC] Backfilled completed resource at index %d\n", i)
+						debugFile.Close()
+					}
 					break
 				}
 			}
+
+			// Debug: log if no match found
+			if !foundMatch {
+				if debugFile, err := os.OpenFile("/tmp/terraform_debug.log", os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+					fmt.Fprintf(debugFile, "[DIAGNOSTIC] No matching completed resource found for: %s\n", msg.Diagnostic.Address)
+					debugFile.Close()
+				}
+			}
+
 			m.applyState.mu.Unlock()
 		}
 	case "warning":
