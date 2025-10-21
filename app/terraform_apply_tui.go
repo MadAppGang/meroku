@@ -639,7 +639,7 @@ func (m *modernPlanModel) handleApplyError(msg *TerraformJSONMessage) {
 		Duration:     duration,
 	})
 
-	m.sendLogMessage("error", fmt.Sprintf("❌ Failed %s on %s after %v: %s", action, addr, duration, errorMsg), addr)
+	// Don't log here - diagnostic handler will log the full error with details
 }
 
 func (m *modernPlanModel) handleDiagnostic(msg *TerraformJSONMessage) {

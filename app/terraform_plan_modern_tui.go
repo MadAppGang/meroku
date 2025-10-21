@@ -5265,22 +5265,19 @@ func (m *modernPlanModel) fetchAIHelp() tea.Cmd {
 						diagParts = append(diagParts, diagnostic.Summary)
 					}
 
-					// Additional details
-					if diagnostic.Detail != "" {
-						diagParts = append(diagParts, fmt.Sprintf("\nDetails: %s", diagnostic.Detail))
+					// Additional details (if different from summary)
+					if diagnostic.Detail != "" && diagnostic.Detail != diagnostic.Summary {
+						diagParts = append(diagParts, fmt.Sprintf("\n\n%s", diagnostic.Detail))
 					}
 
 					// File location
 					if diagnostic.Range != nil {
-						diagParts = append(diagParts, fmt.Sprintf("\nFile: %s:%d", diagnostic.Range.Filename, diagnostic.Range.Start.Line))
+						diagParts = append(diagParts, fmt.Sprintf("\n\nLocation: %s (line %d)", diagnostic.Range.Filename, diagnostic.Range.Start.Line))
 					}
 
-					// Code snippet
-					if diagnostic.Snippet != nil {
-						diagParts = append(diagParts, fmt.Sprintf("\nCode: %s", diagnostic.Snippet.Code))
-						if diagnostic.Snippet.Context != "" {
-							diagParts = append(diagParts, fmt.Sprintf("Context: %s", diagnostic.Snippet.Context))
-						}
+					// Code snippet context
+					if diagnostic.Snippet != nil && diagnostic.Snippet.Context != "" {
+						diagParts = append(diagParts, fmt.Sprintf("\nAffected resource: %s", diagnostic.Snippet.Context))
 					}
 
 					errorMsg = strings.Join(diagParts, "")
