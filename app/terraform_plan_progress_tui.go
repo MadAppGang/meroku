@@ -720,7 +720,7 @@ func runTerraformPlanWithProgress() error {
 				if err != nil {
 					fmt.Printf("\n❌ Failed to get AI suggestions: %v\n", err)
 				} else {
-					displayAISuggestions(problem, commands)
+					displayAISuggestionsWithContext(problem, commands, finalModel.errorOutput)
 				}
 
 				fmt.Print("\nPress Enter to continue...")

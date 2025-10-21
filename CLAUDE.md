@@ -316,3 +316,4 @@ Do this:
 4. Fallback to grep/find only if MCP unavailable
 
 Never manually browse files randomly. Always use Detective for systematic code navigation.
+- or app is located in app folder and web interface it serve in web app.

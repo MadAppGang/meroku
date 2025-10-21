@@ -4945,18 +4945,13 @@ func showModernTerraformPlanTUI(planJSON string) error {
 		m.program = p
 	}
 
-	finalModel, err := p.Run()
+	_, err = p.Run()
 	if err != nil {
 		return fmt.Errorf("error running TUI: %w", err)
 	}
 
-	// Check if there were apply errors and offer AI help (when user exits without using in-TUI AI help)
-	if m, ok := finalModel.(*modernPlanModel); ok {
-		if m.applyState != nil && m.applyState.hasErrors {
-			// Offer AI help with prompt after exiting TUI
-			offerAIHelpForApplyErrors(m)
-		}
-	}
+	// No longer prompt for AI help after exiting - users can press 'a' in the TUI for AI help
+	// This old prompting behavior has been replaced with in-TUI AI help view
 
 	return nil
 }
@@ -5245,9 +5240,22 @@ func (m *modernPlanModel) fetchAIHelp() tea.Cmd {
 		// Collect error messages from completed resources
 		var errorMessages []string
 		for _, res := range m.applyState.completed {
-			if !res.Success && res.Error != "" {
-				errorMessages = append(errorMessages, fmt.Sprintf("Resource: %s\nAction: %s\nError: %s",
-					res.Address, res.Action, res.Error))
+			if !res.Success {
+				// Build a complete error message using all available error information
+				var errorParts []string
+				errorParts = append(errorParts, fmt.Sprintf("Resource: %s", res.Address))
+				errorParts = append(errorParts, fmt.Sprintf("Action: %s", res.Action))
+
+				// Use ErrorDetail if available (has the full AWS error), otherwise fallback to ErrorSummary, then Error
+				if res.ErrorDetail != "" {
+					errorParts = append(errorParts, fmt.Sprintf("Error: %s", res.ErrorDetail))
+				} else if res.ErrorSummary != "" {
+					errorParts = append(errorParts, fmt.Sprintf("Error: %s", res.ErrorSummary))
+				} else if res.Error != "" {
+					errorParts = append(errorParts, fmt.Sprintf("Error: %s", res.Error))
+				}
+
+				errorMessages = append(errorMessages, strings.Join(errorParts, "\n"))
 			}
 		}
 
