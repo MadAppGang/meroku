@@ -4713,20 +4713,48 @@ func (m *modernPlanModel) updateApplyLogViewport() {
 			levelStr = dimStyle.Render("[INFO] ")
 		}
 
-		// Format the log line - let viewport handle wrapping naturally
-		logLine := fmt.Sprintf("%s %s %s %s", timestamp, levelStr, icon, log.Message)
+		// Format the log line prefix (timestamp, level, icon)
+		prefix := fmt.Sprintf("%s %s %s ", timestamp, levelStr, icon)
+
+		// Calculate available width for the message (viewport width - prefix width - margins)
+		viewportWidth := m.logViewport.Width
+		if viewportWidth == 0 {
+			viewportWidth = m.width - 4 // fallback
+		}
+		prefixWidth := lipgloss.Width(prefix)
+		availableWidth := viewportWidth - prefixWidth - 2 // -2 for safety margin
+		if availableWidth < 40 {
+			availableWidth = 40 // minimum width
+		}
+
+		// Wrap the message text to available width
+		wrappedMsg := lipgloss.NewStyle().Width(availableWidth).Render(log.Message)
+
+		// Split wrapped message into lines
+		msgLines := strings.Split(wrappedMsg, "\n")
 
 		// Apply styling based on error type
-		if log.IsDiagnostic && log.Level == "error" {
-			// Diagnostic errors: BRIGHT RED background to stand out
-			diagnosticStyle := style.Background(lipgloss.Color("#8B0000")).Bold(true)
-			content.WriteString(diagnosticStyle.Render(logLine) + "\n")
-		} else if log.Level == "error" {
-			// Regular errors: dark red background
-			errorStyle := style.Background(lipgloss.Color("#3D0000"))
-			content.WriteString(errorStyle.Render(logLine) + "\n")
-		} else {
-			content.WriteString(style.Render(logLine) + "\n")
+		for i, msgLine := range msgLines {
+			var fullLine string
+			if i == 0 {
+				// First line includes prefix
+				fullLine = prefix + msgLine
+			} else {
+				// Continuation lines are indented to align with message start
+				fullLine = strings.Repeat(" ", prefixWidth) + msgLine
+			}
+
+			if log.IsDiagnostic && log.Level == "error" {
+				// Diagnostic errors: BRIGHT RED background to stand out
+				diagnosticStyle := style.Background(lipgloss.Color("#8B0000")).Bold(true)
+				content.WriteString(diagnosticStyle.Render(fullLine) + "\n")
+			} else if log.Level == "error" {
+				// Regular errors: dark red background
+				errorStyle := style.Background(lipgloss.Color("#3D0000"))
+				content.WriteString(errorStyle.Render(fullLine) + "\n")
+			} else {
+				content.WriteString(style.Render(fullLine) + "\n")
+			}
 		}
 	}
 
@@ -5201,19 +5229,26 @@ func (m *modernPlanModel) fetchAIHelp() tea.Cmd {
 		var errorMessages []string
 		for _, res := range m.applyState.completed {
 			if !res.Success {
+				// Get the actual error message
+				var errorMsg string
+				if res.ErrorDetail != "" {
+					errorMsg = res.ErrorDetail
+				} else if res.ErrorSummary != "" {
+					errorMsg = res.ErrorSummary
+				} else if res.Error != "" {
+					errorMsg = res.Error
+				}
+
+				// Skip "cancelled" errors - we only want the root causes
+				if strings.Contains(strings.ToLower(errorMsg), "cancelled due to previous errors") {
+					continue
+				}
+
 				// Build a complete error message using all available error information
 				var errorParts []string
 				errorParts = append(errorParts, fmt.Sprintf("Resource: %s", res.Address))
 				errorParts = append(errorParts, fmt.Sprintf("Action: %s", res.Action))
-
-				// Use ErrorDetail if available (has the full AWS error), otherwise fallback to ErrorSummary, then Error
-				if res.ErrorDetail != "" {
-					errorParts = append(errorParts, fmt.Sprintf("Error: %s", res.ErrorDetail))
-				} else if res.ErrorSummary != "" {
-					errorParts = append(errorParts, fmt.Sprintf("Error: %s", res.ErrorSummary))
-				} else if res.Error != "" {
-					errorParts = append(errorParts, fmt.Sprintf("Error: %s", res.Error))
-				}
+				errorParts = append(errorParts, fmt.Sprintf("Error: %s", errorMsg))
 
 				errorMessages = append(errorMessages, strings.Join(errorParts, "\n"))
 			}
