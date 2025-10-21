@@ -827,8 +827,17 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.aiHelpLoading = true
 
 					// Calculate viewport heights (same as render function)
-					commandsHeight := 8
-					errorsHeight := m.height - 2 - commandsHeight - 2
+					availableHeight := m.height - 2
+					errorsHeight := int(float64(availableHeight) * 0.6) - 2
+					commandsHeight := availableHeight - errorsHeight - 4
+
+					// Ensure minimum heights
+					if errorsHeight < 10 {
+						errorsHeight = 10
+					}
+					if commandsHeight < 6 {
+						commandsHeight = 6
+					}
 
 					// Initialize both viewports
 					m.aiHelpViewport = viewport.New(m.width-4, errorsHeight)
@@ -923,7 +932,7 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Scroll down in full-screen diff view
 				m.diffViewport.LineDown(1)
 			} else if m.currentView == aiHelpView {
-				// Scroll down in AI help view
+				// Scroll down in AI help view (errors section)
 				m.aiHelpViewport.LineDown(1)
 			} else if m.currentView == applyView && m.applyState != nil {
 				// Only scroll logs if logs section is selected
@@ -941,13 +950,25 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Scroll up in full-screen diff view
 				m.diffViewport.LineUp(1)
 			} else if m.currentView == aiHelpView {
-				// Scroll up in AI help view
+				// Scroll up in AI help view (errors section)
 				m.aiHelpViewport.LineUp(1)
 			} else if m.currentView == applyView && m.applyState != nil {
 				// Only scroll logs if logs section is selected
 				if m.applyState.selectedSection == 2 {
 					m.logViewport.LineUp(1)
 				}
+			}
+
+		case msg.Type == tea.KeyPgDown:
+			if m.currentView == aiHelpView {
+				// Scroll down in commands viewport
+				m.aiHelpCommandsViewport.LineDown(3)
+			}
+
+		case msg.Type == tea.KeyPgUp:
+			if m.currentView == aiHelpView {
+				// Scroll up in commands viewport
+				m.aiHelpCommandsViewport.LineUp(3)
 			}
 			
 		case key.Matches(msg, m.keys.Replace):
@@ -5502,11 +5523,20 @@ func (m *modernPlanModel) renderAIHelpView() string {
 	// Header: 1 line
 	// Footer: 1 line
 	// Available height: m.height - 2
-	// Bottom viewport (commands): ~8 lines (fixed)
-	// Top viewport (errors/analysis): rest (scrollable)
+	// Split: 60% for errors/analysis (top), 40% for commands (bottom)
+	// Both viewports are scrollable
 
-	commandsHeight := 8
-	errorsHeight := m.height - 2 - commandsHeight - 2 // -2 for borders
+	availableHeight := m.height - 2 // -2 for header and footer
+	errorsHeight := int(float64(availableHeight) * 0.6) - 2 // -2 for borders
+	commandsHeight := availableHeight - errorsHeight - 4 // -4 for both borders
+
+	// Ensure minimum heights
+	if errorsHeight < 10 {
+		errorsHeight = 10
+	}
+	if commandsHeight < 6 {
+		commandsHeight = 6
+	}
 
 	// Top viewport with errors + analysis (scrollable)
 	errorsViewportBox := boxStyle.
@@ -5515,7 +5545,7 @@ func (m *modernPlanModel) renderAIHelpView() string {
 		BorderForeground(lipgloss.Color("196")).
 		Render(m.aiHelpViewport.View())
 
-	// Bottom viewport with suggested fix (fixed, no scroll)
+	// Bottom viewport with suggested fix (scrollable)
 	commandsViewportBox := boxStyle.
 		Width(m.width - 2).
 		Height(commandsHeight).
@@ -5523,7 +5553,11 @@ func (m *modernPlanModel) renderAIHelpView() string {
 		Render(m.aiHelpCommandsViewport.View())
 
 	// Footer with help text
-	footerText := dimStyle.Render("[↑↓] Scroll Errors • [ESC] Back to Apply View")
+	scrollPercent := int((float64(m.aiHelpViewport.YOffset) / float64(max(1, m.aiHelpViewport.TotalLineCount()-m.aiHelpViewport.Height))) * 100)
+	if scrollPercent > 100 {
+		scrollPercent = 100
+	}
+	footerText := dimStyle.Render(fmt.Sprintf("[↑↓] Scroll Errors (%d%%) • [PgUp/PgDn] Scroll Commands • [ESC] Back", scrollPercent))
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
