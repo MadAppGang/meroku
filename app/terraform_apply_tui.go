@@ -471,12 +471,8 @@ func (m *modernPlanModel) parseTerraformOutput(stdout interface{}) {
 				          strings.Contains(msg.Message, ": Still creating...") ||
 				          strings.Contains(msg.Message, ": Creating...") ||
 				          strings.Contains(msg.Message, ": Still modifying...") ||
-				          strings.Contains(msg.Message, ": Modifying...") ||
-				          strings.Contains(msg.Message, "Plan to create") ||
-				          strings.Contains(msg.Message, "Plan to destroy") ||
-				          strings.Contains(msg.Message, "Plan to update") ||
-				          strings.Contains(msg.Message, "Plan to replace") {
-					// Parse in-progress operations or planned operations
+				          strings.Contains(msg.Message, ": Modifying...") {
+					// Parse in-progress operations (actual apply phase, not planning)
 					parts := strings.SplitN(msg.Message, ":", 2)
 					if len(parts) >= 1 {
 						addr := strings.TrimSpace(parts[0])
@@ -491,11 +487,8 @@ func (m *modernPlanModel) parseTerraformOutput(stdout interface{}) {
 							action = "delete"
 						} else if strings.Contains(msg.Message, "creat") || strings.Contains(msg.Message, "Creat") {
 							action = "create"
-						} else if strings.Contains(msg.Message, "modify") || strings.Contains(msg.Message, "Modify") ||
-						          strings.Contains(msg.Message, "update") || strings.Contains(msg.Message, "Update") {
+						} else if strings.Contains(msg.Message, "modify") || strings.Contains(msg.Message, "Modify") {
 							action = "update"
-						} else if strings.Contains(msg.Message, "replace") || strings.Contains(msg.Message, "Replace") {
-							action = "replace"
 						}
 
 						// Extract elapsed time if present (e.g., "[10s elapsed]")
@@ -509,20 +502,30 @@ func (m *modernPlanModel) parseTerraformOutput(stdout interface{}) {
 							}
 						}
 
-						// Send start message if we haven't seen this resource yet OR if it's a "Creating/Destroying" message
+						// Always send start message for "Creating/Destroying/Modifying" (without "Still")
+						// These indicate a new operation is starting
 						if m.applyState != nil {
 							isStartMessage := strings.Contains(msg.Message, ": Creating...") ||
 							                 strings.Contains(msg.Message, ": Destroying...") ||
 							                 strings.Contains(msg.Message, ": Modifying...")
 
-							if m.applyState.currentOp == nil || m.applyState.currentOp.Address != addr || isStartMessage {
+							if isStartMessage {
+								// New operation starting - always update currentOp
 								m.sendMsg(resourceStartMsg{
 									Address: addr,
 									Action:  action,
 								})
-							} else if m.applyState.currentOp != nil && m.applyState.currentOp.Address == addr && elapsedTime != "" {
-								// Update elapsed time for current operation
-								m.applyState.currentOp.ElapsedTime = elapsedTime
+							} else if m.applyState.currentOp != nil && m.applyState.currentOp.Address == addr {
+								// Update elapsed time for ongoing operation
+								if elapsedTime != "" {
+									m.applyState.currentOp.ElapsedTime = elapsedTime
+								}
+							} else if m.applyState.currentOp == nil {
+								// No current operation but we have a "Still X" message - start tracking
+								m.sendMsg(resourceStartMsg{
+									Address: addr,
+									Action:  action,
+								})
 							}
 						}
 					}
