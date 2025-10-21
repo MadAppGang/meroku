@@ -363,6 +363,9 @@ func (m *modernPlanModel) parseTerraformOutput(stdout interface{}) {
 	debugFile, err := os.Create("/tmp/terraform_debug.log")
 	if err == nil {
 		defer debugFile.Close()
+		// Log initial state
+		timestamp := time.Now().Format("2006-01-02 15:04:05.000")
+		fmt.Fprintf(debugFile, "[%s] [INIT] parseTerraformOutput started, applyState=%v\n", timestamp, m.applyState != nil)
 	}
 
 	for scanner.Scan() {
@@ -553,18 +556,18 @@ func (m *modernPlanModel) parseTerraformOutput(stdout interface{}) {
 }
 
 func (m *modernPlanModel) handleApplyStart(msg *TerraformJSONMessage) {
-	// Debug: Log that this function was called
-	if debugFile, err := os.OpenFile("/tmp/terraform_debug.log", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644); err == nil {
+	// Debug to dedicated file
+	if f, err := os.OpenFile("/tmp/handleApplyStart.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
 		timestamp := time.Now().Format("2006-01-02 15:04:05.000")
-		fmt.Fprintf(debugFile, "[%s] [handleApplyStart] CALLED\n", timestamp)
-		debugFile.Close()
+		fmt.Fprintf(f, "[%s] CALLED, msg=%v, hook=%v\n", timestamp, msg != nil, msg != nil && msg.Hook != nil)
+		f.Close()
 	}
 
 	if msg.Hook == nil || msg.Hook.Resource == nil {
-		if debugFile, err := os.OpenFile("/tmp/terraform_debug.log", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644); err == nil {
+		if f, err := os.OpenFile("/tmp/handleApplyStart.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
 			timestamp := time.Now().Format("2006-01-02 15:04:05.000")
-			fmt.Fprintf(debugFile, "[%s] [handleApplyStart] Hook or Resource is nil, returning\n", timestamp)
-			debugFile.Close()
+			fmt.Fprintf(f, "[%s] Early return: hook=%v, resource=%v\n", timestamp, msg.Hook != nil, msg != nil && msg.Hook != nil && msg.Hook.Resource != nil)
+			f.Close()
 		}
 		return
 	}
@@ -575,11 +578,10 @@ func (m *modernPlanModel) handleApplyStart(msg *TerraformJSONMessage) {
 		action = m.getResourceAction(addr)
 	}
 
-	// Debug: Log the address and action
-	if debugFile, err := os.OpenFile("/tmp/terraform_debug.log", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644); err == nil {
+	if f, err := os.OpenFile("/tmp/handleApplyStart.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
 		timestamp := time.Now().Format("2006-01-02 15:04:05.000")
-		fmt.Fprintf(debugFile, "[%s] [handleApplyStart] addr=%s, action=%s, applyState=%v\n", timestamp, addr, action, m.applyState != nil)
-		debugFile.Close()
+		fmt.Fprintf(f, "[%s] addr=%s, action=%s, applyState=%v\n", timestamp, addr, action, m.applyState != nil)
+		f.Close()
 	}
 
 	// Update currentOp directly with thread safety
@@ -594,10 +596,17 @@ func (m *modernPlanModel) handleApplyStart(msg *TerraformJSONMessage) {
 		m.applyState.mu.Unlock()
 
 		// Debug: Log that we set currentOp
-		if debugFile, err := os.OpenFile("/tmp/terraform_debug.log", os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+		if f, err := os.OpenFile("/tmp/handleApplyStart.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
 			timestamp := time.Now().Format("2006-01-02 15:04:05.000")
-			fmt.Fprintf(debugFile, "[%s] [CURRENTOP SET] %s (%s)\n", timestamp, addr, action)
-			debugFile.Close()
+			fmt.Fprintf(f, "[%s] CURRENTOP SET: %s (%s)\n", timestamp, addr, action)
+			f.Close()
+		}
+	} else {
+		// Debug: Log that applyState is nil
+		if f, err := os.OpenFile("/tmp/handleApplyStart.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+			timestamp := time.Now().Format("2006-01-02 15:04:05.000")
+			fmt.Fprintf(f, "[%s] CANNOT SET CURRENTOP: applyState is nil!\n", timestamp)
+			f.Close()
 		}
 	}
 

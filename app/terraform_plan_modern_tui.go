@@ -4348,14 +4348,12 @@ func (m *modernPlanModel) renderApplyCurrentOperation() string {
 		contentHeight = 1
 	}
 
-	if m.applyState.currentOp == nil {
-		// Debug: Log when we render empty state
-		if debugFile, err := os.OpenFile("/tmp/terraform_debug.log", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644); err == nil {
-			timestamp := time.Now().Format("2006-01-02 15:04:05.000")
-			fmt.Fprintf(debugFile, "[%s] [RENDER] currentOp is nil - showing 'No active operations'\n", timestamp)
-			debugFile.Close()
-		}
+	// Thread-safe read of currentOp
+	m.applyState.mu.Lock()
+	currentOp := m.applyState.currentOp
+	m.applyState.mu.Unlock()
 
+	if currentOp == nil {
 		// Show empty state with fixed height
 		box := boxStyle.Copy().
 			BorderForeground(dimColor).
@@ -4364,7 +4362,7 @@ func (m *modernPlanModel) renderApplyCurrentOperation() string {
 		return box.Render(titleStyle.Render("Currently Updating") + "\n" + dimStyle.Render("No active operations"))
 	}
 
-	op := m.applyState.currentOp
+	op := currentOp
 	icon := "🔄"
 	actionStyle := dimStyle
 
