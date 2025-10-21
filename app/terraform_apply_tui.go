@@ -22,18 +22,21 @@ type applyState struct {
 	pending        []pendingResource
 	currentOp      *currentOperation
 	logs           []logEntry
-	
+
 	// Terraform process
 	cmd            *exec.Cmd
 	mu             sync.Mutex
-	
+
 	// State
 	isApplying     bool
 	applyComplete  bool
 	hasErrors      bool
 	errorCount     int
 	warningCount   int
-	
+
+	// Diagnostic tracking (for associating with errors)
+	diagnostics map[string]*DiagnosticInfo // resource address -> diagnostic
+
 	// View state
 	showFullLogs    bool
 	showDetails     bool
@@ -41,15 +44,26 @@ type applyState struct {
 	selectedSection int  // 0=completed, 1=pending, 2=logs
 	selectedError   int  // Index of selected error in completed list
 	animationFrame  int  // For progress bar animation
+
+	// Layout heights (calculated once, fixed during apply)
+	headerHeight       int
+	progressHeight     int
+	currentOpHeight    int
+	errorSummaryHeight int
+	columnsHeight      int
+	logsHeight         int
+	footerHeight       int
 }
 
 type completedResource struct {
-	Address   string
-	Action    string
-	Duration  time.Duration
-	Timestamp time.Time
-	Success   bool
-	Error     string
+	Address         string
+	Action          string
+	Duration        time.Duration
+	Timestamp       time.Time
+	Success         bool
+	Error           string // Short error message
+	ErrorSummary    string // Diagnostic summary (if available)
+	ErrorDetail     string // Full diagnostic detail (if available)
 }
 
 type pendingResource struct {
@@ -92,10 +106,12 @@ type resourceProgressMsg struct {
 }
 
 type resourceCompleteMsg struct {
-	Address string
-	Success bool
-	Error   string
-	Duration time.Duration
+	Address      string
+	Success      bool
+	Error        string // Short error message
+	ErrorSummary string // Diagnostic summary
+	ErrorDetail  string // Full diagnostic detail
+	Duration     time.Duration
 }
 
 type logMsg struct {
@@ -146,6 +162,86 @@ type ChangeInfo struct {
 	Action   string        `json:"action"`
 }
 
+// Calculate fixed layout heights for apply view
+// NOTE: Heights stored here are CONTENT heights (what goes inside boxes).
+// Boxes with borders will render as contentHeight + 2 lines on screen.
+func (m *modernPlanModel) calculateApplyLayout(terminalHeight int) {
+	if m.applyState == nil {
+		return
+	}
+
+	// Fixed overhead
+	headerHeight := 1
+	footerHeight := 1
+
+	// Calculate available height for all boxes
+	// Add safety margin of 1 line to prevent overflow from spacing/newlines
+	safetyMargin := 1
+	availableHeight := terminalHeight - headerHeight - footerHeight - safetyMargin
+	if availableHeight < 10 {
+		availableHeight = 10 // absolute minimum
+	}
+
+	// Assign fixed values
+	m.applyState.headerHeight = headerHeight
+	m.applyState.footerHeight = footerHeight
+
+	// Define size tiers - heights here are SCREEN heights (including borders)
+	// Each box with a border takes contentHeight + 2 on screen
+	// Thresholds are more conservative to ensure fit on real screens
+	if availableHeight < 18 {
+		// Tiny screen (< 21 total lines) - ultra-compact mode
+		m.applyState.progressHeight = 0       // Hidden
+		m.applyState.currentOpHeight = 4      // 4 lines total on screen -> content height 2
+		m.applyState.errorSummaryHeight = 0   // Hidden
+		m.applyState.columnsHeight = 5        // 5 lines total on screen -> content height 3
+		// Logs get the rest: availableHeight - (4 + 5) = availableHeight - 9
+		logsScreenHeight := availableHeight - 9
+		if logsScreenHeight < 4 {
+			logsScreenHeight = 4
+		}
+		m.applyState.logsHeight = logsScreenHeight
+	} else if availableHeight < 30 {
+		// Small screen (21-32 total lines) - compact mode
+		// Target layout: currentOp(5), columns(7), logs(rest)
+		m.applyState.progressHeight = 0       // Hidden to save space
+		m.applyState.currentOpHeight = 5      // 5 lines total -> content 3
+		m.applyState.errorSummaryHeight = 0   // Hidden to save space
+		m.applyState.columnsHeight = 7        // 7 lines total -> content 5
+		// Logs: availableHeight - (5 + 7) = availableHeight - 12
+		logsScreenHeight := availableHeight - 12
+		if logsScreenHeight < 5 {
+			logsScreenHeight = 5
+		}
+		m.applyState.logsHeight = logsScreenHeight
+	} else if availableHeight < 45 {
+		// Medium screen (32-47 total lines) - balanced mode
+		// This covers the 42-row terminal case
+		m.applyState.progressHeight = 3       // Show progress bar (important feedback!)
+		m.applyState.currentOpHeight = 6      // 6 lines total -> content 4
+		m.applyState.errorSummaryHeight = 0   // Hidden to save space
+		m.applyState.columnsHeight = 8        // 8 lines total -> content 6 (reduced from 10)
+		// Logs: availableHeight - (3 + 6 + 8) = availableHeight - 17
+		logsScreenHeight := availableHeight - 17
+		if logsScreenHeight < 8 {
+			logsScreenHeight = 8
+		}
+		m.applyState.logsHeight = logsScreenHeight
+	} else {
+		// Large screen (47+ total lines) - ideal mode
+		m.applyState.progressHeight = 3       // 3 lines total -> content 1
+		m.applyState.currentOpHeight = 8      // 8 lines total -> content 6
+		m.applyState.errorSummaryHeight = 4   // 4 lines total -> content 2
+		m.applyState.columnsHeight = 12       // 12 lines total -> content 10
+		// Logs: availableHeight - (3 + 8 + 4 + 12) = availableHeight - 27
+		logsScreenHeight := availableHeight - 27
+		if logsScreenHeight < 10 {
+			logsScreenHeight = 10
+		}
+		m.applyState.logsHeight = logsScreenHeight
+	}
+}
+
 // Initialize apply state from the plan
 func (m *modernPlanModel) initApplyState() {
 	m.applyState = &applyState{
@@ -153,9 +249,13 @@ func (m *modernPlanModel) initApplyState() {
 		logs:           []logEntry{},
 		pending:        []pendingResource{},
 		completed:      []completedResource{},
+		diagnostics:    make(map[string]*DiagnosticInfo),
 		totalResources: m.stats.totalChanges,
 	}
-	
+
+	// Calculate initial layout
+	m.calculateApplyLayout(m.height)
+
 	// Convert planned resources to pending
 	for _, provider := range m.providers {
 		for _, service := range provider.services {
@@ -168,7 +268,7 @@ func (m *modernPlanModel) initApplyState() {
 			}
 		}
 	}
-	
+
 	// Add initial log
 	m.applyState.logs = append(m.applyState.logs, logEntry{
 		Timestamp: time.Now(),
@@ -293,7 +393,7 @@ func (m *modernPlanModel) parseTerraformOutput(stdout interface{}) {
 							Duration: 0,
 						})
 					}
-				} else if msg.Level == "error" || 
+				} else if msg.Level == "error" ||
 				   (msg.Message != "" && (strings.Contains(msg.Message, ": Creation errored after") ||
 				                         strings.Contains(msg.Message, ": Modification errored after") ||
 				                         strings.Contains(msg.Message, ": Destruction errored after"))) {
@@ -304,12 +404,59 @@ func (m *modernPlanModel) parseTerraformOutput(stdout interface{}) {
 						parts := strings.SplitN(msg.Message, ":", 2)
 						if len(parts) >= 1 {
 							addr := strings.TrimSpace(parts[0])
+
+							// Check for associated diagnostic information
+							m.applyState.mu.Lock()
+							diagnostic := m.applyState.diagnostics[addr]
+
+							errorSummary := ""
+							errorDetail := ""
+							if diagnostic != nil {
+								errorSummary = diagnostic.Summary
+								errorDetail = diagnostic.Detail
+							} else {
+								// Fallback: Collect error logs from around the same time
+								var resourceErrorTime time.Time
+								var errorLogs []string
+
+								// Find when this resource failed
+								for _, log := range m.applyState.logs {
+									if log.Level == "error" && (log.Resource == addr || strings.Contains(log.Message, addr)) {
+										resourceErrorTime = log.Timestamp
+										break
+									}
+								}
+
+								// Collect ALL error logs within 2 seconds
+								if !resourceErrorTime.IsZero() {
+									for _, log := range m.applyState.logs {
+										if log.Level == "error" {
+											timeDiff := log.Timestamp.Sub(resourceErrorTime)
+											if timeDiff >= 0 && timeDiff <= 2*time.Second {
+												logMsg := strings.TrimPrefix(log.Message, "❌ ")
+												logMsg = strings.TrimSpace(logMsg)
+												if !strings.Contains(logMsg, "errored after") && logMsg != "" {
+													errorLogs = append(errorLogs, logMsg)
+												}
+											}
+										}
+									}
+								}
+
+								if len(errorLogs) > 0 {
+									errorDetail = strings.Join(errorLogs, "\n\n")
+								}
+							}
+							m.applyState.mu.Unlock()
+
 							// Send a resource complete message with error
 							m.sendMsg(resourceCompleteMsg{
-								Address:  addr,
-								Success:  false,
-								Error:    msg.Message,
-								Duration: 0,
+								Address:      addr,
+								Success:      false,
+								Error:        msg.Message,
+								ErrorSummary: errorSummary,
+								ErrorDetail:  errorDetail,
+								Duration:     0,
 							})
 						}
 					}
@@ -450,29 +597,81 @@ func (m *modernPlanModel) handleApplyError(msg *TerraformJSONMessage) {
 	if msg.Hook == nil || msg.Hook.Resource == nil {
 		return
 	}
-	
+
 	addr := msg.Hook.Resource.Addr
 	action := msg.Hook.Action
 	if action == "" {
 		action = m.getResourceAction(addr)
 	}
-	
+
 	// Use elapsed seconds from the message
 	duration := time.Duration(msg.Hook.ElapsedSeconds * float64(time.Second))
-	
+
 	// Error message is typically in the main message field
 	errorMsg := msg.Message
 	if errorMsg == "" {
 		errorMsg = "Operation failed"
 	}
-	
+
+	// Check for associated diagnostic information
+	m.applyState.mu.Lock()
+	diagnostic := m.applyState.diagnostics[addr]
+
+	// Fallback: Extract error details from recent error logs if no diagnostic
+	errorSummary := ""
+	errorDetail := ""
+	if diagnostic != nil {
+		errorSummary = diagnostic.Summary
+		errorDetail = diagnostic.Detail
+	} else {
+		// Strategy: Find the resource's error timestamp, then collect ALL errors near that time
+		var resourceErrorTime time.Time
+		var errorLogs []string
+
+		// First pass: Find when this resource failed
+		for _, log := range m.applyState.logs {
+			if log.Level == "error" && (log.Resource == addr || strings.Contains(log.Message, addr)) {
+				resourceErrorTime = log.Timestamp
+				break
+			}
+		}
+
+		// Second pass: Collect ALL error logs within 2 seconds of the resource failure
+		if !resourceErrorTime.IsZero() {
+			for _, log := range m.applyState.logs {
+				if log.Level == "error" {
+					// Check if this error is within 2 seconds of the resource error
+					timeDiff := log.Timestamp.Sub(resourceErrorTime)
+					if timeDiff >= 0 && timeDiff <= 2*time.Second {
+						// Remove icon prefix for cleaner display
+						msg := strings.TrimPrefix(log.Message, "❌ ")
+						msg = strings.TrimSpace(msg)
+
+						// Skip duplicate "errored after" messages (we already have that)
+						if !strings.Contains(msg, "errored after") && msg != "" {
+							errorLogs = append(errorLogs, msg)
+						}
+					}
+				}
+			}
+		}
+
+		// If we found error details, combine them
+		if len(errorLogs) > 0 {
+			errorDetail = strings.Join(errorLogs, "\n\n")
+		}
+	}
+	m.applyState.mu.Unlock()
+
 	m.sendMsg(resourceCompleteMsg{
-		Address:  addr,
-		Success:  false,
-		Error:    errorMsg,
-		Duration: duration,
+		Address:      addr,
+		Success:      false,
+		Error:        errorMsg,
+		ErrorSummary: errorSummary,
+		ErrorDetail:  errorDetail,
+		Duration:     duration,
 	})
-	
+
 	m.sendLogMessage("error", fmt.Sprintf("❌ Failed %s on %s after %v: %s", action, addr, duration, errorMsg), addr)
 }
 
@@ -480,21 +679,35 @@ func (m *modernPlanModel) handleDiagnostic(msg *TerraformJSONMessage) {
 	if msg.Diagnostic == nil {
 		return
 	}
-	
+
 	level := "info"
 	icon := "ℹ️"
-	
+
 	switch msg.Diagnostic.Severity {
 	case "error":
 		level = "error"
 		icon = "❌"
+		// Store diagnostic for later association with failed resource
+		if msg.Diagnostic.Address != "" {
+			m.applyState.mu.Lock()
+			m.applyState.diagnostics[msg.Diagnostic.Address] = msg.Diagnostic
+			m.applyState.mu.Unlock()
+		}
 	case "warning":
 		level = "warning"
 		icon = "⚠️"
 	}
-	
-	message := fmt.Sprintf("%s %s: %s", icon, msg.Diagnostic.Summary, msg.Diagnostic.Detail)
-	m.sendLogMessage(level, message, msg.Diagnostic.Address)
+
+	// Log both summary and detail separately so they can be extracted
+	if msg.Diagnostic.Summary != "" {
+		summaryMsg := fmt.Sprintf("%s %s", icon, msg.Diagnostic.Summary)
+		m.sendLogMessage(level, summaryMsg, msg.Diagnostic.Address)
+	}
+
+	// Log the detail as a separate message for better extraction
+	if msg.Diagnostic.Detail != "" {
+		m.sendLogMessage(level, msg.Diagnostic.Detail, msg.Diagnostic.Address)
+	}
 }
 
 func (m *modernPlanModel) handleProvisionMessage(msg *TerraformJSONMessage) {

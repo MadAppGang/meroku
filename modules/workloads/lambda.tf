@@ -52,7 +52,6 @@ resource "aws_lambda_function" "lambda_deploy" {
       # Core Configuration
       PROJECT_NAME = var.project
       PROJECT_ENV  = var.env
-      AWS_REGION   = data.aws_region.current.name
 
       # Logging Configuration
       LOG_LEVEL = "info" # Options: debug, info, warn, error

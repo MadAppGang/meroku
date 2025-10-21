@@ -714,15 +714,18 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.updateDiffViewport()
 			
 		case applyView:
+			// Recalculate fixed layout on resize
+			m.calculateApplyLayout(m.height)
+			// Set viewport width and height based on calculated layout
 			m.logViewport.Width = m.width - 4
-			// Set a more reasonable default height for logs
-			if m.applyState != nil && m.applyState.showFullLogs {
-				m.logViewport.Height = m.height * 2 / 3
-			} else {
-				m.logViewport.Height = m.height / 3 // Increased from /5 to /3
-			}
-			// Update log content after resizing
 			if m.applyState != nil {
+				// logsHeight is screen height, viewport needs content height minus title line
+				// Screen height - 2 (borders) - 1 (title) = content height for viewport
+				viewportHeight := m.applyState.logsHeight - 3
+				if viewportHeight < 2 {
+					viewportHeight = 2
+				}
+				m.logViewport.Height = viewportHeight
 				m.updateApplyLogViewport()
 			}
 		}
@@ -948,7 +951,7 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.currentView == applyView && m.applyState != nil && m.applyState.errorCount > 0 {
 				m.applyState.showErrorDetails = !m.applyState.showErrorDetails
 			}
-			
+
 		case tea.KeyMsg(msg).String() == "pgup":
 			// Page up in full-screen diff view
 			if m.currentView == fullScreenDiffView {
@@ -1049,17 +1052,26 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			
 			m.applyState.completed = append(m.applyState.completed, completedResource{
-				Address:   msg.Address,
-				Action:    action,
-				Duration:  duration,
-				Timestamp: time.Now(),
-				Success:   msg.Success,
-				Error:     msg.Error,
+				Address:      msg.Address,
+				Action:       action,
+				Duration:     duration,
+				Timestamp:    time.Now(),
+				Success:      msg.Success,
+				Error:        msg.Error,
+				ErrorSummary: msg.ErrorSummary,
+				ErrorDetail:  msg.ErrorDetail,
 			})
-			
+
 			if !msg.Success {
-				m.applyState.errorCount++
-				m.applyState.hasErrors = true
+				// Only count as error if it's not a cascading cancellation
+				isCascadingFailure := action == "cancelled" ||
+					strings.Contains(strings.ToLower(msg.Error), "cancelled due to previous errors") ||
+					strings.Contains(strings.ToLower(msg.Error), "deployment cancelled")
+
+				if !isCascadingFailure {
+					m.applyState.errorCount++
+					m.applyState.hasErrors = true
+				}
 			}
 			
 			m.applyState.currentOp = nil
@@ -4112,55 +4124,43 @@ func (m *modernPlanModel) renderApplyView() string {
 	
 	// Header
 	header := m.renderApplyHeader(elapsedStr)
-	
+
 	// If showing details view
 	if m.applyState.showDetails {
 		return m.renderApplyDetailsView(header, elapsedStr)
 	}
-	
+
 	// If showing error details view
 	if m.applyState.showErrorDetails && m.applyState.errorCount > 0 {
 		return m.renderApplyErrorDetailsView(header, elapsedStr)
 	}
 	
-	// Overall progress
-	overallProgress := m.renderApplyOverallProgress()
-	
-	// Current operation
-	currentOp := m.renderApplyCurrentOperation()
-	
-	// Adjust layout based on log view size
-	var mainContent string
-	if m.applyState.showFullLogs {
-		// Show only logs when in full log mode
-		mainContent = lipgloss.JoinVertical(
-			lipgloss.Left,
-			overallProgress,
-			currentOp,
-			m.renderApplyLogs(),
-		)
-	} else {
-		// Normal view with columns and logs
-		columns := m.renderApplyColumns()
-		logsSection := m.renderApplyLogs()
-		
-		// Add error summary if there are errors
-		errorSummary := ""
-		if m.applyState.errorCount > 0 {
-			errorSummary = m.renderApplyErrorSummary()
-		}
-		
-		parts := []string{overallProgress, currentOp}
-		if errorSummary != "" {
-			parts = append(parts, errorSummary)
-		}
-		parts = append(parts, columns, logsSection)
-		
-		mainContent = lipgloss.JoinVertical(
-			lipgloss.Left,
-			parts...,
-		)
+	// Build sections conditionally based on calculated heights
+	var sections []string
+
+	// Overall progress (only if height > 0)
+	if m.applyState.progressHeight > 0 {
+		sections = append(sections, m.renderApplyOverallProgress())
 	}
+
+	// Current operation (only if height > 0)
+	if m.applyState.currentOpHeight > 0 {
+		sections = append(sections, m.renderApplyCurrentOperation())
+	}
+
+	// Error summary (only if height > 0)
+	if m.applyState.errorSummaryHeight > 0 {
+		sections = append(sections, m.renderApplyErrorSummary())
+	}
+
+	// Columns (always show, but with calculated height)
+	sections = append(sections, m.renderApplyColumns())
+
+	// Logs (always show, but with calculated height)
+	sections = append(sections, m.renderApplyLogs())
+
+	// Join all visible sections
+	mainContent := lipgloss.JoinVertical(lipgloss.Left, sections...)
 	
 	// Footer
 	footer := m.renderApplyFooter()
@@ -4231,18 +4231,29 @@ func (m *modernPlanModel) renderApplyOverallProgress() string {
 }
 
 func (m *modernPlanModel) renderApplyCurrentOperation() string {
+	// Convert screen height to content height (subtract 2 for borders)
+	screenHeight := 8 // default fallback
+	if m.applyState.currentOpHeight > 0 {
+		screenHeight = m.applyState.currentOpHeight
+	}
+	contentHeight := screenHeight - 2
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
+
 	if m.applyState.currentOp == nil {
-		// Show empty state
+		// Show empty state with fixed height
 		box := boxStyle.Copy().
 			BorderForeground(dimColor).
-			Width(m.width - 4)
+			Width(m.width - 4).
+			Height(contentHeight)
 		return box.Render(titleStyle.Render("Currently Updating") + "\n" + dimStyle.Render("No active operations"))
 	}
-	
+
 	op := m.applyState.currentOp
 	icon := "🔄"
 	actionStyle := dimStyle
-	
+
 	switch op.Action {
 	case "create":
 		actionStyle = createIconStyle
@@ -4296,11 +4307,12 @@ func (m *modernPlanModel) renderApplyCurrentOperation() string {
 		elapsedDisplay,
 		op.Status,
 	)
-	
+
 	box := boxStyle.Copy().
 		BorderForeground(primaryColor).
-		Width(m.width - 4)
-	
+		Width(m.width - 4).
+		Height(contentHeight)
+
 	return box.Render(titleStyle.Render("Currently Updating") + "\n" + content)
 }
 
@@ -4405,12 +4417,22 @@ func (m *modernPlanModel) renderApplyCompleted(width int) string {
 		}
 	}
 	
-	// Apply highlight if selected
-	box := boxStyle.Width(width).Height(10)
+	// Apply highlight if selected and use calculated height
+	// Convert screen height to content height (subtract 2 for borders)
+	screenHeight := 10 // default fallback
+	if m.applyState.columnsHeight > 0 {
+		screenHeight = m.applyState.columnsHeight
+	}
+	contentHeight := screenHeight - 2
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
+
+	box := boxStyle.Width(width).Height(contentHeight)
 	if m.applyState.selectedSection == 0 {
 		box = box.BorderForeground(primaryColor)
 	}
-	
+
 	return box.Render(content)
 }
 
@@ -4464,57 +4486,118 @@ func (m *modernPlanModel) renderApplyPending(width int) string {
 		}
 	}
 	
-	// Apply highlight if selected
-	box := boxStyle.Width(width).Height(10)
+	// Apply highlight if selected and use calculated height
+	// Convert screen height to content height (subtract 2 for borders)
+	screenHeight := 10 // default fallback
+	if m.applyState.columnsHeight > 0 {
+		screenHeight = m.applyState.columnsHeight
+	}
+	contentHeight := screenHeight - 2
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
+
+	box := boxStyle.Width(width).Height(contentHeight)
 	if m.applyState.selectedSection == 1 {
 		box = box.BorderForeground(primaryColor)
 	}
-	
+
 	return box.Render(content)
 }
 
 func (m *modernPlanModel) renderApplyErrorSummary() string {
-	content := deleteIconStyle.Bold(true).Render("⚠️  Errors Detected") + "\n"
-	
-	// Collect recent error messages
-	var errorMessages []string
-	for i := len(m.applyState.logs) - 1; i >= 0 && len(errorMessages) < 3; i-- {
-		if m.applyState.logs[i].Level == "error" {
-			msg := m.applyState.logs[i].Message
-			// Truncate long messages
-			if len(msg) > 100 {
-				msg = msg[:97] + "..."
+	// Always show error summary box to maintain fixed layout
+	var content string
+
+	if m.applyState.errorCount > 0 {
+		// Has errors - show error content
+		content = deleteIconStyle.Bold(true).Render("⚠️  Errors Detected") + "\n"
+
+		// Collect error summaries from failed resources (more informative)
+		var errorMessages []string
+		for i := len(m.applyState.completed) - 1; i >= 0 && len(errorMessages) < 2; i-- {
+			res := m.applyState.completed[i]
+			if !res.Success {
+				// Prefer diagnostic summary over raw error message
+				msg := ""
+				if res.ErrorSummary != "" {
+					msg = fmt.Sprintf("%s: %s", res.Address, res.ErrorSummary)
+				} else if res.Error != "" {
+					// Extract just the important part from error
+					parts := strings.SplitN(res.Error, ":", 2)
+					if len(parts) > 1 {
+						msg = fmt.Sprintf("%s:%s", res.Address, parts[1])
+					} else {
+						msg = fmt.Sprintf("%s: %s", res.Address, res.Error)
+					}
+				} else {
+					msg = fmt.Sprintf("%s: Operation failed", res.Address)
+				}
+
+				// Truncate if still too long
+				if len(msg) > 100 {
+					msg = msg[:97] + "..."
+				}
+				errorMessages = append(errorMessages, fmt.Sprintf("• %s", msg))
 			}
-			errorMessages = append(errorMessages, fmt.Sprintf("• %s", msg))
 		}
+
+		// Show in reverse order (oldest first)
+		for i := len(errorMessages) - 1; i >= 0; i-- {
+			content += deleteIconStyle.Render(errorMessages[i]) + "\n"
+		}
+
+		if len(errorMessages) == 0 {
+			content += deleteIconStyle.Render("Check logs for error details") + "\n"
+		}
+	} else {
+		// No errors - show empty placeholder to reserve space
+		content = dimStyle.Render("No errors detected") + "\n"
 	}
-	
-	// Show in reverse order (oldest first)
-	for i := len(errorMessages) - 1; i >= 0; i-- {
-		content += deleteIconStyle.Render(errorMessages[i]) + "\n"
+
+	// Convert screen height to content height (subtract 2 for borders)
+	screenHeight := 5 // default fallback
+	if m.applyState.errorSummaryHeight > 0 {
+		screenHeight = m.applyState.errorSummaryHeight
 	}
-	
-	if len(errorMessages) == 0 {
-		content += deleteIconStyle.Render("Check logs for error details")
+	contentHeight := screenHeight - 2
+	if contentHeight < 1 {
+		contentHeight = 1
 	}
-	
+
+	borderColor := dimColor
+	if m.applyState.errorCount > 0 {
+		borderColor = dangerColor
+	}
+
 	box := boxStyle.Copy().
-		BorderForeground(dangerColor).
+		BorderForeground(borderColor).
 		Width(m.width - 4).
+		Height(contentHeight).
 		Padding(0, 1)
-	
+
 	return box.Render(content)
 }
 
 func (m *modernPlanModel) renderApplyLogs() string {
 	title := titleStyle.Render("Logs")
-	
+
+	// Convert screen height to content height (subtract 2 for borders)
+	screenHeight := 10 // default fallback
+	if m.applyState != nil && m.applyState.logsHeight > 0 {
+		screenHeight = m.applyState.logsHeight
+	}
+	contentHeight := screenHeight - 2
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
+
 	// Apply highlight if selected
-	box := boxStyle.Width(m.width - 4)
+	box := boxStyle.Width(m.width - 4).Height(contentHeight)
 	if m.applyState != nil && m.applyState.selectedSection == 2 {
 		box = box.BorderForeground(primaryColor)
 	}
-	
+
 	return box.Render(title + "\n" + m.logViewport.View())
 }
 
@@ -4554,9 +4637,9 @@ func (m *modernPlanModel) renderApplyFooter() string {
 	if m.applyState.applyComplete {
 		help += "[Enter] Continue  "
 	}
-	
+
 	help += "[Ctrl+C] Force Stop"
-	
+
 	return dimStyle.Render(help)
 }
 
@@ -4881,11 +4964,19 @@ func offerAIHelpForApplyErrors(m *modernPlanModel) {
 }
 
 func (m *modernPlanModel) renderApplyErrorDetailsView(header, elapsed string) string {
-	// Collect all failed resources
+	// Collect all failed resources (but exclude cascading cancellations)
 	var failedResources []completedResource
 	for _, res := range m.applyState.completed {
 		if !res.Success {
-			failedResources = append(failedResources, res)
+			// Skip resources that were just cancelled due to previous errors
+			// These aren't real errors, just cascading failures
+			isCascadingFailure := res.Action == "cancelled" ||
+				strings.Contains(strings.ToLower(res.Error), "cancelled due to previous errors") ||
+				strings.Contains(strings.ToLower(res.Error), "deployment cancelled")
+
+			if !isCascadingFailure {
+				failedResources = append(failedResources, res)
+			}
 		}
 	}
 	
@@ -4916,23 +5007,47 @@ func (m *modernPlanModel) renderApplyErrorDetailsView(header, elapsed string) st
 		if res.Duration > 0 {
 			content.WriteString(fmt.Sprintf("Failed after: %v\n", res.Duration))
 		}
-		
-		// Error message
-		content.WriteString("\nError Message:\n")
-		errorStyle := lipgloss.NewStyle().
-			Foreground(dangerColor).
-			PaddingLeft(2)
-		
-		// Wrap long error messages
-		errorMsg := res.Error
-		if errorMsg == "" {
-			errorMsg = "No error message available"
+
+		// Error Summary (if available from diagnostic)
+		if res.ErrorSummary != "" {
+			content.WriteString("\n" + lipgloss.NewStyle().Bold(true).Foreground(dangerColor).Render("Error Summary:") + "\n")
+			summaryStyle := lipgloss.NewStyle().
+				Foreground(dangerColor).
+				PaddingLeft(2)
+			maxWidth := m.width - 10
+			wrapped := wordWrap(res.ErrorSummary, maxWidth)
+			content.WriteString(summaryStyle.Render(wrapped) + "\n")
 		}
-		
-		// Simple word wrapping
-		maxWidth := m.width - 10
-		wrapped := wordWrap(errorMsg, maxWidth)
-		content.WriteString(errorStyle.Render(wrapped) + "\n")
+
+		// Error Detail (full diagnostic detail)
+		if res.ErrorDetail != "" {
+			content.WriteString("\n" + lipgloss.NewStyle().Bold(true).Foreground(dangerColor).Render("Detailed Error Information:") + "\n")
+			detailStyle := lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#FF6B6B")).
+				PaddingLeft(2)
+			maxWidth := m.width - 10
+			wrapped := wordWrap(res.ErrorDetail, maxWidth)
+			content.WriteString(detailStyle.Render(wrapped) + "\n")
+		}
+
+		// Raw error message (fallback if no diagnostic available)
+		if res.ErrorSummary == "" && res.ErrorDetail == "" {
+			content.WriteString("\nError Message:\n")
+			errorStyle := lipgloss.NewStyle().
+				Foreground(dangerColor).
+				PaddingLeft(2)
+
+			// Wrap long error messages
+			errorMsg := res.Error
+			if errorMsg == "" {
+				errorMsg = "No error message available"
+			}
+
+			// Simple word wrapping
+			maxWidth := m.width - 10
+			wrapped := wordWrap(errorMsg, maxWidth)
+			content.WriteString(errorStyle.Render(wrapped) + "\n")
+		}
 		
 		// Add spacing between errors
 		if i < len(failedResources)-1 {
