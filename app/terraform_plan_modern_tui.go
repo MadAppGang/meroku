@@ -143,11 +143,12 @@ type modernPlanModel struct {
 	showAIError    bool
 	aiLoading      bool
 	// AI help view
-	aiHelpProblem   string
-	aiHelpCommands  []string
-	aiHelpErrors    []string
-	aiHelpViewport  viewport.Model
-	aiHelpLoading   bool
+	aiHelpProblem        string
+	aiHelpCommands       []string
+	aiHelpErrors         []string
+	aiHelpViewport       viewport.Model  // Top viewport: errors + analysis
+	aiHelpCommandsViewport viewport.Model // Bottom viewport: suggested fix
+	aiHelpLoading        bool
 }
 
 type modernKeyMap struct {
@@ -704,8 +705,9 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.aiHelpProblem = msg.problem
 		m.aiHelpCommands = msg.commands
 		m.aiHelpErrors = msg.errors
-		// Update viewport with content
-		m.aiHelpViewport.SetContent(m.buildAIHelpContent())
+		// Update both viewports with their respective content
+		m.aiHelpViewport.SetContent(m.buildAIHelpErrorsContent())
+		m.aiHelpCommandsViewport.SetContent(m.buildAIHelpCommandsContent())
 		return m, nil
 
 	case aiHelpErrorMsg:
@@ -823,7 +825,15 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					// Immediately switch to AI help view with loading state
 					m.currentView = aiHelpView
 					m.aiHelpLoading = true
-					m.aiHelpViewport = viewport.New(m.width-4, m.height-6)
+
+					// Calculate viewport heights (same as render function)
+					commandsHeight := 8
+					errorsHeight := m.height - 2 - commandsHeight - 2
+
+					// Initialize both viewports
+					m.aiHelpViewport = viewport.New(m.width-4, errorsHeight)
+					m.aiHelpCommandsViewport = viewport.New(m.width-4, commandsHeight)
+
 					// Launch async fetch and start animation
 					return m, tea.Batch(m.fetchAIHelp(), m.tickCmd())
 				}
@@ -5368,8 +5378,8 @@ func (m *modernPlanModel) fetchAIHelp() tea.Cmd {
 	}
 }
 
-// buildAIHelpContent builds the content string for the AI help viewport
-func (m *modernPlanModel) buildAIHelpContent() string {
+// buildAIHelpErrorsContent builds the top section: errors + analysis
+func (m *modernPlanModel) buildAIHelpErrorsContent() string {
 	var content strings.Builder
 	divider := strings.Repeat("─", m.width-8)
 
@@ -5414,6 +5424,14 @@ func (m *modernPlanModel) buildAIHelpContent() string {
 	content.WriteString(problemStyle.Render(m.aiHelpProblem))
 	content.WriteString("\n\n")
 
+	return content.String()
+}
+
+// buildAIHelpCommandsContent builds the bottom section: suggested fix
+func (m *modernPlanModel) buildAIHelpCommandsContent() string {
+	var content strings.Builder
+	divider := strings.Repeat("─", m.width-8)
+
 	// Suggested Fix Section
 	content.WriteString(lipgloss.NewStyle().
 		Foreground(lipgloss.Color("82")).
@@ -5422,20 +5440,24 @@ func (m *modernPlanModel) buildAIHelpContent() string {
 	content.WriteString("\n")
 	content.WriteString(divider)
 	content.WriteString("\n\n")
-	content.WriteString("Run these commands:\n\n")
 
-	commandStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("39"))
+	if len(m.aiHelpCommands) > 0 {
+		content.WriteString("Run these commands:\n\n")
 
-	for _, cmd := range m.aiHelpCommands {
-		content.WriteString(commandStyle.Render("  " + cmd))
+		commandStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("39")).
+			Bold(true)
+
+		for i, cmd := range m.aiHelpCommands {
+			content.WriteString(commandStyle.Render(fmt.Sprintf("  %d. %s", i+1, cmd)))
+			content.WriteString("\n")
+		}
+	} else {
+		content.WriteString(dimStyle.Render("No specific commands suggested"))
 		content.WriteString("\n")
 	}
 
 	content.WriteString("\n")
-	content.WriteString(divider)
-	content.WriteString("\n\n")
-
 	disclaimerStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("243")).
 		Italic(true)
@@ -5444,7 +5466,7 @@ func (m *modernPlanModel) buildAIHelpContent() string {
 	return content.String()
 }
 
-// renderAIHelpView renders the AI help view with original error, AI analysis, and suggested fixes
+// renderAIHelpView renders the AI help view with split layout: top scrollable, bottom fixed
 func (m *modernPlanModel) renderAIHelpView() string {
 	// Header
 	header := headerStyle.Width(m.width).Render("🤖 AI Error Help")
@@ -5476,19 +5498,38 @@ func (m *modernPlanModel) renderAIHelpView() string {
 		)
 	}
 
-	// Viewport with AI help content
-	viewportBox := boxStyle.
+	// Calculate heights for split layout
+	// Header: 1 line
+	// Footer: 1 line
+	// Available height: m.height - 2
+	// Bottom viewport (commands): ~8 lines (fixed)
+	// Top viewport (errors/analysis): rest (scrollable)
+
+	commandsHeight := 8
+	errorsHeight := m.height - 2 - commandsHeight - 2 // -2 for borders
+
+	// Top viewport with errors + analysis (scrollable)
+	errorsViewportBox := boxStyle.
 		Width(m.width - 2).
-		Height(m.height - 4).
+		Height(errorsHeight).
+		BorderForeground(lipgloss.Color("196")).
 		Render(m.aiHelpViewport.View())
 
+	// Bottom viewport with suggested fix (fixed, no scroll)
+	commandsViewportBox := boxStyle.
+		Width(m.width - 2).
+		Height(commandsHeight).
+		BorderForeground(lipgloss.Color("82")).
+		Render(m.aiHelpCommandsViewport.View())
+
 	// Footer with help text
-	footerText := dimStyle.Render("[↑↓] Scroll • [ESC] Back to Apply View")
+	footerText := dimStyle.Render("[↑↓] Scroll Errors • [ESC] Back to Apply View")
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		header,
-		viewportBox,
+		errorsViewportBox,
+		commandsViewportBox,
 		footerText,
 	)
 }
