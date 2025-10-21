@@ -4686,23 +4686,13 @@ func (m *modernPlanModel) updateApplyLogViewport() {
 		logsToShow = m.applyState.logs
 	}
 	
-	// Show last N log entries
-	start := 0
-	maxLogs := 20
-	if m.applyState.showFullLogs {
-		maxLogs = 50 // Show more logs in full view
-	}
-	
-	if len(logsToShow) > maxLogs {
-		start = len(logsToShow) - maxLogs
-	}
-	
 	// Ensure we show at least something if there are logs
 	if len(logsToShow) == 0 && len(m.applyState.logs) > 0 {
 		content.WriteString(dimStyle.Render("No non-debug logs yet. Press 'l' to show all logs.\n"))
 	}
 
-	for _, log := range logsToShow[start:] {
+	// Show all logs - viewport handles scrolling
+	for _, log := range logsToShow {
 
 		timestamp := log.Timestamp.Format("15:04:05")
 
@@ -4743,8 +4733,14 @@ func (m *modernPlanModel) updateApplyLogViewport() {
 			content.WriteString(style.Render(logLine) + "\n")
 		}
 	}
-	
+
 	m.logViewport.SetContent(content.String())
+
+	// Auto-scroll to bottom to show latest logs (unless user has manually scrolled up)
+	// Only auto-scroll if we're near the bottom or if this is a new log entry
+	if m.applyState.isApplying || m.logViewport.AtBottom() {
+		m.logViewport.GotoBottom()
+	}
 }
 
 func (m *modernPlanModel) renderApplyDetailsView(header, elapsed string) string {
