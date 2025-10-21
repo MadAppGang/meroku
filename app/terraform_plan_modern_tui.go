@@ -5228,16 +5228,33 @@ func (m *modernPlanModel) fetchAIHelp() tea.Cmd {
 	return func() tea.Msg {
 		// Collect error messages from completed resources
 		var errorMessages []string
+
+		m.applyState.mu.Lock()
+		defer m.applyState.mu.Unlock()
+
 		for _, res := range m.applyState.completed {
 			if !res.Success {
-				// Get the actual error message
+				// Get the actual error message - check diagnostics map FIRST for latest info
 				var errorMsg string
-				if res.ErrorDetail != "" {
-					errorMsg = res.ErrorDetail
-				} else if res.ErrorSummary != "" {
-					errorMsg = res.ErrorSummary
-				} else if res.Error != "" {
-					errorMsg = res.Error
+
+				// Check if we have diagnostic info in the map (most recent/complete)
+				if diagnostic, exists := m.applyState.diagnostics[res.Address]; exists && diagnostic != nil {
+					if diagnostic.Summary != "" {
+						errorMsg = diagnostic.Summary
+					} else if diagnostic.Detail != "" {
+						errorMsg = diagnostic.Detail
+					}
+				}
+
+				// Fallback to stored values if no diagnostic in map
+				if errorMsg == "" {
+					if res.ErrorDetail != "" {
+						errorMsg = res.ErrorDetail
+					} else if res.ErrorSummary != "" {
+						errorMsg = res.ErrorSummary
+					} else if res.Error != "" {
+						errorMsg = res.Error
+					}
 				}
 
 				// Skip "cancelled" errors - we only want the root causes
