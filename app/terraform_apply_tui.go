@@ -382,9 +382,17 @@ func (m *modernPlanModel) parseTerraformOutput(stdout interface{}) {
 			continue
 		}
 
+		// Debug: Log message type
+		if debugFile != nil && msg.Type != "" {
+			fmt.Fprintf(debugFile, "[%s] [MSG TYPE] %s\n", time.Now().Format("2006-01-02 15:04:05.000"), msg.Type)
+		}
+
 		// Process based on message type
 		switch msg.Type {
 		case "apply_start":
+			if debugFile != nil {
+				fmt.Fprintf(debugFile, "[%s] [HANDLER] Calling handleApplyStart for %s\n", time.Now().Format("2006-01-02 15:04:05.000"), msg.Hook.Resource.Addr)
+			}
 			m.handleApplyStart(&msg)
 		case "apply_progress":
 			m.handleApplyProgress(&msg)
@@ -545,7 +553,19 @@ func (m *modernPlanModel) parseTerraformOutput(stdout interface{}) {
 }
 
 func (m *modernPlanModel) handleApplyStart(msg *TerraformJSONMessage) {
+	// Debug: Log that this function was called
+	if debugFile, err := os.OpenFile("/tmp/terraform_debug.log", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644); err == nil {
+		timestamp := time.Now().Format("2006-01-02 15:04:05.000")
+		fmt.Fprintf(debugFile, "[%s] [handleApplyStart] CALLED\n", timestamp)
+		debugFile.Close()
+	}
+
 	if msg.Hook == nil || msg.Hook.Resource == nil {
+		if debugFile, err := os.OpenFile("/tmp/terraform_debug.log", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644); err == nil {
+			timestamp := time.Now().Format("2006-01-02 15:04:05.000")
+			fmt.Fprintf(debugFile, "[%s] [handleApplyStart] Hook or Resource is nil, returning\n", timestamp)
+			debugFile.Close()
+		}
 		return
 	}
 
@@ -553,6 +573,13 @@ func (m *modernPlanModel) handleApplyStart(msg *TerraformJSONMessage) {
 	action := msg.Hook.Action
 	if action == "" {
 		action = m.getResourceAction(addr)
+	}
+
+	// Debug: Log the address and action
+	if debugFile, err := os.OpenFile("/tmp/terraform_debug.log", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644); err == nil {
+		timestamp := time.Now().Format("2006-01-02 15:04:05.000")
+		fmt.Fprintf(debugFile, "[%s] [handleApplyStart] addr=%s, action=%s, applyState=%v\n", timestamp, addr, action, m.applyState != nil)
+		debugFile.Close()
 	}
 
 	// Update currentOp directly with thread safety
@@ -565,6 +592,13 @@ func (m *modernPlanModel) handleApplyStart(msg *TerraformJSONMessage) {
 			Status:    "Starting...",
 		}
 		m.applyState.mu.Unlock()
+
+		// Debug: Log that we set currentOp
+		if debugFile, err := os.OpenFile("/tmp/terraform_debug.log", os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+			timestamp := time.Now().Format("2006-01-02 15:04:05.000")
+			fmt.Fprintf(debugFile, "[%s] [CURRENTOP SET] %s (%s)\n", timestamp, addr, action)
+			debugFile.Close()
+		}
 	}
 
 	// Also send message for UI update

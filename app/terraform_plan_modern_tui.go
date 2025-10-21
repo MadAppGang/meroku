@@ -1177,10 +1177,17 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			
+			// Debug: Log that we're clearing currentOp
+			if debugFile, err := os.OpenFile("/tmp/terraform_debug.log", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644); err == nil {
+				timestamp := time.Now().Format("2006-01-02 15:04:05.000")
+				fmt.Fprintf(debugFile, "[%s] [CURRENTOP CLEARED] Resource completed: %s (success: %v)\n", timestamp, msg.Address, msg.Success)
+				debugFile.Close()
+			}
+
 			m.applyState.currentOp = nil
 			m.updateApplyLogViewport()
 		}
-		
+
 	case logMsg:
 		if m.applyState != nil {
 			m.applyState.logs = append(m.applyState.logs, logEntry{
@@ -4342,6 +4349,13 @@ func (m *modernPlanModel) renderApplyCurrentOperation() string {
 	}
 
 	if m.applyState.currentOp == nil {
+		// Debug: Log when we render empty state
+		if debugFile, err := os.OpenFile("/tmp/terraform_debug.log", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644); err == nil {
+			timestamp := time.Now().Format("2006-01-02 15:04:05.000")
+			fmt.Fprintf(debugFile, "[%s] [RENDER] currentOp is nil - showing 'No active operations'\n", timestamp)
+			debugFile.Close()
+		}
+
 		// Show empty state with fixed height
 		box := boxStyle.Copy().
 			BorderForeground(dimColor).
