@@ -617,6 +617,15 @@ func (m *modernPlanModel) handleDiagnostic(msg *TerraformJSONMessage) {
 		if msg.Diagnostic.Address != "" {
 			m.applyState.mu.Lock()
 			m.applyState.diagnostics[msg.Diagnostic.Address] = msg.Diagnostic
+
+			// Update completed resource with diagnostic details if it already failed
+			for i := range m.applyState.completed {
+				if m.applyState.completed[i].Address == msg.Diagnostic.Address && !m.applyState.completed[i].Success {
+					m.applyState.completed[i].ErrorSummary = msg.Diagnostic.Summary
+					m.applyState.completed[i].ErrorDetail = msg.Diagnostic.Detail
+					break
+				}
+			}
 			m.applyState.mu.Unlock()
 		}
 	case "warning":
