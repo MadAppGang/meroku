@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -36,6 +37,7 @@ type planProgressModel struct {
 	errorDetails    string
 	errorOutput     []string
 	isRecoverable   bool
+	requestAIHelp   bool
 	width           int
 	height          int
 	startTime       time.Time
@@ -262,6 +264,12 @@ func (m *planProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cmd.Process.Kill()
 			}
 			return m, tea.Quit
+		case "a":
+			// Try to fix with AI (only in error phase and if AI is available)
+			if m.phase == phaseError && isAIHelperAvailable() {
+				m.requestAIHelp = true
+				return m, tea.Quit
+			}
 		case "enter":
 			if m.phase == phaseError || m.phase == phaseComplete {
 				return m, tea.Quit
@@ -545,9 +553,16 @@ func (m *planProgressModel) renderError() string {
 		content.WriteString("\n\n")
 	}
 	
+	// Build footer with options based on AI availability
+	footerOptions := "q - exit"
+	if isAIHelperAvailable() {
+		footerOptions += " • a - try to fix with AI"
+	}
+	footerOptions += " • Enter - return to menu"
+
 	content.WriteString(lipgloss.NewStyle().
 		Foreground(lipgloss.Color("245")).
-		Render("Press Enter to return to menu or q to quit"))
+		Render(footerOptions))
 	
 	// Wrap in error box
 	errorContent := errorBoxStyle.Render(content.String())
@@ -649,14 +664,70 @@ func runTerraformPlanWithProgress() error {
 		newPlanProgressModel(),
 		tea.WithAltScreen(),
 	)
-	
+
 	model, err := p.Run()
 	if err != nil {
 		return fmt.Errorf("error running plan progress TUI: %w", err)
 	}
-	
+
 	// Check if there was an error in the plan
 	if finalModel, ok := model.(*planProgressModel); ok {
+		// Check if user requested AI help
+		if finalModel.requestAIHelp && finalModel.phase == phaseError {
+			// Offer AI help directly without prompting
+			if len(finalModel.errorOutput) > 0 {
+				// Get current directory
+				workingDir, _ := os.Getwd()
+
+				// Get AWS profile from environment or use default
+				awsProfile := os.Getenv("AWS_PROFILE")
+				if awsProfile == "" {
+					awsProfile = "default"
+				}
+
+				// Get region from environment variable or use default
+				awsRegion := os.Getenv("AWS_REGION")
+				if awsRegion == "" {
+					awsRegion = os.Getenv("AWS_DEFAULT_REGION")
+				}
+				if awsRegion == "" {
+					awsRegion = "us-east-1" // fallback
+				}
+
+				// Extract environment from working directory (e.g., env/dev)
+				envName := "unknown"
+				if strings.Contains(workingDir, "/env/") {
+					parts := strings.Split(workingDir, "/env/")
+					if len(parts) > 1 {
+						envParts := strings.Split(parts[1], "/")
+						if len(envParts) > 0 {
+							envName = envParts[0]
+						}
+					}
+				}
+
+				ctx := ErrorContext{
+					Operation:   "plan",
+					Environment: envName,
+					AWSProfile:  awsProfile,
+					AWSRegion:   awsRegion,
+					Errors:      finalModel.errorOutput,
+					WorkingDir:  workingDir,
+				}
+
+				// Get AI suggestions directly without prompting
+				problem, commands, err := getAIErrorSuggestions(ctx)
+				if err != nil {
+					fmt.Printf("\n❌ Failed to get AI suggestions: %v\n", err)
+				} else {
+					displayAISuggestions(problem, commands)
+				}
+
+				fmt.Print("\nPress Enter to continue...")
+				fmt.Scanln()
+			}
+		}
+
 		if finalModel.phase == phaseError || finalModel.phase == phaseRecovering {
 			// Include both the error details and the full output for error recovery
 			errorMsg := finalModel.errorDetails

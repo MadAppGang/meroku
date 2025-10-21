@@ -131,6 +131,7 @@ type modernPlanModel struct {
 	aiError        string
 	showAIError    bool
 	aiLoading      bool
+	requestAIHelp  bool
 }
 
 type modernKeyMap struct {
@@ -776,6 +777,17 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			
 		case key.Matches(msg, m.keys.Apply):
+			// Don't apply again if we're already in apply view with completed deployment
+			if m.currentView == applyView && m.applyState != nil && m.applyState.applyComplete {
+				// If we have errors and AI is available, trigger AI help
+				if m.applyState.hasErrors && isAIHelperAvailable() {
+					m.requestAIHelp = true
+					return m, tea.Quit
+				}
+				// Otherwise, just ignore the key press
+				return m, nil
+			}
+
 			// No need to check for replacements - the startTerraformApply function
 			// already handles -replace flags properly
 			m.currentView = applyView
@@ -939,7 +951,7 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.updateApplyLogViewport()
 			}
-			
+
 		// Removed: details view (key 'd') and error details view (key 'x')
 		// All information is shown in logs with proper wrapping
 
@@ -979,6 +991,7 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case applyErrorMsg:
 		if m.applyState != nil {
 			m.applyState.isApplying = false
+			m.applyState.applyComplete = true
 			m.applyState.hasErrors = true
 
 			// Cancel all pending operations when deployment fails
@@ -4587,6 +4600,9 @@ func (m *modernPlanModel) renderApplyFooter() string {
 	}
 	
 	if m.applyState.applyComplete {
+		if m.applyState.hasErrors && isAIHelperAvailable() {
+			help += "[a] AI Help • "
+		}
 		help += "[Enter] Continue  "
 	}
 
@@ -4882,7 +4898,72 @@ func showModernTerraformPlanTUI(planJSON string) error {
 	// Check if there were apply errors and offer AI help
 	if m, ok := finalModel.(*modernPlanModel); ok {
 		if m.applyState != nil && m.applyState.hasErrors {
-			offerAIHelpForApplyErrors(m)
+			// Check if user requested AI help directly
+			if m.requestAIHelp {
+				// Collect error messages
+				var errorMessages []string
+				for _, res := range m.applyState.completed {
+					if !res.Success && res.Error != "" {
+						errorMessages = append(errorMessages, fmt.Sprintf("Resource: %s\nAction: %s\nError: %s",
+							res.Address, res.Action, res.Error))
+					}
+				}
+
+				if len(errorMessages) > 0 {
+					// Get current directory
+					workingDir, _ := os.Getwd()
+
+					// Get AWS profile from environment or use default
+					awsProfile := os.Getenv("AWS_PROFILE")
+					if awsProfile == "" {
+						awsProfile = "default"
+					}
+
+					// Get region from environment variable or use default
+					awsRegion := os.Getenv("AWS_REGION")
+					if awsRegion == "" {
+						awsRegion = os.Getenv("AWS_DEFAULT_REGION")
+					}
+					if awsRegion == "" {
+						awsRegion = "us-east-1" // fallback
+					}
+
+					// Extract environment from working directory (e.g., env/dev)
+					envName := "unknown"
+					if strings.Contains(workingDir, "/env/") {
+						parts := strings.Split(workingDir, "/env/")
+						if len(parts) > 1 {
+							envParts := strings.Split(parts[1], "/")
+							if len(envParts) > 0 {
+								envName = envParts[0]
+							}
+						}
+					}
+
+					ctx := ErrorContext{
+						Operation:   "apply",
+						Environment: envName,
+						AWSProfile:  awsProfile,
+						AWSRegion:   awsRegion,
+						Errors:      errorMessages,
+						WorkingDir:  workingDir,
+					}
+
+					// Get AI suggestions directly without prompting
+					problem, commands, err := getAIErrorSuggestions(ctx)
+					if err != nil {
+						fmt.Printf("\n❌ Failed to get AI suggestions: %v\n", err)
+					} else {
+						displayAISuggestions(problem, commands)
+					}
+
+					fmt.Print("\nPress Enter to continue...")
+					fmt.Scanln()
+				}
+			} else {
+				// Offer AI help with prompt (old behavior when user exits without pressing 'a')
+				offerAIHelpForApplyErrors(m)
+			}
 		}
 	}
 

@@ -35,6 +35,7 @@ type destroyProgressModel struct {
 	outputMutex        sync.Mutex
 	errorDetails       string
 	errorOutput        []string
+	requestAIHelp      bool // Track if user requested AI help
 	width              int
 	height             int
 	startTime          time.Time
@@ -412,6 +413,12 @@ func (m *destroyProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 
+			// Try to fix with AI with 'a' key (only in error state and if AI is available)
+			if m.phase == destroyError && msg.String() == "a" && isAIHelperAvailable() {
+				m.requestAIHelp = true
+				return m, tea.Quit
+			}
+
 			// Handle viewport scrolling when showing full error
 			if m.showFullError {
 				switch msg.String() {
@@ -688,7 +695,12 @@ func (m *destroyProgressModel) View() string {
 		if m.copiedToClip {
 			footerParts = append(footerParts, "✓ Copied!")
 		} else {
-			footerParts = append(footerParts, "[E] Full Error • [C] Copy • Press any key to exit")
+			footerOptions := "[E] Full Error • [C] Copy"
+			if isAIHelperAvailable() {
+				footerOptions += " • [A] AI Help"
+			}
+			footerOptions += " • Q - exit"
+			footerParts = append(footerParts, footerOptions)
 		}
 	} else {
 		// Show cancel instruction during active phases
@@ -776,8 +788,52 @@ func runTerraformDestroyWithProgress(env string) error {
 	// Check if there was an error
 	if finalModel, ok := model.(*destroyProgressModel); ok {
 		if finalModel.phase == destroyError {
-			// Offer AI help if available
-			offerAIHelpForDestroyErrors(finalModel)
+			// Check if user requested AI help
+			if finalModel.requestAIHelp {
+				// Offer AI help directly without prompting
+				if len(finalModel.errorOutput) > 0 {
+					// Get current directory
+					workingDir, _ := os.Getwd()
+
+					// Get AWS profile from environment or use default
+					awsProfile := os.Getenv("AWS_PROFILE")
+					if awsProfile == "" {
+						awsProfile = "default"
+					}
+
+					// Get region from environment variable or use default
+					awsRegion := os.Getenv("AWS_REGION")
+					if awsRegion == "" {
+						awsRegion = os.Getenv("AWS_DEFAULT_REGION")
+					}
+					if awsRegion == "" {
+						awsRegion = "us-east-1" // fallback
+					}
+
+					ctx := ErrorContext{
+						Operation:   "destroy",
+						Environment: finalModel.env,
+						AWSProfile:  awsProfile,
+						AWSRegion:   awsRegion,
+						Errors:      finalModel.errorOutput,
+						WorkingDir:  workingDir,
+					}
+
+					// Get AI suggestions directly without prompting
+					problem, commands, err := getAIErrorSuggestions(ctx)
+					if err != nil {
+						fmt.Printf("\n❌ Failed to get AI suggestions: %v\n", err)
+					} else {
+						displayAISuggestions(problem, commands)
+					}
+
+					fmt.Print("\nPress Enter to continue...")
+					fmt.Scanln()
+				}
+			} else {
+				// Offer AI help with prompt (old behavior when user exits without pressing 'a')
+				offerAIHelpForDestroyErrors(finalModel)
+			}
 
 			errorMsg := finalModel.errorDetails
 			if len(finalModel.errorOutput) > 0 {
