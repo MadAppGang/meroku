@@ -16,7 +16,8 @@ import (
 // 4: Added backend scaling configuration
 // 5: Added ALB configuration
 // 6: Added custom VPC configuration
-const CurrentSchemaVersion = 6
+// 7: Added ECR strategy configuration (ecr_strategy, ecr_account_id, ecr_account_region)
+const CurrentSchemaVersion = 7
 
 // EnvWithVersion extends Env with a schema version field
 type EnvWithVersion struct {
@@ -57,6 +58,11 @@ var AllMigrations = []Migration{
 		Version:     6,
 		Description: "Add custom VPC configuration",
 		Apply:       migrateToV6,
+	},
+	{
+		Version:     7,
+		Description: "Add ECR strategy configuration",
+		Apply:       migrateToV7,
 	},
 }
 
@@ -277,6 +283,44 @@ func migrateToV6(data map[string]interface{}) error {
 	if _, exists := data["enable_nat_gateway"]; exists {
 		delete(data, "enable_nat_gateway")
 		fmt.Println("    🗑️  Removed enable_nat_gateway (deprecated)")
+	}
+
+	return nil
+}
+
+// migrateToV7 adds ECR strategy configuration
+func migrateToV7(data map[string]interface{}) error {
+	fmt.Println("  → Migrating to v7: Adding ECR strategy configuration")
+
+	// Only add ecr_strategy if it doesn't exist
+	if _, exists := data["ecr_strategy"]; !exists {
+		// Determine strategy based on existing configuration
+		env, _ := data["env"].(string)
+		ecrAccountID, hasECRAccountID := data["ecr_account_id"]
+
+		// Strategy determination:
+		// 1. If env is "dev", default to "local" (dev owns ECR)
+		// 2. If ecr_account_id is set, use "cross_account" (pulling from another account)
+		// 3. Otherwise, use "local" (each environment has its own ECR)
+
+		if env == "dev" {
+			data["ecr_strategy"] = "local"
+			fmt.Println("    ℹ️  Setting ecr_strategy=local for dev environment")
+		} else if hasECRAccountID && ecrAccountID != nil && ecrAccountID != "" {
+			data["ecr_strategy"] = "cross_account"
+			fmt.Println("    ℹ️  Setting ecr_strategy=cross_account (ecr_account_id is set)")
+		} else {
+			data["ecr_strategy"] = "local"
+			fmt.Println("    ℹ️  Setting ecr_strategy=local (isolated environment)")
+		}
+	}
+
+	// Ensure ecr_account_id and ecr_account_region exist (even if empty)
+	if _, exists := data["ecr_account_id"]; !exists {
+		data["ecr_account_id"] = nil
+	}
+	if _, exists := data["ecr_account_region"]; !exists {
+		data["ecr_account_region"] = nil
 	}
 
 	return nil

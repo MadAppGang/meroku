@@ -30,7 +30,7 @@ variable "docker_image" {
 }
 
 locals {
-  ecr_image    = "${var.env == "dev" ? join("", aws_ecr_repository.backend.*.repository_url) : var.ecr_url}:latest"
+  ecr_image    = "${var.ecr_strategy == "local" ? join("", aws_ecr_repository.backend.*.repository_url) : var.ecr_url}:latest"
   docker_image = var.docker_image != "" ? var.docker_image : local.ecr_image
 }
 
@@ -120,6 +120,29 @@ variable "domain_zone_id" {
   default = ""
 }
 
+
+variable "ecr_strategy" {
+  description = "ECR repository strategy: 'local' to create ECR in this account, 'cross_account' to pull from another account"
+  type        = string
+  default     = "local"
+
+  validation {
+    condition     = contains(["local", "cross_account"], var.ecr_strategy)
+    error_message = "ecr_strategy must be either 'local' or 'cross_account'"
+  }
+}
+
+variable "ecr_account_id" {
+  description = "AWS account ID for cross-account ECR access (required when ecr_strategy is 'cross_account')"
+  type        = string
+  default     = ""
+}
+
+variable "ecr_account_region" {
+  description = "AWS region for cross-account ECR access (required when ecr_strategy is 'cross_account')"
+  type        = string
+  default     = ""
+}
 
 variable "ecr_url" {
   default = ""

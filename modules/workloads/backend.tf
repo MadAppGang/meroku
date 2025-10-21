@@ -421,6 +421,60 @@ resource "aws_iam_role_policy_attachment" "ssm_parameter_access_task_role" {
   policy_arn = aws_iam_policy.ssm_parameter_access.arn
 }
 
+// Cross-account ECR access policy (only when using cross_account strategy)
+data "aws_iam_policy_document" "cross_account_ecr_access" {
+  count = var.ecr_strategy == "cross_account" && var.ecr_account_id != "" ? 1 : 0
+
+  # GetAuthorizationToken is account-level
+  statement {
+    effect = "Allow"
+    actions = [
+      "ecr:GetAuthorizationToken"
+    ]
+    resources = ["*"]
+  }
+
+  # Repository-specific permissions for cross-account ECR
+  statement {
+    effect = "Allow"
+    actions = [
+      "ecr:BatchCheckLayerAvailability",
+      "ecr:GetDownloadUrlForLayer",
+      "ecr:BatchGetImage",
+      "ecr:DescribeImages",
+      "ecr:DescribeRepositories"
+    ]
+    resources = [
+      "arn:aws:ecr:${var.ecr_account_region}:${var.ecr_account_id}:repository/${var.project}_backend",
+      "arn:aws:ecr:${var.ecr_account_region}:${var.ecr_account_id}:repository/${var.project}_service_*",
+      "arn:aws:ecr:${var.ecr_account_region}:${var.ecr_account_id}:repository/${var.project}_task_*"
+    ]
+  }
+}
+
+resource "aws_iam_policy" "cross_account_ecr_access" {
+  count = var.ecr_strategy == "cross_account" && var.ecr_account_id != "" ? 1 : 0
+
+  name        = "${var.project}_cross_account_ecr_access_${var.env}"
+  description = "Allow pulling images from cross-account ECR (${var.ecr_account_id})"
+  policy      = data.aws_iam_policy_document.cross_account_ecr_access[0].json
+
+  tags = {
+    Name        = "${var.project}_cross_account_ecr_access_${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "backend_cross_account_ecr" {
+  count = var.ecr_strategy == "cross_account" && var.ecr_account_id != "" ? 1 : 0
+
+  role       = aws_iam_role.backend_task_execution.name
+  policy_arn = aws_iam_policy.cross_account_ecr_access[0].arn
+}
+
 resource "aws_iam_policy" "ssm_parameter_access" {
   name   = "BackendSSMAccessPolicy_${var.project}_${var.env}"
   policy = data.aws_iam_policy_document.ssm_parameter_access.json

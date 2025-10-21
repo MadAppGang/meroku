@@ -21,6 +21,10 @@ type Env struct {
 	// VPC Configuration
 	UseDefaultVPC bool   `yaml:"use_default_vpc"`
 	VPCCIDR       string `yaml:"vpc_cidr,omitempty"` // Optional, VPC module has default
+	// ECR Configuration
+	ECRStrategy      string `yaml:"ecr_strategy,omitempty"`       // "local" or "cross_account"
+	ECRAccountID     string `yaml:"ecr_account_id,omitempty"`     // For cross-account ECR access
+	ECRAccountRegion string `yaml:"ecr_account_region,omitempty"` // For cross-account ECR access
 	// Services
 	Workload            Workload             `yaml:"workload"`
 	Domain              Domain               `yaml:"domain"`
@@ -239,6 +243,11 @@ func createEnv(name, env string) Env {
 		// Always creates 2 AZs with public subnets only, no NAT gateway
 		UseDefaultVPC: false,         // Use custom VPC by default
 		VPCCIDR:       "10.0.0.0/16", // Optional, VPC module has this default
+		// ECR Configuration (schema v7)
+		// Default to local ECR for new projects
+		ECRStrategy:      "local",
+		ECRAccountID:     "",
+		ECRAccountRegion: "",
 		Workload: Workload{
 			SlackWebhook:               "",
 			BucketPostfix:              generateRandomString(5),

@@ -234,6 +234,13 @@ module "workloads" {
   api_certificate_arn = module.domain.api_certificate_arn
   domain_zone_id = module.domain.zone_id
   {{/if}}
+  ecr_strategy = "{{ecr_strategy}}"
+  {{#if ecr_account_id}}
+  ecr_account_id = "{{ecr_account_id}}"
+  {{/if}}
+  {{#if ecr_account_region}}
+  ecr_account_region = "{{ecr_account_region}}"
+  {{/if}}
   {{#if ecr_account_id}}{{#if ecr_account_region}}
   ecr_url = "{{ecr_account_id}}.dkr.ecr.{{ecr_account_region}}.amazonaws.com/{{project}}_backend"
   {{/if}}{{/if}}

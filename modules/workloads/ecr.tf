@@ -1,9 +1,9 @@
 data "aws_organizations_organization" "org" {}
 
-// backend 
+// backend
 resource "aws_ecr_repository" "backend" {
   name  = "${var.project}_backend"
-  count = var.env == "dev" ? 1 : 0
+  count = var.ecr_strategy == "local" ? 1 : 0
 
   tags = {
     Name        = "${var.project}_backend"
@@ -18,7 +18,7 @@ resource "aws_ecr_repository" "backend" {
 resource "aws_ecr_repository_policy" "backend" {
   repository = join("", aws_ecr_repository.backend.*.name)
   policy     = data.aws_iam_policy_document.default_ecr_policy.json
-  count      = var.env == "dev" ? 1 : 0
+  count      = var.ecr_strategy == "local" ? 1 : 0
 }
 
 

@@ -41,7 +41,6 @@ amplify_apps:
   - www
   - app
 aws_profile: ""
-az_count: 2
 cognito:
   auto_verified_attributes:
   - email
@@ -53,17 +52,16 @@ cognito:
   enable_web_client: false
   enabled: true
   user_pool_domain_prefix: null
-create_private_subnets: false
 domain:
   create_domain_zone: false
   domain_name: instagram.madappgang.com.au
   enabled: true
 ecr_account_id: null
 ecr_account_region: null
+ecr_strategy: local
 efs:
 - name: uploads
 - name: static
-enable_nat_gateway: false
 env: dev
 event_processor_tasks:
 - detail_types:
@@ -97,7 +95,7 @@ scheduled_tasks:
   schedule: rate(1 minutes)
 - name: task2
   schedule: rate(1 hours)
-schema_version: 6
+schema_version: 7
 services:
 - container_port: 3000
   cpu: 256

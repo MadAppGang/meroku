@@ -14,6 +14,7 @@ export interface YamlInfrastructureConfig {
 	api_domain?: string;
 
 	// Optional ECR configuration
+	ecr_strategy?: "local" | "cross_account";
 	ecr_account_id?: string;
 	ecr_account_region?: string;
 

@@ -22,7 +22,14 @@ region: <string>               # Required: AWS region (e.g., "us-east-1", "eu-ce
 state_bucket: <string>         # Required: S3 bucket for Terraform state storage
 state_file: <string>           # Required: Terraform state file name (default: "state.tfstate")
 
-# Optional: ECR configuration for cross-account/region image pulls
+# ===================================
+# ECR CONFIGURATION
+# ===================================
+# ECR repository strategy (Schema v7)
+ecr_strategy: <string>         # Required: "local" (create ECR in this account) or "cross_account" (pull from another account)
+                               # Default: "local"
+
+# Cross-account ECR configuration (only needed when ecr_strategy is "cross_account")
 ecr_account_id: <string>       # AWS account ID where ECR repositories are located
 ecr_account_region: <string>   # AWS region where ECR repositories are located
 
@@ -427,13 +434,30 @@ Based on the template, the following Terraform modules are conditionally loaded:
 
 ### Special Template Behaviors
 
-#### ECR Cross-Account Access
+#### ECR Repository Strategy (Schema v7)
 
-When both `ecr_account_id` and `ecr_account_region` are set, ECR URLs are automatically generated:
+**Local Strategy** (`ecr_strategy: "local"`):
+- Creates ECR repositories in the current AWS account
+- Repositories are created for backend, services, and tasks
+- Repository naming: `{project}_backend`, `{project}_service_{name}`, `{project}_task_{name}`
+- Use this when you want each environment to have its own container registry
+
+**Cross-Account Strategy** (`ecr_strategy: "cross_account"`):
+- Pulls container images from another AWS account's ECR
+- Requires `ecr_account_id` and `ecr_account_region` to be set
+- No ECR repositories are created in this environment
+- Use this when multiple environments share a single ECR (e.g., dev ECR used by staging and prod)
+
+When `ecr_strategy` is "cross_account" and both `ecr_account_id` and `ecr_account_region` are set, ECR URLs are automatically generated:
 
 - Backend: `{ecr_account_id}.dkr.ecr.{ecr_account_region}.amazonaws.com/{project}_backend`
 - Scheduled tasks: `{ecr_account_id}.dkr.ecr.{ecr_account_region}.amazonaws.com/{project}_task_{name}`
 - Event tasks: `{ecr_account_id}.dkr.ecr.{ecr_account_region}.amazonaws.com/{project}_task_{name}`
+
+**Migration from Schema v6:**
+- If `env == "dev"`: Sets `ecr_strategy: "local"`
+- If `ecr_account_id` is set: Sets `ecr_strategy: "cross_account"`
+- Otherwise: Sets `ecr_strategy: "local"`
 
 #### Domain Prefix Handling
 
