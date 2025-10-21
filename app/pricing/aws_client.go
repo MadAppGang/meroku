@@ -1,7 +1,6 @@
 package pricing
 
 import (
-	"log"
 	"sync"
 	"time"
 
@@ -36,10 +35,11 @@ func NewAWSPricingClient(client *pricing.Client) *AWSPricingClient {
 // Currently returns hardcoded fallback prices (intentional design choice)
 // Always returns valid pricing data (never fails)
 func (c *AWSPricingClient) FetchRates(region string) (*PriceRates, error) {
-	// Log once on first use to inform about pricing source
+	// Pricing info available but not logged to keep output clean
+	// Using fallback pricing (last updated: 2025-01-15)
+	// Prices are accurate as of January 2025 and updated quarterly
 	c.loggedFallback.Do(func() {
-		log.Printf("[Pricing] Using fallback pricing (last updated: %s)", FALLBACK_PRICING_DATE)
-		log.Printf("[Pricing] Prices are accurate as of January 2025 and updated quarterly")
+		// Silently use fallback pricing
 	})
 
 	// Return fallback prices
