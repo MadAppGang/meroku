@@ -36,6 +36,16 @@ type aiErrorMsg struct {
 	err error
 }
 
+// AI help messages
+type aiHelpReadyMsg struct {
+	problem  string
+	commands []string
+	errors   []string
+}
+type aiHelpErrorMsg struct {
+	err error
+}
+
 // Type definitions from the original implementation
 type PlannedResource struct {
 	Address      string                 `json:"address"`
@@ -137,6 +147,7 @@ type modernPlanModel struct {
 	aiHelpCommands  []string
 	aiHelpErrors    []string
 	aiHelpViewport  viewport.Model
+	aiHelpLoading   bool
 }
 
 type modernKeyMap struct {
@@ -687,6 +698,24 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.showAIError = true
 		return m, nil
 
+	case aiHelpReadyMsg:
+		// AI help fetch completed successfully
+		m.aiHelpLoading = false
+		m.aiHelpProblem = msg.problem
+		m.aiHelpCommands = msg.commands
+		m.aiHelpErrors = msg.errors
+		// Update viewport with content
+		m.aiHelpViewport.SetContent(m.buildAIHelpContent())
+		return m, nil
+
+	case aiHelpErrorMsg:
+		// AI help fetch failed
+		m.aiHelpLoading = false
+		m.aiError = msg.err.Error()
+		m.showAIError = true
+		m.currentView = applyView // Go back to apply view
+		return m, nil
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -791,7 +820,12 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.currentView == applyView && m.applyState != nil && m.applyState.applyComplete {
 				// If we have errors and AI is available, show AI help view
 				if m.applyState.hasErrors && isAIHelperAvailable() {
-					return m, m.fetchAIHelpAndShowView()
+					// Immediately switch to AI help view with loading state
+					m.currentView = aiHelpView
+					m.aiHelpLoading = true
+					m.aiHelpViewport = viewport.New(m.width-4, m.height-6)
+					// Launch async fetch and start animation
+					return m, tea.Batch(m.fetchAIHelp(), m.tickCmd())
 				}
 				// Otherwise, just ignore the key press
 				return m, nil
@@ -1118,6 +1152,10 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Update animation frame and continue ticking if still applying
 		if m.applyState != nil && m.applyState.isApplying {
 			m.applyState.animationFrame++
+			return m, m.tickCmd()
+		}
+		// Also tick if we're loading AI help (for spinner animation)
+		if m.currentView == aiHelpView && m.aiHelpLoading {
 			return m, m.tickCmd()
 		}
 	}
@@ -5202,7 +5240,7 @@ func (m *modernPlanModel) renderAIError() string {
 	return backgroundStyle.Render(errorBox)
 }
 // fetchAIHelpAndShowView fetches AI suggestions and switches to AI help view
-func (m *modernPlanModel) fetchAIHelpAndShowView() tea.Cmd {
+func (m *modernPlanModel) fetchAIHelp() tea.Cmd {
 	return func() tea.Msg {
 		// Collect error messages from completed resources
 		var errorMessages []string
@@ -5214,7 +5252,7 @@ func (m *modernPlanModel) fetchAIHelpAndShowView() tea.Cmd {
 		}
 
 		if len(errorMessages) == 0 {
-			return nil // No errors to analyze
+			return aiHelpErrorMsg{err: fmt.Errorf("no errors to analyze")}
 		}
 
 		// Get current directory
@@ -5259,23 +5297,16 @@ func (m *modernPlanModel) fetchAIHelpAndShowView() tea.Cmd {
 		// Get AI suggestions
 		problem, commands, err := getAIErrorSuggestions(ctx)
 		if err != nil {
-			// Show error if AI call failed
-			return aiErrorMsg{err: err}
+			// Return error message
+			return aiHelpErrorMsg{err: err}
 		}
 
-		// Store AI help data in model
-		m.aiHelpProblem = problem
-		m.aiHelpCommands = commands
-		m.aiHelpErrors = errorMessages
-
-		// Switch to AI help view
-		m.currentView = aiHelpView
-
-		// Initialize viewport with content
-		m.aiHelpViewport = viewport.New(m.width-4, m.height-6)
-		m.aiHelpViewport.SetContent(m.buildAIHelpContent())
-
-		return nil
+		// Return success message with data
+		return aiHelpReadyMsg{
+			problem:  problem,
+			commands: commands,
+			errors:   errorMessages,
+		}
 	}
 }
 
@@ -5349,6 +5380,33 @@ func (m *modernPlanModel) buildAIHelpContent() string {
 func (m *modernPlanModel) renderAIHelpView() string {
 	// Header
 	header := headerStyle.Width(m.width).Render("🤖 AI Error Help")
+
+	// Show loading state if still fetching
+	if m.aiHelpLoading {
+		spinnerFrames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+		frame := spinnerFrames[int(time.Now().UnixMilli()/100)%len(spinnerFrames)]
+
+		loadingStyle := lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("39")).
+			Align(lipgloss.Center, lipgloss.Center)
+
+		loadingContent := fmt.Sprintf("%s Analyzing errors with AI...\n\nPlease wait while Claude analyzes the error and suggests fixes.", frame)
+
+		loadingBox := boxStyle.
+			Width(m.width - 2).
+			Height(m.height - 4).
+			Render(loadingStyle.Render(loadingContent))
+
+		footerText := dimStyle.Render("[ESC] Cancel")
+
+		return lipgloss.JoinVertical(
+			lipgloss.Left,
+			header,
+			loadingBox,
+			footerText,
+		)
+	}
 
 	// Viewport with AI help content
 	viewportBox := boxStyle.
