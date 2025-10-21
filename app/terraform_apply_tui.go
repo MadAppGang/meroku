@@ -331,18 +331,17 @@ func (m *modernPlanModel) startTerraformApply() tea.Cmd {
 // Parse terraform JSON output
 func (m *modernPlanModel) parseTerraformOutput(stdout interface{}) {
 	scanner := bufio.NewScanner(stdout.(interface{ Read([]byte) (int, error) }))
-	
+
 	for scanner.Scan() {
 		line := scanner.Text()
 		var msg TerraformJSONMessage
-		
+
 		if err := json.Unmarshal([]byte(line), &msg); err != nil {
 			// Not JSON, treat as plain log
 			m.sendLogMessage("info", line, "")
 			continue
 		}
-		
-		
+
 		// Process based on message type
 		switch msg.Type {
 		case "apply_start":
@@ -375,7 +374,7 @@ func (m *modernPlanModel) parseTerraformOutput(stdout interface{}) {
 				if msg.Level != "" {
 					logLevel = msg.Level
 				}
-				
+
 				// Check for completion patterns in the message
 				if strings.Contains(msg.Message, ": Creation complete after") ||
 				   strings.Contains(msg.Message, ": Modifications complete after") ||
@@ -405,47 +404,14 @@ func (m *modernPlanModel) parseTerraformOutput(stdout interface{}) {
 						if len(parts) >= 1 {
 							addr := strings.TrimSpace(parts[0])
 
-							// Check for associated diagnostic information
+							// Check for diagnostic information (if available)
 							m.applyState.mu.Lock()
 							diagnostic := m.applyState.diagnostics[addr]
-
 							errorSummary := ""
 							errorDetail := ""
 							if diagnostic != nil {
 								errorSummary = diagnostic.Summary
 								errorDetail = diagnostic.Detail
-							} else {
-								// Fallback: Collect error logs from around the same time
-								var resourceErrorTime time.Time
-								var errorLogs []string
-
-								// Find when this resource failed
-								for _, log := range m.applyState.logs {
-									if log.Level == "error" && (log.Resource == addr || strings.Contains(log.Message, addr)) {
-										resourceErrorTime = log.Timestamp
-										break
-									}
-								}
-
-								// Collect ALL error logs within 2 seconds
-								if !resourceErrorTime.IsZero() {
-									for _, log := range m.applyState.logs {
-										if log.Level == "error" {
-											timeDiff := log.Timestamp.Sub(resourceErrorTime)
-											if timeDiff >= 0 && timeDiff <= 2*time.Second {
-												logMsg := strings.TrimPrefix(log.Message, "❌ ")
-												logMsg = strings.TrimSpace(logMsg)
-												if !strings.Contains(logMsg, "errored after") && logMsg != "" {
-													errorLogs = append(errorLogs, logMsg)
-												}
-											}
-										}
-									}
-								}
-
-								if len(errorLogs) > 0 {
-									errorDetail = strings.Join(errorLogs, "\n\n")
-								}
 							}
 							m.applyState.mu.Unlock()
 
@@ -613,53 +579,14 @@ func (m *modernPlanModel) handleApplyError(msg *TerraformJSONMessage) {
 		errorMsg = "Operation failed"
 	}
 
-	// Check for associated diagnostic information
+	// Check for diagnostic information (if available)
 	m.applyState.mu.Lock()
 	diagnostic := m.applyState.diagnostics[addr]
-
-	// Fallback: Extract error details from recent error logs if no diagnostic
 	errorSummary := ""
 	errorDetail := ""
 	if diagnostic != nil {
 		errorSummary = diagnostic.Summary
 		errorDetail = diagnostic.Detail
-	} else {
-		// Strategy: Find the resource's error timestamp, then collect ALL errors near that time
-		var resourceErrorTime time.Time
-		var errorLogs []string
-
-		// First pass: Find when this resource failed
-		for _, log := range m.applyState.logs {
-			if log.Level == "error" && (log.Resource == addr || strings.Contains(log.Message, addr)) {
-				resourceErrorTime = log.Timestamp
-				break
-			}
-		}
-
-		// Second pass: Collect ALL error logs within 2 seconds of the resource failure
-		if !resourceErrorTime.IsZero() {
-			for _, log := range m.applyState.logs {
-				if log.Level == "error" {
-					// Check if this error is within 2 seconds of the resource error
-					timeDiff := log.Timestamp.Sub(resourceErrorTime)
-					if timeDiff >= 0 && timeDiff <= 2*time.Second {
-						// Remove icon prefix for cleaner display
-						msg := strings.TrimPrefix(log.Message, "❌ ")
-						msg = strings.TrimSpace(msg)
-
-						// Skip duplicate "errored after" messages (we already have that)
-						if !strings.Contains(msg, "errored after") && msg != "" {
-							errorLogs = append(errorLogs, msg)
-						}
-					}
-				}
-			}
-		}
-
-		// If we found error details, combine them
-		if len(errorLogs) > 0 {
-			errorDetail = strings.Join(errorLogs, "\n\n")
-		}
 	}
 	m.applyState.mu.Unlock()
 

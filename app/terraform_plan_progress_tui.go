@@ -405,10 +405,24 @@ func (m *planProgressModel) View() string {
 	// ═══════════════════════════════════════
 	var footerParts []string
 
-	// Progress stats
+	// Progress stats - be more specific based on phase
 	if len(m.processedItems) > 0 {
-		footerParts = append(footerParts,
-			fmt.Sprintf("Processed: %d resources", len(m.processedItems)))
+		switch m.phase {
+		case phaseRefreshing:
+			// During refresh, we're reading existing state
+			footerParts = append(footerParts,
+				fmt.Sprintf("Refreshed: %d resources", len(m.processedItems)))
+		case phasePlanning:
+			// During planning, don't show refresh count (misleading)
+			footerParts = append(footerParts, "Calculating changes...")
+		case phaseComplete:
+			// After complete, show that refresh is done (don't show count - it's not changes)
+			footerParts = append(footerParts, "Plan complete")
+		default:
+			// Other phases
+			footerParts = append(footerParts,
+				fmt.Sprintf("Processed: %d items", len(m.processedItems)))
+		}
 	}
 
 	// Elapsed time

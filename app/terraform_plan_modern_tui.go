@@ -940,17 +940,8 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.updateApplyLogViewport()
 			}
 			
-		case msg.String() == "d":
-			// Toggle details view
-			if m.currentView == applyView && m.applyState != nil {
-				m.applyState.showDetails = !m.applyState.showDetails
-			}
-			
-		case msg.String() == "x":
-			// Toggle error details view
-			if m.currentView == applyView && m.applyState != nil && m.applyState.errorCount > 0 {
-				m.applyState.showErrorDetails = !m.applyState.showErrorDetails
-			}
+		// Removed: details view (key 'd') and error details view (key 'x')
+		// All information is shown in logs with proper wrapping
 
 		case tea.KeyMsg(msg).String() == "pgup":
 			// Page up in full-screen diff view
@@ -4125,16 +4116,6 @@ func (m *modernPlanModel) renderApplyView() string {
 	// Header
 	header := m.renderApplyHeader(elapsedStr)
 
-	// If showing details view
-	if m.applyState.showDetails {
-		return m.renderApplyDetailsView(header, elapsedStr)
-	}
-
-	// If showing error details view
-	if m.applyState.showErrorDetails && m.applyState.errorCount > 0 {
-		return m.renderApplyErrorDetailsView(header, elapsedStr)
-	}
-	
 	// Build sections conditionally based on calculated heights
 	var sections []string
 
@@ -4388,29 +4369,14 @@ func (m *modernPlanModel) renderApplyCompleted(width int) string {
 			
 			line := fmt.Sprintf("%s %s", icon, addr)
 
-			// Handle cancelled resources (no error background, but show message)
+			// Simplified: Just show the icon and address, no inline errors
+			// Full error details are shown in the logs with proper wrapping
 			if res.Action == "cancelled" {
 				content += actionStyle.Render(line) + "\n"
-				if res.Error != "" {
-					errMsg := res.Error
-					if len(errMsg) > width-4 && width > 7 {
-						errMsg = errMsg[:width-7] + "..."
-					}
-					content += dimStyle.Faint(true).Render(fmt.Sprintf("  └ %s", errMsg)) + "\n"
-				}
 			} else if !res.Success {
 				// For failed resources, show with error background
 				errorStyle := actionStyle.Background(lipgloss.Color("#3D0000"))
 				content += errorStyle.Render(line) + "\n"
-				// Add truncated error message if available
-				if res.Error != "" {
-					errMsg := res.Error
-					// Adjust for the indent "  └ " which is 4 characters
-					if len(errMsg) > width-4 && width > 7 {
-						errMsg = errMsg[:width-7] + "..."
-					}
-					content += dimStyle.Faint(true).Render(fmt.Sprintf("  └ %s", errMsg)) + "\n"
-				}
 			} else {
 				content += actionStyle.Render(line) + "\n"
 			}
@@ -4613,21 +4579,7 @@ func (m *modernPlanModel) renderApplyFooter() string {
 	} else {
 		help += "[l] Full Logs  "
 	}
-	
-	if m.applyState.showDetails {
-		help += "[d] Hide Details  "
-	} else {
-		help += "[d] Show Details  "
-	}
-	
-	if m.applyState.errorCount > 0 {
-		if m.applyState.showErrorDetails {
-			help += "[x] Hide Errors  "
-		} else {
-			help += "[x] Show Errors  "
-		}
-	}
-	
+
 	help += "[Tab] Switch Section  "
 	
 	if m.applyState.selectedSection == 2 {
@@ -4678,7 +4630,14 @@ func (m *modernPlanModel) updateApplyLogViewport() {
 	if len(logsToShow) == 0 && len(m.applyState.logs) > 0 {
 		content.WriteString(dimStyle.Render("No non-debug logs yet. Press 'l' to show all logs.\n"))
 	}
-	
+
+	// Calculate available width for message text once (outside loop for efficiency)
+	// Reserve space for: timestamp (8) + space (1) + level (7) + space (1) + icon (2) + space (1) = 20 chars
+	availableWidth := m.width - 4 - 20
+	if availableWidth < 40 {
+		availableWidth = 40 // Minimum width for readability
+	}
+
 	for _, log := range logsToShow[start:] {
 		
 		timestamp := log.Timestamp.Format("15:04:05")
@@ -4708,17 +4667,41 @@ func (m *modernPlanModel) updateApplyLogViewport() {
 			style = dimStyle
 			levelStr = dimStyle.Render("[INFO] ")
 		}
-		
-		// Format the line with consistent spacing
-		line := fmt.Sprintf("%s %s %s %s", timestamp, levelStr, icon, log.Message)
-		
+
+		// Wrap the message text using lipgloss
+		wrappedMsg := lipgloss.NewStyle().Width(availableWidth).Render(log.Message)
+
+		// Split wrapped message into lines for proper formatting
+		msgLines := strings.Split(wrappedMsg, "\n")
+
+		// Format the first line with timestamp, level, and icon
+		firstLine := fmt.Sprintf("%s %s %s %s", timestamp, levelStr, icon, msgLines[0])
+
 		// For errors, highlight the entire line
 		if log.Level == "error" {
 			// Add background color for better visibility
 			errorStyle := style.Background(lipgloss.Color("#3D0000"))
-			content.WriteString(errorStyle.Render(line) + "\n")
+			content.WriteString(errorStyle.Render(firstLine) + "\n")
+
+			// Add continuation lines with proper indentation
+			indent := "                    " // 20 spaces to align with message start
+			for i := 1; i < len(msgLines); i++ {
+				if strings.TrimSpace(msgLines[i]) != "" {
+					continuationLine := indent + msgLines[i]
+					content.WriteString(errorStyle.Render(continuationLine) + "\n")
+				}
+			}
 		} else {
-			content.WriteString(style.Render(line) + "\n")
+			content.WriteString(style.Render(firstLine) + "\n")
+
+			// Add continuation lines with proper indentation
+			indent := "                    " // 20 spaces to align with message start
+			for i := 1; i < len(msgLines); i++ {
+				if strings.TrimSpace(msgLines[i]) != "" {
+					continuationLine := indent + msgLines[i]
+					content.WriteString(style.Render(continuationLine) + "\n")
+				}
+			}
 		}
 	}
 	
