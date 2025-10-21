@@ -4616,18 +4616,8 @@ func (m *modernPlanModel) renderApplyErrorSummary() string {
 func (m *modernPlanModel) renderApplyLogs() string {
 	title := titleStyle.Render("Logs")
 
-	// Convert screen height to content height (subtract 2 for borders)
-	screenHeight := 10 // default fallback
-	if m.applyState != nil && m.applyState.logsHeight > 0 {
-		screenHeight = m.applyState.logsHeight
-	}
-	contentHeight := screenHeight - 2
-	if contentHeight < 1 {
-		contentHeight = 1
-	}
-
-	// Apply highlight if selected
-	box := boxStyle.Width(m.width - 4).Height(contentHeight)
+	// Apply highlight if selected - don't set fixed height, let it auto-size to content
+	box := boxStyle.Width(m.width - 4)
 	if m.applyState != nil && m.applyState.selectedSection == 2 {
 		box = box.BorderForeground(primaryColor)
 	}
