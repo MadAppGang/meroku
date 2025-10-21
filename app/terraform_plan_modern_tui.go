@@ -986,8 +986,22 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.applyState != nil {
 			m.applyState.isApplying = false
 			m.applyState.hasErrors = true
+
+			// Cancel all pending operations when deployment fails
+			for _, pending := range m.applyState.pending {
+				m.applyState.completed = append(m.applyState.completed, completedResource{
+					Address:   pending.Address,
+					Action:    "cancelled",
+					Duration:  0,
+					Timestamp: time.Now(),
+					Success:   false,
+					Error:     "Deployment cancelled due to previous errors",
+				})
+			}
+			// Clear pending list
+			m.applyState.pending = []pendingResource{}
 		}
-		
+
 	case resourceStartMsg:
 		if m.applyState != nil {
 			m.applyState.currentOp = &currentOperation{
@@ -1063,11 +1077,9 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			
 			if msg.Level == "warning" {
 				m.applyState.warningCount++
-			} else if msg.Level == "error" {
-				m.applyState.errorCount++
-				m.applyState.hasErrors = true
 			}
-			
+			// Note: error count is incremented in resourceCompleteMsg handler to avoid duplicates
+
 			m.updateApplyLogViewport()
 		}
 		
@@ -4198,15 +4210,23 @@ func (m *modernPlanModel) renderApplyOverallProgress() string {
 	if m.applyState.totalResources == 0 {
 		return ""
 	}
-	
+
 	completed := len(m.applyState.completed)
 	percent := float64(completed) / float64(m.applyState.totalResources)
+
+	// If deployment has failed and stopped, consider it 100% complete (failed state)
+	statusText := "Overall Progress"
+	if m.applyState.hasErrors && !m.applyState.isApplying {
+		percent = 1.0
+		statusText = "Deployment Failed"
+	}
+
 	progressBar := m.progress.ViewAs(percent)
 	stats := fmt.Sprintf("%d/%d", completed, m.applyState.totalResources)
-	
-	progressLine := fmt.Sprintf("Overall Progress: %s %s (%d%%)", 
-		progressBar, stats, int(percent*100))
-	
+
+	progressLine := fmt.Sprintf("%s: %s %s (%d%%)",
+		statusText, progressBar, stats, int(percent*100))
+
 	return boxStyle.Width(m.width - 4).Render(progressLine)
 }
 
@@ -4322,8 +4342,12 @@ func (m *modernPlanModel) renderApplyCompleted(width int) string {
 		for _, res := range m.applyState.completed[start:] {
 			icon := "✅"
 			actionStyle := dimStyle
-			
-			if !res.Success {
+
+			// Handle cancelled operations specially
+			if res.Action == "cancelled" {
+				icon = "🚫"
+				actionStyle = dimStyle.Faint(true)
+			} else if !res.Success {
 				icon = "❌"
 				actionStyle = deleteIconStyle.Bold(true)
 			} else {
@@ -4351,9 +4375,19 @@ func (m *modernPlanModel) renderApplyCompleted(width int) string {
 			}
 			
 			line := fmt.Sprintf("%s %s", icon, addr)
-			
-			// For failed resources, show with error background
-			if !res.Success {
+
+			// Handle cancelled resources (no error background, but show message)
+			if res.Action == "cancelled" {
+				content += actionStyle.Render(line) + "\n"
+				if res.Error != "" {
+					errMsg := res.Error
+					if len(errMsg) > width-4 && width > 7 {
+						errMsg = errMsg[:width-7] + "..."
+					}
+					content += dimStyle.Faint(true).Render(fmt.Sprintf("  └ %s", errMsg)) + "\n"
+				}
+			} else if !res.Success {
+				// For failed resources, show with error background
 				errorStyle := actionStyle.Background(lipgloss.Color("#3D0000"))
 				content += errorStyle.Render(line) + "\n"
 				// Add truncated error message if available

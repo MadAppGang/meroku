@@ -97,6 +97,38 @@ func runCommandToDeploy(env string) error {
 	return runTerraformApply()
 }
 
+func handleGenerateCommand(args []string) {
+	if len(args) == 0 {
+		fmt.Println("Usage: meroku generate <environment>")
+		fmt.Println("Example: meroku generate dev")
+		fmt.Println("")
+		fmt.Println("Generates Terraform configuration files from YAML templates.")
+		os.Exit(1)
+	}
+
+	env := args[0]
+	fmt.Printf("Generating Terraform configuration for environment: %s\n", env)
+
+	// Check if environment file exists
+	envFile := env + ".yaml"
+	if _, err := os.Stat(envFile); os.IsNotExist(err) {
+		fmt.Printf("Error: Environment file '%s' not found\n", envFile)
+		os.Exit(1)
+	}
+
+	// Create env directory structure
+	createFolderIfNotExists("env")
+	if err := createFolderIfNotExists(filepath.Join("env", env)); err != nil {
+		fmt.Printf("Error creating environment directory: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Generate template
+	applyTemplate(env)
+
+	fmt.Printf("✓ Generated: env/%s/main.tf\n", env)
+}
+
 func applyTemplate(env string) {
 	// Read the template file
 	templateContent, err := os.ReadFile(filepath.Join("infrastructure", "env", "main.hbs"))
