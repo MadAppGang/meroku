@@ -14,6 +14,44 @@ This is a comprehensive Terraform Infrastructure as Code (IaC) repository that p
 
 ## Important Architecture Decisions
 
+### VPC Configuration
+
+**Default VPC Strategy**: New projects use **custom VPCs with 2 public subnets** for ultimate simplicity and cost optimization.
+
+Key decisions:
+- **Custom VPC by default** (`use_default_vpc: false`) - Better isolation and control
+- **Hardcoded to 2 AZs** - Covers 99% of use cases, minimum for HA
+- **Public subnets only** - All resources are internet-accessible via Internet Gateway
+- **NO private subnets** - Removed from codebase (keeps architecture simple)
+- **NO NAT Gateway** - Removed from codebase (not needed, saves ~$32/month)
+- **NO AZ count option** - Removed from codebase (hardcoded to 2)
+
+Configuration options (minimal):
+- `use_default_vpc`: `true` (use AWS default VPC) or `false` (create custom VPC)
+- `vpc_cidr`: Optional CIDR block for custom VPC (defaults to "10.0.0.0/16")
+
+This architecture is the simplest possible while maintaining high availability:
+- **2 Availability Zones** - Minimum for HA, covers regional failures
+- **Public subnets only** - Direct internet access, no NAT overhead
+- **Security groups** - Proper access control without network complexity
+- **Cost-effective** - No NAT Gateway (~$32/month saved), no VPC endpoints (~$27/month saved)
+
+Sufficient for most use cases where:
+- ECS tasks need direct internet access
+- RDS can use security groups for access control
+- No strict requirement for private subnet isolation
+
+**Why 2 AZs is hardcoded:**
+- 2 AZs is the minimum for high availability
+- Handles single AZ failure (most common outage scenario)
+- 3 AZs adds cost with marginal benefit for 99% of applications
+- Keeps configuration simple - one less thing to think about
+- Power users can modify the VPC module directly if needed
+
+**Migration Note**:
+- Existing projects migrating from before schema v6 will keep `use_default_vpc: true` for backward compatibility
+- The migration automatically removes deprecated fields: `az_count`, `create_private_subnets`, `enable_nat_gateway`
+
 ### VPC Endpoints (Deprecated)
 
 **Note**: VPC endpoints are NO LONGER USED in this infrastructure due to cost considerations (~$27/month per interface endpoint). Instead, we rely on:

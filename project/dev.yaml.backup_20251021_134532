@@ -1,0 +1,199 @@
+project: instagram
+region: ap-southeast-2
+env: dev
+state_bucket: instagram-terraform-state-dev
+modules: ../../infrastructure/modules
+state_file:
+ecr_account_id:
+ecr_account_region:
+slack_deployment_webhook:
+
+# Workload configuration
+workload:
+  # setup backend, always deployed
+  backend_health_endpoint:
+  bucket_postfix:
+  bucket_public: false
+  # you can set docker command from here
+  # backend_container_command: ["config", "some_value"]
+  backend_image_port: 8080
+  # setup push notification FCM SNS for backend
+  setup_fcnsns: false
+  backend_alb_domain_name: alb.instagram.madappgang.com.au
+  backend_env_variables:
+    env1: value1
+  xray_enabled: false
+  enable_github_oidc: false
+  github_oidc_subjects: []
+  # GitHub Actions CI/CD configuration
+  github_actions:
+    workflow_name: "Deploy to AWS"
+    workflow_file: ".github/workflows/deploy.yml"
+    branch: "main"
+    aws_region: "ap-southeast-2"
+    ecr_repository: "instagram-dev"
+    ecs_cluster: "instagram-dev-cluster"
+    ecs_service: "instagram-dev-backend"
+    iam_role_name: "github-actions-role"
+  install_pg_admin: false
+  pg_admin_email: admin@admin.com
+  # Backend scaling configuration
+  backend_desired_count: 2
+  backend_autoscaling_enabled: true
+  backend_autoscaling_min_capacity: 2
+  backend_autoscaling_max_capacity: 10
+  backend_cpu: "512"
+  backend_memory: "1024"
+
+# setup services
+services:
+  - name: service1
+    remote_access: true
+    container_port: 3000
+    host_port: 3000
+    cpu: 256
+    memory: 512
+    desired_count: 3
+    xray_enabled: false
+    env_vars:
+      SERVICE_TEST: PASSED
+
+# Domain configuration
+domain:
+  enabled: true
+  create_domain_zone: false
+  domain_name: instagram.madappgang.com.au
+
+# Database configuration
+postgres:
+  enabled: true
+  dbname: instagram
+  username: dbadmin
+  public_access: true
+  engine_version: "14"
+  # Aurora Serverless v2 configuration (optional)
+  aurora: true # Set to true to use Aurora Serverless v2 instead of RDS
+  min_capacity: 0 # Optional: defaults to 0.5 ACUs if not specified
+  max_capacity: 1 # Optional: defaults to 1 ACU if not specified
+
+# Authentication configuration
+cognito:
+  enabled: true
+  # it can be an empty list if we want to skip the verification process
+  auto_verified_attributes:
+    - email
+  enable_web_client: false
+  enable_dashboard_client: false
+  dashboard_callback_urls:
+    - https://jwt.io
+  enable_user_pool_domain: false
+  user_pool_domain_prefix:
+  backend_confirm_signup: false
+
+# setup scheduled tasks
+scheduled_tasks:
+  - name: task1
+    schedule: rate(1 minutes)
+  - name: task2
+    schedule: rate(1 hours)
+
+# setup event processing tasks
+event_processor_tasks:
+  - name: event_task1
+    rule_name: hug_all
+    sources:
+      - service1
+      - service2
+    detail_types:
+      - SERVICE_DEPLOYMENT_COMPLETED
+      - SERVICE_DEPLOYMENT_FAILED
+      - SERVICE_DEPLOYMENT_IN_PROGRESS
+
+# Email service configuration
+ses:
+  enabled: true
+  #optional, if ses uses different domain
+  domain_name:
+  test_emails:
+    - i@madappgang.com
+    - ivan.holiak@madappgang.com
+
+# Message queue configuration
+sqs:
+  enabled: false
+  name: default-queue
+
+# File storage configuration
+efs:
+  - name: uploads
+  - name: static
+
+# setup AWS Amplify for frontend deployments
+amplify_apps:
+  - name: main-web
+    github_repository: https://github.com/username/repo
+    # Multiple branches support - new format
+    branches:
+      - name: main
+        stage: PRODUCTION
+        enable_auto_build: true
+        enable_pull_request_preview: true
+        environment_variables:
+          REACT_APP_API_URL: https://api.instagram.madappgang.com.au
+          REACT_APP_COGNITO_REGION: ap-southeast-2
+          REACT_APP_COGNITO_USER_POOL_ID: ${cognito_user_pool_id}
+          REACT_APP_COGNITO_CLIENT_ID: ${cognito_web_client_id}
+          REACT_APP_ENV: production
+      - name: develop
+        stage: DEVELOPMENT
+        enable_auto_build: true
+        enable_pull_request_preview: true
+        environment_variables:
+          REACT_APP_API_URL: https://api-dev.instagram.madappgang.com.au
+          REACT_APP_COGNITO_REGION: ap-southeast-2
+          REACT_APP_COGNITO_USER_POOL_ID: ${cognito_user_pool_id}
+          REACT_APP_COGNITO_CLIENT_ID: ${cognito_web_client_id}
+          REACT_APP_ENV: development
+      - name: staging
+        stage: BETA
+        enable_auto_build: true
+        enable_pull_request_preview: false
+        environment_variables:
+          REACT_APP_API_URL: https://api-staging.instagram.madappgang.com.au
+          REACT_APP_COGNITO_REGION: ap-southeast-2
+          REACT_APP_COGNITO_USER_POOL_ID: ${cognito_user_pool_id}
+          REACT_APP_COGNITO_CLIENT_ID: ${cognito_web_client_id}
+          REACT_APP_ENV: staging
+    # Legacy single branch format (still supported)
+    # branch_name: main
+    custom_domain: instagram.madappgang.com.au
+    sub_domains:
+      - www
+      - app
+    enable_root_domain: true
+    # This is now deprecated when using branches array
+    # enable_pr_preview: true
+    # App-level environment variables (deprecated - use branch-specific vars)
+    # environment_variables:
+    #   REACT_APP_API_URL: https://api.instagram.madappgang.com.au
+  # Example of second app (admin dashboard) with single branch (legacy format)
+  # - name: admin-dashboard
+  #   github_repository: https://github.com/username/admin-repo
+  #   branch_name: main
+  #   custom_domain: admin.instagram.madappgang.com.au
+  #   sub_domains: []
+  #   enable_root_domain: true
+  #   enable_pr_preview: false
+  #   environment_variables:
+  #     VUE_APP_API_URL: https://api.instagram.madappgang.com.au
+
+# GraphQL API configuration
+pubsub_appsync:
+  enabled: false
+  schema: false
+  auth_lambda: false
+  resolvers: false
+
+# Load balancer configuration
+alb:
+  enabled: true

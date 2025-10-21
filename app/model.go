@@ -9,6 +9,7 @@ import (
 )
 
 type Env struct {
+	SchemaVersion       int                  `yaml:"schema_version,omitempty"`
 	Project             string               `yaml:"project"`
 	Env                 string               `yaml:"env"`
 	IsProd              bool                 `yaml:"is_prod"`
@@ -18,11 +19,8 @@ type Env struct {
 	StateBucket         string               `yaml:"state_bucket"`
 	StateFile           string               `yaml:"state_file"`
 	// VPC Configuration
-	UseDefaultVPC        bool   `yaml:"use_default_vpc"`
-	VPCCIDR              string `yaml:"vpc_cidr"`
-	AZCount              int    `yaml:"az_count"`
-	CreatePrivateSubnets bool   `yaml:"create_private_subnets"`
-	EnableNATGateway     bool   `yaml:"enable_nat_gateway"`
+	UseDefaultVPC bool   `yaml:"use_default_vpc"`
+	VPCCIDR       string `yaml:"vpc_cidr,omitempty"` // Optional, VPC module has default
 	// Services
 	Workload            Workload             `yaml:"workload"`
 	Domain              Domain               `yaml:"domain"`
@@ -227,13 +225,20 @@ func generateRandomString(length int) string {
 
 func createEnv(name, env string) Env {
 	return Env{
-		Project:     name,
-		Env:         env,
-		IsProd:      false,
-		Region:      "", // Will be filled when AWS profile is selected
-		AccountID:   "", // Will be filled when AWS profile is selected
-		StateBucket: fmt.Sprintf("sate-bucket-%s-%s-%s", name, env, generateRandomString(5)),
-		StateFile:   "state.tfstate",
+		SchemaVersion: CurrentSchemaVersion, // Always create with latest schema version
+		Project:       name,
+		Env:           env,
+		IsProd:        false,
+		Region:        "", // Will be filled when AWS profile is selected
+		AccountID:     "", // Will be filled when AWS profile is selected
+		AWSProfile:    "", // Will be filled when AWS profile is selected
+		StateBucket:   fmt.Sprintf("sate-bucket-%s-%s-%s", name, env, generateRandomString(5)),
+		StateFile:     "state.tfstate",
+		// VPC Configuration (schema v6)
+		// Default to custom VPC for new projects (simpler, more control)
+		// Always creates 2 AZs with public subnets only, no NAT gateway
+		UseDefaultVPC: false,         // Use custom VPC by default
+		VPCCIDR:       "10.0.0.0/16", // Optional, VPC module has this default
 		Workload: Workload{
 			SlackWebhook:               "",
 			BucketPostfix:              generateRandomString(5),
@@ -250,6 +255,14 @@ func createEnv(name, env string) Env {
 			XrayEnabled:                false,
 			BackendEnvVariables:        map[string]string{"TEST": "passed"},
 			BackendPolicies:            []Policy{},
+			// Backend scaling defaults (schema v4)
+			BackendDesiredCount:              1,
+			BackendAutoscalingEnabled:        false,
+			BackendAutoscalingMinCapacity:    1,
+			BackendAutoscalingMaxCapacity:    4,
+			BackendCPU:                       "256",
+			BackendMemory:                    "512",
+			BackendALBDomainName:             "",
 		},
 		Domain: Domain{
 			Enabled:          false,
@@ -262,6 +275,10 @@ func createEnv(name, env string) Env {
 			Username:      "",
 			PublicAccess:  false,
 			EngineVersion: "16.x",
+			// Aurora defaults (schema v2)
+			Aurora:      false,
+			MinCapacity: 0.5,
+			MaxCapacity: 1.0,
 		},
 		Cognito: Cognito{
 			Enabled:                false,
@@ -278,6 +295,21 @@ func createEnv(name, env string) Env {
 			DomainName: "",
 			TestEmails: []string{"i@madappgang.com"},
 		},
+		Sqs: Sqs{
+			Enabled: false,
+			Name:    "",
+		},
+		ALB: ALB{
+			Enabled: false, // Schema v2
+		},
+		AppSyncPubSub: AppSync{
+			Enabled:    false,
+			Schema:     false,
+			AuthLambda: false,
+			Resolvers:  false,
+		},
+		Buckets:             []BucketConfig{},
+		Services:            []Service{},
 		ScheduledTasks:      []ScheduledTask{},
 		EventProcessorTasks: []EventProcessorTask{},
 	}

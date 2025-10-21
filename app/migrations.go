@@ -62,8 +62,20 @@ var AllMigrations = []Migration{
 
 // detectSchemaVersion attempts to detect the schema version of a YAML file
 func detectSchemaVersion(data map[string]interface{}) int {
-	// If schema_version field exists, use it
+	// If schema_version field exists, check if v6 needs re-run (deprecated fields present)
 	if version, ok := data["schema_version"].(int); ok {
+		// If marked as v6 but has deprecated fields, re-run v6 migration
+		if version == 6 {
+			if _, hasAZCount := data["az_count"]; hasAZCount {
+				return 5 // Force re-run of v6 migration
+			}
+			if _, hasPrivate := data["create_private_subnets"]; hasPrivate {
+				return 5 // Force re-run of v6 migration
+			}
+			if _, hasNAT := data["enable_nat_gateway"]; hasNAT {
+				return 5 // Force re-run of v6 migration
+			}
+		}
 		return version
 	}
 
@@ -177,24 +189,41 @@ func migrateToV4(data map[string]interface{}) error {
 
 	// Add workload fields if workload exists
 	if workload, ok := data["workload"].(map[interface{}]interface{}); ok {
-		if _, exists := workload["backend_desired_count"]; !exists {
+		// Fix zero values for backend_desired_count
+		if desiredCount, exists := workload["backend_desired_count"]; !exists {
+			workload["backend_desired_count"] = 1
+		} else if countInt, ok := desiredCount.(int); ok && countInt == 0 {
 			workload["backend_desired_count"] = 1
 		}
+
 		if _, exists := workload["backend_autoscaling_enabled"]; !exists {
 			workload["backend_autoscaling_enabled"] = false
 		}
-		if _, exists := workload["backend_autoscaling_min_capacity"]; !exists {
+
+		// Fix zero values for min_capacity
+		if minCap, exists := workload["backend_autoscaling_min_capacity"]; !exists {
+			workload["backend_autoscaling_min_capacity"] = 1
+		} else if capInt, ok := minCap.(int); ok && capInt == 0 {
 			workload["backend_autoscaling_min_capacity"] = 1
 		}
-		if _, exists := workload["backend_autoscaling_max_capacity"]; !exists {
+
+		// Fix zero values for max_capacity
+		if maxCap, exists := workload["backend_autoscaling_max_capacity"]; !exists {
+			workload["backend_autoscaling_max_capacity"] = 4
+		} else if capInt, ok := maxCap.(int); ok && capInt == 0 {
 			workload["backend_autoscaling_max_capacity"] = 4
 		}
-		if _, exists := workload["backend_cpu"]; !exists {
+
+		// Fix empty values for CPU
+		if cpu, exists := workload["backend_cpu"]; !exists || cpu == "" {
 			workload["backend_cpu"] = "256"
 		}
-		if _, exists := workload["backend_memory"]; !exists {
+
+		// Fix empty values for memory
+		if memory, exists := workload["backend_memory"]; !exists || memory == "" {
 			workload["backend_memory"] = "512"
 		}
+
 		if _, exists := workload["backend_alb_domain_name"]; !exists {
 			workload["backend_alb_domain_name"] = ""
 		}
@@ -221,23 +250,33 @@ func migrateToV5(data map[string]interface{}) error {
 func migrateToV6(data map[string]interface{}) error {
 	fmt.Println("  → Migrating to v6: Adding custom VPC configuration")
 
-	// Add use_default_vpc flag (true for backward compatibility)
+	// Add use_default_vpc flag (true for backward compatibility with existing projects)
+	// Existing projects without this field were using AWS default VPC
 	if _, exists := data["use_default_vpc"]; !exists {
-		data["use_default_vpc"] = true
+		data["use_default_vpc"] = true // Keep existing projects on default VPC
+		fmt.Println("    ℹ️  Setting use_default_vpc=true for backward compatibility")
 	}
 
 	// Add VPC configuration fields (only used when use_default_vpc = false)
-	if _, exists := data["vpc_cidr"]; !exists {
+	// vpc_cidr is optional - VPC module has default of 10.0.0.0/16
+	// Only fix if empty string (keep it if not specified)
+	if vpcCIDR, exists := data["vpc_cidr"]; exists && vpcCIDR == "" {
 		data["vpc_cidr"] = "10.0.0.0/16"
+		fmt.Println("    ℹ️  Fixing empty vpc_cidr → 10.0.0.0/16")
 	}
-	if _, exists := data["az_count"]; !exists {
-		data["az_count"] = 2
+
+	// Remove deprecated fields
+	if _, exists := data["az_count"]; exists {
+		delete(data, "az_count")
+		fmt.Println("    🗑️  Removed az_count (now hardcoded to 2 in VPC module)")
 	}
-	if _, exists := data["create_private_subnets"]; !exists {
-		data["create_private_subnets"] = false
+	if _, exists := data["create_private_subnets"]; exists {
+		delete(data, "create_private_subnets")
+		fmt.Println("    🗑️  Removed create_private_subnets (deprecated)")
 	}
-	if _, exists := data["enable_nat_gateway"]; !exists {
-		data["enable_nat_gateway"] = false
+	if _, exists := data["enable_nat_gateway"]; exists {
+		delete(data, "enable_nat_gateway")
+		fmt.Println("    🗑️  Removed enable_nat_gateway (deprecated)")
 	}
 
 	return nil

@@ -29,19 +29,24 @@ data "aws_subnets" "all" {
   }
 }
 {{else}}
-# Create custom VPC
+# Create custom VPC (2 AZs with public subnets only)
 module "vpc" {
-  source                  = "{{ modules }}/vpc"
-  project                 = "{{ project }}"
-  env                     = "{{ env }}"
-  vpc_cidr                = "{{ vpc_cidr }}"
-  az_count                = {{ az_count }}
-  create_private_subnets  = {{ create_private_subnets }}
-  enable_nat_gateway      = {{ enable_nat_gateway }}
+  source   = "{{ modules }}/vpc"
+  project  = "{{ project }}"
+  env      = "{{ env }}"
+  {{#if vpc_cidr}}
+  vpc_cidr = "{{ vpc_cidr }}"
+  {{/if}}
 }
 {{/if}}
 
-# Locals removed - using direct handlebar resolution in modules
+# Single point of dependency for VPC resources
+# All modules reference these locals instead of conditional logic
+locals {
+  vpc_id     = {{#if use_default_vpc}}data.aws_vpc.default.id{{else}}module.vpc.vpc_id{{/if}}
+  subnet_ids = {{#if use_default_vpc}}data.aws_subnets.all.ids{{else}}module.vpc.subnet_ids{{/if}}
+}
+
 {{#if domain.enabled}}
   {{#compare env "==" "prod"}}
     # PROD: Standard domain configuration
@@ -111,8 +116,8 @@ module "postgres" {
   source = "{{modules}}/postgres"
   project = "{{project}}"
   env = "{{env}}"
-  vpc_id     = {{#if use_default_vpc}}data.aws_vpc.default.id{{else}}module.vpc.vpc_id{{/if}}
-  subnet_ids = {{#if use_default_vpc}}data.aws_subnets.all.ids{{else}}module.vpc.subnet_ids{{/if}}
+  vpc_id     = local.vpc_id
+  subnet_ids = local.subnet_ids
   db_name = "{{postgres.dbname}}"
   username = "{{postgres.username}}"
   public_access = {{ postgres.public_access }}
@@ -167,8 +172,8 @@ module "efs" {
   source = "{{modules}}/efs"
   project = "{{project}}"
   env = "{{env}}"
-  vpc_id = {{#if use_default_vpc}}data.aws_vpc.default.id{{else}}module.vpc.vpc_id{{/if}}
-  private_subnets = data.aws_subnets.all.ids
+  vpc_id = local.vpc_id
+  private_subnets = local.subnet_ids
   efs_configs = {{{array efs}}}
 }
 {{/compare}}
@@ -185,8 +190,8 @@ module "alb" {
   source = "{{modules}}/alb"
   project = "{{project}}"
   env = "{{env}}"
-  vpc_id = {{#if use_default_vpc}}data.aws_vpc.default.id{{else}}module.vpc.vpc_id{{/if}}
-  private_subnets = data.aws_subnets.all.ids
+  vpc_id = local.vpc_id
+  private_subnets = local.subnet_ids
 }
 {{/if}}
 module "workloads" {
@@ -207,8 +212,8 @@ module "workloads" {
   create_api_domain_record = false
   {{/if}}
   domain = "{{ domain.domain_name }}"
-  vpc_id     = {{#if use_default_vpc}}data.aws_vpc.default.id{{else}}module.vpc.vpc_id{{/if}}
-  subnet_ids = {{#if use_default_vpc}}data.aws_subnets.all.ids{{else}}module.vpc.subnet_ids{{/if}}
+  vpc_id     = local.vpc_id
+  subnet_ids = local.subnet_ids
   lambda_path = "{{modules}}/workloads/ci_lambda/bootstrap"
   slack_deployment_webhook = "{{workload.slack_webhook}}"
   backend_bucket_postfix = "{{workload.bucket_postfix}}"
@@ -348,8 +353,8 @@ module "schedule_task_{{name}}" {
   {{/if}}
   # https://docs.aws.amazon.com/scheduler/latest/UserGuide/schedule-types.html?icmpid=docs_console_unmapped#rate-based
   schedule = "{{schedule}}"
-  subnet_ids = {{#if use_default_vpc}}data.aws_subnets.all.ids{{else}}module.vpc.subnet_ids{{/if}}
-  vpc_id     = data.aws_vpc.default.id
+  subnet_ids = local.subnet_ids
+  vpc_id     = local.vpc_id
   cluster = module.workloads.ecr_cluster.arn
   allow_public_access = {{#if allow_public_access}}{{allow_public_access}}{{else}}false{{/if}}
   {{#if sqs.enabled}}
@@ -378,8 +383,8 @@ module "event_bus_task_{{name}}" {
   {{#if container_command}}
   container_command = {{{ container_command }}}
   {{/if}}
-  subnet_ids = {{#if use_default_vpc}}data.aws_subnets.all.ids{{else}}module.vpc.subnet_ids{{/if}}
-  vpc_id     = data.aws_vpc.default.id
+  subnet_ids = local.subnet_ids
+  vpc_id     = local.vpc_id
   cluster = module.workloads.ecr_cluster.arn
   {{#if sqs.enabled}}
   sqs_queue_url = module.sqs.queue_url

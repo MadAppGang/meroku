@@ -74,14 +74,17 @@ func terraformInitIfNeeded() {
 		}
 	}
 
-	// Ensure S3 state bucket exists before terraform init
+	// Run comprehensive AWS pre-flight checks before terraform init
 	if envName != "" {
 		env, err := loadEnvFromPath(envName)
 		if err == nil && env.StateBucket != "" && env.Region != "" {
-			fmt.Printf("Checking S3 state bucket for environment: %s\n", envName)
-			if err := checkBucketStateForEnv(env); err != nil {
-				fmt.Printf("⚠️  Warning: Failed to check/create S3 bucket: %v\n", err)
-				fmt.Println("Continuing with terraform init...")
+			fmt.Printf("\n🚀 Preparing environment: %s\n", envName)
+
+			// CRITICAL: Run pre-flight checks with auto-recovery
+			if err := AWSPreflightCheck(env); err != nil {
+				fmt.Printf("\n%v\n\n", err)
+				fmt.Println("❌ Pre-flight checks failed. Please fix the issues above and try again.")
+				os.Exit(1)
 			}
 		}
 	}
@@ -89,14 +92,19 @@ func terraformInitIfNeeded() {
 	if _, err := os.Stat(".terraform"); os.IsNotExist(err) {
 		_, err = terraformInit()
 		if err != nil {
-			fmt.Printf("Error initializing terraform: %v\n", err)
+			fmt.Printf("\n❌ Terraform initialization failed: %v\n", err)
+			fmt.Println("\n💡 Recovery suggestions:")
+			fmt.Println("• Run 'terraform init -reconfigure' manually")
+			fmt.Println("• Check your AWS credentials: aws sts get-caller-identity")
+			fmt.Println("• Verify S3 backend configuration in main.tf")
 			os.Exit(1)
 		}
 	} else if err != nil {
 		fmt.Printf("Error checking .terraform directory: %v\n", err)
 		os.Exit(1)
+	} else {
+		fmt.Println("✅ Terraform already initialized.")
 	}
-	fmt.Println("✅ Terraform already initialized.")
 }
 
 func runTerraformApply() error {

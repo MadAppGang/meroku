@@ -22,6 +22,7 @@ const (
 	phasePlanning
 	phaseComplete
 	phaseError
+	phaseRecovering
 )
 
 type planProgressModel struct {
@@ -34,6 +35,7 @@ type planProgressModel struct {
 	outputMutex     sync.Mutex
 	errorDetails    string
 	errorOutput     []string
+	isRecoverable   bool
 	width           int
 	height          int
 	startTime       time.Time
@@ -230,11 +232,29 @@ func (m *planProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 		
 	case planErrorMsg:
-		m.phase = phaseError
 		m.errorDetails = msg.err.Error()
 		m.errorOutput = msg.output
+
+		// Check if error is recoverable before showing error screen
+		errorText := strings.Join(msg.output, "\n")
+		if errorText == "" {
+			errorText = msg.err.Error()
+		}
+
+		_, recoverErr := terraformError(errorText)
+		if recoverErr == nil {
+			// Error is recoverable - don't show error screen, just quit
+			// The caller (runTerraformApply) will handle recovery
+			m.isRecoverable = true
+			m.phase = phaseRecovering
+			return m, tea.Quit
+		}
+
+		// Error is not recoverable - show error screen
+		m.isRecoverable = false
+		m.phase = phaseError
 		return m, nil
-		
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "ctrl+c", "esc":
@@ -255,6 +275,10 @@ func (m *planProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *planProgressModel) View() string {
 	if m.phase == phaseError {
 		return m.renderError()
+	}
+
+	if m.phase == phaseRecovering {
+		return m.renderRecovering()
 	}
 
 	// Get output copy
@@ -415,6 +439,28 @@ func (m *planProgressModel) View() string {
 		lipgloss.Top,
 		content.String(),
 		lipgloss.WithWhitespaceChars(" "),
+	)
+}
+
+func (m *planProgressModel) renderRecovering() string {
+	recoveringStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("214")). // Orange color
+		Padding(1, 2)
+
+	spinner := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+	frame := spinner[m.spinnerFrame%len(spinner)]
+
+	content := fmt.Sprintf("%s Attempting auto-recovery...\n\n"+
+		"Detected a recoverable error. Running automatic fix.\n"+
+		"Please wait...", frame)
+
+	return lipgloss.Place(
+		m.width,
+		m.height,
+		lipgloss.Center,
+		lipgloss.Center,
+		recoveringStyle.Render(content),
 	)
 }
 
@@ -597,12 +643,13 @@ func runTerraformPlanWithProgress() error {
 	
 	// Check if there was an error in the plan
 	if finalModel, ok := model.(*planProgressModel); ok {
-		if finalModel.phase == phaseError {
+		if finalModel.phase == phaseError || finalModel.phase == phaseRecovering {
 			// Include both the error details and the full output for error recovery
 			errorMsg := finalModel.errorDetails
 			if len(finalModel.errorOutput) > 0 {
 				errorMsg = strings.Join(finalModel.errorOutput, "\n")
 			}
+			// Return error so runTerraformApply can attempt recovery
 			return fmt.Errorf("terraform plan failed: %s", errorMsg)
 		}
 	}

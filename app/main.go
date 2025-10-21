@@ -100,6 +100,12 @@ func main() {
 		os.Exit(0)
 	}
 
+	// Handle generate commands (before environment selection)
+	if len(args) > 0 && args[0] == "generate" {
+		handleGenerateCommand(args[1:])
+		os.Exit(0)
+	}
+
 	registerCustomHelpers()
 
 	// Handle environment and profile selection
