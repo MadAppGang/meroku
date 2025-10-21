@@ -548,13 +548,26 @@ func (m *modernPlanModel) handleApplyStart(msg *TerraformJSONMessage) {
 	if msg.Hook == nil || msg.Hook.Resource == nil {
 		return
 	}
-	
+
 	addr := msg.Hook.Resource.Addr
 	action := msg.Hook.Action
 	if action == "" {
 		action = m.getResourceAction(addr)
 	}
-	
+
+	// Update currentOp directly with thread safety
+	if m.applyState != nil {
+		m.applyState.mu.Lock()
+		m.applyState.currentOp = &currentOperation{
+			Address:   addr,
+			Action:    action,
+			StartTime: time.Now(),
+			Status:    "Starting...",
+		}
+		m.applyState.mu.Unlock()
+	}
+
+	// Also send message for UI update
 	m.sendMsg(resourceStartMsg{
 		Address: addr,
 		Action:  action,
