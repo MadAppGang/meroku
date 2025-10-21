@@ -18,15 +18,15 @@ import (
 type Application struct {
 	config   *config.Config
 	logger   *utils.Logger
-	ecsSvc   *services.ECSServiceV2
+	ecsSvc   *services.ECSService
 	slackSvc *services.SlackService
-	deployer *deployer.DeployerV2
-	handler  *handlers.EventHandlerV2
+	deployer *deployer.Deployer
+	handler  *handlers.EventHandler
 }
 
-// Initialize sets up all application components using V2 architecture
+// Initialize sets up all application components
 func Initialize() (*Application, error) {
-	// Load configuration from environment variables (V2 with direct resource names)
+	// Load configuration from environment variables
 	cfg, err := config.LoadFromEnv()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load configuration: %w", err)
@@ -34,28 +34,23 @@ func Initialize() (*Application, error) {
 
 	// Initialize logger
 	logger := utils.NewLogger(cfg)
-	logger.Info("Lambda function initializing (V2 Architecture)", map[string]interface{}{
-		"project":         cfg.ProjectName,
-		"environment":     cfg.Environment,
-		"region":          cfg.AWSRegion,
-		"cluster":         cfg.GetClusterName(),
-		"log_level":       cfg.LogLevel,
-		"dry_run":         cfg.DryRun,
-		"services_count":  len(cfg.ServiceMap),
-		"architecture":    "v2-direct-naming",
+	logger.Info("Lambda function initializing", map[string]interface{}{
+		"project":     cfg.ProjectName,
+		"environment": cfg.Environment,
+		"region":      cfg.AWSRegion,
+		"log_level":   cfg.LogLevel,
+		"dry_run":     cfg.DryRun,
 	})
 
-	// Initialize ECS service V2 (uses direct resource names)
-	ecsSvc, err := services.NewECSServiceV2(cfg, logger)
+	// Initialize ECS service
+	ecsSvc, err := services.NewECSService(cfg, logger)
 	if err != nil {
 		logger.Error("Failed to initialize ECS service", map[string]interface{}{
 			"error": err.Error(),
 		})
 		return nil, fmt.Errorf("failed to initialize ECS service: %w", err)
 	}
-	logger.Info("ECS service initialized (V2)", map[string]interface{}{
-		"cluster": cfg.GetClusterName(),
-	})
+	logger.Info("ECS service initialized", nil)
 
 	// Initialize Slack service
 	slackSvc, err := services.NewSlackService(cfg, logger)
@@ -69,28 +64,30 @@ func Initialize() (*Application, error) {
 		"enabled": cfg.EnableSlackNotifications,
 	})
 
-	// Initialize deployer (wraps ECS and Slack services)
-	dep := deployer.NewDeployerV2(ecsSvc, slackSvc, cfg, logger)
-	logger.Info("Deployer initialized (V2)", map[string]interface{}{
+	// Initialize deployer
+	dep := deployer.NewDeployer(ecsSvc, slackSvc, cfg, logger)
+	logger.Info("Deployer initialized", map[string]interface{}{
 		"max_retries": cfg.MaxDeploymentRetries,
 		"timeout":     cfg.DeploymentTimeoutSeconds,
 	})
 
 	// Initialize event handler
-	handler := handlers.NewEventHandlerV2(cfg, dep, slackSvc, logger)
-	logger.Info("Event handler initialized (V2)", map[string]interface{}{
-		"ecr_monitoring": cfg.EnableECRMonitoring,
-		"ssm_monitoring": cfg.EnableSSMMonitoring,
-		"s3_monitoring":  cfg.EnableS3Monitoring,
-		"manual_deploy":  cfg.EnableManualDeploy,
+	handler := handlers.NewEventHandler(cfg, dep, slackSvc, logger)
+	logger.Info("Event handler initialized", map[string]interface{}{
+		"ecr_monitoring":    cfg.EnableECRMonitoring,
+		"ssm_monitoring":    cfg.EnableSSMMonitoring,
+		"s3_monitoring":     cfg.EnableS3Monitoring,
+		"manual_deploy":     cfg.EnableManualDeploy,
 	})
 
 	// Log service configuration summary
-	logger.Info("Service configuration", map[string]interface{}{
-		"services": cfg.ListAllServices(),
-	})
+	if len(cfg.ServiceConfig) > 0 {
+		logger.Info("Service configuration loaded", map[string]interface{}{
+			"services_count": len(cfg.ServiceConfig),
+		})
+	}
 
-	logger.Info("Lambda function initialization complete (V2 Architecture)", nil)
+	logger.Info("Lambda function initialization complete", nil)
 
 	return &Application{
 		config:   cfg,
@@ -109,7 +106,6 @@ func (app *Application) HandleEvent(ctx context.Context, event events.CloudWatch
 		"event_source": event.Source,
 		"detail_type":  event.DetailType,
 		"region":       event.Region,
-		"architecture": "v2-direct-naming",
 	})
 
 	// Delegate to event handler

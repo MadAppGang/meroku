@@ -49,10 +49,36 @@ resource "aws_lambda_function" "lambda_deploy" {
 
   environment {
     variables = {
-      PROJECT_NAME      = var.project
-      SLACK_WEBHOOK_URL = var.slack_deployment_webhook
-      PROJECT_ENV       = var.env
+      # Core Configuration
+      PROJECT_NAME = var.project
+      PROJECT_ENV  = var.env
+      AWS_REGION   = data.aws_region.current.name
+
+      # Logging Configuration
+      LOG_LEVEL = "info" # Options: debug, info, warn, error
+
+      # ECS Resource Names (ACTUAL resource names from Terraform)
+      ECS_CLUSTER_NAME  = aws_ecs_cluster.main.name
+      ECS_SERVICE_MAP   = local.ecs_service_map
+      S3_SERVICE_MAP    = local.s3_to_service_map
+
+      # Slack Configuration
+      SLACK_WEBHOOK_URL          = var.slack_deployment_webhook
+      ENABLE_SLACK_NOTIFICATIONS = "true"
+
+      # Legacy S3 Service Configuration (kept for backward compatibility)
       SERVICE_CONFIG = local.service_config
+
+      # Deployment Configuration
+      DEPLOYMENT_TIMEOUT_SECONDS = "600"  # 10 minutes
+      MAX_DEPLOYMENT_RETRIES     = "2"    # Retry failed deployments twice
+      DRY_RUN                    = "false" # Set to true for testing without actual deployments
+
+      # Feature Flags - Enable/disable specific event monitoring
+      ENABLE_ECR_MONITORING = "true"  # Auto-deploy on ECR image push
+      ENABLE_SSM_MONITORING = "true"  # Auto-deploy on SSM parameter changes
+      ENABLE_S3_MONITORING  = "true"  # Auto-deploy on S3 env file changes
+      ENABLE_MANUAL_DEPLOY  = "true"  # Allow manual deployment triggers
     }
   }
 
@@ -196,6 +222,35 @@ locals {
     "${var.project}" = [
       for file in local.env_files_s3 : {
         bucket = file.bucket
+        key    = file.key
+      }
+    ]
+  })
+
+  // Map service identifiers to actual ECS resource names
+  // This eliminates the need for pattern-based name construction
+  ecs_service_map = jsonencode(merge(
+    {
+      // Backend service (identifier: empty string)
+      "" = {
+        service_name = aws_ecs_service.backend.name
+        task_family  = aws_ecs_task_definition.backend.family
+      }
+    },
+    {
+      // Named services (identifier: service name like "api", "worker")
+      for key, service in local.service_names : key => {
+        service_name = aws_ecs_service.services[key].name
+        task_family  = aws_ecs_task_definition.services[key].family
+      }
+    }
+  ))
+
+  // S3 file to service mapping for faster lookups
+  s3_to_service_map = jsonencode({
+    for service_name, files in local.services_env_files_s3 : service_name => [
+      for file in files : {
+        bucket = "${var.project}-${file.bucket}-${var.env}"
         key    = file.key
       }
     ]

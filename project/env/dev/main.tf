@@ -37,7 +37,7 @@ data "aws_subnets" "all" {
       env = "dev"
       create_domain_zone = false
       api_domain_prefix = ""
-      add_env_domain_prefix = 
+      add_env_domain_prefix = false
     }
   
 
