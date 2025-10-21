@@ -175,9 +175,8 @@ func (m *modernPlanModel) calculateApplyLayout(terminalHeight int) {
 	footerHeight := 1
 
 	// Calculate available height for all boxes
-	// Add safety margin of 1 line to prevent overflow from spacing/newlines
-	safetyMargin := 1
-	availableHeight := terminalHeight - headerHeight - footerHeight - safetyMargin
+	// No safety margin - lipgloss JoinVertical handles spacing correctly
+	availableHeight := terminalHeight - headerHeight - footerHeight
 	if availableHeight < 10 {
 		availableHeight = 10 // absolute minimum
 	}
@@ -218,11 +217,11 @@ func (m *modernPlanModel) calculateApplyLayout(terminalHeight int) {
 		// Medium screen (32-47 total lines) - balanced mode
 		// This covers the 42-row terminal case
 		m.applyState.progressHeight = 3       // Show progress bar (important feedback!)
-		m.applyState.currentOpHeight = 6      // 6 lines total -> content 4
+		m.applyState.currentOpHeight = 8      // 8 lines total -> content 6 (was 6)
 		m.applyState.errorSummaryHeight = 0   // Hidden to save space
 		m.applyState.columnsHeight = 8        // 8 lines total -> content 6 (reduced from 10)
-		// Logs: availableHeight - (3 + 6 + 8) = availableHeight - 17
-		logsScreenHeight := availableHeight - 17
+		// Logs: availableHeight - (3 + 8 + 8) = availableHeight - 19
+		logsScreenHeight := availableHeight - 19
 		if logsScreenHeight < 8 {
 			logsScreenHeight = 8
 		}
