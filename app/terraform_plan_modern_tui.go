@@ -5386,8 +5386,18 @@ func (m *modernPlanModel) buildAIHelpContent() string {
 		Foreground(lipgloss.Color("196"))
 
 	for _, err := range m.aiHelpErrors {
-		content.WriteString(errorStyle.Render(err))
-		content.WriteString("\n\n")
+		// Split error into lines and render each line with the style
+		// This ensures multi-line errors maintain consistent red coloring
+		lines := strings.Split(err, "\n")
+		for _, line := range lines {
+			if line != "" {
+				content.WriteString(errorStyle.Render(line))
+				content.WriteString("\n")
+			} else {
+				content.WriteString("\n")
+			}
+		}
+		content.WriteString("\n")
 	}
 
 	// AI Analysis Section
