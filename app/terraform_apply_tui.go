@@ -192,24 +192,24 @@ func (m *modernPlanModel) calculateApplyLayout(terminalHeight int) {
 	if availableHeight < 18 {
 		// Tiny screen (< 21 total lines) - ultra-compact mode
 		m.applyState.progressHeight = 0       // Hidden
-		m.applyState.currentOpHeight = 4      // 4 lines total on screen -> content height 2
+		m.applyState.currentOpHeight = 6      // 6 lines total on screen -> content height 4 (was 4)
 		m.applyState.errorSummaryHeight = 0   // Hidden
 		m.applyState.columnsHeight = 5        // 5 lines total on screen -> content height 3
-		// Logs get the rest: availableHeight - (4 + 5) = availableHeight - 9
-		logsScreenHeight := availableHeight - 9
+		// Logs get the rest: availableHeight - (6 + 5) = availableHeight - 11
+		logsScreenHeight := availableHeight - 11
 		if logsScreenHeight < 4 {
 			logsScreenHeight = 4
 		}
 		m.applyState.logsHeight = logsScreenHeight
 	} else if availableHeight < 30 {
 		// Small screen (21-32 total lines) - compact mode
-		// Target layout: currentOp(5), columns(7), logs(rest)
+		// Target layout: currentOp(6), columns(7), logs(rest)
 		m.applyState.progressHeight = 0       // Hidden to save space
-		m.applyState.currentOpHeight = 5      // 5 lines total -> content 3
+		m.applyState.currentOpHeight = 6      // 6 lines total -> content 4 (was 5)
 		m.applyState.errorSummaryHeight = 0   // Hidden to save space
 		m.applyState.columnsHeight = 7        // 7 lines total -> content 5
-		// Logs: availableHeight - (5 + 7) = availableHeight - 12
-		logsScreenHeight := availableHeight - 12
+		// Logs: availableHeight - (6 + 7) = availableHeight - 13
+		logsScreenHeight := availableHeight - 13
 		if logsScreenHeight < 5 {
 			logsScreenHeight = 5
 		}

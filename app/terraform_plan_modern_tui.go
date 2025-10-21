@@ -4703,8 +4703,13 @@ func (m *modernPlanModel) updateApplyLogViewport() {
 	}
 
 	// Calculate available width for message text once (outside loop for efficiency)
-	// Reserve space for: timestamp (8) + space (1) + level (7) + space (1) + icon (2) + space (1) = 20 chars
-	availableWidth := m.width - 4 - 20
+	// Use the actual log viewport width, then subtract space for:
+	// timestamp (8) + space (1) + level (7) + space (1) + icon (2) + space (1) = 20 chars
+	viewportWidth := m.logViewport.Width
+	if viewportWidth < 60 {
+		viewportWidth = m.width - 4 // Fallback if viewport not initialized
+	}
+	availableWidth := viewportWidth - 22 // 20 for prefix + 2 for padding
 	if availableWidth < 40 {
 		availableWidth = 40 // Minimum width for readability
 	}
