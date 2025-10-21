@@ -171,14 +171,40 @@ func parseAIResponse(response string) (string, []string) {
 
 // displayAISuggestions formats and displays the AI suggestions
 func displayAISuggestions(problem string, commands []string) {
+	displayAISuggestionsWithContext(problem, commands, nil)
+}
+
+// displayAISuggestionsWithContext formats and displays the AI suggestions along with the original error
+func displayAISuggestionsWithContext(problem string, commands []string, originalErrors []string) {
 	divider := "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+	// Show original error first if provided
+	if len(originalErrors) > 0 {
+		fmt.Println()
+		fmt.Println(divider)
+		fmt.Println(lipgloss.NewStyle().
+			Foreground(lipgloss.Color("196")).
+			Bold(true).
+			Render("❌ Original Error"))
+		fmt.Println(divider)
+		fmt.Println()
+
+		errorStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("196")).
+			Width(100)
+
+		for _, err := range originalErrors {
+			fmt.Println(errorStyle.Render(err))
+			fmt.Println()
+		}
+	}
 
 	fmt.Println()
 	fmt.Println(divider)
 	fmt.Println(lipgloss.NewStyle().
 		Foreground(lipgloss.Color("226")).
 		Bold(true).
-		Render("💡 Problem Identified"))
+		Render("💡 AI Analysis"))
 	fmt.Println(divider)
 	fmt.Println()
 

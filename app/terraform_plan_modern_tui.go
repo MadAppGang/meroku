@@ -27,6 +27,7 @@ const (
 	dashboardView viewMode = iota
 	applyView
 	fullScreenDiffView
+	aiHelpView
 )
 
 // AI visualization messages
@@ -131,7 +132,11 @@ type modernPlanModel struct {
 	aiError        string
 	showAIError    bool
 	aiLoading      bool
-	requestAIHelp  bool
+	// AI help view
+	aiHelpProblem   string
+	aiHelpCommands  []string
+	aiHelpErrors    []string
+	aiHelpViewport  viewport.Model
 }
 
 type modernKeyMap struct {
@@ -749,6 +754,11 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.currentView = dashboardView
 				return m, nil
 			}
+			// Escape from AI help view goes back to apply view
+			if m.currentView == aiHelpView {
+				m.currentView = applyView
+				return m, nil
+			}
 			return m, tea.Quit
 			
 		case key.Matches(msg, m.keys.Help):
@@ -779,10 +789,9 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.Apply):
 			// Don't apply again if we're already in apply view with completed deployment
 			if m.currentView == applyView && m.applyState != nil && m.applyState.applyComplete {
-				// If we have errors and AI is available, trigger AI help
+				// If we have errors and AI is available, show AI help view
 				if m.applyState.hasErrors && isAIHelperAvailable() {
-					m.requestAIHelp = true
-					return m, tea.Quit
+					return m, m.fetchAIHelpAndShowView()
 				}
 				// Otherwise, just ignore the key press
 				return m, nil
@@ -869,13 +878,16 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if m.currentView == fullScreenDiffView {
 				// Scroll down in full-screen diff view
 				m.diffViewport.LineDown(1)
+			} else if m.currentView == aiHelpView {
+				// Scroll down in AI help view
+				m.aiHelpViewport.LineDown(1)
 			} else if m.currentView == applyView && m.applyState != nil {
 				// Only scroll logs if logs section is selected
 				if m.applyState.selectedSection == 2 {
 					m.logViewport.LineDown(1)
 				}
 			}
-			
+
 		case key.Matches(msg, m.keys.Up):
 			if m.currentView == dashboardView {
 				m.navigateUp()
@@ -884,6 +896,9 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if m.currentView == fullScreenDiffView {
 				// Scroll up in full-screen diff view
 				m.diffViewport.LineUp(1)
+			} else if m.currentView == aiHelpView {
+				// Scroll up in AI help view
+				m.aiHelpViewport.LineUp(1)
 			} else if m.currentView == applyView && m.applyState != nil {
 				// Only scroll logs if logs section is selected
 				if m.applyState.selectedSection == 2 {
@@ -1149,6 +1164,8 @@ func (m *modernPlanModel) View() string {
 		return m.renderApplyView()
 	case fullScreenDiffView:
 		return m.renderFullScreenDiff()
+	case aiHelpView:
+		return m.renderAIHelpView()
 	default:
 		return m.renderDashboard()
 	}
@@ -4895,75 +4912,11 @@ func showModernTerraformPlanTUI(planJSON string) error {
 		return fmt.Errorf("error running TUI: %w", err)
 	}
 
-	// Check if there were apply errors and offer AI help
+	// Check if there were apply errors and offer AI help (when user exits without using in-TUI AI help)
 	if m, ok := finalModel.(*modernPlanModel); ok {
 		if m.applyState != nil && m.applyState.hasErrors {
-			// Check if user requested AI help directly
-			if m.requestAIHelp {
-				// Collect error messages
-				var errorMessages []string
-				for _, res := range m.applyState.completed {
-					if !res.Success && res.Error != "" {
-						errorMessages = append(errorMessages, fmt.Sprintf("Resource: %s\nAction: %s\nError: %s",
-							res.Address, res.Action, res.Error))
-					}
-				}
-
-				if len(errorMessages) > 0 {
-					// Get current directory
-					workingDir, _ := os.Getwd()
-
-					// Get AWS profile from environment or use default
-					awsProfile := os.Getenv("AWS_PROFILE")
-					if awsProfile == "" {
-						awsProfile = "default"
-					}
-
-					// Get region from environment variable or use default
-					awsRegion := os.Getenv("AWS_REGION")
-					if awsRegion == "" {
-						awsRegion = os.Getenv("AWS_DEFAULT_REGION")
-					}
-					if awsRegion == "" {
-						awsRegion = "us-east-1" // fallback
-					}
-
-					// Extract environment from working directory (e.g., env/dev)
-					envName := "unknown"
-					if strings.Contains(workingDir, "/env/") {
-						parts := strings.Split(workingDir, "/env/")
-						if len(parts) > 1 {
-							envParts := strings.Split(parts[1], "/")
-							if len(envParts) > 0 {
-								envName = envParts[0]
-							}
-						}
-					}
-
-					ctx := ErrorContext{
-						Operation:   "apply",
-						Environment: envName,
-						AWSProfile:  awsProfile,
-						AWSRegion:   awsRegion,
-						Errors:      errorMessages,
-						WorkingDir:  workingDir,
-					}
-
-					// Get AI suggestions directly without prompting
-					problem, commands, err := getAIErrorSuggestions(ctx)
-					if err != nil {
-						fmt.Printf("\n❌ Failed to get AI suggestions: %v\n", err)
-					} else {
-						displayAISuggestions(problem, commands)
-					}
-
-					fmt.Print("\nPress Enter to continue...")
-					fmt.Scanln()
-				}
-			} else {
-				// Offer AI help with prompt (old behavior when user exits without pressing 'a')
-				offerAIHelpForApplyErrors(m)
-			}
+			// Offer AI help with prompt after exiting TUI
+			offerAIHelpForApplyErrors(m)
 		}
 	}
 
@@ -5247,4 +5200,169 @@ func (m *modernPlanModel) renderAIError() string {
 
 	// Render the background with the error box on top
 	return backgroundStyle.Render(errorBox)
+}
+// fetchAIHelpAndShowView fetches AI suggestions and switches to AI help view
+func (m *modernPlanModel) fetchAIHelpAndShowView() tea.Cmd {
+	return func() tea.Msg {
+		// Collect error messages from completed resources
+		var errorMessages []string
+		for _, res := range m.applyState.completed {
+			if !res.Success && res.Error != "" {
+				errorMessages = append(errorMessages, fmt.Sprintf("Resource: %s\nAction: %s\nError: %s",
+					res.Address, res.Action, res.Error))
+			}
+		}
+
+		if len(errorMessages) == 0 {
+			return nil // No errors to analyze
+		}
+
+		// Get current directory
+		workingDir, _ := os.Getwd()
+
+		// Get AWS profile from environment or use default
+		awsProfile := os.Getenv("AWS_PROFILE")
+		if awsProfile == "" {
+			awsProfile = "default"
+		}
+
+		// Get region from environment variable or use default
+		awsRegion := os.Getenv("AWS_REGION")
+		if awsRegion == "" {
+			awsRegion = os.Getenv("AWS_DEFAULT_REGION")
+		}
+		if awsRegion == "" {
+			awsRegion = "us-east-1" // fallback
+		}
+
+		// Extract environment from working directory (e.g., env/dev)
+		envName := "unknown"
+		if strings.Contains(workingDir, "/env/") {
+			parts := strings.Split(workingDir, "/env/")
+			if len(parts) > 1 {
+				envParts := strings.Split(parts[1], "/")
+				if len(envParts) > 0 {
+					envName = envParts[0]
+				}
+			}
+		}
+
+		ctx := ErrorContext{
+			Operation:   "apply",
+			Environment: envName,
+			AWSProfile:  awsProfile,
+			AWSRegion:   awsRegion,
+			Errors:      errorMessages,
+			WorkingDir:  workingDir,
+		}
+
+		// Get AI suggestions
+		problem, commands, err := getAIErrorSuggestions(ctx)
+		if err != nil {
+			// Show error if AI call failed
+			return aiErrorMsg{err: err}
+		}
+
+		// Store AI help data in model
+		m.aiHelpProblem = problem
+		m.aiHelpCommands = commands
+		m.aiHelpErrors = errorMessages
+
+		// Switch to AI help view
+		m.currentView = aiHelpView
+
+		// Initialize viewport with content
+		m.aiHelpViewport = viewport.New(m.width-4, m.height-6)
+		m.aiHelpViewport.SetContent(m.buildAIHelpContent())
+
+		return nil
+	}
+}
+
+// buildAIHelpContent builds the content string for the AI help viewport
+func (m *modernPlanModel) buildAIHelpContent() string {
+	var content strings.Builder
+	divider := strings.Repeat("─", m.width-8)
+
+	// Original Error Section
+	content.WriteString(lipgloss.NewStyle().
+		Foreground(lipgloss.Color("196")).
+		Bold(true).
+		Render("❌ Original Error"))
+	content.WriteString("\n")
+	content.WriteString(divider)
+	content.WriteString("\n\n")
+
+	errorStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("196"))
+
+	for _, err := range m.aiHelpErrors {
+		content.WriteString(errorStyle.Render(err))
+		content.WriteString("\n\n")
+	}
+
+	// AI Analysis Section
+	content.WriteString(lipgloss.NewStyle().
+		Foreground(lipgloss.Color("226")).
+		Bold(true).
+		Render("💡 AI Analysis"))
+	content.WriteString("\n")
+	content.WriteString(divider)
+	content.WriteString("\n\n")
+
+	problemStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("252"))
+	content.WriteString(problemStyle.Render(m.aiHelpProblem))
+	content.WriteString("\n\n")
+
+	// Suggested Fix Section
+	content.WriteString(lipgloss.NewStyle().
+		Foreground(lipgloss.Color("82")).
+		Bold(true).
+		Render("📋 Suggested Fix"))
+	content.WriteString("\n")
+	content.WriteString(divider)
+	content.WriteString("\n\n")
+	content.WriteString("Run these commands:\n\n")
+
+	commandStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("39"))
+
+	for _, cmd := range m.aiHelpCommands {
+		content.WriteString(commandStyle.Render("  " + cmd))
+		content.WriteString("\n")
+	}
+
+	content.WriteString("\n")
+	content.WriteString(divider)
+	content.WriteString("\n\n")
+
+	disclaimerStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("243")).
+		Italic(true)
+	content.WriteString(disclaimerStyle.Render("⚠️  AI-generated suggestions - please review before running"))
+
+	return content.String()
+}
+
+// renderAIHelpView renders the AI help view with original error, AI analysis, and suggested fixes
+func (m *modernPlanModel) renderAIHelpView() string {
+	// Header
+	header := headerStyle.Width(m.width).Render("🤖 AI Error Help")
+
+	// Viewport with AI help content
+	viewportBox := boxStyle.
+		Width(m.width - 2).
+		Height(m.height - 4).
+		Render(m.aiHelpViewport.View())
+
+	// Footer with help text
+	footerText := dimStyle.Render("[↑↓] Scroll • [ESC] Back to Apply View")
+
+	return lipgloss.JoinVertical(
+		lipgloss.Left,
+		header,
+		viewportBox,
+		footerText,
+	)
 }
