@@ -650,11 +650,39 @@ export function Sidebar({
                   onClick={() => {
                     const accountId =
                       accountInfo?.accountId ||
-                      config?.ecr_account_id ||
+                      config?.account_id ||
                       "123456789012";
-                    const scriptContent = `name: Deploy to AWS (${
-                      config?.env || "dev"
-                    })
+
+                    // Generate different workflow based on ECR strategy
+                    const scriptContent = config?.ecr_strategy === "cross_account"
+                      ? `name: Deploy to AWS (${config?.env || "dev"})
+
+on:
+  workflow_dispatch: # Manual triggering enabled
+
+env:
+  AWS_REGION: ${config?.region || "us-east-1"}
+  AWS_ACCOUNT_ID: "${accountId}"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4.0.1
+        with:
+          role-to-assume: arn:aws:iam::\${{ env.AWS_ACCOUNT_ID }}:role/${config?.project || "project"}-${config?.env || "dev"}-github-actions-role
+          role-session-name: github-actions-deploy
+          aws-region: \${{ env.AWS_REGION }}
+
+      - name: Trigger deployment via EventBridge
+        run: |
+          aws events put-events --entries 'Source=action.${config?.env || "dev"},DetailType=DEPLOY,Detail="{\\"service\\":\\"backend\\"}",EventBusName=default'`
+                      : `name: Deploy to AWS (${config?.env || "dev"})
 
 on:
   push:
@@ -667,14 +695,10 @@ concurrency:
 env:
   AWS_REGION: ${config?.region || "us-east-1"}
   AWS_ACCOUNT_ID: ${accountId}
-  ECR_REPOSITORY: ${config?.project || "project"}-${
-    config?.env || "dev"
-  }-backend
+  ECR_REPOSITORY: ${config?.project || "project"}-${config?.env || "dev"}-backend
   ECS_CLUSTER: ${config?.project || "project"}-${config?.env || "dev"}-cluster
   ECS_SERVICE: ${config?.project || "project"}-${config?.env || "dev"}-backend
-  IAM_ROLE: arn:aws:iam::${accountId}:role/${config?.project || "project"}-${
-    config?.env || "dev"
-  }-github-actions-role
+  IAM_ROLE: arn:aws:iam::${accountId}:role/${config?.project || "project"}-${config?.env || "dev"}-github-actions-role
 
 permissions:
   id-token: write
@@ -683,31 +707,31 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
           role-to-assume: \${{ env.IAM_ROLE }}
           aws-region: \${{ env.AWS_REGION }}
-      
+
       - name: Compute ECR registry
         id: ecr
         run: echo "ECR_REGISTRY=\${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.\${{ env.AWS_REGION }}.amazonaws.com" >> "\$GITHUB_ENV"
-      
+
       - name: Ensure ECR repository exists
         run: |
           aws ecr describe-repositories --repository-names "\$ECR_REPOSITORY" >/dev/null 2>&1 || \\
           aws ecr create-repository --repository-name "\$ECR_REPOSITORY" >/dev/null
-      
+
       - name: Login to ECR
         run: |
           aws ecr get-login-password --region \$AWS_REGION | \\
           docker login --username AWS --password-stdin \$ECR_REGISTRY
-      
+
       - name: Build and push Docker image
         run: |
           docker build -t \$ECR_REPOSITORY .
@@ -715,7 +739,7 @@ jobs:
           docker tag \$ECR_REPOSITORY:latest \$ECR_REGISTRY/\$ECR_REPOSITORY:\${{ github.sha }}
           docker push \$ECR_REGISTRY/\$ECR_REPOSITORY:latest
           docker push \$ECR_REGISTRY/\$ECR_REPOSITORY:\${{ github.sha }}
-      
+
       - name: Deploy to ECS (force new deployment)
         run: |
           aws ecs update-service \\
@@ -724,6 +748,7 @@ jobs:
             --force-new-deployment \\
             --region "\$AWS_REGION"
           aws ecs wait services-stable --cluster "\$ECS_CLUSTER" --services "\$ECS_SERVICE"`;
+
                     navigator.clipboard.writeText(scriptContent);
                   }}
                 >
@@ -734,8 +759,40 @@ jobs:
                 {(() => {
                   const accountId =
                     accountInfo?.accountId ||
-                    config?.ecr_account_id ||
+                    config?.account_id ||
                     "123456789012";
+
+                  // Generate different workflow based on ECR strategy
+                  if (config?.ecr_strategy === "cross_account") {
+                    return `name: Deploy to AWS (${config?.env || "dev"})
+
+on:
+  workflow_dispatch: # Manual triggering enabled
+
+env:
+  AWS_REGION: ${config?.region || "us-east-1"}
+  AWS_ACCOUNT_ID: "${accountId}"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4.0.1
+        with:
+          role-to-assume: arn:aws:iam::\${{ env.AWS_ACCOUNT_ID }}:role/${config?.project || "project"}-${config?.env || "dev"}-github-actions-role
+          role-session-name: github-actions-deploy
+          aws-region: \${{ env.AWS_REGION }}
+
+      - name: Trigger deployment via EventBridge
+        run: |
+          aws events put-events --entries 'Source=action.${config?.env || "dev"},DetailType=DEPLOY,Detail="{\\"service\\":\\"backend\\"}",EventBusName=default'`;
+                  }
+
                   return `name: Deploy to AWS (${config?.env || "dev"})
 
 on:
@@ -749,14 +806,10 @@ concurrency:
 env:
   AWS_REGION: ${config?.region || "us-east-1"}
   AWS_ACCOUNT_ID: ${accountId}
-  ECR_REPOSITORY: ${config?.project || "project"}-${
-    config?.env || "dev"
-  }-backend
+  ECR_REPOSITORY: ${config?.project || "project"}-${config?.env || "dev"}-backend
   ECS_CLUSTER: ${config?.project || "project"}-${config?.env || "dev"}-cluster
   ECS_SERVICE: ${config?.project || "project"}-${config?.env || "dev"}-backend
-  IAM_ROLE: arn:aws:iam::${accountId}:role/${config?.project || "project"}-${
-    config?.env || "dev"
-  }-github-actions-role
+  IAM_ROLE: arn:aws:iam::${accountId}:role/${config?.project || "project"}-${config?.env || "dev"}-github-actions-role
 
 permissions:
   id-token: write
@@ -765,31 +818,31 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
           role-to-assume: \${{ env.IAM_ROLE }}
           aws-region: \${{ env.AWS_REGION }}
-      
+
       - name: Compute ECR registry
         id: ecr
         run: echo "ECR_REGISTRY=\${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.\${{ env.AWS_REGION }}.amazonaws.com" >> "\$GITHUB_ENV"
-      
+
       - name: Ensure ECR repository exists
         run: |
           aws ecr describe-repositories --repository-names "\$ECR_REPOSITORY" >/dev/null 2>&1 || \\
           aws ecr create-repository --repository-name "\$ECR_REPOSITORY" >/dev/null
-      
+
       - name: Login to ECR
         run: |
           aws ecr get-login-password --region \$AWS_REGION | \\
           docker login --username AWS --password-stdin \$ECR_REGISTRY
-      
+
       - name: Build and push Docker image
         run: |
           docker build -t \$ECR_REPOSITORY .
@@ -797,7 +850,7 @@ jobs:
           docker tag \$ECR_REPOSITORY:latest \$ECR_REGISTRY/\$ECR_REPOSITORY:\${{ github.sha }}
           docker push \$ECR_REGISTRY/\$ECR_REPOSITORY:latest
           docker push \$ECR_REGISTRY/\$ECR_REPOSITORY:\${{ github.sha }}
-      
+
       - name: Deploy to ECS (force new deployment)
         run: |
           aws ecs update-service \\
@@ -842,79 +895,179 @@ jobs:
               );
             })()}
 
-            <div className="bg-green-900/20 border border-green-700 rounded-lg p-3">
-              <h4 className="text-sm font-medium text-green-400 mb-2">
-                Generated Resources
-              </h4>
-              <ul className="text-xs text-gray-400 space-y-1">
-                <li>
-                  • <code className="text-green-300">ECR Repository</code>:{" "}
-                  {config?.project || "project"}-{config?.env || "dev"}-backend
-                </li>
-                <li>
-                  • <code className="text-green-300">ECS Cluster</code>:{" "}
-                  {config?.project || "project"}-{config?.env || "dev"}-cluster
-                </li>
-                <li>
-                  • <code className="text-green-300">ECS Service</code>:{" "}
-                  {config?.project || "project"}-{config?.env || "dev"}-backend
-                </li>
-                <li>
-                  • <code className="text-green-300">IAM Role</code>:{" "}
-                  {config?.project || "project"}-{config?.env || "dev"}
-                  -github-actions-role
-                </li>
-              </ul>
-            </div>
+            {config?.ecr_strategy === "cross_account" ? (
+              // Cross-account ECR resources
+              <>
+                <div className="bg-green-900/20 border border-green-700 rounded-lg p-3">
+                  <h4 className="text-sm font-medium text-green-400 mb-2">
+                    Generated Resources
+                  </h4>
+                  <ul className="text-xs text-gray-400 space-y-1">
+                    <li>
+                      • <code className="text-green-300">ECS Cluster</code>:{" "}
+                      {config?.project || "project"}-{config?.env || "dev"}-cluster
+                    </li>
+                    <li>
+                      • <code className="text-green-300">ECS Service</code>:{" "}
+                      {config?.project || "project"}-{config?.env || "dev"}-backend
+                    </li>
+                    <li>
+                      • <code className="text-green-300">IAM Role</code>:{" "}
+                      {config?.project || "project"}-{config?.env || "dev"}
+                      -github-actions-role
+                    </li>
+                    <li>
+                      • <code className="text-green-300">EventBridge</code>: Default event bus
+                    </li>
+                  </ul>
+                </div>
 
-            <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-3">
-              <h4 className="text-sm font-medium text-blue-400 mb-2">
-                Workflow Features
-              </h4>
-              <ul className="text-xs text-gray-400 space-y-1">
-                <li>
-                  ✓ <span className="text-blue-300">Concurrency control</span> -
-                  Prevents overlapping deployments
-                </li>
-                <li>
-                  ✓ <span className="text-blue-300">Auto-create ECR repo</span>{" "}
-                  - Creates repository if it doesn't exist
-                </li>
-                <li>
-                  ✓ <span className="text-blue-300">Dual tagging</span> - Tags
-                  with both :latest and :sha for rollback
-                </li>
-                <li>
-                  ✓{" "}
-                  <span className="text-blue-300">Deployment verification</span>{" "}
-                  - Waits for service stability
-                </li>
-                <li>
-                  ✓ <span className="text-blue-300">OIDC authentication</span> -
-                  Passwordless AWS access
-                </li>
-              </ul>
-            </div>
+                <div className="bg-purple-900/20 border border-purple-700 rounded-lg p-3">
+                  <h4 className="text-sm font-medium text-purple-400 mb-2">
+                    Cross-Account Configuration
+                  </h4>
+                  <ul className="text-xs text-gray-400 space-y-1">
+                    <li>
+                      • <code className="text-purple-300">ECR Strategy</code>: Cross-Account
+                    </li>
+                    <li>
+                      • <code className="text-purple-300">Source Account</code>:{" "}
+                      {config?.ecr_account_id || "Not configured"}
+                    </li>
+                    <li>
+                      • <code className="text-purple-300">Source Region</code>:{" "}
+                      {config?.ecr_account_region || "Not configured"}
+                    </li>
+                  </ul>
+                </div>
 
-            <div className="bg-gray-800 rounded-lg p-3">
-              <h4 className="text-sm font-medium text-gray-300 mb-2">
-                Important Notes
-              </h4>
-              <ul className="text-xs text-gray-400 space-y-1">
-                <li>
-                  • Ensure your ECS task definition uses the{" "}
-                  <code>:latest</code> tag for auto-updates
-                </li>
-                <li>
-                  • The workflow will cancel any in-progress deployments when a
-                  new push occurs
-                </li>
-                <li>
-                  • Service stability check will fail the workflow if deployment
-                  fails
-                </li>
-              </ul>
-            </div>
+                <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-3">
+                  <h4 className="text-sm font-medium text-blue-400 mb-2">
+                    Workflow Features
+                  </h4>
+                  <ul className="text-xs text-gray-400 space-y-1">
+                    <li>
+                      ✓ <span className="text-blue-300">Manual deployment</span> -
+                      Trigger via workflow_dispatch
+                    </li>
+                    <li>
+                      ✓ <span className="text-blue-300">EventBridge integration</span>{" "}
+                      - Event-driven deployments
+                    </li>
+                    <li>
+                      ✓ <span className="text-blue-300">Cross-account ECR</span> -
+                      Uses images from source account
+                    </li>
+                    <li>
+                      ✓ <span className="text-blue-300">OIDC authentication</span> -
+                      Passwordless AWS access
+                    </li>
+                    <li>
+                      ✓ <span className="text-blue-300">Lightweight deployment</span> -
+                      No build or push steps
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="bg-gray-800 rounded-lg p-3">
+                  <h4 className="text-sm font-medium text-gray-300 mb-2">
+                    Important Notes
+                  </h4>
+                  <ul className="text-xs text-gray-400 space-y-1">
+                    <li>
+                      • This environment pulls container images from account{" "}
+                      <code>{config?.ecr_account_id}</code>
+                    </li>
+                    <li>
+                      • Images are built and pushed in the source environment
+                    </li>
+                    <li>
+                      • Deployment is triggered manually or via EventBridge events
+                    </li>
+                    <li>
+                      • Ensure cross-account ECR trust policies are deployed in source account
+                    </li>
+                  </ul>
+                </div>
+              </>
+            ) : (
+              // Local ECR resources (default)
+              <>
+                <div className="bg-green-900/20 border border-green-700 rounded-lg p-3">
+                  <h4 className="text-sm font-medium text-green-400 mb-2">
+                    Generated Resources
+                  </h4>
+                  <ul className="text-xs text-gray-400 space-y-1">
+                    <li>
+                      • <code className="text-green-300">ECR Repository</code>:{" "}
+                      {config?.project || "project"}-{config?.env || "dev"}-backend
+                    </li>
+                    <li>
+                      • <code className="text-green-300">ECS Cluster</code>:{" "}
+                      {config?.project || "project"}-{config?.env || "dev"}-cluster
+                    </li>
+                    <li>
+                      • <code className="text-green-300">ECS Service</code>:{" "}
+                      {config?.project || "project"}-{config?.env || "dev"}-backend
+                    </li>
+                    <li>
+                      • <code className="text-green-300">IAM Role</code>:{" "}
+                      {config?.project || "project"}-{config?.env || "dev"}
+                      -github-actions-role
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-3">
+                  <h4 className="text-sm font-medium text-blue-400 mb-2">
+                    Workflow Features
+                  </h4>
+                  <ul className="text-xs text-gray-400 space-y-1">
+                    <li>
+                      ✓ <span className="text-blue-300">Concurrency control</span> -
+                      Prevents overlapping deployments
+                    </li>
+                    <li>
+                      ✓ <span className="text-blue-300">Auto-create ECR repo</span>{" "}
+                      - Creates repository if it doesn't exist
+                    </li>
+                    <li>
+                      ✓ <span className="text-blue-300">Dual tagging</span> - Tags
+                      with both :latest and :sha for rollback
+                    </li>
+                    <li>
+                      ✓{" "}
+                      <span className="text-blue-300">Deployment verification</span>{" "}
+                      - Waits for service stability
+                    </li>
+                    <li>
+                      ✓ <span className="text-blue-300">OIDC authentication</span> -
+                      Passwordless AWS access
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="bg-gray-800 rounded-lg p-3">
+                  <h4 className="text-sm font-medium text-gray-300 mb-2">
+                    Important Notes
+                  </h4>
+                  <ul className="text-xs text-gray-400 space-y-1">
+                    <li>
+                      • Ensure your ECS task definition uses the{" "}
+                      <code>:latest</code> tag for auto-updates
+                    </li>
+                    <li>
+                      • The workflow will cancel any in-progress deployments when a
+                      new push occurs
+                    </li>
+                    <li>
+                      • Service stability check will fail the workflow if deployment
+                      fails
+                    </li>
+                  </ul>
+                </div>
+              </>
+            )}
 
             <div className="bg-gray-800 rounded-lg p-3">
               <h4 className="text-sm font-medium text-gray-300 mb-2">

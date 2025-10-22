@@ -134,7 +134,12 @@ func mainRouter() http.Handler {
 	
 	// Buckets
 	mux.HandleFunc("/api/buckets", corsMiddleware(listBuckets))
-	
+
+	// ECR Cross-Account Configuration
+	mux.HandleFunc("/api/environments/ecr-sources", corsMiddleware(getECRSources))
+	mux.HandleFunc("/api/environments/configure-cross-account-ecr", corsMiddleware(configureCrossAccountECR))
+	mux.HandleFunc("/api/environments/check-ecr-trust-policy", corsMiddleware(checkECRTrustPolicyDeployedInAWS))
+
 	// WebSocket endpoints (these handle their own CORS)
 	mux.HandleFunc("/ws/logs", streamServiceLogs)
 	mux.HandleFunc("/ws/ssh", startSSHSession)
@@ -157,7 +162,7 @@ func spaHandler() http.HandlerFunc {
 
 	fileServer := http.FileServer(http.FS(fsys))
 	// Print the content of the embedded folder for debugging
-	printEmbeddedFiles(fsys, "Embedded webapp files")
+	// printEmbeddedFiles(fsys, "Embedded webapp files") // Disabled debug output
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
