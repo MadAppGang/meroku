@@ -38,6 +38,9 @@ type applyState struct {
 	// Diagnostic tracking (for associating with errors)
 	diagnostics map[string]*DiagnosticInfo // resource address -> diagnostic
 
+	// Status log tracking (for updating status lines in place)
+	statusLogIndex map[string]int // resource address -> log entry index
+
 	// View state
 	showFullLogs    bool
 	showDetails     bool
@@ -45,6 +48,7 @@ type applyState struct {
 	selectedSection int  // 0=completed, 1=pending, 2=logs
 	selectedError   int  // Index of selected error in completed list
 	animationFrame  int  // For progress bar animation
+	prevOpsCount    int  // Track previous operation count to detect changes
 
 	// Layout heights (calculated once, fixed during apply)
 	headerHeight       int
@@ -88,6 +92,7 @@ type logEntry struct {
 	Message      string
 	Resource     string // optional resource address
 	IsDiagnostic bool   // true if this is a diagnostic error/warning (should be highlighted)
+	IsStatus     bool   // true if this is a status line that can be updated (Starting/Completed/Failed)
 }
 
 // Messages for apply state updates
@@ -121,6 +126,8 @@ type logMsg struct {
 	Message      string
 	Resource     string
 	IsDiagnostic bool
+	IsStatus     bool // true if this is a status line (Starting/Completed/Failed)
+	IsUpdate     bool // true if this should update an existing status line instead of adding new
 }
 
 // TerraformJSONMessage represents the JSON output from terraform apply -json
@@ -218,25 +225,26 @@ func (m *modernPlanModel) calculateApplyLayout(terminalHeight int) {
 	// Thresholds are more conservative to ensure fit on real screens
 	if availableHeight < 18 {
 		// Tiny screen (< 21 total lines) - ultra-compact mode
+		// Show only 1 operation on tiny screens
 		m.applyState.progressHeight = 0       // Hidden
-		m.applyState.currentOpHeight = 6      // 6 lines total on screen -> content height 4 (was 4)
+		m.applyState.currentOpHeight = 5      // 5 lines total -> content 3 (1 title + 1 op = 3 lines)
 		m.applyState.errorSummaryHeight = 0   // Hidden
 		m.applyState.columnsHeight = 5        // 5 lines total on screen -> content height 3
-		// Logs get the rest: availableHeight - (6 + 5) = availableHeight - 11
-		logsScreenHeight := availableHeight - 11
+		// Logs get the rest: availableHeight - (5 + 5) = availableHeight - 10
+		logsScreenHeight := availableHeight - 10
 		if logsScreenHeight < 4 {
 			logsScreenHeight = 4
 		}
 		m.applyState.logsHeight = logsScreenHeight
 	} else if availableHeight < 30 {
 		// Small screen (21-32 total lines) - compact mode
-		// Target layout: currentOp(6), columns(7), logs(rest)
+		// Target layout: currentOp(8), columns(7), logs(rest)
 		m.applyState.progressHeight = 0       // Hidden to save space
-		m.applyState.currentOpHeight = 6      // 6 lines total -> content 4 (was 5)
+		m.applyState.currentOpHeight = 8      // 8 lines total -> content 6 (enough for 2 ops + title)
 		m.applyState.errorSummaryHeight = 0   // Hidden to save space
 		m.applyState.columnsHeight = 7        // 7 lines total -> content 5
-		// Logs: availableHeight - (6 + 7) = availableHeight - 13
-		logsScreenHeight := availableHeight - 13
+		// Logs: availableHeight - (8 + 7) = availableHeight - 15
+		logsScreenHeight := availableHeight - 15
 		if logsScreenHeight < 5 {
 			logsScreenHeight = 5
 		}
@@ -245,11 +253,11 @@ func (m *modernPlanModel) calculateApplyLayout(terminalHeight int) {
 		// Medium screen (32-47 total lines) - balanced mode
 		// This covers the 42-row terminal case
 		m.applyState.progressHeight = 3       // Show progress bar (important feedback!)
-		m.applyState.currentOpHeight = 8      // 8 lines total -> content 6 (was 6)
+		m.applyState.currentOpHeight = 10     // 10 lines total -> content 8 (enough for 3 ops + title)
 		m.applyState.errorSummaryHeight = 0   // Hidden to save space
 		m.applyState.columnsHeight = 8        // 8 lines total -> content 6 (reduced from 10)
-		// Logs: availableHeight - (3 + 8 + 8) = availableHeight - 19
-		logsScreenHeight := availableHeight - 19
+		// Logs: availableHeight - (3 + 10 + 8) = availableHeight - 21
+		logsScreenHeight := availableHeight - 21
 		if logsScreenHeight < 8 {
 			logsScreenHeight = 8
 		}
@@ -257,11 +265,11 @@ func (m *modernPlanModel) calculateApplyLayout(terminalHeight int) {
 	} else {
 		// Large screen (47+ total lines) - ideal mode
 		m.applyState.progressHeight = 3       // 3 lines total -> content 1
-		m.applyState.currentOpHeight = 8      // 8 lines total -> content 6
+		m.applyState.currentOpHeight = 10     // 10 lines total -> content 8 (enough for 3 ops + title)
 		m.applyState.errorSummaryHeight = 4   // 4 lines total -> content 2
 		m.applyState.columnsHeight = 12       // 12 lines total -> content 10
-		// Logs: availableHeight - (3 + 8 + 4 + 12) = availableHeight - 27
-		logsScreenHeight := availableHeight - 27
+		// Logs: availableHeight - (3 + 10 + 4 + 12) = availableHeight - 29
+		logsScreenHeight := availableHeight - 29
 		if logsScreenHeight < 10 {
 			logsScreenHeight = 10
 		}
@@ -278,7 +286,9 @@ func (m *modernPlanModel) initApplyState() {
 		completed:      []completedResource{},
 		currentOps:     make(map[string]*currentOperation),
 		diagnostics:    make(map[string]*DiagnosticInfo),
+		statusLogIndex: make(map[string]int),
 		totalResources: m.stats.totalChanges,
+		prevOpsCount:   0, // Start with 0, will trigger clear on first operation
 	}
 
 	// Calculate initial layout
@@ -330,7 +340,7 @@ func (m *modernPlanModel) startTerraformApply() tea.Cmd {
 		
 		// Log the command being executed if there are replacements
 		if len(m.markedForReplace) > 0 {
-			m.sendLogMessage("info", fmt.Sprintf("🔄 Running terraform apply with %d resource replacements", len(m.markedForReplace)), "")
+			m.sendLogMessage("info", fmt.Sprintf("Running terraform apply with %d resource replacements", len(m.markedForReplace)), "")
 			for resource := range m.markedForReplace {
 				m.sendLogMessage("info", fmt.Sprintf("  • Replacing: %s", resource), "")
 			}
@@ -407,16 +417,16 @@ func (m *modernPlanModel) parseTerraformOutput(stdout interface{}) {
 		case "resource_drift":
 			// Handle resource drift messages
 			if msg.Hook != nil && msg.Hook.Resource != nil {
-				m.sendLogMessage("info", fmt.Sprintf("Resource drift detected: %s", msg.Hook.Resource.Addr), msg.Hook.Resource.Addr)
+				m.sendLogMessage("warning", fmt.Sprintf("Resource drift detected: %s", msg.Hook.Resource.Addr), msg.Hook.Resource.Addr)
 			}
 		case "diagnostic":
 			m.handleDiagnostic(&msg)
 		case "provision_start", "provision_progress", "provision_complete", "provision_errored":
 			m.handleProvisionMessage(&msg)
 		case "refresh_start":
-			m.sendLogMessage("info", "🔄 Starting refresh...", "")
+			m.sendLogMessage("info", "Starting refresh...", "")
 		case "refresh_complete":
-			m.sendLogMessage("info", "✅ Refresh completed", "")
+			m.sendLogMessage("info", "Refresh completed", "")
 		default:
 			
 			// Check if this is an error message by content
@@ -624,7 +634,8 @@ func (m *modernPlanModel) handleApplyStart(msg *TerraformJSONMessage) {
 		Address: addr,
 		Action:  action,
 	})
-	m.sendLogMessage("info", fmt.Sprintf("🔄 Starting %s on %s...", action, addr), addr)
+	// Send status log that can be updated when operation completes
+	m.sendLogMessageWithFlags("info", fmt.Sprintf("Starting %s on %s...", action, addr), addr, false, true, false)
 }
 
 func (m *modernPlanModel) handleApplyProgress(msg *TerraformJSONMessage) {
@@ -692,7 +703,8 @@ func (m *modernPlanModel) handleApplyComplete(msg *TerraformJSONMessage) {
 		idInfo = fmt.Sprintf(" [%s=%s]", msg.Hook.IDKey, msg.Hook.IDValue)
 	}
 
-	m.sendLogMessage("info", fmt.Sprintf("✅ Completed %s on %s (%v)%s", action, addr, duration, idInfo), addr)
+	// Update the existing "Starting" log entry to show completion
+	m.sendLogMessageWithFlags("info", fmt.Sprintf("Completed %s on %s (%v)%s", action, addr, duration, idInfo), addr, false, true, true)
 }
 
 func (m *modernPlanModel) handleApplyError(msg *TerraformJSONMessage) {
@@ -737,7 +749,9 @@ func (m *modernPlanModel) handleApplyError(msg *TerraformJSONMessage) {
 		Duration:     duration,
 	})
 
-	// Don't log here - diagnostic handler will log the full error with details
+	// Update the existing "Starting" log entry to show failure
+	m.sendLogMessageWithFlags("error", fmt.Sprintf("Failed %s on %s (%v)", action, addr, duration), addr, false, true, true)
+	// Diagnostic handler will log additional error details
 }
 
 func (m *modernPlanModel) handleDiagnostic(msg *TerraformJSONMessage) {
@@ -806,41 +820,43 @@ func (m *modernPlanModel) handleDiagnostic(msg *TerraformJSONMessage) {
 	// Log diagnostic summary with special formatting (red background for errors)
 	if msg.Diagnostic.Summary != "" {
 		summaryMsg := fmt.Sprintf("Error: %s", msg.Diagnostic.Summary)
-		m.sendLogMessageWithFlags(level, summaryMsg, msg.Diagnostic.Address, true)
+		m.sendLogMessageWithFlags(level, summaryMsg, msg.Diagnostic.Address, true, false, false)
 	}
 
 	// Log the detail as a separate message if present
 	if msg.Diagnostic.Detail != "" {
-		m.sendLogMessageWithFlags(level, msg.Diagnostic.Detail, msg.Diagnostic.Address, true)
+		m.sendLogMessageWithFlags(level, msg.Diagnostic.Detail, msg.Diagnostic.Address, true, false, false)
 	}
 }
 
 func (m *modernPlanModel) handleProvisionMessage(msg *TerraformJSONMessage) {
 	switch msg.Type {
 	case "provision_start":
-		m.sendLogMessage("info", "🔧 Starting provisioner...", "")
+		m.sendLogMessage("info", "Starting provisioner...", "")
 	case "provision_progress":
 		// Provisioner output is typically in the message field
 		if msg.Message != "" {
 			m.sendLogMessage("info", fmt.Sprintf("  %s", msg.Message), "")
 		}
 	case "provision_complete":
-		m.sendLogMessage("info", "✅ Provisioner completed", "")
+		m.sendLogMessage("info", "Provisioner completed", "")
 	case "provision_errored":
-		m.sendLogMessage("error", "❌ Provisioner failed", "")
+		m.sendLogMessage("error", "Provisioner failed", "")
 	}
 }
 
 func (m *modernPlanModel) sendLogMessage(level, message, resource string) {
-	m.sendLogMessageWithFlags(level, message, resource, false)
+	m.sendLogMessageWithFlags(level, message, resource, false, false, false)
 }
 
-func (m *modernPlanModel) sendLogMessageWithFlags(level, message, resource string, isDiagnostic bool) {
+func (m *modernPlanModel) sendLogMessageWithFlags(level, message, resource string, isDiagnostic, isStatus, isUpdate bool) {
 	m.sendMsg(logMsg{
 		Level:        level,
 		Message:      message,
 		Resource:     resource,
 		IsDiagnostic: isDiagnostic,
+		IsStatus:     isStatus,
+		IsUpdate:     isUpdate,
 	})
 }
 

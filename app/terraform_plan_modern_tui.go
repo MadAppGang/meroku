@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -875,9 +876,14 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// already handles -replace flags properly
 			m.currentView = applyView
 			m.initApplyState()
-			// Set viewport dimensions
+			// Set viewport dimensions using calculated layout
 			m.logViewport.Width = m.width - 4
-			m.logViewport.Height = m.height / 3
+			// logsHeight is screen height, viewport needs content height minus borders and title
+			viewportHeight := m.applyState.logsHeight - 3
+			if viewportHeight < 2 {
+				viewportHeight = 2
+			}
+			m.logViewport.Height = viewportHeight
 			m.updateApplyLogViewport() // Show initial logs
 			return m, m.startTerraformApply()
 			
@@ -1055,9 +1061,15 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.applyState.showFullLogs = !m.applyState.showFullLogs
 				// Update viewport size
 				if m.applyState.showFullLogs {
+					// Full logs mode: expand to 2/3 of screen
 					m.logViewport.Height = m.height * 2 / 3
 				} else {
-					m.logViewport.Height = m.height / 3 // Consistent with window resize
+					// Normal mode: use calculated layout height
+					viewportHeight := m.applyState.logsHeight - 3
+					if viewportHeight < 2 {
+						viewportHeight = 2
+					}
+					m.logViewport.Height = viewportHeight
 				}
 				m.updateApplyLogViewport()
 			}
@@ -1211,14 +1223,48 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case logMsg:
 		if m.applyState != nil {
-			m.applyState.logs = append(m.applyState.logs, logEntry{
-				Timestamp:    time.Now(),
-				Level:        msg.Level,
-				Message:      msg.Message,
-				Resource:     msg.Resource,
-				IsDiagnostic: msg.IsDiagnostic,
-			})
-			
+			// Check if this is an update to an existing status line
+			if msg.IsUpdate && msg.Resource != "" {
+				// Find and update the existing log entry for this resource
+				if logIndex, exists := m.applyState.statusLogIndex[msg.Resource]; exists && logIndex < len(m.applyState.logs) {
+					// Update the existing log entry
+					m.applyState.logs[logIndex] = logEntry{
+						Timestamp:    m.applyState.logs[logIndex].Timestamp, // Keep original timestamp
+						Level:        msg.Level,
+						Message:      msg.Message,
+						Resource:     msg.Resource,
+						IsDiagnostic: msg.IsDiagnostic,
+						IsStatus:     msg.IsStatus,
+					}
+				} else {
+					// Fallback: add new entry if we can't find the original
+					m.applyState.logs = append(m.applyState.logs, logEntry{
+						Timestamp:    time.Now(),
+						Level:        msg.Level,
+						Message:      msg.Message,
+						Resource:     msg.Resource,
+						IsDiagnostic: msg.IsDiagnostic,
+						IsStatus:     msg.IsStatus,
+					})
+				}
+			} else {
+				// Add new log entry
+				newIndex := len(m.applyState.logs)
+				m.applyState.logs = append(m.applyState.logs, logEntry{
+					Timestamp:    time.Now(),
+					Level:        msg.Level,
+					Message:      msg.Message,
+					Resource:     msg.Resource,
+					IsDiagnostic: msg.IsDiagnostic,
+					IsStatus:     msg.IsStatus,
+				})
+
+				// Track the log index if this is a status line with a resource
+				if msg.IsStatus && msg.Resource != "" {
+					m.applyState.statusLogIndex[msg.Resource] = newIndex
+				}
+			}
+
 			if msg.Level == "warning" {
 				m.applyState.warningCount++
 			}
@@ -1231,6 +1277,17 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Update animation frame and continue ticking if still applying
 		if m.applyState != nil && m.applyState.isApplying {
 			m.applyState.animationFrame++
+
+			// Smart clear: Only clear screen when operation count changes
+			// This prevents flickering while still clearing on layout changes
+			currentOpsCount := len(m.applyState.currentOps)
+			if currentOpsCount != m.applyState.prevOpsCount {
+				// Operation count changed - clear screen to prevent ghosting
+				m.applyState.prevOpsCount = currentOpsCount
+				return m, tea.Batch(m.tickCmd(), tea.ClearScreen)
+			}
+
+			// Normal tick without clearing (just animation updates)
 			return m, m.tickCmd()
 		}
 		// Also tick if we're loading AI help (for spinner animation)
@@ -4255,25 +4312,58 @@ func (m *modernPlanModel) renderApplyView() string {
 	if m.applyState == nil {
 		return "Initializing apply..."
 	}
-	
+
+	// DEBUG LOGGING
+	if debugFile, err := os.OpenFile("/tmp/render_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+		timestamp := time.Now().Format("15:04:05.000")
+		fmt.Fprintf(debugFile, "\n[%s] === RENDER START ===\n", timestamp)
+		fmt.Fprintf(debugFile, "  Terminal size: %dx%d\n", m.width, m.height)
+		fmt.Fprintf(debugFile, "  progressHeight: %d\n", m.applyState.progressHeight)
+		fmt.Fprintf(debugFile, "  currentOpHeight: %d\n", m.applyState.currentOpHeight)
+		fmt.Fprintf(debugFile, "  columnsHeight: %d\n", m.applyState.columnsHeight)
+		fmt.Fprintf(debugFile, "  logsHeight: %d\n", m.applyState.logsHeight)
+		fmt.Fprintf(debugFile, "  Current ops count: %d\n", len(m.applyState.currentOps))
+		debugFile.Close()
+	}
+
 	// Calculate elapsed time
 	elapsed := time.Since(m.applyState.startTime)
 	elapsedStr := fmt.Sprintf("%02d:%02d", int(elapsed.Minutes()), int(elapsed.Seconds())%60)
-	
-	// Header
-	header := m.renderApplyHeader(elapsedStr)
 
-	// Build sections conditionally based on calculated heights
+	// BULLETPROOF APPROACH: Build a fixed-height view using lipgloss.Place
+	// This ensures the view always takes up the same space, preventing ghosting
+
+	// Calculate total height available
+	totalHeight := m.height
+	headerHeight := 1
+	footerHeight := 1
+	availableHeight := totalHeight - headerHeight - footerHeight
+
+	// Build content sections
 	var sections []string
 
 	// Overall progress (only if height > 0)
 	if m.applyState.progressHeight > 0 {
-		sections = append(sections, m.renderApplyOverallProgress())
+		progressSection := m.renderApplyOverallProgress()
+		sections = append(sections, progressSection)
+
+		// DEBUG
+		if debugFile, err := os.OpenFile("/tmp/render_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+			fmt.Fprintf(debugFile, "  Progress section lines: %d\n", strings.Count(progressSection, "\n")+1)
+			debugFile.Close()
+		}
 	}
 
 	// Current operation (only if height > 0)
 	if m.applyState.currentOpHeight > 0 {
-		sections = append(sections, m.renderApplyCurrentOperation())
+		currentOpSection := m.renderApplyCurrentOperation()
+		sections = append(sections, currentOpSection)
+
+		// DEBUG
+		if debugFile, err := os.OpenFile("/tmp/render_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+			fmt.Fprintf(debugFile, "  CurrentOp section lines: %d\n", strings.Count(currentOpSection, "\n")+1)
+			debugFile.Close()
+		}
 	}
 
 	// Error summary (only if height > 0)
@@ -4287,19 +4377,26 @@ func (m *modernPlanModel) renderApplyView() string {
 	// Logs (always show, but with calculated height)
 	sections = append(sections, m.renderApplyLogs())
 
-	// Join all visible sections
-	mainContent := lipgloss.JoinVertical(lipgloss.Left, sections...)
-	
-	// Footer
-	footer := m.renderApplyFooter()
-	
-	// Compose everything
-	return lipgloss.JoinVertical(
+	// Join sections
+	mainContent := strings.Join(sections, "\n")
+
+	// Use lipgloss.Place to ensure fixed dimensions and proper clearing
+	placedContent := lipgloss.Place(
+		m.width,
+		availableHeight,
 		lipgloss.Left,
-		header,
+		lipgloss.Top,
 		mainContent,
-		footer,
+		lipgloss.WithWhitespaceChars(" "),
+		lipgloss.WithWhitespaceForeground(lipgloss.Color("0")),
 	)
+
+	// Header and footer
+	header := m.renderApplyHeader(elapsedStr)
+	footer := m.renderApplyFooter()
+
+	// Return fixed-size view
+	return header + "\n" + placedContent + "\n" + footer
 }
 
 func (m *modernPlanModel) renderApplyHeader(elapsed string) string {
@@ -4355,20 +4452,27 @@ func (m *modernPlanModel) renderApplyOverallProgress() string {
 	progressLine := fmt.Sprintf("%s: %s %s (%d%%)",
 		statusText, progressBar, stats, int(percent*100))
 
-	return boxStyle.Width(m.width - 4).Render(progressLine)
+	// DEBUG
+	if debugFile, err := os.OpenFile("/tmp/render_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+		fmt.Fprintf(debugFile, "  [renderApplyOverallProgress] completed=%d, total=%d, percent=%.2f%%\n", completed, m.applyState.totalResources, percent*100)
+		fmt.Fprintf(debugFile, "  [renderApplyOverallProgress] progressLine: %q\n", progressLine)
+		debugFile.Close()
+	}
+
+	// Set explicit content height to 1 (no extra spacing)
+	result := boxStyle.Width(m.width - 4).Height(1).Render(progressLine)
+
+	// DEBUG rendered output
+	if debugFile, err := os.OpenFile("/tmp/render_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+		lineCount := strings.Count(result, "\n") + 1
+		fmt.Fprintf(debugFile, "  [renderApplyOverallProgress] result has %d lines\n", lineCount)
+		debugFile.Close()
+	}
+
+	return result
 }
 
 func (m *modernPlanModel) renderApplyCurrentOperation() string {
-	// Convert screen height to content height (subtract 2 for borders)
-	screenHeight := 8 // default fallback
-	if m.applyState.currentOpHeight > 0 {
-		screenHeight = m.applyState.currentOpHeight
-	}
-	contentHeight := screenHeight - 2
-	if contentHeight < 1 {
-		contentHeight = 1
-	}
-
 	// Thread-safe read of all currentOps
 	m.applyState.mu.Lock()
 	currentOps := make([]*currentOperation, 0, len(m.applyState.currentOps))
@@ -4377,101 +4481,148 @@ func (m *modernPlanModel) renderApplyCurrentOperation() string {
 	}
 	m.applyState.mu.Unlock()
 
+	// DEBUG
+	if debugFile, err := os.OpenFile("/tmp/render_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+		fmt.Fprintf(debugFile, "  [renderApplyCurrentOperation] currentOps count: %d\n", len(currentOps))
+		debugFile.Close()
+	}
+
 	// Sort by resource address to maintain stable display order
 	sort.Slice(currentOps, func(i, j int) bool {
 		return currentOps[i].Address < currentOps[j].Address
 	})
 
-	if len(currentOps) == 0 {
-		// Show empty state with fixed height
-		box := boxStyle.Copy().
-			BorderForeground(dimColor).
-			Width(m.width - 4).
-			Height(contentHeight)
-		return box.Render(titleStyle.Render("Currently Updating") + "\n" + dimStyle.Render("No active operations"))
+	// Use FIXED height from configuration to prevent rendering artifacts
+	// when operation count changes
+	screenHeight := 8 // default fallback
+	if m.applyState.currentOpHeight > 0 {
+		screenHeight = m.applyState.currentOpHeight
+	}
+	contentHeight := screenHeight - 2 // subtract borders
+	if contentHeight < 3 {
+		contentHeight = 3 // absolute minimum
 	}
 
-	// Build content showing up to 3 concurrent operations
+	// DEBUG
+	if debugFile, err := os.OpenFile("/tmp/render_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+		fmt.Fprintf(debugFile, "  [renderApplyCurrentOperation] screenHeight=%d, contentHeight=%d\n", screenHeight, contentHeight)
+		debugFile.Close()
+	}
+
+	// BULLETPROOF: Strictly limit operations to what fits
+	// Calculate EXACTLY how many operations fit in the content height
+	// Formula: (contentHeight - 1 title line) / 2 lines per operation
+	maxDisplay := (contentHeight - 1) / 2
+	if maxDisplay < 1 {
+		maxDisplay = 1 // Minimum 1 operation
+	}
+	if maxDisplay > 3 {
+		maxDisplay = 3 // Maximum 3 operations (UI clarity)
+	}
+
+	// Build content
 	var contentLines []string
-	maxDisplay := 3
-	displayCount := len(currentOps)
-	if displayCount > maxDisplay {
-		displayCount = maxDisplay
-	}
-
-	for i := 0; i < displayCount; i++ {
-		op := currentOps[i]
-		icon := "🔄"
-		actionStyle := dimStyle
-
-		switch op.Action {
-		case "create":
-			actionStyle = createIconStyle
-			icon = "✚"
-		case "update":
-			actionStyle = updateIconStyle
-			icon = "~"
-		case "delete":
-			actionStyle = deleteIconStyle
-			icon = "✗"
+	if len(currentOps) == 0 {
+		contentLines = append(contentLines, dimStyle.Render("No active operations"))
+	} else {
+		// STRICT LIMIT: Only show operations that fit
+		displayCount := len(currentOps)
+		if displayCount > maxDisplay {
+			displayCount = maxDisplay
 		}
 
-		// Always show infinite progress animation (we don't know actual duration)
-		totalBars := 20
-		windowSize := 5
-		// Use animation frame for smooth animation
-		position := (m.applyState.animationFrame / 2) % (totalBars + windowSize)
+		for i := 0; i < displayCount; i++ {
+			op := currentOps[i]
+			icon := "🔄"
+			actionStyle := dimStyle
 
-		bar := ""
-		for j := 0; j < totalBars; j++ {
-			if j >= position-windowSize && j < position {
-				bar += "█"
+			switch op.Action {
+			case "create":
+				actionStyle = createIconStyle
+				icon = "✚"
+			case "update":
+				actionStyle = updateIconStyle
+				icon = "~"
+			case "delete":
+				actionStyle = deleteIconStyle
+				icon = "✗"
+			}
+
+			// Always show infinite progress animation (we don't know actual duration)
+			totalBars := 20
+			windowSize := 5
+			// Use animation frame for smooth animation
+			position := (m.applyState.animationFrame / 2) % (totalBars + windowSize)
+
+			bar := ""
+			for j := 0; j < totalBars; j++ {
+				if j >= position-windowSize && j < position {
+					bar += "█"
+				} else {
+					bar += "░"
+				}
+			}
+
+			// Use elapsed time from Terraform if available, otherwise calculate
+			elapsedDisplay := ""
+			if op.ElapsedTime != "" {
+				elapsedDisplay = fmt.Sprintf(" [%s elapsed]", op.ElapsedTime)
 			} else {
-				bar += "░"
+				elapsed := time.Since(op.StartTime)
+				elapsedDisplay = fmt.Sprintf(" [%ds elapsed]", int(elapsed.Seconds()))
 			}
+
+			opLine := fmt.Sprintf(
+				"%s %s %s\n%s%s",
+				icon,
+				actionStyle.Render(strings.Title(op.Action)+"ing"),
+				op.Address,
+				bar,
+				elapsedDisplay,
+			)
+			contentLines = append(contentLines, opLine)
 		}
 
-		// Use elapsed time from Terraform if available, otherwise calculate
-		elapsedDisplay := ""
-		if op.ElapsedTime != "" {
-			elapsedDisplay = fmt.Sprintf(" [%s elapsed]", op.ElapsedTime)
-		} else {
-			elapsed := time.Since(op.StartTime)
-			elapsedDisplay = fmt.Sprintf(" [%ds elapsed]", int(elapsed.Seconds()))
+		// Add indicator for additional operations if more than 3
+		if len(currentOps) > maxDisplay {
+			remaining := len(currentOps) - maxDisplay
+			additionalLine := dimStyle.Render(fmt.Sprintf("+%d other service%s", remaining, func() string {
+				if remaining > 1 {
+					return "s"
+				}
+				return ""
+			}()))
+			contentLines = append(contentLines, additionalLine)
 		}
-
-		opLine := fmt.Sprintf(
-			"%s %s %s\n%s%s",
-			icon,
-			actionStyle.Render(strings.Title(op.Action)+"ing"),
-			op.Address,
-			bar,
-			elapsedDisplay,
-		)
-		contentLines = append(contentLines, opLine)
 	}
 
-	// Add indicator for additional operations if more than 3
-	if len(currentOps) > maxDisplay {
-		remaining := len(currentOps) - maxDisplay
-		additionalLine := dimStyle.Render(fmt.Sprintf("+%d other service%s", remaining, func() string {
-			if remaining > 1 {
-				return "s"
-			}
-			return ""
-		}()))
-		contentLines = append(contentLines, additionalLine)
-	}
-
+	// Join content lines
 	content := strings.Join(contentLines, "\n")
 
+	// Render box with fixed height and title
 	box := boxStyle.Copy().
 		BorderForeground(primaryColor).
 		Width(m.width - 4).
 		Height(contentHeight)
 
 	title := titleStyle.Render(fmt.Sprintf("Currently Updating (%d)", len(currentOps)))
-	return box.Render(title + "\n" + content)
+	result := box.Render(title + "\n" + content)
+
+	// DEBUG final output
+	if debugFile, err := os.OpenFile("/tmp/render_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+		lineCount := strings.Count(result, "\n") + 1
+		fmt.Fprintf(debugFile, "  [renderApplyCurrentOperation] result has %d lines (expected ~%d)\n", lineCount, contentHeight+2)
+		// Log first few lines to see the actual content
+		lines := strings.Split(result, "\n")
+		for i, line := range lines {
+			if i < 5 {
+				fmt.Fprintf(debugFile, "    Line %d: %q\n", i, line)
+			}
+		}
+		debugFile.Close()
+	}
+
+	return result
 }
 
 func (m *modernPlanModel) renderApplyColumns() string {
@@ -4725,8 +4876,14 @@ func (m *modernPlanModel) renderApplyErrorSummary() string {
 func (m *modernPlanModel) renderApplyLogs() string {
 	title := titleStyle.Render("Logs")
 
-	// Apply highlight if selected - don't set fixed height, let it auto-size to content
-	box := boxStyle.Width(m.width - 4)
+	// Calculate content height (logsHeight is screen height, subtract 2 for borders)
+	contentHeight := m.applyState.logsHeight - 2
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
+
+	// Apply highlight if selected and set fixed height to prevent empty space
+	box := boxStyle.Width(m.width - 4).Height(contentHeight)
 	if m.applyState != nil && m.applyState.selectedSection == 2 {
 		box = box.BorderForeground(primaryColor)
 	}
@@ -4798,27 +4955,44 @@ func (m *modernPlanModel) updateApplyLogViewport() {
 		var icon string
 		var style lipgloss.Style
 		var levelStr string // Keep as plain text, don't pre-render
-		switch log.Level {
-		case "error":
+
+		// Determine icon based on message content for better operation tracking
+		if strings.Contains(log.Message, "Starting") || strings.Contains(log.Message, "starting") {
+			icon = "🔄"
+			style = updateIconStyle
+			levelStr = "[INFO] "
+		} else if strings.Contains(log.Message, "Completed") || strings.Contains(log.Message, "completed") || strings.Contains(log.Message, "succeeded") {
+			icon = "✅"
+			style = lipgloss.NewStyle().Foreground(lipgloss.Color("#10b981")) // green
+			levelStr = "[INFO] "
+		} else if strings.Contains(log.Message, "Failed") || strings.Contains(log.Message, "failed") {
 			icon = "❌"
 			style = deleteIconStyle.Bold(true)
 			levelStr = "[ERROR]"
-		case "warning":
-			icon = "⚠️"
-			style = updateIconStyle
-			levelStr = "[WARN] "
-		case "info":
-			icon = "ℹ️"
-			style = dimStyle
-			levelStr = "[INFO] "
-		case "debug":
-			icon = "🔍"
-			style = dimStyle.Faint(true)
-			levelStr = "[DEBUG]"
-		default:
-			icon = "•"
-			style = dimStyle
-			levelStr = "[INFO] "
+		} else {
+			// Fall back to log level for other messages
+			switch log.Level {
+			case "error":
+				icon = "❌"
+				style = deleteIconStyle.Bold(true)
+				levelStr = "[ERROR]"
+			case "warning":
+				icon = "⚠️"
+				style = updateIconStyle
+				levelStr = "[WARN] "
+			case "info":
+				icon = "ℹ️"
+				style = dimStyle
+				levelStr = "[INFO] "
+			case "debug":
+				icon = "🔍"
+				style = dimStyle.Faint(true)
+				levelStr = "[DEBUG]"
+			default:
+				icon = "•"
+				style = dimStyle
+				levelStr = "[INFO] "
+			}
 		}
 
 		// Format the log line prefix (timestamp, level, icon) - plain text only
@@ -5134,37 +5308,57 @@ func launchAIAgentForApplyErrors(m *modernPlanModel) {
 		return
 	}
 
-	// Collect error messages
+	// Collect detailed error information as structured data
+	type ErrorInfo struct {
+		Resource     string `json:"resource"`
+		Action       string `json:"action"`
+		Error        string `json:"error"`
+		ErrorSummary string `json:"error_summary,omitempty"`
+		ErrorDetail  string `json:"error_detail,omitempty"`
+		Timestamp    string `json:"timestamp"`
+	}
+
+	var errors []ErrorInfo
 	var errorMessages []string
+
 	for _, res := range m.applyState.completed {
 		if !res.Success && res.Error != "" {
-			errorMessages = append(errorMessages, fmt.Sprintf("Resource: %s\nAction: %s\nError: %s",
-				res.Address, res.Action, res.Error))
+			errorInfo := ErrorInfo{
+				Resource:     res.Address,
+				Action:       res.Action,
+				Error:        res.Error,
+				ErrorSummary: res.ErrorSummary,
+				ErrorDetail:  res.ErrorDetail,
+				Timestamp:    res.Timestamp.Format("2006-01-02 15:04:05"),
+			}
+			errors = append(errors, errorInfo)
+
+			// Build human-readable error message
+			errorMsg := fmt.Sprintf("═══════════════════════════════════════════════════════════════════\nRESOURCE: %s\nACTION: %s\nTIMESTAMP: %s\n\nERROR:\n%s",
+				res.Address, res.Action, errorInfo.Timestamp, res.Error)
+
+			if res.ErrorSummary != "" {
+				errorMsg += fmt.Sprintf("\n\nERROR SUMMARY:\n%s", res.ErrorSummary)
+			}
+
+			if res.ErrorDetail != "" {
+				errorMsg += fmt.Sprintf("\n\nERROR DETAIL:\n%s", res.ErrorDetail)
+			}
+
+			errorMessages = append(errorMessages, errorMsg)
 		}
 	}
 
-	if len(errorMessages) == 0 {
+	if len(errors) == 0 {
 		fmt.Println("No errors found to troubleshoot.")
 		return
 	}
 
+	// Convert errors to JSON for structured data
+	errorsJSON, _ := json.MarshalIndent(errors, "", "  ")
+
 	// Get current directory
 	workingDir, _ := os.Getwd()
-
-	// Get AWS profile from environment or use default
-	awsProfile := os.Getenv("AWS_PROFILE")
-	if awsProfile == "" {
-		awsProfile = "default"
-	}
-
-	// Get region from environment variable or use default
-	awsRegion := os.Getenv("AWS_REGION")
-	if awsRegion == "" {
-		awsRegion = os.Getenv("AWS_DEFAULT_REGION")
-	}
-	if awsRegion == "" {
-		awsRegion = "us-east-1" // fallback
-	}
 
 	// Extract environment from working directory (e.g., env/dev)
 	envName := "unknown"
@@ -5178,6 +5372,54 @@ func launchAIAgentForApplyErrors(m *modernPlanModel) {
 		}
 	}
 
+	// Load environment config to get AWS profile and region from YAML
+	var awsProfile, awsRegion string
+
+	// Try to load from YAML config file
+	if envName != "unknown" {
+		// Navigate to project root (two levels up from env/envName)
+		projectRoot := filepath.Dir(filepath.Dir(workingDir))
+		envConfigPath := filepath.Join(projectRoot, envName+".yaml")
+
+		if _, err := os.Stat(envConfigPath); err == nil {
+			// Change to project root temporarily to load config
+			originalDir, _ := os.Getwd()
+			os.Chdir(projectRoot)
+
+			if envConfig, err := loadEnv(envName); err == nil {
+				// Use region from YAML config (PRIORITY)
+				if envConfig.Region != "" {
+					awsRegion = envConfig.Region
+				}
+				// Use AWS profile from YAML config (PRIORITY)
+				if envConfig.AWSProfile != "" {
+					awsProfile = envConfig.AWSProfile
+				}
+			}
+
+			// Restore original directory
+			os.Chdir(originalDir)
+		}
+	}
+
+	// Fallback to environment variables if not found in YAML
+	if awsProfile == "" {
+		awsProfile = os.Getenv("AWS_PROFILE")
+		if awsProfile == "" {
+			awsProfile = "default"
+		}
+	}
+
+	if awsRegion == "" {
+		awsRegion = os.Getenv("AWS_REGION")
+		if awsRegion == "" {
+			awsRegion = os.Getenv("AWS_DEFAULT_REGION")
+		}
+		if awsRegion == "" {
+			awsRegion = "us-east-1" // ultimate fallback
+		}
+	}
+
 	// Build AgentContext for the autonomous agent
 	agentContext := &AgentContext{
 		Operation:      "terraform_apply",
@@ -5187,7 +5429,12 @@ func launchAIAgentForApplyErrors(m *modernPlanModel) {
 		WorkingDir:     workingDir,
 		InitialError:   strings.Join(errorMessages, "\n\n"),
 		ResourceErrors: errorMessages,
-		AdditionalInfo: make(map[string]string),
+		AdditionalInfo: map[string]string{
+			"errors_json":      string(errorsJSON),
+			"error_count":      fmt.Sprintf("%d", len(errors)),
+			"terraform_phase":  "apply",
+			"has_diagnostics":  fmt.Sprintf("%v", errors[0].ErrorSummary != "" || errors[0].ErrorDetail != ""),
+		},
 	}
 
 	// Launch the AI Agent TUI
