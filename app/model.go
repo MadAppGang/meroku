@@ -25,6 +25,8 @@ type Env struct {
 	ECRStrategy      string `yaml:"ecr_strategy,omitempty"`       // "local" or "cross_account"
 	ECRAccountID     string `yaml:"ecr_account_id,omitempty"`     // For cross-account ECR access
 	ECRAccountRegion string `yaml:"ecr_account_region,omitempty"` // For cross-account ECR access
+	// ECR Trusted Accounts (Schema v8)
+	ECRTrustedAccounts []ECRTrustedAccount `yaml:"ecr_trusted_accounts,omitempty"`
 	// Services
 	Workload            Workload             `yaml:"workload"`
 	Domain              Domain               `yaml:"domain"`
@@ -217,6 +219,12 @@ type DelegatedZone struct {
 	Status     string   `yaml:"status"`
 }
 
+type ECRTrustedAccount struct {
+	AccountID string `yaml:"account_id"`
+	Env       string `yaml:"env"`
+	Region    string `yaml:"region"`
+}
+
 // create function which generate random string
 func generateRandomString(length int) string {
 	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
@@ -245,9 +253,10 @@ func createEnv(name, env string) Env {
 		VPCCIDR:       "10.0.0.0/16", // Optional, VPC module has this default
 		// ECR Configuration (schema v7)
 		// Default to local ECR for new projects
-		ECRStrategy:      "local",
-		ECRAccountID:     "",
-		ECRAccountRegion: "",
+		ECRStrategy:         "local",
+		ECRAccountID:        "",
+		ECRAccountRegion:    "",
+		ECRTrustedAccounts:  []ECRTrustedAccount{},
 		Workload: Workload{
 			SlackWebhook:               "",
 			BucketPostfix:              generateRandomString(5),

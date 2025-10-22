@@ -71,6 +71,36 @@ The infrastructure supports two ingress patterns:
 
 Note: Currently, both resources are created regardless of the setting, but only one is used for traffic routing.
 
+## AI Agent
+
+This infrastructure includes an **autonomous AI agent** that can investigate and fix deployment errors automatically using the ReAct pattern (Reasoning + Acting).
+
+### When to Use
+
+1. **Automatic**: After terraform apply/destroy failures, you'll be prompted to run the agent
+2. **Manual**: Select "🤖 AI Agent - Troubleshoot Issues" from the main menu
+
+### How It Works
+
+The agent uses an iterative debugging approach:
+- **Think**: Analyzes the situation and decides what to do next
+- **Act**: Executes commands (AWS CLI, file edits, terraform)
+- **Observe**: Reviews results and adapts strategy
+- **Repeat**: Continues until problem is solved or max iterations reached
+
+### Documentation
+
+- [AI Agent Architecture](./ai_docs/AI_AGENT_ARCHITECTURE.md) - Technical design and implementation
+- [AI Agent User Guide](./ai_docs/AI_AGENT_USER_GUIDE.md) - How to use the agent effectively
+
+### Requirements
+
+```bash
+export ANTHROPIC_API_KEY=your_key_here
+```
+
+Get your API key from: https://console.anthropic.com/settings/keys
+
 ## Memories
 
 - Always keep all AI-related documentation, created by AI or intended to be consumed by AI, in the @ai_docs/ folder
@@ -233,6 +263,115 @@ For comprehensive DNS management details, refer to:
 - [DNS Architecture Design](./docs/DNS_ARCHITECTURE.md) - System design and architecture documentation
 - [DNS Management Instructions](./DNS_MANAGEMENT_INSTRUCTIONS.md) - Step-by-step operational guide
 
+## Cross-Account ECR Configuration
+
+The infrastructure supports flexible ECR strategies for container image management with intelligent cross-account access.
+
+### ECR Strategies
+
+1. **Local Strategy** (`ecr_strategy: local`):
+   - Creates ECR repositories in the same AWS account
+   - Each environment manages its own container registry
+   - Best for isolated environments or single-account setups
+
+2. **Cross-Account Strategy** (`ecr_strategy: cross_account`):
+   - Pulls container images from another AWS account's ECR
+   - Ideal for dev→staging→prod promotion pipelines
+   - Reduces image duplication and build costs
+
+### Automated Cross-Account Setup
+
+The web UI provides an intelligent dropdown for configuring cross-account ECR access:
+
+1. **Automatic Discovery**: Lists all environments with local ECR repositories
+2. **Deployment Status**: Shows whether trust policies are deployed to AWS
+3. **Bidirectional Updates**: Automatically updates both source and target YAML files
+4. **Trust Policy Management**: Creates ECR repository policies for cross-account pull access
+
+### Configuration Workflow
+
+#### Via Web UI (Recommended)
+
+1. Navigate to the ECR configuration node in the web interface
+2. Select "Use Cross-Account ECR" mode
+3. Choose a source environment from the dropdown
+4. The system will automatically:
+   - Update the target environment to use cross-account mode
+   - Add the target to the source's trusted accounts list
+   - Create timestamped backups of both YAML files
+5. Follow the displayed next steps to deploy
+
+#### Manual Configuration
+
+In `project/staging.yaml` (target environment):
+```yaml
+schema_version: 8
+ecr_strategy: cross_account
+ecr_account_id: "123456789012"  # Source account ID
+ecr_account_region: us-east-1   # Source region
+```
+
+In `project/dev.yaml` (source environment):
+```yaml
+schema_version: 8
+ecr_strategy: local
+ecr_trusted_accounts:
+  - account_id: "987654321098"  # Target account ID
+    env: staging
+    region: us-east-1
+```
+
+### Deployment Status Indicators
+
+The web UI shows real-time deployment status:
+
+- **Warning** (Yellow): Trust policy configured but not deployed to AWS
+  - Action: Run `make infra-apply env=<source>`
+- **Success** (Green): Trust policy deployed and cross-account access ready
+- **Info** (Blue): Configuration changes will update both YAML files
+
+### ECR Trust Policies
+
+When `ecr_trusted_accounts` is configured, Terraform creates repository policies allowing pull access:
+
+```hcl
+# Automatically generated in modules/workloads/ecr.tf
+resource "aws_ecr_repository_policy" "backend_trusted" {
+  # Allows same-account full access
+  # Allows cross-account pull-only access for trusted accounts
+}
+```
+
+### CI/CD with Cross-Account ECR
+
+The recommended deployment pattern uses EventBridge for event-driven deployments:
+
+1. **Dev environment**: Builds and pushes images to local ECR
+2. **EventBridge event**: Triggers deployment pipeline
+3. **Staging/Prod**: Pulls images from dev account's ECR
+4. **Deployment**: ECS services use cross-account images
+
+See [CI/CD EventBridge Pattern](./docs/CI_CD_EVENTBRIDGE_PATTERN.md) for detailed implementation.
+
+### Security Considerations
+
+- Trust policies grant **pull-only access** (no push permissions)
+- Access is scoped to specific AWS accounts and regions
+- IAM permissions follow least-privilege principle
+- All configuration changes create timestamped backups
+
+### Troubleshooting
+
+**Issue**: Cross-account ECR pull fails
+- Verify trust policy is deployed: Check web UI deployment status
+- Confirm account IDs match: Compare source and target YAML files
+- Check ECS task role: Ensure it has ECR pull permissions
+
+**Issue**: No ECR sources in dropdown
+- Verify at least one environment has `ecr_strategy: local`
+- Ensure environments are configured with `account_id` and `region`
+- Check that YAML files are in the project directory
+
 ## YAML Schema Migration System
 
 The infrastructure includes an automatic migration system for YAML configuration files to ensure backward compatibility as the schema evolves.
@@ -259,11 +398,14 @@ The infrastructure includes an automatic migration system for YAML configuration
 
 ### Current Schema Version
 
-**Version 5** - Includes:
+**Version 8** - Includes:
 - Aurora Serverless v2 support (v2)
 - DNS management fields (v3)
 - Backend scaling configuration (v4)
 - Account ID and AWS profile tracking (v5)
+- Custom VPC configuration (v6)
+- ECR strategy configuration (v7)
+- ECR trusted accounts for cross-account access (v8)
 
 ### How It Works
 

@@ -17,7 +17,8 @@ import (
 // 5: Added ALB configuration
 // 6: Added custom VPC configuration
 // 7: Added ECR strategy configuration (ecr_strategy, ecr_account_id, ecr_account_region)
-const CurrentSchemaVersion = 7
+// 8: Added ECR trusted accounts for cross-account access (ecr_trusted_accounts)
+const CurrentSchemaVersion = 8
 
 // EnvWithVersion extends Env with a schema version field
 type EnvWithVersion struct {
@@ -63,6 +64,11 @@ var AllMigrations = []Migration{
 		Version:     7,
 		Description: "Add ECR strategy configuration",
 		Apply:       migrateToV7,
+	},
+	{
+		Version:     8,
+		Description: "Add ECR trusted accounts for cross-account access",
+		Apply:       migrateToV8,
 	},
 }
 
@@ -321,6 +327,19 @@ func migrateToV7(data map[string]interface{}) error {
 	}
 	if _, exists := data["ecr_account_region"]; !exists {
 		data["ecr_account_region"] = nil
+	}
+
+	return nil
+}
+
+// migrateToV8 adds ECR trusted accounts for cross-account access
+func migrateToV8(data map[string]interface{}) error {
+	fmt.Println("  → Migrating to v8: Adding ECR trusted accounts configuration")
+
+	// Add ecr_trusted_accounts field if it doesn't exist
+	if _, exists := data["ecr_trusted_accounts"]; !exists {
+		data["ecr_trusted_accounts"] = []interface{}{}
+		fmt.Println("    ℹ️  Initialized empty ecr_trusted_accounts array")
 	}
 
 	return nil

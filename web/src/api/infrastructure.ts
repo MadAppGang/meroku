@@ -92,6 +92,46 @@ export interface TaskInfo {
 	enabled: boolean;
 }
 
+// ECR Cross-Account interfaces
+export interface ECRTrustedAccount {
+	account_id: string;
+	env: string;
+	region: string;
+}
+
+export interface ECRSource {
+	name: string;
+	account_id: string;
+	region: string;
+	ecr_strategy: string;
+	trusted_accounts: ECRTrustedAccount[];
+}
+
+export interface ECRSourcesResponse {
+	sources: ECRSource[];
+}
+
+export interface ConfigureCrossAccountECRRequest {
+	source_env: string;
+	target_env: string;
+}
+
+export interface ConfigureCrossAccountECRResponse {
+	success: boolean;
+	modified_files: string[];
+	source_env: {
+		name: string;
+		account_id: string;
+		region: string;
+	};
+	target_env: {
+		name: string;
+		account_id: string;
+		region: string;
+	};
+	next_steps: string[];
+}
+
 // Autoscaling interfaces
 export interface ServiceAutoscalingInfo {
 	serviceName: string;
@@ -1009,6 +1049,68 @@ export const infrastructureApi = {
 		if (!response.ok) {
 			const error: ErrorResponse = await response.json();
 			throw new Error(error.error || "Failed to fetch pricing data");
+		}
+		return response.json();
+	},
+
+	// ECR Cross-Account APIs
+	async getECRSources(): Promise<ECRSourcesResponse> {
+		const response = await fetch(
+			`${API_BASE_URL}/api/environments/ecr-sources`,
+		);
+		if (!response.ok) {
+			const error: ErrorResponse = await response.json();
+			throw new Error(error.error || "Failed to fetch ECR sources");
+		}
+		return response.json();
+	},
+
+	async configureCrossAccountECR(
+		request: ConfigureCrossAccountECRRequest,
+	): Promise<ConfigureCrossAccountECRResponse> {
+		const response = await fetch(
+			`${API_BASE_URL}/api/environments/configure-cross-account-ecr`,
+			{
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify(request),
+			},
+		);
+		if (!response.ok) {
+			const error: ErrorResponse = await response.json();
+			throw new Error(error.error || "Failed to configure cross-account ECR");
+		}
+		return response.json();
+	},
+
+	async checkECRTrustPolicy(
+		sourceEnv: string,
+		targetAccount: string,
+	): Promise<{
+		deployed: boolean;
+		has_trust_for: boolean;
+		repository: string;
+		target_account?: string;
+		reason?: string;
+	}> {
+		const response = await fetch(
+			`${API_BASE_URL}/api/environments/check-ecr-trust-policy`,
+			{
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					source_env: sourceEnv,
+					target_account: targetAccount,
+				}),
+			},
+		);
+		if (!response.ok) {
+			const error: ErrorResponse = await response.json();
+			throw new Error(error.error || "Failed to check ECR trust policy");
 		}
 		return response.json();
 	},

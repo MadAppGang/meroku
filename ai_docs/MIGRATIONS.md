@@ -21,8 +21,11 @@ The meroku application includes a comprehensive YAML schema migration system tha
 | 3 | DNS Management | Added DNS fields: `zone_id`, `root_zone_id`, `is_dns_root`, `delegation_role_arn`, etc. |
 | 4 | Backend Scaling | Added backend scaling config: `backend_desired_count`, `backend_autoscaling_*`, `backend_cpu`, `backend_memory` |
 | 5 | Account Tracking | Added `account_id` and `aws_profile` for better AWS account management |
+| 6 | Custom VPC | Added `use_default_vpc` and `vpc_cidr`; Removed deprecated VPC fields |
+| 7 | ECR Strategy | Added `ecr_strategy`, `ecr_account_id`, `ecr_account_region` for flexible ECR configuration |
+| 8 | ECR Trusted Accounts | Added `ecr_trusted_accounts` array for cross-account ECR pull access |
 
-Current version: **v5**
+Current version: **v8**
 
 ## How It Works
 
@@ -180,6 +183,33 @@ account_id: ""          # Added
 aws_profile: ""         # Added
 schema_version: 5       # Updated
 ```
+
+### Example: Adding ECR Trusted Accounts (v7 → v8)
+
+Before (v7):
+```yaml
+project: myproject
+env: dev
+ecr_strategy: local
+ecr_account_id: ""
+ecr_account_region: ""
+schema_version: 7
+```
+
+After (v8):
+```yaml
+project: myproject
+env: dev
+ecr_strategy: local
+ecr_account_id: ""
+ecr_account_region: ""
+ecr_trusted_accounts: []    # Added - empty array for new field
+schema_version: 8           # Updated
+```
+
+**Note**: The `ecr_trusted_accounts` field enables bidirectional YAML updates when configuring cross-account ECR access. When a target environment is configured to pull from a source environment, both YAML files are automatically updated:
+- **Target**: Gets `ecr_strategy: cross_account` with source account details
+- **Source**: Adds target to `ecr_trusted_accounts` array for trust policy generation
 
 ## Troubleshooting
 

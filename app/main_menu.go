@@ -31,6 +31,7 @@ func mainMenu() string {
 		huh.NewOption("✨ Create new environment", "create"),
 		huh.NewOption("🔄 Change Environment", "change-env"),
 		huh.NewOption("💥 Nuke/Destroy Environment", "nuke"),
+		huh.NewOption("🤖 AI Agent - Troubleshoot Issues", "ai-agent"),
 		huh.NewOption("🔍 Check for updates", "update"),
 		huh.NewOption("👋 Exit", "exit"),
 	}
@@ -72,6 +73,10 @@ func mainMenu() string {
 		if err != nil {
 			fmt.Printf("Error selecting environment: %v\n", err)
 		}
+		return mainMenu()
+	case action == "ai-agent":
+		// Run AI agent for troubleshooting
+		offerAIAgentFromMenu()
 		return mainMenu()
 	case action == "exit":
 		os.Exit(0)

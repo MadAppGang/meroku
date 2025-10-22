@@ -9,10 +9,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
+	"github.com/aws/aws-sdk-go-v2/service/ecr"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	"github.com/aws/aws-sdk-go-v2/service/ecs/types"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -715,5 +716,379 @@ func getECSServicesInfo(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(servicesInfo)
 }
 
+// ECR Sources and Configuration structures
+type ECRSource struct {
+	Name                 string              `json:"name"`
+	AccountID            string              `json:"account_id"`
+	Region               string              `json:"region"`
+	ECRStrategy          string              `json:"ecr_strategy"`
+	TrustedAccounts      []ECRTrustedAccount `json:"trusted_accounts"`
+}
 
+type ECRSourcesResponse struct {
+	Sources []ECRSource `json:"sources"`
+}
+
+type ConfigureCrossAccountECRRequest struct {
+	SourceEnv string `json:"source_env"`
+	TargetEnv string `json:"target_env"`
+}
+
+type ConfigureCrossAccountECRResponse struct {
+	Success       bool     `json:"success"`
+	ModifiedFiles []string `json:"modified_files"`
+	SourceEnv     struct {
+		Name      string `json:"name"`
+		AccountID string `json:"account_id"`
+		Region    string `json:"region"`
+	} `json:"source_env"`
+	TargetEnv struct {
+		Name      string `json:"name"`
+		AccountID string `json:"account_id"`
+		Region    string `json:"region"`
+	} `json:"target_env"`
+	NextSteps []string `json:"next_steps"`
+}
+
+// isValidAWSAccountID validates that an AWS account ID is a 12-digit number
+func isValidAWSAccountID(accountID string) bool {
+	if len(accountID) != 12 {
+		return false
+	}
+	for _, ch := range accountID {
+		if ch < '0' || ch > '9' {
+			return false
+		}
+	}
+	return true
+}
+// getECRSources returns all environments with local ECR strategy
+func getECRSources(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var sources []ECRSource
+
+	// Read all .yaml files in the current directory
+	files, err := os.ReadDir(".")
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	for _, file := range files {
+		if !file.IsDir() && strings.HasSuffix(file.Name(), ".yaml") {
+			envName := strings.TrimSuffix(file.Name(), ".yaml")
+
+			// Load the environment config
+			envConfig, err := loadEnv(envName)
+			if err != nil {
+				continue // Skip files that can't be loaded
+			}
+
+			// Only include environments with local ECR strategy
+			if envConfig.ECRStrategy == "local" && envConfig.AccountID != "" {
+				source := ECRSource{
+					Name:            envName,
+					AccountID:       envConfig.AccountID,
+					Region:          envConfig.Region,
+					ECRStrategy:     envConfig.ECRStrategy,
+					TrustedAccounts: envConfig.ECRTrustedAccounts,
+				}
+
+				sources = append(sources, source)
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(ECRSourcesResponse{Sources: sources})
+}
+
+// configureCrossAccountECR configures cross-account ECR access between two environments
+func configureCrossAccountECR(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "failed to read request body"})
+		return
+	}
+	defer r.Body.Close()
+
+	var req ConfigureCrossAccountECRRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "invalid JSON"})
+		return
+	}
+
+	// Validate inputs
+	if req.SourceEnv == "" || req.TargetEnv == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "source_env and target_env are required"})
+		return
+	}
+
+	if req.SourceEnv == req.TargetEnv {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "source and target environments must be different"})
+		return
+	}
+
+	// Load source environment
+	sourceEnv, err := loadEnv(req.SourceEnv)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: fmt.Sprintf("source environment not found: %v", err)})
+		return
+	}
+
+	// Validate source has local ECR strategy
+	if sourceEnv.ECRStrategy != "local" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "source environment must have ecr_strategy: local"})
+		return
+	}
+
+	if sourceEnv.AccountID == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "source environment must have account_id configured"})
+		return
+	}
+
+	// Validate source account ID format
+	if !isValidAWSAccountID(sourceEnv.AccountID) {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: fmt.Sprintf("invalid source account ID format (must be 12 digits): %s", sourceEnv.AccountID)})
+		return
+	}
+
+	// Load target environment
+	targetEnv, err := loadEnv(req.TargetEnv)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: fmt.Sprintf("target environment not found: %v", err)})
+		return
+	}
+
+	if targetEnv.AccountID == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "target environment must have account_id configured"})
+		return
+	}
+
+	// Validate target account ID format
+	if !isValidAWSAccountID(targetEnv.AccountID) {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: fmt.Sprintf("invalid target account ID format (must be 12 digits): %s", targetEnv.AccountID)})
+		return
+	}
+
+	// Update target environment: set to cross_account mode
+	targetEnv.ECRStrategy = "cross_account"
+	targetEnv.ECRAccountID = sourceEnv.AccountID
+	targetEnv.ECRAccountRegion = sourceEnv.Region
+
+	// Update source environment: add target to trusted accounts (if not already present)
+	trustedAccount := ECRTrustedAccount{
+		AccountID: targetEnv.AccountID,
+		Env:       targetEnv.Env,
+		Region:    targetEnv.Region,
+	}
+
+	// Check for duplicates
+	isDuplicate := false
+	for _, ta := range sourceEnv.ECRTrustedAccounts {
+		if ta.AccountID == trustedAccount.AccountID && ta.Env == trustedAccount.Env {
+			isDuplicate = true
+			break
+		}
+	}
+
+	if !isDuplicate {
+		sourceEnv.ECRTrustedAccounts = append(sourceEnv.ECRTrustedAccounts, trustedAccount)
+	}
+
+	// Save both files
+	if err := saveEnvToFile(sourceEnv, fmt.Sprintf("%s.yaml", req.SourceEnv)); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: fmt.Sprintf("failed to save source environment: %v", err)})
+		return
+	}
+
+	if err := saveEnvToFile(targetEnv, fmt.Sprintf("%s.yaml", req.TargetEnv)); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: fmt.Sprintf("failed to save target environment: %v", err)})
+		return
+	}
+
+	// Build response
+	response := ConfigureCrossAccountECRResponse{
+		Success: true,
+		ModifiedFiles: []string{
+			fmt.Sprintf("%s.yaml", req.SourceEnv),
+			fmt.Sprintf("%s.yaml", req.TargetEnv),
+		},
+		NextSteps: []string{
+			fmt.Sprintf("1. Generate Terraform configuration: make infra-gen-%s", req.SourceEnv),
+			fmt.Sprintf("2. Deploy source environment: make infra-apply env=%s", req.SourceEnv),
+			fmt.Sprintf("3. Generate Terraform configuration: make infra-gen-%s", req.TargetEnv),
+			fmt.Sprintf("4. Deploy target environment: make infra-apply env=%s", req.TargetEnv),
+			"5. Verify cross-account access is working",
+		},
+	}
+
+	response.SourceEnv.Name = sourceEnv.Env
+	response.SourceEnv.AccountID = sourceEnv.AccountID
+	response.SourceEnv.Region = sourceEnv.Region
+
+	response.TargetEnv.Name = targetEnv.Env
+	response.TargetEnv.AccountID = targetEnv.AccountID
+	response.TargetEnv.Region = targetEnv.Region
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// checkECRTrustPolicyDeployedInAWS checks if ECR repository policy is actually deployed in AWS
+// by making real AWS API call to GetRepositoryPolicy
+func checkECRTrustPolicyDeployedInAWS(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		SourceEnv     string `json:"source_env"`      // Environment with ECR repository (e.g., "dev")
+		TargetAccount string `json:"target_account"`  // Account ID to check trust for (e.g., "234567890123")
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
+		return
+	}
+	defer r.Body.Close()
+
+	// Validate inputs
+	if req.SourceEnv == "" || req.TargetAccount == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "source_env and target_account are required"})
+		return
+	}
+
+	// Validate target account ID format
+	if !isValidAWSAccountID(req.TargetAccount) {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: fmt.Sprintf("invalid target account ID format: %s", req.TargetAccount)})
+		return
+	}
+
+	// Load source environment
+	sourceEnv, err := loadEnv(req.SourceEnv)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: fmt.Sprintf("source environment not found: %v", err)})
+		return
+	}
+
+	// Check if source has local ECR
+	if sourceEnv.ECRStrategy != "local" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "source environment does not have local ECR strategy"})
+		return
+	}
+
+	// Create AWS config with the source environment's profile
+	ctx := context.Background()
+	var cfg aws.Config
+
+	if sourceEnv.AWSProfile != "" {
+		cfg, err = config.LoadDefaultConfig(ctx,
+			config.WithRegion(sourceEnv.Region),
+			config.WithSharedConfigProfile(sourceEnv.AWSProfile),
+		)
+	} else {
+		cfg, err = config.LoadDefaultConfig(ctx,
+			config.WithRegion(sourceEnv.Region),
+		)
+	}
+
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: fmt.Sprintf("failed to load AWS config: %v", err)})
+		return
+	}
+
+	// Create ECR client
+	ecrClient := ecr.NewFromConfig(cfg)
+
+	// Get repository policy for backend repository
+	repositoryName := fmt.Sprintf("%s_backend", sourceEnv.Project)
+	policyOutput, err := ecrClient.GetRepositoryPolicy(ctx, &ecr.GetRepositoryPolicyInput{
+		RepositoryName: aws.String(repositoryName),
+	})
+
+	if err != nil {
+		// Repository policy might not exist yet (not deployed)
+		if strings.Contains(err.Error(), "RepositoryPolicyNotFoundException") {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"deployed":            false,
+				"has_trust_for":       false,
+				"repository":          repositoryName,
+				"reason":              "ECR repository policy not found in AWS",
+			})
+			return
+		}
+
+		// Repository itself might not exist
+		if strings.Contains(err.Error(), "RepositoryNotFoundException") {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"deployed":            false,
+				"has_trust_for":       false,
+				"repository":          repositoryName,
+				"reason":              "ECR repository not found in AWS",
+			})
+			return
+		}
+
+		// Other AWS errors
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: fmt.Sprintf("AWS API error: %v", err)})
+		return
+	}
+
+	// Policy exists, now check if target account is in the trusted principals
+	hasTrust := false
+	if policyOutput.PolicyText != nil {
+		policyText := *policyOutput.PolicyText
+
+		// Check if target account ARN is in the policy
+		// The policy should contain: "arn:aws:iam::TARGET_ACCOUNT:root"
+		targetARN := fmt.Sprintf("arn:aws:iam::%s:root", req.TargetAccount)
+
+		if strings.Contains(policyText, targetARN) {
+			hasTrust = true
+		}
+	}
+
+	// Return result
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"deployed":       true,
+		"has_trust_for":  hasTrust,
+		"repository":     repositoryName,
+		"target_account": req.TargetAccount,
+	})
+}
 

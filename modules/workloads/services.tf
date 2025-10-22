@@ -36,7 +36,7 @@ resource "aws_lb_target_group" "services" {
 
 # Create ECR repository for each service
 resource "aws_ecr_repository" "services" {
-  for_each = { for k, v in local.service_names : k => v if var.env == "dev" }
+  for_each = { for k, v in local.service_names : k => v if var.ecr_strategy == "local" }
 
   name = "${var.project}_service_${each.key}"
 
@@ -57,10 +57,17 @@ resource "aws_ecr_repository" "services" {
 }
 
 resource "aws_ecr_lifecycle_policy" "services" {
-  for_each = { for k, v in local.service_names : k => v if var.env == "dev" }
+  for_each = { for k, v in local.service_names : k => v if var.ecr_strategy == "local" }
 
   repository = aws_ecr_repository.services[each.key].name
   policy     = var.ecr_lifecycle_policy
+}
+
+# ECR repository policies for services with trusted accounts
+resource "aws_ecr_repository_policy" "services_trusted" {
+  for_each   = var.ecr_strategy == "local" && length(var.ecr_trusted_accounts) > 0 ? { for s in var.services : s.name => s } : {}
+  repository = aws_ecr_repository.services[each.key].name
+  policy     = data.aws_iam_policy_document.ecr_trusted_accounts_policy[0].json
 }
 
 # Service Discovery for each service

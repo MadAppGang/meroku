@@ -144,6 +144,16 @@ variable "ecr_account_region" {
   default     = ""
 }
 
+variable "ecr_trusted_accounts" {
+  description = "List of AWS accounts allowed to pull from this environment's ECR repositories"
+  type = list(object({
+    account_id = string
+    env        = string
+    region     = string
+  }))
+  default = []
+}
+
 variable "ecr_url" {
   default = ""
 }

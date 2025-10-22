@@ -149,6 +149,8 @@ type modernPlanModel struct {
 	aiHelpViewport       viewport.Model  // Top viewport: errors + analysis
 	aiHelpCommandsViewport viewport.Model // Bottom viewport: suggested fix
 	aiHelpLoading        bool
+	// AI Agent flag
+	launchAIAgent        bool // Set to true when user presses 's' to launch autonomous agent
 }
 
 type modernKeyMap struct {
@@ -1029,13 +1031,22 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			
 		case msg.String() == "s":
-			// Stop apply
-			if m.currentView == applyView && m.applyState != nil && m.applyState.isApplying {
-				if m.applyState.cmd != nil {
-					m.applyState.cmd.Process.Kill()
+			// Context-aware 's' key:
+			// - During apply: Stop the apply process
+			// - After errors: Launch autonomous AI agent
+			if m.currentView == applyView && m.applyState != nil {
+				if m.applyState.isApplying {
+					// Stop apply if currently applying
+					if m.applyState.cmd != nil {
+						m.applyState.cmd.Process.Kill()
+					}
+					m.applyState.isApplying = false
+					m.applyState.hasErrors = true
+				} else if m.applyState.applyComplete && m.applyState.hasErrors && isAIHelperAvailable() {
+					// Set flag to launch autonomous AI agent and exit TUI
+					m.launchAIAgent = true
+					return m, tea.Quit
 				}
-				m.applyState.isApplying = false
-				m.applyState.hasErrors = true
 			}
 			
 		case msg.String() == "l":
@@ -1110,20 +1121,26 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case resourceStartMsg:
 		if m.applyState != nil {
-			m.applyState.currentOp = &currentOperation{
+			m.applyState.mu.Lock()
+			m.applyState.currentOps[msg.Address] = &currentOperation{
 				Address:   msg.Address,
 				Action:    msg.Action,
 				StartTime: time.Now(),
 				Status:    "Starting...",
 			}
+			m.applyState.mu.Unlock()
 			// Update log viewport
 			m.updateApplyLogViewport()
 		}
 		
 	case resourceProgressMsg:
-		if m.applyState != nil && m.applyState.currentOp != nil {
-			m.applyState.currentOp.Progress = msg.Progress
-			m.applyState.currentOp.Status = msg.Status
+		if m.applyState != nil {
+			m.applyState.mu.Lock()
+			if op, exists := m.applyState.currentOps[msg.Address]; exists {
+				op.Progress = msg.Progress
+				op.Status = msg.Status
+			}
+			m.applyState.mu.Unlock()
 		}
 		
 	case resourceCompleteMsg:
@@ -1145,15 +1162,20 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			
-			// Get duration safely
+			// Get duration safely from currentOps map
 			var duration time.Duration
-			if m.applyState.currentOp != nil && m.applyState.currentOp.Address == msg.Address {
-				action = m.applyState.currentOp.Action
-				duration = time.Since(m.applyState.currentOp.StartTime)
+			m.applyState.mu.Lock()
+			if op, exists := m.applyState.currentOps[msg.Address]; exists {
+				action = op.Action
+				duration = time.Since(op.StartTime)
+				// Remove this specific operation from the map
+				delete(m.applyState.currentOps, msg.Address)
 			} else if msg.Duration > 0 {
 				duration = msg.Duration
 			}
-			
+			opsRemaining := len(m.applyState.currentOps)
+			m.applyState.mu.Unlock()
+
 			m.applyState.completed = append(m.applyState.completed, completedResource{
 				Address:      msg.Address,
 				Action:       action,
@@ -1176,15 +1198,14 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.applyState.hasErrors = true
 				}
 			}
-			
-			// Debug: Log that we're clearing currentOp
+
+			// Debug: Log that we're removing specific operation from currentOps
 			if debugFile, err := os.OpenFile("/tmp/terraform_debug.log", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644); err == nil {
 				timestamp := time.Now().Format("2006-01-02 15:04:05.000")
-				fmt.Fprintf(debugFile, "[%s] [CURRENTOP CLEARED] Resource completed: %s (success: %v)\n", timestamp, msg.Address, msg.Success)
+				fmt.Fprintf(debugFile, "[%s] [CURRENTOP REMOVED] Resource completed: %s (success: %v), ops remaining: %d\n", timestamp, msg.Address, msg.Success, opsRemaining)
 				debugFile.Close()
 			}
 
-			m.applyState.currentOp = nil
 			m.updateApplyLogViewport()
 		}
 
@@ -4348,12 +4369,20 @@ func (m *modernPlanModel) renderApplyCurrentOperation() string {
 		contentHeight = 1
 	}
 
-	// Thread-safe read of currentOp
+	// Thread-safe read of all currentOps
 	m.applyState.mu.Lock()
-	currentOp := m.applyState.currentOp
+	currentOps := make([]*currentOperation, 0, len(m.applyState.currentOps))
+	for _, op := range m.applyState.currentOps {
+		currentOps = append(currentOps, op)
+	}
 	m.applyState.mu.Unlock()
 
-	if currentOp == nil {
+	// Sort by resource address to maintain stable display order
+	sort.Slice(currentOps, func(i, j int) bool {
+		return currentOps[i].Address < currentOps[j].Address
+	})
+
+	if len(currentOps) == 0 {
 		// Show empty state with fixed height
 		box := boxStyle.Copy().
 			BorderForeground(dimColor).
@@ -4362,70 +4391,87 @@ func (m *modernPlanModel) renderApplyCurrentOperation() string {
 		return box.Render(titleStyle.Render("Currently Updating") + "\n" + dimStyle.Render("No active operations"))
 	}
 
-	op := currentOp
-	icon := "🔄"
-	actionStyle := dimStyle
-
-	switch op.Action {
-	case "create":
-		actionStyle = createIconStyle
-		icon = "✚"
-	case "update":
-		actionStyle = updateIconStyle
-		icon = "~"
-	case "delete":
-		actionStyle = deleteIconStyle
-		icon = "✗"
+	// Build content showing up to 3 concurrent operations
+	var contentLines []string
+	maxDisplay := 3
+	displayCount := len(currentOps)
+	if displayCount > maxDisplay {
+		displayCount = maxDisplay
 	}
-	
-	// Progress bar for current operation
-	opProgress := ""
-	elapsedDisplay := ""
-	
-	if op.Progress > 0 {
-		opProgress = m.progress.ViewAs(op.Progress)
-	} else {
-		// Show infinite progress animation using animation frame
+
+	for i := 0; i < displayCount; i++ {
+		op := currentOps[i]
+		icon := "🔄"
+		actionStyle := dimStyle
+
+		switch op.Action {
+		case "create":
+			actionStyle = createIconStyle
+			icon = "✚"
+		case "update":
+			actionStyle = updateIconStyle
+			icon = "~"
+		case "delete":
+			actionStyle = deleteIconStyle
+			icon = "✗"
+		}
+
+		// Always show infinite progress animation (we don't know actual duration)
 		totalBars := 20
 		windowSize := 5
 		// Use animation frame for smooth animation
 		position := (m.applyState.animationFrame / 2) % (totalBars + windowSize)
-		
+
 		bar := ""
-		for i := 0; i < totalBars; i++ {
-			if i >= position-windowSize && i < position {
+		for j := 0; j < totalBars; j++ {
+			if j >= position-windowSize && j < position {
 				bar += "█"
 			} else {
 				bar += "░"
 			}
 		}
-		opProgress = bar
-		
+
 		// Use elapsed time from Terraform if available, otherwise calculate
+		elapsedDisplay := ""
 		if op.ElapsedTime != "" {
 			elapsedDisplay = fmt.Sprintf(" [%s elapsed]", op.ElapsedTime)
 		} else {
 			elapsed := time.Since(op.StartTime)
 			elapsedDisplay = fmt.Sprintf(" [%ds elapsed]", int(elapsed.Seconds()))
 		}
+
+		opLine := fmt.Sprintf(
+			"%s %s %s\n%s%s",
+			icon,
+			actionStyle.Render(strings.Title(op.Action)+"ing"),
+			op.Address,
+			bar,
+			elapsedDisplay,
+		)
+		contentLines = append(contentLines, opLine)
 	}
-	
-	content := fmt.Sprintf(
-		"%s %s %s\n%s%s\n\nStatus: %s",
-		icon,
-		actionStyle.Render(strings.Title(op.Action)+"ing"),
-		op.Address,
-		opProgress,
-		elapsedDisplay,
-		op.Status,
-	)
+
+	// Add indicator for additional operations if more than 3
+	if len(currentOps) > maxDisplay {
+		remaining := len(currentOps) - maxDisplay
+		additionalLine := dimStyle.Render(fmt.Sprintf("+%d other service%s", remaining, func() string {
+			if remaining > 1 {
+				return "s"
+			}
+			return ""
+		}()))
+		contentLines = append(contentLines, additionalLine)
+	}
+
+	content := strings.Join(contentLines, "\n")
 
 	box := boxStyle.Copy().
 		BorderForeground(primaryColor).
 		Width(m.width - 4).
 		Height(contentHeight)
 
-	return box.Render(titleStyle.Render("Currently Updating") + "\n" + content)
+	title := titleStyle.Render(fmt.Sprintf("Currently Updating (%d)", len(currentOps)))
+	return box.Render(title + "\n" + content)
 }
 
 func (m *modernPlanModel) renderApplyColumns() string {
@@ -4709,7 +4755,7 @@ func (m *modernPlanModel) renderApplyFooter() string {
 	
 	if m.applyState.applyComplete {
 		if m.applyState.hasErrors && isAIHelperAvailable() {
-			help += "[a] AI Help • "
+			help += "[a] AI Help • [s] Solve with AI • "
 		}
 		help += "[Enter] Continue  "
 	}
@@ -4838,18 +4884,31 @@ func (m *modernPlanModel) renderApplyDetailsView(header, elapsed string) string 
 	// Details content
 	var content strings.Builder
 	content.WriteString(titleStyle.Render("📋 Apply Details") + "\n\n")
-	
-	// Show current operation if any
-	if m.applyState.currentOp != nil {
-		op := m.applyState.currentOp
-		content.WriteString(titleStyle.Render("Current Operation") + "\n")
-		content.WriteString(fmt.Sprintf("Address: %s\n", op.Address))
-		content.WriteString(fmt.Sprintf("Action: %s\n", op.Action))
-		content.WriteString(fmt.Sprintf("Status: %s\n", op.Status))
-		content.WriteString(fmt.Sprintf("Progress: %d%%\n", int(op.Progress*100)))
-		content.WriteString(fmt.Sprintf("Duration: %s\n\n", time.Since(op.StartTime).Round(time.Second)))
+
+	// Show current operations if any
+	m.applyState.mu.Lock()
+	currentOps := make([]*currentOperation, 0, len(m.applyState.currentOps))
+	for _, op := range m.applyState.currentOps {
+		currentOps = append(currentOps, op)
+	}
+	m.applyState.mu.Unlock()
+
+	// Sort by resource address to maintain stable display order
+	sort.Slice(currentOps, func(i, j int) bool {
+		return currentOps[i].Address < currentOps[j].Address
+	})
+
+	if len(currentOps) > 0 {
+		content.WriteString(titleStyle.Render(fmt.Sprintf("Current Operations (%d)", len(currentOps))) + "\n")
+		for _, op := range currentOps {
+			content.WriteString(fmt.Sprintf("• %s - %s\n", op.Address, op.Action))
+			content.WriteString(fmt.Sprintf("  Status: %s\n", op.Status))
+			content.WriteString(fmt.Sprintf("  Progress: %d%%\n", int(op.Progress*100)))
+			content.WriteString(fmt.Sprintf("  Duration: %s\n", time.Since(op.StartTime).Round(time.Second)))
+		}
+		content.WriteString("\n")
 	} else {
-		content.WriteString(dimStyle.Render("No operation currently in progress\n\n"))
+		content.WriteString(dimStyle.Render("No operations currently in progress\n\n"))
 	}
 	
 	// Show recent completed operations
@@ -5001,6 +5060,11 @@ func showModernTerraformPlanTUI(planJSON string) error {
 		return fmt.Errorf("error running TUI: %w", err)
 	}
 
+	// Check if user requested autonomous AI agent (pressed 's')
+	if m, ok := model.(*modernPlanModel); ok && m.launchAIAgent {
+		launchAIAgentForApplyErrors(m)
+	}
+
 	// No longer prompt for AI help after exiting - users can press 'a' in the TUI for AI help
 	// This old prompting behavior has been replaced with in-TUI AI help view
 
@@ -5062,6 +5126,85 @@ func offerAIHelpForApplyErrors(m *modernPlanModel) {
 	}
 
 	offerAIHelp(ctx)
+}
+
+// launchAIAgentForApplyErrors launches the autonomous AI agent to fix apply errors
+func launchAIAgentForApplyErrors(m *modernPlanModel) {
+	if m.applyState == nil {
+		return
+	}
+
+	// Collect error messages
+	var errorMessages []string
+	for _, res := range m.applyState.completed {
+		if !res.Success && res.Error != "" {
+			errorMessages = append(errorMessages, fmt.Sprintf("Resource: %s\nAction: %s\nError: %s",
+				res.Address, res.Action, res.Error))
+		}
+	}
+
+	if len(errorMessages) == 0 {
+		fmt.Println("No errors found to troubleshoot.")
+		return
+	}
+
+	// Get current directory
+	workingDir, _ := os.Getwd()
+
+	// Get AWS profile from environment or use default
+	awsProfile := os.Getenv("AWS_PROFILE")
+	if awsProfile == "" {
+		awsProfile = "default"
+	}
+
+	// Get region from environment variable or use default
+	awsRegion := os.Getenv("AWS_REGION")
+	if awsRegion == "" {
+		awsRegion = os.Getenv("AWS_DEFAULT_REGION")
+	}
+	if awsRegion == "" {
+		awsRegion = "us-east-1" // fallback
+	}
+
+	// Extract environment from working directory (e.g., env/dev)
+	envName := "unknown"
+	if strings.Contains(workingDir, "/env/") {
+		parts := strings.Split(workingDir, "/env/")
+		if len(parts) > 1 {
+			envParts := strings.Split(parts[1], "/")
+			if len(envParts) > 0 {
+				envName = envParts[0]
+			}
+		}
+	}
+
+	// Build AgentContext for the autonomous agent
+	agentContext := &AgentContext{
+		Operation:      "terraform_apply",
+		Environment:    envName,
+		AWSProfile:     awsProfile,
+		AWSRegion:      awsRegion,
+		WorkingDir:     workingDir,
+		InitialError:   strings.Join(errorMessages, "\n\n"),
+		ResourceErrors: errorMessages,
+		AdditionalInfo: make(map[string]string),
+	}
+
+	// Launch the AI Agent TUI
+	fmt.Println("\n🚀 Launching Autonomous AI Agent...")
+	fmt.Println("   The agent will analyze and attempt to fix the deployment errors.")
+	fmt.Println()
+
+	err := RunAIAgentTUI(agentContext)
+	if err != nil {
+		fmt.Printf("\n❌ AI agent failed: %v\n", err)
+		fmt.Print("\nPress Enter to continue...")
+		fmt.Scanln()
+		return
+	}
+
+	fmt.Print("\nPress Enter to continue...")
+	fmt.Scanln()
 }
 
 func (m *modernPlanModel) renderApplyErrorDetailsView(header, elapsed string) string {

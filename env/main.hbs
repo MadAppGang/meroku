@@ -244,6 +244,19 @@ module "workloads" {
   {{#if ecr_account_id}}{{#if ecr_account_region}}
   ecr_url = "{{ecr_account_id}}.dkr.ecr.{{ecr_account_region}}.amazonaws.com/{{project}}_backend"
   {{/if}}{{/if}}
+  {{#notEmpty ecr_trusted_accounts}}
+  ecr_trusted_accounts = [
+    {{#each ecr_trusted_accounts}}
+    {
+      account_id = "{{account_id}}"
+      env        = "{{env}}"
+      region     = "{{region}}"
+    },
+    {{/each}}
+  ]
+  {{else}}
+  ecr_trusted_accounts = []
+  {{/notEmpty}}
   github_oidc_enabled = {{workload.enable_github_oidc}}
   github_subjects = {{{array workload.github_oidc_subjects}}}
   {{#if workload.backend_container_command}}

@@ -21,7 +21,7 @@ type applyState struct {
 	totalResources int
 	completed      []completedResource
 	pending        []pendingResource
-	currentOp      *currentOperation
+	currentOps     map[string]*currentOperation // resource address -> operation (track multiple concurrent ops)
 	logs           []logEntry
 
 	// Terraform process
@@ -276,6 +276,7 @@ func (m *modernPlanModel) initApplyState() {
 		logs:           []logEntry{},
 		pending:        []pendingResource{},
 		completed:      []completedResource{},
+		currentOps:     make(map[string]*currentOperation),
 		diagnostics:    make(map[string]*DiagnosticInfo),
 		totalResources: m.stats.totalChanges,
 	}
@@ -521,22 +522,29 @@ func (m *modernPlanModel) parseTerraformOutput(stdout interface{}) {
 							                 strings.Contains(msg.Message, ": Modifying...")
 
 							if isStartMessage {
-								// New operation starting - always update currentOp
+								// New operation starting - add to currentOps map
 								m.sendMsg(resourceStartMsg{
 									Address: addr,
 									Action:  action,
 								})
-							} else if m.applyState.currentOp != nil && m.applyState.currentOp.Address == addr {
-								// Update elapsed time for ongoing operation
-								if elapsedTime != "" {
-									m.applyState.currentOp.ElapsedTime = elapsedTime
+							} else {
+								// Update elapsed time for ongoing operation if it exists in map
+								m.applyState.mu.Lock()
+								if op, exists := m.applyState.currentOps[addr]; exists {
+									if elapsedTime != "" {
+										op.ElapsedTime = elapsedTime
+									}
+								} else {
+									// No current operation but we have a "Still X" message - start tracking
+									m.applyState.mu.Unlock()
+									m.sendMsg(resourceStartMsg{
+										Address: addr,
+										Action:  action,
+									})
+									// Re-acquire lock for consistent unlock below
+									m.applyState.mu.Lock()
 								}
-							} else if m.applyState.currentOp == nil {
-								// No current operation but we have a "Still X" message - start tracking
-								m.sendMsg(resourceStartMsg{
-									Address: addr,
-									Action:  action,
-								})
+								m.applyState.mu.Unlock()
 							}
 						}
 					}
@@ -584,28 +592,29 @@ func (m *modernPlanModel) handleApplyStart(msg *TerraformJSONMessage) {
 		f.Close()
 	}
 
-	// Update currentOp directly with thread safety
+	// Add operation to currentOps map with thread safety
 	if m.applyState != nil {
 		m.applyState.mu.Lock()
-		m.applyState.currentOp = &currentOperation{
+		m.applyState.currentOps[addr] = &currentOperation{
 			Address:   addr,
 			Action:    action,
 			StartTime: time.Now(),
 			Status:    "Starting...",
 		}
+		opsCount := len(m.applyState.currentOps)
 		m.applyState.mu.Unlock()
 
-		// Debug: Log that we set currentOp
+		// Debug: Log that we added currentOp
 		if f, err := os.OpenFile("/tmp/handleApplyStart.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
 			timestamp := time.Now().Format("2006-01-02 15:04:05.000")
-			fmt.Fprintf(f, "[%s] CURRENTOP SET: %s (%s)\n", timestamp, addr, action)
+			fmt.Fprintf(f, "[%s] CURRENTOP ADDED: %s (%s), total ops: %d\n", timestamp, addr, action, opsCount)
 			f.Close()
 		}
 	} else {
 		// Debug: Log that applyState is nil
 		if f, err := os.OpenFile("/tmp/handleApplyStart.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
 			timestamp := time.Now().Format("2006-01-02 15:04:05.000")
-			fmt.Fprintf(f, "[%s] CANNOT SET CURRENTOP: applyState is nil!\n", timestamp)
+			fmt.Fprintf(f, "[%s] CANNOT ADD CURRENTOP: applyState is nil!\n", timestamp)
 			f.Close()
 		}
 	}
@@ -622,7 +631,7 @@ func (m *modernPlanModel) handleApplyProgress(msg *TerraformJSONMessage) {
 	if msg.Hook == nil || msg.Hook.Resource == nil {
 		return
 	}
-	
+
 	addr := msg.Hook.Resource.Addr
 	// Calculate progress based on elapsed time
 	progress := 0.5
@@ -630,9 +639,19 @@ func (m *modernPlanModel) handleApplyProgress(msg *TerraformJSONMessage) {
 		// Assume most operations complete within 30 seconds
 		progress = math.Min(msg.Hook.ElapsedSeconds/30.0, 0.9)
 	}
-	
+
 	status := fmt.Sprintf("In progress (%.1fs)", msg.Hook.ElapsedSeconds)
-	
+
+	// Update the operation in the map
+	if m.applyState != nil {
+		m.applyState.mu.Lock()
+		if op, exists := m.applyState.currentOps[addr]; exists {
+			op.Progress = progress
+			op.Status = status
+		}
+		m.applyState.mu.Unlock()
+	}
+
 	m.sendMsg(resourceProgressMsg{
 		Address:  addr,
 		Progress: progress,
@@ -644,28 +663,35 @@ func (m *modernPlanModel) handleApplyComplete(msg *TerraformJSONMessage) {
 	if msg.Hook == nil || msg.Hook.Resource == nil {
 		return
 	}
-	
+
 	addr := msg.Hook.Resource.Addr
 	action := msg.Hook.Action
 	if action == "" {
 		action = m.getResourceAction(addr)
 	}
-	
+
 	// Use elapsed seconds from the message
 	duration := time.Duration(msg.Hook.ElapsedSeconds * float64(time.Second))
-	
+
+	// Remove from currentOps map
+	if m.applyState != nil {
+		m.applyState.mu.Lock()
+		delete(m.applyState.currentOps, addr)
+		m.applyState.mu.Unlock()
+	}
+
 	m.sendMsg(resourceCompleteMsg{
 		Address:  addr,
 		Success:  true,
 		Duration: duration,
 	})
-	
+
 	// Include ID in log if available
 	idInfo := ""
 	if msg.Hook.IDKey != "" && msg.Hook.IDValue != "" {
 		idInfo = fmt.Sprintf(" [%s=%s]", msg.Hook.IDKey, msg.Hook.IDValue)
 	}
-	
+
 	m.sendLogMessage("info", fmt.Sprintf("✅ Completed %s on %s (%v)%s", action, addr, duration, idInfo), addr)
 }
 
@@ -698,6 +724,8 @@ func (m *modernPlanModel) handleApplyError(msg *TerraformJSONMessage) {
 		errorSummary = diagnostic.Summary
 		errorDetail = diagnostic.Detail
 	}
+	// Remove from currentOps map on error
+	delete(m.applyState.currentOps, addr)
 	m.applyState.mu.Unlock()
 
 	m.sendMsg(resourceCompleteMsg{

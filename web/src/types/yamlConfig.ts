@@ -7,6 +7,7 @@ export interface YamlInfrastructureConfig {
 	env: string;
 	is_prod: boolean;
 	region: string;
+	account_id?: string;
 	state_bucket: string;
 	state_file: string;
 
@@ -17,6 +18,11 @@ export interface YamlInfrastructureConfig {
 	ecr_strategy?: "local" | "cross_account";
 	ecr_account_id?: string;
 	ecr_account_region?: string;
+	ecr_trusted_accounts?: Array<{
+		account_id: string;
+		env: string;
+		region: string;
+	}>;
 
 	// Workload Configuration
 	workload?: {
