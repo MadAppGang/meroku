@@ -38,7 +38,9 @@ resource "aws_ecs_service" "backend" {
   dynamic "service_registries" {
     for_each = var.enable_alb ? [] : [1]  # Only when using API Gateway
     content {
-      registry_arn = aws_service_discovery_service.backend[0].arn
+      registry_arn   = aws_service_discovery_service.backend[0].arn
+      container_name = local.backend_name
+      container_port = var.backend_image_port
     }
   }
 
@@ -64,6 +66,11 @@ resource "aws_service_discovery_service" "backend" {
     dns_records {
       ttl  = 10
       type = "A"
+    }
+
+    dns_records {
+      ttl  = 10
+      type = "SRV"
     }
 
     routing_policy = "MULTIVALUE"

@@ -84,6 +84,11 @@ resource "aws_service_discovery_service" "services" {
       type = "A"
     }
 
+    dns_records {
+      ttl  = 10
+      type = "SRV"
+    }
+
     routing_policy = "MULTIVALUE"
   }
 
@@ -123,7 +128,9 @@ resource "aws_ecs_service" "services" {
   }
 
   service_registries {
-    registry_arn = aws_service_discovery_service.services[each.key].arn
+    registry_arn   = aws_service_discovery_service.services[each.key].arn
+    container_name = "${var.project}_service_${each.key}_${var.env}"
+    container_port = each.value.container_port
   }
 
   tags = {
