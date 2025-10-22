@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -32,6 +33,9 @@ func mainMenu() string {
 		huh.NewOption("🔄 Change Environment", "change-env"),
 		huh.NewOption("💥 Nuke/Destroy Environment", "nuke"),
 		huh.NewOption("🤖 AI Agent - Troubleshoot Issues", "ai-agent"),
+		huh.NewOption("🔐 AWS SSO Setup Wizard", "sso-wizard"),
+		huh.NewOption("🤖 AWS SSO AI Agent", "sso-agent"),
+		huh.NewOption("✓ Validate AWS Configuration", "aws-validate"),
 		huh.NewOption("🔍 Check for updates", "update"),
 		huh.NewOption("👋 Exit", "exit"),
 	}
@@ -77,6 +81,18 @@ func mainMenu() string {
 	case action == "ai-agent":
 		// Run AI agent for troubleshooting
 		offerAIAgentFromMenu()
+		return mainMenu()
+	case action == "sso-wizard":
+		// Run SSO Setup Wizard
+		runSSOWizardFromMenu()
+		return mainMenu()
+	case action == "sso-agent":
+		// Run SSO AI Agent
+		runSSOAgentFromMenu()
+		return mainMenu()
+	case action == "aws-validate":
+		// Validate AWS configuration
+		validateAWSFromMenu()
 		return mainMenu()
 	case action == "exit":
 		os.Exit(0)
@@ -168,4 +184,127 @@ func initProjectIfNeeded() {
 
 		_ = spinner.New().Title("Initializing the project...").Action(initProject).Run()
 	}
+}
+
+// runSSOWizardFromMenu runs the AWS SSO Setup Wizard
+func runSSOWizardFromMenu() {
+	// Get environment selection
+	envName, _, err := selectEnvironmentForSSO()
+	if err != nil {
+		fmt.Printf("Error selecting environment: %v\n", err)
+		return
+	}
+
+	// Load YAML
+	yamlEnv, err := loadEnv(envName)
+	if err != nil {
+		fmt.Printf("Error loading environment config: %v\n", err)
+		return
+	}
+
+	// Determine profile name
+	profileName := yamlEnv.AWSProfile
+	if profileName == "" {
+		profileName = envName
+	}
+
+	// Run wizard
+	if err := RunSSOWizard(profileName, &yamlEnv); err != nil {
+		fmt.Printf("Wizard error: %v\n", err)
+	}
+}
+
+// runSSOAgentFromMenu runs the AWS SSO AI Agent
+func runSSOAgentFromMenu() {
+	// Get environment selection
+	envName, _, err := selectEnvironmentForSSO()
+	if err != nil {
+		fmt.Printf("Error selecting environment: %v\n", err)
+		return
+	}
+
+	// Load YAML
+	yamlEnv, err := loadEnv(envName)
+	if err != nil {
+		fmt.Printf("Error loading environment config: %v\n", err)
+		return
+	}
+
+	// Determine profile name
+	profileName := yamlEnv.AWSProfile
+	if profileName == "" {
+		profileName = envName
+	}
+
+	// Run AI agent
+	if err := RunSSOAgent(profileName, &yamlEnv); err != nil {
+		fmt.Printf("AI Agent error: %v\n", err)
+	}
+}
+
+// validateAWSFromMenu validates AWS configuration
+func validateAWSFromMenu() {
+	validator, err := NewAWSProfileValidator()
+	if err != nil {
+		fmt.Printf("Error creating validator: %v\n", err)
+		return
+	}
+
+	results, err := validator.ValidateAllProfiles()
+	if err != nil {
+		fmt.Printf("Validation error: %v\n", err)
+		return
+	}
+
+	PrintValidationResults(results)
+
+	// Check if any failed
+	anyFailed := false
+	for _, result := range results {
+		if !result.Success {
+			anyFailed = true
+			break
+		}
+	}
+
+	if anyFailed {
+		fmt.Println()
+		fmt.Println("Press Enter to continue...")
+		fmt.Scanln()
+	}
+}
+
+// selectEnvironmentForSSO helps user select environment for SSO setup
+func selectEnvironmentForSSO() (string, string, error) {
+	yamlFiles, err := findYAMLFiles("project")
+	if err != nil {
+		return "", "", fmt.Errorf("failed to find YAML files: %w", err)
+	}
+
+	if len(yamlFiles) == 0 {
+		return "", "", fmt.Errorf("no environment YAML files found in project/ directory")
+	}
+
+	// If only one, use it
+	if len(yamlFiles) == 1 {
+		envName := strings.TrimSuffix(filepath.Base(yamlFiles[0]), ".yaml")
+		return envName, yamlFiles[0], nil
+	}
+
+	// Multiple environments, ask user to select
+	var options []huh.Option[string]
+	for _, yamlPath := range yamlFiles {
+		envName := strings.TrimSuffix(filepath.Base(yamlPath), ".yaml")
+		options = append(options, huh.NewOption(envName, yamlPath))
+	}
+
+	var selectedPath string
+	huh.NewSelect[string]().
+		Title("Select environment to configure AWS SSO:").
+		Options(options...).
+		Value(&selectedPath).
+		Run()
+
+	envName := strings.TrimSuffix(filepath.Base(selectedPath), ".yaml")
+	return envName, selectedPath, nil
 }
