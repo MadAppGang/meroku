@@ -32,14 +32,15 @@ type AgentState struct {
 
 // AgentContext provides the environment and problem details to the agent
 type AgentContext struct {
-	Operation      string            `json:"operation"`       // "terraform_apply", "terraform_destroy", etc.
-	Environment    string            `json:"environment"`     // "dev", "prod", etc.
-	AWSProfile     string            `json:"aws_profile"`
-	AWSRegion      string            `json:"aws_region"`
-	WorkingDir     string            `json:"working_dir"`
-	InitialError   string            `json:"initial_error"`   // The error that triggered the agent
-	ResourceErrors []string          `json:"resource_errors"` // Multiple error messages if available
-	AdditionalInfo map[string]string `json:"additional_info"` // Extra context (e.g., cluster name, service name)
+	Operation            string            `json:"operation"`              // "terraform_apply", "terraform_destroy", etc.
+	Environment          string            `json:"environment"`            // "dev", "prod", etc.
+	AWSProfile           string            `json:"aws_profile"`
+	AWSRegion            string            `json:"aws_region"`
+	WorkingDir           string            `json:"working_dir"`
+	InitialError         string            `json:"initial_error"`          // The error that triggered the agent
+	ResourceErrors       []string          `json:"resource_errors"`        // Multiple error messages if available
+	StructuredErrorsJSON string            `json:"structured_errors_json"` // JSON-formatted error data
+	AdditionalInfo       map[string]string `json:"additional_info"`        // Extra context (e.g., cluster name, service name)
 }
 
 // AgentUpdate is sent to the TUI to update the display

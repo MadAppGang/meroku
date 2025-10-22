@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -26,6 +27,21 @@ func offerAIAgentHelp(ctx ErrorContext) error {
 		return fmt.Errorf("failed to get working directory: %w", err)
 	}
 
+	// Create structured JSON representation of errors if not provided
+	structuredJSON := ctx.StructuredErrorsJSON
+	if structuredJSON == "" && len(ctx.Errors) > 0 {
+		// Create a simple JSON structure from the error messages
+		errorData := map[string]interface{}{
+			"errors":      ctx.Errors,
+			"error_count": len(ctx.Errors),
+			"operation":   ctx.Operation,
+			"environment": ctx.Environment,
+		}
+		if jsonBytes, err := json.MarshalIndent(errorData, "", "  "); err == nil {
+			structuredJSON = string(jsonBytes)
+		}
+	}
+
 	// Convert ErrorContext to AgentContext
 	agentContext := &AgentContext{
 		Operation:            ctx.Operation,
@@ -35,7 +51,7 @@ func offerAIAgentHelp(ctx ErrorContext) error {
 		WorkingDir:           wd,
 		InitialError:         strings.Join(ctx.Errors, "\n\n"),
 		ResourceErrors:       ctx.Errors,
-		StructuredErrorsJSON: ctx.StructuredErrorsJSON,
+		StructuredErrorsJSON: structuredJSON,
 		AdditionalInfo:       make(map[string]string),
 	}
 
@@ -197,16 +213,29 @@ func offerAIAgentFromMenu() error {
 		return fmt.Errorf("no problem description")
 	}
 
+	// Create structured JSON for the problem description
+	errorData := map[string]interface{}{
+		"errors":      []string{problemDescription},
+		"error_count": 1,
+		"operation":   "troubleshooting",
+		"environment": env,
+	}
+	structuredJSON := ""
+	if jsonBytes, err := json.MarshalIndent(errorData, "", "  "); err == nil {
+		structuredJSON = string(jsonBytes)
+	}
+
 	// Create agent context
 	agentContext := &AgentContext{
-		Operation:      "troubleshooting",
-		Environment:    env,
-		AWSProfile:     awsProfile,
-		AWSRegion:      awsRegion,
-		WorkingDir:     wd,
-		InitialError:   problemDescription,
-		ResourceErrors: []string{problemDescription},
-		AdditionalInfo: make(map[string]string),
+		Operation:            "troubleshooting",
+		Environment:          env,
+		AWSProfile:           awsProfile,
+		AWSRegion:            awsRegion,
+		WorkingDir:           wd,
+		InitialError:         problemDescription,
+		ResourceErrors:       []string{problemDescription},
+		StructuredErrorsJSON: structuredJSON,
+		AdditionalInfo:       make(map[string]string),
 	}
 
 	// Run the AI Agent TUI

@@ -14,12 +14,13 @@ import (
 
 // ErrorContext contains information about the error for AI analysis
 type ErrorContext struct {
-	Operation   string   // "apply" or "destroy"
-	Environment string   // "dev", "prod", etc.
-	AWSProfile  string   // Current AWS profile
-	AWSRegion   string   // Current AWS region
-	Errors      []string // Terraform error messages
-	WorkingDir  string   // Current directory
+	Operation            string   // "apply" or "destroy"
+	Environment          string   // "dev", "prod", etc.
+	AWSProfile           string   // Current AWS profile
+	AWSRegion            string   // Current AWS region
+	Errors               []string // Terraform error messages
+	StructuredErrorsJSON string   // JSON-formatted error data
+	WorkingDir           string   // Current directory
 }
 
 // isAIHelperAvailable checks if the ANTHROPIC_API_KEY is set
