@@ -8,8 +8,9 @@ import (
 	"github.com/charmbracelet/huh"
 )
 
-// Global variable to store the selected environment
+// Global variables to store the selected environment and AWS region
 var selectedEnvironment string
+var selectedAWSRegion string
 
 func selectEnvironment() error {
 	// Find all environment files in current directory
@@ -177,11 +178,18 @@ func selectEnvironment() error {
 		}
 	}
 	
-	// Set AWS_PROFILE environment variable
+	// Set AWS_PROFILE and AWS_REGION environment variables
 	if env.AWSProfile != "" {
 		os.Setenv("AWS_PROFILE", env.AWSProfile)
 		selectedAWSProfile = env.AWSProfile
 		fmt.Printf("Using AWS Profile: %s (Account: %s, Region: %s)\n", env.AWSProfile, env.AccountID, env.Region)
+	}
+
+	// Set selected AWS region for global access
+	if env.Region != "" {
+		selectedAWSRegion = env.Region
+		os.Setenv("AWS_REGION", env.Region)
+		os.Setenv("AWS_DEFAULT_REGION", env.Region)
 	}
 
 	return nil

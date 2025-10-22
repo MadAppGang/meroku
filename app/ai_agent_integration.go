@@ -113,54 +113,8 @@ func offerAIAgentFromMenu() error {
 		return fmt.Errorf("no environment selected")
 	}
 
-	// Get AWS profile and region from YAML config (following terraform apply pattern)
+	// Get AWS profile and region from global variables (set when environment was selected)
 	awsProfile := selectedAWSProfile
-	awsRegion := ""
-
-	// Get working directory to navigate to project root
-	wd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("failed to get working directory: %w", err)
-	}
-
-	// Try to load AWS profile and region from YAML config
-	// Check if we're in env/envName directory or project root
-	envConfigPath := env + ".yaml"
-	yamlDir := wd // Default to current working directory
-
-	if _, err := os.Stat(envConfigPath); os.IsNotExist(err) {
-		// YAML not in current dir, try to find project root
-		projectRoot := wd
-		if strings.Contains(wd, "/env/") {
-			// We're in env/envName directory, go up to project root
-			projectRoot = strings.Split(wd, "/env/")[0]
-		}
-		envConfigPath = projectRoot + "/" + env + ".yaml"
-		yamlDir = projectRoot
-	}
-
-	// Load environment config to get AWS profile and region
-	if _, err := os.Stat(envConfigPath); err == nil {
-		// Change to directory containing YAML temporarily
-		originalDir, _ := os.Getwd()
-		os.Chdir(yamlDir)
-
-		if envConfig, err := loadEnv(env + ".yaml"); err == nil {
-			// Use region from YAML config (PRIORITY)
-			if envConfig.Region != "" {
-				awsRegion = envConfig.Region
-			}
-			// Use AWS profile from YAML config (PRIORITY)
-			if envConfig.AWSProfile != "" {
-				awsProfile = envConfig.AWSProfile
-			}
-		}
-
-		// Restore original directory
-		os.Chdir(originalDir)
-	}
-
-	// Fallback to environment variables if not found in YAML
 	if awsProfile == "" {
 		awsProfile = os.Getenv("AWS_PROFILE")
 		if awsProfile == "" {
@@ -168,6 +122,7 @@ func offerAIAgentFromMenu() error {
 		}
 	}
 
+	awsRegion := selectedAWSRegion
 	if awsRegion == "" {
 		awsRegion = os.Getenv("AWS_REGION")
 		if awsRegion == "" {
@@ -176,6 +131,12 @@ func offerAIAgentFromMenu() error {
 		if awsRegion == "" {
 			awsRegion = "us-east-1" // ultimate fallback
 		}
+	}
+
+	// Get working directory
+	wd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get working directory: %w", err)
 	}
 
 	// Prompt for problem description

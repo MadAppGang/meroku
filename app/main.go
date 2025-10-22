@@ -156,10 +156,15 @@ func main() {
 				saveEnvToFile(env, selectedEnvironment+".yaml")
 			}
 			
-			// Set the AWS profile
+			// Set the AWS profile and region
 			os.Setenv("AWS_PROFILE", env.AWSProfile)
 			selectedAWSProfile = env.AWSProfile
-			fmt.Printf("Using AWS Profile: %s (Account: %s)\n", env.AWSProfile, env.AccountID)
+			if env.Region != "" {
+				selectedAWSRegion = env.Region
+				os.Setenv("AWS_REGION", env.Region)
+				os.Setenv("AWS_DEFAULT_REGION", env.Region)
+			}
+			fmt.Printf("Using AWS Profile: %s (Account: %s, Region: %s)\n", env.AWSProfile, env.AccountID, env.Region)
 		}
 	} else if *profileFlag != "" {
 		// Use the provided profile directly (backward compatibility)
