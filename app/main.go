@@ -227,19 +227,11 @@ func main() {
 	// Silently ignore errors from version check to not disrupt startup
 
 	// Automatic AWS SSO validation (only in interactive mode, not for --web)
-	fmt.Printf("\n[DEBUG] Checking SSO validation conditions:\n")
-	fmt.Printf("  webFlag: %v\n", *webFlag)
-	fmt.Printf("  selectedEnvironment: '%s'\n", selectedEnvironment)
-	fmt.Printf("  selectedAWSProfile: '%s'\n", selectedAWSProfile)
-
 	if !*webFlag && selectedEnvironment != "" && selectedAWSProfile != "" {
-		fmt.Printf("[DEBUG] Running automatic SSO validation...\n\n")
 		if err := performAutoSSOValidation(); err != nil {
 			// Error already displayed to user, just log and continue
 			log.Printf("SSO validation error: %v", err)
 		}
-	} else {
-		fmt.Printf("[DEBUG] Skipping SSO validation (conditions not met)\n\n")
 	}
 
 	// If --web flag is set, open web app directly
@@ -444,18 +436,10 @@ func performAutoSSOValidation() error {
 	}
 
 	// Inspect the profile
-	fmt.Printf("[DEBUG] Inspecting profile '%s'...\n", profileName)
 	profileInfo, err := inspector.InspectProfile(profileName)
 	if err != nil {
-		fmt.Printf("[DEBUG] Inspection error: %v\n", err)
 		return fmt.Errorf("failed to inspect profile: %w", err)
 	}
-
-	fmt.Printf("[DEBUG] Profile inspection results:\n")
-	fmt.Printf("  Exists: %v\n", profileInfo.Exists)
-	fmt.Printf("  Type: %s\n", profileInfo.Type)
-	fmt.Printf("  Complete: %v\n", profileInfo.Complete)
-	fmt.Printf("  Missing fields: %v\n", profileInfo.MissingFields)
 
 	// If profile is complete and valid, nothing to do
 	if profileInfo.Complete {
