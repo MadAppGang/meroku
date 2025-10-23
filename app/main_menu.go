@@ -33,22 +33,26 @@ func mainMenu() string {
 		huh.NewOption("🔄 Change Environment", "change-env"),
 		huh.NewOption("💥 Nuke/Destroy Environment", "nuke"),
 		huh.NewOption("🤖 AI Agent - Troubleshoot Issues", "ai-agent"),
-		huh.NewOption("🔐 AWS SSO Setup Wizard", "sso-wizard"),
-		huh.NewOption("🤖 AWS SSO AI Agent", "sso-agent"),
-		huh.NewOption("✓ Validate AWS Configuration", "aws-validate"),
+		huh.NewOption("🔐 AWS SSO Tools", "sso-menu"),
 		huh.NewOption("🔍 Check for updates", "update"),
 		huh.NewOption("👋 Exit", "exit"),
 	}
 
 	action := ""
 
-	huh.NewSelect[string]().
+	err := huh.NewSelect[string]().
 		Title(menuTitle).
 		Options(
 			options...,
 		).
 		Value(&action).
 		Run()
+
+	// Handle Ctrl+C or other interrupts
+	if err != nil {
+		fmt.Println("\nExiting...")
+		os.Exit(0)
+	}
 
 	switch {
 	case strings.HasPrefix(action, "env:"):
@@ -82,17 +86,9 @@ func mainMenu() string {
 		// Run AI agent for troubleshooting
 		offerAIAgentFromMenu()
 		return mainMenu()
-	case action == "sso-wizard":
-		// Run SSO Setup Wizard
-		runSSOWizardFromMenu()
-		return mainMenu()
-	case action == "sso-agent":
-		// Run SSO AI Agent
-		runSSOAgentFromMenu()
-		return mainMenu()
-	case action == "aws-validate":
-		// Validate AWS configuration
-		validateAWSFromMenu()
+	case action == "sso-menu":
+		// Open SSO tools submenu
+		ssoToolsMenu()
 		return mainMenu()
 	case action == "exit":
 		os.Exit(0)
@@ -100,14 +96,53 @@ func mainMenu() string {
 	return ""
 }
 
+// ssoToolsMenu shows the AWS SSO tools submenu
+func ssoToolsMenu() {
+	var action string
+	err := huh.NewSelect[string]().
+		Title("AWS SSO Tools").
+		Options(
+			huh.NewOption("🔐 SSO Setup Wizard", "wizard"),
+			huh.NewOption("🤖 SSO AI Agent (Enhanced)", "agent"),
+			huh.NewOption("✓ Validate Configuration", "validate"),
+			huh.NewOption("← Back to Main Menu", "back"),
+		).
+		Value(&action).
+		Run()
+
+	if err != nil {
+		return
+	}
+
+	switch action {
+	case "wizard":
+		runSSOWizardFromMenu()
+		ssoToolsMenu() // Return to SSO menu
+	case "agent":
+		runEnhancedSSOAgentFromMenu()
+		ssoToolsMenu() // Return to SSO menu
+	case "validate":
+		validateAWSFromMenu()
+		ssoToolsMenu() // Return to SSO menu
+	case "back":
+		return
+	}
+}
+
 func createEnvMenu() string {
 	projectName := getProjectName()
 
 	var name string
-	huh.NewInput().
+	err := huh.NewInput().
 		Title("What is the name of the environment?").
 		Value(&name).
-		Run() // this is blocking.
+		Run()
+
+	// Handle Ctrl+C or other interrupts
+	if err != nil {
+		fmt.Println("\nCancelled")
+		return ""
+	}
 
 	r := regexp.MustCompile(`^[a-z]{2,}$`)
 	if !r.MatchString(name) {
@@ -123,9 +158,9 @@ func createEnvMenu() string {
 	}
 
 	e := createEnv(projectName, name)
-	
+
 	// Save to current directory
-	err := saveEnvToFile(e, name+".yaml")
+	err = saveEnvToFile(e, name+".yaml")
 	if err != nil {
 		fmt.Println("Error saving environment:", err)
 		os.Exit(1)
@@ -147,10 +182,16 @@ func getProjectName() string {
 	}
 
 	var name string
-	huh.NewInput().
+	err := huh.NewInput().
 		Title("What is the project name?").
 		Value(&name).
-		Run() // this is blocking.
+		Run()
+
+	// Handle Ctrl+C or other interrupts
+	if err != nil {
+		fmt.Println("\nCancelled")
+		os.Exit(0)
+	}
 
 	return name
 }
@@ -240,6 +281,13 @@ func runSSOAgentFromMenu() {
 	if err := RunSSOAgent(profileName, &yamlEnv); err != nil {
 		fmt.Printf("AI Agent error: %v\n", err)
 	}
+}
+
+// runEnhancedSSOAgentFromMenu runs the SSO AI Agent (uses existing agent for now)
+func runEnhancedSSOAgentFromMenu() {
+	// TODO: Create enhanced agent with tool support (read/write config, ask user, web search)
+	// For now, use existing agent
+	runSSOAgentFromMenu()
 }
 
 // validateAWSFromMenu validates AWS configuration

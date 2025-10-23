@@ -149,6 +149,12 @@ func (pi *ProfileInspector) detectProfileType(section *ini.Section) ProfileType 
 		return ProfileTypeLegacySSO
 	}
 
+	// Check for incomplete SSO profile (has SSO fields but missing session/start_url)
+	// Treat as modern SSO since that's the recommended format
+	if section.HasKey("sso_account_id") || section.HasKey("sso_role_name") || section.HasKey("sso_region") {
+		return ProfileTypeModernSSO
+	}
+
 	// Check for static keys
 	if section.HasKey("aws_access_key_id") {
 		return ProfileTypeStaticKeys

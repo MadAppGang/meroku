@@ -5,8 +5,46 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 )
+
+// AWS regions for dropdown selection
+var awsRegions = []string{
+	"us-east-1",      // US East (N. Virginia)
+	"us-east-2",      // US East (Ohio)
+	"us-west-1",      // US West (N. California)
+	"us-west-2",      // US West (Oregon)
+	"af-south-1",     // Africa (Cape Town)
+	"ap-east-1",      // Asia Pacific (Hong Kong)
+	"ap-south-1",     // Asia Pacific (Mumbai)
+	"ap-northeast-1", // Asia Pacific (Tokyo)
+	"ap-northeast-2", // Asia Pacific (Seoul)
+	"ap-northeast-3", // Asia Pacific (Osaka)
+	"ap-southeast-1", // Asia Pacific (Singapore)
+	"ap-southeast-2", // Asia Pacific (Sydney)
+	"ca-central-1",   // Canada (Central)
+	"eu-central-1",   // Europe (Frankfurt)
+	"eu-west-1",      // Europe (Ireland)
+	"eu-west-2",      // Europe (London)
+	"eu-west-3",      // Europe (Paris)
+	"eu-south-1",     // Europe (Milan)
+	"eu-north-1",     // Europe (Stockholm)
+	"me-south-1",     // Middle East (Bahrain)
+	"sa-east-1",      // South America (São Paulo)
+}
+
+// Common IAM roles for dropdown selection
+var commonIAMRoles = []string{
+	"AdministratorAccess",
+	"PowerUserAccess",
+	"ReadOnlyAccess",
+	"ViewOnlyAccess",
+	"SecurityAudit",
+	"DatabaseAdministrator",
+	"NetworkAdministrator",
+	"SystemAdministrator",
+}
 
 // SSOWizardState represents the current step in the setup wizard
 type SSOWizardState int
@@ -94,9 +132,9 @@ func NewSSOWizardModel(profileName string, yamlEnv *Env) SSOWizardModel {
 			}
 			return "us-east-1"
 		}(),
-		ssoRegionInput: "us-east-1",
-		outputInput:    "json",
-		roleInput:      "AdministratorAccess",
+		ssoRegionInput: "us-east-1", // SSO Region always defaults to us-east-1 (IAM Identity Center location)
+		outputInput: "json",
+		roleInput:   "AdministratorAccess",
 	}
 
 	return m
@@ -480,8 +518,13 @@ func (m SSOWizardModel) View() string {
 		b.WriteString("\nPress Enter to continue, Esc to go back\n")
 
 	case WizardStateEnterSSORegion:
-		b.WriteString("SSO Region:\n")
-		b.WriteString("(The AWS region hosting your IAM Identity Center)\n\n")
+		prefillNote := ""
+		if m.yamlEnv != nil && m.yamlEnv.Region != "" {
+			prefillNote = " (from YAML)"
+		}
+		b.WriteString("SSO Region" + prefillNote + ":\n")
+		b.WriteString("(The AWS region hosting your IAM Identity Center)\n")
+		b.WriteString("Common: us-east-1, us-west-2, eu-west-1, ap-southeast-1\n\n")
 		b.WriteString("> " + m.ssoRegionInput + "█\n\n")
 		if m.errorMsg != "" {
 			b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("❌ " + m.errorMsg + "\n"))
@@ -516,7 +559,8 @@ func (m SSOWizardModel) View() string {
 			prefillNote = " (from YAML)"
 		}
 		b.WriteString("Default AWS Region" + prefillNote + ":\n")
-		b.WriteString("(Region for AWS CLI commands)\n\n")
+		b.WriteString("(Region for AWS CLI commands)\n")
+		b.WriteString("Common: us-east-1, us-west-2, eu-west-1, ap-southeast-1\n\n")
 		b.WriteString("> " + m.regionInput + "█\n\n")
 		if m.errorMsg != "" {
 			b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("❌ " + m.errorMsg + "\n"))
@@ -606,10 +650,242 @@ type wizardValidationMsg struct {
 
 // RunSSOWizard runs the interactive setup wizard
 func RunSSOWizard(profileName string, yamlEnv *Env) error {
-	model := NewSSOWizardModel(profileName, yamlEnv)
-	p := tea.NewProgram(model)
-	if _, err := p.Run(); err != nil {
-		return fmt.Errorf("wizard error: %w", err)
+	// Use new huh-based wizard implementation
+	return RunSSOWizardHuh(profileName, yamlEnv)
+}
+
+// RunSSOWizardHuh is the new huh-based wizard with dropdown selections
+func RunSSOWizardHuh(profileName string, yamlEnv *Env) error {
+	fmt.Println("\n🔐 AWS SSO Setup Wizard\n")
+	fmt.Printf("Profile: %s\n\n", profileName)
+
+	// Check AWS CLI
+	inspector, err := NewProfileInspector()
+	if err != nil {
+		return fmt.Errorf("failed to create inspector: %w", err)
 	}
+
+	if err := inspector.CheckAWSCLI(); err != nil {
+		fmt.Println("❌ AWS CLI v2+ is required for SSO")
+		fmt.Println("Install from: https://aws.amazon.com/cli/")
+		return fmt.Errorf("AWS CLI not available")
+	}
+
+	// Inspect current profile
+	profileInfo, err := inspector.InspectProfile(profileName)
+	if err != nil {
+		return fmt.Errorf("failed to inspect profile: %w", err)
+	}
+
+	// Pre-fill values from YAML or existing profile
+	var (
+		ssoStartURL  string
+		ssoRegion    string
+		accountID    string
+		roleName     string
+		region       string
+		output       string
+	)
+
+	// Pre-fill from existing profile (fallback values)
+	if profileInfo.Exists {
+		if profileInfo.SSOStartURL != "" {
+			ssoStartURL = profileInfo.SSOStartURL
+		}
+		if profileInfo.SSORegion != "" {
+			ssoRegion = profileInfo.SSORegion
+		}
+		if profileInfo.SSOAccountID != "" {
+			accountID = profileInfo.SSOAccountID
+		}
+		if profileInfo.SSORoleName != "" {
+			roleName = profileInfo.SSORoleName
+		}
+		if profileInfo.Region != "" {
+			region = profileInfo.Region
+		}
+		if profileInfo.Output != "" {
+			output = profileInfo.Output
+		}
+	}
+
+	// Pre-fill from YAML (source of truth - overrides profile values)
+	if yamlEnv != nil {
+		if yamlEnv.AccountID != "" {
+			accountID = yamlEnv.AccountID
+		}
+		if yamlEnv.Region != "" {
+			region = yamlEnv.Region
+			// Note: SSO Region is NOT set from YAML - it defaults to us-east-1
+			// SSO Region is where IAM Identity Center is hosted (usually us-east-1)
+			// Default Region is where your resources run (from YAML)
+		}
+	}
+
+	// Set defaults if still empty
+	if ssoRegion == "" {
+		ssoRegion = "us-east-1"
+	}
+	if region == "" {
+		region = "us-east-1"
+	}
+	if roleName == "" {
+		roleName = "AdministratorAccess"
+	}
+	if output == "" {
+		output = "json"
+	}
+
+	// Create region options for dropdown
+	regionOptions := make([]huh.Option[string], len(awsRegions))
+	for i, r := range awsRegions {
+		regionOptions[i] = huh.NewOption(r, r)
+	}
+
+	// Create role options for dropdown
+	roleOptions := make([]huh.Option[string], len(commonIAMRoles))
+	for i, r := range commonIAMRoles {
+		roleOptions[i] = huh.NewOption(r, r)
+	}
+	// Add "Other" option for custom role
+	roleOptions = append(roleOptions, huh.NewOption("Other (enter custom)", "custom"))
+
+	// Validate Account ID from YAML
+	if accountID == "" {
+		return fmt.Errorf("account ID not found in YAML file - please add account_id to %s", selectedEnvironment+".yaml")
+	}
+	if len(accountID) != 12 {
+		return fmt.Errorf("invalid account ID in YAML file: must be exactly 12 digits")
+	}
+
+	// Build the form (simplified - only ask for SSO-specific fields)
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Title("SSO Start URL").
+				Description("Example: https://mycompany.awsapps.com/start").
+				Value(&ssoStartURL).
+				Validate(func(s string) error {
+					if s == "" {
+						return fmt.Errorf("SSO start URL is required")
+					}
+					if !strings.HasPrefix(s, "https://") {
+						return fmt.Errorf("must start with https://")
+					}
+					return nil
+				}),
+		),
+
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("SSO Region").
+				Description("The AWS region hosting your IAM Identity Center").
+				Options(regionOptions...).
+				Value(&ssoRegion),
+		),
+
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("IAM Role Name").
+				Description("Select the IAM role for this profile").
+				Options(roleOptions...).
+				Value(&roleName),
+		),
+
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Default AWS Region").
+				Description("Region for AWS CLI commands (from YAML: "+region+")").
+				Options(regionOptions...).
+				Value(&region),
+		),
+	)
+
+	// Run the form
+	err = form.Run()
+	if err != nil {
+		return fmt.Errorf("form cancelled: %w", err)
+	}
+
+	// Handle custom role name
+	if roleName == "custom" {
+		var customRole string
+		err := huh.NewInput().
+			Title("Enter custom IAM role name").
+			Value(&customRole).
+			Run()
+		if err != nil {
+			return fmt.Errorf("cancelled: %w", err)
+		}
+		roleName = customRole
+	}
+
+	// Confirm before writing
+	var confirm bool
+	confirmForm := huh.NewForm(
+		huh.NewGroup(
+			huh.NewConfirm().
+				Title("Confirm AWS SSO Configuration").
+				Description(fmt.Sprintf(
+					"Profile: %s\nSSO URL: %s\nSSO Region: %s\nAccount: %s\nRole: %s\nRegion: %s\nOutput: %s",
+					profileName, ssoStartURL, ssoRegion, accountID, roleName, region, output,
+				)).
+				Value(&confirm),
+		),
+	)
+
+	err = confirmForm.Run()
+	if err != nil || !confirm {
+		fmt.Println("❌ Setup cancelled")
+		return fmt.Errorf("setup cancelled")
+	}
+
+	// Write the configuration
+	writer := NewConfigWriter()
+
+	options := ModernSSOProfileOptions{
+		ProfileName:           profileName,
+		SSOSessionName:        "sso-session-" + profileName,
+		SSOStartURL:           ssoStartURL,
+		SSORegion:             ssoRegion,
+		SSOAccountID:          accountID,
+		SSORoleName:           roleName,
+		SSORegistrationScopes: "sso:account:access",
+		Region:                region,
+		Output:                output,
+	}
+
+	fmt.Println("\n💾 Writing configuration...")
+	err = writer.WriteModernSSOProfile(options)
+	if err != nil {
+		return fmt.Errorf("failed to write config: %w", err)
+	}
+
+	fmt.Println("✅ Configuration written successfully")
+
+	// Attempt automatic login
+	fmt.Println("\n🔐 Attempting AWS SSO login...")
+	autoLogin := NewAutoLogin(profileName)
+	loginErr := autoLogin.Login()
+	if loginErr != nil {
+		fmt.Printf("⚠️  Login failed: %v\n", loginErr)
+		fmt.Println("You can login manually with: aws sso login --profile " + profileName)
+		return nil // Don't fail the wizard
+	}
+
+	// Validate credentials
+	fmt.Println("\n✓ Validating credentials...")
+	validationResult, err := autoLogin.ValidateCredentials(accountID, region)
+	if err != nil {
+		fmt.Printf("⚠️  Validation failed: %v\n", err)
+		return nil // Don't fail the wizard
+	}
+
+	// Success!
+	fmt.Println("\n✅ SUCCESS!")
+	fmt.Printf("AWS SSO profile '%s' is ready to use!\n\n", profileName)
+	fmt.Printf("Account: %s\n", validationResult.AccountID)
+	fmt.Printf("User:    %s\n", validationResult.ARN)
+
 	return nil
 }
