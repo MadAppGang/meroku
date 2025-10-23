@@ -32,22 +32,25 @@ func runCommandWithOutput(name string, args ...string) (string, error) {
 		return "", err
 	}
 
-	// Create channels to signal when we're done reading from stdout and stderr
-	doneChan := make(chan bool, 2)
+	// Create channels for output capture
+	stdoutChan := make(chan string, 1)
+	stderrChan := make(chan string, 1)
 
-	// Start goroutine to read from stdout
-	go streamOutput(stdout, "STDOUT", doneChan)
-
-	// Start goroutine to read from stderr and capture error text
-	var stderrBuffer string
+	// Start goroutine to read from stdout and capture it
 	go func() {
-		stderrBuffer = streamOutputAndCapture(stderr, "STDERR", doneChan)
+		output := streamOutputAndCapture(stdout, "STDOUT")
+		stdoutChan <- output
 	}()
 
-	// Wait for both stdout and stderr to finish
-	for i := 0; i < 2; i++ {
-		<-doneChan
-	}
+	// Start goroutine to read from stderr and capture error text
+	go func() {
+		output := streamOutputAndCapture(stderr, "STDERR")
+		stderrChan <- output
+	}()
+
+	// Wait for both outputs
+	stdoutBuffer := <-stdoutChan
+	stderrBuffer := <-stderrChan
 
 	// Wait for the command to finish
 	err = cmd.Wait()
@@ -55,7 +58,7 @@ func runCommandWithOutput(name string, args ...string) (string, error) {
 		fmt.Println("Command finished with error:", err)
 		return stderrBuffer, err
 	}
-	return "", nil
+	return stdoutBuffer, nil
 }
 
 func streamOutput(r io.Reader, prefix string, doneChan chan bool) {
@@ -69,7 +72,7 @@ func streamOutput(r io.Reader, prefix string, doneChan chan bool) {
 	doneChan <- true
 }
 
-func streamOutputAndCapture(r io.Reader, prefix string, doneChan chan<- bool) string {
+func streamOutputAndCapture(r io.Reader, prefix string) string {
 	var buffer strings.Builder
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
@@ -77,7 +80,6 @@ func streamOutputAndCapture(r io.Reader, prefix string, doneChan chan<- bool) st
 		fmt.Printf("%s: %s\n", prefix, line)
 		buffer.WriteString(line + "\n")
 	}
-	doneChan <- true
 	return buffer.String()
 }
 

@@ -4,6 +4,7 @@ import {
 	Copy,
 	ExternalLink,
 	Github,
+	Globe,
 	Loader2,
 	Plus,
 	Trash2,
@@ -32,6 +33,60 @@ import {
 } from "./ui/select";
 import { Textarea } from "./ui/textarea";
 
+/**
+ * Generate smart defaults for Amplify app based on environment configuration
+ */
+function generateSmartDefaults(config?: YamlInfrastructureConfig): {
+	suggestedName: string;
+	suggestedSubdomain: string;
+	previewDomain: string;
+} {
+	const projectName = config?.project || "project";
+	const env = config?.env || "dev";
+
+	// Suggested app name: project-frontend
+	const suggestedName = `${projectName}-frontend`;
+
+	// Suggested subdomain prefix
+	const suggestedSubdomain = "app";
+
+	// Preview domain based on configuration
+	let previewDomain = "";
+	if (config?.domain?.enabled && config?.domain?.domain_name) {
+		const baseDomain = config.domain.domain_name;
+		const addEnvPrefix = config.domain.add_env_domain_prefix ?? true;
+
+		if (addEnvPrefix && env !== "prod") {
+			previewDomain = `${suggestedSubdomain}.${env}.${baseDomain}`;
+		} else {
+			previewDomain = `${suggestedSubdomain}.${baseDomain}`;
+		}
+	}
+
+	return { suggestedName, suggestedSubdomain, previewDomain };
+}
+
+/**
+ * Calculate domain preview based on subdomain prefix and config
+ */
+function calculateDomainPreview(
+	subdomainPrefix: string,
+	config?: YamlInfrastructureConfig
+): string {
+	if (!subdomainPrefix || !config?.domain?.enabled || !config?.domain?.domain_name) {
+		return "";
+	}
+
+	const baseDomain = config.domain.domain_name;
+	const addEnvPrefix = config.domain.add_env_domain_prefix ?? true;
+	const env = config.env || "dev";
+
+	if (addEnvPrefix && env !== "prod") {
+		return `${subdomainPrefix}.${env}.${baseDomain}`;
+	}
+	return `${subdomainPrefix}.${baseDomain}`;
+}
+
 interface AddAmplifyDialogProps {
 	open: boolean;
 	onClose: () => void;
@@ -41,6 +96,7 @@ interface AddAmplifyDialogProps {
 	existingApps?: string[];
 	environmentName?: string;
 	projectName?: string;
+	config?: YamlInfrastructureConfig;
 }
 
 type BranchStage = "PRODUCTION" | "DEVELOPMENT" | "BETA" | "EXPERIMENTAL";
@@ -63,16 +119,22 @@ export const AddAmplifyDialog: React.FC<AddAmplifyDialogProps> = ({
 	existingApps = [],
 	environmentName = "dev",
 	projectName = "project",
+	config,
 }) => {
+	// Generate smart defaults based on config
+	const smartDefaults = useMemo(
+		() => generateSmartDefaults(config),
+		[config]
+	);
+
 	const [formData, setFormData] = useState<{
 		name: string;
 		github_repository: string;
 		github_oauth_token: string;
 		branches: BranchFormData[];
-		custom_domain: string;
-		enable_root_domain: boolean;
+		subdomain_prefix: string;
 	}>({
-		name: "",
+		name: smartDefaults.suggestedName,
 		github_repository: "",
 		github_oauth_token: "",
 		branches: [
@@ -87,8 +149,7 @@ export const AddAmplifyDialog: React.FC<AddAmplifyDialogProps> = ({
 				custom_subdomains_text: "",
 			},
 		],
-		custom_domain: "",
-		enable_root_domain: true,
+		subdomain_prefix: smartDefaults.suggestedSubdomain,
 	});
 
 	const [tokenSaved, setTokenSaved] = useState(false);
@@ -387,15 +448,6 @@ export const AddAmplifyDialog: React.FC<AddAmplifyDialogProps> = ({
 					}: Invalid branch name`;
 				}
 			});
-
-			// Custom domain validation
-			if (
-				formData.custom_domain &&
-				!formData.branches.some((b) => b.stage === "PRODUCTION")
-			) {
-				newErrors.custom_domain =
-					"Custom domain requires at least one PRODUCTION branch";
-			}
 		}
 
 		if (Object.keys(newErrors).length > 0) {
@@ -415,8 +467,7 @@ export const AddAmplifyDialog: React.FC<AddAmplifyDialogProps> = ({
 				environment_variables: branch.environment_variables,
 				custom_subdomains: branch.custom_subdomains || [],
 			})),
-			...(formData.custom_domain && { custom_domain: formData.custom_domain }),
-			enable_root_domain: formData.enable_root_domain,
+			...(formData.subdomain_prefix && { subdomain_prefix: formData.subdomain_prefix }),
 		};
 
 		await onAdd(amplifyApp);
@@ -439,8 +490,9 @@ export const AddAmplifyDialog: React.FC<AddAmplifyDialogProps> = ({
 			}
 		}
 
+		// Reset form with smart defaults
 		setFormData({
-			name: "",
+			name: smartDefaults.suggestedName,
 			github_repository: "",
 			github_oauth_token: "",
 			branches: [
@@ -455,8 +507,7 @@ export const AddAmplifyDialog: React.FC<AddAmplifyDialogProps> = ({
 					custom_subdomains_text: "",
 				},
 			],
-			custom_domain: "",
-			enable_root_domain: true,
+			subdomain_prefix: smartDefaults.suggestedSubdomain,
 		});
 		setErrors({});
 		setTokenSaved(false);
@@ -496,6 +547,11 @@ export const AddAmplifyDialog: React.FC<AddAmplifyDialogProps> = ({
 							/>
 							{errors.name && (
 								<p className="text-xs text-red-500 mt-1">{errors.name}</p>
+							)}
+							{smartDefaults.suggestedName && (
+								<p className="text-xs text-blue-400 mt-1">
+									💡 Pre-filled as {smartDefaults.suggestedName} based on project name
+								</p>
 							)}
 						</div>
 
@@ -897,46 +953,47 @@ export const AddAmplifyDialog: React.FC<AddAmplifyDialogProps> = ({
 					{/* Domain Configuration */}
 					<div className="grid gap-2">
 						<h3 className="text-sm font-semibold">
-							Domain Configuration (Optional)
+							Domain Configuration
 						</h3>
 
 						<div>
-							<Label htmlFor="custom_domain">Custom Domain</Label>
+							<Label htmlFor="subdomain_prefix">Subdomain Prefix</Label>
 							<Input
-								id="custom_domain"
-								value={formData.custom_domain}
+								id="subdomain_prefix"
+								value={formData.subdomain_prefix}
 								onChange={(e) =>
-									setFormData({ ...formData, custom_domain: e.target.value })
+									setFormData({ ...formData, subdomain_prefix: e.target.value })
 								}
-								placeholder="example.com"
-								className={`mt-1 ${
-									errors.custom_domain ? "border-red-500" : ""
-								}`}
+								placeholder="app"
+								className="mt-1"
 							/>
-							{errors.custom_domain && (
-								<p className="text-xs text-red-500 mt-1">
-									{errors.custom_domain}
+							{smartDefaults.suggestedSubdomain && formData.subdomain_prefix === smartDefaults.suggestedSubdomain && (
+								<p className="text-xs text-blue-400 mt-1">
+									💡 Pre-filled based on project name
 								</p>
 							)}
-							<p className="text-xs text-gray-500 mt-1">
-								Custom domain will be mapped to the first PRODUCTION branch
-							</p>
-						</div>
 
-						<div className="flex items-center space-x-2">
-							<Checkbox
-								id="enable_root_domain"
-								checked={formData.enable_root_domain}
-								onCheckedChange={(checked) =>
-									setFormData({
-										...formData,
-										enable_root_domain: checked as boolean,
-									})
-								}
-							/>
-							<Label htmlFor="enable_root_domain" className="font-normal">
-								Enable root domain access
-							</Label>
+							{/* Domain Preview */}
+							{formData.subdomain_prefix && config?.domain?.enabled && config?.domain?.domain_name && (
+								<div className="mt-3 p-3 bg-gray-800/50 border border-gray-700 rounded-lg">
+									<div className="flex items-center gap-2 mb-1">
+										<Globe className="w-4 h-4 text-blue-400" />
+										<span className="text-xs font-medium text-gray-400">Domain Preview</span>
+									</div>
+									<p className="text-sm text-white font-mono">
+										{calculateDomainPreview(formData.subdomain_prefix, config)}
+									</p>
+									<p className="text-xs text-gray-500 mt-1">
+										Automatically constructed from domain configuration
+									</p>
+								</div>
+							)}
+
+							{!config?.domain?.enabled && (
+								<p className="text-xs text-amber-400 mt-1">
+									ℹ️ Enable domain configuration to use custom domains
+								</p>
+							)}
 						</div>
 					</div>
 				</div>

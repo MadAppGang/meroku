@@ -113,11 +113,15 @@ export function AmplifyStatusWidget({
 
 			try {
 				const response = await amplifyApi.getApps(environment, profile);
-				const foundApp = response.apps.find((a) => a.name === appName);
-				if (foundApp) {
-					setApp(foundApp);
+				if (response?.apps && Array.isArray(response.apps)) {
+					const foundApp = response.apps.find((a) => a.name === appName);
+					if (foundApp) {
+						setApp(foundApp);
+					} else {
+						setError("App not found");
+					}
 				} else {
-					setError("App not found");
+					setError("No apps data available");
 				}
 			} catch (err) {
 				console.error("Failed to fetch Amplify app status:", err);

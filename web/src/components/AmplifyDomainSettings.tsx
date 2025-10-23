@@ -12,7 +12,27 @@ import type { UpdateHandler } from "../types/components";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { Switch } from "./ui/switch";
+
+/**
+ * Calculate domain preview based on subdomain prefix and config
+ */
+function calculateDomainPreview(
+	subdomainPrefix: string,
+	config?: YamlInfrastructureConfig
+): string {
+	if (!subdomainPrefix || !config?.domain?.enabled || !config?.domain?.domain_name) {
+		return "";
+	}
+
+	const baseDomain = config.domain.domain_name;
+	const addEnvPrefix = config.domain.add_env_domain_prefix ?? true;
+	const env = config.env || "dev";
+
+	if (addEnvPrefix && env !== "prod") {
+		return `${subdomainPrefix}.${env}.${baseDomain}`;
+	}
+	return `${subdomainPrefix}.${baseDomain}`;
+}
 
 interface AmplifyDomainSettingsProps {
 	config: YamlInfrastructureConfig;
@@ -37,12 +57,14 @@ export function AmplifyDomainSettings({
 		const fetchAppData = async () => {
 			try {
 				const response = await amplifyApi.getApps(config.env || "dev");
-				const foundApp = response.apps.find((a) => a.name === appName);
-				if (foundApp) {
-					setApiApp(foundApp);
+				if (response?.apps && Array.isArray(response.apps)) {
+					const foundApp = response.apps.find((a) => a.name === appName);
+					if (foundApp) {
+						setApiApp(foundApp);
+					}
 				}
 			} catch (err) {
-				console.error("Failed to fetch Amplify app data:", err);
+				console.error("Failed to fetch Amplify app status:", err);
 			} finally {
 				setLoading(false);
 			}
@@ -73,7 +95,10 @@ export function AmplifyDomainSettings({
 		}
 	};
 
-	const hasCustomDomain = !!amplifyApp.custom_domain;
+	const hasSubdomainPrefix = !!amplifyApp.subdomain_prefix;
+	const currentDomain = amplifyApp.subdomain_prefix
+		? calculateDomainPreview(amplifyApp.subdomain_prefix, config)
+		: "";
 	const branches = amplifyApp.branches || [];
 	const productionBranch = branches.find((b) => b.stage === "PRODUCTION");
 	const hasProductionBranch = !!productionBranch;
@@ -119,57 +144,52 @@ export function AmplifyDomainSettings({
 
 				<div className="space-y-3">
 					<div>
-						<Label htmlFor="custom_domain">Custom Domain</Label>
+						<Label htmlFor="subdomain_prefix">Subdomain Prefix</Label>
 						<Input
-							id="custom_domain"
-							value={amplifyApp.custom_domain || ""}
-							onChange={(e) => handleChange("custom_domain", e.target.value)}
-							placeholder="example.com"
+							id="subdomain_prefix"
+							value={amplifyApp.subdomain_prefix || ""}
+							onChange={(e) => handleChange("subdomain_prefix", e.target.value)}
+							placeholder="app"
 							className="mt-1 bg-gray-800 border-gray-600 text-white"
 						/>
-						{amplifyApp.custom_domain && (
-							<div className="mt-2 flex items-center gap-2">
-								<CheckCircle className="w-3 h-3 text-green-400" />
-								<span className="text-xs text-green-400">
-									Connected to Route 53
-								</span>
+
+						{/* Domain Preview */}
+						{hasSubdomainPrefix && currentDomain && (
+							<div className="mt-3 p-3 bg-gray-800/50 border border-gray-700 rounded-lg">
+								<div className="flex items-center gap-2 mb-1">
+									<Globe className="w-4 h-4 text-blue-400" />
+									<span className="text-xs font-medium text-gray-400">Your Domain</span>
+								</div>
+								<p className="text-sm text-white font-mono">
+									{currentDomain}
+								</p>
+								<div className="mt-2 flex items-center gap-2">
+									<CheckCircle className="w-3 h-3 text-green-400" />
+									<span className="text-xs text-green-400">
+										Connected to Route 53
+									</span>
+								</div>
 							</div>
 						)}
-						{amplifyApp.custom_domain && !hasProductionBranch && (
+
+						{!config?.domain?.enabled && (
+							<p className="text-xs text-amber-400 mt-2">
+								ℹ️ Enable domain configuration to use custom domains
+							</p>
+						)}
+
+						{hasSubdomainPrefix && !hasProductionBranch && (
 							<div className="mt-2 flex items-center gap-2">
 								<AlertCircle className="w-3 h-3 text-amber-400" />
 								<span className="text-xs text-amber-400">
-									Custom domain requires at least one PRODUCTION branch
+									Add a PRODUCTION branch for the domain to work
 								</span>
 							</div>
 						)}
-						<p className="text-xs text-gray-500 mt-1">
-							Leave empty to use default Amplify domain
-						</p>
-					</div>
 
-					<div>
-						<div className="flex items-center justify-between bg-gray-800 rounded-lg p-4 border border-gray-700">
-							<Label
-								htmlFor="enable_root_domain"
-								className="font-normal cursor-pointer"
-							>
-								Enable root domain access
-							</Label>
-							<Switch
-								id="enable_root_domain"
-								checked={amplifyApp.enable_root_domain || false}
-								onCheckedChange={(checked) =>
-									handleChange("enable_root_domain", checked)
-								}
-								disabled={!amplifyApp.custom_domain}
-							/>
-						</div>
-						{amplifyApp.enable_root_domain && amplifyApp.custom_domain && (
-							<p className="text-xs text-gray-500 mt-1">
-								Application accessible at {amplifyApp.custom_domain}
-							</p>
-						)}
+						<p className="text-xs text-gray-500 mt-2">
+							Leave empty to use default Amplify domain (*.amplifyapp.com)
+						</p>
 					</div>
 				</div>
 			</div>
@@ -272,15 +292,15 @@ export function AmplifyDomainSettings({
 											)}
 										</div>
 
-										{hasCustomDomain && (
+										{currentDomain && (
 											<div>
 												<p className="text-xs text-gray-400">
 													Custom Domain Mappings
 												</p>
 												<div className="space-y-1 mt-1">
-													{isProduction && amplifyApp.enable_root_domain && (
+													{isProduction && (
 														<p className="text-sm text-gray-300 font-mono">
-															{amplifyApp.custom_domain} → {branch.name}
+															{currentDomain} → {branch.name}
 														</p>
 													)}
 													{customSubdomains.length > 0 &&
@@ -289,7 +309,7 @@ export function AmplifyDomainSettings({
 																key={subdomain}
 																className="text-sm text-gray-300 font-mono"
 															>
-																{subdomain}.{amplifyApp.custom_domain} →{" "}
+																{subdomain}.{currentDomain} →{" "}
 																{branch.name}
 															</p>
 														))}

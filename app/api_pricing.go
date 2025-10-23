@@ -219,6 +219,14 @@ func getPricing(w http.ResponseWriter, r *http.Request) {
 		if eventBridgePricing != nil {
 			response.Nodes["eventbridge"] = *eventBridgePricing
 		}
+
+		// 10a. Event processor tasks pricing (using Fargate)
+		for _, task := range env.EventProcessorTasks {
+			taskPricing := calculateEventTaskPricing(ctx, pricingClient, region, task)
+			if taskPricing != nil {
+				response.Nodes["event_"+task.Name] = *taskPricing
+			}
+		}
 	}
 
 	// 11. Scheduled tasks pricing (using Fargate)
@@ -778,6 +786,56 @@ func estimateRunsPerMonth(schedule string) int {
 	}
 	// Default to once per day if can't parse
 	return 30
+}
+
+func calculateEventTaskPricing(ctx context.Context, client *pricing.Client, region string, task EventProcessorTask) *NodePricing {
+	nodePricing := &NodePricing{
+		ServiceName: fmt.Sprintf("Event Task: %s", task.Name),
+		ServiceType: "compute",
+		Levels:      make(map[string]LevelPrice),
+	}
+
+	// Get Fargate pricing
+	vCPUPrice := getFargatePrice(ctx, client, region, "vCPU")
+	memoryPrice := getFargatePrice(ctx, client, region, "GB")
+
+	// Estimate runs per month based on workload level
+	// Event tasks typically process events triggered by EventBridge
+	runsPerMonthMap := map[string]int{
+		"startup":   500,   // Low event volume for startups
+		"scaleup":   2000,  // Medium event volume as you scale
+		"highload":  10000, // High event volume for production scale
+	}
+
+	for level, specs := range WorkloadSpecs {
+		cpu := specs["ecs_cpu"].(int)
+		memory := specs["ecs_memory"].(int)
+
+		// Event processing is typically faster than scheduled tasks (2-3 minutes per run)
+		runtimeHours := 2.0 / 60.0 // 2 minutes in hours
+		vCPUCostPerRun := (float64(cpu) / 1024.0) * vCPUPrice * runtimeHours
+		memoryCostPerRun := (float64(memory) / 1024.0) * memoryPrice * runtimeHours
+		costPerRun := vCPUCostPerRun + memoryCostPerRun
+
+		runsPerMonth := runsPerMonthMap[level]
+		monthlyCost := costPerRun * float64(runsPerMonth)
+
+		nodePricing.Levels[level] = LevelPrice{
+			HourlyPrice:  monthlyCost / 730,
+			MonthlyPrice: monthlyCost,
+			Details: map[string]string{
+				"vCPU":         fmt.Sprintf("%.2f vCPU", float64(cpu)/1024.0),
+				"memory":       fmt.Sprintf("%d MB", memory),
+				"ruleName":     task.RuleName,
+				"runsPerMonth": fmt.Sprintf("%d", runsPerMonth),
+				"runtime":      "2 min/run",
+				"sources":      fmt.Sprintf("%v", task.Sources),
+				"detailTypes":  fmt.Sprintf("%v", task.DetailTypes),
+			},
+		}
+	}
+
+	return nodePricing
 }
 
 func calculateCloudWatchPricing(ctx context.Context, client *pricing.Client, region string) *NodePricing {

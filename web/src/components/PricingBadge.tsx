@@ -1,4 +1,3 @@
-import { DollarSign } from "lucide-react";
 import type { PricingResponse } from "../hooks/use-pricing";
 import { usePricingRates } from "../contexts/PricingContext";
 import {
@@ -45,8 +44,7 @@ export function PricingBadge({
 						variant="secondary"
 						className="absolute -top-2 -right-2 bg-gray-600/90 text-gray-300 border-gray-700 text-xs px-1 py-0.5"
 					>
-						<DollarSign className="w-3 h-3 mr-0.5" />
-						...
+							...
 					</Badge>
 				);
 			}
@@ -65,7 +63,6 @@ export function PricingBadge({
 					variant="secondary"
 					className="absolute -top-2 -right-2 bg-green-600/90 text-white border-green-700 text-xs px-1 py-0.5"
 				>
-					<DollarSign className="w-3 h-3 mr-0.5" />$
 					{formatPrice(monthlyPrice)}/mo
 				</Badge>
 			);
@@ -79,8 +76,7 @@ export function PricingBadge({
 						variant="secondary"
 						className="absolute -top-2 -right-2 bg-gray-600/90 text-gray-300 border-gray-700 text-xs px-1 py-0.5"
 					>
-						<DollarSign className="w-3 h-3 mr-0.5" />
-						...
+							...
 					</Badge>
 				);
 			}
@@ -99,7 +95,6 @@ export function PricingBadge({
 					variant="secondary"
 					className="absolute -top-2 -right-2 bg-green-600/90 text-white border-green-700 text-xs px-1 py-0.5"
 				>
-					<DollarSign className="w-3 h-3 mr-0.5" />$
 					{formatPrice(monthlyPrice)}/mo
 				</Badge>
 			);
@@ -145,8 +140,7 @@ export function PricingBadge({
 					variant="secondary"
 					className="absolute -top-2 -right-2 bg-green-600/90 text-white border-green-700 text-xs px-1 py-0.5"
 				>
-					<DollarSign className="w-3 h-3 mr-0.5" />$
-					{backendPrice.levels[level].monthlyPrice.toFixed(0)}/mo
+					${backendPrice.levels[level].monthlyPrice.toFixed(0)}/mo
 				</Badge>
 			);
 		}
@@ -170,8 +164,32 @@ export function PricingBadge({
 						variant="secondary"
 						className="absolute -top-2 -right-2 bg-green-600/90 text-white border-green-700 text-xs px-1 py-0.5"
 					>
-						<DollarSign className="w-3 h-3 mr-0.5" />
-						{displayPrice}
+							{displayPrice}
+					</Badge>
+				);
+			}
+		}
+	}
+
+	// Special handling for event processor tasks
+	if (nodeType === "event-task" && serviceName) {
+		const eventKey = `event_${serviceName.toLowerCase()}`;
+		if (pricingData[eventKey]) {
+			const price = pricingData[eventKey].levels[level];
+			if (price) {
+				// For event tasks, show more precision since costs are typically small
+				const monthlyPrice = price.monthlyPrice;
+				const displayPrice =
+					monthlyPrice < 1
+						? `$${monthlyPrice.toFixed(2)}/mo`
+						: `$${monthlyPrice.toFixed(0)}/mo`;
+
+				return (
+					<Badge
+						variant="secondary"
+						className="absolute -top-2 -right-2 bg-green-600/90 text-white border-green-700 text-xs px-1 py-0.5"
+					>
+							{displayPrice}
 					</Badge>
 				);
 			}
@@ -192,8 +210,7 @@ export function PricingBadge({
 						variant="secondary"
 						className="absolute -top-2 -right-2 bg-green-600/90 text-white border-green-700 text-xs px-1 py-0.5"
 					>
-						<DollarSign className="w-3 h-3 mr-0.5" />$
-						{price.monthlyPrice.toFixed(0)}/mo
+						${price.monthlyPrice.toFixed(0)}/mo
 					</Badge>
 				);
 			}
@@ -211,7 +228,6 @@ export function PricingBadge({
 				variant="secondary"
 				className="absolute -top-2 -right-2 bg-gray-600/90 text-gray-300 border-gray-700 text-xs px-1 py-0.5"
 			>
-				<DollarSign className="w-3 h-3 mr-0.5" />
 				--.--/mo
 			</Badge>
 		);
@@ -227,7 +243,6 @@ export function PricingBadge({
 				variant="secondary"
 				className="absolute -top-2 -right-2 bg-gray-600/90 text-gray-300 border-gray-700 text-xs px-1 py-0.5"
 			>
-				<DollarSign className="w-3 h-3 mr-0.5" />
 				--.--/mo
 			</Badge>
 		);
@@ -238,8 +253,7 @@ export function PricingBadge({
 			variant="secondary"
 			className="absolute -top-2 -right-2 bg-green-600/90 text-white border-green-700 text-xs px-1 py-0.5"
 		>
-			<DollarSign className="w-3 h-3 mr-0.5" />${price.monthlyPrice.toFixed(0)}
-			/mo
+			${price.monthlyPrice.toFixed(0)}/mo
 		</Badge>
 	);
 }

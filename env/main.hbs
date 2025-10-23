@@ -465,7 +465,15 @@ module "amplify" {
   source = "{{modules}}/amplify"
   project = "{{project}}"
   env = "{{env}}"
-  
+
+  # Domain configuration for auto-construction
+  {{#if domain.domain_name}}
+  base_domain = "{{domain.domain_name}}"
+  {{/if}}
+  {{#if domain.add_env_domain_prefix}}
+  add_env_domain_prefix = {{domain.add_env_domain_prefix}}
+  {{/if}}
+
   amplify_apps = [
     {{#each amplify_apps}}
     {
@@ -497,11 +505,11 @@ module "amplify" {
         }{{#unless @last}},{{/unless}}
         {{/each}}
       ]
+      {{#if subdomain_prefix}}
+      subdomain_prefix = "{{subdomain_prefix}}"
+      {{/if}}
       {{#if custom_domain}}
       custom_domain = "{{custom_domain}}"
-      {{/if}}
-      {{#if enable_root_domain}}
-      enable_root_domain = {{enable_root_domain}}
       {{/if}}
     }{{#unless @last}},{{/unless}}
     {{/each}}

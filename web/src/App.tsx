@@ -403,6 +403,7 @@ export default function App() {
         existingApps={getExistingAmplifyApps()}
         environmentName={selectedEnvironment || undefined}
         projectName={config?.project}
+        config={config || undefined}
       />
 
       {/* Pricing Info Footer */}

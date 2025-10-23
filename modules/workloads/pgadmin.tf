@@ -20,6 +20,41 @@ resource "aws_ssm_parameter" "pgadmin_password" {
   }
 }
 
+# Create the Cloud Map service explicitly for pgAdmin
+resource "aws_service_discovery_service" "pgadmin" {
+  count = var.pgadmin_enabled ? 1 : 0
+
+  name = "pgadmin_service_${var.env}"
+
+  dns_config {
+    namespace_id = aws_service_discovery_private_dns_namespace.local.id
+
+    dns_records {
+      ttl  = 10
+      type = "A"
+    }
+
+    dns_records {
+      ttl  = 10
+      type = "SRV"
+    }
+
+    routing_policy = "MULTIVALUE"
+  }
+
+  health_check_custom_config {
+    failure_threshold = 1
+  }
+
+  tags = {
+    Name        = "pgadmin-service-${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
+}
+
 resource "aws_ecs_service" "pgadmin" {
   count                              = var.pgadmin_enabled ? 1 : 0
   name                               = "pgadmin_service_${var.env}"
@@ -36,17 +71,10 @@ resource "aws_ecs_service" "pgadmin" {
     assign_public_ip = true
   }
 
-  service_connect_configuration {
-    enabled   = true
-    namespace = aws_service_discovery_private_dns_namespace.local.name
-    service {
-      port_name      = "pgadmin_service_${var.env}"
-      discovery_name = "pgadmin_service_${var.env}"
-      client_alias {
-        port     = 80
-        dns_name = "pgadmin_service_${var.env}"
-      }
-    }
+  service_registries {
+    registry_arn   = aws_service_discovery_service.pgadmin[0].arn
+    container_name = "${var.project}_pgadmin_${var.env}"
+    container_port = 80
   }
 
   tags = {
@@ -85,6 +113,7 @@ resource "aws_ecs_task_definition" "pgadmin" {
       protocol      = "tcp"
       containerPort = 80
       hostPort      = 80
+      name          = "${var.project}_pgadmin_${var.env}"
     }]
   }])
 

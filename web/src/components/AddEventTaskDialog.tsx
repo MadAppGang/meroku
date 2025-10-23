@@ -225,7 +225,7 @@ export function AddEventTaskDialog({
 							<Label>Event Detail Types</Label>
 							{formData.detail_types.map((detailType, index) => (
 								<div
-									key={`detail-type-${index}-${detailType}`}
+									key={`detail-type-${index}`}
 									className="flex gap-2"
 								>
 									<Input
@@ -265,7 +265,7 @@ export function AddEventTaskDialog({
 						<div className="grid gap-2">
 							<Label>Event Sources</Label>
 							{formData.sources.map((source, index) => (
-								<div key={`source-${index}-${source}`} className="flex gap-2">
+								<div key={`source-${index}`} className="flex gap-2">
 									<Select
 										value={source}
 										onValueChange={(value: string) =>

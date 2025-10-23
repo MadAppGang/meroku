@@ -29,7 +29,7 @@ export function Route53DNSRecords({ config }: Route53DNSRecordsProps) {
 
 	const domainName = config.domain.domain_name;
 	const apiPrefix = config.domain.api_domain_prefix || "api";
-	const addPrefix = config.domain.add_domain_prefix ?? true;
+	const addPrefix = config.domain.add_env_domain_prefix ?? true;
 
 	// Calculate the full domain based on settings
 	const fullDomain =

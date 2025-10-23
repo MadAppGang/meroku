@@ -62,7 +62,7 @@ export const nodeStateMapping: NodeStateConfig[] = [
 			domainName: config.domain?.domain_name || "",
 			createZone: config.domain?.create_domain_zone || false,
 			apiDomainPrefix: config.domain?.api_domain_prefix || "",
-			addEnvPrefix: config.domain?.add_domain_prefix || false,
+			addEnvPrefix: config.domain?.add_env_domain_prefix || false,
 		}),
 	},
 

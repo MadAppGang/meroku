@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -34,7 +35,33 @@ Recovery steps:
 
 	fmt.Printf("✅ AWS_PROFILE set to: %s\n", awsProfile)
 
-	// Step 2: Validate AWS credentials work
+	// Step 2: Check AWS CLI version
+	fmt.Println("🔧 Checking AWS CLI version...")
+	if err := checkAWSCLIVersion(); err != nil {
+		return fmt.Errorf(`❌ AWS CLI check failed: %v
+
+Recovery steps:
+1. Install AWS CLI v2: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
+2. macOS: brew install awscli
+3. Linux: curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" && unzip awscliv2.zip && sudo ./aws/install
+4. Windows: Download installer from AWS website
+5. Verify installation: aws --version`, err)
+	}
+
+	// Step 3: Check Terraform version
+	fmt.Println("🔧 Checking Terraform version...")
+	if err := checkTerraformVersion(); err != nil {
+		return fmt.Errorf(`❌ Terraform check failed: %v
+
+Recovery steps:
+1. Install Terraform: https://developer.hashicorp.com/terraform/install
+2. macOS: brew install terraform
+3. Linux: Download from https://releases.hashicorp.com/terraform/
+4. Windows: Download installer from HashiCorp website
+5. Verify installation: terraform version`, err)
+	}
+
+	// Step 4: Validate AWS credentials work
 	if err := validateAWSCredentials(env.Region); err != nil {
 		return fmt.Errorf(`❌ AWS credentials validation failed: %v
 
@@ -45,7 +72,7 @@ Recovery steps:
 4. Verify credentials: aws sts get-caller-identity --profile %s`, err, awsProfile, awsProfile, awsProfile)
 	}
 
-	// Step 3: Ensure S3 state bucket exists
+	// Step 5: Ensure S3 state bucket exists
 	fmt.Printf("🪣  Checking S3 state bucket: %s\n", env.StateBucket)
 	if err := checkBucketStateForEnv(env); err != nil {
 		// If SSO token expired, try to refresh
@@ -138,4 +165,143 @@ func refreshSSOToken(profile string) error {
 
 	fmt.Println("✅ SSO token refreshed successfully")
 	return nil
+}
+
+// checkAWSCLIVersion validates that AWS CLI is installed and meets minimum version requirement
+func checkAWSCLIVersion() error {
+	const minVersion = "2.31.20"
+
+	output, err := runCommandWithOutput("aws", "--version")
+	if err != nil {
+		return fmt.Errorf("AWS CLI not found - please install AWS CLI v2 (minimum version %s)", minVersion)
+	}
+
+	version := parseAWSCLIVersion(output)
+	if version == "" {
+		return fmt.Errorf("could not parse AWS CLI version from output: %s", output)
+	}
+
+	if !isVersionAtLeast(version, minVersion) {
+		return fmt.Errorf("AWS CLI version %s is installed, but minimum required version is %s", version, minVersion)
+	}
+
+	fmt.Printf("✅ AWS CLI version %s (meets minimum requirement %s)\n", version, minVersion)
+	return nil
+}
+
+// checkTerraformVersion validates that Terraform is installed and meets minimum version requirement
+func checkTerraformVersion() error {
+	const minVersion = "1.13.4"
+
+	output, err := runCommandWithOutput("terraform", "version")
+	if err != nil {
+		return fmt.Errorf("Terraform not found - please install Terraform (minimum version %s)", minVersion)
+	}
+
+	version := parseTerraformVersion(output)
+	if version == "" {
+		return fmt.Errorf("could not parse Terraform version from output: %s", output)
+	}
+
+	if !isVersionAtLeast(version, minVersion) {
+		return fmt.Errorf("Terraform version %s is installed, but minimum required version is %s", version, minVersion)
+	}
+
+	fmt.Printf("✅ Terraform version %s (meets minimum requirement %s)\n", version, minVersion)
+	return nil
+}
+
+// parseAWSCLIVersion extracts version number from AWS CLI output
+// Example input: "aws-cli/2.31.20 Python/3.11.6 Darwin/24.0.0 source/arm64"
+// Returns: "2.31.20"
+func parseAWSCLIVersion(output string) string {
+	// AWS CLI version format: "aws-cli/X.Y.Z ..."
+	parts := strings.Fields(output)
+	if len(parts) == 0 {
+		return ""
+	}
+
+	// First field should be "aws-cli/X.Y.Z"
+	versionPart := parts[0]
+	if !strings.HasPrefix(versionPart, "aws-cli/") {
+		return ""
+	}
+
+	version := strings.TrimPrefix(versionPart, "aws-cli/")
+	return version
+}
+
+// parseTerraformVersion extracts version number from Terraform output
+// Example input: "Terraform v1.13.4\non darwin_arm64\n..."
+// Returns: "1.13.4"
+func parseTerraformVersion(output string) string {
+	// Terraform version format: "Terraform vX.Y.Z"
+	lines := strings.Split(output, "\n")
+	if len(lines) == 0 {
+		return ""
+	}
+
+	// First line should contain version
+	firstLine := strings.TrimSpace(lines[0])
+	parts := strings.Fields(firstLine)
+	if len(parts) < 2 {
+		return ""
+	}
+
+	// Second field should be "vX.Y.Z"
+	versionPart := parts[1]
+	if !strings.HasPrefix(versionPart, "v") {
+		return ""
+	}
+
+	version := strings.TrimPrefix(versionPart, "v")
+	return version
+}
+
+// isVersionAtLeast checks if current version meets or exceeds minimum version requirement
+// Uses semantic versioning comparison (major.minor.patch)
+func isVersionAtLeast(current, minimum string) bool {
+	currentParts := parseVersionParts(current)
+	minimumParts := parseVersionParts(minimum)
+
+	// Compare each part (major, minor, patch)
+	for i := 0; i < 3; i++ {
+		currentVal := 0
+		minimumVal := 0
+
+		if i < len(currentParts) {
+			currentVal = currentParts[i]
+		}
+		if i < len(minimumParts) {
+			minimumVal = minimumParts[i]
+		}
+
+		if currentVal > minimumVal {
+			return true
+		}
+		if currentVal < minimumVal {
+			return false
+		}
+		// If equal, continue to next part
+	}
+
+	// All parts equal means version meets requirement
+	return true
+}
+
+// parseVersionParts splits a version string into integer parts
+// Example: "2.31.20" -> [2, 31, 20]
+func parseVersionParts(version string) []int {
+	parts := strings.Split(version, ".")
+	result := make([]int, 0, len(parts))
+
+	for _, part := range parts {
+		// Handle cases like "1.13.4-dev" by taking only the numeric part
+		numericPart := strings.Split(part, "-")[0]
+		if num, err := strconv.Atoi(numericPart); err == nil {
+			result = append(result, num)
+		}
+	}
+
+	return result
 }

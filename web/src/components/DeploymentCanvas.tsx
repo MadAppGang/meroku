@@ -638,6 +638,42 @@ export function DeploymentCanvas({
 			});
 		}
 
+		// Add edges from Client Applications to Amplify apps
+		if (config?.amplify_apps) {
+			config.amplify_apps.forEach((app) => {
+				allEdges.push({
+					id: `client-amplify-${app.name}`,
+					source: "client-app",
+					target: `amplify-${app.name}`,
+					sourceHandle: "source-right",
+					targetHandle: "target-left",
+					type: "smoothstep",
+					animated: true,
+					label: "HTTPS",
+					style: { stroke: "#8b5cf6", strokeWidth: 2 },
+					markerEnd: { type: MarkerType.ArrowClosed, color: "#4f46e5" },
+				});
+			});
+		}
+
+		// Add edges from EventBridge to event processor tasks
+		if (config?.event_processor_tasks) {
+			config.event_processor_tasks.forEach((task) => {
+				allEdges.push({
+					id: `eventbridge-event-${task.name}`,
+					source: "eventbridge",
+					target: `event-${task.name}`,
+					sourceHandle: "source-bottom",
+					targetHandle: "target-top",
+					type: "smoothstep",
+					animated: true,
+					label: "trigger",
+					style: { stroke: "#f59e0b", strokeWidth: 2 },
+					markerEnd: { type: MarkerType.ArrowClosed, color: "#d97706" },
+				});
+			});
+		}
+
 		// Filter edges to only include those where both source and target are enabled
 		return allEdges
 			.filter((edge) => {

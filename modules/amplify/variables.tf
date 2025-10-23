@@ -3,6 +3,7 @@ variable "amplify_apps" {
   type = list(object({
     name                  = string
     github_repository     = string
+    environment_variables = optional(map(string), {})
     branches             = list(object({
       name                          = string
       stage                        = optional(string, "DEVELOPMENT")
@@ -11,8 +12,8 @@ variable "amplify_apps" {
       environment_variables        = optional(map(string), {})
       custom_subdomains            = optional(list(string), [])
     }))
-    custom_domain        = optional(string)
-    enable_root_domain   = optional(bool, false)
+    subdomain_prefix     = optional(string)       # NEW: Auto-constructs domain
+    custom_domain        = optional(string)       # For manual override (edge cases)
   }))
   default = []
 }
@@ -25,4 +26,16 @@ variable "project" {
 variable "env" {
   description = "Environment name"
   type        = string
+}
+
+variable "base_domain" {
+  description = "Base domain name from domain configuration (e.g., example.com)"
+  type        = string
+  default     = ""
+}
+
+variable "add_env_domain_prefix" {
+  description = "Whether to add environment prefix to domains (from domain.add_env_domain_prefix)"
+  type        = bool
+  default     = true
 }

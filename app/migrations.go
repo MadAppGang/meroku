@@ -17,7 +17,9 @@ import (
 // 6: Added custom VPC configuration
 // 7: Added ECR strategy configuration (ecr_strategy, ecr_account_id, ecr_account_region)
 // 8: Added ECR trusted accounts for cross-account access (ecr_trusted_accounts)
-const CurrentSchemaVersion = 8
+// 9: Simplified Amplify domain configuration (subdomain_prefix replaces custom_domain + enable_root_domain)
+// 10: Added per-service ECR configuration (ecr_config field in services, event_processor_tasks, scheduled_tasks)
+const CurrentSchemaVersion = 10
 
 // EnvWithVersion extends Env with a schema version field
 type EnvWithVersion struct {
@@ -68,6 +70,16 @@ var AllMigrations = []Migration{
 		Version:     8,
 		Description: "Add ECR trusted accounts for cross-account access",
 		Apply:       migrateToV8,
+	},
+	{
+		Version:     9,
+		Description: "Simplify Amplify domain configuration",
+		Apply:       migrateToV9,
+	},
+	{
+		Version:     10,
+		Description: "Add per-service ECR configuration",
+		Apply:       migrateV8ToV9,
 	},
 }
 
@@ -339,6 +351,116 @@ func migrateToV8(data map[string]interface{}) error {
 	if _, exists := data["ecr_trusted_accounts"]; !exists {
 		data["ecr_trusted_accounts"] = []interface{}{}
 		fmt.Println("    ℹ️  Initialized empty ecr_trusted_accounts array")
+	}
+
+	return nil
+}
+
+// migrateToV9 simplifies Amplify domain configuration
+func migrateToV9(data map[string]interface{}) error {
+	fmt.Println("  → Migrating to v9: Simplifying Amplify domain configuration")
+
+	// Check if amplify_apps exists
+	amplifyAppsRaw, exists := data["amplify_apps"]
+	if !exists || amplifyAppsRaw == nil {
+		fmt.Println("    ℹ️  No amplify_apps to migrate")
+		return nil
+	}
+
+	amplifyApps, ok := amplifyAppsRaw.([]interface{})
+	if !ok {
+		fmt.Println("    ⚠️  amplify_apps is not an array, skipping migration")
+		return nil
+	}
+
+	// Get domain configuration for parsing
+	var domainName string
+	var env string
+	var addEnvPrefix bool
+
+	if domainRaw, exists := data["domain"]; exists {
+		if domainMap, ok := domainRaw.(map[interface{}]interface{}); ok {
+			if dn, ok := domainMap["domain_name"].(string); ok {
+				domainName = dn
+			}
+			if aep, ok := domainMap["add_env_domain_prefix"].(bool); ok {
+				addEnvPrefix = aep
+			}
+		}
+	}
+
+	if envRaw, exists := data["env"]; exists {
+		if e, ok := envRaw.(string); ok {
+			env = e
+		}
+	}
+
+	migrationCount := 0
+
+	// Migrate each app
+	for i, appRaw := range amplifyApps {
+		appMap, ok := appRaw.(map[interface{}]interface{})
+		if !ok {
+			continue
+		}
+
+		// Check if app has old format (custom_domain or enable_root_domain)
+		customDomain, hasCustomDomain := appMap["custom_domain"].(string)
+		_, hasEnableRoot := appMap["enable_root_domain"]
+
+		if !hasCustomDomain && !hasEnableRoot {
+			// Already in new format or no domain config
+			continue
+		}
+
+		// Remove enable_root_domain (no longer needed)
+		if hasEnableRoot {
+			delete(appMap, "enable_root_domain")
+		}
+
+		// Parse custom_domain to extract subdomain_prefix
+		if customDomain != "" && domainName != "" {
+			// Try to extract subdomain prefix
+			// Examples:
+			//   app.sava-p.com with domain sava-p.com → prefix: app
+			//   app.dev.sava-p.com with domain sava-p.com and env dev → prefix: app
+
+			// Remove the base domain
+			prefix := customDomain
+			if len(customDomain) > len(domainName) &&
+			   customDomain[len(customDomain)-len(domainName):] == domainName {
+				prefix = customDomain[:len(customDomain)-len(domainName)-1] // Remove domain and dot
+			}
+
+			// If env prefix was used, remove it
+			if addEnvPrefix && env != "" && env != "prod" {
+				envPrefix := env + "."
+				if len(prefix) > len(envPrefix) && prefix[len(prefix)-len(envPrefix):] == envPrefix {
+					prefix = prefix[:len(prefix)-len(envPrefix)-1] // Remove env prefix and dot
+				}
+			}
+
+			// Set subdomain_prefix
+			if prefix != "" {
+				appMap["subdomain_prefix"] = prefix
+				fmt.Printf("    ✓ App %d: Extracted subdomain_prefix '%s' from custom_domain '%s'\n",
+					i+1, prefix, customDomain)
+			}
+
+			// Remove custom_domain (will be auto-constructed)
+			delete(appMap, "custom_domain")
+			migrationCount++
+		} else if customDomain != "" {
+			// Keep custom_domain as-is if we can't parse it (manual override)
+			fmt.Printf("    ⚠️  App %d: Keeping custom_domain '%s' (couldn't parse or no base domain)\n",
+				i+1, customDomain)
+		}
+	}
+
+	if migrationCount > 0 {
+		fmt.Printf("    ✓ Migrated %d Amplify app(s) to simplified domain configuration\n", migrationCount)
+	} else {
+		fmt.Println("    ℹ️  No Amplify apps needed migration")
 	}
 
 	return nil

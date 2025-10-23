@@ -87,7 +87,7 @@ export interface YamlInfrastructureConfig {
 		create_domain_zone?: boolean;
 		domain_name?: string;
 		api_domain_prefix?: string;
-		add_domain_prefix?: boolean;
+		add_env_domain_prefix?: boolean;
 		zone_id?: string;
 		root_zone_id?: string;
 		root_account_id?: string;
@@ -239,7 +239,8 @@ export interface YamlInfrastructureConfig {
 			environment_variables?: Record<string, string>;
 			custom_subdomains?: string[];
 		}>;
-		custom_domain?: string;
-		enable_root_domain?: boolean;
+		subdomain_prefix?: string;     // NEW: Auto-constructs domain using base_domain
+		custom_domain?: string;         // For manual override (edge cases)
+		environment_variables?: Record<string, string>; // App-level env vars
 	}>;
 }

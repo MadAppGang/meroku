@@ -81,7 +81,12 @@ export function AmplifyApps({ environment, profile }: AmplifyAppsProps) {
 
 			try {
 				const response = await amplifyApi.getApps(environment, profile);
-				setApps(response.apps);
+				if (response?.apps && Array.isArray(response.apps)) {
+					setApps(response.apps);
+				} else {
+					setApps([]);
+					console.warn("No apps data available from API");
+				}
 			} catch (error) {
 				console.error("Failed to fetch Amplify apps:", error);
 				toast({

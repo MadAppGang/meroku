@@ -72,7 +72,7 @@ export function Route53NodeProperties({
 			domain: {
 				enabled: config.domain?.enabled ?? false,
 				...config.domain,
-				add_domain_prefix: checked,
+				add_env_domain_prefix: checked,
 			},
 		});
 	};
@@ -91,7 +91,7 @@ export function Route53NodeProperties({
 	const isEnabled = config.domain?.enabled ?? false;
 	const domainName = config.domain?.domain_name || "";
 	const apiPrefix = config.domain?.api_domain_prefix || "api";
-	const addPrefix = config.domain?.add_domain_prefix ?? true;
+	const addPrefix = config.domain?.add_env_domain_prefix ?? true;
 
 	// Calculate the full domain based on settings
 	const fullDomain =

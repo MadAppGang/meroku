@@ -40,6 +40,7 @@ type Env struct {
 	AppSyncPubSub       AppSync              `yaml:"pubsub_appsync"`
 	Buckets             []BucketConfig       `yaml:"buckets"`
 	Services            []Service            `yaml:"services"`
+	AmplifyApps         []AmplifyApp         `yaml:"amplify_apps,omitempty"`
 }
 
 type AppSync struct {
@@ -160,21 +161,23 @@ type ALB struct {
 }
 
 type ScheduledTask struct {
-	Name                string `yaml:"name"`
-	Schedule            string `yaml:"schedule"`
-	ExternalDockerImage string `yaml:"docker_image"`
-	ContainerCommand    string `yaml:"container_command"`
-	AllowPublicAccess   bool   `yaml:"allow_public_access"`
+	Name                string     `yaml:"name"`
+	Schedule            string     `yaml:"schedule"`
+	ExternalDockerImage string     `yaml:"docker_image"`
+	ContainerCommand    string     `yaml:"container_command"`
+	AllowPublicAccess   bool       `yaml:"allow_public_access"`
+	ECRConfig           *ECRConfig `yaml:"ecr_config,omitempty"` // Schema v9
 }
 
 type EventProcessorTask struct {
-	Name                string   `yaml:"name"`
-	RuleName            string   `yaml:"rule_name"`
-	DetailTypes         []string `yaml:"detail_types"`
-	Sources             []string `yaml:"sources"`
-	ExternalDockerImage string   `yaml:"docker_image"`
-	ContainerCommand    []string `yaml:"container_command"`
-	AllowPublicAccess   bool     `yaml:"allow_public_access"`
+	Name                string     `yaml:"name"`
+	RuleName            string     `yaml:"rule_name"`
+	DetailTypes         []string   `yaml:"detail_types"`
+	Sources             []string   `yaml:"sources"`
+	ExternalDockerImage string     `yaml:"docker_image"`
+	ContainerCommand    []string   `yaml:"container_command"`
+	AllowPublicAccess   bool       `yaml:"allow_public_access"`
+	ECRConfig           *ECRConfig `yaml:"ecr_config,omitempty"` // Schema v9
 }
 
 type EnvVariable struct {
@@ -197,6 +200,7 @@ type Service struct {
 	EnvVars          map[string]string `yaml:"env_vars"`
 	EnvVariables     []EnvVariable     `yaml:"env_variables"`
 	EnvFilesS3       []S3EnvFile       `yaml:"env_files_s3"`
+	ECRConfig        *ECRConfig        `yaml:"ecr_config,omitempty"` // Schema v9
 }
 
 type DNSConfig struct {
@@ -223,6 +227,35 @@ type ECRTrustedAccount struct {
 	AccountID string `yaml:"account_id"`
 	Env       string `yaml:"env"`
 	Region    string `yaml:"region"`
+}
+
+// ECRConfig defines per-service ECR repository configuration (Schema v9)
+type ECRConfig struct {
+	Mode              string `yaml:"mode,omitempty"`                // "create_ecr", "manual_repo", or "use_existing"
+	RepositoryURI     string `yaml:"repository_uri,omitempty"`      // For manual_repo mode
+	SourceServiceName string `yaml:"source_service_name,omitempty"` // For use_existing mode
+	SourceServiceType string `yaml:"source_service_type,omitempty"` // "services", "event_processor_tasks", "scheduled_tasks"
+}
+
+// AmplifyApp represents an AWS Amplify application configuration
+type AmplifyApp struct {
+	Name             string                 `yaml:"name"`
+	GitHubRepository string                 `yaml:"github_repository"`
+	GitHubOAuthToken string                 `yaml:"github_oauth_token,omitempty"`
+	Branches         []AmplifyBranch        `yaml:"branches"`
+	SubdomainPrefix  string                 `yaml:"subdomain_prefix,omitempty"`    // NEW: Auto-constructs domain
+	CustomDomain     string                 `yaml:"custom_domain,omitempty"`       // For manual override
+	EnvVariables     map[string]string      `yaml:"environment_variables,omitempty"` // App-level env vars
+}
+
+// AmplifyBranch represents a branch configuration for an Amplify app
+type AmplifyBranch struct {
+	Name                      string            `yaml:"name"`
+	Stage                     string            `yaml:"stage,omitempty"`                           // PRODUCTION, DEVELOPMENT, BETA, EXPERIMENTAL
+	EnableAutoBuild           bool              `yaml:"enable_auto_build,omitempty"`
+	EnablePullRequestPreview  bool              `yaml:"enable_pull_request_preview,omitempty"`
+	EnvironmentVariables      map[string]string `yaml:"environment_variables,omitempty"`
+	CustomSubdomains          []string          `yaml:"custom_subdomains,omitempty"`              // For branch-specific subdomains
 }
 
 // create function which generate random string
