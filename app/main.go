@@ -62,6 +62,17 @@ func main() {
 
 	// Set custom AWS config path if provided (for testing)
 	if *awsConfigFlag != "" {
+		// Validate that the custom config file exists
+		if _, err := os.Stat(*awsConfigFlag); os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, "❌ Error: Custom AWS config file does not exist: %s\n", *awsConfigFlag)
+			fmt.Fprintf(os.Stderr, "\nPlease check the path and try again.\n")
+			fmt.Fprintf(os.Stderr, "\nAvailable test configs:\n")
+			fmt.Fprintf(os.Stderr, "  - test-configs/aws-config-empty\n")
+			fmt.Fprintf(os.Stderr, "  - test-configs/aws-config-modern-sso\n")
+			fmt.Fprintf(os.Stderr, "  - test-configs/aws-config-legacy-sso\n")
+			fmt.Fprintf(os.Stderr, "  - test-configs/aws-config-incomplete\n")
+			os.Exit(1)
+		}
 		SetCustomAWSConfigPath(*awsConfigFlag)
 	}
 
