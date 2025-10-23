@@ -400,15 +400,28 @@ func performAutoSSOValidation() error {
 
 	fmt.Printf("\nWould you like to fix this now?\n\n")
 
+	// Check if Anthropic API key is available
+	anthropicKey := os.Getenv("ANTHROPIC_API_KEY")
+	hasAPIKey := anthropicKey != ""
+
+	// Build options based on API key availability
+	options := []huh.Option[string]{
+		huh.NewOption("🔐 Run Interactive Setup Wizard", "wizard"),
+	}
+
+	if hasAPIKey {
+		options = append(options, huh.NewOption("🤖 Use AI Agent", "agent"))
+	} else {
+		options = append(options, huh.NewOption("🤖 AI Agent (API key not configured)", "agent_disabled"))
+	}
+
+	options = append(options, huh.NewOption("⏭  Skip for now (continue to main menu)", "skip"))
+
 	// Offer fix options
 	var choice string
 	err = huh.NewSelect[string]().
 		Title("Fix AWS SSO Configuration").
-		Options(
-			huh.NewOption("🔐 Run Interactive Setup Wizard", "wizard"),
-			huh.NewOption("🤖 Use AI Agent (requires ANTHROPIC_API_KEY)", "agent"),
-			huh.NewOption("⏭  Skip for now (continue to main menu)", "skip"),
-		).
+		Options(options...).
 		Value(&choice).
 		Run()
 
@@ -427,6 +440,14 @@ func performAutoSSOValidation() error {
 		if err := RunSSOAgent(profileName, &yamlEnv); err != nil {
 			return fmt.Errorf("AI agent failed: %w", err)
 		}
+	case "agent_disabled":
+		fmt.Println("\n❌ AI Agent Not Available\n")
+		fmt.Println("The AI Agent requires an Anthropic API key to function.")
+		fmt.Println("Please set the ANTHROPIC_API_KEY environment variable:")
+		fmt.Println("\n  export ANTHROPIC_API_KEY=your_key_here")
+		fmt.Println("\nGet your API key from: https://console.anthropic.com/settings/keys\n")
+		fmt.Println("Returning to main menu...")
+		return nil
 	case "skip":
 		fmt.Println("\n⏭  Skipping AWS SSO configuration check\n")
 		fmt.Println("Note: You can configure AWS SSO later from the main menu:\n")

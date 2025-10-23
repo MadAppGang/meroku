@@ -27,25 +27,44 @@ type SSOAgentContext struct {
 	Region       string
 	Output       string
 
+	// Enhanced context
+	AWSConfigContent  string            // Full ~/.aws/config file
+	YAMLContent       map[string]string // Parsed YAML files
+	ValidationHistory []interface{}     // Track validation results
+	SearchResults     []interface{}     // Web search results cache
+
 	// History
 	ActionHistory []SSOAgentAction
 	Iteration     int
+
+	// State management
+	StateFilePath   string
+	TotalIterations int // Across all runs
+	RunNumber       int // Which run (1, 2, 3...)
+	LastSaveTime    time.Time
 }
 
 // SSOAgentAction represents an action taken by the agent
 type SSOAgentAction struct {
-	Type        string // "think", "ask", "exec", "write", "validate"
+	Type        string // "think", "ask", "exec", "write", "validate", and new tools
 	Description string
 	Command     string
 	Question    string
 	Answer      string
 	Result      string
 	Error       error
+
+	// Enhanced metadata
+	Timestamp    time.Time
+	Duration     time.Duration
+	RetryCount   int
+	ToolMetadata map[string]interface{} // Tool-specific data
 }
 
 // SSOAgent handles AWS SSO setup using ReAct pattern
 type SSOAgent struct {
-	client      *anthropic.Client
+	client        *anthropic.Client
+	inspector     *ProfileInspector
 	maxIterations int
 }
 
@@ -60,38 +79,98 @@ func NewSSOAgent() (*SSOAgent, error) {
 		option.WithAPIKey(apiKey),
 	)
 
+	inspector, err := NewProfileInspector()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create inspector: %w", err)
+	}
+
 	return &SSOAgent{
 		client:        &client,
+		inspector:     inspector,
 		maxIterations: 15,
 	}, nil
 }
 
-// Run executes the agent's ReAct loop
+// Run executes the agent's ReAct loop with state persistence
 func (a *SSOAgent) Run(ctx context.Context, profileName string, yamlEnv *Env) error {
 	fmt.Println("🤖 AI Agent: AWS SSO Setup")
 	fmt.Println()
-	fmt.Printf("📋 Profile: %s\n", profileName)
-	if yamlEnv != nil {
-		fmt.Printf("📋 Environment: %s (account: %s, region: %s)\n",
-			yamlEnv.Env, yamlEnv.AccountID, yamlEnv.Region)
-	}
-	fmt.Println()
 
-	// Build context
-	agentCtx, err := a.buildContext(profileName, yamlEnv)
-	if err != nil {
-		return fmt.Errorf("failed to build context: %w", err)
+	// Check for existing state
+	stateFilePath := GetStateFilePath(profileName)
+	var agentCtx *SSOAgentContext
+	var runNumber int = 1
+
+	if _, err := os.Stat(stateFilePath); err == nil {
+		// State file exists, ask if user wants to continue
+		fmt.Printf("\n⚠️  Previous troubleshooting session found for profile '%s'\n", profileName)
+		fmt.Printf("   Saved: %s\n", stateFilePath)
+
+		continueChoice, err := AskConfirm("Continue from where you left off?")
+		if err != nil || !continueChoice {
+			// User declined, start fresh
+			fmt.Println("Starting fresh troubleshooting session...")
+			agentCtx, err = a.buildContext(profileName, yamlEnv)
+			if err != nil {
+				return fmt.Errorf("failed to build context: %w", err)
+			}
+		} else {
+			// Load saved state
+			fmt.Println("Loading saved state...")
+			savedState, err := LoadState(stateFilePath)
+			if err != nil {
+				fmt.Printf("⚠️  Failed to load state: %v\n", err)
+				fmt.Println("Starting fresh session instead...")
+				agentCtx, err = a.buildContext(profileName, yamlEnv)
+				if err != nil {
+					return fmt.Errorf("failed to build context: %w", err)
+				}
+			} else {
+				// Resume from saved state
+				agentCtx = savedState.Context
+				runNumber = savedState.RunNumber + 1
+				fmt.Printf("✅ Resumed from iteration %d (Run #%d)\n", savedState.TotalIterations, runNumber)
+			}
+		}
+	} else {
+		// No saved state, start fresh
+		fmt.Printf("📋 Profile: %s\n", profileName)
+		if yamlEnv != nil {
+			fmt.Printf("📋 Environment: %s (account: %s, region: %s)\n",
+				yamlEnv.Env, yamlEnv.AccountID, yamlEnv.Region)
+		}
+		fmt.Println()
+
+		agentCtx, err = a.buildContext(profileName, yamlEnv)
+		if err != nil {
+			return fmt.Errorf("failed to build context: %w", err)
+		}
 	}
 
-	// ReAct loop
-	for i := 0; i < a.maxIterations; i++ {
+	agentCtx.StateFilePath = stateFilePath
+	agentCtx.RunNumber = runNumber
+
+	// ReAct loop (max 15 iterations per run, 30 total)
+	maxIterationsPerRun := 15
+	maxTotalIterations := 30
+
+	for i := 0; i < maxIterationsPerRun; i++ {
 		agentCtx.Iteration = i + 1
+		agentCtx.TotalIterations++
 
-		fmt.Printf("\n───────────────────────────── Iteration %d/%d ─────────────────────────────\n\n", i+1, a.maxIterations)
+		fmt.Printf("\n───────── Iteration %d (Run #%d, Total: %d/%d) ─────────\n\n",
+			agentCtx.Iteration, runNumber, agentCtx.TotalIterations, maxTotalIterations)
 
 		// Get next action from LLM
 		action, err := a.getNextAction(ctx, agentCtx)
 		if err != nil {
+			// Save state before failing
+			SaveState(&SSOAgentState{
+				ProfileName:     profileName,
+				Context:         agentCtx,
+				TotalIterations: agentCtx.TotalIterations,
+				RunNumber:       runNumber,
+			}, stateFilePath)
 			return fmt.Errorf("agent error: %w", err)
 		}
 
@@ -100,12 +179,14 @@ func (a *SSOAgent) Run(ctx context.Context, profileName string, yamlEnv *Env) er
 			fmt.Println("✅ SUCCESS! AWS SSO setup is complete.")
 			fmt.Println()
 			a.printSummary(agentCtx)
+
+			// Cleanup state file on success
+			CleanupStateFile(stateFilePath)
 			return nil
 		}
 
 		// Execute action
 		if err := a.executeAction(ctx, action, agentCtx); err != nil {
-			// Agent handles its own errors, continue to next iteration
 			action.Error = err
 			action.Result = fmt.Sprintf("Failed: %v", err)
 		}
@@ -113,13 +194,60 @@ func (a *SSOAgent) Run(ctx context.Context, profileName string, yamlEnv *Env) er
 		// Add to history
 		agentCtx.ActionHistory = append(agentCtx.ActionHistory, *action)
 
-		// Check if stuck (same action 3 times in a row)
+		// Save state after each action
+		SaveState(&SSOAgentState{
+			ProfileName:     profileName,
+			Context:         agentCtx,
+			TotalIterations: agentCtx.TotalIterations,
+			RunNumber:       runNumber,
+		}, stateFilePath)
+
+		// Check if stuck
 		if a.isStuck(agentCtx) {
-			return fmt.Errorf("agent appears stuck (repeated same action 3 times). Please try manual wizard mode")
+			fmt.Println("⚠️  Agent appears stuck (repeated same action 3 times)")
+			SaveState(&SSOAgentState{
+				ProfileName:     profileName,
+				Context:         agentCtx,
+				TotalIterations: agentCtx.TotalIterations,
+				RunNumber:       runNumber,
+			}, stateFilePath)
+			return fmt.Errorf("agent stuck, please try manual wizard mode")
 		}
 	}
 
-	return fmt.Errorf("agent reached max iterations (%d) without completing setup", a.maxIterations)
+	// Reached iteration limit for this run
+	if agentCtx.TotalIterations < maxTotalIterations {
+		// Can continue if user wants
+		fmt.Printf("\n⚠️  Reached iteration limit for this run (%d iterations)\n", maxIterationsPerRun)
+		fmt.Printf("   Total iterations so far: %d/%d\n", agentCtx.TotalIterations, maxTotalIterations)
+
+		continueChoice, err := AskConfirm("Continue troubleshooting in a new run?")
+		if err != nil || !continueChoice {
+			// User declined, save state and exit
+			SaveState(&SSOAgentState{
+				ProfileName:     profileName,
+				Context:         agentCtx,
+				TotalIterations: agentCtx.TotalIterations,
+				RunNumber:       runNumber,
+			}, stateFilePath)
+			fmt.Printf("\n💾 Progress saved to: %s\n", stateFilePath)
+			fmt.Println("   Run the agent again to continue troubleshooting.")
+			return nil
+		}
+
+		// User wants to continue, recursively call Run
+		return a.Run(ctx, profileName, yamlEnv)
+	}
+
+	// Absolute maximum reached
+	SaveState(&SSOAgentState{
+		ProfileName:     profileName,
+		Context:         agentCtx,
+		TotalIterations: agentCtx.TotalIterations,
+		RunNumber:       runNumber,
+	}, stateFilePath)
+
+	return fmt.Errorf("reached maximum iterations (%d) without completing setup", maxTotalIterations)
 }
 
 // buildContext gathers initial context
@@ -165,6 +293,9 @@ func (a *SSOAgent) buildContext(profileName string, yamlEnv *Env) (*SSOAgentCont
 func (a *SSOAgent) getNextAction(ctx context.Context, agentCtx *SSOAgentContext) (*SSOAgentAction, error) {
 	prompt := a.buildPrompt(agentCtx)
 
+	// Debug logging
+	debugLogPrompt(agentCtx.ProfileName, agentCtx.Iteration, prompt)
+
 	// Create timeout context
 	timeoutCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -187,12 +318,50 @@ func (a *SSOAgent) getNextAction(ctx context.Context, agentCtx *SSOAgentContext)
 
 	responseText := message.Content[0].Text
 
+	// Debug logging
+	debugLogResponse(agentCtx.ProfileName, agentCtx.Iteration, responseText)
+
 	// Parse the response
 	return a.parseResponse(responseText)
 }
 
-// buildPrompt constructs the prompt for the LLM
+// debugLogPrompt writes prompt to debug file
+func debugLogPrompt(profileName string, iteration int, prompt string) {
+	debugFile := fmt.Sprintf("/tmp/meroku_sso_debug_%s.log", profileName)
+	f, err := os.OpenFile(debugFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	f.WriteString(fmt.Sprintf("\n=== ITERATION %d - PROMPT (%s) ===\n", iteration, timestamp))
+	f.WriteString(prompt)
+	f.WriteString("\n\n")
+}
+
+// debugLogResponse writes response to debug file
+func debugLogResponse(profileName string, iteration int, response string) {
+	debugFile := fmt.Sprintf("/tmp/meroku_sso_debug_%s.log", profileName)
+	f, err := os.OpenFile(debugFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	f.WriteString(fmt.Sprintf("=== ITERATION %d - RESPONSE (%s) ===\n", iteration, timestamp))
+	f.WriteString(response)
+	f.WriteString("\n\n")
+}
+
+// buildPrompt constructs the enhanced prompt for the LLM
 func (a *SSOAgent) buildPrompt(agentCtx *SSOAgentContext) string {
+	return BuildEnhancedSystemPrompt(agentCtx)
+}
+
+// DEPRECATED: Old buildPrompt kept for reference
+func (a *SSOAgent) buildPromptOld(agentCtx *SSOAgentContext) string {
 	return fmt.Sprintf(`You are an AWS SSO configuration expert. Your goal is to set up AWS SSO profiles correctly and efficiently.
 
 ═══════════════════════════════════════════════════════════════════
@@ -375,62 +544,239 @@ func (a *SSOAgent) parseResponse(response string) (*SSOAgentAction, error) {
 
 	firstLine := strings.TrimSpace(lines[0])
 
+	// Parse THINK - but if there's a second line, prefer the action on line 2
 	if strings.HasPrefix(firstLine, "THINK:") {
+		// If there's a second line, it should be the action
+		if len(lines) > 1 {
+			secondLine := strings.TrimSpace(lines[1])
+			// Try to parse the second line as an action
+			if secondLine != "" && !strings.HasPrefix(secondLine, "THINK:") {
+				// Recursively parse the second line as the action
+				action, err := a.parseActionLine(secondLine)
+				if err == nil {
+					// Successfully parsed an action on line 2
+					thought := strings.TrimPrefix(firstLine, "THINK:")
+					action.Description = strings.TrimSpace(thought) + " | " + action.Description
+					return action, nil
+				}
+			}
+		}
+
+		// No valid action on line 2, just return the think
 		thought := strings.TrimPrefix(firstLine, "THINK:")
 		thought = strings.TrimSpace(thought)
 		return &SSOAgentAction{
 			Type:        "think",
 			Description: thought,
+			Timestamp:   time.Now(),
 		}, nil
 	}
 
-	if strings.HasPrefix(firstLine, "ASK:") {
-		question := strings.TrimPrefix(firstLine, "ASK:")
+	// Not a THINK line, parse as action directly
+	return a.parseActionLine(firstLine)
+}
+
+// parseActionLine parses a single action line
+func (a *SSOAgent) parseActionLine(line string) (*SSOAgentAction, error) {
+	line = strings.TrimSpace(line)
+
+	// Parse new enhanced tools
+	if strings.HasPrefix(line, "read_aws_config:") || strings.HasPrefix(line, "ACTION: read_aws_config") {
+		command := extractCommand(line, "read_aws_config")
+		return &SSOAgentAction{
+			Type:      "read_aws_config",
+			Command:   command,
+			Timestamp: time.Now(),
+		}, nil
+	}
+
+	if strings.HasPrefix(line, "write_aws_config:") || strings.HasPrefix(line, "ACTION: write_aws_config") {
+		command := extractCommand(line, "write_aws_config")
+		return &SSOAgentAction{
+			Type:      "write_aws_config",
+			Command:   command,
+			Timestamp: time.Now(),
+		}, nil
+	}
+
+	if strings.HasPrefix(line, "read_yaml:") || strings.HasPrefix(line, "ACTION: read_yaml") {
+		command := extractCommand(line, "read_yaml")
+		return &SSOAgentAction{
+			Type:      "read_yaml",
+			Command:   command,
+			Timestamp: time.Now(),
+		}, nil
+	}
+
+	if strings.HasPrefix(line, "write_yaml:") || strings.HasPrefix(line, "ACTION: write_yaml") {
+		command := extractCommand(line, "write_yaml")
+		return &SSOAgentAction{
+			Type:      "write_yaml",
+			Command:   command,
+			Timestamp: time.Now(),
+		}, nil
+	}
+
+	if strings.HasPrefix(line, "ask_choice:") || strings.HasPrefix(line, "ACTION: ask_choice") {
+		command := extractCommand(line, "ask_choice")
+		return &SSOAgentAction{
+			Type:      "ask_choice",
+			Command:   command,
+			Timestamp: time.Now(),
+		}, nil
+	}
+
+	if strings.HasPrefix(line, "ask_confirm:") || strings.HasPrefix(line, "ACTION: ask_confirm") {
+		command := extractCommand(line, "ask_confirm")
+		return &SSOAgentAction{
+			Type:      "ask_confirm",
+			Command:   command,
+			Timestamp: time.Now(),
+		}, nil
+	}
+
+	if strings.HasPrefix(line, "ask_input:") || strings.HasPrefix(line, "ACTION: ask_input") {
+		command := extractCommand(line, "ask_input")
+		return &SSOAgentAction{
+			Type:      "ask_input",
+			Command:   command,
+			Timestamp: time.Now(),
+		}, nil
+	}
+
+	if strings.HasPrefix(line, "web_search:") || strings.HasPrefix(line, "ACTION: web_search") {
+		command := extractCommand(line, "web_search")
+		return &SSOAgentAction{
+			Type:      "web_search",
+			Command:   command,
+			Timestamp: time.Now(),
+		}, nil
+	}
+
+	if strings.HasPrefix(line, "aws_validate:") || strings.HasPrefix(line, "ACTION: aws_validate") {
+		command := extractCommand(line, "aws_validate")
+		return &SSOAgentAction{
+			Type:      "aws_validate",
+			Command:   command,
+			Timestamp: time.Now(),
+		}, nil
+	}
+
+	// Existing tool parsing
+	if strings.HasPrefix(line, "ASK:") {
+		question := strings.TrimPrefix(line, "ASK:")
 		question = strings.TrimSpace(question)
 		return &SSOAgentAction{
-			Type:     "ask",
-			Question: question,
+			Type:      "ask",
+			Question:  question,
+			Timestamp: time.Now(),
 		}, nil
 	}
 
-	if strings.HasPrefix(firstLine, "EXEC:") {
-		command := strings.TrimPrefix(firstLine, "EXEC:")
+	if strings.HasPrefix(line, "EXEC:") {
+		command := strings.TrimPrefix(line, "EXEC:")
 		command = strings.TrimSpace(command)
 		return &SSOAgentAction{
-			Type:    "exec",
-			Command: command,
+			Type:      "exec",
+			Command:   command,
+			Timestamp: time.Now(),
 		}, nil
 	}
 
-	if strings.HasPrefix(firstLine, "WRITE:") {
-		configLine := strings.TrimPrefix(firstLine, "WRITE:")
+	if strings.HasPrefix(line, "WRITE:") {
+		configLine := strings.TrimPrefix(line, "WRITE:")
 		configLine = strings.TrimSpace(configLine)
 		return &SSOAgentAction{
 			Type:        "write",
 			Description: configLine,
+			Timestamp:   time.Now(),
 		}, nil
 	}
 
-	if strings.HasPrefix(firstLine, "COMPLETE:") {
-		summary := strings.TrimPrefix(firstLine, "COMPLETE:")
+	if strings.HasPrefix(line, "COMPLETE:") {
+		summary := strings.TrimPrefix(line, "COMPLETE:")
 		summary = strings.TrimSpace(summary)
 		return &SSOAgentAction{
 			Type:        "complete",
 			Description: summary,
+			Timestamp:   time.Now(),
 		}, nil
 	}
 
-	return nil, fmt.Errorf("unrecognized action format: %s", firstLine)
+	return nil, fmt.Errorf("unrecognized action format: %s", line)
 }
 
-// executeAction performs the action
+// extractCommand extracts command from action line
+func extractCommand(line, actionType string) string {
+	// Handle "ACTION: type" format
+	if strings.HasPrefix(line, "ACTION: "+actionType) {
+		line = strings.TrimPrefix(line, "ACTION: "+actionType)
+	} else {
+		line = strings.TrimPrefix(line, actionType+":")
+	}
+	return strings.TrimSpace(line)
+}
+
+// executeAction performs the action with enhanced tool support
 func (a *SSOAgent) executeAction(ctx context.Context, action *SSOAgentAction, agentCtx *SSOAgentContext) error {
+	startTime := time.Now()
+	defer func() {
+		action.Duration = time.Since(startTime)
+	}()
+
 	switch action.Type {
 	case "think":
 		fmt.Println("🤔 THINKING:")
 		fmt.Println("   " + action.Description)
 		return nil
 
+	// New enhanced tools
+	case "read_aws_config":
+		result, err := a.toolReadAWSConfig(ctx, action.Command, agentCtx)
+		*action = *result
+		return err
+
+	case "write_aws_config":
+		result, err := a.toolWriteAWSConfig(ctx, action.Command, agentCtx)
+		*action = *result
+		return err
+
+	case "read_yaml":
+		result, err := a.toolReadYAML(ctx, action.Command, agentCtx)
+		*action = *result
+		return err
+
+	case "write_yaml":
+		result, err := a.toolWriteYAML(ctx, action.Command, agentCtx)
+		*action = *result
+		return err
+
+	case "ask_choice":
+		result, err := a.toolAskChoice(ctx, action.Command, agentCtx)
+		*action = *result
+		return err
+
+	case "ask_confirm":
+		result, err := a.toolAskConfirm(ctx, action.Command, agentCtx)
+		*action = *result
+		return err
+
+	case "ask_input":
+		result, err := a.toolAskInput(ctx, action.Command, agentCtx)
+		*action = *result
+		return err
+
+	case "web_search":
+		result, err := a.toolWebSearch(ctx, action.Command, agentCtx)
+		*action = *result
+		return err
+
+	case "aws_validate":
+		result, err := a.toolAWSValidate(ctx, action.Command, agentCtx)
+		*action = *result
+		return err
+
+	// Existing tools
 	case "ask":
 		return a.askUser(action, agentCtx)
 
@@ -537,8 +883,14 @@ func (a *SSOAgent) isStuck(agentCtx *SSOAgentContext) bool {
 		return false
 	}
 
+	// Check for 3+ consecutive "think" actions (analysis paralysis)
 	last3 := agentCtx.ActionHistory[len(agentCtx.ActionHistory)-3:]
-	// Check if same action type and description
+	if last3[0].Type == "think" && last3[1].Type == "think" && last3[2].Type == "think" {
+		fmt.Println("⚠️  Detected analysis paralysis (3 consecutive thinks without action)")
+		return true
+	}
+
+	// Check if same action type and description (original stuck detection)
 	return last3[0].Type == last3[1].Type && last3[1].Type == last3[2].Type &&
 		last3[0].Description == last3[1].Description && last3[1].Description == last3[2].Description
 }

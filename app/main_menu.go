@@ -98,15 +98,30 @@ func mainMenu() string {
 
 // ssoToolsMenu shows the AWS SSO tools submenu
 func ssoToolsMenu() {
+	// Check if Anthropic API key is available
+	anthropicKey := os.Getenv("ANTHROPIC_API_KEY")
+	hasAPIKey := anthropicKey != ""
+
+	// Build options based on API key availability
+	options := []huh.Option[string]{
+		huh.NewOption("🔐 SSO Setup Wizard", "wizard"),
+	}
+
+	if hasAPIKey {
+		options = append(options, huh.NewOption("🤖 SSO AI Agent (Enhanced)", "agent"))
+	} else {
+		options = append(options, huh.NewOption("🤖 AI Agent (API key not configured)", "agent_disabled"))
+	}
+
+	options = append(options,
+		huh.NewOption("✓ Validate Configuration", "validate"),
+		huh.NewOption("← Back to Main Menu", "back"),
+	)
+
 	var action string
 	err := huh.NewSelect[string]().
 		Title("AWS SSO Tools").
-		Options(
-			huh.NewOption("🔐 SSO Setup Wizard", "wizard"),
-			huh.NewOption("🤖 SSO AI Agent (Enhanced)", "agent"),
-			huh.NewOption("✓ Validate Configuration", "validate"),
-			huh.NewOption("← Back to Main Menu", "back"),
-		).
+		Options(options...).
 		Value(&action).
 		Run()
 
@@ -120,6 +135,13 @@ func ssoToolsMenu() {
 		ssoToolsMenu() // Return to SSO menu
 	case "agent":
 		runEnhancedSSOAgentFromMenu()
+		ssoToolsMenu() // Return to SSO menu
+	case "agent_disabled":
+		fmt.Println("\n❌ AI Agent Not Available\n")
+		fmt.Println("The AI Agent requires an Anthropic API key to function.")
+		fmt.Println("Please set the ANTHROPIC_API_KEY environment variable:")
+		fmt.Println("\n  export ANTHROPIC_API_KEY=your_key_here")
+		fmt.Println("\nGet your API key from: https://console.anthropic.com/settings/keys\n")
 		ssoToolsMenu() // Return to SSO menu
 	case "validate":
 		validateAWSFromMenu()
