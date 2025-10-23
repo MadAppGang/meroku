@@ -226,14 +226,6 @@ func main() {
 	}
 	// Silently ignore errors from version check to not disrupt startup
 
-	// Automatic AWS SSO validation (only in interactive mode, not for --web)
-	if !*webFlag && selectedEnvironment != "" && selectedAWSProfile != "" {
-		if err := performAutoSSOValidation(); err != nil {
-			// Error already displayed to user, just log and continue
-			log.Printf("SSO validation error: %v", err)
-		}
-	}
-
 	// If --web flag is set, open web app directly
 	if *webFlag {
 		startSPAServerWithAutoOpen("8080", true, false)
@@ -441,9 +433,8 @@ func performAutoSSOValidation() error {
 		return fmt.Errorf("failed to inspect profile: %w", err)
 	}
 
-	// If profile is complete and valid, nothing to do
+	// If profile is complete and valid, nothing to do (silent success)
 	if profileInfo.Complete {
-		fmt.Printf("✅ AWS SSO profile '%s' is properly configured\n\n", profileName)
 		return nil
 	}
 
