@@ -51,7 +51,7 @@ export function BackendEnvironmentVariables({
 		},
 		{
 			name: "PG_DATABASE_NAME",
-			value: config.postgres?.dbname || "database",
+			value: config.postgres?.dbname || config.project,
 			description: "Database Name",
 		},
 		{
