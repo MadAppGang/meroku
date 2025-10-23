@@ -11,6 +11,9 @@ import (
 	"gopkg.in/ini.v1"
 )
 
+// Custom AWS config path (for testing)
+var customAWSConfigPath string
+
 // ProfileInspector analyzes AWS configuration and detects profile completeness
 type ProfileInspector struct {
 	configPath string
@@ -320,7 +323,12 @@ func (pi *ProfileInspector) CheckAWSCLI() error {
 
 // getAWSConfigPath returns the path to AWS config file
 func getAWSConfigPath() string {
-	// Check environment variable first
+	// Check custom path first (for testing)
+	if customAWSConfigPath != "" {
+		return customAWSConfigPath
+	}
+
+	// Check environment variable
 	if configPath := os.Getenv("AWS_CONFIG_FILE"); configPath != "" {
 		return configPath
 	}
@@ -328,6 +336,14 @@ func getAWSConfigPath() string {
 	// Default location
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".aws", "config")
+}
+
+// SetCustomAWSConfigPath sets a custom AWS config path (for testing)
+func SetCustomAWSConfigPath(path string) {
+	customAWSConfigPath = path
+	if path != "" {
+		fmt.Printf("🔧 Using custom AWS config: %s\n", path)
+	}
 }
 
 // getSectionName returns the INI section name for a profile

@@ -1,0 +1,19 @@
+# Incomplete AWS config (missing required fields)
+# Use with: ./meroku --aws-config test-configs/aws-config-incomplete
+# This tests the validation system and wizard/agent setup
+
+[profile dev]
+# Missing: sso_session or sso_start_url
+sso_account_id = 123456789012
+sso_role_name = AdministratorAccess
+region = us-east-1
+
+[profile staging]
+sso_session = broken-sso
+# Missing: sso_account_id and sso_role_name
+region = us-west-2
+
+# Missing: [sso-session broken-sso] section
+
+[profile prod]
+# This one has nothing - should fail validation

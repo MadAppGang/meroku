@@ -29,6 +29,7 @@ var (
 	envFlag        = flag.String("env", "", "Environment to use (e.g., dev, prod)")
 	versionFlag    = flag.Bool("version", false, "Show version information")
 	renderDiffFlag = flag.String("renderdiff", "", "Render terraform plan diff view from JSON file (for testing)")
+	awsConfigFlag  = flag.String("aws-config", "", "Custom AWS config file path (for testing different scenarios)")
 )
 
 // GetVersion returns the actual version, reading from infrastructure/version.txt
@@ -58,6 +59,11 @@ func GetVersion() string {
 func main() {
 	// Parse command line flags
 	flag.Parse()
+
+	// Set custom AWS config path if provided (for testing)
+	if *awsConfigFlag != "" {
+		SetCustomAWSConfigPath(*awsConfigFlag)
+	}
 
 	// Initialize pricing service early (needed for web API)
 	// This runs in background and caches pricing data
