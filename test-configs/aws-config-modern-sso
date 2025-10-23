@@ -1,0 +1,21 @@
+# Modern SSO configuration (recommended format)
+# Use with: ./meroku --aws-config test-configs/aws-config-modern-sso
+
+[profile dev]
+sso_session = my-sso
+sso_account_id = 123456789012
+sso_role_name = AdministratorAccess
+region = us-east-1
+output = json
+
+[profile staging]
+sso_session = my-sso
+sso_account_id = 234567890123
+sso_role_name = PowerUserAccess
+region = us-west-2
+output = json
+
+[sso-session my-sso]
+sso_region = us-east-1
+sso_start_url = https://my-company.awsapps.com/start
+sso_registration_scopes = sso:account:access

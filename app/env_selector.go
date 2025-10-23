@@ -89,6 +89,16 @@ func selectEnvironment() error {
 	selectedEnvironment = selected
 	fmt.Printf("Selected environment: %s\n", selected)
 
+	// Validate AWS SSO configuration BEFORE attempting any AWS API calls
+	// This prevents auto-login from hiding incomplete profile issues
+	if env.AWSProfile != "" {
+		selectedAWSProfile = env.AWSProfile // Set for validation function
+		if err := performAutoSSOValidation(); err != nil {
+			fmt.Printf("Warning: SSO validation encountered an issue: %v\n", err)
+			// Don't fail - allow user to continue
+		}
+	}
+
 	// Check if this environment has account_id
 	if env.AccountID == "" {
 		fmt.Printf("\nNo AWS account configured for '%s' environment.\n", selected)

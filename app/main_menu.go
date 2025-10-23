@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -32,19 +33,26 @@ func mainMenu() string {
 		huh.NewOption("🔄 Change Environment", "change-env"),
 		huh.NewOption("💥 Nuke/Destroy Environment", "nuke"),
 		huh.NewOption("🤖 AI Agent - Troubleshoot Issues", "ai-agent"),
+		huh.NewOption("🔐 AWS SSO Tools", "sso-menu"),
 		huh.NewOption("🔍 Check for updates", "update"),
 		huh.NewOption("👋 Exit", "exit"),
 	}
 
 	action := ""
 
-	huh.NewSelect[string]().
+	err := huh.NewSelect[string]().
 		Title(menuTitle).
 		Options(
 			options...,
 		).
 		Value(&action).
 		Run()
+
+	// Handle Ctrl+C or other interrupts
+	if err != nil {
+		fmt.Println("\nExiting...")
+		os.Exit(0)
+	}
 
 	switch {
 	case strings.HasPrefix(action, "env:"):
@@ -78,20 +86,85 @@ func mainMenu() string {
 		// Run AI agent for troubleshooting
 		offerAIAgentFromMenu()
 		return mainMenu()
+	case action == "sso-menu":
+		// Open SSO tools submenu
+		ssoToolsMenu()
+		return mainMenu()
 	case action == "exit":
 		os.Exit(0)
 	}
 	return ""
 }
 
+// ssoToolsMenu shows the AWS SSO tools submenu
+func ssoToolsMenu() {
+	// Check if Anthropic API key is available
+	anthropicKey := os.Getenv("ANTHROPIC_API_KEY")
+	hasAPIKey := anthropicKey != ""
+
+	// Build options based on API key availability
+	options := []huh.Option[string]{
+		huh.NewOption("🔐 SSO Setup Wizard", "wizard"),
+	}
+
+	if hasAPIKey {
+		options = append(options, huh.NewOption("🤖 SSO AI Agent (Enhanced)", "agent"))
+	} else {
+		options = append(options, huh.NewOption("🤖 AI Agent (API key not configured)", "agent_disabled"))
+	}
+
+	options = append(options,
+		huh.NewOption("✓ Validate Configuration", "validate"),
+		huh.NewOption("← Back to Main Menu", "back"),
+	)
+
+	var action string
+	err := huh.NewSelect[string]().
+		Title("AWS SSO Tools").
+		Options(options...).
+		Value(&action).
+		Run()
+
+	if err != nil {
+		return
+	}
+
+	switch action {
+	case "wizard":
+		runSSOWizardFromMenu()
+		ssoToolsMenu() // Return to SSO menu
+	case "agent":
+		runEnhancedSSOAgentFromMenu()
+		ssoToolsMenu() // Return to SSO menu
+	case "agent_disabled":
+		fmt.Println("\n❌ AI Agent Not Available\n")
+		fmt.Println("The AI Agent requires an Anthropic API key to function.")
+		fmt.Println("Please set the ANTHROPIC_API_KEY environment variable:")
+		fmt.Println("\n  export ANTHROPIC_API_KEY=your_key_here")
+		fmt.Println("\nGet your API key from: https://console.anthropic.com/settings/keys\n")
+		ssoToolsMenu() // Return to SSO menu
+	case "validate":
+		validateAWSFromMenu()
+		ssoToolsMenu() // Return to SSO menu
+	case "back":
+		return
+	}
+}
+
 func createEnvMenu() string {
 	projectName := getProjectName()
 
 	var name string
-	huh.NewInput().
+	err := huh.NewInput().
 		Title("What is the name of the environment?").
 		Value(&name).
-		Run() // this is blocking.
+		Run()
+
+	// Handle Ctrl+C or other interrupts
+	if err != nil {
+		fmt.Println("\nCancelled")
+		return ""
+	}
 
 	r := regexp.MustCompile(`^[a-z]{2,}$`)
 	if !r.MatchString(name) {
@@ -107,9 +180,9 @@ func createEnvMenu() string {
 	}
 
 	e := createEnv(projectName, name)
-	
+
 	// Save to current directory
-	err := saveEnvToFile(e, name+".yaml")
+	err = saveEnvToFile(e, name+".yaml")
 	if err != nil {
 		fmt.Println("Error saving environment:", err)
 		os.Exit(1)
@@ -131,10 +204,16 @@ func getProjectName() string {
 	}
 
 	var name string
-	huh.NewInput().
+	err := huh.NewInput().
 		Title("What is the project name?").
 		Value(&name).
-		Run() // this is blocking.
+		Run()
+
+	// Handle Ctrl+C or other interrupts
+	if err != nil {
+		fmt.Println("\nCancelled")
+		os.Exit(0)
+	}
 
 	return name
 }
@@ -168,4 +247,134 @@ func initProjectIfNeeded() {
 
 		_ = spinner.New().Title("Initializing the project...").Action(initProject).Run()
 	}
+}
+
+// runSSOWizardFromMenu runs the AWS SSO Setup Wizard
+func runSSOWizardFromMenu() {
+	// Get environment selection
+	envName, _, err := selectEnvironmentForSSO()
+	if err != nil {
+		fmt.Printf("Error selecting environment: %v\n", err)
+		return
+	}
+
+	// Load YAML
+	yamlEnv, err := loadEnv(envName)
+	if err != nil {
+		fmt.Printf("Error loading environment config: %v\n", err)
+		return
+	}
+
+	// Determine profile name
+	profileName := yamlEnv.AWSProfile
+	if profileName == "" {
+		profileName = envName
+	}
+
+	// Run wizard
+	if err := RunSSOWizard(profileName, &yamlEnv); err != nil {
+		fmt.Printf("Wizard error: %v\n", err)
+	}
+}
+
+// runSSOAgentFromMenu runs the AWS SSO AI Agent
+func runSSOAgentFromMenu() {
+	// Get environment selection
+	envName, _, err := selectEnvironmentForSSO()
+	if err != nil {
+		fmt.Printf("Error selecting environment: %v\n", err)
+		return
+	}
+
+	// Load YAML
+	yamlEnv, err := loadEnv(envName)
+	if err != nil {
+		fmt.Printf("Error loading environment config: %v\n", err)
+		return
+	}
+
+	// Determine profile name
+	profileName := yamlEnv.AWSProfile
+	if profileName == "" {
+		profileName = envName
+	}
+
+	// Run AI agent
+	if err := RunSSOAgent(profileName, &yamlEnv); err != nil {
+		fmt.Printf("AI Agent error: %v\n", err)
+	}
+}
+
+// runEnhancedSSOAgentFromMenu runs the SSO AI Agent (uses existing agent for now)
+func runEnhancedSSOAgentFromMenu() {
+	// TODO: Create enhanced agent with tool support (read/write config, ask user, web search)
+	// For now, use existing agent
+	runSSOAgentFromMenu()
+}
+
+// validateAWSFromMenu validates AWS configuration
+func validateAWSFromMenu() {
+	validator, err := NewAWSProfileValidator()
+	if err != nil {
+		fmt.Printf("Error creating validator: %v\n", err)
+		return
+	}
+
+	results, err := validator.ValidateAllProfiles()
+	if err != nil {
+		fmt.Printf("Validation error: %v\n", err)
+		return
+	}
+
+	PrintValidationResults(results)
+
+	// Check if any failed
+	anyFailed := false
+	for _, result := range results {
+		if !result.Success {
+			anyFailed = true
+			break
+		}
+	}
+
+	if anyFailed {
+		fmt.Println()
+		fmt.Println("Press Enter to continue...")
+		fmt.Scanln()
+	}
+}
+
+// selectEnvironmentForSSO helps user select environment for SSO setup
+func selectEnvironmentForSSO() (string, string, error) {
+	yamlFiles, err := findYAMLFiles("project")
+	if err != nil {
+		return "", "", fmt.Errorf("failed to find YAML files: %w", err)
+	}
+
+	if len(yamlFiles) == 0 {
+		return "", "", fmt.Errorf("no environment YAML files found in project/ directory")
+	}
+
+	// If only one, use it
+	if len(yamlFiles) == 1 {
+		envName := strings.TrimSuffix(filepath.Base(yamlFiles[0]), ".yaml")
+		return envName, yamlFiles[0], nil
+	}
+
+	// Multiple environments, ask user to select
+	var options []huh.Option[string]
+	for _, yamlPath := range yamlFiles {
+		envName := strings.TrimSuffix(filepath.Base(yamlPath), ".yaml")
+		options = append(options, huh.NewOption(envName, yamlPath))
+	}
+
+	var selectedPath string
+	huh.NewSelect[string]().
+		Title("Select environment to configure AWS SSO:").
+		Options(options...).
+		Value(&selectedPath).
+		Run()
+
+	envName := strings.TrimSuffix(filepath.Base(selectedPath), ".yaml")
+	return envName, selectedPath, nil
 }

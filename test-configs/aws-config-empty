@@ -1,0 +1,4 @@
+# Empty AWS config file for testing
+# Use with: ./meroku --aws-config test-configs/aws-config-empty
+
+# This file simulates a fresh install with no AWS configuration

@@ -1,0 +1,18 @@
+# Legacy SSO configuration (old format, no token refresh)
+# Use with: ./meroku --aws-config test-configs/aws-config-legacy-sso
+
+[profile dev]
+sso_start_url = https://old-portal.awsapps.com/start
+sso_region = us-east-1
+sso_account_id = 123456789012
+sso_role_name = AdministratorAccess
+region = us-east-1
+output = json
+
+[profile prod]
+sso_start_url = https://old-portal.awsapps.com/start
+sso_region = us-west-2
+sso_account_id = 999888777666
+sso_role_name = ReadOnlyAccess
+region = us-west-2
+output = json

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/huh"
 
 	pricingpkg "madappgang.com/meroku/pricing"
 )
@@ -31,6 +32,7 @@ var (
 	versionFlag    = flag.Bool("version", false, "Show version information")
 	renderDiffFlag = flag.String("renderdiff", "", "Render terraform plan diff view from JSON file (for testing)")
 	debugFlag      = flag.String("debug", "", "Debug mode to test screens (e.g., api_missing_key)")
+	awsConfigFlag  = flag.String("aws-config", "", "Custom AWS config file path (for testing different scenarios)")
 )
 
 // GetVersion returns the actual version, reading from infrastructure/version.txt
@@ -71,6 +73,22 @@ func main() {
 	if *debugFlag != "" {
 		handleDebugScreen(*debugFlag)
 		// handleDebugScreen will exit, so this line is never reached
+	}
+
+	// Set custom AWS config path if provided (for testing)
+	if *awsConfigFlag != "" {
+		// Validate that the custom config file exists
+		if _, err := os.Stat(*awsConfigFlag); os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, "❌ Error: Custom AWS config file does not exist: %s\n", *awsConfigFlag)
+			fmt.Fprintf(os.Stderr, "\nPlease check the path and try again.\n")
+			fmt.Fprintf(os.Stderr, "\nAvailable test configs:\n")
+			fmt.Fprintf(os.Stderr, "  - test-configs/aws-config-empty\n")
+			fmt.Fprintf(os.Stderr, "  - test-configs/aws-config-modern-sso\n")
+			fmt.Fprintf(os.Stderr, "  - test-configs/aws-config-legacy-sso\n")
+			fmt.Fprintf(os.Stderr, "  - test-configs/aws-config-incomplete\n")
+			os.Exit(1)
+		}
+		SetCustomAWSConfigPath(*awsConfigFlag)
 	}
 
 	// Initialize pricing service early (needed for web API)
@@ -207,6 +225,22 @@ func main() {
 		}
 	}
 	// Silently ignore errors from version check to not disrupt startup
+
+	// Automatic AWS SSO validation (only in interactive mode, not for --web)
+	fmt.Printf("\n[DEBUG] Checking SSO validation conditions:\n")
+	fmt.Printf("  webFlag: %v\n", *webFlag)
+	fmt.Printf("  selectedEnvironment: '%s'\n", selectedEnvironment)
+	fmt.Printf("  selectedAWSProfile: '%s'\n", selectedAWSProfile)
+
+	if !*webFlag && selectedEnvironment != "" && selectedAWSProfile != "" {
+		fmt.Printf("[DEBUG] Running automatic SSO validation...\n\n")
+		if err := performAutoSSOValidation(); err != nil {
+			// Error already displayed to user, just log and continue
+			log.Printf("SSO validation error: %v", err)
+		}
+	} else {
+		fmt.Printf("[DEBUG] Skipping SSO validation (conditions not met)\n\n")
+	}
 
 	// If --web flag is set, open web app directly
 	if *webFlag {
@@ -376,6 +410,128 @@ func runTerraformPlanTUI(planFile string) error {
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("error running TUI: %w", err)
 	}
-	
+
+	return nil
+}
+
+// performAutoSSOValidation validates AWS SSO configuration at startup
+// If validation fails, offers to fix via wizard or AI agent
+func performAutoSSOValidation() error {
+	// Load the current environment YAML
+	yamlEnv, err := loadEnv(selectedEnvironment)
+	if err != nil {
+		return fmt.Errorf("failed to load environment: %w", err)
+	}
+
+	// Use the profile from YAML or fallback to environment name
+	profileName := yamlEnv.AWSProfile
+	if profileName == "" {
+		profileName = selectedEnvironment
+	}
+
+	// Create profile inspector
+	inspector, err := NewProfileInspector()
+	if err != nil {
+		return fmt.Errorf("failed to create profile inspector: %w", err)
+	}
+
+	// Check if AWS CLI is installed
+	if err := inspector.CheckAWSCLI(); err != nil {
+		fmt.Printf("\n⚠️  AWS CLI not installed or not v2+\n")
+		fmt.Printf("AWS SSO requires AWS CLI v2.0 or later.\n")
+		fmt.Printf("Install from: https://aws.amazon.com/cli/\n\n")
+		return nil // Don't block startup for missing CLI
+	}
+
+	// Inspect the profile
+	fmt.Printf("[DEBUG] Inspecting profile '%s'...\n", profileName)
+	profileInfo, err := inspector.InspectProfile(profileName)
+	if err != nil {
+		fmt.Printf("[DEBUG] Inspection error: %v\n", err)
+		return fmt.Errorf("failed to inspect profile: %w", err)
+	}
+
+	fmt.Printf("[DEBUG] Profile inspection results:\n")
+	fmt.Printf("  Exists: %v\n", profileInfo.Exists)
+	fmt.Printf("  Type: %s\n", profileInfo.Type)
+	fmt.Printf("  Complete: %v\n", profileInfo.Complete)
+	fmt.Printf("  Missing fields: %v\n", profileInfo.MissingFields)
+
+	// If profile is complete and valid, nothing to do
+	if profileInfo.Complete {
+		fmt.Printf("✅ AWS SSO profile '%s' is properly configured\n\n", profileName)
+		return nil
+	}
+
+	// Profile is incomplete - offer to fix
+	fmt.Printf("\n⚠️  AWS SSO Configuration Issue Detected\n\n")
+
+	if !profileInfo.Exists {
+		fmt.Printf("Profile '%s' does not exist in AWS config\n", profileName)
+	} else {
+		fmt.Printf("Profile '%s' is missing required fields:\n", profileName)
+		for _, field := range profileInfo.MissingFields {
+			fmt.Printf("  - %s\n", field)
+		}
+	}
+
+	fmt.Printf("\nWould you like to fix this now?\n\n")
+
+	// Check if Anthropic API key is available
+	anthropicKey := os.Getenv("ANTHROPIC_API_KEY")
+	hasAPIKey := anthropicKey != ""
+
+	// Build options based on API key availability
+	options := []huh.Option[string]{
+		huh.NewOption("🔐 Run Interactive Setup Wizard", "wizard"),
+	}
+
+	if hasAPIKey {
+		options = append(options, huh.NewOption("🤖 Use AI Agent", "agent"))
+	} else {
+		options = append(options, huh.NewOption("🤖 AI Agent (API key not configured)", "agent_disabled"))
+	}
+
+	options = append(options, huh.NewOption("⏭  Skip for now (continue to main menu)", "skip"))
+
+	// Offer fix options
+	var choice string
+	err = huh.NewSelect[string]().
+		Title("Fix AWS SSO Configuration").
+		Options(options...).
+		Value(&choice).
+		Run()
+
+	if err != nil {
+		return fmt.Errorf("failed to get user choice: %w", err)
+	}
+
+	switch choice {
+	case "wizard":
+		fmt.Println("\n🔐 Starting AWS SSO Setup Wizard...\n")
+		if err := RunSSOWizard(profileName, &yamlEnv); err != nil {
+			return fmt.Errorf("wizard failed: %w", err)
+		}
+	case "agent":
+		fmt.Println("\n🤖 Starting AWS SSO AI Agent...\n")
+		if err := RunSSOAgent(profileName, &yamlEnv); err != nil {
+			return fmt.Errorf("AI agent failed: %w", err)
+		}
+	case "agent_disabled":
+		fmt.Println("\n❌ AI Agent Not Available\n")
+		fmt.Println("The AI Agent requires an Anthropic API key to function.")
+		fmt.Println("Please set the ANTHROPIC_API_KEY environment variable:")
+		fmt.Println("\n  export ANTHROPIC_API_KEY=your_key_here")
+		fmt.Println("\nGet your API key from: https://console.anthropic.com/settings/keys\n")
+		fmt.Println("Returning to main menu...")
+		return nil
+	case "skip":
+		fmt.Println("\n⏭  Skipping AWS SSO configuration check\n")
+		fmt.Println("Note: You can configure AWS SSO later from the main menu:\n")
+		fmt.Println("  - 🔐 AWS SSO Setup Wizard")
+		fmt.Println("  - 🤖 AWS SSO AI Agent")
+		fmt.Println("  - ✓ Validate AWS Configuration\n")
+	}
+
 	return nil
 }
