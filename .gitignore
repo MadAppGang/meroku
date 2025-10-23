@@ -39,6 +39,8 @@ modules/appsync/auth_lambda/node_modules
 modules/appsync/auth_lambda.zip
 dist/
 app/meroku
+app/meroku_test
 .positions/
 env/dev/.terraform.lock.hcl
 meroku
+meroku_test

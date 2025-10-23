@@ -313,11 +313,11 @@ func handleMigrateCommand(args []string) {
 func handleDebugScreen(screenName string) {
 	switch screenName {
 	case "api_missing_key", "api":
-		fmt.Println("Debug Mode: Displaying API key missing screen\n")
+		fmt.Println("Debug Mode: Displaying API key missing screen")
 		ShowAPIKeyRequiredScreen()
 
 	case "terraform_plan", "plan":
-		fmt.Println("Debug Mode: Displaying Terraform Plan TUI with sample data\n")
+		fmt.Println("Debug Mode: Displaying Terraform Plan TUI with sample data")
 		fmt.Println("Sample plan includes:")
 		fmt.Println("  - VPC and networking resources (create)")
 		fmt.Println("  - ECS cluster and services (create/update)")
@@ -325,7 +325,7 @@ func handleDebugScreen(screenName string) {
 		fmt.Println("  - Task definitions (replace)")
 		fmt.Println("  - Security groups (delete)")
 		fmt.Println("  - Route53 records (update)")
-		fmt.Println("\nStarting TUI...\n")
+		fmt.Println("\nStarting TUI...")
 		time.Sleep(1 * time.Second)
 
 		// Create and run the terraform plan TUI with sample data
@@ -483,29 +483,29 @@ func performAutoSSOValidation() error {
 
 	switch choice {
 	case "wizard":
-		fmt.Println("\n🔐 Starting AWS SSO Setup Wizard...\n")
+		fmt.Println("\n🔐 Starting AWS SSO Setup Wizard...")
 		if err := RunSSOWizard(profileName, &yamlEnv); err != nil {
 			return fmt.Errorf("wizard failed: %w", err)
 		}
 	case "agent":
-		fmt.Println("\n🤖 Starting AWS SSO AI Agent...\n")
+		fmt.Println("\n🤖 Starting AWS SSO AI Agent...")
 		if err := RunSSOAgent(profileName, &yamlEnv); err != nil {
 			return fmt.Errorf("AI agent failed: %w", err)
 		}
 	case "agent_disabled":
-		fmt.Println("\n❌ AI Agent Not Available\n")
+		fmt.Println("\n❌ AI Agent Not Available")
 		fmt.Println("The AI Agent requires an Anthropic API key to function.")
 		fmt.Println("Please set the ANTHROPIC_API_KEY environment variable:")
 		fmt.Println("\n  export ANTHROPIC_API_KEY=your_key_here")
-		fmt.Println("\nGet your API key from: https://console.anthropic.com/settings/keys\n")
+		fmt.Println("\nGet your API key from: https://console.anthropic.com/settings/keys")
 		fmt.Println("Returning to main menu...")
 		return nil
 	case "skip":
-		fmt.Println("\n⏭  Skipping AWS SSO configuration check\n")
-		fmt.Println("Note: You can configure AWS SSO later from the main menu:\n")
+		fmt.Println("\n⏭  Skipping AWS SSO configuration check")
+		fmt.Println("Note: You can configure AWS SSO later from the main menu:")
 		fmt.Println("  - 🔐 AWS SSO Setup Wizard")
 		fmt.Println("  - 🤖 AWS SSO AI Agent")
-		fmt.Println("  - ✓ Validate AWS Configuration\n")
+		fmt.Println("  - ✓ Validate AWS Configuration")
 	}
 
 	return nil

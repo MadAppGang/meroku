@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"time"
 )
 
 // validateCommand validates a command before execution to prevent dangerous operations
@@ -159,31 +158,15 @@ func validateFileSize(filePath string, maxSize int64) error {
 	return nil
 }
 
-// createFileBackup creates a timestamped backup of a file before modification
+// createFileBackup creates a timestamped backup of a file before modification in backup/ directory
 func createFileBackup(filePath string) (string, error) {
 	// Check if file exists
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		return "", nil // No file to backup
 	}
 
-	// Read file content
-	content, err := os.ReadFile(filePath)
+	backupPath, err := CreateFileBackupWithPermissions(filePath, 0644)
 	if err != nil {
-		return "", fmt.Errorf("failed to read file for backup: %w", err)
-	}
-
-	// Create backup path with actual timestamp in format: filename.backup_20060102_150405
-	timestamp := time.Now().Format("20060102_150405")
-	backupPath := fmt.Sprintf("%s.backup_%s", filePath, timestamp)
-
-	// Handle collision: add microseconds if file exists
-	if _, err := os.Stat(backupPath); err == nil {
-		timestamp = time.Now().Format("20060102_150405.000000")
-		backupPath = fmt.Sprintf("%s.backup_%s", filePath, timestamp)
-	}
-
-	// Write backup
-	if err := os.WriteFile(backupPath, content, 0644); err != nil {
 		return "", fmt.Errorf("failed to create backup: %w", err)
 	}
 

@@ -137,11 +137,11 @@ func ssoToolsMenu() {
 		runEnhancedSSOAgentFromMenu()
 		ssoToolsMenu() // Return to SSO menu
 	case "agent_disabled":
-		fmt.Println("\n❌ AI Agent Not Available\n")
+		fmt.Println("\n❌ AI Agent Not Available")
 		fmt.Println("The AI Agent requires an Anthropic API key to function.")
 		fmt.Println("Please set the ANTHROPIC_API_KEY environment variable:")
 		fmt.Println("\n  export ANTHROPIC_API_KEY=your_key_here")
-		fmt.Println("\nGet your API key from: https://console.anthropic.com/settings/keys\n")
+		fmt.Println("\nGet your API key from: https://console.anthropic.com/settings/keys")
 		ssoToolsMenu() // Return to SSO menu
 	case "validate":
 		validateAWSFromMenu()

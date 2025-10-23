@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	"gopkg.in/yaml.v2"
 )
@@ -369,17 +368,9 @@ func applyMigrations(data map[string]interface{}, currentVersion int) error {
 	return nil
 }
 
-// backupFile creates a timestamped backup of the original file
+// backupFile creates a timestamped backup of the original file in the backup/ directory
 func backupFile(filepath string) error {
-	data, err := os.ReadFile(filepath)
-	if err != nil {
-		return fmt.Errorf("failed to read file for backup: %w", err)
-	}
-
-	timestamp := time.Now().Format("20060102_150405")
-	backupPath := filepath + ".backup_" + timestamp
-
-	err = os.WriteFile(backupPath, data, 0644)
+	backupPath, err := CreateProjectBackup(filepath)
 	if err != nil {
 		return fmt.Errorf("failed to create backup: %w", err)
 	}

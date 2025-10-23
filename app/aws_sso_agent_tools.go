@@ -141,16 +141,18 @@ func (a *SSOAgent) toolWriteAWSConfig(ctx context.Context, command string, agent
 
 	// Create backup
 	configPath := getAWSConfigPath()
-	backupPath := fmt.Sprintf("%s.backup.%s", configPath, time.Now().Format("20060102_150405"))
+	var backupPath string
 
 	if _, err := os.Stat(configPath); err == nil {
-		// File exists, create backup
-		if err := copyFile(configPath, backupPath); err != nil {
+		// File exists, create backup in backup/ directory
+		var backupErr error
+		backupPath, backupErr = CreateAWSConfigBackup(configPath)
+		if backupErr != nil {
 			return &SSOAgentAction{
 				Type:   "write_aws_config",
-				Result: fmt.Sprintf("Failed to create backup: %v", err),
-				Error:  err,
-			}, err
+				Result: fmt.Sprintf("Failed to create backup: %v", backupErr),
+				Error:  backupErr,
+			}, backupErr
 		}
 	}
 
@@ -237,9 +239,9 @@ func (a *SSOAgent) toolWriteYAML(ctx context.Context, command string, agentCtx *
 		}, err
 	}
 
-	// Create backup
-	backupPath := fmt.Sprintf("%s.backup.%s", filePath, time.Now().Format("20060102_150405"))
-	if err := copyFile(filePath, backupPath); err != nil {
+	// Create backup in backup/ directory
+	backupPath, err := CreateProjectBackup(filePath)
+	if err != nil {
 		return &SSOAgentAction{
 			Type:   "write_yaml",
 			Result: fmt.Sprintf("Failed to create backup: %v", err),

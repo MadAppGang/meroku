@@ -329,6 +329,12 @@ func TestCreateFileBackup(t *testing.T) {
 		t.Errorf("Backup path doesn't contain '.backup_': %s", backupPath)
 	}
 
+	// Verify backup is in backup/ directory
+	backupDir := filepath.Join(tmpDir, "backup")
+	if !strings.HasPrefix(backupPath, backupDir) {
+		t.Errorf("Backup not in backup/ directory. Expected prefix: %s, got: %s", backupDir, backupPath)
+	}
+
 	// Test backup of non-existent file
 	nonExistentFile := filepath.Join(tmpDir, "nonexistent.txt")
 	backupPath2, err := createFileBackup(nonExistentFile)

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	"gopkg.in/ini.v1"
 )
@@ -144,7 +143,7 @@ func (cw *ConfigWriter) writeProfileSection(cfg *ini.File, profileName string, o
 	return nil
 }
 
-// createBackup creates a timestamped backup of the config file
+// createBackup creates a timestamped backup of the config file in backup/ directory
 func (cw *ConfigWriter) createBackup() error {
 	// Check if config file exists
 	if _, err := os.Stat(cw.configPath); os.IsNotExist(err) {
@@ -152,19 +151,9 @@ func (cw *ConfigWriter) createBackup() error {
 		return nil
 	}
 
-	// Create backup path with timestamp
-	timestamp := time.Now().Format("20060102_150405")
-	backupPath := fmt.Sprintf("%s.backup.%s", cw.configPath, timestamp)
-
-	// Read original file
-	data, err := os.ReadFile(cw.configPath)
+	backupPath, err := CreateAWSConfigBackup(cw.configPath)
 	if err != nil {
-		return fmt.Errorf("failed to read config file: %w", err)
-	}
-
-	// Write backup
-	if err := os.WriteFile(backupPath, data, 0600); err != nil {
-		return fmt.Errorf("failed to write backup: %w", err)
+		return fmt.Errorf("failed to create backup: %w", err)
 	}
 
 	fmt.Printf("✅ Backup created: %s\n", backupPath)

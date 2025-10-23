@@ -656,7 +656,7 @@ func RunSSOWizard(profileName string, yamlEnv *Env) error {
 
 // RunSSOWizardHuh is the new huh-based wizard with dropdown selections
 func RunSSOWizardHuh(profileName string, yamlEnv *Env) error {
-	fmt.Println("\n🔐 AWS SSO Setup Wizard\n")
+	fmt.Println("\n🔐 AWS SSO Setup Wizard")
 	fmt.Printf("Profile: %s\n\n", profileName)
 
 	// Check AWS CLI

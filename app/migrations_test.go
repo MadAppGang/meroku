@@ -485,13 +485,15 @@ func TestMigrateYAMLFileIntegration(t *testing.T) {
 		t.Fatalf("MigrateYAMLFile failed: %v", err)
 	}
 
-	// Verify backup was created
-	backupFiles, err := filepath.Glob(testFile + ".backup_*")
+	// Verify backup was created in backup/ directory
+	backupDir := filepath.Join(filepath.Dir(testFile), "backup")
+	backupPattern := filepath.Join(backupDir, filepath.Base(testFile)+".backup_*")
+	backupFiles, err := filepath.Glob(backupPattern)
 	if err != nil {
 		t.Fatalf("Failed to glob backup files: %v", err)
 	}
 	if len(backupFiles) != 1 {
-		t.Errorf("Expected 1 backup file, found %d", len(backupFiles))
+		t.Errorf("Expected 1 backup file in %s, found %d", backupDir, len(backupFiles))
 	}
 
 	// Read migrated file
