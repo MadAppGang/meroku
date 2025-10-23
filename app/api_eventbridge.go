@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -13,7 +13,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
 	"github.com/aws/aws-sdk-go-v2/service/eventbridge/types"
 	"gopkg.in/yaml.v2"
-	"os"
+
+	"madappgang.com/meroku/httputil"
+	"madappgang.com/meroku/logger"
 )
 
 // TestEventRequest represents the request to send a test event
@@ -32,42 +34,27 @@ type TestEventResponse struct {
 
 // sendTestEvent sends a test event to EventBridge
 func sendTestEvent(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Read request body
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(TestEventResponse{
-			Success: false,
-			Message: "Failed to read request body",
-		})
-		return
-	}
-	defer r.Body.Close()
-
 	var req TestEventRequest
-	if err := json.Unmarshal(body, &req); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(TestEventResponse{
+	if err := httputil.DecodeJSON(r, &req); err != nil {
+		logger.Error("Failed to decode test event request: %v", err)
+		httputil.RespondJSON(w, http.StatusBadRequest, TestEventResponse{
 			Success: false,
-			Message: fmt.Sprintf("Invalid request body: %v", err),
+			Message: "Invalid request body",
 		})
 		return
 	}
 
 	// Validate required fields
 	if req.Source == "" || req.DetailType == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(TestEventResponse{
+		logger.Warn("Missing required fields in test event request")
+		httputil.RespondJSON(w, http.StatusBadRequest, TestEventResponse{
 			Success: false,
 			Message: "source and detailType are required",
 		})
 		return
 	}
+
+	logger.Info("Sending test event: source=%s, detailType=%s", req.Source, req.DetailType)
 
 	// If detail is not provided, create a default test event detail
 	if req.Detail == nil {
@@ -78,28 +65,27 @@ func sendTestEvent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Load AWS configuration
+	// Create EventBridge client
+	// TODO: Use ClientFactory in next phase when we add dependency injection
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(TestEventResponse{
+		logger.Error("Failed to load AWS config: %v", err)
+		httputil.RespondJSON(w, http.StatusInternalServerError, TestEventResponse{
 			Success: false,
-			Message: fmt.Sprintf("Failed to load AWS config: %v", err),
+			Message: "Failed to load AWS configuration",
 		})
 		return
 	}
-
-	// Create EventBridge client
 	client := eventbridge.NewFromConfig(cfg)
 
 	// Marshal detail to JSON string
 	detailJSON, err := json.Marshal(req.Detail)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(TestEventResponse{
+		logger.Error("Failed to marshal event detail: %v", err)
+		httputil.RespondJSON(w, http.StatusInternalServerError, TestEventResponse{
 			Success: false,
-			Message: fmt.Sprintf("Failed to marshal detail: %v", err),
+			Message: "Failed to marshal event detail",
 		})
 		return
 	}
@@ -119,8 +105,8 @@ func sendTestEvent(w http.ResponseWriter, r *http.Request) {
 
 	result, err := client.PutEvents(ctx, input)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(TestEventResponse{
+		logger.Error("Failed to send EventBridge event: %v", err)
+		httputil.RespondJSON(w, http.StatusInternalServerError, TestEventResponse{
 			Success: false,
 			Message: fmt.Sprintf("Failed to send event: %v", err),
 		})
@@ -129,8 +115,8 @@ func sendTestEvent(w http.ResponseWriter, r *http.Request) {
 
 	// Check if the event was successfully sent
 	if result.FailedEntryCount > 0 && len(result.Entries) > 0 {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(TestEventResponse{
+		logger.Error("EventBridge event failed: %s", *result.Entries[0].ErrorMessage)
+		httputil.RespondJSON(w, http.StatusInternalServerError, TestEventResponse{
 			Success: false,
 			Message: fmt.Sprintf("Event failed: %s", *result.Entries[0].ErrorMessage),
 		})
@@ -143,8 +129,8 @@ func sendTestEvent(w http.ResponseWriter, r *http.Request) {
 		eventId = *result.Entries[0].EventId
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(TestEventResponse{
+	logger.Success("Test event sent successfully: eventId=%s", eventId)
+	httputil.RespondJSON(w, http.StatusOK, TestEventResponse{
 		Success: true,
 		EventId: eventId,
 		Message: "Test event sent successfully",
@@ -153,31 +139,26 @@ func sendTestEvent(w http.ResponseWriter, r *http.Request) {
 
 // getEventTaskInfo returns information about event tasks and their patterns
 func getEventTaskInfo(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	envName, ok := httputil.RequiredQueryParam(w, r, "env")
+	if !ok {
 		return
 	}
 
-	envName := r.URL.Query().Get("env")
-	if envName == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(ErrorResponse{Error: "env parameter is required"})
-		return
-	}
+	logger.Info("Fetching event task info for env=%s", envName)
 
 	// Load environment config
 	filename := fmt.Sprintf("%s.yaml", envName)
 	content, err := os.ReadFile(filename)
 	if err != nil {
-		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(ErrorResponse{Error: "environment not found"})
+		logger.Error("Environment not found: %s", envName)
+		httputil.RespondError(w, http.StatusNotFound, "environment not found")
 		return
 	}
 
 	var envConfig Env
 	if err := yaml.Unmarshal(content, &envConfig); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(ErrorResponse{Error: "failed to parse environment config"})
+		logger.Error("Failed to parse environment config for %s: %v", envName, err)
+		httputil.RespondError(w, http.StatusInternalServerError, "failed to parse environment config")
 		return
 	}
 
@@ -201,6 +182,6 @@ func getEventTaskInfo(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(eventTasks)
+	logger.Success("Retrieved %d event tasks for env=%s", len(eventTasks), envName)
+	httputil.RespondJSON(w, http.StatusOK, eventTasks)
 }
