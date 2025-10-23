@@ -226,8 +226,8 @@ module "workloads" {
   {{#if postgres.enabled}}
 
   db_endpoint = module.postgres.endpoint
-  db_user = "{{postgres.username}}"
-  db_name = "{{postgres.dbname}}"
+  db_user = module.postgres.user
+  db_name = module.postgres.db_name
   {{/if}}
   {{#if domain.enabled}}
   subdomains_certificate_arn = module.domain.subdomains_certificate_arn
