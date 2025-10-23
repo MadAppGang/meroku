@@ -29,6 +29,7 @@ var (
 	envFlag        = flag.String("env", "", "Environment to use (e.g., dev, prod)")
 	versionFlag    = flag.Bool("version", false, "Show version information")
 	renderDiffFlag = flag.String("renderdiff", "", "Render terraform plan diff view from JSON file (for testing)")
+	debugFlag      = flag.String("debug", "", "Debug mode to test screens (e.g., api_missing_key)")
 )
 
 // GetVersion returns the actual version, reading from infrastructure/version.txt
@@ -59,6 +60,18 @@ func main() {
 	// Parse command line flags
 	flag.Parse()
 
+	// Handle version flag (early, before any initialization)
+	if *versionFlag {
+		fmt.Printf("meroku version %s\n", strings.TrimSpace(GetVersion()))
+		os.Exit(0)
+	}
+
+	// Handle debug flag for testing screens (early, before any initialization)
+	if *debugFlag != "" {
+		handleDebugScreen(*debugFlag)
+		// handleDebugScreen will exit, so this line is never reached
+	}
+
 	// Initialize pricing service early (needed for web API)
 	// This runs in background and caches pricing data
 	ctx := context.Background()
@@ -73,18 +86,12 @@ func main() {
 
 	// Check for Anthropic API key (only in interactive mode)
 	// Skip check if using flags that don't need AI (version, renderdiff, dns, migrate, generate, web)
-	needsInteractiveCheck := !*versionFlag && *renderDiffFlag == "" && !*webFlag
+	needsInteractiveCheck := !*versionFlag && *renderDiffFlag == "" && !*webFlag && *debugFlag == ""
 	if needsInteractiveCheck && len(flag.Args()) == 0 {
 		// Only show the screen in fully interactive mode (no commands)
 		if !CheckAnthropicAPIKey() {
 			ShowAPIKeyRequiredScreen()
 		}
-	}
-
-	// Handle version flag
-	if *versionFlag {
-		fmt.Printf("meroku version %s\n", strings.TrimSpace(GetVersion()))
-		os.Exit(0)
 	}
 
 	// Handle renderdiff flag for testing terraform plan diff view
@@ -281,6 +288,21 @@ func handleMigrateCommand(args []string) {
 		}
 		fmt.Println("Migration completed successfully!")
 	}
+}
+
+// handleDebugScreen handles debug mode for testing screens
+func handleDebugScreen(screenName string) {
+	switch screenName {
+	case "api_missing_key":
+		fmt.Println("Debug Mode: Displaying API key missing screen\n")
+		ShowAPIKeyRequiredScreen()
+	default:
+		fmt.Printf("Unknown debug screen: %s\n", screenName)
+		fmt.Println("\nAvailable debug screens:")
+		fmt.Println("  api_missing_key  - Show Anthropic API key required screen")
+		os.Exit(1)
+	}
+	os.Exit(0)
 }
 
 // runRenderDiff renders the terraform plan diff view from a JSON file
