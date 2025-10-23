@@ -71,6 +71,16 @@ func main() {
 		log.Printf("[Pricing] Continuing with fallback prices only")
 	}
 
+	// Check for Anthropic API key (only in interactive mode)
+	// Skip check if using flags that don't need AI (version, renderdiff, dns, migrate, generate, web)
+	needsInteractiveCheck := !*versionFlag && *renderDiffFlag == "" && !*webFlag
+	if needsInteractiveCheck && len(flag.Args()) == 0 {
+		// Only show the screen in fully interactive mode (no commands)
+		if !CheckAnthropicAPIKey() {
+			ShowAPIKeyRequiredScreen()
+		}
+	}
+
 	// Handle version flag
 	if *versionFlag {
 		fmt.Printf("meroku version %s\n", strings.TrimSpace(GetVersion()))
