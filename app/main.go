@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -293,13 +294,57 @@ func handleMigrateCommand(args []string) {
 // handleDebugScreen handles debug mode for testing screens
 func handleDebugScreen(screenName string) {
 	switch screenName {
-	case "api_missing_key":
+	case "api_missing_key", "api":
 		fmt.Println("Debug Mode: Displaying API key missing screen\n")
 		ShowAPIKeyRequiredScreen()
+
+	case "terraform_plan", "plan":
+		fmt.Println("Debug Mode: Displaying Terraform Plan TUI with sample data\n")
+		fmt.Println("Sample plan includes:")
+		fmt.Println("  - VPC and networking resources (create)")
+		fmt.Println("  - ECS cluster and services (create/update)")
+		fmt.Println("  - RDS database (create)")
+		fmt.Println("  - Task definitions (replace)")
+		fmt.Println("  - Security groups (delete)")
+		fmt.Println("  - Route53 records (update)")
+		fmt.Println("\nStarting TUI...\n")
+		time.Sleep(1 * time.Second)
+
+		// Create and run the terraform plan TUI with sample data
+		model, err := initModernTerraformPlanTUI(getSampleTerraformPlan())
+		if err != nil {
+			fmt.Printf("Error initializing TUI: %v\n", err)
+			os.Exit(1)
+		}
+
+		p := tea.NewProgram(model, tea.WithAltScreen())
+		if _, err := p.Run(); err != nil {
+			fmt.Printf("Error running TUI: %v\n", err)
+			os.Exit(1)
+		}
+
+	case "list", "help", "":
+		fmt.Println("Debug Mode - Available Screens:")
+		fmt.Println()
+		fmt.Println("  api_missing_key, api    - Anthropic API key required screen")
+		fmt.Println("                             Shows when ANTHROPIC_API_KEY is not set")
+		fmt.Println()
+		fmt.Println("  terraform_plan, plan    - Terraform plan viewer TUI")
+		fmt.Println("                             Interactive plan review with sample data")
+		fmt.Println("                             Navigate with arrows, press 'a' for AI help")
+		fmt.Println()
+		fmt.Println("Usage:")
+		fmt.Println("  ./meroku --debug <screen_name>")
+		fmt.Println()
+		fmt.Println("Examples:")
+		fmt.Println("  ./meroku --debug api")
+		fmt.Println("  ./meroku --debug terraform_plan")
+		fmt.Println("  ./meroku --debug list")
+		os.Exit(0)
+
 	default:
 		fmt.Printf("Unknown debug screen: %s\n", screenName)
-		fmt.Println("\nAvailable debug screens:")
-		fmt.Println("  api_missing_key  - Show Anthropic API key required screen")
+		fmt.Println("\nRun './meroku --debug list' to see available screens")
 		os.Exit(1)
 	}
 	os.Exit(0)
