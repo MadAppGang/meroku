@@ -356,6 +356,74 @@ func migrateToV8(data map[string]interface{}) error {
 	return nil
 }
 
+// migrateV8ToV9 adds per-service ECR configuration (actually migrating to v10)
+func migrateV8ToV9(data map[string]interface{}) error {
+	fmt.Println("  → Migrating to v10: Adding per-service ECR configuration")
+
+	// Helper function to add default ECR config to a list of items
+	addDefaultECRConfig := func(items []interface{}, itemType string) int {
+		count := 0
+		for _, itemRaw := range items {
+			itemMap, ok := itemRaw.(map[interface{}]interface{})
+			if !ok {
+				continue
+			}
+
+			// Only add if ecr_config doesn't already exist
+			if _, exists := itemMap["ecr_config"]; !exists {
+				itemMap["ecr_config"] = map[string]interface{}{
+					"mode": "create_ecr",
+				}
+				count++
+			}
+		}
+		return count
+	}
+
+	totalMigrated := 0
+
+	// Migrate services
+	if servicesRaw, exists := data["services"]; exists {
+		if services, ok := servicesRaw.([]interface{}); ok {
+			count := addDefaultECRConfig(services, "services")
+			totalMigrated += count
+			if count > 0 {
+				fmt.Printf("    ✓ Added default ECR config to %d service(s)\n", count)
+			}
+		}
+	}
+
+	// Migrate event_processor_tasks
+	if tasksRaw, exists := data["event_processor_tasks"]; exists {
+		if tasks, ok := tasksRaw.([]interface{}); ok {
+			count := addDefaultECRConfig(tasks, "event_processor_tasks")
+			totalMigrated += count
+			if count > 0 {
+				fmt.Printf("    ✓ Added default ECR config to %d event processor task(s)\n", count)
+			}
+		}
+	}
+
+	// Migrate scheduled_tasks
+	if tasksRaw, exists := data["scheduled_tasks"]; exists {
+		if tasks, ok := tasksRaw.([]interface{}); ok {
+			count := addDefaultECRConfig(tasks, "scheduled_tasks")
+			totalMigrated += count
+			if count > 0 {
+				fmt.Printf("    ✓ Added default ECR config to %d scheduled task(s)\n", count)
+			}
+		}
+	}
+
+	if totalMigrated == 0 {
+		fmt.Println("    ℹ️  No services/tasks to migrate")
+	} else {
+		fmt.Printf("    ✓ Total items migrated: %d\n", totalMigrated)
+	}
+
+	return nil
+}
+
 // migrateToV9 simplifies Amplify domain configuration
 func migrateToV9(data map[string]interface{}) error {
 	fmt.Println("  → Migrating to v9: Simplifying Amplify domain configuration")

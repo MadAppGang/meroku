@@ -121,17 +121,7 @@ export default function App() {
     }
   }, [selectedEnvironment, loadAccountInfo, loadConfiguration]);
 
-  const handleConfigChange = async (
-    updates: Partial<YamlInfrastructureConfig>
-  ) => {
-    if (config) {
-      const updatedConfig = { ...config, ...updates };
-      setConfig(updatedConfig);
-      await saveConfigToBackend(updatedConfig);
-    }
-  };
-
-  const saveConfigToBackend = async (
+  const saveConfigToBackend = useCallback(async (
     updatedConfig: YamlInfrastructureConfig
   ) => {
     if (!selectedEnvironment) return;
@@ -164,7 +154,28 @@ export default function App() {
       setTimeout(() => setSaveStatus("idle"), 3000);
     } finally {
     }
-  };
+  }, [selectedEnvironment]);
+
+  const handleConfigChange = useCallback(async (
+    updates: Partial<YamlInfrastructureConfig>
+  ) => {
+    setConfig((prevConfig) => {
+      if (!prevConfig) return prevConfig;
+
+      // Create updated config
+      const updatedConfig = { ...prevConfig, ...updates };
+
+      // Only return new object if something actually changed (deep equality check)
+      // This prevents unnecessary re-renders when the data hasn't actually changed
+      if (JSON.stringify(prevConfig) === JSON.stringify(updatedConfig)) {
+        return prevConfig; // Return same reference to prevent re-render
+      }
+
+      // Call saveConfigToBackend asynchronously (don't await here to avoid blocking)
+      saveConfigToBackend(updatedConfig);
+      return updatedConfig;
+    });
+  }, [saveConfigToBackend]);
 
   const handleAddService = async (
     service: NonNullable<YamlInfrastructureConfig["services"]>[0]
@@ -379,6 +390,7 @@ export default function App() {
         onClose={() => setShowAddServiceDialog(false)}
         onAdd={handleAddService}
         existingServices={getExistingServices()}
+        config={config || {} as YamlInfrastructureConfig}
       />
 
       <AddScheduledTaskDialog
@@ -394,6 +406,7 @@ export default function App() {
         onAdd={handleAddEventTask}
         existingTasks={getExistingEventTasks()}
         availableServices={getAvailableServices()}
+        config={config || {} as YamlInfrastructureConfig}
       />
 
       <AddAmplifyDialog
