@@ -30,6 +30,7 @@ interface AmplifyStatusWidgetProps {
 	showRefresh?: boolean;
 	autoRefresh?: boolean;
 	refreshInterval?: number;
+	enabled?: boolean; // Control when to fetch data (e.g., only when node is selected)
 	className?: string;
 }
 
@@ -95,6 +96,7 @@ export function AmplifyStatusWidget({
 	showRefresh = true,
 	autoRefresh = true,
 	refreshInterval = 30000,
+	enabled = true, // Default to enabled for backward compatibility
 	className,
 }: AmplifyStatusWidgetProps) {
 	const [app, setApp] = useState<AmplifyAppInfo | null>(null);
@@ -136,12 +138,18 @@ export function AmplifyStatusWidget({
 	);
 
 	useEffect(() => {
+		if (!enabled) {
+			// Don't fetch if disabled - user needs to select the node first
+			setLoading(false);
+			return;
+		}
+
 		fetchAppStatus();
 		if (autoRefresh) {
 			const interval = setInterval(() => fetchAppStatus(true), refreshInterval);
 			return () => clearInterval(interval);
 		}
-	}, [autoRefresh, refreshInterval, fetchAppStatus]);
+	}, [enabled, autoRefresh, refreshInterval, fetchAppStatus]);
 
 	const getOverallStatus = () => {
 		if (!app || app.branches.length === 0) return null;
@@ -161,6 +169,20 @@ export function AmplifyStatusWidget({
 		);
 		return statuses[0];
 	};
+
+	// Show placeholder when disabled
+	if (!enabled) {
+		return (
+			<div className={cn("flex items-center gap-2", className)}>
+				<div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-gray-500/10">
+					<Clock className="w-4 h-4 text-gray-500" />
+					<span className="text-sm font-medium text-gray-500">
+						Select node to view status
+					</span>
+				</div>
+			</div>
+		);
+	}
 
 	if (loading && !app) {
 		return (

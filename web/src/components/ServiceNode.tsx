@@ -379,7 +379,7 @@ export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
                   </div>
                 )}
 
-              {/* Amplify Status Widget */}
+              {/* Amplify Status Widget - only fetch when node is selected */}
               <div className="bg-gray-900/50 rounded px-2 py-1">
                 <div className="text-xs text-gray-400 mb-1">Build Status:</div>
                 <AmplifyStatusWidget
@@ -389,6 +389,7 @@ export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
                   variant="compact"
                   showRefresh={false}
                   autoRefresh={true}
+                  enabled={selected} // Only fetch status when node is selected
                   className="w-full"
                 />
               </div>
