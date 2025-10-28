@@ -1114,4 +1114,22 @@ export const infrastructureApi = {
 		}
 		return response.json();
 	},
+
+	async getAPIGatewayInfo(env: string): Promise<{
+		defaultEndpoint: string;
+		apiGatewayId: string;
+		customDomainEnabled: boolean;
+		customDomain?: string;
+		region: string;
+		error?: string;
+	}> {
+		const response = await fetch(
+			`${API_BASE_URL}/api/apigateway/info?env=${encodeURIComponent(env)}`,
+		);
+		if (!response.ok) {
+			const error: ErrorResponse = await response.json();
+			throw new Error(error.error || "Failed to fetch API Gateway info");
+		}
+		return response.json();
+	},
 };

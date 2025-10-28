@@ -40,3 +40,22 @@ output "service_ecr_url_map" {
   value       = local.service_ecr_urls
 }
 
+# ============================================================================
+# API Gateway Outputs
+# ============================================================================
+
+output "api_gateway_endpoint" {
+  description = "API Gateway default endpoint URL with stage"
+  value       = "${aws_apigatewayv2_api.api_gateway.api_endpoint}/${aws_apigatewayv2_stage.backend.name}"
+}
+
+output "api_gateway_id" {
+  description = "API Gateway ID"
+  value       = aws_apigatewayv2_api.api_gateway.id
+}
+
+output "api_gateway_custom_domain_enabled" {
+  description = "Whether custom domain is enabled for API Gateway"
+  value       = var.enable_custom_domain
+}
+

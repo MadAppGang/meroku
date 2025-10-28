@@ -120,6 +120,12 @@ variable "domain_zone_id" {
   default = ""
 }
 
+variable "enable_custom_domain" {
+  description = "Enable API Gateway custom domain resources (from domain module)"
+  type        = bool
+  default     = false
+}
+
 
 variable "ecr_strategy" {
   description = "ECR repository strategy: 'local' to create ECR in this account, 'cross_account' to pull from another account"

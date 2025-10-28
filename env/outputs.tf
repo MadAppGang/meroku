@@ -17,3 +17,15 @@ output "backend_ecr_repo_url" {
   value = module.workloads.backend_ecr_repo_url
 }
 
+output "api_gateway_endpoint" {
+  value = module.workloads.api_gateway_endpoint
+}
+
+output "api_gateway_id" {
+  value = module.workloads.api_gateway_id
+}
+
+output "api_gateway_custom_domain_enabled" {
+  value = module.workloads.api_gateway_custom_domain_enabled
+}
+

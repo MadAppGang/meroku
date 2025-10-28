@@ -200,6 +200,7 @@ module "workloads" {
   env        = "{{env}}" 
   private_dns_name = "{{project}}_{{env}}.private"
   {{#if domain.enabled}}
+  enable_custom_domain = module.domain.enable_custom_domain
   api_domain = module.domain.api_domain_name
   {{#compare (len domain.api_domain_prefix) ">" 0}}
   create_api_domain_record = true
@@ -208,6 +209,7 @@ module "workloads" {
   {{/compare}}
   {{else}}
   {{!-- Don't set api_domain when domain module is disabled to prevent API Gateway domain creation without certificate --}}
+  enable_custom_domain = false
   api_domain = ""
   create_api_domain_record = false
   {{/if}}

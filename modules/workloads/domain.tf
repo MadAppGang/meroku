@@ -1,5 +1,5 @@
 resource "aws_route53_record" "backend" {
-  count   = var.create_api_domain_record && var.api_domain != "" ? 1 : 0
+  count   = var.enable_custom_domain && var.create_api_domain_record && var.api_domain != "" ? 1 : 0
   name    = var.api_domain
   type    = "A"
   zone_id = var.domain_zone_id
@@ -11,7 +11,7 @@ resource "aws_route53_record" "backend" {
 }
 
 resource "aws_apigatewayv2_domain_name" "backend" {
-  count       = var.api_domain != "" ? 1 : 0
+  count       = var.enable_custom_domain && var.api_domain != "" ? 1 : 0
   domain_name = var.api_domain
   domain_name_configuration {
     certificate_arn = var.api_certificate_arn
@@ -75,7 +75,7 @@ resource "aws_apigatewayv2_stage" "backend" {
 }
 
 resource "aws_apigatewayv2_api_mapping" "backend" {
-  count       = var.api_domain != "" ? 1 : 0
+  count       = var.enable_custom_domain && var.api_domain != "" ? 1 : 0
   api_id      = aws_apigatewayv2_api.api_gateway.id
   domain_name = aws_apigatewayv2_domain_name.backend[0].domain_name
   stage       = aws_apigatewayv2_stage.backend.id

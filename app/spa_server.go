@@ -65,7 +65,10 @@ func mainRouter() http.Handler {
 	mux.HandleFunc("/api/ecs/autoscaling", corsMiddleware(getServiceAutoscaling))
 	mux.HandleFunc("/api/ecs/scaling-history", corsMiddleware(getServiceScalingHistory))
 	mux.HandleFunc("/api/ecs/metrics", corsMiddleware(getServiceMetrics))
-	
+
+	// API Gateway
+	mux.HandleFunc("/api/apigateway/info", corsMiddleware(getAPIGatewayInfo))
+
 	// RDS
 	mux.HandleFunc("/api/rds/endpoint", corsMiddleware(getDatabaseEndpoint))
 	mux.HandleFunc("/api/rds/info", corsMiddleware(getDatabaseInfo))
