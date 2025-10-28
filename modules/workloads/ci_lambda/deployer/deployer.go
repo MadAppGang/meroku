@@ -69,7 +69,7 @@ func (d *DeployerV2) Deploy(opts DeployOptions) *DeployResult {
 	}
 
 	// Send initial notification
-	if d.config.EnableSlackNotifications {
+	if d.config.SlackWebhookURL != "" {
 		_ = d.slackSvc.SendNotification(services.NotificationData{
 			Type:      services.NotificationInfo,
 			Service:   serviceName,
@@ -120,7 +120,7 @@ func (d *DeployerV2) Deploy(opts DeployOptions) *DeployResult {
 		})
 
 		// Send failure notification
-		if d.config.EnableSlackNotifications {
+		if d.config.SlackWebhookURL != "" {
 			_ = d.slackSvc.SendDeploymentFailure(
 				serviceName,
 				"",
@@ -146,7 +146,7 @@ func (d *DeployerV2) Deploy(opts DeployOptions) *DeployResult {
 	})
 
 	// Send success notification
-	if d.config.EnableSlackNotifications {
+	if d.config.SlackWebhookURL != "" {
 		_ = d.slackSvc.SendDeploymentSuccess(
 			result.ServiceName,
 			result.DeploymentID,

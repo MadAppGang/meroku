@@ -55,7 +55,7 @@ type NotificationData struct {
 func NewSlackService(cfg *config.Config, logger *utils.Logger) (*SlackService, error) {
 	service := &SlackService{
 		webhookURL: cfg.SlackWebhookURL,
-		enabled:    cfg.EnableSlackNotifications && cfg.SlackWebhookURL != "",
+		enabled:    cfg.SlackWebhookURL != "",
 		httpClient: &http.Client{Timeout: 10 * time.Second},
 		config:     cfg,
 		logger:     logger,

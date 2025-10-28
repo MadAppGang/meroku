@@ -103,9 +103,8 @@ ECS_CLUSTER_NAME = aws_ecs_cluster.main.name
 ECS_SERVICE_MAP = local.ecs_service_map
 S3_SERVICE_MAP = local.s3_to_service_map
 
-# Slack Configuration
+# Slack Configuration (if set, notifications are enabled)
 SLACK_WEBHOOK_URL = "https://hooks.slack.com/..."
-ENABLE_SLACK_NOTIFICATIONS = "true"
 
 # Deployment Configuration
 DEPLOYMENT_TIMEOUT_SECONDS = "600"
@@ -265,8 +264,7 @@ Error: Service deployment timeout
 - Review task definition for issues
 
 ### No Slack Notifications
-- Verify `SLACK_WEBHOOK_URL` is set
-- Check `ENABLE_SLACK_NOTIFICATIONS = "true"`
+- Verify `SLACK_WEBHOOK_URL` is set (notifications are disabled if empty)
 - Test webhook URL manually
 
 ## Monitoring

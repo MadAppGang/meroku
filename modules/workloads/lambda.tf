@@ -61,9 +61,8 @@ resource "aws_lambda_function" "lambda_deploy" {
       ECS_SERVICE_MAP  = local.ecs_service_map
       S3_SERVICE_MAP   = local.s3_to_service_map
 
-      # Slack Configuration
-      SLACK_WEBHOOK_URL          = var.slack_deployment_webhook
-      ENABLE_SLACK_NOTIFICATIONS = "true"
+      # Slack Configuration (if set, notifications are enabled)
+      SLACK_WEBHOOK_URL = var.slack_deployment_webhook
 
       # Legacy S3 Service Configuration (kept for backward compatibility)
       SERVICE_CONFIG = local.service_config

@@ -33,9 +33,8 @@ type Config struct {
 	ServiceMap      map[string]ServiceMapping // Service identifier → actual ECS names
 	S3ToServiceMap  map[string][]S3ServiceFile // Service identifier → S3 files
 
-	// Slack Configuration
-	SlackWebhookURL          string
-	EnableSlackNotifications bool
+	// Slack Configuration (if set, notifications are enabled)
+	SlackWebhookURL string
 
 	// Deployment Configuration
 	DeploymentTimeoutSeconds int
@@ -76,8 +75,7 @@ func LoadFromEnv() (*Config, error) {
 		ClusterName: getEnv("ECS_CLUSTER_NAME", ""),
 
 		// Slack Configuration
-		SlackWebhookURL:          getEnv("SLACK_WEBHOOK_URL", ""),
-		EnableSlackNotifications: getBoolEnv("ENABLE_SLACK_NOTIFICATIONS", true),
+		SlackWebhookURL: getEnv("SLACK_WEBHOOK_URL", ""),
 
 		// Deployment Configuration
 		DeploymentTimeoutSeconds: getIntEnv("DEPLOYMENT_TIMEOUT_SECONDS", 600),
@@ -152,10 +150,7 @@ func (c *Config) Validate() error {
 		errors = append(errors, fmt.Sprintf("LOG_LEVEL must be one of: debug, info, warn, error (got: %s)", c.LogLevel))
 	}
 
-	// Slack validation
-	if c.EnableSlackNotifications && c.SlackWebhookURL == "" {
-		errors = append(errors, "SLACK_WEBHOOK_URL is required when ENABLE_SLACK_NOTIFICATIONS is true")
-	}
+	// Slack validation - optional, no validation needed (if URL is set, notifications will be sent)
 
 	// Deployment configuration
 	if c.DeploymentTimeoutSeconds <= 0 {

@@ -218,7 +218,7 @@ func (h *EventHandlerV2) handleECSEvent(ctx context.Context, event events.CloudW
 		"event_id":   event.ID,
 	})
 
-	if !h.config.EnableSlackNotifications {
+	if h.config.SlackWebhookURL == "" {
 		log.Debug("Slack notifications disabled, skipping ECS event", nil)
 		return "Slack notifications disabled", nil
 	}

@@ -66,7 +66,7 @@ func Initialize() (*Application, error) {
 		return nil, fmt.Errorf("failed to initialize Slack service: %w", err)
 	}
 	logger.Info("Slack service initialized", map[string]interface{}{
-		"enabled": cfg.EnableSlackNotifications,
+		"enabled": cfg.SlackWebhookURL != "",
 	})
 
 	// Initialize deployer (wraps ECS and Slack services)
