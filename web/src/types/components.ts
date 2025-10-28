@@ -1,4 +1,5 @@
 import type { LucideIcon } from "lucide-react";
+import type { ECRConfig } from "./yamlConfig";
 
 // Event Task related types - matching YAML config
 export interface EventTask {
@@ -8,10 +9,10 @@ export interface EventTask {
 	sources: string[];
 	docker_image?: string;
 	container_command?: string[];
-	allow_public_access?: boolean;
 	cpu?: number;
 	memory?: number;
 	environment_variables?: Record<string, string>;
+	ecr_config?: ECRConfig;
 }
 
 // Scheduled Task related types - matching YAML config
@@ -20,10 +21,10 @@ export interface ScheduledTask {
 	schedule: string;
 	docker_image?: string;
 	container_command?: string;
-	allow_public_access?: boolean;
 	cpu?: number;
 	memory?: number;
 	environment_variables?: Record<string, string>;
+	ecr_config?: ECRConfig;
 }
 
 // Service related types
@@ -31,12 +32,14 @@ export interface Service {
 	name: string;
 	docker_image: string;
 	container_port: number;
+	host_port?: number;
 	cpu: number;
 	memory: number;
 	desired_count: number;
 	health_check_path: string;
 	container_command?: string[];
 	environment_variables?: Record<string, string>;
+	ecr_config?: ECRConfig;
 }
 
 // Amplify related types - matching YAML config structure

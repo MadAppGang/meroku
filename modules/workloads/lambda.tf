@@ -57,9 +57,9 @@ resource "aws_lambda_function" "lambda_deploy" {
       LOG_LEVEL = "info" # Options: debug, info, warn, error
 
       # ECS Resource Names (ACTUAL resource names from Terraform)
-      ECS_CLUSTER_NAME  = aws_ecs_cluster.main.name
-      ECS_SERVICE_MAP   = local.ecs_service_map
-      S3_SERVICE_MAP    = local.s3_to_service_map
+      ECS_CLUSTER_NAME = aws_ecs_cluster.main.name
+      ECS_SERVICE_MAP  = local.ecs_service_map
+      S3_SERVICE_MAP   = local.s3_to_service_map
 
       # Slack Configuration
       SLACK_WEBHOOK_URL          = var.slack_deployment_webhook
@@ -69,15 +69,15 @@ resource "aws_lambda_function" "lambda_deploy" {
       SERVICE_CONFIG = local.service_config
 
       # Deployment Configuration
-      DEPLOYMENT_TIMEOUT_SECONDS = "600"  # 10 minutes
-      MAX_DEPLOYMENT_RETRIES     = "2"    # Retry failed deployments twice
+      DEPLOYMENT_TIMEOUT_SECONDS = "600"   # 10 minutes
+      MAX_DEPLOYMENT_RETRIES     = "2"     # Retry failed deployments twice
       DRY_RUN                    = "false" # Set to true for testing without actual deployments
 
       # Feature Flags - Enable/disable specific event monitoring
-      ENABLE_ECR_MONITORING = "true"  # Auto-deploy on ECR image push
-      ENABLE_SSM_MONITORING = "true"  # Auto-deploy on SSM parameter changes
-      ENABLE_S3_MONITORING  = "true"  # Auto-deploy on S3 env file changes
-      ENABLE_MANUAL_DEPLOY  = "true"  # Allow manual deployment triggers
+      ENABLE_ECR_MONITORING = "true" # Auto-deploy on ECR image push
+      ENABLE_SSM_MONITORING = "true" # Auto-deploy on SSM parameter changes
+      ENABLE_S3_MONITORING  = "true" # Auto-deploy on S3 env file changes
+      ENABLE_MANUAL_DEPLOY  = "true" # Allow manual deployment triggers
     }
   }
 
@@ -174,14 +174,14 @@ resource "aws_cloudwatch_event_rule" "s3_env_file_change_rule" {
   name        = "s3-env-file-change-rule-${each.key}"
   description = "Event rule for S3 env file changes for ${each.value.bucket}/${each.value.key}"
   event_pattern = jsonencode({
-    "source": ["aws.s3"],
-    "detail-type": ["AWS API Call via CloudTrail"],
-    "detail": {
-      "eventSource": ["s3.amazonaws.com"],
-      "eventName": ["PutObject", "DeleteObject"],
-      "requestParameters": {
-        "bucketName": [each.value.bucket],
-        "key": [each.value.key]
+    "source" : ["aws.s3"],
+    "detail-type" : ["AWS API Call via CloudTrail"],
+    "detail" : {
+      "eventSource" : ["s3.amazonaws.com"],
+      "eventName" : ["PutObject", "DeleteObject"],
+      "requestParameters" : {
+        "bucketName" : [each.value.bucket],
+        "key" : [each.value.key]
       }
     }
   })

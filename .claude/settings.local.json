@@ -59,7 +59,8 @@
       "WebFetch(domain:www.dbcost.com)",
       "WebFetch(domain:pilotcore.io)",
       "Bash(./meroku migrate project/dev.yaml)",
-      "Read(//Users/jackrudenko/meroku2/**)"
+      "Read(//Users/jackrudenko/meroku2/**)",
+      "WebFetch(domain:github.com)"
     ],
     "deny": []
   }

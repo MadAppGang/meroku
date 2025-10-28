@@ -302,6 +302,12 @@ variable "services" {
       bucket = string
       key    = string
     })))
+    ecr_config = optional(object({
+      mode                = optional(string, "create_ecr")
+      repository_uri      = optional(string, "")
+      source_service_name = optional(string, "")
+      source_service_type = optional(string, "")
+    }))
   }))
   default = []
 }

@@ -150,8 +150,9 @@ func (pi *ProfileInspector) detectProfileType(section *ini.Section) ProfileType 
 	}
 
 	// Check for incomplete SSO profile (has SSO fields but missing session/start_url)
-	// Treat as modern SSO since that's the recommended format
-	if section.HasKey("sso_account_id") || section.HasKey("sso_role_name") || section.HasKey("sso_region") {
+	// Note: sso_region in profile section indicates legacy SSO, not modern SSO
+	// In modern SSO, sso_region should be in the sso-session section
+	if section.HasKey("sso_account_id") || section.HasKey("sso_role_name") {
 		return ProfileTypeModernSSO
 	}
 
@@ -197,7 +198,11 @@ func (pi *ProfileInspector) validateModernSSO(section *ini.Section, info *Profil
 	if info.SSOSession != "" {
 		info.SSOSessionInfo = pi.validateSSOSession(info.SSOSession)
 		if !info.SSOSessionInfo.Complete {
-			info.MissingFields = append(info.MissingFields, "sso_session_incomplete")
+			// Add specific missing fields from sso-session instead of generic error
+			for _, field := range info.SSOSessionInfo.MissingFields {
+				// Prefix field name to show it's from sso-session section
+				info.MissingFields = append(info.MissingFields, fmt.Sprintf("%s (in sso-session '%s')", field, info.SSOSession))
+			}
 		}
 	}
 

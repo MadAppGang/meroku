@@ -5,16 +5,15 @@ import {
 	Container,
 	Info,
 	Link,
-	Network,
 	Plus,
 	Settings,
 	X,
 	Zap,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import type { AccountInfo } from "../api/infrastructure";
 import type { ComponentNode } from "../types";
-import type { YamlInfrastructureConfig } from "../types/yamlConfig";
+import type { ECRConfig, YamlInfrastructureConfig } from "../types/yamlConfig";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -27,7 +26,7 @@ import {
 } from "./ui/card";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { Switch } from "./ui/switch";
+import { ECRConfigEditor } from "./ECRConfigEditor";
 
 interface EventTaskPropertiesProps {
 	config: YamlInfrastructureConfig;
@@ -45,29 +44,34 @@ export function EventTaskProperties({
 	// Extract task name from node id (e.g., "event-order-processor" -> "order-processor")
 	const taskName = node.id.replace("event-", "");
 
+	console.log('[EventTaskProperties] RENDER', {
+		taskName,
+		timestamp: Date.now()
+	});
+
 	// Find the event task configuration
 	const eventTask = config.event_processor_tasks?.find(
 		(task) => task.name === taskName,
 	);
 
-	// Local state for editing
-	const [ruleName, setRuleName] = useState(eventTask?.rule_name || "");
-	const [eventSources, setEventSources] = useState<string[]>(
-		eventTask?.sources || [],
+	// Local state for editing - initialize from current task
+	const [ruleName, setRuleName] = useState(() => eventTask?.rule_name || "");
+	const [eventSources, setEventSources] = useState<string[]>(() =>
+		eventTask?.sources || []
 	);
-	const [detailTypes, setDetailTypes] = useState<string[]>(
-		eventTask?.detail_types || [],
+	const [detailTypes, setDetailTypes] = useState<string[]>(() =>
+		eventTask?.detail_types || []
 	);
-	const [dockerImage, setDockerImage] = useState(eventTask?.docker_image || "");
-	const [publicAccess, setPublicAccess] = useState(
-		eventTask?.allow_public_access || false,
+	const [dockerImage, setDockerImage] = useState(() => eventTask?.docker_image || "");
+	const [ecrConfig, setEcrConfig] = useState<ECRConfig | undefined>(() =>
+		eventTask?.ecr_config || { mode: "create_ecr" }
 	);
 
 	// State for input fields
 	const [newSource, setNewSource] = useState("");
 	const [newDetailType, setNewDetailType] = useState("");
 
-	// ECR repository info
+	// ECR repository info for image preview
 	const taskEcrRepoName = `${config.project}_task_${taskName}`;
 	const taskEcrRepoUri = `${accountInfo?.accountId || config.ecr_account_id || "<ACCOUNT_ID>"}.dkr.ecr.${config.region}.amazonaws.com/${taskEcrRepoName}`;
 
@@ -101,7 +105,7 @@ export function EventTaskProperties({
 		updateEventPattern(eventSources, updatedTypes);
 	};
 
-	const updateEventPattern = (sources: string[], types: string[]) => {
+	const updateEventPattern = useCallback((sources: string[], types: string[]) => {
 		if (!config.event_processor_tasks) return;
 
 		const updatedTasks = config.event_processor_tasks.map((task) =>
@@ -115,9 +119,9 @@ export function EventTaskProperties({
 		);
 
 		onConfigChange({ event_processor_tasks: updatedTasks });
-	};
+	}, [config.event_processor_tasks, taskName, onConfigChange]);
 
-	const updateTaskConfig = (updates: Partial<typeof eventTask>) => {
+	const updateTaskConfig = useCallback((updates: Partial<typeof eventTask>) => {
 		if (!config.event_processor_tasks) return;
 
 		const updatedTasks = config.event_processor_tasks.map((task) =>
@@ -125,7 +129,18 @@ export function EventTaskProperties({
 		);
 
 		onConfigChange({ event_processor_tasks: updatedTasks });
-	};
+	}, [config.event_processor_tasks, taskName, onConfigChange, eventTask]);
+
+	const handleEcrConfigChange = useCallback((newConfig: ECRConfig | undefined) => {
+		console.log('[EventTaskProperties] handleEcrConfigChange', {
+			taskName,
+			oldMode: ecrConfig?.mode,
+			newMode: newConfig?.mode,
+			timestamp: Date.now()
+		});
+		setEcrConfig(newConfig);
+		updateTaskConfig({ ecr_config: newConfig });
+	}, [taskName, ecrConfig?.mode, updateTaskConfig]);
 
 	// Common event examples
 	const commonEventSources = [
@@ -319,8 +334,25 @@ export function EventTaskProperties({
 					</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-4">
+					{/* ECR Configuration Display & Editor */}
+					<ECRConfigEditor
+						config={config}
+						currentServiceName={taskName}
+						currentServiceType="event_processor_tasks"
+						ecrConfig={ecrConfig}
+						onEcrConfigChange={handleEcrConfigChange}
+						accountInfo={accountInfo}
+					/>
+
 					<div className="space-y-2">
-						<Label htmlFor="docker-image">Docker Image (Optional)</Label>
+						<div className="flex items-center justify-between">
+							<Label htmlFor="docker-image" className="text-sm font-medium">
+								Image Tag {eventTask?.ecr_config ? "(Optional)" : ""}
+							</Label>
+							<span className="text-xs text-gray-500">
+								{eventTask?.ecr_config ? "e.g., latest, v1.2.3, nginx.1" : "Full image or tag"}
+							</span>
+						</div>
 						<Input
 							id="docker-image"
 							value={dockerImage}
@@ -328,36 +360,21 @@ export function EventTaskProperties({
 								setDockerImage(e.target.value);
 								updateTaskConfig({ docker_image: e.target.value });
 							}}
-							placeholder="Leave empty to use task's ECR repository"
+							placeholder={eventTask?.ecr_config ? "latest" : "nginx:latest or just latest"}
+							className="font-mono text-sm"
 						/>
-						<p className="text-xs text-gray-500">
-							Default:{" "}
-							<code className="text-blue-400">{taskEcrRepoUri}:latest</code>
-						</p>
+						{eventTask?.ecr_config && (
+							<div className="mt-2 p-2 bg-blue-950/30 border border-blue-900/50 rounded">
+								<p className="text-xs text-gray-400">
+									<span className="text-gray-500">Full image:</span>{" "}
+									<code className="text-blue-400">
+										{taskEcrRepoUri}:{dockerImage || "latest"}
+									</code>
+								</p>
+							</div>
+						)}
 					</div>
 
-					<div className="flex items-center justify-between">
-						<div className="space-y-1">
-							<Label
-								htmlFor="public-access"
-								className="flex items-center gap-2"
-							>
-								<Network className="w-4 h-4" />
-								Allow Public IP Access
-							</Label>
-							<p className="text-xs text-gray-500">
-								Enable for external API calls
-							</p>
-						</div>
-						<Switch
-							id="public-access"
-							checked={publicAccess}
-							onCheckedChange={(checked) => {
-								setPublicAccess(checked);
-								updateTaskConfig({ allow_public_access: checked });
-							}}
-						/>
-					</div>
 				</CardContent>
 			</Card>
 

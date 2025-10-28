@@ -728,12 +728,6 @@ export function DeploymentCanvas({
 						data.positions.forEach((pos) => {
 							posMap.set(pos.nodeId, { x: pos.x, y: pos.y });
 						});
-						console.log(
-							"Loading positions for nodes:",
-							data.positions.filter((p) =>
-								["s3", "ses", "sqs", "eventbridge"].includes(p.nodeId),
-							),
-						);
 					}
 
 					// Debug: Log all loaded positions

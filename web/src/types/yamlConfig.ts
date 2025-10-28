@@ -1,4 +1,15 @@
 /**
+ * ECR Configuration (Schema v10)
+ * Defines how ECR repositories are managed for services, event processors, and scheduled tasks
+ */
+export interface ECRConfig {
+	mode?: "create_ecr" | "manual_repo" | "use_existing";
+	repository_uri?: string; // For manual_repo mode
+	source_service_name?: string; // For use_existing mode
+	source_service_type?: "services" | "event_processor_tasks" | "scheduled_tasks"; // For use_existing mode
+}
+
+/**
  * Complete YAML configuration interface based on YAML_SPECIFICATION.md
  */
 export interface YamlInfrastructureConfig {
@@ -10,6 +21,10 @@ export interface YamlInfrastructureConfig {
 	account_id?: string;
 	state_bucket: string;
 	state_file: string;
+
+	// VPC Configuration
+	use_default_vpc?: boolean;
+	vpc_cidr?: string;
 
 	// API Configuration
 	api_domain?: string;
@@ -158,10 +173,10 @@ export interface YamlInfrastructureConfig {
 		schedule: string;
 		docker_image?: string;
 		container_command?: string;
-		allow_public_access?: boolean;
 		cpu?: number;
 		memory?: number;
 		environment_variables?: Record<string, string>;
+		ecr_config?: ECRConfig;
 	}>;
 
 	// Event-driven Tasks
@@ -172,10 +187,10 @@ export interface YamlInfrastructureConfig {
 		sources: string[];
 		docker_image?: string;
 		container_command?: string[];
-		allow_public_access?: boolean;
 		cpu?: number;
 		memory?: number;
 		environment_variables?: Record<string, string>;
+		ecr_config?: ECRConfig;
 	}>;
 
 	// GraphQL API Configuration
@@ -211,6 +226,7 @@ export interface YamlInfrastructureConfig {
 			bucket: string;
 			key: string;
 		}>;
+		ecr_config?: ECRConfig;
 	}>;
 
 	// S3 Buckets

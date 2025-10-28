@@ -50,12 +50,7 @@ variable "cluster" {
   type = string
 }
 
-variable "allow_public_access" {
-  type    = bool
-  default = false
-}
-
-variable "sqs_policy_arn" {  
+variable "sqs_policy_arn" {
   default = ""
 }
 

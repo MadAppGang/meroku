@@ -19,3 +19,24 @@ output "backend_cloud_map_arn" {
   value       = try(aws_service_discovery_service.backend[0].arn, "")
 }
 
+# ============================================================================
+# Per-Service ECR Outputs (Schema v10)
+# ============================================================================
+
+output "service_ecr_repositories" {
+  description = "Map of service ECR repositories (only for services with mode=create_ecr)"
+  value = {
+    for svc in local.services_needing_ecr :
+    svc.name => {
+      repository_url = aws_ecr_repository.services[svc.name].repository_url
+      repository_arn = aws_ecr_repository.services[svc.name].arn
+      registry_id    = aws_ecr_repository.services[svc.name].registry_id
+    }
+  }
+}
+
+output "service_ecr_url_map" {
+  description = "Map of all service ECR URLs (resolved based on ecr_config mode)"
+  value       = local.service_ecr_urls
+}
+

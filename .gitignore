@@ -42,5 +42,7 @@ app/meroku
 app/meroku_test
 .positions/
 env/dev/.terraform.lock.hcl
+**/.terraform.lock.hcl
+*.bak
 meroku
 meroku_test

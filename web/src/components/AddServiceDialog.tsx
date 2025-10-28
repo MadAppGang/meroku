@@ -1,6 +1,7 @@
 import type React from "react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { Service } from "../types/components";
+import type { ECRConfig, YamlInfrastructureConfig } from "../types/yamlConfig";
 import { Button } from "./ui/button";
 import {
 	Dialog,
@@ -18,13 +19,16 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "./ui/select";
+import { Separator } from "./ui/separator";
 import { Textarea } from "./ui/textarea";
+import { ECRConfigSection } from "./ECRConfigSection";
 
 interface AddServiceDialogProps {
 	open: boolean;
 	onClose: () => void;
 	onAdd: (service: Service) => void;
 	existingServices: string[];
+	config: YamlInfrastructureConfig;
 }
 
 export function AddServiceDialog({
@@ -32,6 +36,7 @@ export function AddServiceDialog({
 	onClose,
 	onAdd,
 	existingServices,
+	config,
 }: AddServiceDialogProps) {
 	const [formData, setFormData] = useState({
 		name: "",
@@ -45,7 +50,48 @@ export function AddServiceDialog({
 		environment_variables: "",
 	});
 
+	const [ecrConfig, setEcrConfig] = useState<ECRConfig>({ mode: "create_ecr" });
 	const [errors, setErrors] = useState<Record<string, string>>({});
+
+	// Build available ECR sources from all service types
+	const availableSources = useMemo(() => {
+		const sources: Array<{ name: string; type: "services" | "event_processor_tasks" | "scheduled_tasks"; displayType: string }> = [];
+
+		// Add services with create_ecr mode
+		config.services?.forEach(svc => {
+			if (svc.name !== formData.name && (!svc.ecr_config || svc.ecr_config.mode === "create_ecr")) {
+				sources.push({
+					name: svc.name,
+					type: "services",
+					displayType: "Service",
+				});
+			}
+		});
+
+		// Add event processors with create_ecr mode
+		config.event_processor_tasks?.forEach(ep => {
+			if (!ep.ecr_config || ep.ecr_config.mode === "create_ecr") {
+				sources.push({
+					name: ep.name,
+					type: "event_processor_tasks",
+					displayType: "Event Processor",
+				});
+			}
+		});
+
+		// Add scheduled tasks with create_ecr mode
+		config.scheduled_tasks?.forEach(st => {
+			if (!st.ecr_config || st.ecr_config.mode === "create_ecr") {
+				sources.push({
+					name: st.name,
+					type: "scheduled_tasks",
+					displayType: "Cron Job",
+				});
+			}
+		});
+
+		return sources;
+	}, [config, formData.name]);
 
 	const handleSubmit = (e: React.FormEvent) => {
 		e.preventDefault();
@@ -65,6 +111,15 @@ export function AddServiceDialog({
 			newErrors.docker_image = "Docker image is required";
 		}
 
+		// Validate ECR config
+		if (ecrConfig.mode === "manual_repo" && !ecrConfig.repository_uri) {
+			newErrors.repository_uri = "Repository URI is required for manual mode";
+		}
+
+		if (ecrConfig.mode === "use_existing" && !ecrConfig.source_service_name) {
+			newErrors.source_service_name = "Source service is required";
+		}
+
 		if (Object.keys(newErrors).length > 0) {
 			setErrors(newErrors);
 			return;
@@ -74,10 +129,12 @@ export function AddServiceDialog({
 			name: formData.name,
 			docker_image: formData.docker_image,
 			container_port: formData.container_port,
+			host_port: formData.container_port, // Must match container_port for awsvpc network mode
 			cpu: formData.cpu,
 			memory: formData.memory,
 			desired_count: formData.desired_count,
 			health_check_path: formData.health_check_path,
+			ecr_config: ecrConfig,
 		};
 
 		if (formData.container_command) {
@@ -129,13 +186,14 @@ export function AddServiceDialog({
 			health_check_path: "/health",
 			environment_variables: "",
 		});
+		setEcrConfig({ mode: "create_ecr" });
 		setErrors({});
 		onClose();
 	};
 
 	return (
 		<Dialog open={open} onOpenChange={handleClose}>
-			<DialogContent className="sm:max-w-[600px]">
+			<DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
 				<DialogHeader>
 					<DialogTitle>Add New Service</DialogTitle>
 				</DialogHeader>
@@ -302,6 +360,16 @@ export function AddServiceDialog({
 								</p>
 							)}
 						</div>
+
+						<Separator />
+
+						<ECRConfigSection
+							config={ecrConfig}
+							onChange={setEcrConfig}
+							availableSources={availableSources}
+							currentServiceName={formData.name}
+							errors={errors}
+						/>
 					</div>
 
 					<DialogFooter>

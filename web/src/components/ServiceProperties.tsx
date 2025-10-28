@@ -1,8 +1,9 @@
-import { AlertTriangle, Info } from "lucide-react";
+import { AlertTriangle, Database, ExternalLink, Info, Share2 } from "lucide-react";
 import type { AccountInfo } from "../api/infrastructure";
 import type { ComponentNode } from "../types";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import { Alert, AlertDescription } from "./ui/alert";
+import { Badge } from "./ui/badge";
 import {
 	Card,
 	CardContent,
@@ -111,27 +112,95 @@ export function ServiceProperties({
 						Optional: Use external Docker image instead of the ECR repository
 					</p>
 
-					{/* ECR Repository Info */}
-					<div className="mt-2 p-3 bg-blue-900/20 border border-blue-700 rounded-lg">
-						<div className="flex items-start gap-2">
-							<Info className="w-4 h-4 text-blue-400 mt-0.5 flex-shrink-0" />
-							<div className="flex-1">
-								<p className="text-xs text-gray-300">
-									<strong className="text-blue-400">
-										Default ECR Repository (Dev only):
-									</strong>
-								</p>
-								<p className="text-xs font-mono text-gray-400 mt-1 break-all">
-									{ecrUri}
-								</p>
-								<p className="text-xs text-gray-500 mt-2">
-									ECR repositories for services are only created in development
-									environment. In production, you must use an external Docker
-									image.
-								</p>
+					{/* ECR Configuration Display */}
+					{serviceConfig.ecr_config && (
+						<div className="mt-2 p-3 bg-gray-900/50 border border-gray-700 rounded-lg">
+							<div className="flex items-start gap-2">
+								<Database className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+								<div className="flex-1 space-y-2">
+									<div className="flex items-center gap-2">
+										<Label className="text-xs text-gray-300">ECR Configuration:</Label>
+										{serviceConfig.ecr_config.mode === "create_ecr" && (
+											<Badge variant="default" className="text-xs">
+												Dedicated Repository
+											</Badge>
+										)}
+										{serviceConfig.ecr_config.mode === "manual_repo" && (
+											<Badge variant="secondary" className="text-xs flex items-center gap-1">
+												<ExternalLink className="w-3 h-3" />
+												Manual Repository
+											</Badge>
+										)}
+										{serviceConfig.ecr_config.mode === "use_existing" && (
+											<Badge variant="outline" className="text-xs flex items-center gap-1">
+												<Share2 className="w-3 h-3" />
+												Shared Repository
+											</Badge>
+										)}
+									</div>
+
+									{serviceConfig.ecr_config.mode === "create_ecr" && (
+										<div>
+											<p className="text-xs text-gray-400 font-mono break-all">
+												{ecrUri}
+											</p>
+											<p className="text-xs text-gray-500 mt-1">
+												A dedicated ECR repository will be created for this service
+											</p>
+										</div>
+									)}
+
+									{serviceConfig.ecr_config.mode === "manual_repo" && serviceConfig.ecr_config.repository_uri && (
+										<div>
+											<p className="text-xs text-gray-400 font-mono break-all">
+												{serviceConfig.ecr_config.repository_uri}
+											</p>
+											<p className="text-xs text-gray-500 mt-1">
+												Using manually specified ECR repository
+											</p>
+										</div>
+									)}
+
+									{serviceConfig.ecr_config.mode === "use_existing" && (
+										<div>
+											<p className="text-xs text-gray-300">
+												Source: <span className="font-mono text-gray-400">
+													{serviceConfig.ecr_config.source_service_type?.replace("_", " ")} / {serviceConfig.ecr_config.source_service_name}
+												</span>
+											</p>
+											<p className="text-xs text-gray-500 mt-1">
+												Sharing ECR repository from another service
+											</p>
+										</div>
+									)}
+								</div>
 							</div>
 						</div>
-					</div>
+					)}
+
+					{/* Legacy ECR Repository Info (when no ecr_config) */}
+					{!serviceConfig.ecr_config && (
+						<div className="mt-2 p-3 bg-blue-900/20 border border-blue-700 rounded-lg">
+							<div className="flex items-start gap-2">
+								<Info className="w-4 h-4 text-blue-400 mt-0.5 flex-shrink-0" />
+								<div className="flex-1">
+									<p className="text-xs text-gray-300">
+										<strong className="text-blue-400">
+											Default ECR Repository (Dev only):
+										</strong>
+									</p>
+									<p className="text-xs font-mono text-gray-400 mt-1 break-all">
+										{ecrUri}
+									</p>
+									<p className="text-xs text-gray-500 mt-2">
+										ECR repositories for services are only created in development
+										environment. In production, you must use an external Docker
+										image.
+									</p>
+								</div>
+							</div>
+						</div>
+					)}
 				</div>
 
 				<div className="space-y-2">
@@ -162,17 +231,39 @@ export function ServiceProperties({
 
 				<Separator />
 
+				{/* VPC-aware port configuration alert */}
+				{!config.use_default_vpc ? (
+					<Alert className="border-yellow-600 bg-yellow-900/20">
+						<AlertTriangle className="h-4 w-4 text-yellow-400" />
+						<AlertDescription className="text-xs text-gray-300">
+							<strong>Custom VPC (awsvpc mode):</strong> host_port is
+							automatically set to match container_port and cannot be changed.
+							This is required for ECS Fargate with custom VPC.
+						</AlertDescription>
+					</Alert>
+				) : (
+					<Alert className="border-blue-600 bg-blue-900/20">
+						<Info className="h-4 w-4 text-blue-400" />
+						<AlertDescription className="text-xs text-gray-300">
+							<strong>Default VPC:</strong> host_port is automatically synced
+							with container_port. For ECS Fargate, these should always match.
+						</AlertDescription>
+					</Alert>
+				)}
+
 				<div className="space-y-2">
 					<Label htmlFor="container_port">Container Port</Label>
 					<Input
 						id="container_port"
 						type="number"
 						value={serviceConfig.container_port || 3000}
-						onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+						onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+							const port = parseInt(e.target.value) || 3000;
 							handleServiceChange({
-								container_port: parseInt(e.target.value) || 3000,
-							})
-						}
+								container_port: port,
+								host_port: port, // Always sync for awsvpc compatibility
+							});
+						}}
 						placeholder="3000"
 						className="bg-gray-800 border-gray-600 text-white"
 					/>
@@ -182,21 +273,36 @@ export function ServiceProperties({
 				</div>
 
 				<div className="space-y-2">
-					<Label htmlFor="host_port">Host Port</Label>
+					<Label htmlFor="host_port">
+						Host Port
+						{!config.use_default_vpc && (
+							<span className="text-xs text-gray-500 ml-2">(auto-synced)</span>
+						)}
+					</Label>
 					<Input
 						id="host_port"
 						type="number"
-						value={serviceConfig.host_port || 3000}
-						onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-							handleServiceChange({
-								host_port: parseInt(e.target.value) || 3000,
-							})
-						}
+						value={serviceConfig.host_port || serviceConfig.container_port || 3000}
+						onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+							// Only allow editing if using default VPC
+							if (config.use_default_vpc) {
+								handleServiceChange({
+									host_port: parseInt(e.target.value) || 3000,
+								});
+							}
+						}}
 						placeholder="3000"
-						className="bg-gray-800 border-gray-600 text-white"
+						disabled={!config.use_default_vpc}
+						className={`${
+							!config.use_default_vpc
+								? "bg-gray-900 border-gray-700 text-gray-500 cursor-not-allowed"
+								: "bg-gray-800 border-gray-600 text-white"
+						}`}
 					/>
 					<p className="text-xs text-gray-500">
-						Host port mapping (default: 3000)
+						{!config.use_default_vpc
+							? "Automatically matches container_port (required for custom VPC)"
+							: "Host port mapping (should match container_port for awsvpc)"}
 					</p>
 				</div>
 			</CardContent>

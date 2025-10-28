@@ -66,7 +66,7 @@ export function generateAdditionalServiceNodes(
 				subgroup: "Scheduled Tasks",
 				configProperties: {
 					schedule: task.schedule,
-					publicAccess: task.allow_public_access,
+					publicAccess: true, // Always enabled for internet access
 					taskCount: 1, // Scheduled tasks run as single instances
 					cpu: task.cpu?.toString() || "256",
 					memory: task.memory?.toString() || "512",
@@ -100,7 +100,7 @@ export function generateAdditionalServiceNodes(
 					ruleName: task.rule_name,
 					detailTypes: task.detail_types,
 					sources: task.sources,
-					publicAccess: task.allow_public_access,
+					publicAccess: true, // Always enabled for internet access
 					taskCount: 1, // Event tasks run as single instances
 					cpu: task.cpu?.toString() || "256",
 					memory: task.memory?.toString() || "512",

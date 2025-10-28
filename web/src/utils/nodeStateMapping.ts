@@ -272,7 +272,7 @@ export function getDynamicNodeStateMapping(
 					ruleName: task.rule_name,
 					detailTypes: task.detail_types,
 					sources: task.sources,
-					publicAccess: task.allow_public_access || false,
+					publicAccess: true, // Always enabled for internet access
 				}),
 				description: `Event processor: ${task.rule_name}`,
 			});
@@ -290,7 +290,7 @@ export function getDynamicNodeStateMapping(
 				properties: () => ({
 					taskCount: 1, // Scheduled tasks always run single instances
 					schedule: task.schedule,
-					publicAccess: task.allow_public_access || false,
+					publicAccess: true, // Always enabled for internet access
 				}),
 				description: `Scheduled task: ${task.schedule}`,
 			});

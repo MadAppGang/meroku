@@ -165,7 +165,6 @@ type ScheduledTask struct {
 	Schedule            string     `yaml:"schedule"`
 	ExternalDockerImage string     `yaml:"docker_image"`
 	ContainerCommand    string     `yaml:"container_command"`
-	AllowPublicAccess   bool       `yaml:"allow_public_access"`
 	ECRConfig           *ECRConfig `yaml:"ecr_config,omitempty"` // Schema v9
 }
 
@@ -176,7 +175,6 @@ type EventProcessorTask struct {
 	Sources             []string   `yaml:"sources"`
 	ExternalDockerImage string     `yaml:"docker_image"`
 	ContainerCommand    []string   `yaml:"container_command"`
-	AllowPublicAccess   bool       `yaml:"allow_public_access"`
 	ECRConfig           *ECRConfig `yaml:"ecr_config,omitempty"` // Schema v9
 }
 

@@ -34,41 +34,11 @@ resource "aws_lb_target_group" "services" {
   }
 }
 
-# Create ECR repository for each service
-resource "aws_ecr_repository" "services" {
-  for_each = { for k, v in local.service_names : k => v if var.ecr_strategy == "local" }
-
-  name = "${var.project}_service_${each.key}"
-
-  image_scanning_configuration {
-    scan_on_push = true
-  }
-
-  force_delete = true
-
-  tags = {
-    Name        = "${var.project}-service-${each.key}-tg-${var.env}"
-    Environment = var.env
-    Project     = var.project
-    ManagedBy   = "meroku"
-    terraform   = "true"
-    Application = "${var.project}-${var.env}"
-  }
-}
-
-resource "aws_ecr_lifecycle_policy" "services" {
-  for_each = { for k, v in local.service_names : k => v if var.ecr_strategy == "local" }
-
-  repository = aws_ecr_repository.services[each.key].name
-  policy     = var.ecr_lifecycle_policy
-}
-
-# ECR repository policies for services with trusted accounts
-resource "aws_ecr_repository_policy" "services_trusted" {
-  for_each   = var.ecr_strategy == "local" && length(var.ecr_trusted_accounts) > 0 ? { for s in var.services : s.name => s } : {}
-  repository = aws_ecr_repository.services[each.key].name
-  policy     = data.aws_iam_policy_document.ecr_trusted_accounts_policy[0].json
-}
+# NOTE: ECR repository creation moved to ecr.tf for per-service configuration (Schema v10)
+# ECR repositories are now managed in ecr.tf with support for:
+# - create_ecr: Create dedicated ECR repository
+# - manual_repo: Use existing ECR repository URI
+# - use_existing: Share ECR from another service/task
 
 # Service Discovery for each service
 resource "aws_service_discovery_service" "services" {
@@ -158,10 +128,11 @@ resource "aws_ecs_task_definition" "services" {
   container_definitions = jsonencode(concat(
     each.value.xray_enabled ? local.xray_service_container : [],
     [{
-      name    = "${var.project}_service_${each.key}_${var.env}"
-      cpu     = each.value.cpu
-      memory  = each.value.memory
-      image   = "${each.value.docker_image != "" ? each.value.docker_image : (var.env == "dev" ? join("", aws_ecr_repository.services[each.key].*.repository_url) : var.ecr_url)}:latest"
+      name   = "${var.project}_service_${each.key}_${var.env}"
+      cpu    = each.value.cpu
+      memory = each.value.memory
+      # Use resolved ECR URL from ecr.tf (supports create_ecr, manual_repo, use_existing modes)
+      image   = "${each.value.docker_image != "" ? each.value.docker_image : local.service_ecr_urls[each.key]}:latest"
       command = each.value.container_command
 
 

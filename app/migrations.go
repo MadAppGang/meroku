@@ -19,7 +19,8 @@ import (
 // 8: Added ECR trusted accounts for cross-account access (ecr_trusted_accounts)
 // 9: Simplified Amplify domain configuration (subdomain_prefix replaces custom_domain + enable_root_domain)
 // 10: Added per-service ECR configuration (ecr_config field in services, event_processor_tasks, scheduled_tasks)
-const CurrentSchemaVersion = 10
+// 11: Ensure host_port matches container_port for services (required for awsvpc network mode)
+const CurrentSchemaVersion = 11
 
 // EnvWithVersion extends Env with a schema version field
 type EnvWithVersion struct {
@@ -80,6 +81,11 @@ var AllMigrations = []Migration{
 		Version:     10,
 		Description: "Add per-service ECR configuration",
 		Apply:       migrateV8ToV9,
+	},
+	{
+		Version:     11,
+		Description: "Ensure host_port matches container_port for services (awsvpc compatibility)",
+		Apply:       migrateToV11,
 	},
 }
 
@@ -529,6 +535,65 @@ func migrateToV9(data map[string]interface{}) error {
 		fmt.Printf("    ✓ Migrated %d Amplify app(s) to simplified domain configuration\n", migrationCount)
 	} else {
 		fmt.Println("    ℹ️  No Amplify apps needed migration")
+	}
+
+	return nil
+}
+
+// migrateToV11 ensures host_port matches container_port for all services
+func migrateToV11(data map[string]interface{}) error {
+	fmt.Println("  → Migrating to v11: Ensuring host_port matches container_port for awsvpc compatibility")
+
+	// Check if services exist
+	servicesRaw, exists := data["services"]
+	if !exists || servicesRaw == nil {
+		fmt.Println("    ℹ️  No services to migrate")
+		return nil
+	}
+
+	services, ok := servicesRaw.([]interface{})
+	if !ok {
+		fmt.Println("    ⚠️  services is not an array, skipping migration")
+		return nil
+	}
+
+	fixedCount := 0
+
+	// Iterate through all services
+	for _, serviceRaw := range services {
+		serviceMap, ok := serviceRaw.(map[interface{}]interface{})
+		if !ok {
+			continue
+		}
+
+		// Get service name for logging
+		serviceName, _ := serviceMap["name"].(string)
+
+		// Get container_port
+		containerPort, hasContainerPort := serviceMap["container_port"]
+		if !hasContainerPort {
+			continue
+		}
+
+		// Check if host_port exists and matches
+		hostPort, hasHostPort := serviceMap["host_port"]
+
+		// If host_port is missing or doesn't match container_port, fix it
+		if !hasHostPort || hostPort != containerPort {
+			serviceMap["host_port"] = containerPort
+			fixedCount++
+			if serviceName != "" {
+				fmt.Printf("    ✓ Service '%s': Set host_port=%v to match container_port\n", serviceName, containerPort)
+			} else {
+				fmt.Printf("    ✓ Set host_port=%v to match container_port\n", containerPort)
+			}
+		}
+	}
+
+	if fixedCount == 0 {
+		fmt.Println("    ℹ️  All services already have matching host_port")
+	} else {
+		fmt.Printf("    ✓ Fixed %d service(s) with mismatched or missing host_port\n", fixedCount)
 	}
 
 	return nil

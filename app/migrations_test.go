@@ -604,3 +604,414 @@ workload:
 		t.Errorf("username value changed: expected %v, got %v", originalUsername, postgres["username"])
 	}
 }
+
+func TestMigrateV8ToV9_Services(t *testing.T) {
+	// Test migration with services
+	data := map[string]interface{}{
+		"services": []interface{}{
+			map[interface{}]interface{}{
+				"name":         "api",
+				"docker_image": "api:latest",
+				"port":         8080,
+			},
+			map[interface{}]interface{}{
+				"name":         "worker",
+				"docker_image": "worker:latest",
+			},
+		},
+	}
+
+	err := migrateV8ToV9(data)
+	if err != nil {
+		t.Fatalf("Migration failed: %v", err)
+	}
+
+	// Verify services have ecr_config added
+	services := data["services"].([]interface{})
+	if len(services) != 2 {
+		t.Fatalf("Expected 2 services, got %d", len(services))
+	}
+
+	for i, svcRaw := range services {
+		svc := svcRaw.(map[interface{}]interface{})
+		ecrConfig, exists := svc["ecr_config"]
+		if !exists {
+			t.Errorf("Service %d: ecr_config not added", i)
+			continue
+		}
+
+		ecrConfigMap := ecrConfig.(map[string]interface{})
+		mode, exists := ecrConfigMap["mode"]
+		if !exists {
+			t.Errorf("Service %d: ecr_config.mode not set", i)
+			continue
+		}
+
+		if mode != "create_ecr" {
+			t.Errorf("Service %d: expected mode='create_ecr', got '%s'", i, mode)
+		}
+	}
+}
+
+func TestMigrateV8ToV9_EventProcessorTasks(t *testing.T) {
+	// Test migration with event processor tasks
+	data := map[string]interface{}{
+		"event_processor_tasks": []interface{}{
+			map[interface{}]interface{}{
+				"name":           "processor",
+				"docker_image":   "processor:latest",
+				"event_bus_name": "default",
+				"event_pattern":  "{}",
+			},
+		},
+	}
+
+	err := migrateV8ToV9(data)
+	if err != nil {
+		t.Fatalf("Migration failed: %v", err)
+	}
+
+	// Verify tasks have ecr_config added
+	tasks := data["event_processor_tasks"].([]interface{})
+	task := tasks[0].(map[interface{}]interface{})
+	ecrConfig, exists := task["ecr_config"]
+	if !exists {
+		t.Fatal("ecr_config not added to event processor task")
+	}
+
+	ecrConfigMap := ecrConfig.(map[string]interface{})
+	if ecrConfigMap["mode"] != "create_ecr" {
+		t.Errorf("Expected mode='create_ecr', got '%s'", ecrConfigMap["mode"])
+	}
+}
+
+func TestMigrateV8ToV9_ScheduledTasks(t *testing.T) {
+	// Test migration with scheduled tasks
+	data := map[string]interface{}{
+		"scheduled_tasks": []interface{}{
+			map[interface{}]interface{}{
+				"name":         "daily-sync",
+				"docker_image": "sync:latest",
+				"schedule":     "cron(0 2 * * ? *)",
+			},
+		},
+	}
+
+	err := migrateV8ToV9(data)
+	if err != nil {
+		t.Fatalf("Migration failed: %v", err)
+	}
+
+	// Verify tasks have ecr_config added
+	tasks := data["scheduled_tasks"].([]interface{})
+	task := tasks[0].(map[interface{}]interface{})
+	ecrConfig, exists := task["ecr_config"]
+	if !exists {
+		t.Fatal("ecr_config not added to scheduled task")
+	}
+
+	ecrConfigMap := ecrConfig.(map[string]interface{})
+	if ecrConfigMap["mode"] != "create_ecr" {
+		t.Errorf("Expected mode='create_ecr', got '%s'", ecrConfigMap["mode"])
+	}
+}
+
+func TestMigrateV8ToV9_AllTypes(t *testing.T) {
+	// Test migration with all types
+	data := map[string]interface{}{
+		"services": []interface{}{
+			map[interface{}]interface{}{
+				"name": "api",
+			},
+		},
+		"event_processor_tasks": []interface{}{
+			map[interface{}]interface{}{
+				"name": "processor",
+			},
+		},
+		"scheduled_tasks": []interface{}{
+			map[interface{}]interface{}{
+				"name": "daily",
+			},
+		},
+	}
+
+	err := migrateV8ToV9(data)
+	if err != nil {
+		t.Fatalf("Migration failed: %v", err)
+	}
+
+	// Verify all types have ecr_config
+	services := data["services"].([]interface{})
+	svc := services[0].(map[interface{}]interface{})
+	if _, exists := svc["ecr_config"]; !exists {
+		t.Error("ecr_config not added to service")
+	}
+
+	eventTasks := data["event_processor_tasks"].([]interface{})
+	eventTask := eventTasks[0].(map[interface{}]interface{})
+	if _, exists := eventTask["ecr_config"]; !exists {
+		t.Error("ecr_config not added to event processor task")
+	}
+
+	scheduledTasks := data["scheduled_tasks"].([]interface{})
+	scheduledTask := scheduledTasks[0].(map[interface{}]interface{})
+	if _, exists := scheduledTask["ecr_config"]; !exists {
+		t.Error("ecr_config not added to scheduled task")
+	}
+}
+
+func TestMigrateV8ToV9_ExistingConfig(t *testing.T) {
+	// Test that existing ecr_config is not overwritten
+	data := map[string]interface{}{
+		"services": []interface{}{
+			map[interface{}]interface{}{
+				"name": "api",
+				"ecr_config": map[interface{}]interface{}{
+					"mode":           "manual_repo",
+					"repository_uri": "123456789012.dkr.ecr.us-east-1.amazonaws.com/custom",
+				},
+			},
+			map[interface{}]interface{}{
+				"name": "worker",
+			},
+		},
+	}
+
+	err := migrateV8ToV9(data)
+	if err != nil {
+		t.Fatalf("Migration failed: %v", err)
+	}
+
+	services := data["services"].([]interface{})
+
+	// First service should keep its existing config
+	svc1 := services[0].(map[interface{}]interface{})
+	ecrConfig1 := svc1["ecr_config"].(map[interface{}]interface{})
+	if mode, ok := ecrConfig1["mode"]; !ok || mode != "manual_repo" {
+		t.Error("Existing ecr_config was modified")
+	}
+
+	// Second service should get default config
+	svc2 := services[1].(map[interface{}]interface{})
+	ecrConfig2 := svc2["ecr_config"].(map[string]interface{})
+	if ecrConfig2["mode"] != "create_ecr" {
+		t.Error("Default ecr_config not added to service without config")
+	}
+}
+
+func TestMigrateV8ToV9_EmptyArrays(t *testing.T) {
+	// Test migration with empty arrays (should not fail)
+	data := map[string]interface{}{
+		"services":              []interface{}{},
+		"event_processor_tasks": []interface{}{},
+		"scheduled_tasks":       []interface{}{},
+	}
+
+	err := migrateV8ToV9(data)
+	if err != nil {
+		t.Fatalf("Migration failed on empty arrays: %v", err)
+	}
+}
+
+func TestMigrateV8ToV9_MissingArrays(t *testing.T) {
+	// Test migration with missing arrays (should not fail)
+	data := map[string]interface{}{
+		"project": "test",
+		"env":     "dev",
+	}
+
+	err := migrateV8ToV9(data)
+	if err != nil {
+		t.Fatalf("Migration failed on missing arrays: %v", err)
+	}
+}
+
+func TestMigrateV8ToV9_InvalidData(t *testing.T) {
+	// Test migration with invalid data types (should handle gracefully)
+	data := map[string]interface{}{
+		"services": "not-an-array", // Invalid type
+	}
+
+	err := migrateV8ToV9(data)
+	if err != nil {
+		t.Fatalf("Migration should handle invalid data gracefully: %v", err)
+	}
+}
+
+func TestCurrentSchemaVersion_V11(t *testing.T) {
+	// Verify that CurrentSchemaVersion is updated to 11
+	if CurrentSchemaVersion != 11 {
+		t.Errorf("Expected CurrentSchemaVersion to be 11, got %d", CurrentSchemaVersion)
+	}
+}
+
+func TestMigrationChain_IncludesV10(t *testing.T) {
+	// Verify that v10 migration is in the chain
+	found := false
+	for _, migration := range AllMigrations {
+		if migration.Version == 10 {
+			found = true
+			if migration.Description != "Add per-service ECR configuration" {
+				t.Errorf("Wrong description for v10 migration: %s", migration.Description)
+			}
+			break
+		}
+	}
+
+	if !found {
+		t.Error("v10 migration not found in AllMigrations")
+	}
+}
+
+func TestMigrationChain_IncludesV11(t *testing.T) {
+	// Verify that v11 migration is in the chain
+	found := false
+	for _, migration := range AllMigrations {
+		if migration.Version == 11 {
+			found = true
+			if migration.Description != "Ensure host_port matches container_port for services (awsvpc compatibility)" {
+				t.Errorf("Wrong description for v11 migration: %s", migration.Description)
+			}
+			break
+		}
+	}
+
+	if !found {
+		t.Error("v11 migration not found in AllMigrations")
+	}
+}
+
+func TestMigrateToV11_MissingHostPort(t *testing.T) {
+	// Test migration with services missing host_port
+	data := map[string]interface{}{
+		"services": []interface{}{
+			map[interface{}]interface{}{
+				"name":           "test1",
+				"container_port": 8080,
+				// host_port is missing
+			},
+			map[interface{}]interface{}{
+				"name":           "test2",
+				"container_port": 3000,
+				// host_port is missing
+			},
+		},
+	}
+
+	err := migrateToV11(data)
+	if err != nil {
+		t.Fatalf("Migration failed: %v", err)
+	}
+
+	// Verify host_port was added
+	services := data["services"].([]interface{})
+	service1 := services[0].(map[interface{}]interface{})
+	if service1["host_port"] != 8080 {
+		t.Errorf("Expected host_port to be 8080, got %v", service1["host_port"])
+	}
+
+	service2 := services[1].(map[interface{}]interface{})
+	if service2["host_port"] != 3000 {
+		t.Errorf("Expected host_port to be 3000, got %v", service2["host_port"])
+	}
+}
+
+func TestMigrateToV11_MismatchedHostPort(t *testing.T) {
+	// Test migration with services having mismatched host_port
+	data := map[string]interface{}{
+		"services": []interface{}{
+			map[interface{}]interface{}{
+				"name":           "test1",
+				"container_port": 8080,
+				"host_port":      3000, // Mismatched!
+			},
+		},
+	}
+
+	err := migrateToV11(data)
+	if err != nil {
+		t.Fatalf("Migration failed: %v", err)
+	}
+
+	// Verify host_port was corrected
+	services := data["services"].([]interface{})
+	service1 := services[0].(map[interface{}]interface{})
+	if service1["host_port"] != 8080 {
+		t.Errorf("Expected host_port to be corrected to 8080, got %v", service1["host_port"])
+	}
+}
+
+func TestMigrateToV11_AlreadyMatching(t *testing.T) {
+	// Test migration with services that already have matching ports
+	data := map[string]interface{}{
+		"services": []interface{}{
+			map[interface{}]interface{}{
+				"name":           "test1",
+				"container_port": 8080,
+				"host_port":      8080, // Already matching
+			},
+		},
+	}
+
+	err := migrateToV11(data)
+	if err != nil {
+		t.Fatalf("Migration failed: %v", err)
+	}
+
+	// Verify host_port remained unchanged
+	services := data["services"].([]interface{})
+	service1 := services[0].(map[interface{}]interface{})
+	if service1["host_port"] != 8080 {
+		t.Errorf("Expected host_port to remain 8080, got %v", service1["host_port"])
+	}
+}
+
+func TestMigrateToV11_NoServices(t *testing.T) {
+	// Test migration with no services array
+	data := map[string]interface{}{
+		"project": "test",
+		"env":     "dev",
+	}
+
+	err := migrateToV11(data)
+	if err != nil {
+		t.Fatalf("Migration should handle missing services gracefully: %v", err)
+	}
+}
+
+func TestMigrateToV11_EmptyServices(t *testing.T) {
+	// Test migration with empty services array
+	data := map[string]interface{}{
+		"services": []interface{}{},
+	}
+
+	err := migrateToV11(data)
+	if err != nil {
+		t.Fatalf("Migration should handle empty services array: %v", err)
+	}
+}
+
+func TestMigrateToV11_NoContainerPort(t *testing.T) {
+	// Test migration with service missing container_port (should skip)
+	data := map[string]interface{}{
+		"services": []interface{}{
+			map[interface{}]interface{}{
+				"name": "test1",
+				// container_port is missing
+			},
+		},
+	}
+
+	err := migrateToV11(data)
+	if err != nil {
+		t.Fatalf("Migration should handle missing container_port gracefully: %v", err)
+	}
+
+	// Verify host_port was not added (no container_port to match)
+	services := data["services"].([]interface{})
+	service1 := services[0].(map[interface{}]interface{})
+	if _, exists := service1["host_port"]; exists {
+		t.Errorf("host_port should not be added when container_port is missing")
+	}
+}

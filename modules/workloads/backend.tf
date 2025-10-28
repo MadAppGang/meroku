@@ -36,7 +36,7 @@ resource "aws_ecs_service" "backend" {
   # Use service_registries with explicitly created Cloud Map service
   # This allows API Gateway to reference the service ARN directly
   dynamic "service_registries" {
-    for_each = var.enable_alb ? [] : [1]  # Only when using API Gateway
+    for_each = var.enable_alb ? [] : [1] # Only when using API Gateway
     content {
       registry_arn   = aws_service_discovery_service.backend[0].arn
       container_name = local.backend_name
@@ -56,7 +56,7 @@ resource "aws_ecs_service" "backend" {
 
 # Create the Cloud Map service explicitly (instead of letting ECS Service Connect create it)
 resource "aws_service_discovery_service" "backend" {
-  count = var.enable_alb ? 0 : 1  # Only needed for API Gateway integration
+  count = var.enable_alb ? 0 : 1 # Only needed for API Gateway integration
 
   name = local.backend_name
 
@@ -94,8 +94,8 @@ resource "aws_ecs_task_definition" "backend" {
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
   family                   = local.backend_name
-  cpu                      = max(var.backend_cpu, 256)  # Fargate minimum is 256
-  memory                   = max(var.backend_memory, 512)  # Fargate minimum is 512
+  cpu                      = max(var.backend_cpu, 256)    # Fargate minimum is 256
+  memory                   = max(var.backend_memory, 512) # Fargate minimum is 512
   execution_role_arn       = aws_iam_role.backend_task_execution.arn
   task_role_arn            = aws_iam_role.backend_task.arn
 
@@ -174,11 +174,11 @@ resource "aws_security_group" "backend" {
 
   # Allow traffic from within VPC (for API Gateway VPC Link and internal services)
   ingress {
-    protocol         = "tcp"
-    from_port        = var.backend_image_port
-    to_port          = var.backend_image_port
-    cidr_blocks      = [data.aws_vpc.selected.cidr_block]
-    description      = "Allow traffic from VPC (API Gateway VPC Link)"
+    protocol    = "tcp"
+    from_port   = var.backend_image_port
+    to_port     = var.backend_image_port
+    cidr_blocks = [data.aws_vpc.selected.cidr_block]
+    description = "Allow traffic from VPC (API Gateway VPC Link)"
   }
 
   # Allow traffic from ALB if enabled

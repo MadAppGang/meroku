@@ -1,5 +1,5 @@
 import { Calendar, Clock, X } from "lucide-react";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -153,6 +153,12 @@ export function ScheduleExpressionBuilder({
 	value,
 	onChange,
 }: ScheduleExpressionBuilderProps) {
+	// Use ref to store onChange callback to avoid dependency issues
+	const onChangeRef = useRef(onChange);
+	useEffect(() => {
+		onChangeRef.current = onChange;
+	}, [onChange]);
+
 	// Parse the initial value to determine type and values
 	const isRate = value.startsWith("rate(");
 	const isCron = value.startsWith("cron(");
@@ -244,11 +250,12 @@ export function ScheduleExpressionBuilder({
 	// Update parent when values change
 	useEffect(() => {
 		if (expressionType === "rate") {
-			onChange(buildRateExpression());
+			const unit = parseInt(rateValue) === 1 ? rateUnit : `${rateUnit}s`;
+			onChangeRef.current(`rate(${rateValue} ${unit})`);
 		} else {
-			onChange(buildCronExpression());
+			onChangeRef.current(`cron(${cronMinute} ${cronHour} ${cronDayOfMonth} ${cronMonth} ${cronDayOfWeek} ${cronYear})`);
 		}
-	}, [expressionType, buildCronExpression, buildRateExpression, onChange]);
+	}, [expressionType, rateValue, rateUnit, cronMinute, cronHour, cronDayOfMonth, cronMonth, cronDayOfWeek, cronYear]);
 
 	// Apply preset
 	const applyPreset = (presetValue: string) => {

@@ -4,7 +4,7 @@ locals {
 
 # Create the HTTPS Listener
 resource "aws_lb_listener" "https" {
-  count             = var.enable_alb ? 1 : 0
+  count = var.enable_alb ? 1 : 0
 
   load_balancer_arn = var.alb_arn
   port              = "443"
@@ -24,7 +24,7 @@ resource "aws_lb_listener" "https" {
 
 # Create the Listener Rule
 resource "aws_lb_listener_rule" "https" {
-  count             = var.enable_alb ? 1 : 0
+  count = var.enable_alb ? 1 : 0
 
   listener_arn = aws_lb_listener.https[0].arn
   priority     = 100
@@ -43,7 +43,7 @@ resource "aws_lb_listener_rule" "https" {
 
 # Create the Target Group
 resource "aws_lb_target_group" "backend" {
-  count             = var.enable_alb ? 1 : 0
+  count = var.enable_alb ? 1 : 0
 
   name        = "${var.project}-backend-tg-${var.env}"
   port        = var.backend_image_port
@@ -79,13 +79,13 @@ resource "aws_lb_target_group" "backend" {
 
 
 data "aws_lb" "alb" {
-  count             = var.enable_alb ? 1 : 0
+  count = var.enable_alb ? 1 : 0
 
-  arn               = var.alb_arn 
+  arn = var.alb_arn
 }
 
 resource "aws_route53_record" "alb_alias" {
-  count             = var.enable_alb ? 1 : 0
+  count = var.enable_alb ? 1 : 0
 
   zone_id = var.domain_zone_id
   name    = local.backend_alb_full_domain_name
