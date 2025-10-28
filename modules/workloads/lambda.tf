@@ -38,6 +38,19 @@ resource "aws_iam_role_policy_attachment" "lambda_basic_esecution" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
+# CloudWatch Log Group for Lambda with retention
+resource "aws_cloudwatch_log_group" "lambda_deploy" {
+  name              = "/aws/lambda/ci_lambda_${var.env}"
+  retention_in_days = 7
+
+  tags = {
+    Name        = "/aws/lambda/ci_lambda_${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
+}
 
 resource "aws_lambda_function" "lambda_deploy" {
   filename         = "ci_lambda.zip"
@@ -46,6 +59,15 @@ resource "aws_lambda_function" "lambda_deploy" {
   role             = aws_iam_role.lambda_deploy_iam.arn
   source_code_hash = data.archive_file.lambda.output_base64sha256
   runtime          = "provided.al2"
+
+  # Disable KMS encryption for environment variables
+  kms_key_arn = null
+
+  # Lambda execution timeout (in seconds)
+  timeout = 60
+
+  # Ensure log group is created first
+  depends_on = [aws_cloudwatch_log_group.lambda_deploy]
 
   environment {
     variables = {
@@ -120,6 +142,36 @@ resource "aws_iam_policy" "lambda_ecs" {
 resource "aws_iam_role_policy_attachment" "lambda_ecs" {
   role       = aws_iam_role.lambda_deploy_iam.name
   policy_arn = aws_iam_policy.lambda_ecs.arn
+}
+
+# KMS policy for decrypting environment variables
+data "aws_iam_policy_document" "lambda_kms" {
+  statement {
+    effect = "Allow"
+    actions = [
+      "kms:Decrypt",
+      "kms:DescribeKey"
+    ]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_policy" "lambda_kms" {
+  name   = "LambdaKMSPolicy_${var.env}"
+  policy = data.aws_iam_policy_document.lambda_kms.json
+
+  tags = {
+    Name        = "LambdaKMSPolicy_${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_kms" {
+  role       = aws_iam_role.lambda_deploy_iam.name
+  policy_arn = aws_iam_policy.lambda_kms.arn
 }
 
 # EventBus For ECR
@@ -229,8 +281,8 @@ locals {
   // This eliminates the need for pattern-based name construction
   ecs_service_map = jsonencode(merge(
     {
-      // Backend service (identifier: empty string)
-      "" = {
+      // Backend service (identifier: "backend")
+      "backend" = {
         service_name = aws_ecs_service.backend.name
         task_family  = aws_ecs_task_definition.backend.family
       }
