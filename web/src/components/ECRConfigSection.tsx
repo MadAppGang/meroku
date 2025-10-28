@@ -24,6 +24,8 @@ interface ECRConfigSectionProps {
 	availableSources: ECRSource[];
 	currentServiceName?: string;
 	errors?: Record<string, string>;
+	accountId?: string;
+	region?: string;
 }
 
 export const ECRConfigSection = memo(function ECRConfigSection({
@@ -32,8 +34,15 @@ export const ECRConfigSection = memo(function ECRConfigSection({
 	availableSources,
 	currentServiceName,
 	errors = {},
+	accountId,
+	region,
 }: ECRConfigSectionProps) {
 	const mode = config.mode || "create_ecr";
+
+	// Generate preconfigured ECR repository URI
+	const preConfiguredECRUri = currentServiceName && accountId && region
+		? `${accountId}.dkr.ecr.${region}.amazonaws.com/${currentServiceName}`
+		: null;
 
 	const handleModeChange = (newMode: string) => {
 		onChange({
@@ -72,7 +81,7 @@ export const ECRConfigSection = memo(function ECRConfigSection({
 	return (
 		<div className="space-y-4">
 			<div>
-				<Label className="text-sm font-medium">ECR Repository Configuration</Label>
+				<Label className="text-sm font-medium">Docker Registry Configuration</Label>
 				<p className="text-sm text-muted-foreground mt-1">
 					Choose how to manage the container registry for this service
 				</p>
@@ -88,15 +97,23 @@ export const ECRConfigSection = memo(function ECRConfigSection({
 				<p className="text-xs text-muted-foreground ml-6">
 					A dedicated ECR repository will be created for this service
 				</p>
+				{mode === "create_ecr" && preConfiguredECRUri && (
+					<div className="mt-2 ml-6 p-3 bg-slate-800/30 border border-slate-700/50 rounded-lg">
+						<p className="text-xs text-slate-500 mb-1">ECR Repository URI</p>
+						<code className="text-xs text-slate-300 font-mono break-all">
+							{preConfiguredECRUri}
+						</code>
+					</div>
+				)}
 
 				<div className="flex items-center space-x-2 mt-3">
 					<RadioGroupItem value="manual_repo" id="manual_repo" />
 					<Label htmlFor="manual_repo" className="font-normal cursor-pointer">
-						Use existing ECR repository (manual URI)
+						Use existing Docker image (Docker Hub, ECR, etc.)
 					</Label>
 				</div>
 				<p className="text-xs text-muted-foreground ml-6">
-					Provide the full ECR repository URI
+					Provide the Docker image URI from any registry
 				</p>
 
 				<div className="flex items-center space-x-2 mt-3">
@@ -111,26 +128,26 @@ export const ECRConfigSection = memo(function ECRConfigSection({
 			</RadioGroup>
 
 			{mode === "manual_repo" && (
-				<div className="mt-4 ml-6">
-					<Label htmlFor="repository_uri">Repository URI</Label>
+				<div className="mt-6 ml-6 grid gap-2">
+					<Label htmlFor="repository_uri">Docker Image URI</Label>
 					<Input
 						id="repository_uri"
-						placeholder="123456789012.dkr.ecr.us-east-1.amazonaws.com/my-repo"
+						placeholder="nginx:latest or 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-repo"
 						value={config.repository_uri || ""}
 						onChange={handleRepositoryURIChange}
 						className={errors.repository_uri ? "border-red-500" : ""}
 					/>
 					{errors.repository_uri && (
-						<p className="text-sm text-red-500 mt-1">{errors.repository_uri}</p>
+						<p className="text-sm text-red-500 -mt-1">{errors.repository_uri}</p>
 					)}
-					<p className="text-xs text-muted-foreground mt-1">
-						Format: account-id.dkr.ecr.region.amazonaws.com/repository-name
+					<p className="text-xs text-muted-foreground -mt-1">
+						Examples: nginx:latest, ubuntu:22.04, or ECR URI
 					</p>
 				</div>
 			)}
 
 			{mode === "use_existing" && (
-				<div className="mt-4 ml-6">
+				<div className="mt-6 ml-6 grid gap-2">
 					<Label htmlFor="source_service">Source Service</Label>
 					<Select value={currentSourceValue} onValueChange={handleSourceChange}>
 						<SelectTrigger
@@ -157,11 +174,11 @@ export const ECRConfigSection = memo(function ECRConfigSection({
 						</SelectContent>
 					</Select>
 					{errors.source_service_name && (
-						<p className="text-sm text-red-500 mt-1">
+						<p className="text-sm text-red-500 -mt-1">
 							{errors.source_service_name}
 						</p>
 					)}
-					<p className="text-xs text-muted-foreground mt-1">
+					<p className="text-xs text-muted-foreground -mt-1">
 						Only services with dedicated ECR repositories can be selected
 					</p>
 				</div>

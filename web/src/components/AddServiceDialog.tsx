@@ -107,8 +107,9 @@ export function AddServiceDialog({
 			newErrors.name = "A service with this name already exists";
 		}
 
-		if (!formData.docker_image) {
-			newErrors.docker_image = "Docker image is required";
+		// Docker image is only required for manual_repo mode
+		if (ecrConfig.mode === "manual_repo" && !formData.docker_image) {
+			newErrors.docker_image = "Docker image is required for manual repository mode";
 		}
 
 		// Validate ECR config
@@ -211,21 +212,6 @@ export function AddServiceDialog({
 							/>
 							{errors.name && (
 								<p className="text-sm text-red-500">{errors.name}</p>
-							)}
-						</div>
-
-						<div className="grid gap-2">
-							<Label htmlFor="docker_image">Docker Image</Label>
-							<Input
-								id="docker_image"
-								value={formData.docker_image}
-								onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-									setFormData({ ...formData, docker_image: e.target.value })
-								}
-								placeholder="nginx:latest"
-							/>
-							{errors.docker_image && (
-								<p className="text-sm text-red-500">{errors.docker_image}</p>
 							)}
 						</div>
 
@@ -369,6 +355,8 @@ export function AddServiceDialog({
 							availableSources={availableSources}
 							currentServiceName={formData.name}
 							errors={errors}
+							accountId={config.account_id}
+							region={config.region}
 						/>
 					</div>
 

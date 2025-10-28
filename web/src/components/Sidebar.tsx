@@ -24,6 +24,7 @@ import {
   Terminal,
   Trash2,
   Upload,
+  Workflow,
   X,
   Zap,
 } from "lucide-react";
@@ -86,6 +87,7 @@ import { ServiceLogs } from "./ServiceLogs";
 import { ServiceParameterStore } from "./ServiceParameterStore";
 import { ServiceProperties } from "./ServiceProperties";
 import { ServiceXRayConfiguration } from "./ServiceXRayConfiguration";
+import ServiceCICDConfiguration from "./ServiceCICDConfiguration";
 import { SNSNodeProperties } from "./SNSNodeProperties";
 import { SQSNodeProperties } from "./SQSNodeProperties";
 import { Button } from "./ui/button";
@@ -182,6 +184,7 @@ export function Sidebar({
       case "backend":
         return [
           { id: "settings", label: "Settings", icon: Settings },
+          { id: "cicd", label: "CI/CD", icon: Workflow },
           { id: "scaling", label: "Scaling", icon: Gauge },
           { id: "xray", label: "X-Ray", icon: Microscope },
           { id: "ssh", label: "SSH", icon: Terminal },
@@ -197,6 +200,7 @@ export function Sidebar({
       case "scheduled-task":
         return [
           { id: "settings", label: "Settings", icon: Settings },
+          { id: "cicd", label: "CI/CD", icon: Workflow },
           { id: "env", label: "Env Vars", icon: Zap },
           { id: "params", label: "Parameters", icon: Key },
           { id: "iam", label: "IAM", icon: Shield },
@@ -206,6 +210,7 @@ export function Sidebar({
       case "event-task":
         return [
           { id: "settings", label: "Settings", icon: Settings },
+          { id: "cicd", label: "CI/CD", icon: Workflow },
           { id: "test", label: "Test Event", icon: Send },
           { id: "env", label: "Env Vars", icon: Zap },
           { id: "params", label: "Parameters", icon: Key },
@@ -216,6 +221,7 @@ export function Sidebar({
       case "service":
         return [
           { id: "settings", label: "Settings", icon: Settings },
+          { id: "cicd", label: "CI/CD", icon: Workflow },
           { id: "scaling", label: "Scaling", icon: Gauge },
           { id: "xray", label: "X-Ray", icon: Microscope },
           { id: "ssh", label: "SSH", icon: Terminal },
@@ -228,6 +234,7 @@ export function Sidebar({
       case "amplify":
         return [
           { id: "settings", label: "Settings", icon: Settings },
+          { id: "cicd", label: "CI/CD", icon: Workflow },
           { id: "branches", label: "Branches", icon: GitBranch },
           { id: "build", label: "Build", icon: Code },
           { id: "domain", label: "Domain", icon: Globe },
@@ -1131,6 +1138,57 @@ jobs:
         {activeTab === "send" && selectedNode.type === "ses" && config && (
           <SESSendTestEmail config={config} />
         )}
+
+        {/* CI/CD tabs for service nodes */}
+        {activeTab === "cicd" &&
+          selectedNode.type === "backend" &&
+          config && (
+            <ServiceCICDConfiguration
+              config={config}
+              serviceName="backend"
+              serviceType="backend"
+            />
+          )}
+
+        {activeTab === "cicd" &&
+          selectedNode.type === "service" &&
+          config && (
+            <ServiceCICDConfiguration
+              config={config}
+              serviceName={selectedNode.id.replace("service-", "")}
+              serviceType="service"
+            />
+          )}
+
+        {activeTab === "cicd" &&
+          selectedNode.type === "scheduled-task" &&
+          config && (
+            <ServiceCICDConfiguration
+              config={config}
+              serviceName={selectedNode.id.replace("scheduled-", "")}
+              serviceType="scheduled-task"
+            />
+          )}
+
+        {activeTab === "cicd" &&
+          selectedNode.type === "event-task" &&
+          config && (
+            <ServiceCICDConfiguration
+              config={config}
+              serviceName={selectedNode.id.replace("event-", "")}
+              serviceType="event-task"
+            />
+          )}
+
+        {activeTab === "cicd" &&
+          selectedNode.type === "amplify" &&
+          config && (
+            <ServiceCICDConfiguration
+              config={config}
+              serviceName={selectedNode.id.replace("amplify-", "")}
+              serviceType="amplify"
+            />
+          )}
 
         {activeTab === "scaling" &&
           selectedNode.type === "backend" &&
