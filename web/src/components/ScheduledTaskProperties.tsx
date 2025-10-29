@@ -1,8 +1,9 @@
-import { useState, useCallback } from "react";
+import { useCallback, useRef, useEffect } from "react";
 import type { AccountInfo } from "../api/infrastructure";
 import type { ComponentNode } from "../types";
 import type { ECRConfig, YamlInfrastructureConfig } from "../types/yamlConfig";
 import { ScheduleExpressionBuilder } from "./ScheduleExpressionBuilder";
+import { useDeepMemo } from "../hooks/useDeepMemo";
 import {
 	Card,
 	CardContent,
@@ -31,19 +32,77 @@ export function ScheduledTaskProperties({
 	// Extract task name from node id (e.g., "scheduled-daily-report" -> "daily-report")
 	const taskName = node.id.replace("scheduled-", "");
 
-	// Find the current task in config
-	const currentTask = config.scheduled_tasks?.find(
-		(task) => task.name === taskName,
-	);
+	// DEBUG: Render counter and mount tracking
+	const renderCountRef = useRef(0);
+	const isMountedRef = useRef(false);
+	renderCountRef.current++;
 
-	// Local state for ECR configuration - use current task's config or default
-	const [ecrConfig, setEcrConfig] = useState<ECRConfig | undefined>(() =>
-		currentTask?.ecr_config || { mode: "create_ecr" }
-	);
+	useEffect(() => {
+		if (!isMountedRef.current) {
+			console.log(`🟢 [ScheduledTaskProperties] MOUNTED for task: ${taskName}`);
+			isMountedRef.current = true;
+		}
+		return () => {
+			console.log(`🔴 [ScheduledTaskProperties] UNMOUNTED for task: ${taskName}`);
+		};
+	}, [taskName]);
+
+	// Track previous props to detect what changed
+	const prevPropsRef = useRef({ config, accountInfo, node });
+	useEffect(() => {
+		const prev = prevPropsRef.current;
+		const changes: string[] = [];
+		if (prev.config !== config) changes.push('config');
+		if (prev.accountInfo !== accountInfo) changes.push('accountInfo');
+		if (prev.node !== node) changes.push('node');
+
+		if (changes.length > 0) {
+			console.log(`🔧 [ScheduledTaskProperties] Props changed: ${changes.join(', ')}`, {
+				renderCount: renderCountRef.current,
+				scheduled_tasks_changed: prev.config.scheduled_tasks !== config.scheduled_tasks,
+			});
+		}
+		prevPropsRef.current = { config, accountInfo, node };
+	}, [config, accountInfo, node]);
+
+	console.log(`🔄 [ScheduledTaskProperties] Render #${renderCountRef.current} for task: ${taskName} [${isMountedRef.current ? 'MOUNTED' : 'MOUNTING'}]`);
+
+	if (renderCountRef.current > 50) {
+		console.error('⚠️ [ScheduledTaskProperties] INFINITE LOOP DETECTED - More than 50 renders!');
+		console.trace('Stack trace at 50th render');
+	}
+
+	// Use ref to always access the latest config without causing re-renders
+	const configRef = useRef(config);
+	useEffect(() => {
+		console.log(`📝 [ScheduledTaskProperties] Config updated for ${taskName}`, {
+			scheduled_tasks_count: config.scheduled_tasks?.length,
+			current_task_exists: !!config.scheduled_tasks?.find(t => t.name === taskName)
+		});
+		configRef.current = config;
+	}, [config, taskName]);
+
+	// **KEY FIX**: Use DEEP comparison ONLY for currentTask
+	// This is the single critical piece that prevents infinite re-renders
+	// When config.scheduled_tasks is recreated with same content, currentTask stays stable
+	const currentTask = useDeepMemo(() => {
+		const task = config.scheduled_tasks?.find(
+			(t) => t.name === taskName,
+		);
+		console.log(`📋 [ScheduledTaskProperties] currentTask recalculated (DEEP COMPARE) for ${taskName}:`, task);
+		return task;
+	}, [config.scheduled_tasks, taskName]);
+
+	// Derive ecrConfig directly from stable currentTask - no additional memoization needed
+	const ecrConfig = currentTask?.ecr_config || { mode: "create_ecr" as const };
+	console.log(`🐳 [ScheduledTaskProperties] ecrConfig derived from currentTask:`, ecrConfig);
 
 	const handleTaskChange = useCallback((updates: Partial<typeof currentTask>) => {
-		// Get the latest config and tasks from the closure
-		const tasks = config.scheduled_tasks || [];
+		console.log(`🔧 [handleTaskChange] Called for ${taskName} with updates:`, updates);
+
+		// Use configRef.current to access latest config without adding to dependencies
+		// This prevents infinite re-render loops
+		const tasks = configRef.current.scheduled_tasks || [];
 		const existingTask = tasks.find(t => t.name === taskName);
 
 		if (!existingTask) {
@@ -53,23 +112,34 @@ export function ScheduledTaskProperties({
 				schedule: "rate(1 day)",
 				...updates,
 			};
+			console.log(`➕ [handleTaskChange] Creating new task:`, newTask);
 			onConfigChange({
 				scheduled_tasks: [...tasks, newTask],
 			});
 		} else {
-			// Update existing task
+			// Update existing task, but bail if nothing actually changes
+			const updatedTask = { ...existingTask, ...updates };
+			if (JSON.stringify(existingTask) === JSON.stringify(updatedTask)) {
+				console.log(`⏭️ [handleTaskChange] No changes detected for ${taskName}, skipping update.`);
+				return;
+			}
+
 			const updatedTasks = tasks.map((task) =>
-				task.name === taskName ? { ...task, ...updates } : task,
+				task.name === taskName ? updatedTask : task,
 			);
 
+			console.log(`✏️ [handleTaskChange] Updating existing task:`, updatedTask);
 			onConfigChange({
 				scheduled_tasks: updatedTasks,
 			});
 		}
-	}, [taskName, config, onConfigChange]);
+	}, [taskName, onConfigChange]);
 
 	const handleEcrConfigChange = useCallback((newConfig: ECRConfig | undefined) => {
-		setEcrConfig(newConfig);
+		console.log(`🐳 [handleEcrConfigChange] Called for ${taskName} with newConfig:`, newConfig, {
+			renderCount: renderCountRef.current,
+			isMounted: isMountedRef.current,
+		});
 		handleTaskChange({ ecr_config: newConfig });
 	}, [handleTaskChange]);
 

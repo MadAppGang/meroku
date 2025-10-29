@@ -1,5 +1,5 @@
 import type React from "react";
-import { memo } from "react";
+import { memo, useRef, useEffect, useCallback } from "react";
 import { Label } from "./ui/label";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { Input } from "./ui/input";
@@ -37,6 +37,47 @@ export const ECRConfigSection = memo(function ECRConfigSection({
 	accountId,
 	region,
 }: ECRConfigSectionProps) {
+	// DEBUG: Render counter
+	const renderCountRef = useRef(0);
+	renderCountRef.current++;
+
+	// Track previous props to detect what changed
+	const prevPropsRef = useRef({ config, onChange, availableSources, errors, accountId, region });
+	useEffect(() => {
+		const prev = prevPropsRef.current;
+		const changes: string[] = [];
+		if (prev.config !== config) changes.push('config');
+		if (prev.onChange !== onChange) changes.push('onChange');
+		if (prev.availableSources !== availableSources) changes.push('availableSources');
+		if (prev.errors !== errors) changes.push('errors');
+		if (prev.accountId !== accountId) changes.push('accountId');
+		if (prev.region !== region) changes.push('region');
+
+		if (changes.length > 0) {
+			console.log(`🔧 [ECRConfigSection] Props changed: ${changes.join(', ')}`, {
+				configRef: prev.config === config ? 'same' : 'CHANGED',
+				onChangeRef: prev.onChange === onChange ? 'same' : 'CHANGED',
+				availableSourcesRef: prev.availableSources === availableSources ? 'same' : 'CHANGED',
+				availableSourcesLength: availableSources.length,
+			});
+		}
+		prevPropsRef.current = { config, onChange, availableSources, errors, accountId, region };
+	}, [config, onChange, availableSources, errors, accountId, region]);
+
+	console.log(`🔄 [ECRConfigSection] Render #${renderCountRef.current} for ${currentServiceName}`);
+
+	if (renderCountRef.current > 50) {
+		console.error('⚠️ [ECRConfigSection] INFINITE LOOP DETECTED - More than 50 renders!');
+		console.trace('Stack trace at 50th render');
+	}
+
+	console.log(`🐳 [ECRConfigSection] Props:`, {
+		config,
+		availableSourcesCount: availableSources.length,
+		availableSources,
+		currentServiceName,
+	});
+
 	const mode = config.mode || "create_ecr";
 
 	// Generate preconfigured ECR repository URI
@@ -44,30 +85,33 @@ export const ECRConfigSection = memo(function ECRConfigSection({
 		? `${accountId}.dkr.ecr.${region}.amazonaws.com/${currentServiceName}`
 		: null;
 
-	const handleModeChange = (newMode: string) => {
+	const handleModeChange = useCallback((newMode: string) => {
+		console.log(`🔧 [ECRConfigSection] handleModeChange called:`, newMode);
 		onChange({
 			mode: newMode as ECRConfig["mode"],
 			repository_uri: "",
 			source_service_name: "",
 			source_service_type: undefined,
 		});
-	};
+	}, [onChange]);
 
-	const handleRepositoryURIChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+	const handleRepositoryURIChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+		console.log(`🔧 [ECRConfigSection] handleRepositoryURIChange called:`, e.target.value);
 		onChange({
 			...config,
 			repository_uri: e.target.value,
 		});
-	};
+	}, [config, onChange]);
 
-	const handleSourceChange = (value: string) => {
+	const handleSourceChange = useCallback((value: string) => {
+		console.log(`🔧 [ECRConfigSection] handleSourceChange called:`, value);
 		const [sourceType, sourceName] = value.split("-", 2);
 		onChange({
 			...config,
 			source_service_name: sourceName,
 			source_service_type: sourceType as ECRConfig["source_service_type"],
 		});
-	};
+	}, [config, onChange]);
 
 	const filteredSources = availableSources.filter(
 		(source) => source.name !== currentServiceName,

@@ -1,11 +1,12 @@
 import { Database, ExternalLink, Info, Share2 } from "lucide-react";
-import { useMemo, memo } from "react";
+import { memo, useRef, useEffect } from "react";
 import type { ECRConfig, YamlInfrastructureConfig } from "../types/yamlConfig";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Badge } from "./ui/badge";
 import { Label } from "./ui/label";
 import { Separator } from "./ui/separator";
 import { ECRConfigSection } from "./ECRConfigSection";
+import { useDeepMemo } from "../hooks/useDeepMemo";
 
 interface ECRConfigEditorProps {
 	config: YamlInfrastructureConfig;
@@ -24,6 +25,46 @@ export const ECRConfigEditor = memo(function ECRConfigEditor({
 	onEcrConfigChange,
 	accountInfo,
 }: ECRConfigEditorProps) {
+	// DEBUG: Render counter
+	const renderCountRef = useRef(0);
+	renderCountRef.current++;
+
+	// Track previous props to detect what changed
+	const prevPropsRef = useRef({ config, ecrConfig, onEcrConfigChange, accountInfo });
+	useEffect(() => {
+		const prev = prevPropsRef.current;
+		const changes: string[] = [];
+		if (prev.config !== config) changes.push('config');
+		if (prev.ecrConfig !== ecrConfig) changes.push('ecrConfig');
+		if (prev.onEcrConfigChange !== onEcrConfigChange) changes.push('onEcrConfigChange');
+		if (prev.accountInfo !== accountInfo) changes.push('accountInfo');
+
+		if (changes.length > 0) {
+			console.log(`🔧 [ECRConfigEditor] Props changed: ${changes.join(', ')}`, {
+				configRef: prev.config === config ? 'same' : 'CHANGED',
+				ecrConfigRef: prev.ecrConfig === ecrConfig ? 'same' : 'CHANGED',
+				onChangeRef: prev.onEcrConfigChange === onEcrConfigChange ? 'same' : 'CHANGED',
+			});
+		}
+		prevPropsRef.current = { config, ecrConfig, onEcrConfigChange, accountInfo };
+	}, [config, ecrConfig, onEcrConfigChange, accountInfo]);
+
+	console.log(`🔄 [ECRConfigEditor] Render #${renderCountRef.current} for ${currentServiceType}/${currentServiceName}`);
+
+	if (renderCountRef.current > 50) {
+		console.error('⚠️ [ECRConfigEditor] INFINITE LOOP DETECTED - More than 50 renders!');
+		console.trace('Stack trace at 50th render');
+	}
+
+	console.log(`🐳 [ECRConfigEditor] Props:`, {
+		currentServiceName,
+		currentServiceType,
+		ecrConfig,
+		servicesCount: config.services?.length,
+		eventTasksCount: config.event_processor_tasks?.length,
+		scheduledTasksCount: config.scheduled_tasks?.length,
+	});
+
 	// Build ECR repository URI based on service type
 	const repoName = currentServiceType === "services"
 		? `${config.project}_service_${currentServiceName}`
@@ -31,8 +72,10 @@ export const ECRConfigEditor = memo(function ECRConfigEditor({
 
 	const ecrRepoUri = `${accountInfo?.accountId || config.ecr_account_id || "<ACCOUNT_ID>"}.dkr.ecr.${config.region}.amazonaws.com/${repoName}`;
 
-	// Build available ECR sources from all service types - MEMOIZED
-	const availableSources = useMemo(() => {
+	// Build available ECR sources from all service types - USE DEEP COMPARISON
+	// This prevents re-renders when service arrays are recreated with the same content
+	const availableSources = useDeepMemo(() => {
+		console.log(`🔍 [ECRConfigEditor] Recalculating availableSources (deep compare) for ${currentServiceName}`);
 		const sources: Array<{
 			name: string;
 			type: "services" | "event_processor_tasks" | "scheduled_tasks";
@@ -75,12 +118,13 @@ export const ECRConfigEditor = memo(function ECRConfigEditor({
 			}
 		});
 
+		console.log(`✅ [ECRConfigEditor] availableSources calculated:`, sources);
 		return sources;
 	}, [config.services, config.event_processor_tasks, config.scheduled_tasks, currentServiceType, currentServiceName]);
 
-	const currentConfig = useMemo(() =>
-		ecrConfig || { mode: "create_ecr" as const }
-	, [ecrConfig]);
+	// Use ecrConfig directly - it's already stable from parent's deep comparison
+	const currentConfig = ecrConfig || { mode: "create_ecr" as const };
+	console.log(`⚙️ [ECRConfigEditor] Using currentConfig:`, currentConfig);
 
 	return (
 		<div className="space-y-4">
