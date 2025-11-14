@@ -72,7 +72,14 @@ Recovery steps:
 4. Verify credentials: aws sts get-caller-identity --profile %s`, err, awsProfile, awsProfile, awsProfile)
 	}
 
-	// Step 5: Ensure S3 state bucket exists
+	// Step 5: Check git repository status vs remote
+	fmt.Println("📦 Checking git repository status...")
+	if err := checkGitRepositoryStatus(); err != nil {
+		// Non-fatal warning - we don't exit, just warn
+		fmt.Printf("⚠️  %v\n", err)
+	}
+
+	// Step 6: Ensure S3 state bucket exists
 	fmt.Printf("🪣  Checking S3 state bucket: %s\n", env.StateBucket)
 	if err := checkBucketStateForEnv(env); err != nil {
 		// If SSO token expired, try to refresh
@@ -304,4 +311,79 @@ func parseVersionParts(version string) []int {
 	}
 
 	return result
+}
+
+// checkGitRepositoryStatus checks if the local repository is behind the remote
+// Returns a warning message if local is behind, nil if up-to-date or if not a git repo
+func checkGitRepositoryStatus() error {
+	// Check if this is a git repository
+	if _, err := runCommandWithOutput("git", "rev-parse", "--git-dir"); err != nil {
+		// Not a git repository, skip check
+		return nil
+	}
+
+	// Get current branch name
+	branchOutput, err := runCommandWithOutput("git", "rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		// Can't determine branch, skip check
+		return nil
+	}
+	currentBranch := strings.TrimSpace(branchOutput)
+
+	// Fetch latest from remote (quietly, don't show output to user)
+	_, err = runCommandWithOutput("git", "fetch", "origin", currentBranch, "--quiet")
+	if err != nil {
+		// Network issues or no remote, skip check
+		return nil
+	}
+
+	// Get local HEAD commit
+	localCommit, err := runCommandWithOutput("git", "rev-parse", "HEAD")
+	if err != nil {
+		return nil
+	}
+	localCommit = strings.TrimSpace(localCommit)
+
+	// Get remote HEAD commit
+	remoteCommit, err := runCommandWithOutput("git", "rev-parse", fmt.Sprintf("origin/%s", currentBranch))
+	if err != nil {
+		// Remote branch doesn't exist, skip check
+		return nil
+	}
+	remoteCommit = strings.TrimSpace(remoteCommit)
+
+	// Compare commits
+	if localCommit == remoteCommit {
+		fmt.Println("✅ Git repository is up-to-date with remote")
+		return nil
+	}
+
+	// Check if local is behind remote
+	mergeBase, err := runCommandWithOutput("git", "merge-base", "HEAD", fmt.Sprintf("origin/%s", currentBranch))
+	if err != nil {
+		return nil
+	}
+	mergeBase = strings.TrimSpace(mergeBase)
+
+	if mergeBase == localCommit {
+		// Local is behind remote
+		// Count commits behind
+		commitsOutput, _ := runCommandWithOutput("git", "rev-list", "--count", fmt.Sprintf("HEAD..origin/%s", currentBranch))
+		commitsBehind := strings.TrimSpace(commitsOutput)
+
+		return fmt.Errorf(`Git repository is %s commit(s) behind origin/%s
+
+⚠️  WARNING: You are deploying with outdated code!
+
+Recommended actions:
+1. Pull latest changes: git pull origin %s
+2. Review changes: git log HEAD..origin/%s --oneline
+3. Re-run deployment after updating
+
+To continue anyway, proceed with deployment (not recommended)`, commitsBehind, currentBranch, currentBranch, currentBranch)
+	}
+
+	// Local has diverged (has commits not on remote)
+	fmt.Printf("ℹ️  Local branch has unpushed commits (different from remote)\n")
+	return nil
 }
