@@ -32,9 +32,10 @@ resource "aws_db_instance" "database" {
   skip_final_snapshot    = var.skip_final_snapshot
   username               = local.db_username
   db_name                = local.db_name
-  password               = aws_ssm_parameter.postgres_password.value
-  vpc_security_group_ids = [aws_security_group.database.id]
-  publicly_accessible    = var.public_access
+  password                            = aws_ssm_parameter.postgres_password.value
+  vpc_security_group_ids              = [aws_security_group.database.id]
+  publicly_accessible                 = var.public_access
+  iam_database_authentication_enabled = var.iam_database_authentication_enabled
 
   tags = {
     Name        = "${var.project}-postgres-${var.env}"
@@ -55,9 +56,10 @@ resource "aws_rds_cluster" "aurora" {
   database_name          = local.db_name
   master_username        = local.db_username
   master_password        = aws_ssm_parameter.postgres_password.value
-  skip_final_snapshot    = true
-  vpc_security_group_ids = [aws_security_group.database.id]
-  db_subnet_group_name   = aws_db_subnet_group.aurora[0].name
+  skip_final_snapshot                 = true
+  vpc_security_group_ids              = [aws_security_group.database.id]
+  db_subnet_group_name                = aws_db_subnet_group.aurora[0].name
+  iam_database_authentication_enabled = var.iam_database_authentication_enabled
 
   serverlessv2_scaling_configuration {
     min_capacity = var.min_capacity

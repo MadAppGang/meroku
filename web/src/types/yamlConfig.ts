@@ -129,6 +129,7 @@ export interface YamlInfrastructureConfig {
 		storage_encrypted?: boolean; // Encryption at rest
 		deletion_protection?: boolean; // Prevent accidental deletion
 		skip_final_snapshot?: boolean; // Snapshot on delete
+		iam_database_authentication_enabled?: boolean; // Enable IAM authentication
 	};
 
 	// Authentication Configuration
