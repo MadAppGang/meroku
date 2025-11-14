@@ -125,13 +125,14 @@ type Postgres struct {
 	MinCapacity        float64 `yaml:"min_capacity"`
 	MaxCapacity        float64 `yaml:"max_capacity"`
 	// RDS-specific fields (when aurora is false)
-	InstanceClass      string  `yaml:"instance_class"`
-	AllocatedStorage   int     `yaml:"allocated_storage"`
-	StorageType        string  `yaml:"storage_type"`
-	MultiAZ            bool    `yaml:"multi_az"`
-	StorageEncrypted   bool    `yaml:"storage_encrypted"`
-	DeletionProtection bool    `yaml:"deletion_protection"`
-	SkipFinalSnapshot  bool    `yaml:"skip_final_snapshot"`
+	InstanceClass                     string `yaml:"instance_class"`
+	AllocatedStorage                  int    `yaml:"allocated_storage"`
+	StorageType                       string `yaml:"storage_type"`
+	MultiAZ                           bool   `yaml:"multi_az"`
+	StorageEncrypted                  bool   `yaml:"storage_encrypted"`
+	DeletionProtection                bool   `yaml:"deletion_protection"`
+	SkipFinalSnapshot                 bool   `yaml:"skip_final_snapshot"`
+	IAMDatabaseAuthenticationEnabled  bool   `yaml:"iam_database_authentication_enabled"`
 }
 
 type Cognito struct {

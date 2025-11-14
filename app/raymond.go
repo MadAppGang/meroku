@@ -9,6 +9,30 @@ import (
 	"github.com/aymerick/raymond"
 )
 
+// isTruthy checks if a value is considered "truthy" in Handlebars context
+func isTruthy(value interface{}) bool {
+	if value == nil {
+		return false
+	}
+
+	v := reflect.ValueOf(value)
+	switch v.Kind() {
+	case reflect.Bool:
+		return v.Bool()
+	case reflect.String:
+		return v.String() != ""
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return v.Int() != 0
+	case reflect.Float32, reflect.Float64:
+		return v.Float() != 0
+	case reflect.Slice, reflect.Map, reflect.Array:
+		return v.Len() > 0
+	default:
+		// For other types, non-nil is truthy
+		return true
+	}
+}
+
 func registerCustomHelpers() {
 	// Register custom helper for array to JSON string conversion
 	raymond.RegisterHelper("array", func(items interface{}) string {
@@ -65,6 +89,54 @@ func registerCustomHelpers() {
 		return tfMap.String()
 	})
 
+	// Helper for OR logic - used for Aurora capacity where 0 is valid
+	// Check if value exists (not nil) - distinguishes between "value is 0/false" vs "value is missing"
+	// Usage: {{#if (exists postgres.min_capacity)}}...{{/if}}
+	raymond.RegisterHelper("exists", func(value interface{}) bool {
+		return value != nil
+	})
+
+	// Logical OR - returns true if either argument is truthy
+	// Usage: {{#if (or a b)}}...{{/if}}
+	raymond.RegisterHelper("or", func(a, b interface{}) bool {
+		return isTruthy(a) || isTruthy(b)
+	})
+
+	// Equality check - compares two values
+	// Usage: {{#if (eq value 0)}}...{{/if}}
+	raymond.RegisterHelper("eq", func(a, b interface{}) bool {
+		// Handle nil cases
+		if a == nil && b == nil {
+			return true
+		}
+		if a == nil || b == nil {
+			return false
+		}
+
+		// Use reflect to compare values properly
+		va := reflect.ValueOf(a)
+		vb := reflect.ValueOf(b)
+
+		// If types are different, try string comparison
+		if va.Kind() != vb.Kind() {
+			return fmt.Sprintf("%v", a) == fmt.Sprintf("%v", b)
+		}
+
+		// For same types, use direct comparison
+		switch va.Kind() {
+		case reflect.Bool:
+			return va.Bool() == vb.Bool()
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			return va.Int() == vb.Int()
+		case reflect.Float32, reflect.Float64:
+			return va.Float() == vb.Float()
+		case reflect.String:
+			return va.String() == vb.String()
+		default:
+			return fmt.Sprintf("%v", a) == fmt.Sprintf("%v", b)
+		}
+	})
+
 	raymond.RegisterHelper("compare", func(lvalue, operator string, rvalue string, options *raymond.Options) interface{} {
 		result := false
 
@@ -110,30 +182,27 @@ func registerCustomHelpers() {
 	})
 
 	raymond.RegisterHelper("default", func(value any, defaultValue any) any {
+		// Only return default if value is nil (field missing from YAML)
+		// Since we use map[string]interface{} for template data:
+		//   - Missing field → nil
+		//   - Field with value 0/false/"" → that actual value
 		if value == nil {
 			return defaultValue
 		}
 
+		// Special handling for empty strings - treat as "not set"
 		v := reflect.ValueOf(value)
-		switch v.Kind() {
-		case reflect.String:
-			if v.String() == "" {
-				return defaultValue
-			}
-		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-			if v.Int() == 0 {
-				return defaultValue
-			}
-		case reflect.Float32, reflect.Float64:
-			if v.Float() == 0 {
-				return defaultValue
-			}
-		case reflect.Slice, reflect.Map:
-			if v.Len() == 0 {
-				return defaultValue
-			}
+		if v.Kind() == reflect.String && v.String() == "" {
+			return defaultValue
 		}
 
+		// Special handling for empty slices/maps - treat as "not set"
+		if (v.Kind() == reflect.Slice || v.Kind() == reflect.Map) && v.Len() == 0 {
+			return defaultValue
+		}
+
+		// For all other types (including bool, int, float), the value is valid
+		// This allows: false, 0, 0.0 to be legitimate values
 		return value
 	})
 

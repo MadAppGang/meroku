@@ -122,41 +122,25 @@ module "postgres" {
   username = "{{postgres.username}}"
   public_access = {{ postgres.public_access }}
   engine_version = "{{ postgres.engine_version}}"
-  {{#if (or postgres.iam_database_authentication_enabled (eq postgres.iam_database_authentication_enabled false))}}
   iam_database_authentication_enabled = {{postgres.iam_database_authentication_enabled}}
-  {{/if}}
   {{#if postgres.aurora}}
   aurora = true
-  {{!-- Handle zero values explicitly for Aurora capacity --}}
-  {{#if (or postgres.min_capacity (eq postgres.min_capacity 0))}}
+  {{!-- Use 'exists' helper to distinguish between "value is 0" (pause when idle) vs "value not set" --}}
+  {{#if (exists postgres.min_capacity)}}
   min_capacity = {{postgres.min_capacity}}
   {{/if}}
-  {{#if (or postgres.max_capacity (eq postgres.max_capacity 0))}}
+  {{#if (exists postgres.max_capacity)}}
   max_capacity = {{postgres.max_capacity}}
   {{/if}}
   {{else}}
   {{!-- RDS-specific configuration (when aurora is false) --}}
-  {{#if postgres.instance_class}}
-  instance_class = "{{postgres.instance_class}}"
-  {{/if}}
-  {{#if postgres.allocated_storage}}
-  allocated_storage = {{postgres.allocated_storage}}
-  {{/if}}
-  {{#if postgres.storage_type}}
-  storage_type = "{{postgres.storage_type}}"
-  {{/if}}
-  {{#if (or postgres.multi_az (eq postgres.multi_az false))}}
+  instance_class = "{{default postgres.instance_class "db.t4g.micro"}}"
+  allocated_storage = {{default postgres.allocated_storage 20}}
+  storage_type = "{{default postgres.storage_type "gp3"}}"
   multi_az = {{postgres.multi_az}}
-  {{/if}}
-  {{#if (or postgres.storage_encrypted (eq postgres.storage_encrypted false))}}
   storage_encrypted = {{postgres.storage_encrypted}}
-  {{/if}}
-  {{#if (or postgres.deletion_protection (eq postgres.deletion_protection false))}}
   deletion_protection = {{postgres.deletion_protection}}
-  {{/if}}
-  {{#if (or postgres.skip_final_snapshot (eq postgres.skip_final_snapshot false))}}
   skip_final_snapshot = {{postgres.skip_final_snapshot}}
-  {{/if}}
   {{/if}}
 }
 {{/if}}
@@ -273,32 +257,16 @@ module "workloads" {
   backend_env = {{{ envArray workload.backend_env_variables }}}
   
   # Backend scaling configuration
-  {{#if workload.backend_cpu}}
-  backend_cpu = {{workload.backend_cpu}}
-  {{/if}}
-  {{#if workload.backend_memory}}
-  backend_memory = {{workload.backend_memory}}
-  {{/if}}
-  {{#if workload.backend_desired_count}}
-  backend_desired_count = {{workload.backend_desired_count}}
-  {{/if}}
-  
+  backend_cpu = {{default workload.backend_cpu 256}}
+  backend_memory = {{default workload.backend_memory 512}}
+  backend_desired_count = {{default workload.backend_desired_count 1}}
+
   # Backend autoscaling configuration
-  {{#if workload.backend_autoscaling_enabled}}
-  backend_autoscaling_enabled = {{workload.backend_autoscaling_enabled}}
-  {{/if}}
-  {{#if workload.backend_autoscaling_min_capacity}}
-  backend_autoscaling_min_capacity = {{workload.backend_autoscaling_min_capacity}}
-  {{/if}}
-  {{#if workload.backend_autoscaling_max_capacity}}
-  backend_autoscaling_max_capacity = {{workload.backend_autoscaling_max_capacity}}
-  {{/if}}
-  {{#if workload.backend_autoscaling_target_cpu}}
-  backend_autoscaling_target_cpu = {{workload.backend_autoscaling_target_cpu}}
-  {{/if}}
-  {{#if workload.backend_autoscaling_target_memory}}
-  backend_autoscaling_target_memory = {{workload.backend_autoscaling_target_memory}}
-  {{/if}}
+  backend_autoscaling_enabled = {{default workload.backend_autoscaling_enabled false}}
+  backend_autoscaling_min_capacity = {{default workload.backend_autoscaling_min_capacity 1}}
+  backend_autoscaling_max_capacity = {{default workload.backend_autoscaling_max_capacity 10}}
+  backend_autoscaling_target_cpu = {{default workload.backend_autoscaling_target_cpu 70}}
+  backend_autoscaling_target_memory = {{default workload.backend_autoscaling_target_memory 80}}
   {{#if sqs.enabled}}
   sqs_queue_url = module.sqs.queue_url
   sqs_policy_arn = module.sqs.sqs_access_policy_arn

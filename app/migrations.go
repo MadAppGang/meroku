@@ -20,7 +20,8 @@ import (
 // 9: Simplified Amplify domain configuration (subdomain_prefix replaces custom_domain + enable_root_domain)
 // 10: Added per-service ECR configuration (ecr_config field in services, event_processor_tasks, scheduled_tasks)
 // 11: Ensure host_port matches container_port for services (required for awsvpc network mode)
-const CurrentSchemaVersion = 11
+// 12: Ensure all postgres boolean fields have explicit default values
+const CurrentSchemaVersion = 12
 
 // EnvWithVersion extends Env with a schema version field
 type EnvWithVersion struct {
@@ -86,6 +87,11 @@ var AllMigrations = []Migration{
 		Version:     11,
 		Description: "Ensure host_port matches container_port for services (awsvpc compatibility)",
 		Apply:       migrateToV11,
+	},
+	{
+		Version:     12,
+		Description: "Ensure all postgres boolean fields have explicit default values",
+		Apply:       migrateToV12,
 	},
 }
 
@@ -594,6 +600,52 @@ func migrateToV11(data map[string]interface{}) error {
 		fmt.Println("    ℹ️  All services already have matching host_port")
 	} else {
 		fmt.Printf("    ✓ Fixed %d service(s) with mismatched or missing host_port\n", fixedCount)
+	}
+
+	return nil
+}
+
+// migrateToV12 ensures all postgres boolean fields have explicit default values
+func migrateToV12(data map[string]interface{}) error {
+	fmt.Println("  → Migrating to v12: Ensuring all postgres boolean fields have explicit values")
+
+	// Check if postgres exists
+	postgresRaw, exists := data["postgres"]
+	if !exists || postgresRaw == nil {
+		fmt.Println("    ℹ️  No postgres configuration to migrate")
+		return nil
+	}
+
+	postgres, ok := postgresRaw.(map[interface{}]interface{})
+	if !ok {
+		fmt.Println("    ⚠️  postgres is not a map, skipping migration")
+		return nil
+	}
+
+	fieldsAdded := 0
+
+	// Define default values for RDS boolean fields
+	booleanDefaults := map[string]interface{}{
+		"multi_az":                             false,
+		"storage_encrypted":                    true,
+		"deletion_protection":                  false,
+		"skip_final_snapshot":                  true,
+		"iam_database_authentication_enabled":  false,
+	}
+
+	// Add missing boolean fields with defaults
+	for field, defaultValue := range booleanDefaults {
+		if _, exists := postgres[field]; !exists {
+			postgres[field] = defaultValue
+			fieldsAdded++
+			fmt.Printf("    ✓ Added %s = %v (default)\n", field, defaultValue)
+		}
+	}
+
+	if fieldsAdded == 0 {
+		fmt.Println("    ℹ️  All postgres boolean fields already have explicit values")
+	} else {
+		fmt.Printf("    ✓ Added %d missing postgres boolean field(s)\n", fieldsAdded)
 	}
 
 	return nil
