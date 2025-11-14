@@ -110,6 +110,12 @@ variable "skip_final_snapshot" {
   description = "Skip final snapshot when deleting (not recommended for production)"
 }
 
+variable "iam_database_authentication_enabled" {
+  type        = bool
+  default     = false
+  description = "Enable IAM database authentication for passwordless access using IAM roles"
+}
+
 resource "random_password" "postgres" {
   length           = 16
   special          = true

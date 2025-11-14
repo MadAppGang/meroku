@@ -595,6 +595,37 @@ export function PostgresNodeProperties({
 									</AlertDescription>
 								</Alert>
 							)}
+
+							<div className="flex items-center justify-between p-3 bg-gray-800 rounded-lg">
+								<div className="space-y-1">
+									<Label className="text-sm font-medium flex items-center gap-2">
+										<Key className="w-4 h-4 text-blue-400" />
+										IAM Database Authentication
+									</Label>
+									<p className="text-xs text-gray-400">
+										Use IAM roles for database authentication instead of passwords
+									</p>
+								</div>
+								<Switch
+									checked={postgresConfig.iam_database_authentication_enabled || false}
+									onCheckedChange={(checked) =>
+										handleUpdateConfig({
+											iam_database_authentication_enabled: checked,
+										})
+									}
+								/>
+							</div>
+
+							{postgresConfig.iam_database_authentication_enabled && (
+								<Alert className="border-blue-600 bg-blue-900/20">
+									<Info className="h-4 w-4 text-blue-400" />
+									<AlertDescription className="text-blue-200">
+										<strong>IAM Authentication enabled.</strong> You can use AWS IAM roles
+										to manage database access. ECS tasks will be able to authenticate using
+										their IAM role instead of database passwords.
+									</AlertDescription>
+								</Alert>
+							)}
 						</CardContent>
 					</Card>
 

@@ -122,6 +122,9 @@ module "postgres" {
   username = "{{postgres.username}}"
   public_access = {{ postgres.public_access }}
   engine_version = "{{ postgres.engine_version}}"
+  {{#if (or postgres.iam_database_authentication_enabled (eq postgres.iam_database_authentication_enabled false))}}
+  iam_database_authentication_enabled = {{postgres.iam_database_authentication_enabled}}
+  {{/if}}
   {{#if postgres.aurora}}
   aurora = true
   {{!-- Handle zero values explicitly for Aurora capacity --}}
