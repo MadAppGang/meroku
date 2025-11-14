@@ -1,7 +1,6 @@
 import type { PricingResponse } from "../hooks/use-pricing";
 import { usePricingRates } from "../contexts/PricingContext";
 import {
-	calculateAuroraPrice,
 	calculateAuroraMinPrice,
 	calculateAuroraMaxPrice,
 	calculateECSPrice,
