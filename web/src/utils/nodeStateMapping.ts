@@ -62,7 +62,7 @@ export const nodeStateMapping: NodeStateConfig[] = [
 			domainName: config.domain?.domain_name || "",
 			createZone: config.domain?.create_domain_zone || false,
 			apiDomainPrefix: config.domain?.api_domain_prefix || "",
-			addEnvPrefix: config.domain?.add_env_domain_prefix || false,
+			addEnvPrefix: config.domain?.add_env_domain_prefix ?? true,
 		}),
 	},
 
@@ -91,7 +91,8 @@ export const nodeStateMapping: NodeStateConfig[] = [
 			if (config.domain?.enabled && config.domain?.api_domain_prefix) {
 				const baseDomain = config.domain.domain_name || "";
 				const apiPrefix = config.domain.api_domain_prefix || "api";
-				const envPrefix = config.domain.add_env_domain_prefix ? `${config.env}.` : "";
+				const addEnvPrefix = config.domain.add_env_domain_prefix ?? true;
+				const envPrefix = addEnvPrefix ? `${config.env}.` : "";
 				domain = baseDomain ? `${apiPrefix}.${envPrefix}${baseDomain}` : "";
 			}
 
