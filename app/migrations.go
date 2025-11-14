@@ -211,7 +211,11 @@ func migrateToV3(data map[string]interface{}) error {
 			domain["api_domain_prefix"] = ""
 		}
 		if _, exists := domain["add_env_domain_prefix"]; !exists {
-			domain["add_env_domain_prefix"] = false
+			// Default to true for non-production environments
+			// This ensures dev/staging environments get env prefix (e.g., api.dev.example.com)
+			env, _ := data["env"].(string)
+			isProd := env == "prod" || env == "production"
+			domain["add_env_domain_prefix"] = !isProd
 		}
 	}
 

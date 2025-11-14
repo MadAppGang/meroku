@@ -264,7 +264,7 @@ export function BackendServiceProperties({
 										Subdomain prefix for API Gateway (creates{" "}
 										<code className="text-blue-300">
 											{config.domain.api_domain_prefix || "api"}.
-											{config.domain.add_env_domain_prefix ? `${config.env}.` : ""}
+											{(config.domain.add_env_domain_prefix ?? true) ? `${config.env}.` : ""}
 											{config.domain.domain_name}
 										</code>
 										)
