@@ -135,6 +135,7 @@ export function AddServiceDialog({
 			memory: formData.memory,
 			desired_count: formData.desired_count,
 			health_check_path: formData.health_check_path,
+			api_domain_prefix: formData.name, // Enable custom domain by default with service name as prefix
 			ecr_config: ecrConfig,
 		};
 

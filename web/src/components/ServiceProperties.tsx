@@ -305,6 +305,91 @@ export function ServiceProperties({
 							: "Host port mapping (should match container_port for awsvpc)"}
 					</p>
 				</div>
+
+				<Separator />
+
+				{/* API Gateway Custom Domain for this Service */}
+				<div className="flex items-center justify-between">
+					<div className="flex-1">
+						<Label htmlFor={`create-api-domain-${serviceName}`}>
+							API Gateway Custom Domain
+						</Label>
+						<p className="text-xs text-gray-500 mt-1">
+							Create API Gateway custom domain for this service
+						</p>
+					</div>
+					<Switch
+						id={`create-api-domain-${serviceName}`}
+						checked={
+							serviceConfig.api_domain_prefix !== undefined &&
+							serviceConfig.api_domain_prefix !== null &&
+							serviceConfig.api_domain_prefix !== ""
+						}
+						onCheckedChange={(checked) =>
+							handleServiceChange({
+								api_domain_prefix: checked ? serviceName : "",
+							})
+						}
+						className="data-[state=checked]:bg-blue-500 data-[state=unchecked]:bg-gray-600"
+					/>
+				</div>
+
+				{/* API Domain Prefix Input - shown when enabled */}
+				{serviceConfig.api_domain_prefix && serviceConfig.api_domain_prefix !== "" && (
+					<div className="space-y-2 ml-4">
+						<Label htmlFor={`api-prefix-${serviceName}`}>
+							API Domain Prefix
+						</Label>
+						<Input
+							id={`api-prefix-${serviceName}`}
+							value={serviceConfig.api_domain_prefix}
+							onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+								handleServiceChange({
+									api_domain_prefix: e.target.value || serviceName,
+								})
+							}
+							placeholder={serviceName}
+							className="bg-gray-800 border-gray-600 text-white"
+						/>
+						<p className="text-xs text-gray-500">
+							Subdomain prefix for this service (default: service name)
+						</p>
+					</div>
+				)}
+
+				{serviceConfig.api_domain_prefix && serviceConfig.api_domain_prefix !== "" ? (
+					<div className="p-3 bg-green-900/20 border border-green-700 rounded-lg">
+						<div className="flex items-start gap-2">
+							<Info className="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0" />
+							<div className="flex-1">
+								<p className="text-xs text-gray-300">
+									<strong className="text-green-400">
+										API Gateway custom domain will be created
+									</strong>
+								</p>
+								<p className="text-xs text-gray-500 mt-1">
+									Route53 A record will point to API Gateway for this service
+								</p>
+							</div>
+						</div>
+					</div>
+				) : (
+					<div className="p-3 bg-yellow-900/20 border border-yellow-700 rounded-lg">
+						<div className="flex items-start gap-2">
+							<Info className="w-4 h-4 text-yellow-400 mt-0.5 flex-shrink-0" />
+							<div className="flex-1">
+								<p className="text-xs text-gray-300">
+									<strong className="text-yellow-400">
+										API Gateway custom domain disabled
+									</strong>
+								</p>
+								<p className="text-xs text-gray-500 mt-1">
+									Service will use default AWS API Gateway domain
+								</p>
+							</div>
+						</div>
+					</div>
+				)}
 			</CardContent>
 		</Card>
 	);

@@ -2,9 +2,13 @@ import type { PricingResponse } from "../hooks/use-pricing";
 import { usePricingRates } from "../contexts/PricingContext";
 import {
 	calculateAuroraPrice,
+	calculateAuroraMinPrice,
+	calculateAuroraMaxPrice,
+	calculateECSPrice,
 	calculateRDSPrice,
 	formatPrice,
 	type AuroraConfig,
+	type ECSConfig,
 	type RDSConfig,
 } from "../utils/awsPricing";
 import { Badge } from "./ui/badge";
@@ -35,8 +39,7 @@ export function PricingBadge({
 	// Special handling for PostgreSQL/Aurora database pricing
 	if (nodeType === "postgres" && configProperties) {
 		if (configProperties.aurora) {
-			// Aurora Serverless v2 pricing - use unified calculator
-			// This ensures consistency with backend calculations
+			// Aurora Serverless v2 pricing - show min-max range based on capacity
 			if (!rates) {
 				// Show loading state while fetching rates
 				return (
@@ -55,15 +58,29 @@ export function PricingBadge({
 				level: level,
 			};
 
-			// Use unified calculator (matches backend exactly)
-			const monthlyPrice = calculateAuroraPrice(config, rates);
+			// Calculate price range based on min and max capacity
+			const minPrice = calculateAuroraMinPrice(config, rates);
+			const maxPrice = calculateAuroraMaxPrice(config, rates);
 
+			// If min and max are the same, show single price
+			if (config.minCapacity === config.maxCapacity) {
+				return (
+					<Badge
+						variant="secondary"
+						className="absolute -top-2 -right-2 bg-green-600/90 text-white border-green-700 text-xs px-1 py-0.5"
+					>
+						{formatPrice(minPrice)}/mo
+					</Badge>
+				);
+			}
+
+			// Show price range (min-max)
 			return (
 				<Badge
 					variant="secondary"
 					className="absolute -top-2 -right-2 bg-green-600/90 text-white border-green-700 text-xs px-1 py-0.5"
 				>
-					{formatPrice(monthlyPrice)}/mo
+					{formatPrice(minPrice)}-{formatPrice(maxPrice)}/mo
 				</Badge>
 			);
 		}
@@ -131,19 +148,61 @@ export function PricingBadge({
 		"secrets-manager": "secrets",
 	};
 
-	// Special handling for backend service
-	if (nodeType === "backend" && serviceName === "Backend service") {
-		const backendPrice = pricingData.backend;
-		if (backendPrice?.levels[level]) {
+	// Special handling for backend service - calculate dynamically
+	if (nodeType === "backend" && serviceName === "Backend service" && configProperties) {
+		if (!rates) {
+			return (
+				<Badge
+					variant="secondary"
+					className="absolute -top-2 -right-2 bg-gray-600/90 text-gray-300 border-gray-700 text-xs px-1 py-0.5"
+				>
+					...
+				</Badge>
+			);
+		}
+
+		// Extract configuration from configProperties
+		const cpu = typeof configProperties.cpu === 'string'
+			? parseInt(configProperties.cpu)
+			: (configProperties.cpu || 256);
+		const memory = typeof configProperties.memory === 'string'
+			? parseInt(configProperties.memory)
+			: (configProperties.memory || 512);
+
+		// If autoscaling is enabled, show price range (min to max)
+		if (configProperties.autoscalingEnabled) {
+			const minCount = configProperties.autoscalingMinCapacity || 1;
+			const maxCount = configProperties.autoscalingMaxCapacity || 1;
+
+			const minConfig: ECSConfig = { cpu, memory, desiredCount: minCount };
+			const maxConfig: ECSConfig = { cpu, memory, desiredCount: maxCount };
+
+			const minPrice = calculateECSPrice(minConfig, rates);
+			const maxPrice = calculateECSPrice(maxConfig, rates);
+
 			return (
 				<Badge
 					variant="secondary"
 					className="absolute -top-2 -right-2 bg-green-600/90 text-white border-green-700 text-xs px-1 py-0.5"
 				>
-					${backendPrice.levels[level].monthlyPrice.toFixed(0)}/mo
+					{formatPrice(minPrice)}-{formatPrice(maxPrice)}/mo
 				</Badge>
 			);
 		}
+
+		// Fixed capacity - show single price
+		const desiredCount = configProperties.desiredCount || 1;
+		const ecsConfig: ECSConfig = { cpu, memory, desiredCount };
+		const monthlyPrice = calculateECSPrice(ecsConfig, rates);
+
+		return (
+			<Badge
+				variant="secondary"
+				className="absolute -top-2 -right-2 bg-green-600/90 text-white border-green-700 text-xs px-1 py-0.5"
+			>
+				{formatPrice(monthlyPrice)}/mo
+			</Badge>
+		);
 	}
 
 	// Special handling for scheduled tasks
@@ -196,25 +255,45 @@ export function PricingBadge({
 		}
 	}
 
-	// For other services, check if there's a specific pricing entry
-	if (nodeType === "service" && serviceName) {
-		const serviceKey = serviceName
-			.toLowerCase()
-			.replace(/-/g, "_")
-			.replace(/ /g, "_");
-		if (pricingData[serviceKey]) {
-			const price = pricingData[serviceKey].levels[level];
-			if (price) {
-				return (
-					<Badge
-						variant="secondary"
-						className="absolute -top-2 -right-2 bg-green-600/90 text-white border-green-700 text-xs px-1 py-0.5"
-					>
-						${price.monthlyPrice.toFixed(0)}/mo
-					</Badge>
-				);
-			}
+	// For other services, calculate dynamically from config properties
+	if (nodeType === "service" && serviceName && configProperties) {
+		if (!rates) {
+			return (
+				<Badge
+					variant="secondary"
+					className="absolute -top-2 -right-2 bg-gray-600/90 text-gray-300 border-gray-700 text-xs px-1 py-0.5"
+				>
+					...
+				</Badge>
+			);
 		}
+
+		// Extract configuration from configProperties
+		const cpu = typeof configProperties.cpu === 'string'
+			? parseInt(configProperties.cpu)
+			: (configProperties.cpu || 256);
+		const memory = typeof configProperties.memory === 'string'
+			? parseInt(configProperties.memory)
+			: (configProperties.memory || 512);
+		const desiredCount = configProperties.desiredCount || 1;
+
+		const ecsConfig: ECSConfig = {
+			cpu,
+			memory,
+			desiredCount,
+		};
+
+		// Calculate price using ECS calculator
+		const monthlyPrice = calculateECSPrice(ecsConfig, rates);
+
+		return (
+			<Badge
+				variant="secondary"
+				className="absolute -top-2 -right-2 bg-green-600/90 text-white border-green-700 text-xs px-1 py-0.5"
+			>
+				{formatPrice(monthlyPrice)}/mo
+			</Badge>
+		);
 	}
 
 	// Use the type mapping

@@ -216,6 +216,7 @@ export interface YamlInfrastructureConfig {
 		essential?: boolean;
 		public_access?: boolean;
 		health_check_path?: string;
+		api_domain_prefix?: string;
 		env_vars?: Record<string, string>;
 		environment_variables?: Record<string, string>;
 		env_variables?: Array<{

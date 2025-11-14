@@ -45,6 +45,19 @@ export function BackendServiceProperties({
 		});
 	};
 
+	const handleCreateApiDomainChange = (checked: boolean) => {
+		onConfigChange({
+			...config,
+			domain: {
+				enabled: config.domain?.enabled ?? false,
+				...config.domain,
+				// When enabled, set default prefix to "api"
+				// When disabled, set to empty string to skip API Gateway custom domain creation
+				api_domain_prefix: checked ? "api" : "",
+			},
+		});
+	};
+
 	return (
 		<Card className="w-full">
 			<CardHeader>
@@ -198,6 +211,94 @@ export function BackendServiceProperties({
 						Port your application listens on (default: 8080)
 					</p>
 				</div>
+
+				<Separator />
+
+				{/* API Gateway Custom Domain */}
+				<div className="flex items-center justify-between">
+					<div className="flex-1">
+						<Label htmlFor="create-api-domain-backend">
+							API Gateway Custom Domain
+						</Label>
+						<p className="text-xs text-gray-500 mt-1">
+							Create API Gateway custom domain and Route53 A record for backend
+							API
+						</p>
+					</div>
+					<Switch
+						id="create-api-domain-backend"
+						checked={
+							config.domain?.api_domain_prefix !== undefined &&
+							config.domain?.api_domain_prefix !== null &&
+							config.domain?.api_domain_prefix !== ""
+						}
+						onCheckedChange={handleCreateApiDomainChange}
+						className="data-[state=checked]:bg-blue-500 data-[state=unchecked]:bg-gray-600"
+					/>
+				</div>
+
+				{/* API Domain Prefix Input - shown when enabled */}
+				{config.domain?.api_domain_prefix &&
+					config.domain.api_domain_prefix !== "" && (
+						<div className="space-y-2 ml-4">
+							<Label htmlFor="api_domain_prefix">API Domain Prefix</Label>
+							<Input
+								id="api_domain_prefix"
+								value={config.domain.api_domain_prefix}
+								onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+									onConfigChange({
+										...config,
+										domain: {
+											enabled: config.domain?.enabled ?? false,
+											...config.domain,
+											api_domain_prefix: e.target.value || "api",
+										},
+									})
+								}
+								placeholder="api"
+								className="bg-gray-800 border-gray-600 text-white"
+							/>
+							<p className="text-xs text-gray-500">
+								Subdomain prefix for API Gateway (e.g., "api" creates
+								api.yourdomain.com)
+							</p>
+						</div>
+					)}
+
+				{config.domain?.api_domain_prefix &&
+				config.domain.api_domain_prefix !== "" ? (
+					<div className="p-3 bg-green-900/20 border border-green-700 rounded-lg">
+						<div className="flex items-start gap-2">
+							<Info className="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0" />
+							<div className="flex-1">
+								<p className="text-xs text-gray-300">
+									<strong className="text-green-400">
+										API Gateway custom domain will be created
+									</strong>
+								</p>
+								<p className="text-xs text-gray-500 mt-1">
+									Route53 A record will point to API Gateway for backend access
+								</p>
+							</div>
+						</div>
+					</div>
+				) : (
+					<div className="p-3 bg-yellow-900/20 border border-yellow-700 rounded-lg">
+						<div className="flex items-start gap-2">
+							<Info className="w-4 h-4 text-yellow-400 mt-0.5 flex-shrink-0" />
+							<div className="flex-1">
+								<p className="text-xs text-gray-300">
+									<strong className="text-yellow-400">
+										API Gateway custom domain disabled
+									</strong>
+								</p>
+								<p className="text-xs text-gray-500 mt-1">
+									Backend will use default AWS API Gateway domain
+								</p>
+							</div>
+						</div>
+					</div>
+				)}
 			</CardContent>
 		</Card>
 	);

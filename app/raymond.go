@@ -193,6 +193,15 @@ func registerCustomHelpers() {
 		return options.Fn()
 	})
 
+	raymond.RegisterHelper("isDefined", func(value interface{}, options *raymond.Options) interface{} {
+		// Check if value is nil - this is the ONLY condition for undefined
+		// Empty strings, 0, false, empty arrays etc. are all considered "defined"
+		if value == nil {
+			return options.Inverse()
+		}
+		return options.Fn()
+	})
+
 	raymond.RegisterHelper("mmap", func(value interface{}) string {
 		if value == nil {
 			return "{}"
