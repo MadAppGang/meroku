@@ -27,7 +27,7 @@ function deepEqual(a: any, b: any): boolean {
  * useMemo with deep equality comparison instead of reference equality
  */
 export function useDeepMemo<T>(factory: () => T, deps: any[]): T {
-	const ref = useRef<{ deps: any[]; value: T }>();
+	const ref = useRef<{ deps: any[]; value: T } | undefined>(undefined);
 
 	if (!ref.current || !deepEqual(ref.current.deps, deps)) {
 		ref.current = {
