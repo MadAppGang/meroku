@@ -95,6 +95,32 @@ export function calculateAuroraPrice(
 }
 
 /**
+ * Calculate minimum Aurora Serverless price (at min capacity)
+ * This represents the lowest possible cost when scaled to minimum ACUs
+ */
+export function calculateAuroraMinPrice(
+	config: AuroraConfig,
+	rates: AWSPriceRates,
+): number {
+	const minACU = config.minCapacity;
+	const hourlyACUCost = minACU * rates.aurora.acuHourly;
+	return hourlyACUCost * HOURS_PER_MONTH;
+}
+
+/**
+ * Calculate maximum Aurora Serverless price (at max capacity)
+ * This represents the highest possible cost when scaled to maximum ACUs
+ */
+export function calculateAuroraMaxPrice(
+	config: AuroraConfig,
+	rates: AWSPriceRates,
+): number {
+	const maxACU = config.maxCapacity;
+	const hourlyACUCost = maxACU * rates.aurora.acuHourly;
+	return hourlyACUCost * HOURS_PER_MONTH;
+}
+
+/**
  * Calculate average ACU based on workload level
  *
  * CRITICAL: This logic MUST match backend exactly

@@ -118,6 +118,7 @@ export function Sidebar({
   const [showLeftScroll, setShowLeftScroll] = useState(false);
   const [showRightScroll, setShowRightScroll] = useState(false);
   const tabsContainerRef = useRef<HTMLDivElement>(null);
+  const tabButtonRefs = useRef<{ [key: string]: HTMLButtonElement | null }>({});
 
   // Function to get available tabs for the current node type
   const getAvailableTabs = useCallback((node: ComponentNode | null) => {
@@ -292,8 +293,55 @@ export function Sidebar({
         left: direction === "left" ? -scrollAmount : scrollAmount,
         behavior: "smooth",
       });
+      // Check scroll buttons after animation completes
+      setTimeout(() => checkScrollButtons(), 350);
     }
   };
+
+  // Function to center the active tab in view
+  const centerTab = useCallback((tabId: string) => {
+    const container = tabsContainerRef.current;
+    const button = tabButtonRefs.current[tabId];
+
+    if (container && button) {
+      const containerWidth = container.clientWidth;
+      const buttonLeft = button.offsetLeft;
+      const buttonWidth = button.offsetWidth;
+
+      // Calculate scroll position to center the button
+      const scrollPosition = buttonLeft - (containerWidth / 2) + (buttonWidth / 2);
+
+      container.scrollTo({
+        left: scrollPosition,
+        behavior: "smooth",
+      });
+      // Check scroll buttons after animation completes
+      setTimeout(() => checkScrollButtons(), 350);
+    }
+  }, [checkScrollButtons]);
+
+  // Auto-center the active tab when it changes
+  useEffect(() => {
+    if (activeTab) {
+      // Small delay to ensure DOM is ready
+      const timer = setTimeout(() => {
+        centerTab(activeTab);
+        // Don't call checkScrollButtons here - let the scroll event listener handle it
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [activeTab, centerTab]);
+
+  // Check scroll buttons when selectedNode changes (new tabs loaded)
+  useEffect(() => {
+    if (selectedNode) {
+      // Delay to ensure tabs are rendered in DOM
+      const timer = setTimeout(() => {
+        checkScrollButtons();
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [selectedNode, checkScrollButtons]);
 
   if (!isOpen || !selectedNode) return null;
 
@@ -364,27 +412,35 @@ export function Sidebar({
       </div>
 
       <div className="relative flex-shrink-0 border-b border-gray-700">
-        {/* Left scroll button */}
-        {showLeftScroll && (
-          <button
-            type="button"
-            onClick={() => scrollTabs("left")}
-            className="absolute left-0 top-0 bottom-0 z-10 px-2 bg-gradient-to-r from-gray-900 via-gray-900 to-transparent flex items-center justify-center"
-          >
-            <ChevronLeft className="w-4 h-4 text-gray-400" />
-          </button>
-        )}
+        {/* Left scroll button - always visible */}
+        <button
+          type="button"
+          onClick={() => scrollTabs("left")}
+          disabled={!showLeftScroll}
+          className={`absolute left-0 top-0 bottom-0 z-10 px-3 bg-gradient-to-r from-gray-900 via-gray-900 to-transparent flex items-center justify-center transition-all ${
+            showLeftScroll
+              ? "opacity-100 cursor-pointer hover:bg-gradient-to-r hover:from-gray-800"
+              : "opacity-30 cursor-not-allowed"
+          }`}
+          aria-label="Scroll left"
+        >
+          <ChevronLeft className={`w-5 h-5 ${showLeftScroll ? "text-blue-400" : "text-gray-600"}`} />
+        </button>
 
-        {/* Right scroll button */}
-        {showRightScroll && (
-          <button
-            type="button"
-            onClick={() => scrollTabs("right")}
-            className="absolute right-0 top-0 bottom-0 z-10 px-2 bg-gradient-to-l from-gray-900 via-gray-900 to-transparent flex items-center justify-center"
-          >
-            <ChevronRight className="w-4 h-4 text-gray-400" />
-          </button>
-        )}
+        {/* Right scroll button - always visible */}
+        <button
+          type="button"
+          onClick={() => scrollTabs("right")}
+          disabled={!showRightScroll}
+          className={`absolute right-0 top-0 bottom-0 z-10 px-3 bg-gradient-to-l from-gray-900 via-gray-900 to-transparent flex items-center justify-center transition-all ${
+            showRightScroll
+              ? "opacity-100 cursor-pointer hover:bg-gradient-to-l hover:from-gray-800"
+              : "opacity-30 cursor-not-allowed"
+          }`}
+          aria-label="Scroll right"
+        >
+          <ChevronRight className={`w-5 h-5 ${showRightScroll ? "text-blue-400" : "text-gray-600"}`} />
+        </button>
 
         <div
           ref={tabsContainerRef}
@@ -396,6 +452,9 @@ export function Sidebar({
               <button
                 type="button"
                 key={tab.id}
+                ref={(el) => {
+                  tabButtonRefs.current[tab.id] = el;
+                }}
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
                   activeTab === tab.id
