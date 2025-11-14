@@ -259,8 +259,19 @@ export function BackendServiceProperties({
 								className="bg-gray-800 border-gray-600 text-white"
 							/>
 							<p className="text-xs text-gray-500">
-								Subdomain prefix for API Gateway (e.g., "api" creates
-								api.yourdomain.com)
+								{config.domain?.domain_name ? (
+									<>
+										Subdomain prefix for API Gateway (creates{" "}
+										<code className="text-blue-300">
+											{config.domain.api_domain_prefix || "api"}.
+											{config.domain.add_env_domain_prefix ? `${config.env}.` : ""}
+											{config.domain.domain_name}
+										</code>
+										)
+									</>
+								) : (
+									"Subdomain prefix for API Gateway (configure domain in Route53 settings)"
+								)}
 							</p>
 						</div>
 					)}
