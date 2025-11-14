@@ -586,12 +586,11 @@ export function PostgresNodeProperties({
 							</div>
 
 							{postgresConfig.public_access && (
-								<Alert className="border-yellow-600 bg-yellow-50">
-									<AlertCircle className="h-4 w-4 text-yellow-600" />
-									<AlertDescription>
-										Enabling public access exposes your database to the
-										internet. Ensure proper security groups and strong
-										passwords.
+								<Alert className="border-yellow-600 bg-yellow-900/20">
+									<AlertCircle className="h-4 w-4 text-yellow-400" />
+									<AlertDescription className="text-yellow-200">
+										<strong>Warning:</strong> Enabling public access exposes your database to the
+										internet. Ensure proper security groups and strong passwords.
 									</AlertDescription>
 								</Alert>
 							)}
@@ -615,17 +614,6 @@ export function PostgresNodeProperties({
 									}
 								/>
 							</div>
-
-							{postgresConfig.iam_database_authentication_enabled && (
-								<Alert className="border-blue-600 bg-blue-900/20">
-									<Info className="h-4 w-4 text-blue-400" />
-									<AlertDescription className="text-blue-200">
-										<strong>IAM Authentication enabled.</strong> You can use AWS IAM roles
-										to manage database access. ECS tasks will be able to authenticate using
-										their IAM role instead of database passwords.
-									</AlertDescription>
-								</Alert>
-							)}
 						</CardContent>
 					</Card>
 
