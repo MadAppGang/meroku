@@ -98,6 +98,9 @@ func runCommandToDeploy(env string) error {
 }
 
 func handleGenerateCommand(args []string) {
+	// Register custom Handlebars helpers
+	registerCustomHelpers()
+
 	if len(args) == 0 {
 		fmt.Println("Usage: meroku generate <environment>")
 		fmt.Println("Example: meroku generate dev")
