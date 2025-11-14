@@ -4,6 +4,7 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -204,20 +205,84 @@ func spaHandler() http.HandlerFunc {
 	}
 }
 
-func startSPAServer(port string) {
+// isPortAvailable checks if a port is available for use
+func isPortAvailable(port string) bool {
+	ln, err := net.Listen("tcp", ":"+port)
+	if err != nil {
+		return false
+	}
+	ln.Close()
+	return true
+}
+
+// findAvailablePort finds an available port starting from the preferred port
+func findAvailablePort(preferredPort string) (string, bool) {
+	// Try preferred port first
+	if isPortAvailable(preferredPort) {
+		return preferredPort, false
+	}
+
+	// Try ports 8081-8089
+	for port := 8081; port <= 8089; port++ {
+		portStr := fmt.Sprintf("%d", port)
+		if isPortAvailable(portStr) {
+			return portStr, true
+		}
+	}
+
+	return "", false
+}
+
+func startSPAServer(preferredPort string) {
+	// Find an available port
+	port, portWasInUse := findAvailablePort(preferredPort)
+	if port == "" {
+		fmt.Printf("\n⚠️  ERROR: No available ports found between 8080-8089.\n")
+		fmt.Printf("    Please close other meroku instances or services using these ports.\n\n")
+		fmt.Printf("Press Enter to return to main menu...")
+		fmt.Scanln()
+		return
+	}
+
+	// Warn user if preferred port was already in use
+	if portWasInUse {
+		fmt.Printf("\n⚠️  WARNING: Port %s is already in use (possibly another meroku instance).\n", preferredPort)
+		fmt.Printf("    Using port %s instead.\n", port)
+		fmt.Printf("    You may want to close the other instance to avoid confusion.\n\n")
+		time.Sleep(2 * time.Second)
+	}
+
 	// Create the main router
 	router := mainRouter()
+
+	// Channel to receive server start errors
+	errChan := make(chan error, 1)
 
 	// Start server in a goroutine
 	serverURL := "http://localhost:" + port
 	go func() {
 		if err := http.ListenAndServe(":"+port, router); err != nil {
-			fmt.Printf("Failed to start server: %v\n", err)
+			errChan <- err
 		}
 	}()
 
-	// Give the server a moment to start
-	time.Sleep(1 * time.Second)
+	// Give the server a moment to start and check for errors
+	time.Sleep(500 * time.Millisecond)
+
+	select {
+	case err := <-errChan:
+		fmt.Printf("\n⚠️  ERROR: Failed to start server: %v\n", err)
+		fmt.Printf("Press Enter to return to main menu...")
+		fmt.Scanln()
+		return
+	default:
+		// Server started successfully
+	}
+
+	// Show success message with the actual port being used
+	if port != preferredPort {
+		fmt.Printf("✓ Server started successfully on port %s\n", port)
+	}
 
 	// Open the web app
 	if err := openBrowser(serverURL); err != nil {
@@ -230,20 +295,60 @@ func startSPAServer(port string) {
 	}
 }
 
-func startSPAServerWithAutoOpen(port string, autoOpen bool, runTUI bool) {
+func startSPAServerWithAutoOpen(preferredPort string, autoOpen bool, runTUI bool) {
+	// Find an available port
+	port, portWasInUse := findAvailablePort(preferredPort)
+	if port == "" {
+		fmt.Printf("\n⚠️  ERROR: No available ports found between 8080-8089.\n")
+		fmt.Printf("    Please close other meroku instances or services using these ports.\n\n")
+		if runTUI {
+			fmt.Printf("Press Enter to return to main menu...")
+			fmt.Scanln()
+		}
+		return
+	}
+
+	// Warn user if preferred port was already in use
+	if portWasInUse {
+		fmt.Printf("\n⚠️  WARNING: Port %s is already in use (possibly another meroku instance).\n", preferredPort)
+		fmt.Printf("    Using port %s instead.\n", port)
+		fmt.Printf("    You may want to close the other instance to avoid confusion.\n\n")
+		time.Sleep(2 * time.Second)
+	}
+
 	// Create the main router
 	router := mainRouter()
+
+	// Channel to receive server start errors
+	errChan := make(chan error, 1)
 
 	// Start server in a goroutine
 	serverURL := "http://localhost:" + port
 	go func() {
 		if err := http.ListenAndServe(":"+port, router); err != nil {
-			fmt.Printf("Failed to start server: %v\n", err)
+			errChan <- err
 		}
 	}()
 
-	// Give the server a moment to start
-	time.Sleep(1 * time.Second)
+	// Give the server a moment to start and check for errors
+	time.Sleep(500 * time.Millisecond)
+
+	select {
+	case err := <-errChan:
+		fmt.Printf("\n⚠️  ERROR: Failed to start server: %v\n", err)
+		if runTUI {
+			fmt.Printf("Press Enter to return to main menu...")
+			fmt.Scanln()
+		}
+		return
+	default:
+		// Server started successfully
+	}
+
+	// Show success message with the actual port being used
+	if port != preferredPort {
+		fmt.Printf("✓ Server started successfully on port %s\n", port)
+	}
 
 	// Open the web app if requested
 	if autoOpen {

@@ -16,17 +16,16 @@ if [ ! -d "node_modules" ]; then
     pnpm install
 fi
 
-# Build the web app
+# Build the web app (vite outputs directly to ../app/webapp)
 echo "Running pnpm build..."
 pnpm build
-
-# Copy dist to app directory
-echo "Copying dist files..."
-rm -rf ../app/dist
-cp -r dist ../app/
 
 # Return to original directory
 cd "$CURRENT_DIR"
 
-echo "Web build complete! Now you can build the Go binary with:"
-echo "go build -o meroku ."
+echo ""
+echo "✓ Web build complete!"
+echo "  Output: app/webapp/"
+echo ""
+echo "Now you can build the Go binary with:"
+echo "  cd app && go build -o ../meroku ."
