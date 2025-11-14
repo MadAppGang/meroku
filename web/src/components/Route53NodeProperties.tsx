@@ -109,7 +109,7 @@ export function Route53NodeProperties({
 	// Calculate the full domain based on settings
 	const fullDomain =
 		addPrefix && !config.is_prod ? `${config.env}.${domainName}` : domainName;
-	const apiDomain = `${apiPrefix}.${fullDomain}`;
+// 	const apiDomain = `${apiPrefix}.${fullDomain}`;
 
 	return (
 		<div className="space-y-6">
