@@ -85,21 +85,32 @@ export const nodeStateMapping: NodeStateConfig[] = [
 		name: "Backend service",
 		type: "backend",
 		enabled: () => true, // Always enabled (required)
-		properties: (config) => ({
-			serviceName: `${config.project}_backend_${config.env}`,
-			port: config.workload?.backend_image_port || 8080,
-			healthEndpoint: config.workload?.backend_health_endpoint || "/health",
-			cpu: config.workload?.backend_cpu || "256",
-			memory: config.workload?.backend_memory || "512",
-			envVariables: config.workload?.backend_env_variables || {},
-			desiredCount: config.workload?.backend_desired_count || 1,
-			autoscalingEnabled: config.workload?.backend_autoscaling_enabled || false,
-			autoscalingMinCapacity:
-				config.workload?.backend_autoscaling_min_capacity || 1,
-			autoscalingMaxCapacity:
-				config.workload?.backend_autoscaling_max_capacity || 10,
-			domain: config.api_domain || `api.${config.project}.com`,
-		}),
+		properties: (config) => {
+			// Calculate the actual Route53 domain if custom domain is enabled
+			let domain = "";
+			if (config.domain?.enabled && config.domain?.api_domain_prefix) {
+				const baseDomain = config.domain.domain_name || "";
+				const apiPrefix = config.domain.api_domain_prefix || "api";
+				const envPrefix = config.domain.add_env_domain_prefix ? `${config.env}.` : "";
+				domain = baseDomain ? `${apiPrefix}.${envPrefix}${baseDomain}` : "";
+			}
+
+			return {
+				serviceName: `${config.project}_backend_${config.env}`,
+				port: config.workload?.backend_image_port || 8080,
+				healthEndpoint: config.workload?.backend_health_endpoint || "/health",
+				cpu: config.workload?.backend_cpu || "256",
+				memory: config.workload?.backend_memory || "512",
+				envVariables: config.workload?.backend_env_variables || {},
+				desiredCount: config.workload?.backend_desired_count || 1,
+				autoscalingEnabled: config.workload?.backend_autoscaling_enabled || false,
+				autoscalingMinCapacity:
+					config.workload?.backend_autoscaling_min_capacity || 1,
+				autoscalingMaxCapacity:
+					config.workload?.backend_autoscaling_max_capacity || 10,
+				domain: domain,
+			};
+		},
 	},
 
 	// Container Registry
