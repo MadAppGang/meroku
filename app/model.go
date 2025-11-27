@@ -41,6 +41,8 @@ type Env struct {
 	Buckets             []BucketConfig       `yaml:"buckets"`
 	Services            []Service            `yaml:"services"`
 	AmplifyApps         []AmplifyApp         `yaml:"amplify_apps,omitempty"`
+	// Custom Extensions (for SNS, SQS, Lambda, etc.)
+	Extensions          Extensions           `yaml:"extensions,omitempty"`
 }
 
 type AppSync struct {
@@ -255,6 +257,52 @@ type AmplifyBranch struct {
 	EnablePullRequestPreview  bool              `yaml:"enable_pull_request_preview,omitempty"`
 	EnvironmentVariables      map[string]string `yaml:"environment_variables,omitempty"`
 	CustomSubdomains          []string          `yaml:"custom_subdomains,omitempty"`              // For branch-specific subdomains
+}
+
+// ============================================================================
+// CUSTOM EXTENSIONS
+// ============================================================================
+
+// Extensions represents custom infrastructure extensions defined in YAML
+type Extensions struct {
+	SNSTopics   []SNSTopicExtension   `yaml:"sns_topics,omitempty"`
+	SQSQueues   []SQSQueueExtension   `yaml:"sqs_queues,omitempty"`
+}
+
+// SNSTopicExtension defines an SNS topic with optional webhooks
+type SNSTopicExtension struct {
+	Name               string             `yaml:"name"`
+	DisplayName        string             `yaml:"display_name,omitempty"`
+	AddToBackendEnv    string             `yaml:"add_to_backend_env,omitempty"`    // Env var name for ARN
+	FIFO               bool               `yaml:"fifo,omitempty"`
+	ContentBasedDedup  bool               `yaml:"content_based_dedup,omitempty"`
+	KMSKeyID           string             `yaml:"kms_key_id,omitempty"`
+	Webhooks           []SNSWebhook       `yaml:"webhooks,omitempty"`
+}
+
+// SNSWebhook defines an HTTP(S) subscription to an SNS topic
+type SNSWebhook struct {
+	Path               string                 `yaml:"path"`
+	RawMessageDelivery bool                   `yaml:"raw_message_delivery,omitempty"`
+	FilterPolicy       map[string]interface{} `yaml:"filter_policy,omitempty"`
+}
+
+// SQSQueueExtension defines an SQS queue with optional DLQ
+type SQSQueueExtension struct {
+	Name                string   `yaml:"name"`
+	AddToBackendEnv     string   `yaml:"add_to_backend_env,omitempty"`     // Env var for URL
+	AddARNToBackendEnv  string   `yaml:"add_arn_to_backend_env,omitempty"` // Env var for ARN
+	FIFO                bool     `yaml:"fifo,omitempty"`
+	VisibilityTimeout   int      `yaml:"visibility_timeout,omitempty"`    // default: 30
+	MessageRetention    int      `yaml:"message_retention,omitempty"`     // default: 345600 (4 days)
+	MaxMessageSize      int      `yaml:"max_message_size,omitempty"`      // default: 262144
+	DelaySeconds        int      `yaml:"delay_seconds,omitempty"`
+	ReceiveWaitTime     int      `yaml:"receive_wait_time,omitempty"`
+	DLQEnabled          bool     `yaml:"dlq_enabled,omitempty"`           // default: true
+	DLQMaxReceive       int      `yaml:"dlq_max_receive,omitempty"`       // default: 3
+	DLQRetention        int      `yaml:"dlq_retention,omitempty"`         // default: 1209600 (14 days)
+	KMSKeyID            string   `yaml:"kms_key_id,omitempty"`
+	SNSSubscriptions    []string `yaml:"sns_subscriptions,omitempty"`     // Names of SNS topics to subscribe to
 }
 
 // create function which generate random string
