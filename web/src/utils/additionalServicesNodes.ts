@@ -34,7 +34,7 @@ export function generateAdditionalServiceNodes(
 				configProperties: {
 					cpu: service.cpu,
 					memory: service.memory,
-					desiredCount: service.desired_count || 1,
+					desiredCount: service.desired_count ?? 1,
 					port: service.container_port,
 					xrayEnabled: service.xray_enabled,
 					serviceType: getServiceType(service.name),

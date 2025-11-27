@@ -99,8 +99,8 @@ export function BackendScalingConfiguration({
 	);
 	const [desiredCount, setDesiredCount] = useState(
 		isService && serviceConfig
-			? serviceConfig.desired_count || 1
-			: config.workload?.backend_desired_count || 1,
+			? serviceConfig.desired_count ?? 1
+			: config.workload?.backend_desired_count ?? 1,
 	);
 	const [autoscalingEnabled, setAutoscalingEnabled] = useState(
 		isService ? false : config.workload?.backend_autoscaling_enabled || false,
