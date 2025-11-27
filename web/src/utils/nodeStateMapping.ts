@@ -103,7 +103,7 @@ export const nodeStateMapping: NodeStateConfig[] = [
 				cpu: config.workload?.backend_cpu || "256",
 				memory: config.workload?.backend_memory || "512",
 				envVariables: config.workload?.backend_env_variables || {},
-				desiredCount: config.workload?.backend_desired_count || 1,
+				desiredCount: config.workload?.backend_desired_count ?? 1,
 				autoscalingEnabled: config.workload?.backend_autoscaling_enabled || false,
 				autoscalingMinCapacity:
 					config.workload?.backend_autoscaling_min_capacity || 1,
@@ -260,7 +260,7 @@ export function getDynamicNodeStateMapping(
 				type: "service",
 				enabled: () => true,
 				properties: () => ({
-					desiredCount: service.desired_count || 1,
+					desiredCount: service.desired_count ?? 1,
 					cpu: service.cpu || 256,
 					memory: service.memory || 512,
 					containerPort: service.container_port || 3000,
