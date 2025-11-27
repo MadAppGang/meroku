@@ -181,6 +181,114 @@ module "alb" {
   private_subnets = local.subnet_ids
 }
 {{/if}}
+
+{{#if has_custom_pre}}
+# ============================================================================
+# CUSTOM PRE-MODULE (runs before workloads module)
+# Source: custom/pre/
+# Outputs from this module can feed into workloads (e.g., backend_env_vars)
+# ============================================================================
+module "custom_pre" {
+  source = "{{custom_modules}}/pre"
+
+  # Context variables
+  project    = "{{project}}"
+  env        = "{{env}}"
+  region     = "{{region}}"
+  account_id = "{{account_id}}"
+  vpc_id     = local.vpc_id
+  subnet_ids = local.subnet_ids
+}
+{{/if}}
+
+{{#compare (len extensions.sns_topics) ">" 0}}
+# ============================================================================
+# YAML EXTENSIONS - SNS Topics
+# Defined in extensions.sns_topics in YAML config
+# ============================================================================
+{{#each extensions.sns_topics}}
+resource "aws_sns_topic" "ext_{{name}}" {
+  name = "{{@root.project}}-{{@root.env}}-{{name}}{{#if fifo}}.fifo{{/if}}"
+  {{#if display_name}}
+  display_name = "{{display_name}}"
+  {{/if}}
+  {{#if fifo}}
+  fifo_topic                  = true
+  content_based_deduplication = {{content_based_dedup}}
+  {{/if}}
+  {{#if kms_key_id}}
+  kms_master_key_id = "{{kms_key_id}}"
+  {{/if}}
+
+  tags = {
+    Name        = "{{@root.project}}-{{@root.env}}-{{name}}"
+    Project     = "{{@root.project}}"
+    Environment = "{{@root.env}}"
+    ManagedBy   = "meroku-extensions"
+  }
+}
+{{/each}}
+{{/compare}}
+
+{{#compare (len extensions.sqs_queues) ">" 0}}
+# ============================================================================
+# YAML EXTENSIONS - SQS Queues
+# Defined in extensions.sqs_queues in YAML config
+# ============================================================================
+{{#each extensions.sqs_queues}}
+{{#if dlq_enabled}}
+# Dead Letter Queue for {{name}}
+resource "aws_sqs_queue" "ext_{{name}}_dlq" {
+  name = "{{@root.project}}-{{@root.env}}-{{name}}-dlq{{#if fifo}}.fifo{{/if}}"
+  {{#if fifo}}
+  fifo_queue                  = true
+  content_based_deduplication = true
+  {{/if}}
+  message_retention_seconds = {{#if dlq_retention}}{{dlq_retention}}{{else}}1209600{{/if}}
+  {{#if kms_key_id}}
+  kms_master_key_id = "{{kms_key_id}}"
+  {{/if}}
+
+  tags = {
+    Name        = "{{@root.project}}-{{@root.env}}-{{name}}-dlq"
+    Project     = "{{@root.project}}"
+    Environment = "{{@root.env}}"
+    ManagedBy   = "meroku-extensions"
+  }
+}
+{{/if}}
+
+resource "aws_sqs_queue" "ext_{{name}}" {
+  name = "{{@root.project}}-{{@root.env}}-{{name}}{{#if fifo}}.fifo{{/if}}"
+  {{#if fifo}}
+  fifo_queue                  = true
+  content_based_deduplication = true
+  {{/if}}
+  visibility_timeout_seconds = {{#if visibility_timeout}}{{visibility_timeout}}{{else}}30{{/if}}
+  message_retention_seconds  = {{#if message_retention}}{{message_retention}}{{else}}345600{{/if}}
+  max_message_size          = {{#if max_message_size}}{{max_message_size}}{{else}}262144{{/if}}
+  delay_seconds             = {{#if delay_seconds}}{{delay_seconds}}{{else}}0{{/if}}
+  receive_wait_time_seconds = {{#if receive_wait_time}}{{receive_wait_time}}{{else}}0{{/if}}
+  {{#if kms_key_id}}
+  kms_master_key_id = "{{kms_key_id}}"
+  {{/if}}
+  {{#if dlq_enabled}}
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.ext_{{name}}_dlq.arn
+    maxReceiveCount     = {{#if dlq_max_receive}}{{dlq_max_receive}}{{else}}3{{/if}}
+  })
+  {{/if}}
+
+  tags = {
+    Name        = "{{@root.project}}-{{@root.env}}-{{name}}"
+    Project     = "{{@root.project}}"
+    Environment = "{{@root.env}}"
+    ManagedBy   = "meroku-extensions"
+  }
+}
+{{/each}}
+{{/compare}}
+
 module "workloads" {
   source = "{{ modules }}/workloads"
   project    = "{{project}}"
@@ -254,8 +362,18 @@ module "workloads" {
   xray_enabled = {{workload.xray_enabled}}
   pgadmin_enabled = {{workload.install_pg_admin}}
   pgadmin_email = "{{workload.pg_admin_email}}"
-  backend_env = {{{ envArray workload.backend_env_variables }}}
-  
+  # Backend environment variables merged from:
+  # 1. YAML backend_env_variables
+  # 2. Custom pre-module outputs (if exists)
+  # 3. YAML extensions (SNS topics, SQS queues with add_to_backend_env)
+  backend_env = concat(
+    {{{ envArray workload.backend_env_variables }}}{{#if has_custom_pre}},
+    try(module.custom_pre.backend_env_vars, []){{/if}}{{#each extensions.sns_topics}}{{#if add_to_backend_env}},
+    [{ name = "{{add_to_backend_env}}", value = aws_sns_topic.ext_{{name}}.arn }]{{/if}}{{/each}}{{#each extensions.sqs_queues}}{{#if add_to_backend_env}},
+    [{ name = "{{add_to_backend_env}}", value = aws_sqs_queue.ext_{{name}}.url }]{{/if}}{{#if add_arn_to_backend_env}},
+    [{ name = "{{add_arn_to_backend_env}}", value = aws_sqs_queue.ext_{{name}}.arn }]{{/if}}{{/each}}
+  )
+
   # Backend scaling configuration
   backend_cpu = {{default workload.backend_cpu 256}}
   backend_memory = {{default workload.backend_memory 512}}
@@ -414,7 +532,7 @@ module "ses" {
 
 
 
-{{#if pubsub_appsync.enabled}} 
+{{#if pubsub_appsync.enabled}}
 module "appsync" {
   source = "{{modules}}/appsync"
   project = "{{project}}"
@@ -430,6 +548,68 @@ module "appsync" {
   {{/if}}
 }
 {{/if}}
+
+{{#compare (len extensions.sns_topics) ">" 0}}
+# ============================================================================
+# YAML EXTENSIONS - SNS Webhook Subscriptions
+# HTTP(S) subscriptions to SNS topics (requires API Gateway endpoint)
+# ============================================================================
+{{#each extensions.sns_topics}}
+{{#each webhooks}}
+resource "aws_sns_topic_subscription" "ext_{{../name}}_webhook_{{@index}}" {
+  topic_arn              = aws_sns_topic.ext_{{../name}}.arn
+  protocol               = "https"
+  endpoint               = "${module.workloads.api_gateway_endpoint}{{path}}"
+  endpoint_auto_confirms = true
+  {{#if raw_message_delivery}}
+  raw_message_delivery   = true
+  {{/if}}
+  {{#if filter_policy}}
+  filter_policy = jsonencode({{{json filter_policy}}})
+  {{/if}}
+}
+{{/each}}
+{{/each}}
+{{/compare}}
+
+{{#compare (len extensions.sqs_queues) ">" 0}}
+# ============================================================================
+# YAML EXTENSIONS - SQS to SNS Subscriptions
+# Subscribe SQS queues to SNS topics for fan-out pattern
+# ============================================================================
+{{#each extensions.sqs_queues}}
+{{#each sns_subscriptions}}
+resource "aws_sns_topic_subscription" "ext_{{../name}}_sns_{{this}}" {
+  topic_arn            = aws_sns_topic.ext_{{this}}.arn
+  protocol             = "sqs"
+  endpoint             = aws_sqs_queue.ext_{{../name}}.arn
+  raw_message_delivery = true
+}
+
+# Allow SNS to send messages to this SQS queue
+resource "aws_sqs_queue_policy" "ext_{{../name}}_sns_{{this}}" {
+  queue_url = aws_sqs_queue.ext_{{../name}}.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect    = "Allow"
+        Principal = { Service = "sns.amazonaws.com" }
+        Action    = "sqs:SendMessage"
+        Resource  = aws_sqs_queue.ext_{{../name}}.arn
+        Condition = {
+          ArnEquals = {
+            "aws:SourceArn" = aws_sns_topic.ext_{{this}}.arn
+          }
+        }
+      }
+    ]
+  })
+}
+{{/each}}
+{{/each}}
+{{/compare}}
 
 {{#compare (len amplify_apps) ">" 0}}
 module "amplify" {
@@ -509,6 +689,43 @@ output "backend_cloud_map_arn" {
   description = "value of the backend service discovery ARN"
   value       = module.workloads.backend_cloud_map_arn
 }
+
+{{#if has_custom_post}}
+# ============================================================================
+# CUSTOM POST-MODULE (runs after core modules)
+# Source: custom/post/
+# ============================================================================
+module "custom_post" {
+  source = "{{custom_modules}}/post"
+
+  # Context variables
+  project    = "{{project}}"
+  env        = "{{env}}"
+  region     = "{{region}}"
+  account_id = "{{account_id}}"
+  vpc_id     = local.vpc_id
+  subnet_ids = local.subnet_ids
+
+  # Core module outputs
+  api_endpoint         = module.workloads.api_gateway_endpoint
+  api_gateway_id       = module.workloads.api_gateway_id
+  ecs_cluster_arn      = module.workloads.ecr_cluster.arn
+  ecs_cluster_name     = module.workloads.ecr_cluster.name
+  backend_ecr_repo_url = module.workloads.backend_ecr_repo_url
+  backend_task_role    = module.workloads.backend_task_role_name
+
+  {{#if domain.enabled}}
+  # Domain outputs
+  domain_zone_id = module.domain.zone_id
+  api_domain     = module.domain.api_domain_name
+  {{/if}}
+
+  {{#if postgres.enabled}}
+  # Database outputs
+  db_endpoint = module.postgres.endpoint
+  {{/if}}
+}
+{{/if}}
 
 {{#compare (len amplify_apps) ">" 0}}
 output "amplify_apps" {
