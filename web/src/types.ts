@@ -42,7 +42,8 @@ export interface ComponentNode {
 		| "sqs"
 		| "efs"
 		| "alb"
-		| "appsync";
+		| "appsync"
+		| "custom-terraform";
 	name: string;
 	url?: string;
 	status: "running" | "deploying" | "stopped" | "error" | "external";

@@ -230,23 +230,48 @@ func initProject() {
 }
 
 func initProjectIfNeeded() {
-	if _, err := os.Stat("infrastructure"); os.IsNotExist(err) {
-		answer := false
-		huh.NewConfirm().
-			Title("The project is not initialized, do you want to initialize it?").
-			Affirmative("Yes 🚀").
-			Negative("No 🤷‍♂️").
-			Value(&answer).
-			Run()
-		if !answer {
-			fmt.Println("Aborting, 👋!")
-			os.Exit(1)
+	// Use Lstat to check if anything exists at "infrastructure" path (including symlinks)
+	info, err := os.Lstat("infrastructure")
+	if err == nil {
+		// Something exists at the path
+		if info.Mode()&os.ModeSymlink != 0 {
+			// It's a symlink - check if target exists
+			target, linkErr := os.Readlink("infrastructure")
+			if linkErr == nil {
+				if _, statErr := os.Stat("infrastructure"); os.IsNotExist(statErr) {
+					fmt.Printf("⚠️  'infrastructure' is a symlink pointing to '%s' which does not exist.\n", target)
+					fmt.Println("Please fix the symlink target or remove it to initialize a new project.")
+					os.Exit(1)
+				}
+			}
+			// Symlink exists and target exists, we're good
+			return
 		}
-
-		initProject()
-
-		_ = spinner.New().Title("Initializing the project...").Action(initProject).Run()
+		// It's a regular file or directory, we're good
+		return
 	}
+
+	// Nothing exists at "infrastructure" path
+	if !os.IsNotExist(err) {
+		// Some other error (permissions, etc.)
+		fmt.Printf("Error checking infrastructure path: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Prompt to initialize
+	answer := false
+	huh.NewConfirm().
+		Title("The project is not initialized, do you want to initialize it?").
+		Affirmative("Yes 🚀").
+		Negative("No 🤷‍♂️").
+		Value(&answer).
+		Run()
+	if !answer {
+		fmt.Println("Aborting, 👋!")
+		os.Exit(1)
+	}
+
+	_ = spinner.New().Title("Initializing the project...").Action(initProject).Run()
 }
 
 // runSSOWizardFromMenu runs the AWS SSO Setup Wizard

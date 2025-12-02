@@ -7,11 +7,11 @@ import { AddAmplifyDialog } from "./components/AddAmplifyDialog";
 import { AddEventTaskDialog } from "./components/AddEventTaskDialog";
 import { AddScheduledTaskDialog } from "./components/AddScheduledTaskDialog";
 import { AddServiceDialog } from "./components/AddServiceDialog";
+import { CustomTerraformManager } from "./components/CustomTerraformManager";
 import { DeploymentCanvas } from "./components/DeploymentCanvas";
 import { EnvironmentSelector } from "./components/EnvironmentSelector";
-import { PricingInfo } from "./components/PricingInfo";
 import { Sidebar } from "./components/Sidebar";
-import { TopPanel } from "./components/TopPanel";
+import { StatusLine } from "./components/StatusLine";
 import { Toaster } from "./components/ui/sonner";
 import { PricingProvider } from "./contexts/PricingContext";
 import { usePricing } from "./hooks/use-pricing";
@@ -24,6 +24,7 @@ export default function App() {
   const [selectedEnvironment, setSelectedEnvironment] = useState<string | null>(
     null
   );
+  const [viewMode, setViewMode] = useState<"visual" | "code">("visual");
   const [showEnvSelector, setShowEnvSelector] = useState(false);
   const [config, setConfig] = useState<YamlInfrastructureConfig | null>(null);
   const [accountInfo, setAccountInfo] = useState<AccountInfo | null>(null);
@@ -288,20 +289,13 @@ export default function App() {
 
   return (
     <PricingProvider>
-      <div className="size-full bg-gray-950 text-white relative overflow-hidden">
+      <div className="h-screen w-full bg-gray-950 text-white relative overflow-hidden flex flex-col">
         <EnvironmentSelector
           open={showEnvSelector}
           onSelect={handleEnvironmentSelect}
         />
 
-      {/* Top Panel */}
-      <TopPanel
-        selectedEnvironment={selectedEnvironment}
-        config={config}
-        activeEnvironmentProfile={activeEnvironmentProfile}
-        activeEnvironmentAccountId={activeEnvironmentAccountId}
-        onConfigChange={handleConfigChange}
-      />
+      {/* Top Panel - Removed in favor of StatusLine */}
 
       {/* Save Status Indicator */}
       {saveStatus !== "idle" && (
@@ -355,34 +349,49 @@ export default function App() {
       )}
 
       {/* Main Content */}
-      <ReactFlowProvider>
+      <div className="flex-1 w-full relative overflow-hidden flex flex-col">
         {/* Main Canvas */}
-        <DeploymentCanvas
-          onNodeSelect={handleNodeSelect}
-          selectedNode={selectedNode}
-          config={config}
-          environmentName={selectedEnvironment || undefined}
-          onAddService={() => setShowAddServiceDialog(true)}
-          onAddScheduledTask={() => setShowAddScheduledTaskDialog(true)}
-          onAddEventTask={() => setShowAddEventTaskDialog(true)}
-          onAddAmplify={() => setShowAddAmplifyDialog(true)}
-          pricing={pricing}
-        />
+        <div className="flex-1 w-full h-full absolute inset-0 z-10 bg-gray-950">
+          <ReactFlowProvider>
+            <DeploymentCanvas
+              onNodeSelect={handleNodeSelect}
+              selectedNode={selectedNode}
+              config={config}
+              environmentName={selectedEnvironment || undefined}
+              onAddService={() => setShowAddServiceDialog(true)}
+              onAddScheduledTask={() => setShowAddScheduledTaskDialog(true)}
+              onAddEventTask={() => setShowAddEventTaskDialog(true)}
+              onAddAmplify={() => setShowAddAmplifyDialog(true)}
+              onManageCustomTerraform={() => setViewMode("code")}
+              pricing={pricing}
+            />
 
-        {/* Right Sidebar */}
-        <Sidebar
-          selectedNode={selectedNode}
-          isOpen={sidebarOpen}
-          onClose={() => {
-            setSidebarOpen(false);
-            setSelectedNode(null);
-          }}
-          config={config || undefined}
-          onConfigChange={handleConfigChange}
-          accountInfo={accountInfo || undefined}
-          onDeleteNode={handleDeleteNode}
-        />
-      </ReactFlowProvider>
+            {/* Right Sidebar */}
+            <Sidebar
+              selectedNode={selectedNode}
+              isOpen={sidebarOpen}
+              onClose={() => {
+                setSidebarOpen(false);
+                setSelectedNode(null);
+              }}
+              config={config || undefined}
+              onConfigChange={handleConfigChange}
+              accountInfo={accountInfo || undefined}
+              onDeleteNode={handleDeleteNode}
+            />
+          </ReactFlowProvider>
+        </div>
+
+        {/* Custom Terraform Manager Overlay */}
+        <div className={`flex-1 w-full h-full absolute inset-0 bg-gray-950 transition-opacity duration-300 ${viewMode === 'code' ? 'z-50 opacity-100' : 'z-0 opacity-0 pointer-events-none'}`}>
+          {selectedEnvironment && viewMode === 'code' && (
+            <CustomTerraformManager
+              environment={selectedEnvironment}
+              onClose={() => setViewMode("visual")}
+            />
+          )}
+        </div>
+      </div>
 
       {/* Dialogs */}
       <AddServiceDialog
@@ -419,10 +428,16 @@ export default function App() {
         config={config || undefined}
       />
 
-      {/* Pricing Info Footer */}
-      <div className="absolute bottom-4 left-4 z-40">
-        <PricingInfo />
-      </div>
+      {/* Status Line */}
+      <StatusLine
+        selectedEnvironment={selectedEnvironment}
+        config={config}
+        activeEnvironmentProfile={activeEnvironmentProfile}
+        activeEnvironmentAccountId={activeEnvironmentAccountId}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        onConfigChange={handleConfigChange}
+      />
 
       {/* Toast notifications */}
       <Toaster />
