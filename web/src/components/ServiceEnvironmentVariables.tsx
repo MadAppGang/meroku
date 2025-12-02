@@ -66,6 +66,25 @@ export function ServiceEnvironmentVariables({
 		);
 	}
 
+	// Calculate the API domain URL with proper environment prefix
+	const getApiDomainUrl = () => {
+		const isALBEnabled = config.alb?.enabled === true;
+
+		// If ALB is enabled and ALB domain is set, use ALB domain
+		if (isALBEnabled && config.workload?.backend_alb_domain_name) {
+			return config.workload.backend_alb_domain_name;
+		}
+		// Otherwise, construct from domain config (API Gateway path)
+		if (config.domain?.enabled && config.domain?.domain_name) {
+			const baseDomain = config.domain.domain_name;
+			const apiPrefix = config.domain.api_domain_prefix || "api";
+			const addEnvPrefix = config.domain.add_env_domain_prefix ?? true;
+			const envPrefix = addEnvPrefix ? `${config.env}.` : "";
+			return `${apiPrefix}.${envPrefix}${baseDomain}`;
+		}
+		return "";
+	};
+
 	// Preconfigured environment variables
 	const preconfiguredEnvVars = [
 		// PostgreSQL variables - always shown but marked if not enabled
@@ -101,9 +120,7 @@ export function ServiceEnvironmentVariables({
 		},
 		{
 			name: "URL",
-			value:
-				config.workload?.backend_alb_domain_name ||
-				`api.${config.domain?.domain_name || ""}`,
+			value: getApiDomainUrl(),
 			description: "API domain URL",
 			enabled: true,
 		},
