@@ -54,6 +54,7 @@ interface DeploymentCanvasProps {
 	onAddScheduledTask?: () => void;
 	onAddEventTask?: () => void;
 	onAddAmplify?: () => void;
+	onManageCustomTerraform?: () => void;
 	pricing?: PricingResponse | null;
 }
 
@@ -540,6 +541,7 @@ export function DeploymentCanvas({
 	onAddScheduledTask,
 	onAddEventTask,
 	onAddAmplify,
+	onManageCustomTerraform,
 	pricing,
 }: DeploymentCanvasProps) {
 	const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -957,9 +959,7 @@ export function DeploymentCanvas({
 			// IMMEDIATELY update edges state to reflect the change
 			setEdges((currentEdges) =>
 				currentEdges.map((edge) =>
-					edge.id === edgeId
-						? { ...edge, sourceHandle, targetHandle }
-						: edge,
+					edge.id === edgeId ? { ...edge, sourceHandle, targetHandle } : edge,
 				),
 			);
 
@@ -1000,6 +1000,17 @@ export function DeploymentCanvas({
 		[onNodesChange, savePositions, environmentName],
 	);
 
+	// Handle Custom Terraform button click
+	// Pass through the proper handler from props or use default behavior
+	const handleManageCustomTerraform = useCallback(() => {
+		if (onManageCustomTerraform) {
+			onManageCustomTerraform();
+		} else {
+			// Fallback (should not be reached if properly wired)
+			console.warn("onManageCustomTerraform not provided to DeploymentCanvas");
+		}
+	}, [onManageCustomTerraform]);
+
 	return (
 		<div className="size-full">
 			<ReactFlow
@@ -1039,6 +1050,7 @@ export function DeploymentCanvas({
 					onAddScheduledTask={onAddScheduledTask}
 					onAddEventTask={onAddEventTask}
 					onAddAmplify={onAddAmplify}
+					onManageCustomTerraform={handleManageCustomTerraform}
 				/>
 			</ReactFlow>
 

@@ -33,12 +33,13 @@ amplify_apps:
       REACT_APP_ENV: staging
     name: staging
     stage: BETA
+  custom_domain: instagram.madappgang.com.au
+  enable_root_domain: true
   github_repository: https://github.com/username/repo
   name: main-web
   sub_domains:
   - www
   - app
-  subdomain_prefix: instagram.madappgang.com.au
 aws_profile: ""
 cognito:
   auto_verified_attributes:
@@ -58,7 +59,6 @@ domain:
 ecr_account_id: null
 ecr_account_region: null
 ecr_strategy: local
-ecr_trusted_accounts: []
 efs:
 - name: uploads
 - name: static
@@ -68,8 +68,6 @@ event_processor_tasks:
   - SERVICE_DEPLOYMENT_COMPLETED
   - SERVICE_DEPLOYMENT_FAILED
   - SERVICE_DEPLOYMENT_IN_PROGRESS
-  ecr_config:
-    mode: create_ecr
   name: event_task1
   rule_name: hug_all
   sources:
@@ -79,16 +77,11 @@ modules: ../../infrastructure/modules
 postgres:
   aurora: true
   dbname: instagram
-  deletion_protection: false
   enabled: true
   engine_version: "14"
-  iam_database_authentication_enabled: false
   max_capacity: 1
   min_capacity: 0
-  multi_az: false
   public_access: true
-  skip_final_snapshot: true
-  storage_encrypted: true
   username: dbadmin
 project: instagram
 pubsub_appsync:
@@ -98,21 +91,15 @@ pubsub_appsync:
   schema: false
 region: ap-southeast-2
 scheduled_tasks:
-- ecr_config:
-    mode: create_ecr
-  name: task1
+- name: task1
   schedule: rate(1 minutes)
-- ecr_config:
-    mode: create_ecr
-  name: task2
+- name: task2
   schedule: rate(1 hours)
-schema_version: 12
+schema_version: 7
 services:
 - container_port: 3000
   cpu: 256
   desired_count: 3
-  ecr_config:
-    mode: create_ecr
   env_vars:
     SERVICE_TEST: PASSED
   host_port: 3000

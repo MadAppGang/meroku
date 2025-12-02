@@ -144,6 +144,23 @@ func mainRouter() http.Handler {
 	mux.HandleFunc("/api/environments/configure-cross-account-ecr", corsMiddleware(configureCrossAccountECR))
 	mux.HandleFunc("/api/environments/check-ecr-trust-policy", corsMiddleware(checkECRTrustPolicyDeployedInAWS))
 
+	// Custom Terraform Extensions
+	mux.HandleFunc("/api/custom-terraform/files", corsMiddleware(listCustomTerraformFiles))
+	mux.HandleFunc("/api/custom-terraform/file", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			getCustomTerraformFile(w, r)
+		case http.MethodPost:
+			saveCustomTerraformFile(w, r)
+		case http.MethodDelete:
+			deleteCustomTerraformFile(w, r)
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))
+	mux.HandleFunc("/api/custom-terraform/bridge-vars", corsMiddleware(getBridgeVariables))
+	mux.HandleFunc("/api/custom-terraform/modules", corsMiddleware(getCustomModuleStatus))
+
 	// WebSocket endpoints (these handle their own CORS)
 	mux.HandleFunc("/ws/logs", streamServiceLogs)
 	mux.HandleFunc("/ws/ssh", startSSHSession)

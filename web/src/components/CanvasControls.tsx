@@ -1,6 +1,7 @@
 import {
 	Bug,
 	Clock,
+	FileCode,
 	Eye,
 	EyeOff,
 	Globe,
@@ -24,6 +25,7 @@ interface CanvasControlsProps {
 	onAddScheduledTask?: () => void;
 	onAddEventTask?: () => void;
 	onAddAmplify?: () => void;
+	onManageCustomTerraform?: () => void;
 }
 
 export function CanvasControls({
@@ -33,6 +35,7 @@ export function CanvasControls({
 	onAddScheduledTask,
 	onAddEventTask,
 	onAddAmplify,
+	onManageCustomTerraform,
 }: CanvasControlsProps) {
 	const { zoomIn, zoomOut, fitView, getNodes, getEdges } = useReactFlow();
 	const [debugMode, setDebugMode] = useState(false);
@@ -217,6 +220,15 @@ export function CanvasControls({
 					title="Add Amplify App"
 				>
 					<Globe className="w-4 h-4" />
+				</Button>
+				<Button
+					size="icon"
+					variant="ghost"
+					onClick={onManageCustomTerraform}
+					className="w-8 h-8 text-gray-400 hover:text-white hover:bg-teal-700"
+					title="Manage Custom Terraform"
+				>
+					<FileCode className="w-4 h-4" />
 				</Button>
 			</div>
 

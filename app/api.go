@@ -1092,3 +1092,14 @@ func checkECRTrustPolicyDeployedInAWS(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ============================================================================
+// Custom Terraform Extensions API
+// ============================================================================
+
+
+
+
+
+
+
+
