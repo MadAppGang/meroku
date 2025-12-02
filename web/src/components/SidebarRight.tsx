@@ -1,5 +1,6 @@
-import { Box, ChevronDown, ChevronRight, Copy, Database, Plus, Search } from "lucide-react";
+import { Bot, Box, ChevronDown, ChevronRight, Copy, Database, Plus, Search } from "lucide-react";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import type { BridgeVariable } from "../types/customTerraform";
 
 // Define ModuleHelper interface locally for now
@@ -13,15 +14,177 @@ export interface SidebarRightProps {
   variables: BridgeVariable[];
   modules?: ModuleHelper[];
   onInsert: (text: string) => void;
+  environment?: string;
 }
 
-export function SidebarRight({ variables, modules = [], onInsert }: SidebarRightProps) {
+// Generate AI system prompt with all available variables
+function generateAIPrompt(variables: BridgeVariable[], environment?: string): string {
+  // Group variables by category
+  const inputVars: BridgeVariable[] = [];
+  const moduleVars: Record<string, BridgeVariable[]> = {};
+  const dataVars: BridgeVariable[] = [];
+  const otherVars: BridgeVariable[] = [];
+
+  for (const v of variables) {
+    if (v.name.startsWith("var.")) {
+      inputVars.push(v);
+    } else if (v.name.startsWith("module.")) {
+      const parts = v.name.split(".");
+      const moduleName = parts[1] || "unknown";
+      if (!moduleVars[moduleName]) {
+        moduleVars[moduleName] = [];
+      }
+      moduleVars[moduleName].push(v);
+    } else if (v.name.startsWith("data.")) {
+      dataVars.push(v);
+    } else {
+      otherVars.push(v);
+    }
+  }
+
+  const formatVariable = (v: BridgeVariable) => {
+    let line = `- \`${v.name}\` (${v.type})`;
+    if (v.description) {
+      line += `: ${v.description}`;
+    }
+    if (v.conditional) {
+      line += ` [Conditional: ${v.conditional}]`;
+    }
+    return line;
+  };
+
+  let prompt = `# Custom Terraform Extension Assistant
+
+You are an expert Terraform developer helping to create custom AWS infrastructure resources. The user is working with a managed infrastructure platform that provides pre-configured modules and variables.
+
+## Context
+
+${environment ? `- **Environment**: ${environment}` : ""}
+- **Cloud Provider**: AWS
+- **Terraform Version**: 1.5+
+- **Purpose**: Extend the base infrastructure with custom resources
+
+## Your Role
+
+Help the user write Terraform code (.tf files) for custom resources that integrate with the existing infrastructure. The code will be placed in a custom extensions directory and automatically included during \`terraform apply\`.
+
+## Available Variables
+
+These variables are available from the base infrastructure and can be referenced in custom Terraform code:
+
+`;
+
+  // Input Variables
+  if (inputVars.length > 0) {
+    prompt += `### Input Variables (var.*)\nThese are configuration values passed to the infrastructure:\n\n`;
+    for (const v of inputVars) {
+      prompt += `${formatVariable(v)}\n`;
+    }
+    prompt += "\n";
+  }
+
+  // Module Outputs
+  const moduleNames = Object.keys(moduleVars).sort();
+  if (moduleNames.length > 0) {
+    prompt += `### Module Outputs\nOutputs from infrastructure modules that can be referenced:\n\n`;
+    for (const moduleName of moduleNames) {
+      prompt += `#### Module: ${moduleName}\n`;
+      for (const v of moduleVars[moduleName]) {
+        prompt += `${formatVariable(v)}\n`;
+      }
+      prompt += "\n";
+    }
+  }
+
+  // Data Sources
+  if (dataVars.length > 0) {
+    prompt += `### Data Sources (data.*)\nData sources providing information about existing resources:\n\n`;
+    for (const v of dataVars) {
+      prompt += `${formatVariable(v)}\n`;
+    }
+    prompt += "\n";
+  }
+
+  // Other Variables
+  if (otherVars.length > 0) {
+    prompt += `### Other Available References\n\n`;
+    for (const v of otherVars) {
+      prompt += `${formatVariable(v)}\n`;
+    }
+    prompt += "\n";
+  }
+
+  prompt += `## Guidelines
+
+1. **Use Available Variables**: Reference the variables listed above instead of hardcoding values
+2. **Naming Convention**: Use \`\${var.project}-\${var.env}-\` prefix for resource names
+3. **Tags**: Include standard tags: \`Project = var.project\`, \`Environment = var.env\`
+4. **Security**: Follow AWS security best practices (least privilege IAM, encryption at rest)
+5. **Dependencies**: Use \`depends_on\` when resources depend on module outputs
+6. **Outputs**: Define outputs for any values that other resources might need
+
+## Example Usage
+
+\`\`\`hcl
+# Example: Create an S3 bucket using available variables
+resource "aws_s3_bucket" "custom_bucket" {
+  bucket = "\${var.project}-\${var.env}-custom-data"
+
+  tags = {
+    Name        = "\${var.project}-\${var.env}-custom-data"
+    Project     = var.project
+    Environment = var.env
+  }
+}
+
+# Example: Reference VPC from base infrastructure
+resource "aws_security_group" "custom_sg" {
+  name        = "\${var.project}-\${var.env}-custom-sg"
+  description = "Custom security group"
+  vpc_id      = module.vpc.vpc_id  # Reference VPC module output
+
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = [module.vpc.vpc_cidr]
+  }
+}
+\`\`\`
+
+## Instructions
+
+When the user describes what they need, provide complete, working Terraform code that:
+1. Integrates with the existing infrastructure using the available variables
+2. Follows Terraform and AWS best practices
+3. Includes appropriate comments explaining the configuration
+4. Defines any necessary outputs
+
+Ask clarifying questions if the requirements are unclear.
+`;
+
+  return prompt;
+}
+
+export function SidebarRight({ variables, modules = [], onInsert, environment }: SidebarRightProps) {
   const [activeTab, setActiveTab] = useState<"vars" | "modules">("vars");
   const [filterText, setFilterText] = useState("");
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
     "Input Variables": true,
     "Data Sources": true,
   });
+
+  const handleCopyAIPrompt = () => {
+    const prompt = generateAIPrompt(variables, environment);
+    navigator.clipboard.writeText(prompt).then(() => {
+      toast.success("AI prompt copied to clipboard", {
+        description: "Paste it into ChatGPT, Claude, or any AI assistant",
+      });
+    }).catch((err) => {
+      console.error("Failed to copy:", err);
+      toast.error("Failed to copy to clipboard");
+    });
+  };
 
   // Group variables by their prefix (var., module.name., data.)
   const groupedVariables = useMemo(() => {
@@ -77,6 +240,20 @@ export function SidebarRight({ variables, modules = [], onInsert }: SidebarRight
 
   return (
     <div className="flex flex-col h-full bg-gray-950 border-l border-gray-800 w-80 flex-shrink-0">
+      {/* AI Prompt Button */}
+      <div className="p-3 border-b border-gray-800 bg-gray-900/50 flex-shrink-0">
+        <button
+          onClick={handleCopyAIPrompt}
+          className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white text-sm font-medium rounded-lg transition-all shadow-lg shadow-purple-900/20 hover:shadow-purple-900/40"
+        >
+          <Bot size={16} />
+          Copy AI Prompt
+        </button>
+        <p className="text-[10px] text-gray-500 text-center mt-2">
+          Get a system prompt with all variables for ChatGPT, Claude, etc.
+        </p>
+      </div>
+
       {/* Tabs */}
       <div className="flex border-b border-gray-800 bg-gray-900/50 flex-shrink-0">
         <button
