@@ -244,7 +244,7 @@ resource "aws_sqs_queue" "ext_{{name}}_dlq" {
   fifo_queue                  = true
   content_based_deduplication = true
   {{/if}}
-  message_retention_seconds = {{#if dlq_retention}}{{dlq_retention}}{{else}}1209600{{/if}}
+  message_retention_seconds = {{default dlq_retention 1209600}}
   {{#if kms_key_id}}
   kms_master_key_id = "{{kms_key_id}}"
   {{/if}}
@@ -264,18 +264,18 @@ resource "aws_sqs_queue" "ext_{{name}}" {
   fifo_queue                  = true
   content_based_deduplication = true
   {{/if}}
-  visibility_timeout_seconds = {{#if visibility_timeout}}{{visibility_timeout}}{{else}}30{{/if}}
-  message_retention_seconds  = {{#if message_retention}}{{message_retention}}{{else}}345600{{/if}}
-  max_message_size          = {{#if max_message_size}}{{max_message_size}}{{else}}262144{{/if}}
-  delay_seconds             = {{#if delay_seconds}}{{delay_seconds}}{{else}}0{{/if}}
-  receive_wait_time_seconds = {{#if receive_wait_time}}{{receive_wait_time}}{{else}}0{{/if}}
+  visibility_timeout_seconds = {{default visibility_timeout 30}}
+  message_retention_seconds  = {{default message_retention 345600}}
+  max_message_size          = {{default max_message_size 262144}}
+  delay_seconds             = {{default delay_seconds 0}}
+  receive_wait_time_seconds = {{default receive_wait_time 0}}
   {{#if kms_key_id}}
   kms_master_key_id = "{{kms_key_id}}"
   {{/if}}
   {{#if dlq_enabled}}
   redrive_policy = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.ext_{{name}}_dlq.arn
-    maxReceiveCount     = {{#if dlq_max_receive}}{{dlq_max_receive}}{{else}}3{{/if}}
+    maxReceiveCount     = {{default dlq_max_receive 3}}
   })
   {{/if}}
 
@@ -621,7 +621,7 @@ module "amplify" {
   {{#if domain.domain_name}}
   base_domain = "{{domain.domain_name}}"
   {{/if}}
-  {{#if domain.add_env_domain_prefix}}
+  {{#if (exists domain.add_env_domain_prefix)}}
   add_env_domain_prefix = {{domain.add_env_domain_prefix}}
   {{/if}}
 
@@ -637,10 +637,10 @@ module "amplify" {
           {{#if stage}}
           stage = "{{stage}}"
           {{/if}}
-          {{#if enable_auto_build}}
+          {{#if (exists enable_auto_build)}}
           enable_auto_build = {{enable_auto_build}}
           {{/if}}
-          {{#if enable_pull_request_preview}}
+          {{#if (exists enable_pull_request_preview)}}
           enable_pull_request_preview = {{enable_pull_request_preview}}
           {{/if}}
           {{#if environment_variables}}

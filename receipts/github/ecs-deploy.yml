@@ -10,7 +10,9 @@ env:
   AWS_REGION: us-east-1
   AWS_ACCOUNT_ID: 798135304365
   ECR_REPOSITORY: 798135304365.dkr.ecr.us-east-1.amazonaws.com/chubby_backend
-
+  # Role name follows pattern: {project}-{env}-github-actions-role
+  PROJECT: your-project
+  ENV: dev
 
 permissions:
   id-token: write
@@ -26,7 +28,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
-          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/GithubActionsRole
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.PROJECT }}-${{ env.ENV }}-github-actions-role
           role-session-name: samplerolesession
           aws-region: ${{ env.AWS_REGION }}
 

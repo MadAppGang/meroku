@@ -45,11 +45,11 @@ data "aws_iam_policy_document" "github_trust_relationship" {
 
 resource "aws_iam_role" "github_role" {
   count              = var.github_oidc_enabled ? 1 : 0
-  name               = "GithubActionsRole"
+  name               = "${var.project}-${var.env}-github-actions-role"
   assume_role_policy = data.aws_iam_policy_document.github_trust_relationship[0].json
 
   tags = {
-    Name        = "GithubActionsRole"
+    Name        = "${var.project}-${var.env}-github-actions-role"
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"

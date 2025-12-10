@@ -7,6 +7,9 @@ on:
 env:
   AWS_REGION: ap-southeast-2
   AWS_ACCOUNT_ID: "026148122259"
+  # Role name follows pattern: {project}-{env}-github-actions-role
+  PROJECT: your-project
+  ENV: prod
 
 permissions:
   id-token: write
@@ -18,7 +21,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4.0.1
         with:
-          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/GithubActionsRole
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.PROJECT }}-${{ env.ENV }}-github-actions-role
           role-session-name: samplerolesession
           aws-region: ${{ env.AWS_REGION }}
       - name: Checkout code
