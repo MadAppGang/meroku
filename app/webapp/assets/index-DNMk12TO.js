@@ -1136,7 +1136,9 @@ on:
   push:
     branches: [main]
     paths:
-      - '${s}/**'
+      - 'src/**'
+      - 'Dockerfile'
+      - 'package.json'
       - '.github/workflows/${s}-${o}.yml'
   workflow_dispatch:
 
@@ -1186,7 +1188,9 @@ on:
   push:
     branches: [main]
     paths:
-      - '${s}/**'
+      - 'src/**'
+      - 'Dockerfile'
+      - 'package.json'
       - '.github/workflows/${s}-${o}.yml'
   workflow_dispatch:
 
@@ -1232,7 +1236,9 @@ on:
   push:
     branches: [main]
     paths:
-      - '${s}/**'
+      - 'src/**'
+      - 'Dockerfile'
+      - 'package.json'
       - '.github/workflows/${s}-${o}.yml'
   workflow_dispatch:
 
@@ -1268,8 +1274,8 @@ jobs:
           ECR_REPOSITORY: ${w}
           IMAGE_TAG: \${{ github.sha }}
         run: |
-          # Build Docker image
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG ${s}/
+          # Build Docker image (Dockerfile in root)
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
           # Create ECR repository if it doesn't exist
