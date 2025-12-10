@@ -192,6 +192,97 @@ The infrastructure supports two ingress patterns:
 
 Note: Currently, both resources are created regardless of the setting, but only one is used for traffic routing.
 
+## AWS Resource Naming Conventions
+
+This section documents the naming patterns used for AWS resources created by meroku.
+
+### Backend Service (`modules/workloads/backend.tf`)
+
+The main backend service uses these patterns:
+
+| Resource | Pattern | Example |
+|----------|---------|---------|
+| ECS Service | `${project}_service_${env}` | `myapp_service_dev` |
+| ECS Cluster | `${project}_cluster_${env}` | `myapp_cluster_dev` |
+| ECR Repository | `${project}_backend` | `myapp_backend` |
+| CloudWatch Log Group | `${project}_backend_${env}` | `myapp_backend_dev` |
+| Security Group | `${project}_backend_${env}` | `myapp_backend_dev` |
+| IAM Task Role | `${project}_backend_task_${env}` | `myapp_backend_task_dev` |
+| IAM Execution Role | `${project}_backend_task_execution_${env}` | `myapp_backend_task_execution_dev` |
+| S3 Bucket | `${project}-backend-${env}${postfix}` | `myapp-backend-dev-abc12` |
+
+### Named Services (`modules/workloads/services.tf`)
+
+Additional services defined in YAML use these patterns:
+
+| Resource | Pattern | Example |
+|----------|---------|---------|
+| ECS Service | `${project}_service_${name}_${env}` | `myapp_service_api_dev` |
+| ECR Repository | `${project}_service_${name}` | `myapp_service_api` |
+| CloudWatch Log Group | `${project}_service_${name}_${env}` | `myapp_service_api_dev` |
+| Security Group | `${project}_service_${name}_${env}` | `myapp_service_api_dev` |
+| IAM Task Role | `${project}_service_${name}_task_${env}` | `myapp_service_api_task_dev` |
+| IAM Execution Role | `${project}_service_${name}_task_execution_${env}` | `myapp_service_api_task_execution_dev` |
+| Target Group | `${project}-service-${name}-tg-${env}` | `myapp-service-api-tg-dev` |
+
+### Scheduled Tasks (`modules/ecs_task`)
+
+Scheduled ECS tasks use these patterns:
+
+| Resource | Pattern | Example |
+|----------|---------|---------|
+| ECR Repository | `${project}_task_${name}` | `myapp_task_cleanup` |
+| Task Definition | `${project}_task_${name}_${env}` | `myapp_task_cleanup_dev` |
+| Container | `${project}_container_${name}_${env}` | `myapp_container_cleanup_dev` |
+| Security Group | `${project}_${name}_${env}` | `myapp_cleanup_dev` |
+| IAM Task Role | `${project}_${name}_task_${env}` | `myapp_cleanup_task_dev` |
+| IAM Execution Role | `${project}_scheduler_${name}_task_execution_${env}` | `myapp_scheduler_cleanup_task_execution_dev` |
+| Scheduler Role | `${project}_scheduler_${name}_role_${env}` | `myapp_scheduler_cleanup_role_dev` |
+| Schedule Group | `${project}-schedule-group-${env}-${name}` | `myapp-schedule-group-dev-cleanup` |
+
+### pgAdmin (`modules/workloads/pgadmin.tf`)
+
+The optional pgAdmin service uses:
+
+| Resource | Pattern | Example |
+|----------|---------|---------|
+| ECS Service | `pgadmin_service_${env}` | `pgadmin_service_dev` |
+| Container | `${project}_pgadmin_${env}` | `myapp_pgadmin_dev` |
+| Security Group | `${project}_pgadmin_${env}` | `myapp_pgadmin_dev` |
+| CloudWatch Log Group | `${project}-pgadmin_${env}` | `myapp-pgadmin_dev` |
+| IAM Task Role | `${project}_pgadmin_task_${env}` | `myapp_pgadmin_task_dev` |
+
+### GitHub Actions (`modules/workloads/github.tf`)
+
+| Resource | Pattern | Example |
+|----------|---------|---------|
+| IAM Role | `${project}-${env}-github-actions-role` | `myapp-dev-github-actions-role` |
+
+### Naming Convention Rules
+
+1. **Underscores (`_`)** are used for most AWS resource names (ECS, IAM, ECR, CloudWatch)
+2. **Hyphens (`-`)** are used for:
+   - S3 bucket names (required by AWS)
+   - ALB target groups (convention)
+   - GitHub Actions roles (convention)
+   - EventBridge schedule groups
+3. **Environment suffix** (`_${env}` or `-${env}`) is always last
+4. **Project prefix** (`${project}_` or `${project}-`) is always first
+
+### CI/CD Workflow Configuration
+
+When generating GitHub Actions workflows, use these patterns:
+
+```yaml
+env:
+  ECR_REPOSITORY: ${project}_backend           # For backend
+  ECR_REPOSITORY: ${project}_service_${name}   # For named services
+  ECS_CLUSTER: ${project}_cluster_${env}
+  ECS_SERVICE: ${project}_service_${env}       # For backend
+  ECS_SERVICE: ${project}_service_${name}_${env}  # For named services
+  IAM_ROLE: arn:aws:iam::${account}:role/${project}-${env}-github-actions-role
+```
+
 ## AI Agent
 
 This infrastructure includes an **autonomous AI agent** that can investigate and fix deployment errors automatically using the ReAct pattern (Reasoning + Acting).
