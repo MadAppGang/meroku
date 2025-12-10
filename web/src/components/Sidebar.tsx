@@ -770,9 +770,10 @@ concurrency:
 env:
   AWS_REGION: ${config?.region || "us-east-1"}
   AWS_ACCOUNT_ID: ${accountId}
-  ECR_REPOSITORY: ${config?.project || "project"}-${config?.env || "dev"}-backend
-  ECS_CLUSTER: ${config?.project || "project"}-${config?.env || "dev"}-cluster
-  ECS_SERVICE: ${config?.project || "project"}-${config?.env || "dev"}-backend
+  # Naming patterns match Terraform resources
+  ECR_REPOSITORY: ${config?.project || "project"}_service_backend
+  ECS_CLUSTER: ${config?.project || "project"}_cluster_${config?.env || "dev"}
+  ECS_SERVICE: ${config?.project || "project"}_service_backend_${config?.env || "dev"}
   IAM_ROLE: arn:aws:iam::${accountId}:role/${config?.project || "project"}-${config?.env || "dev"}-github-actions-role
 
 permissions:
@@ -881,9 +882,10 @@ concurrency:
 env:
   AWS_REGION: ${config?.region || "us-east-1"}
   AWS_ACCOUNT_ID: ${accountId}
-  ECR_REPOSITORY: ${config?.project || "project"}-${config?.env || "dev"}-backend
-  ECS_CLUSTER: ${config?.project || "project"}-${config?.env || "dev"}-cluster
-  ECS_SERVICE: ${config?.project || "project"}-${config?.env || "dev"}-backend
+  # Naming patterns match Terraform resources
+  ECR_REPOSITORY: ${config?.project || "project"}_service_backend
+  ECS_CLUSTER: ${config?.project || "project"}_cluster_${config?.env || "dev"}
+  ECS_SERVICE: ${config?.project || "project"}_service_backend_${config?.env || "dev"}
   IAM_ROLE: arn:aws:iam::${accountId}:role/${config?.project || "project"}-${config?.env || "dev"}-github-actions-role
 
 permissions:
