@@ -36,7 +36,7 @@ export function ECRPushInstructions({
 		isUsingCrossAccount && config.ecr_account_region
 			? config.ecr_account_region
 			: config.region;
-	const repositoryName = `${config.project}_service_backend`;
+	const repositoryName = `${config.project}_backend`; // Example repository
 
 	if (!accountId) {
 		return (

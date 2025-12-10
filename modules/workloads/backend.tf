@@ -1,7 +1,5 @@
 locals {
-  # Consistent naming: treat backend as a service named "backend"
-  # Pattern: ${project}_service_backend_${env} (matches named services)
-  backend_name = "${var.project}_service_backend_${var.env}"
+  backend_name = "${var.project}_service_${var.env}"
 }
 
 data "aws_vpc" "selected" {
@@ -171,7 +169,7 @@ resource "aws_ecs_task_definition" "backend" {
 
 
 resource "aws_security_group" "backend" {
-  name   = "${var.project}_service_backend_${var.env}"
+  name   = "${var.project}_backend_${var.env}"
   vpc_id = var.vpc_id
 
   # Allow traffic from within VPC (for API Gateway VPC Link and internal services)
@@ -238,7 +236,7 @@ resource "aws_security_group" "backend" {
 }
 
 resource "aws_cloudwatch_log_group" "backend" {
-  name = local.backend_name  # Consistent naming: ${project}_service_backend_${env}
+  name = "${var.project}_backend_${var.env}"
 
   retention_in_days = 7
 
@@ -304,11 +302,11 @@ resource "aws_s3_bucket_acl" "backend" {
 }
 
 resource "aws_iam_role" "backend_task" {
-  name               = "${var.project}_service_backend_task_${var.env}"
+  name               = "${var.project}_backend_task_${var.env}"
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume_role.json
 
   tags = {
-    Name        = "${var.project}_service_backend_task_${var.env}"
+    Name        = "${var.project}_backend_task_${var.env}"
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
@@ -317,11 +315,11 @@ resource "aws_iam_role" "backend_task" {
 }
 
 resource "aws_iam_role" "backend_task_execution" {
-  name               = "${var.project}_service_backend_task_execution_${var.env}"
+  name               = "${var.project}_backend_task_execution_${var.env}"
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume_role.json
 
   tags = {
-    Name        = "${var.project}_service_backend_task_execution_${var.env}"
+    Name        = "${var.project}_backend_task_execution_${var.env}"
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
@@ -454,7 +452,7 @@ data "aws_iam_policy_document" "cross_account_ecr_access" {
       "ecr:DescribeRepositories"
     ]
     resources = [
-      "arn:aws:ecr:${var.ecr_account_region}:${var.ecr_account_id}:repository/${var.project}_service_backend",
+      "arn:aws:ecr:${var.ecr_account_region}:${var.ecr_account_id}:repository/${var.project}_backend",
       "arn:aws:ecr:${var.ecr_account_region}:${var.ecr_account_id}:repository/${var.project}_service_*",
       "arn:aws:ecr:${var.ecr_account_region}:${var.ecr_account_id}:repository/${var.project}_task_*"
     ]
@@ -583,7 +581,7 @@ resource "aws_iam_role_policy" "ecs_exec_policy" {
 resource "aws_iam_policy" "backend_custom_policy" {
   count = length(var.backend_policy) > 0 && length(var.backend_policy[0].actions) > 0 ? 1 : 0
 
-  name = "${var.project}_service_backend_custom_policy_${var.env}"
+  name = "${var.project}_backend_custom_policy_${var.env}"
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [

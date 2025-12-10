@@ -66,12 +66,11 @@ export default function ServiceCICDConfiguration({
   const customImageUri = serviceConfig?.ecr_config?.repository_uri || "";
 
   // Compute actual ECS service name (matches Terraform naming)
-  // All services follow pattern: ${project}_service_${serviceName}_${env}
-  const ecsServiceName = `${project}_service_${serviceName}_${env}`;
-
-  // Compute ECR repository name (matches Terraform naming)
-  // All services follow pattern: ${project}_service_${serviceName}
-  const ecrRepoName = `${project}_service_${serviceName}`;
+  // Backend: ${project}_service_${env}
+  // Named services: ${project}_service_${serviceName}_${env}
+  const ecsServiceName = serviceName === "backend"
+    ? `${project}_service_${env}`
+    : `${project}_service_${serviceName}_${env}`;
 
   // Generate the GitHub Actions workflow based on ECR strategy
   const generateWorkflow = () => {
@@ -218,7 +217,7 @@ jobs:
       - name: Build, tag, and push Docker image
         env:
           ECR_REGISTRY: \${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: ${ecrRepoName}
+          ECR_REPOSITORY: ${serviceName}
           IMAGE_TAG: \${{ github.sha }}
         run: |
           # Build Docker image

@@ -346,7 +346,7 @@ func createEnv(name, env string) Env {
 			SetupFCNSNS:                false,
 			BackendImagePort:           8080,
 			EnableGithubOIDC:           false,
-			GithubOIDCSubjects:         []string{"repo:MadAppGang/*", "repo:MadAppGang/project_service_backend:ref:refs/heads/main"},
+			GithubOIDCSubjects:         []string{"repo:MadAppGang/*", "repo:MadAppGang/project_backend:ref:refs/heads/main"},
 			BackendContainerCommand:    "",
 			InstallPgAdmin:             false,
 			PgAdminEmail:               "",

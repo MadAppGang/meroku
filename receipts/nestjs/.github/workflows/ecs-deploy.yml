@@ -9,8 +9,7 @@ on:
 env:
   AWS_REGION: us-east-1
   AWS_ACCOUNT_ID: 798135304365
-  # ECR repository follows pattern: {project}_service_{service_name}
-  ECR_REPOSITORY: 798135304365.dkr.ecr.us-east-1.amazonaws.com/chubby_service_backend
+  ECR_REPOSITORY: 798135304365.dkr.ecr.us-east-1.amazonaws.com/chubby_backend
   # Role name follows pattern: {project}-{env}-github-actions-role
   PROJECT: your-project
   ENV: dev

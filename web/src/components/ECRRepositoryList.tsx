@@ -58,12 +58,12 @@ export function ECRRepositoryList({
 						</div>
 						<div className="space-y-1">
 							<div className="text-blue-400 font-mono text-xs">
-								{config.project}_service_backend
+								{config.project}_backend
 							</div>
 							<div className="flex items-center gap-2 group">
 								<div className="text-gray-500 font-mono text-xs overflow-x-auto whitespace-nowrap scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-transparent">
 									{accountId}.dkr.ecr.{region}.amazonaws.com/{config.project}
-									_service_backend
+									_backend
 								</div>
 								<Button
 									size="icon"
@@ -71,12 +71,12 @@ export function ECRRepositoryList({
 									className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
 									onClick={() =>
 										handleCopyUrl(
-											`${accountId}.dkr.ecr.${region}.amazonaws.com/${config.project}_service_backend`,
+											`${accountId}.dkr.ecr.${region}.amazonaws.com/${config.project}_backend`,
 										)
 									}
 								>
 									{copiedUrl ===
-									`${accountId}.dkr.ecr.${region}.amazonaws.com/${config.project}_service_backend` ? (
+									`${accountId}.dkr.ecr.${region}.amazonaws.com/${config.project}_backend` ? (
 										<Check className="h-3 w-3 text-green-400" />
 									) : (
 										<Copy className="h-3 w-3" />

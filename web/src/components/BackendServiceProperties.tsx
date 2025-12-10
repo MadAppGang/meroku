@@ -25,7 +25,7 @@ export function BackendServiceProperties({
 	accountInfo,
 }: BackendServicePropertiesProps) {
 	// Generate the ECR repository name based on config
-	const ecrRepoName = `${config.project}_service_backend`;
+	const ecrRepoName = `${config.project}_backend`;
 
 	// Use accountInfo if available, otherwise fall back to config values
 	const accountId = accountInfo?.accountId || config.ecr_account_id;
