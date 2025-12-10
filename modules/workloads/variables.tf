@@ -202,9 +202,10 @@ variable "env_files_s3" {
   default     = []
 }
 locals {
+  # Use bucket name as-is - user specifies the full bucket name in YAML
   env_files_s3 = [
     for file in var.env_files_s3 : {
-      bucket = "${var.project}-${file.bucket}-${var.env}"
+      bucket = file.bucket
       key    = file.key
     }
   ]
