@@ -298,11 +298,30 @@ func (m *modernPlanModel) initApplyState() {
 	for _, provider := range m.providers {
 		for _, service := range provider.services {
 			for _, resource := range service.resources {
-				m.applyState.pending = append(m.applyState.pending, pendingResource{
-					Address: resource.Address,
-					Action:  resource.Change.Actions[0],
-					Type:    resource.Type,
-				})
+				// For replace operations (delete + create), add both actions to pending
+				if len(resource.Change.Actions) == 2 &&
+					resource.Change.Actions[0] == "delete" &&
+					resource.Change.Actions[1] == "create" {
+					// Add delete operation
+					m.applyState.pending = append(m.applyState.pending, pendingResource{
+						Address: resource.Address,
+						Action:  "delete",
+						Type:    resource.Type,
+					})
+					// Add create operation
+					m.applyState.pending = append(m.applyState.pending, pendingResource{
+						Address: resource.Address,
+						Action:  "create",
+						Type:    resource.Type,
+					})
+				} else {
+					// Single action (create, update, delete, etc.)
+					m.applyState.pending = append(m.applyState.pending, pendingResource{
+						Address: resource.Address,
+						Action:  resource.Change.Actions[0],
+						Type:    resource.Type,
+					})
+				}
 			}
 		}
 	}
