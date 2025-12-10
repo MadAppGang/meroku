@@ -1135,11 +1135,6 @@ We comply with CAN-SPAM Act, GDPR, and all applicable email regulations`;navigat
 on:
   push:
     branches: [main]
-    paths:
-      - 'src/**'
-      - 'Dockerfile'
-      - 'package.json'
-      - '.github/workflows/${s}-${o}.yml'
   workflow_dispatch:
 
 concurrency:
@@ -1187,11 +1182,6 @@ jobs:
 on:
   push:
     branches: [main]
-    paths:
-      - 'src/**'
-      - 'Dockerfile'
-      - 'package.json'
-      - '.github/workflows/${s}-${o}.yml'
   workflow_dispatch:
 
 concurrency:
@@ -1235,11 +1225,6 @@ jobs:
 on:
   push:
     branches: [main]
-    paths:
-      - 'src/**'
-      - 'Dockerfile'
-      - 'package.json'
-      - '.github/workflows/${s}-${o}.yml'
   workflow_dispatch:
 
 concurrency:
