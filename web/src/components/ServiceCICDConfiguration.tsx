@@ -88,11 +88,6 @@ export default function ServiceCICDConfiguration({
 on:
   push:
     branches: [main]
-    paths:
-      - 'src/**'
-      - 'Dockerfile'
-      - 'package.json'
-      - '.github/workflows/${serviceName}-${env}.yml'
   workflow_dispatch:
 
 concurrency:
@@ -143,11 +138,6 @@ jobs:
 on:
   push:
     branches: [main]
-    paths:
-      - 'src/**'
-      - 'Dockerfile'
-      - 'package.json'
-      - '.github/workflows/${serviceName}-${env}.yml'
   workflow_dispatch:
 
 concurrency:
@@ -194,11 +184,6 @@ jobs:
 on:
   push:
     branches: [main]
-    paths:
-      - 'src/**'
-      - 'Dockerfile'
-      - 'package.json'
-      - '.github/workflows/${serviceName}-${env}.yml'
   workflow_dispatch:
 
 concurrency:
