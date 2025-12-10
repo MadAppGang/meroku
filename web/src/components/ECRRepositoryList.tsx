@@ -71,12 +71,12 @@ export function ECRRepositoryList({
 									className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
 									onClick={() =>
 										handleCopyUrl(
-											`${accountId}.dkr.ecr.${region}.amazonaws.com/${config.project}_backend`,
+											`${accountId}.dkr.ecr.${region}.amazonaws.com/${config.project}_service_backend`,
 										)
 									}
 								>
 									{copiedUrl ===
-									`${accountId}.dkr.ecr.${region}.amazonaws.com/${config.project}_backend` ? (
+									`${accountId}.dkr.ecr.${region}.amazonaws.com/${config.project}_service_backend` ? (
 										<Check className="h-3 w-3 text-green-400" />
 									) : (
 										<Copy className="h-3 w-3" />
