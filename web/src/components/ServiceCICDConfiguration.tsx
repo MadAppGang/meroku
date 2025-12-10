@@ -72,6 +72,13 @@ export default function ServiceCICDConfiguration({
     ? `${project}_service_${env}`
     : `${project}_service_${serviceName}_${env}`;
 
+  // Compute ECR repository name (matches Terraform naming)
+  // Backend: ${project}_backend
+  // Named services: ${project}_service_${serviceName}
+  const ecrRepoName = serviceName === "backend"
+    ? `${project}_backend`
+    : `${project}_service_${serviceName}`;
+
   // Generate the GitHub Actions workflow based on ECR strategy
   const generateWorkflow = () => {
     if (isCrossAccountECR) {
@@ -217,7 +224,7 @@ jobs:
       - name: Build, tag, and push Docker image
         env:
           ECR_REGISTRY: \${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: ${serviceName}
+          ECR_REPOSITORY: ${ecrRepoName}
           IMAGE_TAG: \${{ github.sha }}
         run: |
           # Build Docker image
