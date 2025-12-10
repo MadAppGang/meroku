@@ -1157,24 +1157,8 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		
 	case resourceCompleteMsg:
 		if m.applyState != nil {
-			// Get action from pending list before removing
+			// Get action and duration from currentOps map first
 			action := "update"
-			for _, p := range m.applyState.pending {
-				if p.Address == msg.Address {
-					action = p.Action
-					break
-				}
-			}
-			
-			// Move from pending to completed
-			for i, p := range m.applyState.pending {
-				if p.Address == msg.Address {
-					m.applyState.pending = append(m.applyState.pending[:i], m.applyState.pending[i+1:]...)
-					break
-				}
-			}
-			
-			// Get duration safely from currentOps map
 			var duration time.Duration
 			m.applyState.mu.Lock()
 			if op, exists := m.applyState.currentOps[msg.Address]; exists {
@@ -1187,6 +1171,25 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			opsRemaining := len(m.applyState.currentOps)
 			m.applyState.mu.Unlock()
+
+			// If we didn't get action from currentOps, try pending list
+			if action == "update" {
+				for _, p := range m.applyState.pending {
+					if p.Address == msg.Address {
+						action = p.Action
+						break
+					}
+				}
+			}
+
+			// Move from pending to completed - match BOTH address AND action
+			// This is important for replace operations which have 2 entries (delete + create)
+			for i, p := range m.applyState.pending {
+				if p.Address == msg.Address && p.Action == action {
+					m.applyState.pending = append(m.applyState.pending[:i], m.applyState.pending[i+1:]...)
+					break
+				}
+			}
 
 			m.applyState.completed = append(m.applyState.completed, completedResource{
 				Address:      msg.Address,
@@ -5201,7 +5204,12 @@ func calculateStatistics(groups changeGroups) changeStats {
 	countChanges(groups.creates, "create")
 	countChanges(groups.updates, "update")
 	countChanges(groups.deletes, "delete")
-	countChanges(groups.replaces, "replace")
+	// Replace operations count as 2 (delete + create)
+	stats.byAction["replace"] = len(groups.replaces)
+	for _, change := range groups.replaces {
+		stats.byType[change.Type]++
+		stats.totalChanges += 2 // Each replace is 2 operations: delete + create
+	}
 	countChanges(groups.reads, "read")
 
 	return stats

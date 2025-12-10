@@ -222,7 +222,7 @@ resource "aws_lambda_permission" "ecr_event_call_deploy_lambda" {
 resource "aws_cloudwatch_event_rule" "s3_env_file_change_rule" {
   for_each = { for file in local.env_files_s3 : "${file.bucket}-${file.key}" => file }
 
-  name        = "s3-env-file-change-rule-${each.key}"
+  name        = "s3-env-${local.s3_event_rule_names[each.key]}"
   description = "Event rule for S3 env file changes for ${each.value.bucket}/${each.value.key}"
   event_pattern = jsonencode({
     "source" : ["aws.s3"],
@@ -238,7 +238,7 @@ resource "aws_cloudwatch_event_rule" "s3_env_file_change_rule" {
   })
 
   tags = {
-    Name        = "s3-env-file-change-rule-${each.key}"
+    Name        = "s3-env-${local.s3_event_rule_names[each.key]}"
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
@@ -268,6 +268,26 @@ resource "aws_lambda_permission" "allow_eventbridge" {
 // pass a list of services and env files to the lambda
 // to know which service to restart on file change
 locals {
+  # Create sanitized names for CloudWatch Event Rules
+  # AWS CloudWatch Event Rule names must:
+  # 1. Match pattern ^[0-9A-Za-z_.-]+$
+  # 2. Be 64 characters or less
+  s3_event_rule_keys = {
+    for file in local.env_files_s3 : "${file.bucket}-${file.key}" => {
+      # Sanitize: replace / and other invalid chars with _
+      sanitized = replace(replace("${file.bucket}-${file.key}", "/", "_"), ".", "_")
+      # Create short hash for uniqueness (first 8 chars of md5)
+      hash = substr(md5("${file.bucket}-${file.key}"), 0, 8)
+    }
+  }
+
+  # Final safe names: prefix (24 chars) + sanitized key (max 31 chars) + hash (8 chars) + dash (1 char) = 64 max
+  s3_event_rule_names = {
+    for key, val in local.s3_event_rule_keys : key => substr(val.sanitized, 0, 31) != val.sanitized
+    ? "${substr(val.sanitized, 0, 31)}-${val.hash}" # Truncated + hash
+    : val.sanitized                                 # Full name fits
+  }
+
   service_config = jsonencode({
     "${var.project}" = [
       for file in local.env_files_s3 : {
