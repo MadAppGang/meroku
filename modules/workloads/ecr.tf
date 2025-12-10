@@ -1,12 +1,12 @@
 data "aws_organizations_organization" "org" {}
 
-// backend - uses consistent naming: ${project}_service_backend
+// backend
 resource "aws_ecr_repository" "backend" {
-  name  = "${var.project}_service_backend"
+  name  = "${var.project}_backend"
   count = var.ecr_strategy == "local" ? 1 : 0
 
   tags = {
-    Name        = "${var.project}_service_backend"
+    Name        = "${var.project}_backend"
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"

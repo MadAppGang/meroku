@@ -35,7 +35,7 @@ export function BackendCloudWatch({ config, node }: BackendCloudWatchProps) {
 			]
 		: [
 				{
-					name: `${config.project}_service_backend_${config.env}`,
+					name: `${config.project}_backend_${config.env}`,
 					description: "Backend service logs",
 					service: "ECS Backend Service",
 					retention: "7 days",
@@ -363,7 +363,7 @@ export function BackendCloudWatch({ config, node }: BackendCloudWatchProps) {
 							<div className="bg-gray-900 rounded-lg p-3 font-mono text-xs text-gray-300">
 								<pre>{`# Export logs to S3
 aws logs create-export-task \\
-  --log-group-name "${isService ? `${config.project}_service_${serviceName}_${config.env}` : `${config.project}_service_backend_${config.env}`}" \\
+  --log-group-name "${isService ? `${config.project}_service_${serviceName}_${config.env}` : `${config.project}_backend_${config.env}`}" \\
   --from $(date -d '7 days ago' +%s)000 \\
   --to $(date +%s)000 \\
   --destination "${config.project}-logs-export" \\
@@ -377,7 +377,7 @@ aws logs create-export-task \\
 							</p>
 							<div className="bg-gray-900 rounded-lg p-3 font-mono text-xs text-gray-300">
 								<pre>{`# Save logs to local file
-aws logs tail ${isService ? `${config.project}_service_${serviceName}_${config.env}` : `${config.project}_service_backend_${config.env}`} \\
+aws logs tail ${isService ? `${config.project}_service_${serviceName}_${config.env}` : `${config.project}_backend_${config.env}`} \\
   --follow \\
   --format short > ${isService ? `${serviceName}` : "backend"}-logs-$(date +%Y%m%d-%H%M%S).log`}</pre>
 							</div>

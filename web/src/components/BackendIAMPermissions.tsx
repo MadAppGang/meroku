@@ -318,7 +318,7 @@ export function BackendIAMPermissions({
 							<code className="text-sm font-mono text-blue-400">
 								{isService
 									? `${config.project}_service_${serviceName}_task_${config.env}`
-									: `${config.project}_service_backend_task_${config.env}`}
+									: `${config.project}_backend_task_${config.env}`}
 							</code>
 							<p className="text-xs text-gray-400 mt-1">
 								Used by the running container to access AWS services
@@ -331,7 +331,7 @@ export function BackendIAMPermissions({
 							<code className="text-sm font-mono text-blue-400">
 								{isService
 									? `${config.project}_service_${serviceName}_task_execution_${config.env}`
-									: `${config.project}_service_backend_task_execution_${config.env}`}
+									: `${config.project}_backend_task_execution_${config.env}`}
 							</code>
 							<p className="text-xs text-gray-400 mt-1">
 								Used by ECS to start the task (pull images, write logs)
@@ -762,7 +762,7 @@ export function BackendIAMPermissions({
 						<code className="font-mono text-sm">
 							{isService
 								? `${config.project}_service_${serviceName}_task_execution_${config.env}`
-								: `${config.project}_service_backend_task_execution_${config.env}`}
+								: `${config.project}_backend_task_execution_${config.env}`}
 						</code>
 					</CardDescription>
 				</CardHeader>
