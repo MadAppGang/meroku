@@ -9,8 +9,176 @@ permissions:
   contents: write
   packages: write
 
+env:
+  GO_VERSION: '1.23'
+  NODE_VERSION: '20'
+  PNPM_VERSION: '9'
+
 jobs:
+  # Job 1: Build web assets once (shared across all builds)
+  build-web:
+    name: Build Web Assets
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: cd web && pnpm install --frozen-lockfile
+
+      - name: Build web app
+        run: cd web && pnpm build
+
+      - name: Upload web artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: webapp
+          path: app/webapp/
+          retention-days: 1
+
+  # Job 2: Build Go binaries in parallel (one job per OS)
+  build-binaries:
+    name: Build ${{ matrix.goos }}
+    needs: build-web
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        goos: [linux, darwin, windows]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download web artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: webapp
+          path: app/webapp/
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: app/go.sum
+
+      - name: Get version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Build binaries
+        env:
+          CGO_ENABLED: 0
+          GOOS: ${{ matrix.goos }}
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          cd app
+
+          # Run go mod tidy and generate
+          go mod tidy
+          go generate ./...
+
+          mkdir -p dist
+
+          # Build for each architecture
+          for GOARCH in amd64 arm64; do
+            # Skip unsupported combinations
+            if [ "$GOOS" = "windows" ] && [ "$GOARCH" = "arm64" ]; then
+              echo "Skipping windows/arm64"
+              continue
+            fi
+
+            EXT=""
+            if [ "$GOOS" = "windows" ]; then EXT=".exe"; fi
+
+            OUTPUT="dist/meroku_${GOOS}_${GOARCH}${EXT}"
+            echo "Building $GOOS/$GOARCH -> $OUTPUT"
+
+            GOOS=$GOOS GOARCH=$GOARCH go build -ldflags "-X main.version=$VERSION" -o "$OUTPUT" .
+
+            # Create archive
+            ARCHIVE_NAME="meroku_$(echo $GOOS | sed 's/darwin/Darwin/' | sed 's/linux/Linux/' | sed 's/windows/Windows/')_$(echo $GOARCH | sed 's/amd64/x86_64/' | sed 's/arm64/arm64/')"
+
+            if [ "$GOOS" = "windows" ]; then
+              # Create zip for Windows
+              cd dist
+              zip "${ARCHIVE_NAME}.zip" "meroku_${GOOS}_${GOARCH}${EXT}"
+              cd ..
+            else
+              # Create tar.gz for Unix
+              cd dist
+              tar -czvf "${ARCHIVE_NAME}.tar.gz" "meroku_${GOOS}_${GOARCH}${EXT}"
+              cd ..
+            fi
+          done
+
+          ls -la dist/
+
+      - name: Create Linux packages
+        if: matrix.goos == 'linux'
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          cd app
+
+          # Install nfpm
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+
+          # Create nfpm config for each arch
+          for GOARCH in amd64 arm64; do
+            ARCH_NAME=$(echo $GOARCH | sed 's/amd64/x86_64/' | sed 's/arm64/arm64/')
+
+            cat > nfpm-${GOARCH}.yaml << EOF
+          name: meroku
+          arch: "${GOARCH}"
+          platform: "linux"
+          version: "${VERSION#v}"
+          maintainer: "MadAppGang <i@madappgang.com>"
+          description: "Easy infrastructure management"
+          homepage: "https://madappgang.com"
+          license: "MIT"
+          contents:
+            - src: ./dist/meroku_linux_${GOARCH}
+              dst: /usr/bin/meroku
+          depends:
+            - git
+          recommends:
+            - terraform
+          EOF
+
+            # Create deb
+            nfpm package -p deb -f nfpm-${GOARCH}.yaml -t "dist/meroku_Linux_${ARCH_NAME}.deb"
+
+            # Create rpm
+            nfpm package -p rpm -f nfpm-${GOARCH}.yaml -t "dist/meroku_Linux_${ARCH_NAME}.rpm"
+          done
+
+          ls -la dist/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.goos }}
+          path: app/dist/
+          retention-days: 1
+
+  # Job 3: Create release and upload all artifacts
   release:
+    name: Create Release
+    needs: build-binaries
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -18,20 +186,153 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
         with:
-          go-version: '1.23'
+          pattern: dist-*
+          path: dist/
+          merge-multiple: true
 
+      - name: List artifacts
+        run: ls -la dist/
 
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          version: latest
-          args: release --clean
-          workdir: ./app
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum *.tar.gz *.zip *.deb *.rpm > checksums.txt
+          cat checksums.txt
+
+      - name: Get version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get commits since last tag
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            CHANGELOG=$(git log --pretty=format:"* %s (%h)" ${PREV_TAG}..HEAD | grep -v "^* Merge" | head -20)
+          else
+            CHANGELOG=$(git log --pretty=format:"* %s (%h)" -20 | grep -v "^* Merge")
+          fi
+
+          echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          gh release create "$VERSION" \
+            --title "$VERSION" \
+            --notes "## Changelog
+
+          ${{ steps.changelog.outputs.CHANGELOG }}
+
+          ## Installation
+
+          ### Homebrew (macOS/Linux)
+          \`\`\`bash
+          brew install MadAppGang/meroku/meroku
+          \`\`\`
+
+          ### Download
+          Download the appropriate binary for your platform from the assets below.
+          " \
+            dist/*.tar.gz \
+            dist/*.zip \
+            dist/*.deb \
+            dist/*.rpm \
+            dist/checksums.txt
+
+  # Job 4: Update Homebrew tap
+  update-homebrew:
+    name: Update Homebrew Tap
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Download release assets for checksums
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          mkdir -p assets
+          gh release download "$VERSION" --repo MadAppGang/meroku --pattern "*.tar.gz" --dir assets
+          cd assets
+
+          # Calculate SHA256 for each Darwin archive
+          DARWIN_AMD64_SHA=$(sha256sum meroku_Darwin_x86_64.tar.gz | cut -d' ' -f1)
+          DARWIN_ARM64_SHA=$(sha256sum meroku_Darwin_arm64.tar.gz | cut -d' ' -f1)
+          LINUX_AMD64_SHA=$(sha256sum meroku_Linux_x86_64.tar.gz | cut -d' ' -f1)
+          LINUX_ARM64_SHA=$(sha256sum meroku_Linux_arm64.tar.gz | cut -d' ' -f1)
+
+          echo "DARWIN_AMD64_SHA=$DARWIN_AMD64_SHA" >> $GITHUB_ENV
+          echo "DARWIN_ARM64_SHA=$DARWIN_ARM64_SHA" >> $GITHUB_ENV
+          echo "LINUX_AMD64_SHA=$LINUX_AMD64_SHA" >> $GITHUB_ENV
+          echo "LINUX_ARM64_SHA=$LINUX_ARM64_SHA" >> $GITHUB_ENV
+
+      - name: Update Homebrew formula
+        env:
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
-          CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
-          SCOOP_TAP_GITHUB_TOKEN: ${{ secrets.SCOOP_TAP_GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          # Clone the tap repo
+          git clone https://x-access-token:${HOMEBREW_TAP_GITHUB_TOKEN}@github.com/MadAppGang/homebrew-meroku.git tap
+          cd tap
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Create/update the formula
+          cat > Formula/meroku.rb << EOF
+          class Meroku < Formula
+            desc "Easy infrastructure management"
+            homepage "https://madappgang.com"
+            version "${VERSION#v}"
+            license "MIT"
+
+            on_macos do
+              on_intel do
+                url "https://github.com/MadAppGang/meroku/releases/download/${VERSION}/meroku_Darwin_x86_64.tar.gz"
+                sha256 "${DARWIN_AMD64_SHA}"
+              end
+              on_arm do
+                url "https://github.com/MadAppGang/meroku/releases/download/${VERSION}/meroku_Darwin_arm64.tar.gz"
+                sha256 "${DARWIN_ARM64_SHA}"
+              end
+            end
+
+            on_linux do
+              on_intel do
+                url "https://github.com/MadAppGang/meroku/releases/download/${VERSION}/meroku_Linux_x86_64.tar.gz"
+                sha256 "${LINUX_AMD64_SHA}"
+              end
+              on_arm do
+                url "https://github.com/MadAppGang/meroku/releases/download/${VERSION}/meroku_Linux_arm64.tar.gz"
+                sha256 "${LINUX_ARM64_SHA}"
+              end
+            end
+
+            depends_on "terraform" => :optional
+            depends_on "opentofu" => :optional
+
+            def install
+              bin.install Dir["meroku*"].first => "meroku"
+            end
+
+            test do
+              system "#{bin}/meroku", "--version"
+            end
+          end
+          EOF
+
+          git add Formula/meroku.rb
+          git commit -m "Brew formula update for meroku version ${VERSION}"
+          git push

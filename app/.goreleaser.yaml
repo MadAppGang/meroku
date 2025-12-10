@@ -27,6 +27,13 @@ builds:
       - linux
       - windows
       - darwin
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      # Windows on ARM is rare
+      - goos: windows
+        goarch: arm64
 
 archives:
   - # this name template makes the OS and Arch compatible with the results of `uname`.
