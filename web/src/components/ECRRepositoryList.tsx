@@ -58,12 +58,12 @@ export function ECRRepositoryList({
 						</div>
 						<div className="space-y-1">
 							<div className="text-blue-400 font-mono text-xs">
-								{config.project}_backend
+								{config.project}_service_backend
 							</div>
 							<div className="flex items-center gap-2 group">
 								<div className="text-gray-500 font-mono text-xs overflow-x-auto whitespace-nowrap scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-transparent">
 									{accountId}.dkr.ecr.{region}.amazonaws.com/{config.project}
-									_backend
+									_service_backend
 								</div>
 								<Button
 									size="icon"

@@ -463,7 +463,7 @@ export function ECRNodeProperties({
 									</h4>
 									<div className="bg-gray-800 rounded p-2">
 										<code className="text-xs text-gray-300 break-all">
-											{config.ecr_account_id}.dkr.ecr.{config.ecr_account_region}.amazonaws.com/{config.project}_backend
+											{config.ecr_account_id}.dkr.ecr.{config.ecr_account_region}.amazonaws.com/{config.project}_service_backend
 										</code>
 									</div>
 									<p className="text-xs text-gray-400 mt-2">
