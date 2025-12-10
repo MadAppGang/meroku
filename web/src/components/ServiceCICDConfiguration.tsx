@@ -148,14 +148,14 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4.0.1
         with:
-          role-to-assume: arn:aws:iam::${accountId}:role/${project}-github-actions-${env}
+          role-to-assume: arn:aws:iam::${accountId}:role/${project}-${env}-github-actions-role
           aws-region: ${region}
 
       - name: Deploy to ECS
         run: |
           echo "Deploying ${serviceName} with image: ${customImageUri}"
           aws ecs update-service \\
-            --cluster ${project}-${env} \\
+            --cluster ${project}_cluster_${env} \\
             --service ${serviceName} \\
             --force-new-deployment \\
             --region ${region}
@@ -164,7 +164,7 @@ jobs:
         run: |
           echo "Waiting for service to stabilize..."
           aws ecs wait services-stable \\
-            --cluster ${project}-${env} \\
+            --cluster ${project}_cluster_${env} \\
             --services ${serviceName} \\
             --region ${region}
           echo "✅ Deployment completed successfully"
@@ -200,7 +200,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4.0.1
         with:
-          role-to-assume: arn:aws:iam::${accountId}:role/${project}-github-actions-${env}
+          role-to-assume: arn:aws:iam::${accountId}:role/${project}-${env}-github-actions-role
           aws-region: ${region}
 
       - name: Login to Amazon ECR
@@ -231,7 +231,7 @@ jobs:
         run: |
           echo "Deploying ${serviceName} to ECS..."
           aws ecs update-service \\
-            --cluster ${project}-${env} \\
+            --cluster ${project}_cluster_${env} \\
             --service ${serviceName} \\
             --force-new-deployment \\
             --region ${region}
@@ -240,7 +240,7 @@ jobs:
         run: |
           echo "Waiting for service to stabilize..."
           aws ecs wait services-stable \\
-            --cluster ${project}-${env} \\
+            --cluster ${project}_cluster_${env} \\
             --services ${serviceName} \\
             --region ${region}
           echo "✅ Deployment completed successfully"`;
