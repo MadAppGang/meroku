@@ -1184,8 +1184,12 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// Move from pending to completed - match BOTH address AND action
 			// This is important for replace operations which have 2 entries (delete + create)
+			// Note: Pending addresses may have suffixes like " (destroy)" or " (create)"
+			// but Terraform sends the base address without suffix
 			for i, p := range m.applyState.pending {
-				if p.Address == msg.Address && p.Action == action {
+				// Strip suffix from pending address for comparison
+				pendingBaseAddr := strings.TrimSuffix(strings.TrimSuffix(p.Address, " (destroy)"), " (create)")
+				if pendingBaseAddr == msg.Address && p.Action == action {
 					m.applyState.pending = append(m.applyState.pending[:i], m.applyState.pending[i+1:]...)
 					break
 				}
