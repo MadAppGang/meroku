@@ -97,7 +97,7 @@ export const nodeStateMapping: NodeStateConfig[] = [
 			}
 
 			return {
-				serviceName: `${config.project}_backend_${config.env}`,
+				serviceName: `${config.project}_service_backend_${config.env}`,
 				port: config.workload?.backend_image_port || 8080,
 				healthEndpoint: config.workload?.backend_health_endpoint || "/health",
 				cpu: config.workload?.backend_cpu || "256",

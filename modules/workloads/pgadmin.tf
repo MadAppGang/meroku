@@ -24,7 +24,7 @@ resource "aws_ssm_parameter" "pgadmin_password" {
 resource "aws_service_discovery_service" "pgadmin" {
   count = var.pgadmin_enabled ? 1 : 0
 
-  name = "pgadmin_service_${var.env}"
+  name = "${var.project}_service_pgadmin_${var.env}"
 
   dns_config {
     namespace_id = aws_service_discovery_private_dns_namespace.local.id
@@ -47,7 +47,7 @@ resource "aws_service_discovery_service" "pgadmin" {
   }
 
   tags = {
-    Name        = "pgadmin-service-${var.env}"
+    Name        = "${var.project}_service_pgadmin_${var.env}"
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
@@ -57,7 +57,7 @@ resource "aws_service_discovery_service" "pgadmin" {
 
 resource "aws_ecs_service" "pgadmin" {
   count                              = var.pgadmin_enabled ? 1 : 0
-  name                               = "pgadmin_service_${var.env}"
+  name                               = "${var.project}_service_pgadmin_${var.env}"
   cluster                            = aws_ecs_cluster.main.id
   task_definition                    = aws_ecs_task_definition.pgadmin[0].arn
   desired_count                      = 1
@@ -73,12 +73,12 @@ resource "aws_ecs_service" "pgadmin" {
 
   service_registries {
     registry_arn   = aws_service_discovery_service.pgadmin[0].arn
-    container_name = "${var.project}_pgadmin_${var.env}"
+    container_name = "${var.project}_service_pgadmin_${var.env}"
     container_port = 80
   }
 
   tags = {
-    Name        = "pgadmin-service-${var.env}"
+    Name        = "${var.project}_service_pgadmin_${var.env}"
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
@@ -97,7 +97,7 @@ resource "aws_ecs_task_definition" "pgadmin" {
   task_role_arn            = aws_iam_role.pgadmin_task[0].arn
 
   container_definitions = jsonencode([{
-    name   = "${var.project}_pgadmin_${var.env}"
+    name   = "${var.project}_service_pgadmin_${var.env}"
     cpu    = 256
     memory = 512
     image  = "dpage/pgadmin4:latest"
@@ -113,12 +113,12 @@ resource "aws_ecs_task_definition" "pgadmin" {
       protocol      = "tcp"
       containerPort = 80
       hostPort      = 80
-      name          = "${var.project}_pgadmin_${var.env}"
+      name          = "${var.project}_service_pgadmin_${var.env}"
     }]
   }])
 
   tags = {
-    Name        = "pgadmin-service-${var.env}"
+    Name        = "${var.project}_service_pgadmin_${var.env}"
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
@@ -128,7 +128,7 @@ resource "aws_ecs_task_definition" "pgadmin" {
 
 resource "aws_security_group" "pgadmin" {
   count  = var.pgadmin_enabled ? 1 : 0
-  name   = "${var.project}_pgadmin_${var.env}"
+  name   = "${var.project}_service_pgadmin_${var.env}"
   vpc_id = var.vpc_id
 
   ingress {
@@ -148,7 +148,7 @@ resource "aws_security_group" "pgadmin" {
   }
 
   tags = {
-    Name        = "${var.project}-pgadmin-${var.env}"
+    Name        = "${var.project}_service_pgadmin_${var.env}"
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
@@ -158,12 +158,12 @@ resource "aws_security_group" "pgadmin" {
 
 resource "aws_cloudwatch_log_group" "pgadmin" {
   count = var.pgadmin_enabled ? 1 : 0
-  name  = "${var.project}-pgadmin_${var.env}"
+  name  = "${var.project}_service_pgadmin_${var.env}"
 
   retention_in_days = 1
 
   tags = {
-    Name        = "pgadmin-service-${var.env}"
+    Name        = "${var.project}_service_pgadmin_${var.env}"
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
@@ -173,11 +173,11 @@ resource "aws_cloudwatch_log_group" "pgadmin" {
 
 resource "aws_iam_role" "pgadmin_task" {
   count              = var.pgadmin_enabled ? 1 : 0
-  name               = "${var.project}_pgadmin_task_${var.env}"
+  name               = "${var.project}_service_pgadmin_task_${var.env}"
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume_role.json
 
   tags = {
-    Name        = "${var.project}-pgadmin-task-role-${var.env}"
+    Name        = "${var.project}_service_pgadmin_task_${var.env}"
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
@@ -187,11 +187,11 @@ resource "aws_iam_role" "pgadmin_task" {
 
 resource "aws_iam_role" "pgadmin_task_execution" {
   count              = var.pgadmin_enabled ? 1 : 0
-  name               = "${var.project}_pgadmin_task_execution_${var.env}"
+  name               = "${var.project}_service_pgadmin_task_execution_${var.env}"
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume_role.json
 
   tags = {
-    Name        = "${var.project}-pgadmin-task-execution-role-${var.env}"
+    Name        = "${var.project}_service_pgadmin_task_execution_${var.env}"
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
