@@ -46,3 +46,11 @@ env/dev/.terraform.lock.hcl
 *.bak
 meroku
 meroku_test
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Backup files
+*.backup_*
+project/backup/
