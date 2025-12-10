@@ -65,6 +65,13 @@ export default function ServiceCICDConfiguration({
   // Get the custom image URI if it's a custom repo
   const customImageUri = serviceConfig?.ecr_config?.repository_uri || "";
 
+  // Compute actual ECS service name (matches Terraform naming)
+  // Backend: ${project}_service_${env}
+  // Named services: ${project}_service_${serviceName}_${env}
+  const ecsServiceName = serviceName === "backend"
+    ? `${project}_service_${env}`
+    : `${project}_service_${serviceName}_${env}`;
+
   // Generate the GitHub Actions workflow based on ECR strategy
   const generateWorkflow = () => {
     if (isCrossAccountECR) {
@@ -156,7 +163,7 @@ jobs:
           echo "Deploying ${serviceName} with image: ${customImageUri}"
           aws ecs update-service \\
             --cluster ${project}_cluster_${env} \\
-            --service ${serviceName} \\
+            --service ${ecsServiceName} \\
             --force-new-deployment \\
             --region ${region}
 
@@ -165,7 +172,7 @@ jobs:
           echo "Waiting for service to stabilize..."
           aws ecs wait services-stable \\
             --cluster ${project}_cluster_${env} \\
-            --services ${serviceName} \\
+            --services ${ecsServiceName} \\
             --region ${region}
           echo "✅ Deployment completed successfully"
           echo "Using Docker image: ${customImageUri}"`;
@@ -232,7 +239,7 @@ jobs:
           echo "Deploying ${serviceName} to ECS..."
           aws ecs update-service \\
             --cluster ${project}_cluster_${env} \\
-            --service ${serviceName} \\
+            --service ${ecsServiceName} \\
             --force-new-deployment \\
             --region ${region}
 
@@ -241,7 +248,7 @@ jobs:
           echo "Waiting for service to stabilize..."
           aws ecs wait services-stable \\
             --cluster ${project}_cluster_${env} \\
-            --services ${serviceName} \\
+            --services ${ecsServiceName} \\
             --region ${region}
           echo "✅ Deployment completed successfully"`;
     }
