@@ -133,6 +133,26 @@ func TestPendingListForReplace(t *testing.T) {
 	}
 }
 
+// Test action name normalization (destroy -> delete)
+func TestNormalizeAction(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"destroy", "delete"},
+		{"delete", "delete"},
+		{"create", "create"},
+		{"update", "update"},
+	}
+
+	for _, tt := range tests {
+		result := normalizeAction(tt.input)
+		if result != tt.expected {
+			t.Errorf("normalizeAction(%q) = %q, want %q", tt.input, result, tt.expected)
+		}
+	}
+}
+
 // Test pending removal matches by address AND action
 func TestPendingRemovalMatchesByAddressAndAction(t *testing.T) {
 	// Setup pending with replace (2 entries for same address)

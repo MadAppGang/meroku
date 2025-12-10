@@ -614,6 +614,8 @@ func (m *modernPlanModel) handleApplyStart(msg *TerraformJSONMessage) {
 	if action == "" {
 		action = m.getResourceAction(addr)
 	}
+	// Normalize action name (Terraform uses "destroy" in hooks, "delete" in plan)
+	action = normalizeAction(action)
 
 	if f, err := os.OpenFile("/tmp/handleApplyStart.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
 		timestamp := time.Now().Format("2006-01-02 15:04:05.000")
@@ -699,6 +701,8 @@ func (m *modernPlanModel) handleApplyComplete(msg *TerraformJSONMessage) {
 	if action == "" {
 		action = m.getResourceAction(addr)
 	}
+	// Normalize action name (Terraform uses "destroy" in hooks, "delete" in plan)
+	action = normalizeAction(action)
 
 	// Use elapsed seconds from the message
 	duration := time.Duration(msg.Hook.ElapsedSeconds * float64(time.Second))
@@ -736,6 +740,8 @@ func (m *modernPlanModel) handleApplyError(msg *TerraformJSONMessage) {
 	if action == "" {
 		action = m.getResourceAction(addr)
 	}
+	// Normalize action name (Terraform uses "destroy" in hooks, "delete" in plan)
+	action = normalizeAction(action)
 
 	// Use elapsed seconds from the message
 	duration := time.Duration(msg.Hook.ElapsedSeconds * float64(time.Second))
@@ -890,6 +896,17 @@ func (m *modernPlanModel) getResourceAction(address string) string {
 		}
 	}
 	return "update"
+}
+
+// normalizeAction converts Terraform apply hook action names to plan action names
+// Terraform uses different names: plan uses "delete", apply hooks use "destroy"
+func normalizeAction(action string) string {
+	switch action {
+	case "destroy":
+		return "delete"
+	default:
+		return action
+	}
 }
 
 // sendMsg sends a message through the program
