@@ -1,5 +1,5 @@
-import { Check, GitBranch, Key, Plus, Trash2, X } from "lucide-react";
-import { useState } from "react";
+import { Check, GitBranch, Plus, Trash2, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import type { AmplifyBranch, BranchUpdateHandler } from "../types/components";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import { Button } from "./ui/button";
@@ -14,6 +14,13 @@ import {
 	SelectValue,
 } from "./ui/select";
 import { Textarea } from "./ui/textarea";
+
+// Represents an env var with a stable ID for React keys
+interface EnvVarEntry {
+	id: string;
+	key: string;
+	value: string;
+}
 
 interface AmplifyBranchManagementProps {
 	config: YamlInfrastructureConfig;
@@ -40,6 +47,9 @@ export function AmplifyBranchManagement({
 		environment_variables_text: "",
 	});
 	const [showAddBranch, setShowAddBranch] = useState(false);
+
+	// Local state for env vars being edited (with stable IDs)
+	const [editingEnvVars, setEditingEnvVars] = useState<EnvVarEntry[]>([]);
 
 	if (!amplifyApp) {
 		return (
@@ -138,6 +148,56 @@ export function AmplifyBranchManagement({
 	};
 
 	const branches = amplifyApp.branches || [];
+
+	// Initialize local env vars state when starting to edit a branch
+	useEffect(() => {
+		if (editingBranch !== null && branches[editingBranch]) {
+			const branch = branches[editingBranch];
+			const envVars = Object.entries(branch.environment_variables || {}).map(
+				([key, value], idx) => ({
+					id: `env-${idx}-${Date.now()}`,
+					key,
+					value,
+				}),
+			);
+			setEditingEnvVars(envVars);
+		} else {
+			setEditingEnvVars([]);
+		}
+	}, [editingBranch]);
+
+	// Save env vars from local state to config
+	const saveEnvVarsToConfig = (branchIndex: number) => {
+		const envVarsObj: Record<string, string> = {};
+		for (const entry of editingEnvVars) {
+			if (entry.key.trim()) {
+				envVarsObj[entry.key] = entry.value;
+			}
+		}
+		handleUpdateBranch(branchIndex, { environment_variables: envVarsObj });
+	};
+
+	// Update a single env var in local state (no config save)
+	const updateLocalEnvVar = (id: string, field: "key" | "value", newValue: string) => {
+		setEditingEnvVars((prev) =>
+			prev.map((entry) =>
+				entry.id === id ? { ...entry, [field]: newValue } : entry,
+			),
+		);
+	};
+
+	// Add new env var to local state
+	const addLocalEnvVar = () => {
+		setEditingEnvVars((prev) => [
+			...prev,
+			{ id: `env-new-${Date.now()}`, key: "", value: "" },
+		]);
+	};
+
+	// Remove env var from local state
+	const removeLocalEnvVar = (id: string) => {
+		setEditingEnvVars((prev) => prev.filter((entry) => entry.id !== id));
+	};
 
 	return (
 		<div className="space-y-6">
@@ -394,69 +454,38 @@ export function AmplifyBranchManagement({
 										<div>
 											<Label className="text-sm">Environment Variables</Label>
 											<div className="mt-2 space-y-2">
-												{Object.entries(branch.environment_variables || {}).map(
-													([key, value], _envIndex) => (
-														<div key={key} className="flex gap-2">
-															<Input
-																value={key}
-																onChange={(e) => {
-																	const newEnvVars = {
-																		...branch.environment_variables,
-																	};
-																	delete newEnvVars[key];
-																	newEnvVars[e.target.value] = value;
-																	handleUpdateBranch(index, {
-																		environment_variables: newEnvVars,
-																	});
-																}}
-																placeholder="KEY"
-																className="flex-1 bg-gray-900 border-gray-600 text-white font-mono text-sm"
-															/>
-															<Input
-																value={value}
-																onChange={(e) => {
-																	const newEnvVars = {
-																		...branch.environment_variables,
-																	};
-																	newEnvVars[key] = e.target.value;
-																	handleUpdateBranch(index, {
-																		environment_variables: newEnvVars,
-																	});
-																}}
-																placeholder="VALUE"
-																className="flex-[2] bg-gray-900 border-gray-600 text-white font-mono text-sm"
-															/>
-															<Button
-																size="icon"
-																variant="ghost"
-																onClick={() => {
-																	const newEnvVars = {
-																		...branch.environment_variables,
-																	};
-																	delete newEnvVars[key];
-																	handleUpdateBranch(index, {
-																		environment_variables: newEnvVars,
-																	});
-																}}
-																className="text-red-400 hover:text-red-300"
-															>
-																<X className="w-4 h-4" />
-															</Button>
-														</div>
-													),
-												)}
+												{editingEnvVars.map((entry) => (
+													<div key={entry.id} className="flex gap-2">
+														<Input
+															value={entry.key}
+															onChange={(e) =>
+																updateLocalEnvVar(entry.id, "key", e.target.value)
+															}
+															placeholder="KEY"
+															className="flex-1 bg-gray-900 border-gray-600 text-white font-mono text-sm"
+														/>
+														<Input
+															value={entry.value}
+															onChange={(e) =>
+																updateLocalEnvVar(entry.id, "value", e.target.value)
+															}
+															placeholder="VALUE"
+															className="flex-[2] bg-gray-900 border-gray-600 text-white font-mono text-sm"
+														/>
+														<Button
+															size="icon"
+															variant="ghost"
+															onClick={() => removeLocalEnvVar(entry.id)}
+															className="text-red-400 hover:text-red-300"
+														>
+															<X className="w-4 h-4" />
+														</Button>
+													</div>
+												))}
 												<Button
 													size="sm"
 													variant="outline"
-													onClick={() => {
-														const newEnvVars = {
-															...branch.environment_variables,
-															[`NEW_VAR_${Date.now()}`]: "",
-														};
-														handleUpdateBranch(index, {
-															environment_variables: newEnvVars,
-														});
-													}}
+													onClick={addLocalEnvVar}
 													className="w-full"
 												>
 													<Plus className="w-4 h-4 mr-1" />
@@ -469,7 +498,13 @@ export function AmplifyBranchManagement({
 											</p>
 										</div>
 
-										<Button size="sm" onClick={() => setEditingBranch(null)}>
+										<Button
+											size="sm"
+											onClick={() => {
+												saveEnvVarsToConfig(index);
+												setEditingBranch(null);
+											}}
+										>
 											<Check className="w-4 h-4 mr-1" />
 											Save
 										</Button>
@@ -527,31 +562,14 @@ export function AmplifyBranchManagement({
 											<p className="text-gray-400 text-xs mb-1">
 												Environment Variables
 											</p>
-											{Object.keys(branch.environment_variables || {}).length >
-											0 ? (
-												<div className="space-y-1">
-													<p className="text-gray-300 text-sm">
-														{
-															Object.keys(branch.environment_variables || {})
-																.length
-														}{" "}
-														variable
-														{Object.keys(branch.environment_variables || {})
-															.length !== 1
-															? "s"
-															: ""}{" "}
-														configured
-													</p>
-													<div className="flex items-center gap-2 text-xs text-gray-400">
-														<Key className="w-3 h-3" />
-														<span className="truncate">
-															{Object.keys(branch.environment_variables || {})
-																.slice(0, 3)
-																.join(", ")}
-															{Object.keys(branch.environment_variables || {})
-																.length > 3 && "..."}
-														</span>
-													</div>
+											{Object.keys(branch.environment_variables || {}).length > 0 ? (
+												<div className="space-y-1 bg-gray-900 rounded p-2 max-h-32 overflow-y-auto">
+													{Object.entries(branch.environment_variables || {}).map(([key, value]) => (
+														<div key={key} className="text-xs font-mono">
+															<span className="text-gray-400">{key}=</span>
+															<span className="text-gray-300">{value}</span>
+														</div>
+													))}
 												</div>
 											) : (
 												<p className="text-gray-300 text-sm">
@@ -565,72 +583,6 @@ export function AmplifyBranchManagement({
 						))}
 					</div>
 				)}
-			</div>
-
-			<div>
-				<h3 className="text-sm font-medium text-white mb-4">
-					Branch Requirements
-				</h3>
-				<div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-					<ul className="text-sm text-gray-300 space-y-2">
-						<li className="flex items-start gap-2">
-							<span className="text-gray-400">•</span>
-							At least one branch is required for deployment
-						</li>
-						<li className="flex items-start gap-2">
-							<span className="text-gray-400">•</span>
-							Custom domains require at least one PRODUCTION branch
-						</li>
-						<li className="flex items-start gap-2">
-							<span className="text-gray-400">•</span>
-							Branch names must be unique within the app
-						</li>
-						<li className="flex items-start gap-2">
-							<span className="text-gray-400">•</span>
-							Environment variables are branch-specific
-						</li>
-					</ul>
-				</div>
-			</div>
-
-			<div>
-				<h3 className="text-sm font-medium text-white mb-4">
-					Common Environment Variables
-				</h3>
-				<div className="bg-gray-800 rounded-lg p-4 border border-gray-700 space-y-3">
-					<div>
-						<p className="text-xs font-medium text-gray-400 mb-2">React Apps</p>
-						<div className="space-y-1">
-							<code className="text-xs text-gray-300 block">
-								REACT_APP_API_URL
-							</code>
-							<code className="text-xs text-gray-300 block">REACT_APP_ENV</code>
-							<code className="text-xs text-gray-300 block">
-								REACT_APP_COGNITO_USER_POOL_ID=${"{"}cognito_user_pool_id{"}"}
-							</code>
-						</div>
-					</div>
-					<div>
-						<p className="text-xs font-medium text-gray-400 mb-2">
-							Next.js Apps
-						</p>
-						<div className="space-y-1">
-							<code className="text-xs text-gray-300 block">
-								NEXT_PUBLIC_API_URL
-							</code>
-							<code className="text-xs text-gray-300 block">
-								NEXT_PUBLIC_ENV
-							</code>
-						</div>
-					</div>
-					<div>
-						<p className="text-xs font-medium text-gray-400 mb-2">Vite Apps</p>
-						<div className="space-y-1">
-							<code className="text-xs text-gray-300 block">VITE_API_URL</code>
-							<code className="text-xs text-gray-300 block">VITE_ENV</code>
-						</div>
-					</div>
-				</div>
 			</div>
 		</div>
 	);
