@@ -38,7 +38,6 @@ import { ALBStatus } from "./ALBStatus";
 import { AmplifyBranchManagement } from "./AmplifyBranchManagement";
 import { AmplifyBuildSettings } from "./AmplifyBuildSettings";
 import { AmplifyDomainSettings } from "./AmplifyDomainSettings";
-import { AmplifyEnvironmentVariables } from "./AmplifyEnvironmentVariables";
 import { AmplifyNodeProperties } from "./AmplifyNodeProperties";
 import { APIGatewayProperties } from "./APIGatewayProperties";
 import { AuroraNodeProperties } from "./AuroraNodeProperties";
@@ -239,7 +238,6 @@ export function Sidebar({
 					{ id: "branches", label: "Branches", icon: GitBranch },
 					{ id: "build", label: "Build", icon: Code },
 					{ id: "domain", label: "Domain", icon: Globe },
-					{ id: "env", label: "Env Vars", icon: Zap },
 				];
 			default:
 				return [
@@ -1626,17 +1624,6 @@ jobs:
 					config &&
 					onConfigChange && (
 						<AmplifyDomainSettings
-							config={config}
-							nodeId={selectedNode.id}
-							onConfigChange={onConfigChange}
-						/>
-					)}
-
-				{activeTab === "env" &&
-					selectedNode.type === "amplify" &&
-					config &&
-					onConfigChange && (
-						<AmplifyEnvironmentVariables
 							config={config}
 							nodeId={selectedNode.id}
 							onConfigChange={onConfigChange}
