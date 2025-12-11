@@ -181,18 +181,7 @@ export interface YamlInfrastructureConfig {
 	}>;
 
 	// Event-driven Tasks
-	event_processor_tasks?: Array<{
-		name: string;
-		rule_name: string;
-		detail_types: string[];
-		sources: string[];
-		docker_image?: string;
-		container_command?: string[];
-		cpu?: number;
-		memory?: number;
-		environment_variables?: Record<string, string>;
-		ecr_config?: ECRConfig;
-	}>;
+	event_processor_tasks?: Array<EventProcessorTask>;
 
 	// GraphQL API Configuration
 	pubsub_appsync?: {
@@ -257,8 +246,39 @@ export interface YamlInfrastructureConfig {
 			environment_variables?: Record<string, string>;
 			custom_subdomains?: string[];
 		}>;
-		subdomain_prefix?: string;     // NEW: Auto-constructs domain using base_domain
-		custom_domain?: string;         // For manual override (edge cases)
-		environment_variables?: Record<string, string>; // App-level env vars
+		subdomain_prefix?: string;
+		custom_domain?: string;
+		environment_variables?: Record<string, string>;
 	}>;
+}
+
+/**
+ * EventBridge Rule (Schema v13)
+ * Defines a single EventBridge rule pattern for event-driven tasks
+ */
+export interface EventBridgeRule {
+	name: string;
+	sources: string[];
+	detail_types: string[];
+}
+
+/**
+ * Event Processor Task Configuration
+ * Supports both legacy single-rule format and new multi-rule format (Schema v13)
+ */
+export interface EventProcessorTask {
+	name: string;
+	// New multi-rule support (Schema v13) - preferred format
+	rules?: EventBridgeRule[];
+	// Legacy single-rule fields (Schema <= 12) - kept for backward compatibility
+	rule_name?: string;
+	detail_types?: string[];
+	sources?: string[];
+	// Container configuration
+	docker_image?: string;
+	container_command?: string[];
+	cpu?: number;
+	memory?: number;
+	environment_variables?: Record<string, string>;
+	ecr_config?: ECRConfig;
 }

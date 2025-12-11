@@ -486,11 +486,25 @@ module "event_bus_task_{{name}}" {
   source = "{{@root.modules}}/event_bridge_task"
   project = "{{@root.project}}"
   env = "{{@root.env}}"
+  task = "{{name}}"
+  # EventBridge rules configuration
   # https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-events.html
+  {{#if rules}}
+  # New multi-rule format (Schema v13)
+  rules = {
+    {{#each rules}}
+    "{{name}}" = {
+      sources      = {{{array sources}}}
+      detail_types = {{{array detail_types}}}
+    }
+    {{/each}}
+  }
+  {{else}}
+  # Legacy single-rule format
   detail_types = {{{array detail_types}}}
   sources = {{{array sources}}}
   rule_name = "{{rule_name}}"
-  task = "{{name}}"
+  {{/if}}
   {{#if docker_image}}
   docker_image = "{{docker_image}}"
   {{/if}}

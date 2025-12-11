@@ -21,7 +21,8 @@ import (
 // 10: Added per-service ECR configuration (ecr_config field in services, event_processor_tasks, scheduled_tasks)
 // 11: Ensure host_port matches container_port for services (required for awsvpc network mode)
 // 12: Ensure all postgres boolean fields have explicit default values
-const CurrentSchemaVersion = 12
+// 13: Multi-rule EventBridge support (rules[] array in event_processor_tasks)
+const CurrentSchemaVersion = 13
 
 // EnvWithVersion extends Env with a schema version field
 type EnvWithVersion struct {
@@ -92,6 +93,11 @@ var AllMigrations = []Migration{
 		Version:     12,
 		Description: "Ensure all postgres boolean fields have explicit default values",
 		Apply:       migrateToV12,
+	},
+	{
+		Version:     13,
+		Description: "Multi-rule EventBridge support (rules[] array in event_processor_tasks)",
+		Apply:       migrateToV13,
 	},
 }
 
@@ -650,6 +656,85 @@ func migrateToV12(data map[string]interface{}) error {
 		fmt.Println("    ℹ️  All postgres boolean fields already have explicit values")
 	} else {
 		fmt.Printf("    ✓ Added %d missing postgres boolean field(s)\n", fieldsAdded)
+	}
+
+	return nil
+}
+
+// migrateToV13 converts legacy single-rule EventBridge tasks to multi-rule format
+func migrateToV13(data map[string]interface{}) error {
+	fmt.Println("  → Migrating to v13: Converting EventBridge tasks to multi-rule format")
+
+	// Check if event_processor_tasks exist
+	tasksRaw, exists := data["event_processor_tasks"]
+	if !exists || tasksRaw == nil {
+		fmt.Println("    ℹ️  No event_processor_tasks to migrate")
+		return nil
+	}
+
+	tasks, ok := tasksRaw.([]interface{})
+	if !ok {
+		fmt.Println("    ⚠️  event_processor_tasks is not an array, skipping migration")
+		return nil
+	}
+
+	migratedCount := 0
+
+	for _, taskRaw := range tasks {
+		taskMap, ok := taskRaw.(map[interface{}]interface{})
+		if !ok {
+			continue
+		}
+
+		taskName, _ := taskMap["name"].(string)
+
+		// Skip if already has rules[] array (already migrated)
+		if _, hasRules := taskMap["rules"]; hasRules {
+			continue
+		}
+
+		// Check for legacy fields
+		ruleName, hasRuleName := taskMap["rule_name"].(string)
+		if !hasRuleName || ruleName == "" {
+			continue
+		}
+
+		// Get sources and detail_types
+		var sources []interface{}
+		var detailTypes []interface{}
+
+		if srcRaw, ok := taskMap["sources"]; ok {
+			if srcArr, ok := srcRaw.([]interface{}); ok {
+				sources = srcArr
+			}
+		}
+
+		if dtRaw, ok := taskMap["detail_types"]; ok {
+			if dtArr, ok := dtRaw.([]interface{}); ok {
+				detailTypes = dtArr
+			}
+		}
+
+		// Create new rules array with the legacy rule
+		newRule := map[interface{}]interface{}{
+			"name":         ruleName,
+			"sources":      sources,
+			"detail_types": detailTypes,
+		}
+
+		taskMap["rules"] = []interface{}{newRule}
+
+		// Remove legacy fields (keep them for backward compatibility in Terraform)
+		// We don't delete them because the template checks for rules[] first
+
+		migratedCount++
+		fmt.Printf("    ✓ Task '%s': Converted rule '%s' to rules[] array\n", taskName, ruleName)
+	}
+
+	if migratedCount == 0 {
+		fmt.Println("    ℹ️  All event_processor_tasks already use rules[] format or have no rules")
+	} else {
+		fmt.Printf("    ✓ Migrated %d event_processor_task(s) to multi-rule format\n", migratedCount)
 	}
 
 	return nil

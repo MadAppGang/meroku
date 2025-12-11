@@ -1,13 +1,30 @@
+# Merge legacy single-rule format with new multi-rule format
+# This allows backward compatibility while supporting the new rules[] array
+locals {
+  # Convert legacy format to a rule if rule_name is provided
+  legacy_rule = var.rule_name != "" ? {
+    "${var.rule_name}" = {
+      sources      = var.sources
+      detail_types = var.detail_types
+    }
+  } : {}
+
+  # Merge legacy rule with new rules - new rules take precedence
+  all_rules = merge(local.legacy_rule, var.rules)
+}
+
 resource "aws_cloudwatch_event_rule" "rule" {
-  name = "${var.project}_rule_${var.rule_name}_${var.env}"
+  for_each = local.all_rules
+
+  name = "${var.project}_rule_${each.key}_${var.env}"
 
   event_pattern = jsonencode({
-    source      = var.sources
-    detail-type = var.detail_types
+    source      = each.value.sources
+    detail-type = each.value.detail_types
   })
 
   tags = {
-    Name        = "${var.project}-rule-${var.rule_name}-${var.env}"
+    Name        = "${var.project}-rule-${each.key}-${var.env}"
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
@@ -16,8 +33,10 @@ resource "aws_cloudwatch_event_rule" "rule" {
 }
 
 resource "aws_cloudwatch_event_target" "target" {
+  for_each = local.all_rules
+
   arn      = var.cluster
-  rule     = aws_cloudwatch_event_rule.rule.name
+  rule     = aws_cloudwatch_event_rule.rule[each.key].name
   role_arn = aws_iam_role.task_execution.arn
 
   ecs_target {
