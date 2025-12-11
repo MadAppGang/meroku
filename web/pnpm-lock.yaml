@@ -11,6 +11,9 @@ importers:
       '@biomejs/biome':
         specifier: ^2.2.6
         version: 2.2.6
+      '@faker-js/faker':
+        specifier: ^10.1.0
+        version: 10.1.0
       '@hookform/resolvers':
         specifier: ^5.2.2
         version: 5.2.2(react-hook-form@7.65.0(react@19.2.0))
@@ -523,6 +526,10 @@ packages:
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
+
+  '@faker-js/faker@10.1.0':
+    resolution: {integrity: sha512-C3mrr3b5dRVlKPJdfrAXS8+dq+rq8Qm5SNRazca0JKgw1HQERFmrVb0towvMmw5uu8hHKNiQasMaR/tydf3Zsg==}
+    engines: {node: ^20.19.0 || ^22.13.0 || ^23.5.0 || >=24.0.0, npm: '>=10'}
 
   '@floating-ui/core@1.7.3':
     resolution: {integrity: sha512-sGnvb5dmrJaKEZ+LDIpguvdX3bDlEllmv4/ClQ9awcmCZrlx5jQyyMWFM5kBI+EyNOCDDiKk8il0zeuX3Zlg/w==}
@@ -3402,6 +3409,8 @@ snapshots:
 
   '@esbuild/win32-x64@0.25.11':
     optional: true
+
+  '@faker-js/faker@10.1.0': {}
 
   '@floating-ui/core@1.7.3':
     dependencies:

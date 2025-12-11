@@ -38,11 +38,15 @@ variable "cluster" {
 }
 
 variable "detail_types" {
-  type = list(string)
+  description = "Legacy: Detail types for single rule (use 'rules' variable instead for multiple rules)"
+  type        = list(string)
+  default     = []
 }
 
 variable "sources" {
-  type = list(string)
+  description = "Legacy: Sources for single rule (use 'rules' variable instead for multiple rules)"
+  type        = list(string)
+  default     = []
 }
 
 variable "task_count" {
@@ -51,7 +55,19 @@ variable "task_count" {
 }
 
 variable "rule_name" {
-  type = string
+  description = "Legacy: Rule name for single rule (use 'rules' variable instead for multiple rules)"
+  type        = string
+  default     = ""
+}
+
+# New multi-rule support (Schema v13)
+variable "rules" {
+  description = "Map of EventBridge rules. Each rule has sources and detail_types. Preferred over legacy single-rule variables."
+  type = map(object({
+    sources      = list(string)
+    detail_types = list(string)
+  }))
+  default = {}
 }
 
 variable "sqs_queue_url" {

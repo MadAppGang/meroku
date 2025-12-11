@@ -171,14 +171,27 @@ type ScheduledTask struct {
 	ECRConfig           *ECRConfig `yaml:"ecr_config,omitempty"` // Schema v9
 }
 
+// EventBridgeRule defines a single EventBridge rule pattern (Schema v13)
+type EventBridgeRule struct {
+	Name        string   `yaml:"name"`
+	Sources     []string `yaml:"sources"`
+	DetailTypes []string `yaml:"detail_types"`
+}
+
 type EventProcessorTask struct {
-	Name                string     `yaml:"name"`
-	RuleName            string     `yaml:"rule_name"`
-	DetailTypes         []string   `yaml:"detail_types"`
-	Sources             []string   `yaml:"sources"`
-	ExternalDockerImage string     `yaml:"docker_image"`
-	ContainerCommand    []string   `yaml:"container_command"`
-	ECRConfig           *ECRConfig `yaml:"ecr_config,omitempty"` // Schema v9
+	Name                string            `yaml:"name"`
+	// New multi-rule support (Schema v13) - preferred format
+	Rules               []EventBridgeRule `yaml:"rules,omitempty"`
+	// Legacy single-rule fields (Schema <= 12) - kept for backward compatibility
+	RuleName            string            `yaml:"rule_name,omitempty"`
+	DetailTypes         []string          `yaml:"detail_types,omitempty"`
+	Sources             []string          `yaml:"sources,omitempty"`
+	// Container configuration
+	ExternalDockerImage string            `yaml:"docker_image,omitempty"`
+	ContainerCommand    []string          `yaml:"container_command,omitempty"`
+	CPU                 int               `yaml:"cpu,omitempty"`
+	Memory              int               `yaml:"memory,omitempty"`
+	ECRConfig           *ECRConfig        `yaml:"ecr_config,omitempty"` // Schema v9
 }
 
 type EnvVariable struct {
