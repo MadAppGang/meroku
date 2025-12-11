@@ -1,4 +1,6 @@
 import {
+	ChevronDown,
+	ChevronRight,
 	Cloud,
 	Container,
 	Link,
@@ -6,23 +8,20 @@ import {
 	Settings,
 	Zap,
 } from "lucide-react";
-import { useState, useCallback } from "react";
+import { useCallback, useId, useState } from "react";
 import type { AccountInfo } from "../api/infrastructure";
 import type { ComponentNode } from "../types";
-import type { ECRConfig, EventBridgeRule, YamlInfrastructureConfig } from "../types/yamlConfig";
-import { Button } from "./ui/button";
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "./ui/card";
-import { Input } from "./ui/input";
-import { Label } from "./ui/label";
+import type {
+	ECRConfig,
+	EventBridgeRule,
+	YamlInfrastructureConfig,
+} from "../types/yamlConfig";
 import { ECRConfigEditor } from "./ECRConfigEditor";
 import { EventRulesList } from "./EventRulesList";
 import { EventTestPanel } from "./EventTestPanel";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
 
 interface EventTaskPropertiesProps {
 	config: YamlInfrastructureConfig;
@@ -31,7 +30,55 @@ interface EventTaskPropertiesProps {
 	node: ComponentNode;
 }
 
-type TabType = "rules" | "test" | "container";
+interface CollapsibleSectionProps {
+	title: string;
+	description?: string;
+	icon: React.ElementType;
+	iconColor?: string;
+	defaultOpen?: boolean;
+	children: React.ReactNode;
+}
+
+function CollapsibleSection({
+	title,
+	description,
+	icon: Icon,
+	iconColor = "text-gray-400",
+	defaultOpen = false,
+	children,
+}: CollapsibleSectionProps) {
+	const [isOpen, setIsOpen] = useState(defaultOpen);
+
+	return (
+		<div className="border border-gray-700 rounded-xl overflow-hidden bg-gray-800/30">
+			<button
+				type="button"
+				onClick={() => setIsOpen(!isOpen)}
+				className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-800/50 transition-colors"
+			>
+				<div className="flex items-center gap-3">
+					<div className={`p-1.5 rounded-lg bg-gray-800 ${iconColor}`}>
+						<Icon className="w-4 h-4" />
+					</div>
+					<div className="text-left">
+						<h3 className="font-medium text-white text-sm">{title}</h3>
+						{description && (
+							<p className="text-xs text-gray-500">{description}</p>
+						)}
+					</div>
+				</div>
+				{isOpen ? (
+					<ChevronDown className="w-4 h-4 text-gray-400" />
+				) : (
+					<ChevronRight className="w-4 h-4 text-gray-400" />
+				)}
+			</button>
+			{isOpen && (
+				<div className="px-4 pb-4 border-t border-gray-700/50">{children}</div>
+			)}
+		</div>
+	);
+}
 
 export function EventTaskProperties({
 	config,
@@ -39,8 +86,6 @@ export function EventTaskProperties({
 	accountInfo,
 	node,
 }: EventTaskPropertiesProps) {
-	const [activeTab, setActiveTab] = useState<TabType>("rules");
-
 	// Extract task name from node id (e.g., "event-order-processor" -> "order-processor")
 	const taskName = node.id.replace("event-", "");
 
@@ -50,12 +95,21 @@ export function EventTaskProperties({
 	);
 
 	// Local state for editing
-	const [dockerImage, setDockerImage] = useState(() => eventTask?.docker_image || "");
-	const [ecrConfig, setEcrConfig] = useState<ECRConfig | undefined>(() =>
-		eventTask?.ecr_config || { mode: "create_ecr" }
+	const [dockerImage, setDockerImage] = useState(
+		() => eventTask?.docker_image || "",
+	);
+	const [ecrConfig, setEcrConfig] = useState<ECRConfig | undefined>(
+		() => eventTask?.ecr_config || { mode: "create_ecr" },
 	);
 	const [cpu, setCpu] = useState(() => eventTask?.cpu?.toString() || "256");
-	const [memory, setMemory] = useState(() => eventTask?.memory?.toString() || "512");
+	const [memory, setMemory] = useState(
+		() => eventTask?.memory?.toString() || "512",
+	);
+
+	// Unique IDs for form elements
+	const dockerImageId = useId();
+	const cpuId = useId();
+	const memoryId = useId();
 
 	// ECR repository info
 	const taskEcrRepoName = `${config.project}_task_${taskName}`;
@@ -69,236 +123,247 @@ export function EventTaskProperties({
 		}
 		// Legacy format
 		if (eventTask.rule_name && eventTask.sources && eventTask.detail_types) {
-			return [{
-				name: eventTask.rule_name,
-				sources: eventTask.sources,
-				detail_types: eventTask.detail_types,
-			}];
+			return [
+				{
+					name: eventTask.rule_name,
+					sources: eventTask.sources,
+					detail_types: eventTask.detail_types,
+				},
+			];
 		}
 		return [];
 	}, [eventTask]);
 
-	const updateTaskConfig = useCallback((updates: Partial<typeof eventTask>) => {
-		if (!config.event_processor_tasks) return;
+	const updateTaskConfig = useCallback(
+		(updates: Partial<typeof eventTask>) => {
+			if (!config.event_processor_tasks) return;
 
-		const updatedTasks = config.event_processor_tasks.map((task) =>
-			task.name === taskName ? { ...task, ...updates } : task,
+			const updatedTasks = config.event_processor_tasks.map((task) =>
+				task.name === taskName ? { ...task, ...updates } : task,
+			);
+
+			onConfigChange({ event_processor_tasks: updatedTasks });
+		},
+		[config.event_processor_tasks, taskName, onConfigChange],
+	);
+
+	const handleRulesChange = useCallback(
+		(newRules: EventBridgeRule[]) => {
+			// When using rules[], clear legacy fields
+			updateTaskConfig({
+				rules: newRules,
+				rule_name: undefined,
+				sources: undefined,
+				detail_types: undefined,
+			});
+		},
+		[updateTaskConfig],
+	);
+
+	const handleEcrConfigChange = useCallback(
+		(newConfig: ECRConfig | undefined) => {
+			setEcrConfig(newConfig);
+			updateTaskConfig({ ecr_config: newConfig });
+		},
+		[updateTaskConfig],
+	);
+
+	if (!eventTask) {
+		return (
+			<div className="text-center py-8 text-gray-500">
+				<Zap className="w-8 h-8 mx-auto mb-2 opacity-50" />
+				<p>Event task configuration not found</p>
+			</div>
 		);
-
-		onConfigChange({ event_processor_tasks: updatedTasks });
-	}, [config.event_processor_tasks, taskName, onConfigChange]);
-
-	const handleRulesChange = useCallback((newRules: EventBridgeRule[]) => {
-		// When using rules[], clear legacy fields
-		updateTaskConfig({
-			rules: newRules,
-			rule_name: undefined,
-			sources: undefined,
-			detail_types: undefined,
-		});
-	}, [updateTaskConfig]);
-
-	const handleEcrConfigChange = useCallback((newConfig: ECRConfig | undefined) => {
-		setEcrConfig(newConfig);
-		updateTaskConfig({ ecr_config: newConfig });
-	}, [updateTaskConfig]);
-
-	const tabs = [
-		{ id: "rules" as const, label: "Rules", icon: Zap },
-		{ id: "test" as const, label: "Test", icon: Send },
-		{ id: "container" as const, label: "Container", icon: Container },
-	];
+	}
 
 	return (
 		<div className="space-y-4">
-			{/* Tab Navigation */}
-			<div className="flex border-b border-gray-700">
-				{tabs.map((tab) => {
-					const Icon = tab.icon;
-					return (
-						<button
-							key={tab.id}
-							onClick={() => setActiveTab(tab.id)}
-							className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-								activeTab === tab.id
-									? "border-blue-500 text-blue-400"
-									: "border-transparent text-gray-400 hover:text-gray-300"
-							}`}
-						>
-							<Icon className="w-4 h-4" />
-							{tab.label}
-						</button>
-					);
-				})}
+			{/* Rules Section - Always visible, primary content */}
+			<div className="space-y-4">
+				<EventRulesList rules={getRules()} onRulesChange={handleRulesChange} />
 			</div>
 
-			{/* Tab Content */}
-			{activeTab === "rules" && eventTask && (
-				<div className="space-y-4">
-					<EventRulesList
-						rules={getRules()}
-						onRulesChange={handleRulesChange}
-					/>
-
-					{/* Resource Information */}
-					<Card>
-						<CardHeader>
-							<CardTitle className="flex items-center gap-2 text-sm">
-								<Cloud className="w-4 h-4" />
-								Resources
-							</CardTitle>
-						</CardHeader>
-						<CardContent>
-							<div className="grid grid-cols-2 gap-2 text-xs">
-								<div className="flex justify-between p-2 bg-gray-800 rounded">
-									<span className="text-gray-500">ECR</span>
-									<code className="text-gray-300">{taskEcrRepoName}</code>
-								</div>
-								<div className="flex justify-between p-2 bg-gray-800 rounded">
-									<span className="text-gray-500">Logs</span>
-									<code className="text-gray-300">{config.project}_task_{taskName}_{config.env}</code>
-								</div>
-							</div>
-						</CardContent>
-					</Card>
+			{/* Test Events - Collapsible */}
+			<CollapsibleSection
+				title="Test Events"
+				description="Send test events to trigger this task"
+				icon={Send}
+				iconColor="text-violet-400"
+				defaultOpen={false}
+			>
+				<div className="pt-4">
+					<EventTestPanel eventTask={eventTask} />
 				</div>
-			)}
+			</CollapsibleSection>
 
-			{activeTab === "test" && eventTask && (
-				<EventTestPanel eventTask={eventTask} />
-			)}
-
-			{activeTab === "container" && eventTask && (
-				<div className="space-y-4">
+			{/* Container Configuration - Collapsible */}
+			<CollapsibleSection
+				title="Container Configuration"
+				description="Docker image and resource settings"
+				icon={Container}
+				iconColor="text-cyan-400"
+				defaultOpen={false}
+			>
+				<div className="pt-4 space-y-4">
 					{/* ECR Configuration */}
-					<Card>
-						<CardHeader>
-							<CardTitle className="flex items-center gap-2">
-								<Container className="w-5 h-5" />
-								Container Image
-							</CardTitle>
-							<CardDescription>
-								Configure the Docker image for this task
-							</CardDescription>
-						</CardHeader>
-						<CardContent className="space-y-4">
-							<ECRConfigEditor
-								config={config}
-								currentServiceName={taskName}
-								currentServiceType="event_processor_tasks"
-								ecrConfig={ecrConfig}
-								onEcrConfigChange={handleEcrConfigChange}
-								accountInfo={accountInfo}
-							/>
+					<div className="space-y-3">
+						<Label className="text-sm font-medium">Image Source</Label>
+						<ECRConfigEditor
+							config={config}
+							currentServiceName={taskName}
+							currentServiceType="event_processor_tasks"
+							ecrConfig={ecrConfig}
+							onEcrConfigChange={handleEcrConfigChange}
+							accountInfo={accountInfo}
+						/>
+					</div>
 
-							<div className="space-y-2">
-								<div className="flex items-center justify-between">
-									<Label htmlFor="docker-image" className="text-sm">
-										Image Tag
-									</Label>
-									<span className="text-xs text-gray-500">
-										e.g., latest, v1.2.3
-									</span>
-								</div>
-								<Input
-									id="docker-image"
-									value={dockerImage}
-									onChange={(e) => {
-										setDockerImage(e.target.value);
-										updateTaskConfig({ docker_image: e.target.value });
-									}}
-									placeholder="latest"
-									className="font-mono text-sm"
-								/>
-								{ecrConfig && (
-									<div className="p-2 bg-blue-950/30 border border-blue-900/50 rounded text-xs">
-										<span className="text-gray-500">Full image: </span>
-										<code className="text-blue-400">
-											{taskEcrRepoUri}:{dockerImage || "latest"}
-										</code>
-									</div>
-								)}
+					<div className="space-y-2">
+						<div className="flex items-center justify-between">
+							<Label htmlFor={dockerImageId} className="text-sm">
+								Image Tag
+							</Label>
+							<span className="text-xs text-gray-500">
+								e.g., latest, v1.2.3
+							</span>
+						</div>
+						<Input
+							id={dockerImageId}
+							value={dockerImage}
+							onChange={(e) => {
+								setDockerImage(e.target.value);
+								updateTaskConfig({ docker_image: e.target.value });
+							}}
+							placeholder="latest"
+							className="font-mono text-sm"
+						/>
+						{ecrConfig && (
+							<div className="p-2 bg-cyan-950/30 border border-cyan-900/50 rounded-lg text-xs">
+								<span className="text-gray-500">Full image: </span>
+								<code className="text-cyan-400">
+									{taskEcrRepoUri}:{dockerImage || "latest"}
+								</code>
 							</div>
-						</CardContent>
-					</Card>
+						)}
+					</div>
 
 					{/* Resource Configuration */}
-					<Card>
-						<CardHeader>
-							<CardTitle className="flex items-center gap-2">
-								<Settings className="w-5 h-5" />
-								Task Resources
-							</CardTitle>
-						</CardHeader>
-						<CardContent className="space-y-4">
-							<div className="grid grid-cols-2 gap-4">
-								<div className="space-y-2">
-									<Label htmlFor="cpu">CPU (units)</Label>
-									<Input
-										id="cpu"
-										value={cpu}
-										onChange={(e) => {
-											setCpu(e.target.value);
-											updateTaskConfig({ cpu: parseInt(e.target.value) || 256 });
-										}}
-										placeholder="256"
-										className="font-mono"
-									/>
-									<p className="text-xs text-gray-500">256 = 0.25 vCPU</p>
-								</div>
-								<div className="space-y-2">
-									<Label htmlFor="memory">Memory (MB)</Label>
-									<Input
-										id="memory"
-										value={memory}
-										onChange={(e) => {
-											setMemory(e.target.value);
-											updateTaskConfig({ memory: parseInt(e.target.value) || 512 });
-										}}
-										placeholder="512"
-										className="font-mono"
-									/>
-								</div>
-							</div>
-						</CardContent>
-					</Card>
-
-					{/* Environment Variables */}
-					<Card>
-						<CardHeader>
-							<CardTitle className="flex items-center gap-2">
-								<Settings className="w-5 h-5" />
-								Environment Variables
-							</CardTitle>
-							<CardDescription>
-								Managed via AWS Systems Manager Parameter Store
-							</CardDescription>
-						</CardHeader>
-						<CardContent>
-							<div className="p-3 bg-gray-800 rounded-lg space-y-2">
-								<code className="text-xs text-blue-400">
-									/{config.env}/{config.project}/task/{taskName}/
-								</code>
-								<Button
-									size="sm"
-									variant="outline"
-									onClick={() => {
-										const region = config.region;
-										const path = `/${config.env}/${config.project}/task/${taskName}/`;
-										window.open(
-											`https://${region}.console.aws.amazon.com/systems-manager/parameters?region=${region}&tab=Table&path=${encodeURIComponent(path)}`,
-											"_blank",
-										);
+					<div className="pt-2 border-t border-gray-700/50">
+						<div className="flex items-center gap-2 mb-3">
+							<Settings className="w-4 h-4 text-gray-400" />
+							<span className="text-sm font-medium">Resources</span>
+						</div>
+						<div className="grid grid-cols-2 gap-4">
+							<div className="space-y-2">
+								<Label htmlFor={cpuId} className="text-xs">
+									CPU (units)
+								</Label>
+								<Input
+									id={cpuId}
+									value={cpu}
+									onChange={(e) => {
+										setCpu(e.target.value);
+										updateTaskConfig({
+											cpu: parseInt(e.target.value, 10) || 256,
+										});
 									}}
-								>
-									<Link className="w-3 h-3 mr-1" />
-									Open in AWS Console
-								</Button>
+									placeholder="256"
+									className="font-mono text-sm"
+								/>
+								<p className="text-xs text-gray-500">256 = 0.25 vCPU</p>
 							</div>
-						</CardContent>
-					</Card>
+							<div className="space-y-2">
+								<Label htmlFor={memoryId} className="text-xs">
+									Memory (MB)
+								</Label>
+								<Input
+									id={memoryId}
+									value={memory}
+									onChange={(e) => {
+										setMemory(e.target.value);
+										updateTaskConfig({
+											memory: parseInt(e.target.value, 10) || 512,
+										});
+									}}
+									placeholder="512"
+									className="font-mono text-sm"
+								/>
+							</div>
+						</div>
+					</div>
 				</div>
-			)}
+			</CollapsibleSection>
+
+			{/* Environment Variables - Collapsible */}
+			<CollapsibleSection
+				title="Environment Variables"
+				description="Managed via AWS Parameter Store"
+				icon={Settings}
+				iconColor="text-orange-400"
+				defaultOpen={false}
+			>
+				<div className="pt-4">
+					<div className="p-3 bg-gray-900 rounded-lg space-y-3">
+						<div className="flex items-center justify-between">
+							<code className="text-xs text-orange-400">
+								/{config.env}/{config.project}/task/{taskName}/
+							</code>
+							<Button
+								size="sm"
+								variant="outline"
+								className="h-7 text-xs"
+								onClick={() => {
+									const region = config.region;
+									const path = `/${config.env}/${config.project}/task/${taskName}/`;
+									window.open(
+										`https://${region}.console.aws.amazon.com/systems-manager/parameters?region=${region}&tab=Table&path=${encodeURIComponent(path)}`,
+										"_blank",
+									);
+								}}
+							>
+								<Link className="w-3 h-3 mr-1" />
+								AWS Console
+							</Button>
+						</div>
+						<p className="text-xs text-gray-500">
+							Environment variables are stored securely in AWS Systems Manager
+							Parameter Store and automatically injected into the container at
+							runtime.
+						</p>
+					</div>
+				</div>
+			</CollapsibleSection>
+
+			{/* Resources Info - Collapsible */}
+			<CollapsibleSection
+				title="AWS Resources"
+				description="Infrastructure created for this task"
+				icon={Cloud}
+				iconColor="text-sky-400"
+				defaultOpen={false}
+			>
+				<div className="pt-4">
+					<div className="grid gap-2 text-xs">
+						<div className="flex justify-between items-center p-2.5 bg-gray-900 rounded-lg">
+							<span className="text-gray-500">ECR Repository</span>
+							<code className="text-sky-400">{taskEcrRepoName}</code>
+						</div>
+						<div className="flex justify-between items-center p-2.5 bg-gray-900 rounded-lg">
+							<span className="text-gray-500">CloudWatch Logs</span>
+							<code className="text-sky-400">
+								{config.project}_task_{taskName}_{config.env}
+							</code>
+						</div>
+						<div className="flex justify-between items-center p-2.5 bg-gray-900 rounded-lg">
+							<span className="text-gray-500">IAM Task Role</span>
+							<code className="text-sky-400">
+								{config.project}_{taskName}_task_{config.env}
+							</code>
+						</div>
+					</div>
+				</div>
+			</CollapsibleSection>
 		</div>
 	);
 }

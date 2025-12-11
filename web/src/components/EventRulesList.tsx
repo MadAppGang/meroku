@@ -1,15 +1,27 @@
-import { Edit2, Plus, Trash2, X, Zap } from "lucide-react";
-import { useState } from "react";
+import {
+	ArrowRight,
+	Box,
+	ChevronDown,
+	ChevronRight,
+	Edit2,
+	Filter,
+	Plus,
+	Radio,
+	Trash2,
+	X,
+	Zap,
+} from "lucide-react";
+import { useId, useState } from "react";
 import type { EventBridgeRule } from "../types/yamlConfig";
-import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "./ui/card";
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "./ui/dialog";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 
@@ -19,22 +31,21 @@ interface EventRulesListProps {
 }
 
 export function EventRulesList({ rules, onRulesChange }: EventRulesListProps) {
-	const [editingRuleIndex, setEditingRuleIndex] = useState<number | null>(null);
 	const [editingRule, setEditingRule] = useState<EventBridgeRule | null>(null);
-	const [newSource, setNewSource] = useState("");
-	const [newDetailType, setNewDetailType] = useState("");
-	const [isAddingNew, setIsAddingNew] = useState(false);
+	const [editingIndex, setEditingIndex] = useState<number | null>(null);
+	const [isDialogOpen, setIsDialogOpen] = useState(false);
+	const [expandedRules, setExpandedRules] = useState<Set<number>>(new Set([0])); // First rule expanded by default
 
 	const handleAddRule = () => {
-		setIsAddingNew(true);
 		setEditingRule({ name: "", sources: [], detail_types: [] });
-		setEditingRuleIndex(null);
+		setEditingIndex(null);
+		setIsDialogOpen(true);
 	};
 
 	const handleEditRule = (index: number) => {
-		setEditingRuleIndex(index);
 		setEditingRule({ ...rules[index] });
-		setIsAddingNew(false);
+		setEditingIndex(index);
+		setIsDialogOpen(true);
 	};
 
 	const handleDeleteRule = (index: number) => {
@@ -42,335 +53,477 @@ export function EventRulesList({ rules, onRulesChange }: EventRulesListProps) {
 		onRulesChange(updated);
 	};
 
-	const handleSaveRule = () => {
-		if (!editingRule || !editingRule.name) return;
-
-		if (isAddingNew) {
-			onRulesChange([...rules, editingRule]);
-		} else if (editingRuleIndex !== null) {
+	const handleSaveRule = (rule: EventBridgeRule) => {
+		if (editingIndex !== null) {
 			const updated = [...rules];
-			updated[editingRuleIndex] = editingRule;
+			updated[editingIndex] = rule;
 			onRulesChange(updated);
+		} else {
+			onRulesChange([...rules, rule]);
+			// Expand the newly added rule
+			setExpandedRules(new Set([...expandedRules, rules.length]));
 		}
-
+		setIsDialogOpen(false);
 		setEditingRule(null);
-		setEditingRuleIndex(null);
-		setIsAddingNew(false);
-		setNewSource("");
-		setNewDetailType("");
+		setEditingIndex(null);
 	};
 
-	const handleCancelEdit = () => {
-		setEditingRule(null);
-		setEditingRuleIndex(null);
-		setIsAddingNew(false);
-		setNewSource("");
-		setNewDetailType("");
+	const toggleExpanded = (index: number) => {
+		const newExpanded = new Set(expandedRules);
+		if (newExpanded.has(index)) {
+			newExpanded.delete(index);
+		} else {
+			newExpanded.add(index);
+		}
+		setExpandedRules(newExpanded);
+	};
+
+	return (
+		<>
+			{/* Header */}
+			<div className="flex items-center justify-between mb-4">
+				<div className="flex items-center gap-3">
+					<div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
+						<Zap className="w-5 h-5 text-amber-500" />
+					</div>
+					<div>
+						<h2 className="font-semibold text-white">EventBridge Rules</h2>
+						<p className="text-sm text-gray-400">
+							{rules.length === 0
+								? "No rules configured"
+								: `${rules.length} rule${rules.length !== 1 ? "s" : ""} will trigger this task`}
+						</p>
+					</div>
+				</div>
+				<Button onClick={handleAddRule} size="sm" className="gap-1.5">
+					<Plus className="w-4 h-4" />
+					Add Rule
+				</Button>
+			</div>
+
+			{/* Empty State */}
+			{rules.length === 0 && (
+				<div className="border-2 border-dashed border-gray-700 rounded-xl p-8 text-center">
+					<div className="inline-flex p-3 rounded-full bg-gray-800 mb-3">
+						<Zap className="w-6 h-6 text-gray-500" />
+					</div>
+					<h3 className="text-gray-300 font-medium mb-1">
+						No EventBridge rules
+					</h3>
+					<p className="text-gray-500 text-sm mb-4 max-w-md mx-auto">
+						Rules define which events trigger this task. Add a rule to start
+						listening for events from your services.
+					</p>
+					<Button
+						onClick={handleAddRule}
+						variant="outline"
+						size="sm"
+						className="gap-1.5"
+					>
+						<Plus className="w-4 h-4" />
+						Create your first rule
+					</Button>
+				</div>
+			)}
+
+			{/* Rules List */}
+			<div className="space-y-3">
+				{rules.map((rule, index) => {
+					const isExpanded = expandedRules.has(index);
+					return (
+						<div
+							key={`${rule.name}-${index}`}
+							className="bg-gray-800/50 border border-gray-700 rounded-xl overflow-hidden transition-all hover:border-gray-600"
+						>
+							{/* Rule Header - Always Visible */}
+							<div className="flex items-center justify-between px-4 py-3">
+								<button
+									type="button"
+									className="flex items-center gap-3 flex-1 text-left"
+									onClick={() => toggleExpanded(index)}
+								>
+									<span className="p-0.5">
+										{isExpanded ? (
+											<ChevronDown className="w-4 h-4 text-gray-400" />
+										) : (
+											<ChevronRight className="w-4 h-4 text-gray-400" />
+										)}
+									</span>
+									<div className="flex items-center gap-2">
+										<span className="font-medium text-white">{rule.name}</span>
+										<span className="text-xs text-gray-500">
+											{rule.sources.length} source
+											{rule.sources.length !== 1 ? "s" : ""} →{" "}
+											{rule.detail_types.length} event
+											{rule.detail_types.length !== 1 ? "s" : ""}
+										</span>
+									</div>
+								</button>
+								<div className="flex items-center gap-1">
+									<Button
+										size="sm"
+										variant="ghost"
+										className="h-8 w-8 p-0 text-gray-400 hover:text-white"
+										onClick={() => handleEditRule(index)}
+									>
+										<Edit2 className="w-3.5 h-3.5" />
+									</Button>
+									<Button
+										size="sm"
+										variant="ghost"
+										className="h-8 w-8 p-0 text-gray-400 hover:text-red-400"
+										onClick={() => handleDeleteRule(index)}
+									>
+										<Trash2 className="w-3.5 h-3.5" />
+									</Button>
+								</div>
+							</div>
+
+							{/* Expanded Content */}
+							{isExpanded && (
+								<div className="px-4 pb-4 pt-1 border-t border-gray-700/50">
+									{/* Visual Event Flow */}
+									<div className="flex items-stretch gap-3 mt-3">
+										{/* Sources Section */}
+										<div className="flex-1 min-w-0">
+											<div className="flex items-center gap-2 mb-2">
+												<Radio className="w-3.5 h-3.5 text-blue-400" />
+												<span className="text-xs font-medium text-blue-400 uppercase tracking-wide">
+													Sources
+												</span>
+											</div>
+											<div className="space-y-1.5">
+												{rule.sources.map((source) => (
+													<div
+														key={source}
+														className="flex items-center gap-2 px-3 py-2 bg-blue-500/10 border border-blue-500/20 rounded-lg"
+													>
+														<Box className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+														<span className="text-sm text-blue-300 font-mono truncate">
+															{source}
+														</span>
+													</div>
+												))}
+											</div>
+										</div>
+
+										{/* Arrow */}
+										<div className="flex items-center justify-center px-2">
+											<div className="flex flex-col items-center gap-1">
+												<ArrowRight className="w-5 h-5 text-gray-500" />
+												<span className="text-[10px] text-gray-600 uppercase tracking-wider">
+													triggers
+												</span>
+											</div>
+										</div>
+
+										{/* Detail Types Section */}
+										<div className="flex-1 min-w-0">
+											<div className="flex items-center gap-2 mb-2">
+												<Filter className="w-3.5 h-3.5 text-emerald-400" />
+												<span className="text-xs font-medium text-emerald-400 uppercase tracking-wide">
+													Event Types
+												</span>
+											</div>
+											<div className="space-y-1.5">
+												{rule.detail_types.map((type) => (
+													<div
+														key={type}
+														className="flex items-center gap-2 px-3 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg"
+													>
+														<Zap className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+														<span className="text-sm text-emerald-300 font-mono truncate">
+															{type}
+														</span>
+													</div>
+												))}
+											</div>
+										</div>
+									</div>
+
+									{/* Pattern Preview */}
+									<div className="mt-4 p-3 bg-gray-900 rounded-lg border border-gray-700">
+										<div className="flex items-center gap-2 mb-2">
+											<span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">
+												EventBridge Pattern Preview
+											</span>
+										</div>
+										<pre className="text-xs text-gray-400 font-mono overflow-x-auto">
+											{`{
+  "source": [${rule.sources.map((s) => `"${s}"`).join(", ")}],
+  "detail-type": [${rule.detail_types.map((t) => `"${t}"`).join(", ")}]
+}`}
+										</pre>
+									</div>
+								</div>
+							)}
+						</div>
+					);
+				})}
+			</div>
+
+			{/* Edit/Add Dialog */}
+			<RuleEditorDialog
+				open={isDialogOpen}
+				onOpenChange={setIsDialogOpen}
+				rule={editingRule}
+				onSave={handleSaveRule}
+				isNew={editingIndex === null}
+			/>
+		</>
+	);
+}
+
+interface RuleEditorDialogProps {
+	open: boolean;
+	onOpenChange: (open: boolean) => void;
+	rule: EventBridgeRule | null;
+	onSave: (rule: EventBridgeRule) => void;
+	isNew: boolean;
+}
+
+function RuleEditorDialog({
+	open,
+	onOpenChange,
+	rule,
+	onSave,
+	isNew,
+}: RuleEditorDialogProps) {
+	const [localRule, setLocalRule] = useState<EventBridgeRule>({
+		name: "",
+		sources: [],
+		detail_types: [],
+	});
+	const [newSource, setNewSource] = useState("");
+	const [newDetailType, setNewDetailType] = useState("");
+	const ruleNameId = useId();
+
+	// Sync local state when rule prop changes
+	useState(() => {
+		if (rule) {
+			setLocalRule({ ...rule });
+		}
+	});
+
+	// Reset local state when dialog opens
+	const handleOpenChange = (isOpen: boolean) => {
+		if (isOpen && rule) {
+			setLocalRule({ ...rule });
+			setNewSource("");
+			setNewDetailType("");
+		}
+		onOpenChange(isOpen);
 	};
 
 	const handleAddSource = () => {
-		if (newSource && editingRule && !editingRule.sources.includes(newSource)) {
-			setEditingRule({
-				...editingRule,
-				sources: [...editingRule.sources, newSource],
+		if (newSource && !localRule.sources.includes(newSource)) {
+			setLocalRule({
+				...localRule,
+				sources: [...localRule.sources, newSource],
 			});
 			setNewSource("");
 		}
 	};
 
 	const handleRemoveSource = (source: string) => {
-		if (editingRule) {
-			setEditingRule({
-				...editingRule,
-				sources: editingRule.sources.filter((s) => s !== source),
-			});
-		}
+		setLocalRule({
+			...localRule,
+			sources: localRule.sources.filter((s) => s !== source),
+		});
 	};
 
 	const handleAddDetailType = () => {
-		if (
-			newDetailType &&
-			editingRule &&
-			!editingRule.detail_types.includes(newDetailType)
-		) {
-			setEditingRule({
-				...editingRule,
-				detail_types: [...editingRule.detail_types, newDetailType],
+		if (newDetailType && !localRule.detail_types.includes(newDetailType)) {
+			setLocalRule({
+				...localRule,
+				detail_types: [...localRule.detail_types, newDetailType],
 			});
 			setNewDetailType("");
 		}
 	};
 
 	const handleRemoveDetailType = (type: string) => {
-		if (editingRule) {
-			setEditingRule({
-				...editingRule,
-				detail_types: editingRule.detail_types.filter((t) => t !== type),
-			});
-		}
+		setLocalRule({
+			...localRule,
+			detail_types: localRule.detail_types.filter((t) => t !== type),
+		});
 	};
 
-	return (
-		<Card>
-			<CardHeader>
-				<div className="flex items-center justify-between">
-					<div>
-						<CardTitle className="flex items-center gap-2">
-							<Zap className="w-5 h-5" />
-							EventBridge Rules
-						</CardTitle>
-						<CardDescription>
-							Define which events trigger this task
-						</CardDescription>
-					</div>
-					<Button
-						size="sm"
-						onClick={handleAddRule}
-						disabled={isAddingNew || editingRuleIndex !== null}
-					>
-						<Plus className="w-4 h-4 mr-1" />
-						Add Rule
-					</Button>
-				</div>
-			</CardHeader>
-			<CardContent className="space-y-4">
-				{/* Rules List */}
-				{rules.length === 0 && !isAddingNew && (
-					<div className="text-center py-6 text-gray-500 border border-dashed border-gray-700 rounded-lg">
-						<Zap className="w-8 h-8 mx-auto mb-2 opacity-50" />
-						<p>No rules configured</p>
-						<p className="text-xs mt-1">Add a rule to start listening for events</p>
-					</div>
-				)}
+	const isValid =
+		localRule.name.trim() !== "" &&
+		localRule.sources.length > 0 &&
+		localRule.detail_types.length > 0;
 
-				{rules.map((rule, index) => (
-					<div
-						key={rule.name}
-						className={`border rounded-lg p-3 ${
-							editingRuleIndex === index
-								? "border-blue-500 bg-blue-950/20"
-								: "border-gray-700"
-						}`}
-					>
-						{editingRuleIndex === index ? (
-							/* Edit Mode */
-							<RuleEditor
-								rule={editingRule!}
-								onRuleChange={setEditingRule}
-								newSource={newSource}
-								onNewSourceChange={setNewSource}
-								onAddSource={handleAddSource}
-								onRemoveSource={handleRemoveSource}
-								newDetailType={newDetailType}
-								onNewDetailTypeChange={setNewDetailType}
-								onAddDetailType={handleAddDetailType}
-								onRemoveDetailType={handleRemoveDetailType}
-								onSave={handleSaveRule}
-								onCancel={handleCancelEdit}
+	return (
+		<Dialog open={open} onOpenChange={handleOpenChange}>
+			<DialogContent className="sm:max-w-lg">
+				<DialogHeader>
+					<DialogTitle className="flex items-center gap-2">
+						<Zap className="w-5 h-5 text-amber-500" />
+						{isNew ? "Create EventBridge Rule" : "Edit Rule"}
+					</DialogTitle>
+					<DialogDescription>
+						Define which events from your services will trigger this task.
+					</DialogDescription>
+				</DialogHeader>
+
+				<div className="space-y-5 py-4">
+					{/* Rule Name */}
+					<div className="space-y-2">
+						<Label htmlFor={ruleNameId}>Rule Name</Label>
+						<Input
+							id={ruleNameId}
+							value={localRule.name}
+							onChange={(e) =>
+								setLocalRule({ ...localRule, name: e.target.value })
+							}
+							placeholder="e.g., order-events, user-notifications"
+							className="font-mono"
+						/>
+						<p className="text-xs text-gray-500">
+							A unique identifier for this rule in your infrastructure
+						</p>
+					</div>
+
+					{/* Sources */}
+					<div className="space-y-2">
+						<Label className="flex items-center gap-2">
+							<Radio className="w-3.5 h-3.5 text-blue-400" />
+							Event Sources
+						</Label>
+						<div className="flex gap-2">
+							<Input
+								value={newSource}
+								onChange={(e) => setNewSource(e.target.value)}
+								placeholder="e.g., backend, orders-service"
+								className="font-mono"
+								onKeyDown={(e) => {
+									if (e.key === "Enter") {
+										e.preventDefault();
+										handleAddSource();
+									}
+								}}
 							/>
-						) : (
-							/* View Mode */
-							<div className="flex items-start justify-between">
-								<div className="space-y-2 flex-1">
-									<div className="flex items-center gap-2">
-										<span className="font-medium text-sm">{rule.name}</span>
-									</div>
-									<div className="flex flex-wrap gap-1">
-										{rule.sources.map((source) => (
-											<Badge key={source} variant="outline" className="text-xs">
-												{source}
-											</Badge>
-										))}
-										<span className="text-gray-500 mx-1">→</span>
-										{rule.detail_types.map((type) => (
-											<Badge key={type} variant="secondary" className="text-xs">
-												{type}
-											</Badge>
-										))}
-									</div>
-								</div>
-								<div className="flex items-center gap-1">
-									<Button
-										size="sm"
-										variant="ghost"
-										onClick={() => handleEditRule(index)}
+							<Button
+								type="button"
+								variant="outline"
+								onClick={handleAddSource}
+								disabled={!newSource}
+							>
+								<Plus className="w-4 h-4" />
+							</Button>
+						</div>
+						{localRule.sources.length > 0 && (
+							<div className="flex flex-wrap gap-2 mt-2">
+								{localRule.sources.map((source) => (
+									<div
+										key={source}
+										className="group flex items-center gap-1.5 px-3 py-1.5 bg-blue-500/10 border border-blue-500/20 rounded-lg"
 									>
-										<Edit2 className="w-3 h-3" />
-									</Button>
-									<Button
-										size="sm"
-										variant="ghost"
-										className="text-red-400 hover:text-red-300"
-										onClick={() => handleDeleteRule(index)}
-									>
-										<Trash2 className="w-3 h-3" />
-									</Button>
-								</div>
+										<Box className="w-3.5 h-3.5 text-blue-400" />
+										<span className="text-sm text-blue-300 font-mono">
+											{source}
+										</span>
+										<button
+											type="button"
+											onClick={() => handleRemoveSource(source)}
+											className="ml-1 p-0.5 rounded hover:bg-blue-500/20 transition-colors"
+										>
+											<X className="w-3 h-3 text-blue-400" />
+										</button>
+									</div>
+								))}
 							</div>
 						)}
+						<p className="text-xs text-gray-500">
+							Services that emit events (matches EventBridge "source" field)
+						</p>
 					</div>
-				))}
 
-				{/* New Rule Form */}
-				{isAddingNew && editingRule && (
-					<div className="border border-blue-500 rounded-lg p-3 bg-blue-950/20">
-						<RuleEditor
-							rule={editingRule}
-							onRuleChange={setEditingRule}
-							newSource={newSource}
-							onNewSourceChange={setNewSource}
-							onAddSource={handleAddSource}
-							onRemoveSource={handleRemoveSource}
-							newDetailType={newDetailType}
-							onNewDetailTypeChange={setNewDetailType}
-							onAddDetailType={handleAddDetailType}
-							onRemoveDetailType={handleRemoveDetailType}
-							onSave={handleSaveRule}
-							onCancel={handleCancelEdit}
-							isNew
-						/>
+					{/* Detail Types */}
+					<div className="space-y-2">
+						<Label className="flex items-center gap-2">
+							<Filter className="w-3.5 h-3.5 text-emerald-400" />
+							Event Types
+						</Label>
+						<div className="flex gap-2">
+							<Input
+								value={newDetailType}
+								onChange={(e) => setNewDetailType(e.target.value)}
+								placeholder="e.g., order-created, payment-processed"
+								className="font-mono"
+								onKeyDown={(e) => {
+									if (e.key === "Enter") {
+										e.preventDefault();
+										handleAddDetailType();
+									}
+								}}
+							/>
+							<Button
+								type="button"
+								variant="outline"
+								onClick={handleAddDetailType}
+								disabled={!newDetailType}
+							>
+								<Plus className="w-4 h-4" />
+							</Button>
+						</div>
+						{localRule.detail_types.length > 0 && (
+							<div className="flex flex-wrap gap-2 mt-2">
+								{localRule.detail_types.map((type) => (
+									<div
+										key={type}
+										className="group flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-lg"
+									>
+										<Zap className="w-3.5 h-3.5 text-emerald-400" />
+										<span className="text-sm text-emerald-300 font-mono">
+											{type}
+										</span>
+										<button
+											type="button"
+											onClick={() => handleRemoveDetailType(type)}
+											className="ml-1 p-0.5 rounded hover:bg-emerald-500/20 transition-colors"
+										>
+											<X className="w-3 h-3 text-emerald-400" />
+										</button>
+									</div>
+								))}
+							</div>
+						)}
+						<p className="text-xs text-gray-500">
+							Specific event types to listen for (matches EventBridge
+							"detail-type" field)
+						</p>
 					</div>
-				)}
-			</CardContent>
-		</Card>
-	);
-}
 
-interface RuleEditorProps {
-	rule: EventBridgeRule;
-	onRuleChange: (rule: EventBridgeRule) => void;
-	newSource: string;
-	onNewSourceChange: (value: string) => void;
-	onAddSource: () => void;
-	onRemoveSource: (source: string) => void;
-	newDetailType: string;
-	onNewDetailTypeChange: (value: string) => void;
-	onAddDetailType: () => void;
-	onRemoveDetailType: (type: string) => void;
-	onSave: () => void;
-	onCancel: () => void;
-	isNew?: boolean;
-}
+					{/* Live Pattern Preview */}
+					{(localRule.sources.length > 0 ||
+						localRule.detail_types.length > 0) && (
+						<div className="p-3 bg-gray-900 rounded-lg border border-gray-700">
+							<div className="flex items-center gap-2 mb-2">
+								<span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">
+									EventBridge Pattern
+								</span>
+							</div>
+							<pre className="text-xs text-gray-400 font-mono overflow-x-auto">
+								{`{
+  "source": [${localRule.sources.map((s) => `"${s}"`).join(", ")}],
+  "detail-type": [${localRule.detail_types.map((t) => `"${t}"`).join(", ")}]
+}`}
+							</pre>
+						</div>
+					)}
+				</div>
 
-function RuleEditor({
-	rule,
-	onRuleChange,
-	newSource,
-	onNewSourceChange,
-	onAddSource,
-	onRemoveSource,
-	newDetailType,
-	onNewDetailTypeChange,
-	onAddDetailType,
-	onRemoveDetailType,
-	onSave,
-	onCancel,
-	isNew,
-}: RuleEditorProps) {
-	return (
-		<div className="space-y-3">
-			<div className="space-y-1">
-				<Label className="text-xs">Rule Name</Label>
-				<Input
-					value={rule.name}
-					onChange={(e) => onRuleChange({ ...rule, name: e.target.value })}
-					placeholder="e.g., order-events"
-					className="font-mono text-sm h-8"
-				/>
-			</div>
-
-			<div className="space-y-1">
-				<Label className="text-xs">Event Sources</Label>
-				<div className="flex items-center gap-2">
-					<Input
-						value={newSource}
-						onChange={(e) => onNewSourceChange(e.target.value)}
-						placeholder="e.g., backend"
-						className="text-sm h-8"
-						onKeyPress={(e) => e.key === "Enter" && onAddSource()}
-					/>
-					<Button
-						size="sm"
-						variant="outline"
-						onClick={onAddSource}
-						disabled={!newSource}
-						className="h-8"
-					>
-						<Plus className="w-3 h-3" />
+				<DialogFooter>
+					<Button variant="outline" onClick={() => onOpenChange(false)}>
+						Cancel
 					</Button>
-				</div>
-				<div className="flex flex-wrap gap-1 mt-1">
-					{rule.sources.map((source) => (
-						<Badge
-							key={source}
-							variant="outline"
-							className="text-xs pr-1"
-						>
-							{source}
-							<button
-								type="button"
-								onClick={() => onRemoveSource(source)}
-								className="ml-1 hover:bg-gray-600 rounded-sm"
-							>
-								<X className="w-3 h-3" />
-							</button>
-						</Badge>
-					))}
-				</div>
-			</div>
-
-			<div className="space-y-1">
-				<Label className="text-xs">Detail Types</Label>
-				<div className="flex items-center gap-2">
-					<Input
-						value={newDetailType}
-						onChange={(e) => onNewDetailTypeChange(e.target.value)}
-						placeholder="e.g., order-created"
-						className="text-sm h-8"
-						onKeyPress={(e) => e.key === "Enter" && onAddDetailType()}
-					/>
-					<Button
-						size="sm"
-						variant="outline"
-						onClick={onAddDetailType}
-						disabled={!newDetailType}
-						className="h-8"
-					>
-						<Plus className="w-3 h-3" />
+					<Button onClick={() => onSave(localRule)} disabled={!isValid}>
+						{isNew ? "Create Rule" : "Save Changes"}
 					</Button>
-				</div>
-				<div className="flex flex-wrap gap-1 mt-1">
-					{rule.detail_types.map((type) => (
-						<Badge
-							key={type}
-							variant="secondary"
-							className="text-xs pr-1"
-						>
-							{type}
-							<button
-								type="button"
-								onClick={() => onRemoveDetailType(type)}
-								className="ml-1 hover:bg-gray-600 rounded-sm"
-							>
-								<X className="w-3 h-3" />
-							</button>
-						</Badge>
-					))}
-				</div>
-			</div>
-
-			<div className="flex justify-end gap-2 pt-2 border-t border-gray-700">
-				<Button size="sm" variant="ghost" onClick={onCancel}>
-					Cancel
-				</Button>
-				<Button
-					size="sm"
-					onClick={onSave}
-					disabled={!rule.name || rule.sources.length === 0 || rule.detail_types.length === 0}
-				>
-					{isNew ? "Add Rule" : "Save"}
-				</Button>
-			</div>
-		</div>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
 	);
 }

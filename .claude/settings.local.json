@@ -63,5 +63,9 @@
       "WebFetch(domain:github.com)"
     ],
     "deny": []
-  }
+  },
+  "enabledMcpjsonServers": [
+    "chrome-devtools"
+  ],
+  "enableAllProjectMcpServers": true
 }
