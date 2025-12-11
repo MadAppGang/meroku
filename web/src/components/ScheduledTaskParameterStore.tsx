@@ -3,7 +3,6 @@ import {
 	Check,
 	Eye,
 	FileText,
-	FolderOpen,
 	Key,
 	Loader2,
 	Plus,
@@ -21,13 +20,6 @@ import { Alert, AlertDescription } from "./ui/alert";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "./ui/card";
-import {
 	Dialog,
 	DialogContent,
 	DialogDescription,
@@ -44,7 +36,10 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "./ui/select";
+import { StyledSection } from "./ui/styled-section";
 import { Textarea } from "./ui/textarea";
+
+// Card components removed - using StyledSection instead
 
 interface ScheduledTaskParameterStoreProps {
 	config: YamlInfrastructureConfig;
@@ -204,31 +199,6 @@ export function ScheduledTaskParameterStore({
 
 	return (
 		<div className="space-y-4">
-			<Card>
-				<CardHeader>
-					<CardTitle className="flex items-center gap-2">
-						<FolderOpen className="w-5 h-5" />
-						Parameter Namespace
-					</CardTitle>
-					<CardDescription>
-						<code className="font-mono text-sm">{parameterPath}/*</code>
-					</CardDescription>
-				</CardHeader>
-				<CardContent>
-					<div className="p-3 bg-gray-800 rounded">
-						<p className="text-sm text-gray-300 mb-2">
-							All parameters in this namespace are automatically:
-						</p>
-						<ul className="text-sm text-gray-400 space-y-1 ml-4">
-							<li>• Discovered at runtime when the task executes</li>
-							<li>• Transformed to uppercase environment variables</li>
-							<li>• Injected into the ECS task container as secrets</li>
-							<li>• Encrypted using AWS KMS</li>
-						</ul>
-					</div>
-				</CardContent>
-			</Card>
-
 			{error && (
 				<Alert variant="destructive">
 					<AlertCircle className="h-4 w-4" />
@@ -236,38 +206,36 @@ export function ScheduledTaskParameterStore({
 				</Alert>
 			)}
 
-			<Card>
-				<CardHeader>
-					<div className="flex items-center justify-between">
-						<div>
-							<CardTitle>Task Parameters</CardTitle>
-							<CardDescription>
-								SSM parameters for task: {taskName}
-							</CardDescription>
-						</div>
-						<div className="flex items-center gap-2">
-							<Button
-								size="sm"
-								variant="outline"
-								onClick={loadParameters}
-								disabled={loading}
-							>
-								<RefreshCw
-									className={`w-4 h-4 ${loading ? "animate-spin" : ""}`}
-								/>
-							</Button>
-							<Button
-								size="sm"
-								onClick={() => setShowNewForm(true)}
-								disabled={showNewForm}
-							>
-								<Plus className="w-4 h-4 mr-1" />
-								Add Parameter
-							</Button>
-						</div>
-					</div>
-				</CardHeader>
-				<CardContent>
+			<StyledSection
+				title="Parameters"
+				description={parameterPath + "*"}
+				icon={Key}
+				iconColor="text-orange-400"
+				actions={
+					<>
+						<Button
+							size="sm"
+							variant="outline"
+							onClick={loadParameters}
+							disabled={loading}
+							className="h-7"
+						>
+							<RefreshCw
+								className={`w-3 h-3 ${loading ? "animate-spin" : ""}`}
+							/>
+						</Button>
+						<Button
+							size="sm"
+							onClick={() => setShowNewForm(true)}
+							disabled={showNewForm}
+							className="h-7"
+						>
+							<Plus className="w-3 h-3 mr-1" />
+							Add
+						</Button>
+					</>
+				}
+			>
 					{loading && !parameters.length ? (
 						<div className="flex items-center justify-center py-8">
 							<Loader2 className="w-6 h-6 animate-spin" />
@@ -456,8 +424,7 @@ export function ScheduledTaskParameterStore({
 							)}
 						</div>
 					)}
-				</CardContent>
-			</Card>
+			</StyledSection>
 
 			{/* Parameter View/Edit Dialog */}
 			<Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>

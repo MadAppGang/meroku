@@ -1,10 +1,7 @@
 import {
 	ChevronDown,
 	ChevronRight,
-	Cloud,
 	Container,
-	Link,
-	Send,
 	Settings,
 	Zap,
 } from "lucide-react";
@@ -18,8 +15,6 @@ import type {
 } from "../types/yamlConfig";
 import { ECRConfigEditor } from "./ECRConfigEditor";
 import { EventRulesList } from "./EventRulesList";
-import { EventTestPanel } from "./EventTestPanel";
-import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 
@@ -184,19 +179,6 @@ export function EventTaskProperties({
 				<EventRulesList rules={getRules()} onRulesChange={handleRulesChange} />
 			</div>
 
-			{/* Test Events - Collapsible */}
-			<CollapsibleSection
-				title="Test Events"
-				description="Send test events to trigger this task"
-				icon={Send}
-				iconColor="text-violet-400"
-				defaultOpen={false}
-			>
-				<div className="pt-4">
-					<EventTestPanel eventTask={eventTask} />
-				</div>
-			</CollapsibleSection>
-
 			{/* Container Configuration - Collapsible */}
 			<CollapsibleSection
 				title="Container Configuration"
@@ -290,76 +272,6 @@ export function EventTaskProperties({
 									className="font-mono text-sm"
 								/>
 							</div>
-						</div>
-					</div>
-				</div>
-			</CollapsibleSection>
-
-			{/* Environment Variables - Collapsible */}
-			<CollapsibleSection
-				title="Environment Variables"
-				description="Managed via AWS Parameter Store"
-				icon={Settings}
-				iconColor="text-orange-400"
-				defaultOpen={false}
-			>
-				<div className="pt-4">
-					<div className="p-3 bg-gray-900 rounded-lg space-y-3">
-						<div className="flex items-center justify-between">
-							<code className="text-xs text-orange-400">
-								/{config.env}/{config.project}/task/{taskName}/
-							</code>
-							<Button
-								size="sm"
-								variant="outline"
-								className="h-7 text-xs"
-								onClick={() => {
-									const region = config.region;
-									const path = `/${config.env}/${config.project}/task/${taskName}/`;
-									window.open(
-										`https://${region}.console.aws.amazon.com/systems-manager/parameters?region=${region}&tab=Table&path=${encodeURIComponent(path)}`,
-										"_blank",
-									);
-								}}
-							>
-								<Link className="w-3 h-3 mr-1" />
-								AWS Console
-							</Button>
-						</div>
-						<p className="text-xs text-gray-500">
-							Environment variables are stored securely in AWS Systems Manager
-							Parameter Store and automatically injected into the container at
-							runtime.
-						</p>
-					</div>
-				</div>
-			</CollapsibleSection>
-
-			{/* Resources Info - Collapsible */}
-			<CollapsibleSection
-				title="AWS Resources"
-				description="Infrastructure created for this task"
-				icon={Cloud}
-				iconColor="text-sky-400"
-				defaultOpen={false}
-			>
-				<div className="pt-4">
-					<div className="grid gap-2 text-xs">
-						<div className="flex justify-between items-center p-2.5 bg-gray-900 rounded-lg">
-							<span className="text-gray-500">ECR Repository</span>
-							<code className="text-sky-400">{taskEcrRepoName}</code>
-						</div>
-						<div className="flex justify-between items-center p-2.5 bg-gray-900 rounded-lg">
-							<span className="text-gray-500">CloudWatch Logs</span>
-							<code className="text-sky-400">
-								{config.project}_task_{taskName}_{config.env}
-							</code>
-						</div>
-						<div className="flex justify-between items-center p-2.5 bg-gray-900 rounded-lg">
-							<span className="text-gray-500">IAM Task Role</span>
-							<code className="text-sky-400">
-								{config.project}_{taskName}_task_{config.env}
-							</code>
 						</div>
 					</div>
 				</div>

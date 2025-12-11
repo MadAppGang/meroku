@@ -11,7 +11,7 @@ import {
 	X,
 	Zap,
 } from "lucide-react";
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { EventBridgeRule } from "../types/yamlConfig";
 import { Button } from "./ui/button";
 import {
@@ -298,22 +298,19 @@ function RuleEditorDialog({
 	const [newDetailType, setNewDetailType] = useState("");
 	const ruleNameId = useId();
 
-	// Sync local state when rule prop changes
-	useState(() => {
-		if (rule) {
-			setLocalRule({ ...rule });
-		}
-	});
-
-	// Reset local state when dialog opens
-	const handleOpenChange = (isOpen: boolean) => {
-		if (isOpen && rule) {
-			setLocalRule({ ...rule });
+	// Sync local state when dialog opens or rule changes
+	useEffect(() => {
+		if (open) {
+			if (rule) {
+				setLocalRule({ ...rule });
+			} else {
+				// Reset to empty for new rule
+				setLocalRule({ name: "", sources: [], detail_types: [] });
+			}
 			setNewSource("");
 			setNewDetailType("");
 		}
-		onOpenChange(isOpen);
-	};
+	}, [open, rule]);
 
 	const handleAddSource = () => {
 		if (newSource && !localRule.sources.includes(newSource)) {
@@ -355,9 +352,9 @@ function RuleEditorDialog({
 		localRule.detail_types.length > 0;
 
 	return (
-		<Dialog open={open} onOpenChange={handleOpenChange}>
-			<DialogContent className="sm:max-w-lg">
-				<DialogHeader>
+		<Dialog open={open} onOpenChange={onOpenChange}>
+			<DialogContent className="sm:max-w-xl w-[90vw] max-h-[85vh] flex flex-col">
+				<DialogHeader className="shrink-0">
 					<DialogTitle className="flex items-center gap-2">
 						<Zap className="w-5 h-5 text-amber-500" />
 						{isNew ? "Create EventBridge Rule" : "Edit Rule"}
@@ -367,7 +364,7 @@ function RuleEditorDialog({
 					</DialogDescription>
 				</DialogHeader>
 
-				<div className="space-y-5 py-4">
+				<div className="space-y-5 py-4 overflow-y-auto flex-1">
 					{/* Rule Name */}
 					<div className="space-y-2">
 						<Label htmlFor={ruleNameId}>Rule Name</Label>
@@ -414,7 +411,7 @@ function RuleEditorDialog({
 							</Button>
 						</div>
 						{localRule.sources.length > 0 && (
-							<div className="flex flex-wrap gap-2 mt-2">
+							<div className="flex flex-wrap gap-2 mt-2 max-h-24 overflow-y-auto">
 								{localRule.sources.map((source) => (
 									<div
 										key={source}
@@ -469,7 +466,7 @@ function RuleEditorDialog({
 							</Button>
 						</div>
 						{localRule.detail_types.length > 0 && (
-							<div className="flex flex-wrap gap-2 mt-2">
+							<div className="flex flex-wrap gap-2 mt-2 max-h-24 overflow-y-auto">
 								{localRule.detail_types.map((type) => (
 									<div
 										key={type}
@@ -515,7 +512,7 @@ function RuleEditorDialog({
 					)}
 				</div>
 
-				<DialogFooter>
+				<DialogFooter className="shrink-0">
 					<Button variant="outline" onClick={() => onOpenChange(false)}>
 						Cancel
 					</Button>

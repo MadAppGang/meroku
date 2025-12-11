@@ -63,6 +63,7 @@ import {
 	ECSServicesInfo,
 } from "./ECSNodeProperties";
 import { EventBridgeTestEvent } from "./EventBridgeTestEvent";
+import { EventTaskEnvVars } from "./EventTaskEnvVars";
 import { EventTaskProperties } from "./EventTaskProperties";
 import { EventTaskTestEvent } from "./EventTaskTestEvent";
 import { GitHubNodeProperties } from "./GitHubNodeProperties";
@@ -1503,54 +1504,11 @@ jobs:
 				{activeTab === "env" &&
 					selectedNode.type === "event-task" &&
 					config && (
-						<div className="space-y-4">
-							<h3 className="font-medium text-white">Environment Variables</h3>
-
-							{/* Static Environment Variable */}
-							<div className="space-y-3">
-								<div className="bg-gray-800 rounded-lg p-4">
-									<h4 className="text-sm font-medium text-gray-200 mb-3">
-										Static Environment Variables
-									</h4>
-									{config.sqs?.enabled ? (
-										<div>
-											<div className="flex items-center justify-between mb-2">
-												<span className="text-sm font-mono text-blue-400">
-													SQS_QUEUE_URL
-												</span>
-												<span className="text-xs text-gray-500">
-													Only when SQS is enabled
-												</span>
-											</div>
-											<div className="text-sm font-mono text-gray-300 break-all bg-gray-900 p-2 rounded">
-												https://sqs.{config.region}.amazonaws.com/
-												{accountInfo?.accountId || "<ACCOUNT_ID>"}/
-												{config.project}-{config.env}-
-												{config.sqs.name || "queue"}
-											</div>
-										</div>
-									) : (
-										<p className="text-sm text-gray-400">
-											No environment variables. Enable SQS to get{" "}
-											<code className="text-blue-400">SQS_QUEUE_URL</code>.
-										</p>
-									)}
-								</div>
-
-								{/* Note about other variables */}
-								<div className="bg-blue-900/20 border border-blue-700 rounded-lg p-3">
-									<p className="text-xs text-gray-300">
-										<strong className="text-blue-400">Note:</strong> To set
-										custom environment variables, create parameters in AWS
-										Systems Manager Parameter Store under:
-									</p>
-									<code className="text-xs text-gray-400 block mt-1">
-										/{config.env}/{config.project}/task/
-										{selectedNode.id.replace("event-", "")}/
-									</code>
-								</div>
-							</div>
-						</div>
+						<EventTaskEnvVars
+							config={config}
+							node={selectedNode}
+							accountInfo={accountInfo}
+						/>
 					)}
 
 				{activeTab === "test" &&
