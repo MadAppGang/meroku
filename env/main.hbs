@@ -467,6 +467,10 @@ module "schedule_task_{{name}}" {
   subnet_ids = local.subnet_ids
   vpc_id     = local.vpc_id
   cluster = module.workloads.ecr_cluster.arn
+  {{#if @root.domain.enabled}}
+  api_domain = module.domain.api_domain_name
+  {{/if}}
+  private_dns_name = "{{@root.project}}_{{@root.env}}.private"
   {{#if sqs.enabled}}
   sqs_queue_url = module.sqs.queue_url
   sqs_policy_arn = module.sqs.sqs_access_policy_arn
@@ -496,6 +500,10 @@ module "event_bus_task_{{name}}" {
   subnet_ids = local.subnet_ids
   vpc_id     = local.vpc_id
   cluster = module.workloads.ecr_cluster.arn
+  {{#if @root.domain.enabled}}
+  api_domain = module.domain.api_domain_name
+  {{/if}}
+  private_dns_name = "{{@root.project}}_{{@root.env}}.private"
   {{#if sqs.enabled}}
   sqs_queue_url = module.sqs.queue_url
   sqs_policy_arn = module.sqs.sqs_access_policy_arn

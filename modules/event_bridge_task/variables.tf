@@ -62,8 +62,20 @@ variable "sqs_policy_arn" {
   default = ""
 }
 
-variable "sqs_enable" { 
+variable "sqs_enable" {
   default = false
+}
+
+variable "api_domain" {
+  description = "External API domain name"
+  type        = string
+  default     = ""
+}
+
+variable "private_dns_name" {
+  description = "Private DNS namespace for service discovery"
+  type        = string
+  default     = ""
 }
 
 data "aws_iam_policy_document" "default_ecr_policy" {

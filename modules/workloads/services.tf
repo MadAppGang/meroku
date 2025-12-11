@@ -146,6 +146,10 @@ resource "aws_ecs_task_definition" "services" {
           name  = name
           value = value
         }
+      ], [
+        { name = "EVENT_SOURCE", value = local.services_event_source[each.key] },
+        { name = "SERVICE_INTERNAL_URL", value = local.services_internal_domain[each.key] },
+        { name = "SERVICE_NAME", value = each.key }
       ])
       environmentFiles = [
         for file in local.services_env_files_s3[each.key] : {
@@ -415,4 +419,47 @@ resource "aws_iam_role_policy" "services_ecs_exec_policy" {
       }
     ]
   })
+}
+
+# EventBridge permissions to allow services to emit and listen to events
+resource "aws_iam_policy" "services_eventbridge" {
+  for_each = local.service_names
+
+  name = "EventBridgeAccess_${var.project}_${each.key}_${var.env}"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "events:PutEvents",
+          "events:DescribeEventBus",
+          "events:ListRules",
+          "events:DescribeRule",
+          "events:ListTargetsByRule",
+          "events:ListEventBuses"
+        ]
+        Resource = [
+          "arn:aws:events:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:event-bus/default",
+          "arn:aws:events:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:event-bus/${var.project}-*",
+          "arn:aws:events:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:rule/*"
+        ]
+      }
+    ]
+  })
+
+  tags = {
+    Name        = "EventBridgeAccess_${var.project}_${each.key}_${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "services_task_eventbridge" {
+  for_each = local.service_names
+
+  role       = aws_iam_role.services_task[each.key].name
+  policy_arn = aws_iam_policy.services_eventbridge[each.key].arn
 }

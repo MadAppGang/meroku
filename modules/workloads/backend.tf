@@ -416,6 +416,45 @@ resource "aws_iam_role_policy_attachment" "backend_task_xray" {
   policy_arn = "arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess"
 }
 
+// EventBridge permissions to allow backend to emit and listen to events
+resource "aws_iam_policy" "backend_eventbridge" {
+  name = "EventBridgeAccess_${var.project}_backend_${var.env}"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "events:PutEvents",
+          "events:DescribeEventBus",
+          "events:ListRules",
+          "events:DescribeRule",
+          "events:ListTargetsByRule",
+          "events:ListEventBuses"
+        ]
+        Resource = [
+          "arn:aws:events:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:event-bus/default",
+          "arn:aws:events:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:event-bus/${var.project}-*",
+          "arn:aws:events:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:rule/*"
+        ]
+      }
+    ]
+  })
+
+  tags = {
+    Name        = "EventBridgeAccess_${var.project}_backend_${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "backend_task_eventbridge" {
+  role       = aws_iam_role.backend_task.name
+  policy_arn = aws_iam_policy.backend_eventbridge.arn
+}
+
 // SSM IAM access policy for task execution role
 resource "aws_iam_role_policy_attachment" "ssm_parameter_access" {
   role       = aws_iam_role.backend_task_execution.name

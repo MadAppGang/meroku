@@ -43,6 +43,9 @@ locals {
 }
 
 locals {
+  # Backend internal domain via Cloud Map service discovery
+  backend_internal_domain = "${var.project}_service_${var.env}.${var.private_dns_name}"
+
   backend_env = concat(
     [
       { "name" : "PG_DATABASE_HOST", "value" : var.db_endpoint },
@@ -54,6 +57,12 @@ locals {
       { "name" : "URL", "value" : var.api_domain },
       { "name" : "SQS_QUEUE_URL", "value" : var.sqs_queue_url },
       { "name" : "AWS_QUEUE_URL", "value" : var.sqs_queue_url },
+      { "name" : "EVENT_BUS_NAME", "value" : "default" },
+      { "name" : "EVENT_SOURCE", "value" : "${var.project}.backend" },
+      # Domain configuration
+      { "name" : "API_DOMAIN", "value" : var.api_domain },
+      { "name" : "PRIVATE_DNS_NAMESPACE", "value" : var.private_dns_name },
+      { "name" : "BACKEND_INTERNAL_URL", "value" : local.backend_internal_domain },
     ],
     # Add ADOT collector URL when X-Ray is enabled
     var.xray_enabled ? [
