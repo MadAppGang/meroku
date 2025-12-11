@@ -31,10 +31,34 @@ locals {
       valueFrom = data.aws_ssm_parameters_by_path.task.names[i]
     }
   ]
-   environment_variables = [
+  environment_variables = [
+    {
+      name  = "AWS_REGION"
+      value = data.aws_region.current.name
+    },
     {
       name  = "SQS_QUEUE_URL"
       value = var.sqs_queue_url
+    },
+    {
+      name  = "EVENT_BUS_NAME"
+      value = "default"
+    },
+    {
+      name  = "EVENT_SOURCE"
+      value = "${var.project}.task.${var.task}"
+    },
+    {
+      name  = "API_DOMAIN"
+      value = var.api_domain
+    },
+    {
+      name  = "PRIVATE_DNS_NAMESPACE"
+      value = var.private_dns_name
+    },
+    {
+      name  = "BACKEND_INTERNAL_URL"
+      value = var.private_dns_name != "" ? "${var.project}_service_${var.env}.${var.private_dns_name}" : ""
     }
-  ] 
+  ]
 }

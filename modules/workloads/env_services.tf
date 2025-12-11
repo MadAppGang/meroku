@@ -53,12 +53,27 @@ locals {
       { "name" : "URL", "value" : var.api_domain },
       { "name" : "SQS_QUEUE_URL", "value" : var.sqs_queue_url },
       { "name" : "AWS_QUEUE_URL", "value" : var.sqs_queue_url },
+      { "name" : "EVENT_BUS_NAME", "value" : "default" },
+      # Domain configuration
+      { "name" : "API_DOMAIN", "value" : var.api_domain },
+      { "name" : "PRIVATE_DNS_NAMESPACE", "value" : var.private_dns_name },
+      { "name" : "BACKEND_INTERNAL_URL", "value" : local.backend_internal_domain },
     ],
     # Add ADOT collector URL for services with X-Ray enabled
     var.xray_enabled ? [
       { "name" : "ADOT_COLLECTOR_URL", "value" : "localhost:2000" }
     ] : []
   )
+
+  # Per-service EventBridge source name
+  services_event_source = {
+    for service_name, _ in local.service_names : service_name => "${var.project}.${service_name}"
+  }
+
+  # Per-service internal domain via Cloud Map service discovery
+  services_internal_domain = {
+    for service_name, _ in local.service_names : service_name => "${var.project}_service_${service_name}_${var.env}.${var.private_dns_name}"
+  }
 
   # X-Ray container configuration
   xray_service_container = [

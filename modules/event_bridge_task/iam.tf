@@ -71,6 +71,45 @@ resource "aws_iam_role_policy_attachment" "sqs_access" {
   role       = aws_iam_role.task.name
   policy_arn = var.sqs_policy_arn
 }
+
+# EventBridge permissions to allow event processor tasks to emit and listen to events
+resource "aws_iam_policy" "eventbridge_access" {
+  name = "EventBridgeAccess_${var.project}_event_${var.task}_${var.env}"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "events:PutEvents",
+          "events:DescribeEventBus",
+          "events:ListRules",
+          "events:DescribeRule",
+          "events:ListTargetsByRule",
+          "events:ListEventBuses"
+        ]
+        Resource = [
+          "arn:aws:events:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:event-bus/default",
+          "arn:aws:events:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:event-bus/${var.project}-*",
+          "arn:aws:events:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:rule/*"
+        ]
+      }
+    ]
+  })
+
+  tags = {
+    Name        = "EventBridgeAccess_${var.project}_event_${var.task}_${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "task_eventbridge" {
+  role       = aws_iam_role.task.name
+  policy_arn = aws_iam_policy.eventbridge_access.arn
+}
 resource "aws_iam_policy" "ssm_parameter_access" {
   name   = "Task${var.task}SSMAccessPolicy"
   policy = data.aws_iam_policy_document.ssm_parameter_access.json
