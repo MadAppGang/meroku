@@ -1,4 +1,9 @@
-import { CheckCircle, Clock, Info, Send, XCircle, Zap } from "lucide-react";
+import {
+	CheckCircle,
+	Clock,
+	Send,
+	XCircle,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import {
 	infrastructureApi,
@@ -9,15 +14,9 @@ import type { ComponentNode } from "../types";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "./ui/card";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import { StyledSection } from "./ui/styled-section";
 import { Textarea } from "./ui/textarea";
 
 interface EventTaskTestEventProps {
@@ -26,15 +25,12 @@ interface EventTaskTestEventProps {
 }
 
 export function EventTaskTestEvent({ config, node }: EventTaskTestEventProps) {
-	// Extract task name from node id
 	const taskName = node.id.replace("event-", "");
 
-	// Find the event task configuration
 	const eventTask = config.event_processor_tasks?.find(
 		(task) => task.name === taskName,
 	);
 
-	// Test event state - default source to 'meroku.test'
 	const [testEvent, setTestEvent] = useState<TestEventRequest>({
 		source: "meroku.test",
 		detailType: eventTask?.detail_types?.[0] || "",
@@ -49,7 +45,6 @@ export function EventTaskTestEvent({ config, node }: EventTaskTestEventProps) {
 	);
 	const [jsonError, setJsonError] = useState<string | null>(null);
 
-	// Initialize test event when task changes
 	useEffect(() => {
 		if (eventTask) {
 			setTestEvent((prev) => ({
@@ -98,83 +93,56 @@ export function EventTaskTestEvent({ config, node }: EventTaskTestEventProps) {
 
 	return (
 		<div className="space-y-4">
-			{/* Info Alert */}
-			<Alert>
-				<Info className="h-4 w-4" />
-				<AlertDescription>
-					Send test events to EventBridge to trigger this task. The event must
-					match the configured sources and detail types for the rule to trigger.
-				</AlertDescription>
-			</Alert>
+			<StyledSection
+				title="Send Test Event"
+				description="Trigger this task via EventBridge"
+				icon={Send}
+				iconColor="text-violet-400"
+			>
+				<div className="space-y-4">
+					<div className="grid grid-cols-2 gap-4">
+						<div className="space-y-2">
+							<Label htmlFor="test-source">Source</Label>
+							<Input
+								id="test-source"
+								value={testEvent.source}
+								onChange={(e) =>
+									setTestEvent((prev) => ({ ...prev, source: e.target.value }))
+								}
+								placeholder="meroku.test"
+								className="font-mono text-sm"
+							/>
+							{eventTask?.sources &&
+								!eventTask.sources.includes(testEvent.source) &&
+								testEvent.source && (
+									<p className="text-xs text-yellow-500">
+										Doesn't match configured sources
+									</p>
+								)}
+						</div>
 
-			{/* Test Event Configuration */}
-			<Card>
-				<CardHeader>
-					<CardTitle className="flex items-center gap-2">
-						<Send className="w-5 h-5" />
-						Test Event Configuration
-					</CardTitle>
-					<CardDescription>
-						Configure and send a test event to EventBridge
-					</CardDescription>
-				</CardHeader>
-				<CardContent className="space-y-4">
-					<div className="space-y-2">
-						<Label htmlFor="test-source">Event Source</Label>
-						<Input
-							id="test-source"
-							value={testEvent.source}
-							onChange={(e) =>
-								setTestEvent((prev) => ({ ...prev, source: e.target.value }))
-							}
-							placeholder="e.g., meroku.test"
-							className="font-mono"
-						/>
-						{eventTask?.sources && eventTask.sources.length > 0 && (
-							<div className="space-y-1">
-								<p className="text-xs text-gray-500">
-									Configured sources: {eventTask.sources.join(", ")}
-								</p>
-								{!eventTask.sources.includes(testEvent.source) &&
-									testEvent.source && (
-										<p className="text-xs text-yellow-500 flex items-center gap-1">
-											<Info className="w-3 h-3" />
-											This source doesn't match any configured sources - the
-											event won't trigger this task
-										</p>
-									)}
-							</div>
-						)}
-					</div>
-
-					<div className="space-y-2">
-						<Label htmlFor="test-detail-type">Detail Type</Label>
-						<Input
-							id="test-detail-type"
-							value={testEvent.detailType}
-							onChange={(e) =>
-								setTestEvent((prev) => ({
-									...prev,
-									detailType: e.target.value,
-								}))
-							}
-							placeholder="e.g., Test Event"
-						/>
-						{eventTask?.detail_types && eventTask.detail_types.length > 0 && (
-							<div className="space-y-1">
-								<p className="text-xs text-gray-500">
-									Configured detail types: {eventTask.detail_types.join(", ")}
-								</p>
-								{!eventTask.detail_types.includes(testEvent.detailType) &&
-									testEvent.detailType && (
-										<p className="text-xs text-yellow-500 flex items-center gap-1">
-											<Info className="w-3 h-3" />
-											This detail type doesn't match any configured types - the
-											event won't trigger this task
-										</p>
-									)}
-							</div>
-						)}
+						<div className="space-y-2">
+							<Label htmlFor="test-detail-type">Detail Type</Label>
+							<Input
+								id="test-detail-type"
+								value={testEvent.detailType}
+								onChange={(e) =>
+									setTestEvent((prev) => ({
+										...prev,
+										detailType: e.target.value,
+									}))
+								}
+								placeholder="OrderCreated"
+								className="font-mono text-sm"
+							/>
+							{eventTask?.detail_types &&
+								!eventTask.detail_types.includes(testEvent.detailType) &&
+								testEvent.detailType && (
+									<p className="text-xs text-yellow-500">
+										Doesn't match configured detail types
+									</p>
+								)}
+						</div>
 					</div>
 
 					<div className="space-y-2">
@@ -183,9 +151,9 @@ export function EventTaskTestEvent({ config, node }: EventTaskTestEventProps) {
 							id="test-detail"
 							value={detailJson}
 							onChange={(e) => handleDetailJsonChange(e.target.value)}
-							placeholder='{"orderId": "123", "amount": 99.99}'
-							className="font-mono text-sm min-h-[200px]"
-							rows={10}
+							placeholder='{"orderId": "123"}'
+							className="font-mono text-sm min-h-[120px]"
+							rows={6}
 						/>
 						{jsonError && <p className="text-xs text-red-400">{jsonError}</p>}
 					</div>
@@ -227,125 +195,15 @@ export function EventTaskTestEvent({ config, node }: EventTaskTestEventProps) {
 							<AlertDescription>
 								{eventResponse.message}
 								{eventResponse.eventId && (
-									<div className="text-xs mt-1 font-mono">
-										Event ID: {eventResponse.eventId}
-									</div>
+									<span className="text-xs ml-2 font-mono">
+										ID: {eventResponse.eventId}
+									</span>
 								)}
 							</AlertDescription>
 						</Alert>
 					)}
-				</CardContent>
-			</Card>
-
-			{/* Example Events */}
-			<Card>
-				<CardHeader>
-					<CardTitle className="flex items-center gap-2">
-						<Zap className="w-5 h-5" />
-						Example Test Events
-					</CardTitle>
-					<CardDescription>
-						Common test event patterns for different scenarios
-					</CardDescription>
-				</CardHeader>
-				<CardContent className="space-y-4">
-					<div className="space-y-3">
-						<div className="p-3 bg-gray-800 rounded-lg">
-							<h4 className="text-sm font-medium text-gray-300 mb-2">
-								Basic Test Event
-							</h4>
-							<pre className="text-xs text-gray-400 overflow-x-auto">{`{
-  "test": true,
-  "timestamp": "${new Date().toISOString()}",
-  "message": "This is a test event"
-}`}</pre>
-						</div>
-
-						<div className="p-3 bg-gray-800 rounded-lg">
-							<h4 className="text-sm font-medium text-gray-300 mb-2">
-								Order Processing Event
-							</h4>
-							<pre className="text-xs text-gray-400 overflow-x-auto">{`{
-  "orderId": "ORD-123456",
-  "customerId": "CUST-789",
-  "amount": 99.99,
-  "currency": "USD",
-  "items": [
-    {
-      "sku": "PROD-001",
-      "quantity": 2,
-      "price": 49.99
-    }
-  ]
-}`}</pre>
-						</div>
-
-						<div className="p-3 bg-gray-800 rounded-lg">
-							<h4 className="text-sm font-medium text-gray-300 mb-2">
-								User Action Event
-							</h4>
-							<pre className="text-xs text-gray-400 overflow-x-auto">{`{
-  "userId": "user-123",
-  "action": "profile_updated",
-  "changes": {
-    "email": "new@example.com",
-    "name": "John Doe"
-  },
-  "timestamp": "${new Date().toISOString()}"
-}`}</pre>
-						</div>
-					</div>
-				</CardContent>
-			</Card>
-
-			{/* Testing Tips */}
-			<Card>
-				<CardHeader>
-					<CardTitle>Testing Tips</CardTitle>
-					<CardDescription>
-						Best practices for testing event-driven tasks
-					</CardDescription>
-				</CardHeader>
-				<CardContent>
-					<ul className="text-sm text-gray-300 space-y-2">
-						<li className="flex items-start gap-2">
-							<span className="text-blue-400">•</span>
-							<span>
-								Use <code className="text-blue-400 text-xs">meroku.test</code>{" "}
-								as the source for test events to easily identify them in logs
-							</span>
-						</li>
-						<li className="flex items-start gap-2">
-							<span className="text-blue-400">•</span>
-							<span>
-								Include a{" "}
-								<code className="text-blue-400 text-xs">test: true</code> field
-								in your event detail for easy filtering
-							</span>
-						</li>
-						<li className="flex items-start gap-2">
-							<span className="text-blue-400">•</span>
-							<span>
-								Always include timestamps in your test events for debugging
-							</span>
-						</li>
-						<li className="flex items-start gap-2">
-							<span className="text-blue-400">•</span>
-							<span>
-								Check CloudWatch Logs immediately after sending to see task
-								execution
-							</span>
-						</li>
-						<li className="flex items-start gap-2">
-							<span className="text-blue-400">•</span>
-							<span>
-								Events that don't match the configured pattern won't trigger the
-								task
-							</span>
-						</li>
-					</ul>
-				</CardContent>
-			</Card>
+				</div>
+			</StyledSection>
 		</div>
 	);
 }
