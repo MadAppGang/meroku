@@ -31,7 +31,8 @@ locals {
       valueFrom = data.aws_ssm_parameters_by_path.task.names[i]
     }
   ]
-  environment_variables = [
+  # Default environment variables always present
+  default_env_vars = [
     {
       name  = "AWS_REGION"
       value = data.aws_region.current.name
@@ -61,4 +62,7 @@ locals {
       value = var.private_dns_name != "" ? "${var.project}_service_${var.env}.${var.private_dns_name}" : ""
     }
   ]
+  # Merge default env vars with custom env vars from YAML
+  # Custom vars are appended after defaults (custom can override if same name used)
+  environment_variables = concat(local.default_env_vars, var.custom_env_vars)
 }

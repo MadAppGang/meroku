@@ -74,6 +74,15 @@ variable "private_dns_name" {
   default     = ""
 }
 
+variable "custom_env_vars" {
+  description = "Custom environment variables to pass to the container"
+  type = list(object({
+    name  = string
+    value = string
+  }))
+  default = []
+}
+
 data "aws_iam_policy_document" "default_ecr_policy" {
   statement {
     sid = "Default ECR policy"
