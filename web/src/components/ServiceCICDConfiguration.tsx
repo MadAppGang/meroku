@@ -11,6 +11,7 @@ interface ServiceCICDConfigurationProps {
 export default function ServiceCICDConfiguration({
   config,
   serviceName,
+  serviceType,
 }: ServiceCICDConfigurationProps) {
   const [copied, setCopied] = useState(false);
 
