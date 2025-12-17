@@ -149,6 +149,38 @@ function MultiSelectField({
 	);
 }
 
+// Helper function to parse rate expression
+function parseRateExpression(value: string): { rateValue: string; rateUnit: "minute" | "hour" | "day" } {
+	const match = value.match(/rate\((\d+)\s+(minute|hour|day)s?\)/);
+	if (match) {
+		return { rateValue: match[1], rateUnit: match[2] as "minute" | "hour" | "day" };
+	}
+	return { rateValue: "1", rateUnit: "day" };
+}
+
+// Helper function to parse cron expression
+function parseCronExpression(value: string): {
+	minute: string;
+	hour: string;
+	dayOfMonth: string;
+	month: string;
+	dayOfWeek: string;
+	year: string;
+} {
+	const match = value.match(/cron\((.*?)\s+(.*?)\s+(.*?)\s+(.*?)\s+(.*?)\s+(.*?)\)/);
+	if (match) {
+		return {
+			minute: match[1],
+			hour: match[2],
+			dayOfMonth: match[3],
+			month: match[4],
+			dayOfWeek: match[5],
+			year: match[6],
+		};
+	}
+	return { minute: "0", hour: "12", dayOfMonth: "*", month: "*", dayOfWeek: "?", year: "*" };
+}
+
 export function ScheduleExpressionBuilder({
 	value,
 	onChange,
@@ -163,21 +195,25 @@ export function ScheduleExpressionBuilder({
 	const isRate = value.startsWith("rate(");
 	const isCron = value.startsWith("cron(");
 
+	// Parse initial values upfront to avoid race conditions
+	const initialRate = parseRateExpression(value);
+	const initialCron = parseCronExpression(value);
+
 	const [expressionType, setExpressionType] = useState<"rate" | "cron">(
 		isRate ? "rate" : "cron",
 	);
 
-	// Rate expression state
-	const [rateValue, setRateValue] = useState("1");
-	const [rateUnit, setRateUnit] = useState<"minute" | "hour" | "day">("day");
+	// Rate expression state - initialize from parsed value
+	const [rateValue, setRateValue] = useState(() => isRate ? initialRate.rateValue : "1");
+	const [rateUnit, setRateUnit] = useState<"minute" | "hour" | "day">(() => isRate ? initialRate.rateUnit : "day");
 
-	// Cron expression state
-	const [cronMinute, setCronMinute] = useState("0");
-	const [cronHour, setCronHour] = useState("12");
-	const [cronDayOfMonth, setCronDayOfMonth] = useState("*");
-	const [cronMonth, setCronMonth] = useState("*");
-	const [cronDayOfWeek, setCronDayOfWeek] = useState("?");
-	const [cronYear, setCronYear] = useState("*");
+	// Cron expression state - initialize from parsed value
+	const [cronMinute, setCronMinute] = useState(() => isCron ? initialCron.minute : "0");
+	const [cronHour, setCronHour] = useState(() => isCron ? initialCron.hour : "12");
+	const [cronDayOfMonth, setCronDayOfMonth] = useState(() => isCron ? initialCron.dayOfMonth : "*");
+	const [cronMonth, setCronMonth] = useState(() => isCron ? initialCron.month : "*");
+	const [cronDayOfWeek, setCronDayOfWeek] = useState(() => isCron ? initialCron.dayOfWeek : "?");
+	const [cronYear, setCronYear] = useState(() => isCron ? initialCron.year : "*");
 
 	// Common presets
 	const [preset, setPreset] = useState<string>("");
@@ -213,28 +249,8 @@ export function ScheduleExpressionBuilder({
 		label: String(i + 1),
 	}));
 
-	// Parse initial value
-	useEffect(() => {
-		if (isRate) {
-			const match = value.match(/rate\((\d+)\s+(minute|hour|day)s?\)/);
-			if (match) {
-				setRateValue(match[1]);
-				setRateUnit(match[2] as any);
-			}
-		} else if (isCron) {
-			const match = value.match(
-				/cron\((.*?)\s+(.*?)\s+(.*?)\s+(.*?)\s+(.*?)\s+(.*?)\)/,
-			);
-			if (match) {
-				setCronMinute(match[1]);
-				setCronHour(match[2]);
-				setCronDayOfMonth(match[3]);
-				setCronMonth(match[4]);
-				setCronDayOfWeek(match[5]);
-				setCronYear(match[6]);
-			}
-		}
-	}, [value, isRate, isCron]);
+	// Track if this is the initial render to prevent calling onChange on mount
+	const isInitialRender = useRef(true);
 
 	// Build rate expression
 	const buildRateExpression = () => {
@@ -247,8 +263,14 @@ export function ScheduleExpressionBuilder({
 		return `cron(${cronMinute} ${cronHour} ${cronDayOfMonth} ${cronMonth} ${cronDayOfWeek} ${cronYear})`;
 	};
 
-	// Update parent when values change
+	// Update parent when values change (but not on initial render)
 	useEffect(() => {
+		// Skip the first render to prevent overwriting the initial value
+		if (isInitialRender.current) {
+			isInitialRender.current = false;
+			return;
+		}
+
 		if (expressionType === "rate") {
 			const unit = parseInt(rateValue) === 1 ? rateUnit : `${rateUnit}s`;
 			onChangeRef.current(`rate(${rateValue} ${unit})`);
