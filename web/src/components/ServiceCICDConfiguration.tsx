@@ -68,16 +68,23 @@ export default function ServiceCICDConfiguration({
   // Compute actual ECS service name (matches Terraform naming)
   // Backend: ${project}_service_${env}
   // Named services: ${project}_service_${serviceName}_${env}
+  // Scheduled/Event tasks: N/A (no ECS service)
   const ecsServiceName = serviceName === "backend"
     ? `${project}_service_${env}`
     : `${project}_service_${serviceName}_${env}`;
 
+  // Determine if this is a task (scheduled or event-driven) vs a service
+  const isTask = serviceType === "scheduled-task" || serviceType === "event-task";
+
   // Compute ECR repository name (matches Terraform naming)
   // Backend: ${project}_backend
   // Named services: ${project}_service_${serviceName}
+  // Scheduled/Event tasks: ${project}_task_${taskName}
   const ecrRepoName = serviceName === "backend"
     ? `${project}_backend`
-    : `${project}_service_${serviceName}`;
+    : isTask
+      ? `${project}_task_${serviceName}`
+      : `${project}_service_${serviceName}`;
 
   // Generate the GitHub Actions workflow based on ECR strategy
   const generateWorkflow = () => {
@@ -177,8 +184,68 @@ jobs:
             --region ${region}
           echo "✅ Deployment completed successfully"
           echo "Using Docker image: ${customImageUri}"`;
+    } else if (isTask) {
+      // Scheduled/Event Task: Build and push only (no ECS service to update)
+      return `name: Build ${serviceName} task image (${env})
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: build-${serviceName}-${env}-\${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and Push to ECR
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4.0.1
+        with:
+          role-to-assume: arn:aws:iam::${accountId}:role/${project}-${env}-github-actions-role
+          aws-region: ${region}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push Docker image
+        env:
+          ECR_REGISTRY: \${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${ecrRepoName}
+          IMAGE_TAG: \${{ github.sha }}
+        run: |
+          # Build Docker image (Dockerfile in root)
+          docker build -t \$ECR_REGISTRY/\$ECR_REPOSITORY:\$IMAGE_TAG .
+          docker tag \$ECR_REGISTRY/\$ECR_REPOSITORY:\$IMAGE_TAG \$ECR_REGISTRY/\$ECR_REPOSITORY:latest
+
+          # Create ECR repository if it doesn't exist
+          aws ecr describe-repositories --repository-names \$ECR_REPOSITORY || \\
+            aws ecr create-repository --repository-name \$ECR_REPOSITORY
+
+          # Push images
+          docker push \$ECR_REGISTRY/\$ECR_REPOSITORY:\$IMAGE_TAG
+          docker push \$ECR_REGISTRY/\$ECR_REPOSITORY:latest
+
+          echo "✅ Image pushed: \$ECR_REGISTRY/\$ECR_REPOSITORY:\$IMAGE_TAG"
+
+      - name: Deployment complete
+        run: |
+          echo "✅ Image pushed to ECR"
+          echo "Task definition is managed by Terraform"
+          echo "EventBridge scheduler will use :latest tag on next scheduled run"`;
     } else {
-      // Local ECR: Full build-push-deploy workflow
+      // Local ECR: Full build-push-deploy workflow for services
       return `name: Deploy ${serviceName} to AWS (${env})
 
 on:
