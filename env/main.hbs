@@ -479,6 +479,9 @@ module "schedule_task_{{name}}" {
   {{#if ecr_account_id}}{{#if ecr_account_region}}
   ecr_url = "{{ecr_account_id}}.dkr.ecr.{{ecr_account_region}}.amazonaws.com/{{project}}_task_{{name}}"
   {{/if}}{{/if}}
+  {{#if environment_variables}}
+  custom_env_vars = {{{ envArray environment_variables }}}
+  {{/if}}
 }
 {{/each}}
 {{#each event_processor_tasks}}
@@ -526,6 +529,9 @@ module "event_bus_task_{{name}}" {
   {{#if ecr_account_id}}{{#if ecr_account_region}}
   ecr_url = "{{ecr_account_id}}.dkr.ecr.{{ecr_account_region}}.amazonaws.com/{{project}}_task_{{name}}"
   {{/if}}{{/if}}
+  {{#if environment_variables}}
+  custom_env_vars = {{{ envArray environment_variables }}}
+  {{/if}}
 }
 {{/each}}
 
