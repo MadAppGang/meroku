@@ -44,6 +44,7 @@ import { AuroraNodeProperties } from "./AuroraNodeProperties";
 import { BackendAlerts } from "./BackendAlerts";
 import { BackendCloudWatch } from "./BackendCloudWatch";
 import { BackendEnvironmentVariables } from "./BackendEnvironmentVariables";
+import { CloudFrontNodeProperties } from "./CloudFrontNodeProperties";
 import { BackendIAMPermissions } from "./BackendIAMPermissions";
 import { BackendParameterStore } from "./BackendParameterStore";
 import { BackendS3Buckets } from "./BackendS3Buckets";
@@ -382,7 +383,8 @@ export function Sidebar({
 					{(selectedNode.type === "service" ||
 						selectedNode.type === "scheduled-task" ||
 						selectedNode.type === "event-task" ||
-						selectedNode.type === "amplify") &&
+						selectedNode.type === "amplify" ||
+						selectedNode.type === "cloudfront") &&
 						onDeleteNode && (
 							<Button
 								variant="ghost"
@@ -574,6 +576,12 @@ export function Sidebar({
 						<AmplifyNodeProperties
 							config={config}
 							nodeId={selectedNode.id}
+							onConfigChange={onConfigChange}
+						/>
+					) : selectedNode.type === "cloudfront" && config && onConfigChange ? (
+						<CloudFrontNodeProperties
+							config={config}
+							distributionName={selectedNode.id.replace("cloudfront-", "")}
 							onConfigChange={onConfigChange}
 						/>
 					) : (

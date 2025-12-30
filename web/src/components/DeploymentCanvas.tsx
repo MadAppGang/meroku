@@ -54,6 +54,7 @@ interface DeploymentCanvasProps {
 	onAddScheduledTask?: () => void;
 	onAddEventTask?: () => void;
 	onAddAmplify?: () => void;
+	onAddCloudFront?: () => void;
 	onManageCustomTerraform?: () => void;
 	pricing?: PricingResponse | null;
 }
@@ -541,6 +542,7 @@ export function DeploymentCanvas({
 	onAddScheduledTask,
 	onAddEventTask,
 	onAddAmplify,
+	onAddCloudFront,
 	onManageCustomTerraform,
 	pricing,
 }: DeploymentCanvasProps) {
@@ -1050,6 +1052,7 @@ export function DeploymentCanvas({
 					onAddScheduledTask={onAddScheduledTask}
 					onAddEventTask={onAddEventTask}
 					onAddAmplify={onAddAmplify}
+					onAddCloudFront={onAddCloudFront}
 					onManageCustomTerraform={handleManageCustomTerraform}
 				/>
 			</ReactFlow>

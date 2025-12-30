@@ -22,7 +22,9 @@ import (
 // 11: Ensure host_port matches container_port for services (required for awsvpc network mode)
 // 12: Ensure all postgres boolean fields have explicit default values
 // 13: Multi-rule EventBridge support (rules[] array in event_processor_tasks)
-const CurrentSchemaVersion = 13
+// 14: CloudFront CDN configuration (cloudfront with origins, cache_behaviors, domain_aliases)
+// 15: Multiple CloudFront distributions support (cloudfront_distributions[] array)
+const CurrentSchemaVersion = 15
 
 // EnvWithVersion extends Env with a schema version field
 type EnvWithVersion struct {
@@ -98,6 +100,16 @@ var AllMigrations = []Migration{
 		Version:     13,
 		Description: "Multi-rule EventBridge support (rules[] array in event_processor_tasks)",
 		Apply:       migrateToV13,
+	},
+	{
+		Version:     14,
+		Description: "CloudFront CDN configuration",
+		Apply:       migrateToV14,
+	},
+	{
+		Version:     15,
+		Description: "Multiple CloudFront distributions support",
+		Apply:       migrateToV15,
 	},
 }
 
@@ -737,6 +749,107 @@ func migrateToV13(data map[string]interface{}) error {
 		fmt.Printf("    ✓ Migrated %d event_processor_task(s) to multi-rule format\n", migratedCount)
 	}
 
+	return nil
+}
+
+// migrateToV14 adds CloudFront CDN configuration
+func migrateToV14(data map[string]interface{}) error {
+	fmt.Println("  → Migrating to v14: Adding CloudFront CDN configuration")
+
+	// Add cloudfront configuration if it doesn't exist
+	if _, exists := data["cloudfront"]; !exists {
+		data["cloudfront"] = map[string]interface{}{
+			"enabled": false,
+		}
+		fmt.Println("    ℹ️  Initialized CloudFront configuration (disabled by default)")
+	}
+
+	return nil
+}
+
+// migrateToV15 converts single cloudfront to cloudfront_distributions array
+func migrateToV15(data map[string]interface{}) error {
+	fmt.Println("  → Migrating to v15: Converting to multiple CloudFront distributions support")
+
+	// Check if cloudfront_distributions already exists
+	if _, exists := data["cloudfront_distributions"]; exists {
+		fmt.Println("    ℹ️  cloudfront_distributions already exists, skipping conversion")
+		return nil
+	}
+
+	// Check if old cloudfront config exists
+	cloudfrontRaw, exists := data["cloudfront"]
+	if !exists || cloudfrontRaw == nil {
+		// Initialize empty array
+		data["cloudfront_distributions"] = []interface{}{}
+		fmt.Println("    ℹ️  Initialized empty cloudfront_distributions array")
+		return nil
+	}
+
+	cloudfront, ok := cloudfrontRaw.(map[interface{}]interface{})
+	if !ok {
+		// Try with string keys
+		if cfStr, okStr := cloudfrontRaw.(map[string]interface{}); okStr {
+			// Convert to new format
+			data["cloudfront_distributions"] = []interface{}{}
+			delete(data, "cloudfront")
+			fmt.Println("    ℹ️  Removed old cloudfront config, initialized empty array")
+
+			// Check if it was enabled
+			if enabled, hasEnabled := cfStr["enabled"]; hasEnabled {
+				if enabledBool, isBool := enabled.(bool); isBool && enabledBool {
+					// Convert the old config to first distribution
+					projectName, _ := data["project"].(string)
+					if projectName == "" {
+						projectName = "default"
+					}
+
+					cfStr["name"] = projectName + "-cdn"
+					data["cloudfront_distributions"] = []interface{}{cfStr}
+					fmt.Printf("    ✓ Converted existing CloudFront config to distribution '%s-cdn'\n", projectName)
+				}
+			}
+			return nil
+		}
+
+		data["cloudfront_distributions"] = []interface{}{}
+		delete(data, "cloudfront")
+		fmt.Println("    ⚠️  Could not parse old cloudfront config, initialized empty array")
+		return nil
+	}
+
+	// Check if cloudfront was enabled
+	enabled := false
+	if enabledVal, hasEnabled := cloudfront["enabled"]; hasEnabled {
+		if enabledBool, isBool := enabledVal.(bool); isBool {
+			enabled = enabledBool
+		}
+	}
+
+	if !enabled {
+		// Not enabled, just remove old config and initialize empty array
+		data["cloudfront_distributions"] = []interface{}{}
+		delete(data, "cloudfront")
+		fmt.Println("    ℹ️  Old CloudFront was disabled, initialized empty cloudfront_distributions array")
+		return nil
+	}
+
+	// Convert enabled cloudfront to first distribution in array
+	projectName := "default"
+	if pn, ok := data["project"].(string); ok && pn != "" {
+		projectName = pn
+	}
+
+	// Add name to the existing config
+	cloudfront["name"] = projectName + "-cdn"
+
+	// Create new array with the converted distribution
+	data["cloudfront_distributions"] = []interface{}{cloudfront}
+
+	// Remove old cloudfront key
+	delete(data, "cloudfront")
+
+	fmt.Printf("    ✓ Converted existing CloudFront config to distribution '%s-cdn'\n", projectName)
 	return nil
 }
 

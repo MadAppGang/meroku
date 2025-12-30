@@ -1,6 +1,7 @@
 import {
 	Bug,
 	Clock,
+	Cloud,
 	FileCode,
 	Eye,
 	EyeOff,
@@ -25,6 +26,7 @@ interface CanvasControlsProps {
 	onAddScheduledTask?: () => void;
 	onAddEventTask?: () => void;
 	onAddAmplify?: () => void;
+	onAddCloudFront?: () => void;
 	onManageCustomTerraform?: () => void;
 }
 
@@ -35,6 +37,7 @@ export function CanvasControls({
 	onAddScheduledTask,
 	onAddEventTask,
 	onAddAmplify,
+	onAddCloudFront,
 	onManageCustomTerraform,
 }: CanvasControlsProps) {
 	const { zoomIn, zoomOut, fitView, getNodes, getEdges } = useReactFlow();
@@ -220,6 +223,15 @@ export function CanvasControls({
 					title="Add Amplify App"
 				>
 					<Globe className="w-4 h-4" />
+				</Button>
+				<Button
+					size="icon"
+					variant="ghost"
+					onClick={onAddCloudFront}
+					className="w-8 h-8 text-gray-400 hover:text-white hover:bg-cyan-700"
+					title="Add CloudFront Distribution"
+				>
+					<Cloud className="w-4 h-4" />
 				</Button>
 				<Button
 					size="icon"

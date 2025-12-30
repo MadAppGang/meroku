@@ -112,5 +112,40 @@ export function generateHiddenComponentNodes(
 		});
 	}
 
+	// CloudFront Distributions
+	if (config.cloudfront_distributions && config.cloudfront_distributions.length > 0) {
+		config.cloudfront_distributions.forEach((dist, index) => {
+			if (!dist.enabled) return; // Skip disabled distributions
+
+			const originCount = dist.origins?.length || 0;
+			const domainCount = dist.domain_aliases?.length || 0;
+			const primaryDomain = dist.domain_aliases?.[0] || "CloudFront domain";
+
+			nodes.push({
+				id: `cloudfront-${dist.name}`,
+				type: "service",
+				position: { x: -820, y: 158 + index * 120 }, // Position to the left of Amplify apps
+				data: {
+					id: `cloudfront-${dist.name}`,
+					type: "cloudfront",
+					name: dist.name,
+					description: `CDN (${originCount} origin${originCount !== 1 ? "s" : ""}, ${domainCount} domain${domainCount !== 1 ? "s" : ""})`,
+					status: "running",
+					configProperties: {
+						enabled: dist.enabled,
+						origins: dist.origins || [],
+						domainAliases: dist.domain_aliases || [],
+						spaMode: dist.spa_mode || false,
+						priceClass: dist.price_class || "PriceClass_100",
+						defaultRootObject: dist.default_root_object || "index.html",
+						primaryDomain: primaryDomain,
+						cacheBehaviors: dist.cache_behaviors || [],
+						environment: environment || config.env || "dev",
+					},
+				},
+			});
+		});
+	}
+
 	return nodes;
 }

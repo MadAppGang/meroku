@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ReactFlowProvider } from "reactflow";
 import { type AccountInfo, infrastructureApi } from "./api/infrastructure";
 import { AddAmplifyDialog } from "./components/AddAmplifyDialog";
+import { AddCloudFrontDialog } from "./components/AddCloudFrontDialog";
 import { AddEventTaskDialog } from "./components/AddEventTaskDialog";
 import { AddScheduledTaskDialog } from "./components/AddScheduledTaskDialog";
 import { AddServiceDialog } from "./components/AddServiceDialog";
@@ -33,6 +34,7 @@ export default function App() {
     useState(false);
   const [showAddEventTaskDialog, setShowAddEventTaskDialog] = useState(false);
   const [showAddAmplifyDialog, setShowAddAmplifyDialog] = useState(false);
+  const [showAddCloudFrontDialog, setShowAddCloudFrontDialog] = useState(false);
   const [saveStatus, setSaveStatus] = useState<
     "idle" | "saving" | "success" | "error"
   >("idle");
@@ -232,6 +234,19 @@ export default function App() {
     await saveConfigToBackend(updatedConfig);
   };
 
+  const handleAddCloudFront = async (
+    distribution: NonNullable<YamlInfrastructureConfig["cloudfront_distributions"]>[0]
+  ) => {
+    if (!config) return;
+
+    const updatedConfig = {
+      ...config,
+      cloudfront_distributions: [...(config.cloudfront_distributions || []), distribution],
+    };
+    setConfig(updatedConfig);
+    await saveConfigToBackend(updatedConfig);
+  };
+
   const handleDeleteNode = async (nodeId: string, nodeType: string) => {
     if (!config) return;
 
@@ -257,6 +272,11 @@ export default function App() {
       updatedConfig.amplify_apps = (config.amplify_apps || []).filter(
         (a) => a.name !== appName
       );
+    } else if (nodeType === "cloudfront") {
+      const distName = nodeId.replace("cloudfront-", "");
+      updatedConfig.cloudfront_distributions = (config.cloudfront_distributions || []).filter(
+        (d) => d.name !== distName
+      );
     }
 
     setConfig(updatedConfig);
@@ -277,6 +297,10 @@ export default function App() {
 
   const getExistingAmplifyApps = () => {
     return (config?.amplify_apps || []).map((a) => a.name);
+  };
+
+  const getExistingCloudFrontDistributions = () => {
+    return (config?.cloudfront_distributions || []).map((d) => d.name);
   };
 
   const getAvailableServices = () => {
@@ -362,6 +386,7 @@ export default function App() {
               onAddScheduledTask={() => setShowAddScheduledTaskDialog(true)}
               onAddEventTask={() => setShowAddEventTaskDialog(true)}
               onAddAmplify={() => setShowAddAmplifyDialog(true)}
+              onAddCloudFront={() => setShowAddCloudFrontDialog(true)}
               onManageCustomTerraform={() => setViewMode("code")}
               pricing={pricing}
             />
@@ -425,6 +450,14 @@ export default function App() {
         existingApps={getExistingAmplifyApps()}
         environmentName={selectedEnvironment || undefined}
         projectName={config?.project}
+        config={config || undefined}
+      />
+
+      <AddCloudFrontDialog
+        open={showAddCloudFrontDialog}
+        onClose={() => setShowAddCloudFrontDialog(false)}
+        onAdd={handleAddCloudFront}
+        existingDistributions={getExistingCloudFrontDistributions()}
         config={config || undefined}
       />
 
