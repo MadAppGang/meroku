@@ -41,6 +41,8 @@ type Env struct {
 	Buckets             []BucketConfig       `yaml:"buckets"`
 	Services            []Service            `yaml:"services"`
 	AmplifyApps         []AmplifyApp         `yaml:"amplify_apps,omitempty"`
+	// CloudFront CDN Configuration (Schema v14 -> v15: changed to array)
+	CloudFrontDistributions []CloudFront     `yaml:"cloudfront_distributions,omitempty"`
 	// Custom Extensions (for SNS, SQS, Lambda, etc.)
 	Extensions          Extensions           `yaml:"extensions,omitempty"`
 }
@@ -273,6 +275,71 @@ type AmplifyBranch struct {
 }
 
 // ============================================================================
+// CLOUDFRONT CDN CONFIGURATION (Schema v14)
+// ============================================================================
+
+// CloudFront represents CloudFront CDN configuration
+type CloudFront struct {
+	Name              string                    `yaml:"name"`                         // Unique identifier for this distribution
+	Enabled           bool                      `yaml:"enabled"`
+	Origins           []CloudFrontOrigin        `yaml:"origins,omitempty"`
+	DomainAliases     []string                  `yaml:"domain_aliases,omitempty"`     // e.g., ["*.app.example.com", "app.example.com"]
+	AdditionalZones   []CloudFrontAdditionalZone `yaml:"additional_zones,omitempty"`  // Route 53 zones for non-main domain aliases
+	CacheBehaviors    []CloudFrontCacheBehavior `yaml:"cache_behaviors,omitempty"`    // Path-based routing rules
+	PriceClass        string                    `yaml:"price_class,omitempty"`        // PriceClass_100, PriceClass_200, PriceClass_All
+	DefaultRootObject string                    `yaml:"default_root_object,omitempty"` // e.g., "index.html"
+	SPAMode           bool                      `yaml:"spa_mode,omitempty"`           // Enable SPA error handling (404 -> index.html)
+	Logging           *CloudFrontLogging        `yaml:"logging,omitempty"`
+}
+
+// CloudFrontOrigin represents a CloudFront origin configuration
+type CloudFrontOrigin struct {
+	Name            string            `yaml:"name"`
+	Type            string            `yaml:"type"`              // "s3", "amplify", "alb", "custom"
+	DomainName      string            `yaml:"domain_name,omitempty"` // For custom/alb origins, auto-resolved for amplify/s3
+	OriginPath      string            `yaml:"origin_path,omitempty"`
+	ProtocolPolicy  string            `yaml:"protocol_policy,omitempty"`  // https-only, http-only, match-viewer
+	CustomHeaders   map[string]string `yaml:"custom_headers,omitempty"`
+	// For S3 origins
+	BucketName      string            `yaml:"bucket_name,omitempty"`      // S3 bucket name (for type: s3)
+	CreateBucket    bool              `yaml:"create_bucket,omitempty"`    // Create a new S3 bucket for this origin
+	UseOAC          bool              `yaml:"use_oac,omitempty"`          // Use Origin Access Control for S3
+	// For Amplify origins
+	AmplifyAppName  string            `yaml:"amplify_app_name,omitempty"` // Amplify app name (for type: amplify)
+}
+
+// CloudFrontCacheBehavior represents path-based routing configuration
+type CloudFrontCacheBehavior struct {
+	PathPattern          string   `yaml:"path_pattern"`           // e.g., "/api/*"
+	OriginName           string   `yaml:"origin_name"`            // Reference to origin name
+	AllowedMethods       []string `yaml:"allowed_methods,omitempty"`
+	CachedMethods        []string `yaml:"cached_methods,omitempty"`
+	ForwardQueryString   bool     `yaml:"forward_query_string,omitempty"`
+	ForwardHeaders       []string `yaml:"forward_headers,omitempty"`
+	ForwardCookies       string   `yaml:"forward_cookies,omitempty"` // none, whitelist, all
+	ViewerProtocolPolicy string   `yaml:"viewer_protocol_policy,omitempty"`
+	MinTTL               int      `yaml:"min_ttl,omitempty"`
+	DefaultTTL           int      `yaml:"default_ttl,omitempty"`
+	MaxTTL               int      `yaml:"max_ttl,omitempty"`
+	Compress             bool     `yaml:"compress,omitempty"`
+}
+
+// CloudFrontLogging represents CloudFront access logging configuration
+type CloudFrontLogging struct {
+	Enabled        bool   `yaml:"enabled"`
+	BucketName     string `yaml:"bucket_name,omitempty"`
+	Prefix         string `yaml:"prefix,omitempty"`
+	IncludeCookies bool   `yaml:"include_cookies,omitempty"`
+}
+
+// CloudFrontAdditionalZone represents a Route 53 zone for non-main domain aliases
+type CloudFrontAdditionalZone struct {
+	Domain     string `yaml:"domain"`                // The domain name (e.g., "otherdomain.com")
+	ZoneID     string `yaml:"zone_id,omitempty"`     // Existing zone ID (if not creating)
+	CreateZone bool   `yaml:"create_zone,omitempty"` // Whether to create a new Route 53 zone
+}
+
+// ============================================================================
 // CUSTOM EXTENSIONS
 // ============================================================================
 
@@ -419,10 +486,11 @@ func createEnv(name, env string) Env {
 			AuthLambda: false,
 			Resolvers:  false,
 		},
-		Buckets:             []BucketConfig{},
-		Services:            []Service{},
-		ScheduledTasks:      []ScheduledTask{},
-		EventProcessorTasks: []EventProcessorTask{},
+		Buckets:                 []BucketConfig{},
+		Services:                []Service{},
+		ScheduledTasks:          []ScheduledTask{},
+		EventProcessorTasks:     []EventProcessorTask{},
+		CloudFrontDistributions: []CloudFront{},
 	}
 }
 

@@ -250,6 +250,82 @@ export interface YamlInfrastructureConfig {
 		custom_domain?: string;
 		environment_variables?: Record<string, string>;
 	}>;
+
+	// CloudFront CDN Configuration (Schema v14 -> v15: changed to array)
+	cloudfront_distributions?: CloudFrontConfig[];
+}
+
+/**
+ * CloudFront CDN Configuration
+ * Supports multiple origins (S3, Amplify, ALB, custom) with path-based routing
+ */
+export interface CloudFrontConfig {
+	name: string; // Unique identifier for this distribution
+	enabled: boolean;
+	origins?: CloudFrontOrigin[];
+	domain_aliases?: string[]; // e.g., ["*.app.example.com", "app.example.com"]
+	additional_zones?: CloudFrontAdditionalZone[]; // Route 53 zones for non-main domain aliases
+	cache_behaviors?: CloudFrontCacheBehavior[];
+	price_class?: "PriceClass_100" | "PriceClass_200" | "PriceClass_All";
+	default_root_object?: string; // e.g., "index.html"
+	spa_mode?: boolean; // Enable SPA error handling (404 -> index.html)
+	logging?: CloudFrontLogging;
+}
+
+/**
+ * CloudFront Origin Configuration
+ */
+export interface CloudFrontOrigin {
+	name: string;
+	type: "s3" | "amplify" | "alb" | "custom";
+	domain_name?: string; // For custom/alb origins, auto-resolved for amplify/s3
+	origin_path?: string;
+	protocol_policy?: "https-only" | "http-only" | "match-viewer";
+	custom_headers?: Record<string, string>;
+	// For S3 origins
+	bucket_name?: string;
+	create_bucket?: boolean; // Create a new S3 bucket for this origin
+	use_oac?: boolean; // Use Origin Access Control
+	// For Amplify origins
+	amplify_app_name?: string;
+}
+
+/**
+ * CloudFront Cache Behavior (path-based routing)
+ */
+export interface CloudFrontCacheBehavior {
+	path_pattern: string; // e.g., "/api/*"
+	origin_name: string; // Reference to origin name
+	allowed_methods?: string[];
+	cached_methods?: string[];
+	forward_query_string?: boolean;
+	forward_headers?: string[];
+	forward_cookies?: "none" | "whitelist" | "all";
+	viewer_protocol_policy?: "redirect-to-https" | "https-only" | "allow-all";
+	min_ttl?: number;
+	default_ttl?: number;
+	max_ttl?: number;
+	compress?: boolean;
+}
+
+/**
+ * CloudFront Logging Configuration
+ */
+export interface CloudFrontLogging {
+	enabled: boolean;
+	bucket_name?: string;
+	prefix?: string;
+	include_cookies?: boolean;
+}
+
+/**
+ * CloudFront Additional Zone Configuration
+ * For domain aliases that are not subdomains of the main domain
+ */
+export interface CloudFrontAdditionalZone {
+	domain: string; // The domain name (e.g., "otherdomain.com")
+	zone_id?: string; // Existing zone ID (if not creating)
+	create_zone?: boolean; // Whether to create a new Route 53 zone
 }
 
 /**

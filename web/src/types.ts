@@ -43,7 +43,8 @@ export interface ComponentNode {
 		| "efs"
 		| "alb"
 		| "appsync"
-		| "custom-terraform";
+		| "custom-terraform"
+		| "cloudfront";
 	name: string;
 	url?: string;
 	status: "running" | "deploying" | "stopped" | "error" | "external";

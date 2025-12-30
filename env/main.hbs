@@ -696,6 +696,362 @@ module "amplify" {
 }
 {{/compare}}
 
+{{#if cloudfront_distributions}}
+# ============================================================================
+# CLOUDFRONT CDN DISTRIBUTIONS (Multiple distributions support)
+# Supports wildcard domains and path-based routing
+# ============================================================================
+
+# CloudFront requires certificate in us-east-1
+provider "aws" {
+  alias  = "us_east_1"
+  region = "us-east-1"
+}
+
+{{#each cloudfront_distributions}}
+{{#if enabled}}
+# ------------------------------------------------------------------------------
+# CloudFront Distribution: {{name}}
+# ------------------------------------------------------------------------------
+
+# Additional Route 53 zones for non-main domain aliases
+{{#each additional_zones}}
+{{#if create_zone}}
+resource "aws_route53_zone" "cloudfront_{{@root.name}}_{{@index}}" {
+  name = "{{domain}}"
+
+  tags = {
+    Name         = "{{domain}}"
+    Project      = "{{@root.@root.project}}"
+    Environment  = "{{@root.@root.env}}"
+    Distribution = "{{@root.name}}"
+    ManagedBy    = "meroku"
+  }
+}
+{{/if}}
+{{/each}}
+
+{{#if additional_zones}}
+# Zone lookup map for certificate validation (maps domain suffix to zone_id)
+locals {
+  cloudfront_{{name}}_zone_map = merge(
+    # Main domain zone (default fallback)
+    {{#if @root.domain.enabled}}
+    {
+      "{{@root.domain.domain_name}}" = module.domain.zone_id
+    },
+    {{/if}}
+    # Additional zones
+    {
+      {{#each additional_zones}}
+      "{{domain}}" = {{#if create_zone}}aws_route53_zone.cloudfront_{{@root.name}}_{{@index}}.zone_id{{else}}"{{zone_id}}"{{/if}}{{#unless @last}},{{/unless}}
+      {{/each}}
+    }
+  )
+}
+{{/if}}
+
+# Wildcard certificate for CloudFront domains (must be in us-east-1)
+{{#if domain_aliases}}
+resource "aws_acm_certificate" "cloudfront_{{name}}" {
+  provider = aws.us_east_1
+
+  # Use the first domain alias as the main domain
+  domain_name = "{{domain_aliases.[0]}}"
+
+  # Add remaining aliases as SANs
+  {{#if (gt (len domain_aliases) 1)}}
+  subject_alternative_names = [
+    {{#each domain_aliases}}
+    {{#unless @first}}
+    "{{this}}"{{#unless @last}},{{/unless}}
+    {{/unless}}
+    {{/each}}
+  ]
+  {{/if}}
+
+  validation_method = "DNS"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  tags = {
+    Name        = "{{@root.project}}-{{@root.env}}-cloudfront-{{name}}-cert"
+    Project     = "{{@root.project}}"
+    Environment = "{{@root.env}}"
+    Distribution = "{{name}}"
+    ManagedBy   = "meroku"
+  }
+}
+
+# DNS validation for CloudFront certificate: {{name}}
+{{#if additional_zones}}
+# Helper function to find zone_id for a domain
+locals {
+  cloudfront_{{name}}_domain_to_zone = {
+    for dvo in aws_acm_certificate.cloudfront_{{name}}.domain_validation_options : dvo.domain_name => {
+      name    = dvo.resource_record_name
+      record  = dvo.resource_record_value
+      type    = dvo.resource_record_type
+      zone_id = try(
+        # Try to find matching zone from additional zones (longest match wins)
+        [for domain, zone_id in local.cloudfront_{{name}}_zone_map : zone_id if endswith(dvo.domain_name, domain) || endswith(trimprefix(dvo.domain_name, "*."), domain)][0],
+        # Fallback to main domain zone
+        module.domain.zone_id
+      )
+    }
+  }
+}
+
+resource "aws_route53_record" "cloudfront_{{name}}_cert_validation" {
+  for_each = local.cloudfront_{{name}}_domain_to_zone
+
+  allow_overwrite = true
+  name            = each.value.name
+  records         = [each.value.record]
+  ttl             = 60
+  type            = each.value.type
+  zone_id         = each.value.zone_id
+}
+{{else}}
+resource "aws_route53_record" "cloudfront_{{name}}_cert_validation" {
+  for_each = {
+    for dvo in aws_acm_certificate.cloudfront_{{name}}.domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
+  }
+
+  allow_overwrite = true
+  name            = each.value.name
+  records         = [each.value.record]
+  ttl             = 60
+  type            = each.value.type
+  zone_id         = module.domain.zone_id
+}
+{{/if}}
+
+resource "aws_acm_certificate_validation" "cloudfront_{{name}}" {
+  provider = aws.us_east_1
+
+  certificate_arn         = aws_acm_certificate.cloudfront_{{name}}.arn
+  validation_record_fqdns = [for record in aws_route53_record.cloudfront_{{name}}_cert_validation : record.fqdn]
+}
+{{/if}}
+
+# S3 Buckets for CloudFront origins (when create_bucket is true)
+{{#each origins}}
+{{#if create_bucket}}
+{{#compare type "==" "s3"}}
+resource "aws_s3_bucket" "cloudfront_{{@root.name}}_{{name}}" {
+  bucket = "{{@root.project}}-{{@root.env}}-cf-{{@root.name}}-{{name}}"
+
+  tags = {
+    Name         = "{{@root.project}}-{{@root.env}}-cf-{{@root.name}}-{{name}}"
+    Environment  = "{{@root.env}}"
+    Project      = "{{@root.project}}"
+    Distribution = "{{@root.name}}"
+    Origin       = "{{name}}"
+    ManagedBy    = "meroku"
+  }
+}
+
+resource "aws_s3_bucket_versioning" "cloudfront_{{@root.name}}_{{name}}" {
+  bucket = aws_s3_bucket.cloudfront_{{@root.name}}_{{name}}.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "cloudfront_{{@root.name}}_{{name}}" {
+  bucket = aws_s3_bucket.cloudfront_{{@root.name}}_{{name}}.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+{{/compare}}
+{{/if}}
+{{/each}}
+
+module "cloudfront_{{name}}" {
+  source = "{{@root.modules}}/cloudfront"
+
+  project = "{{@root.project}}"
+  env     = "{{@root.env}}"
+  name    = "{{name}}"
+
+  # Origins configuration
+  origins = [
+    {{#each origins}}
+    {
+      name        = "{{name}}"
+      type        = "{{type}}"
+      {{#if domain_name}}
+      domain_name = "{{domain_name}}"
+      {{else}}
+        {{#compare type "==" "amplify"}}
+      domain_name = module.amplify.default_domains["{{amplify_app_name}}"]
+        {{/compare}}
+        {{#compare type "==" "s3"}}
+        {{#if create_bucket}}
+      domain_name = aws_s3_bucket.cloudfront_{{@root.name}}_{{name}}.bucket_regional_domain_name
+        {{else}}
+      domain_name = "{{bucket_name}}.s3.{{@root.region}}.amazonaws.com"
+        {{/if}}
+        {{/compare}}
+        {{#compare type "==" "alb"}}
+      domain_name = module.workloads.alb_dns_name
+        {{/compare}}
+      {{/if}}
+      {{#if origin_path}}
+      origin_path = "{{origin_path}}"
+      {{/if}}
+      {{#if protocol_policy}}
+      protocol_policy = "{{protocol_policy}}"
+      {{/if}}
+      {{#compare type "==" "s3"}}
+      use_oac = {{default use_oac true}}
+      {{/compare}}
+      {{#if custom_headers}}
+      custom_headers = {
+        {{#each custom_headers}}
+        "{{@key}}" = "{{this}}"{{#unless @last}},{{/unless}}
+        {{/each}}
+      }
+      {{/if}}
+    }{{#unless @last}},{{/unless}}
+    {{/each}}
+  ]
+
+  # Domain aliases (including wildcards like *.app.domain.com)
+  {{#if domain_aliases}}
+  domain_aliases = {{{array domain_aliases}}}
+  certificate_arn = aws_acm_certificate_validation.cloudfront_{{name}}.certificate_arn
+  {{/if}}
+
+  {{#if @root.domain.enabled}}
+  zone_id            = module.domain.zone_id
+  create_dns_records = true
+  {{else}}
+  create_dns_records = false
+  {{/if}}
+
+  # Cache behaviors for path-based routing
+  {{#if cache_behaviors}}
+  cache_behaviors = [
+    {{#each cache_behaviors}}
+    {
+      path_pattern     = "{{path_pattern}}"
+      origin_name      = "{{origin_name}}"
+      {{#if allowed_methods}}
+      allowed_methods  = {{{array allowed_methods}}}
+      {{/if}}
+      {{#if cached_methods}}
+      cached_methods   = {{{array cached_methods}}}
+      {{/if}}
+      {{#if forward_headers}}
+      forward_headers  = {{{array forward_headers}}}
+      {{/if}}
+      forward_query_string = {{default forward_query_string true}}
+      forward_cookies      = "{{default forward_cookies "none"}}"
+      viewer_protocol_policy = "{{default viewer_protocol_policy "redirect-to-https"}}"
+      min_ttl     = {{default min_ttl 0}}
+      default_ttl = {{default default_ttl 0}}
+      max_ttl     = {{default max_ttl 0}}
+      compress    = {{default compress true}}
+    }{{#unless @last}},{{/unless}}
+    {{/each}}
+  ]
+  {{/if}}
+
+  # SPA mode for React/Vue/Angular applications
+  {{#if spa_mode}}
+  custom_error_responses = [
+    {
+      error_code         = 403
+      response_code      = 200
+      response_page_path = "/index.html"
+    },
+    {
+      error_code         = 404
+      response_code      = 200
+      response_page_path = "/index.html"
+    }
+  ]
+  {{/if}}
+
+  default_root_object = "{{default default_root_object "index.html"}}"
+  price_class         = "{{default price_class "PriceClass_100"}}"
+
+  {{#if logging}}
+  {{#if logging.enabled}}
+  logging_bucket          = "{{logging.bucket_name}}.s3.amazonaws.com"
+  logging_prefix          = "{{default logging.prefix (concat @root.project "/" @root.env "/" name "/")}}"
+  logging_include_cookies = {{default logging.include_cookies false}}
+  {{/if}}
+  {{/if}}
+
+  tags = {
+    Project      = "{{@root.project}}"
+    Environment  = "{{@root.env}}"
+    Distribution = "{{name}}"
+    ManagedBy    = "meroku"
+  }
+
+  depends_on = [
+    {{#if domain_aliases}}
+    aws_acm_certificate_validation.cloudfront_{{name}}
+    {{/if}}
+  ]
+}
+{{/if}}
+{{/each}}
+
+# S3 Bucket Policies for CloudFront OAC access (when create_bucket is true)
+{{#each cloudfront_distributions}}
+{{#if enabled}}
+{{#each origins}}
+{{#if create_bucket}}
+{{#compare type "==" "s3"}}
+resource "aws_s3_bucket_policy" "cloudfront_{{@root.name}}_{{name}}" {
+  bucket = aws_s3_bucket.cloudfront_{{@root.name}}_{{name}}.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "AllowCloudFrontServicePrincipal"
+        Effect    = "Allow"
+        Principal = {
+          Service = "cloudfront.amazonaws.com"
+        }
+        Action   = "s3:GetObject"
+        Resource = "${aws_s3_bucket.cloudfront_{{@root.name}}_{{name}}.arn}/*"
+        Condition = {
+          StringEquals = {
+            "AWS:SourceArn" = module.cloudfront_{{@root.name}}.distribution_arn
+          }
+        }
+      }
+    ]
+  })
+
+  depends_on = [
+    aws_s3_bucket_public_access_block.cloudfront_{{@root.name}}_{{name}},
+    module.cloudfront_{{@root.name}}
+  ]
+}
+{{/compare}}
+{{/if}}
+{{/each}}
+{{/if}}
+{{/each}}
+{{/if}}
 
 output "backend_ecr_repo_url" {
   value = module.workloads.backend_ecr_repo_url
@@ -793,3 +1149,20 @@ output "amplify_{{name}}_branches" {
 }
 {{/each}}
 {{/compare}}
+
+{{#if cloudfront_distributions}}
+output "cloudfront_distributions" {
+  description = "CloudFront distributions information"
+  value = {
+    {{#each cloudfront_distributions}}
+    {{#if enabled}}
+    "{{name}}" = {
+      distribution_id     = module.cloudfront_{{name}}.distribution_id
+      distribution_domain = module.cloudfront_{{name}}.distribution_domain_name
+      domain_aliases      = module.cloudfront_{{name}}.domain_aliases
+    }
+    {{/if}}
+    {{/each}}
+  }
+}
+{{/if}}

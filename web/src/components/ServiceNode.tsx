@@ -76,6 +76,7 @@ const serviceIcons = {
 	alb: Network,
 	appsync: Network,
 	"custom-terraform": FileCode,
+	cloudfront: Cloud,
 };
 
 const serviceColors = {
@@ -120,6 +121,7 @@ const serviceColors = {
 	alb: "bg-pink-600",
 	appsync: "bg-purple-600",
 	"custom-terraform": "bg-blue-600",
+	cloudfront: "bg-orange-600",
 };
 
 export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
