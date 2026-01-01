@@ -1,6 +1,9 @@
-import { Globe, Info, Shield } from "lucide-react";
-import type { YamlInfrastructureConfig } from "../types/yamlConfig";
+import { Globe, Info, Plus, Shield, Trash2 } from "lucide-react";
+import { useState } from "react";
+import type { AdditionalDomain, YamlInfrastructureConfig } from "../types/yamlConfig";
 import { Alert, AlertDescription } from "./ui/alert";
+import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
 import {
 	Card,
 	CardContent,
@@ -10,6 +13,14 @@ import {
 } from "./ui/card";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "./ui/select";
+import { Separator } from "./ui/separator";
 import { Switch } from "./ui/switch";
 
 interface Route53NodePropertiesProps {
@@ -21,6 +32,20 @@ export function Route53NodeProperties({
 	config,
 	onConfigChange,
 }: Route53NodePropertiesProps) {
+	// State for adding new additional domain
+	const [showAddDomain, setShowAddDomain] = useState(false);
+	const [newDomain, setNewDomain] = useState<{
+		domain: string;
+		create_zone: boolean;
+		zone_id: string;
+		create_certificate: boolean;
+	}>({
+		domain: "",
+		create_zone: true,
+		zone_id: "",
+		create_certificate: true,
+	});
+
 	const handleDomainEnabledChange = (checked: boolean) => {
 		onConfigChange({
 			...config,
@@ -97,6 +122,54 @@ export function Route53NodeProperties({
 				enabled: config.domain?.enabled ?? false,
 				...config.domain,
 				zone_id: value,
+			},
+		});
+	};
+
+	// Additional Domains handlers
+	const addAdditionalDomain = () => {
+		if (!newDomain.domain.trim()) return;
+		if (!newDomain.create_zone && !newDomain.zone_id.trim()) return;
+
+		const additionalDomains: AdditionalDomain[] = [
+			...(config.domain?.additional_domains || []),
+			{
+				domain: newDomain.domain.trim(),
+				create_zone: newDomain.create_zone,
+				...(newDomain.create_zone ? {} : { zone_id: newDomain.zone_id.trim() }),
+				create_certificate: newDomain.create_certificate,
+			},
+		];
+
+		onConfigChange({
+			...config,
+			domain: {
+				enabled: config.domain?.enabled ?? false,
+				...config.domain,
+				additional_domains: additionalDomains,
+			},
+		});
+
+		// Reset form
+		setNewDomain({
+			domain: "",
+			create_zone: true,
+			zone_id: "",
+			create_certificate: true,
+		});
+		setShowAddDomain(false);
+	};
+
+	const removeAdditionalDomain = (index: number) => {
+		const additionalDomains = (config.domain?.additional_domains || []).filter(
+			(_: AdditionalDomain, i: number) => i !== index
+		);
+		onConfigChange({
+			...config,
+			domain: {
+				enabled: config.domain?.enabled ?? false,
+				...config.domain,
+				additional_domains: additionalDomains,
 			},
 		});
 	};
@@ -429,6 +502,190 @@ export function Route53NodeProperties({
 									</div>
 								</div>
 							</div>
+
+							<Separator />
+
+							{/* Additional Domains Section */}
+							<div className="space-y-4">
+								<div className="flex items-center justify-between">
+									<div>
+										<Label className="text-base">Additional Domains</Label>
+										<p className="text-xs text-gray-400 mt-1">
+											Add other domains for CloudFront and services (e.g., otherdomain.com)
+										</p>
+									</div>
+									<Button
+										variant="outline"
+										size="sm"
+										onClick={() => setShowAddDomain(!showAddDomain)}
+									>
+										<Plus className="h-4 w-4 mr-1" />
+										Add Domain
+									</Button>
+								</div>
+
+								{/* Add Domain Form */}
+								{showAddDomain && (
+									<div className="p-4 border border-gray-700 rounded-lg space-y-4 bg-gray-900/50">
+										<div className="grid grid-cols-2 gap-4">
+											<div className="space-y-2">
+												<Label>Domain Name</Label>
+												<Input
+													placeholder="otherdomain.com"
+													value={newDomain.domain}
+													onChange={(e) =>
+														setNewDomain({ ...newDomain, domain: e.target.value })
+													}
+													className="bg-gray-800 border-gray-600"
+												/>
+											</div>
+											<div className="space-y-2">
+												<Label>Zone Type</Label>
+												<Select
+													value={newDomain.create_zone ? "create" : "existing"}
+													onValueChange={(value) =>
+														setNewDomain({
+															...newDomain,
+															create_zone: value === "create",
+														})
+													}
+												>
+													<SelectTrigger className="bg-gray-800 border-gray-600">
+														<SelectValue />
+													</SelectTrigger>
+													<SelectContent>
+														<SelectItem value="create">Create new Route 53 zone</SelectItem>
+														<SelectItem value="existing">Use existing zone</SelectItem>
+													</SelectContent>
+												</Select>
+											</div>
+										</div>
+
+										{!newDomain.create_zone && (
+											<div className="space-y-2">
+												<Label>Existing Zone ID</Label>
+												<Input
+													placeholder="Z1234567890ABC"
+													value={newDomain.zone_id}
+													onChange={(e) =>
+														setNewDomain({ ...newDomain, zone_id: e.target.value })
+													}
+													className="bg-gray-800 border-gray-600"
+												/>
+												<p className="text-xs text-gray-500">
+													The Route 53 hosted zone ID for this domain
+												</p>
+											</div>
+										)}
+
+										<div className="flex items-center justify-between">
+											<div className="space-y-0.5">
+												<Label>Create ACM Certificate</Label>
+												<p className="text-xs text-gray-400">
+													Create SSL certificate in us-east-1 for CloudFront
+												</p>
+											</div>
+											<Switch
+												checked={newDomain.create_certificate}
+												onCheckedChange={(checked) =>
+													setNewDomain({ ...newDomain, create_certificate: checked })
+												}
+											/>
+										</div>
+
+										<div className="flex justify-end gap-2 pt-2">
+											<Button
+												variant="ghost"
+												size="sm"
+												onClick={() => setShowAddDomain(false)}
+											>
+												Cancel
+											</Button>
+											<Button size="sm" onClick={addAdditionalDomain}>
+												Add Domain
+											</Button>
+										</div>
+									</div>
+								)}
+
+								{/* List of Additional Domains */}
+								{config.domain?.additional_domains?.map(
+									(additionalDomain: AdditionalDomain, index: number) => (
+										<div
+											key={`domain-${additionalDomain.domain}`}
+											className="p-4 border border-gray-700 rounded-lg bg-gray-900/30"
+										>
+											<div className="flex items-start justify-between">
+												<div className="space-y-2">
+													<div className="flex items-center gap-2">
+														<Globe className="h-4 w-4 text-blue-400" />
+														<span className="font-medium">{additionalDomain.domain}</span>
+													</div>
+													<div className="flex items-center gap-2 text-xs text-gray-400">
+														<Badge variant="secondary" className="text-xs">
+															{additionalDomain.create_zone ? "New Zone" : "Existing Zone"}
+														</Badge>
+														{additionalDomain.create_certificate !== false && (
+															<Badge variant="outline" className="text-xs text-green-400 border-green-600">
+																<Shield className="h-3 w-3 mr-1" />
+																Certificate
+															</Badge>
+														)}
+														{!additionalDomain.create_zone && additionalDomain.zone_id && (
+															<span className="text-gray-500">
+																Zone: {additionalDomain.zone_id}
+															</span>
+														)}
+													</div>
+												</div>
+												<Button
+													variant="ghost"
+													size="sm"
+													onClick={() => removeAdditionalDomain(index)}
+												>
+													<Trash2 className="h-4 w-4 text-destructive" />
+												</Button>
+											</div>
+
+											{/* Show what will be created */}
+											<div className="mt-3 pt-3 border-t border-gray-700 text-xs text-gray-400 space-y-1">
+												{additionalDomain.create_zone && (
+													<div className="flex items-center gap-2">
+														<Info className="h-3 w-3 text-blue-400" />
+														<span>Route 53 hosted zone will be created</span>
+													</div>
+												)}
+												{additionalDomain.create_certificate !== false && (
+													<div className="flex items-center gap-2">
+														<Info className="h-3 w-3 text-green-400" />
+														<span>
+															ACM certificate for{" "}
+															<code className="text-green-300">*.{additionalDomain.domain}</code>{" "}
+															in us-east-1
+														</span>
+													</div>
+												)}
+												<div className="flex items-center gap-2">
+													<Info className="h-3 w-3 text-yellow-400" />
+													<span>
+														Update NS records at your registrar after deployment
+													</span>
+												</div>
+											</div>
+										</div>
+									)
+								)}
+
+								{/* Empty state */}
+								{(!config.domain?.additional_domains ||
+									config.domain.additional_domains.length === 0) && (
+									<div className="p-4 border border-dashed border-gray-700 rounded-lg text-center text-gray-500 text-sm">
+										No additional domains configured. Add domains here to use them with CloudFront.
+									</div>
+								)}
+							</div>
+
+							<Separator />
 
 							{/* Important Notes */}
 							<div className="bg-yellow-900/20 border border-yellow-700 rounded-lg p-4">

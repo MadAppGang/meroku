@@ -98,6 +98,15 @@ type Policy struct {
 
 type SetupDomainType string
 
+// AdditionalDomain represents an additional domain for CloudFront and other services
+// These are managed centrally in the domain configuration
+type AdditionalDomain struct {
+	Domain            string `yaml:"domain"`                        // The domain name (e.g., "otherdomain.com")
+	CreateZone        bool   `yaml:"create_zone,omitempty"`         // Whether to create a new Route 53 zone
+	ZoneID            string `yaml:"zone_id,omitempty"`             // Existing zone ID (if not creating)
+	CreateCertificate *bool  `yaml:"create_certificate,omitempty"`  // Create ACM certificate (default: true)
+}
+
 type Domain struct {
 	// EXISTING FIELDS - DON'T TOUCH
 	Enabled            bool   `yaml:"enabled"`
@@ -106,15 +115,18 @@ type Domain struct {
 	IsDNSRoot          bool   `yaml:"is_dns_root"`
 	DNSRootAccountID   string `yaml:"dns_root_account_id"`
 	DelegationRoleArn  string `yaml:"delegation_role_arn"`
-	
+
 	// Additional fields from original structure (if missing)
 	APIDomainPrefix    string `yaml:"api_domain_prefix,omitempty"`
 	AddEnvDomainPrefix bool   `yaml:"add_env_domain_prefix,omitempty"`
-	
+
 	// NEW DNS MANAGEMENT FIELDS
 	ZoneID        string `yaml:"zone_id,omitempty"`         // For existing zones
 	RootZoneID    string `yaml:"root_zone_id,omitempty"`    // For subdomain delegation
 	RootAccountID string `yaml:"root_account_id,omitempty"` // For cross-account access
+
+	// Additional domains for CloudFront and other services (centralized management)
+	AdditionalDomains []AdditionalDomain `yaml:"additional_domains,omitempty"`
 }
 
 type PostgresEngineVersion string
