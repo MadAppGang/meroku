@@ -935,6 +935,54 @@ resource "aws_acm_certificate_validation" "cloudfront_{{name}}" {
   certificate_arn         = aws_acm_certificate.cloudfront_{{name}}.arn
   validation_record_fqdns = [for record in aws_route53_record.cloudfront_{{name}}_cert_validation : record.fqdn]
 }
+
+# Route53 A records pointing domain aliases to CloudFront distribution
+{{#if (or additional_zones @root.domain.additional_domains)}}
+# Using zone map for multi-domain support
+locals {
+  cloudfront_{{name}}_alias_records = {
+    {{#each domain_aliases}}
+    "{{this}}" = {
+      name    = "{{this}}"
+      zone_id = try(
+        [for domain, zone_id in local.cloudfront_{{../name}}_zone_map : zone_id
+         if endswith("{{this}}", domain) || endswith(trimprefix("{{this}}", "*."), domain)][0],
+        module.domain.zone_id
+      )
+    }{{#unless @last}},{{/unless}}
+    {{/each}}
+  }
+}
+
+resource "aws_route53_record" "cloudfront_{{name}}_alias" {
+  for_each = local.cloudfront_{{name}}_alias_records
+
+  zone_id = each.value.zone_id
+  name    = each.value.name
+  type    = "A"
+
+  alias {
+    name                   = module.cloudfront_{{name}}.distribution_domain_name
+    zone_id                = module.cloudfront_{{name}}.distribution_hosted_zone_id
+    evaluate_target_health = false
+  }
+}
+{{else}}
+# Single domain - all aliases use main domain zone
+{{#each domain_aliases}}
+resource "aws_route53_record" "cloudfront_{{../name}}_alias_{{@index}}" {
+  zone_id = module.domain.zone_id
+  name    = "{{this}}"
+  type    = "A"
+
+  alias {
+    name                   = module.cloudfront_{{../name}}.distribution_domain_name
+    zone_id                = module.cloudfront_{{../name}}.distribution_hosted_zone_id
+    evaluate_target_health = false
+  }
+}
+{{/each}}
+{{/if}}
 {{/if}}
 
 # S3 Buckets for CloudFront origins (when create_bucket is true)
