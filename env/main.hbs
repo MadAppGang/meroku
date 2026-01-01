@@ -717,14 +717,14 @@ provider "aws" {
 # Additional Route 53 zones for non-main domain aliases
 {{#each additional_zones}}
 {{#if create_zone}}
-resource "aws_route53_zone" "cloudfront_{{@root.name}}_{{@index}}" {
+resource "aws_route53_zone" "cloudfront_{{../name}}_{{@index}}" {
   name = "{{domain}}"
 
   tags = {
     Name         = "{{domain}}"
-    Project      = "{{@root.@root.project}}"
-    Environment  = "{{@root.@root.env}}"
-    Distribution = "{{@root.name}}"
+    Project      = "{{@root.project}}"
+    Environment  = "{{@root.env}}"
+    Distribution = "{{../name}}"
     ManagedBy    = "meroku"
   }
 }
@@ -744,7 +744,7 @@ locals {
     # Additional zones
     {
       {{#each additional_zones}}
-      "{{domain}}" = {{#if create_zone}}aws_route53_zone.cloudfront_{{@root.name}}_{{@index}}.zone_id{{else}}"{{zone_id}}"{{/if}}{{#unless @last}},{{/unless}}
+      "{{domain}}" = {{#if create_zone}}aws_route53_zone.cloudfront_{{../name}}_{{@index}}.zone_id{{else}}"{{zone_id}}"{{/if}}{{#unless @last}},{{/unless}}
       {{/each}}
     }
   )
