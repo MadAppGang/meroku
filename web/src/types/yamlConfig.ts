@@ -109,6 +109,8 @@ export interface YamlInfrastructureConfig {
 		is_dns_root?: boolean;
 		dns_root_account_id?: string;
 		delegation_role_arn?: string;
+		// Additional domains for CloudFront and other services
+		additional_domains?: AdditionalDomain[];
 	};
 
 	// Database Configuration
@@ -319,7 +321,20 @@ export interface CloudFrontLogging {
 }
 
 /**
+ * Additional Domain Configuration
+ * For managing additional domains in Route53 (centralized domain management)
+ * These domains can be used by CloudFront, services, etc.
+ */
+export interface AdditionalDomain {
+	domain: string; // The domain name (e.g., "otherdomain.com")
+	create_zone?: boolean; // Whether to create a new Route 53 zone
+	zone_id?: string; // Existing zone ID (if not creating)
+	create_certificate?: boolean; // Create ACM certificate (default: true)
+}
+
+/**
  * CloudFront Additional Zone Configuration
+ * @deprecated Use domain.additional_domains instead for centralized domain management
  * For domain aliases that are not subdomains of the main domain
  */
 export interface CloudFrontAdditionalZone {

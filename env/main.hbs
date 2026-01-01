@@ -108,6 +108,93 @@ locals {
     }
     {{/if}}
   {{/compare}}
+
+  # ------------------------------------------------------------------------------
+  # Additional Domains (Route53 zones and certificates)
+  # Configured in domain.additional_domains for centralized domain management
+  # ------------------------------------------------------------------------------
+  {{#each domain.additional_domains}}
+  {{#if create_zone}}
+  # Route 53 Zone for additional domain: {{domain}}
+  resource "aws_route53_zone" "additional_{{@index}}" {
+    name = "{{domain}}"
+
+    tags = {
+      Name        = "{{domain}}"
+      Project     = "{{@root.project}}"
+      Environment = "{{@root.env}}"
+      ManagedBy   = "meroku"
+    }
+  }
+  {{/if}}
+
+  {{#unless (eq create_certificate false)}}
+  # ACM Certificate in us-east-1 for CloudFront: {{domain}}
+  resource "aws_acm_certificate" "additional_{{@index}}" {
+    provider = aws.us_east_1
+
+    domain_name               = "{{domain}}"
+    subject_alternative_names = ["*.{{domain}}"]
+    validation_method         = "DNS"
+
+    lifecycle {
+      create_before_destroy = true
+    }
+
+    tags = {
+      Name        = "{{@root.project}}-{{@root.env}}-additional-{{domain}}"
+      Project     = "{{@root.project}}"
+      Environment = "{{@root.env}}"
+      Domain      = "{{domain}}"
+      ManagedBy   = "meroku"
+    }
+  }
+
+  # DNS validation records for additional domain: {{domain}}
+  resource "aws_route53_record" "additional_{{@index}}_validation" {
+    for_each = {
+      for dvo in aws_acm_certificate.additional_{{@index}}.domain_validation_options : dvo.domain_name => {
+        name   = dvo.resource_record_name
+        record = dvo.resource_record_value
+        type   = dvo.resource_record_type
+      }
+    }
+
+    allow_overwrite = true
+    name            = each.value.name
+    records         = [each.value.record]
+    ttl             = 60
+    type            = each.value.type
+    zone_id         = {{#if create_zone}}aws_route53_zone.additional_{{@index}}.zone_id{{else}}"{{zone_id}}"{{/if}}
+  }
+
+  # Certificate validation for additional domain: {{domain}}
+  resource "aws_acm_certificate_validation" "additional_{{@index}}" {
+    provider = aws.us_east_1
+
+    certificate_arn         = aws_acm_certificate.additional_{{@index}}.arn
+    validation_record_fqdns = [for record in aws_route53_record.additional_{{@index}}_validation : record.fqdn]
+  }
+  {{/unless}}
+  {{/each}}
+
+  # Locals for additional domain zone lookups (used by CloudFront)
+  {{#if domain.additional_domains}}
+  locals {
+    additional_domain_zones = {
+      {{#each domain.additional_domains}}
+      "{{domain}}" = {{#if create_zone}}aws_route53_zone.additional_{{@index}}.zone_id{{else}}"{{zone_id}}"{{/if}}{{#unless @last}},{{/unless}}
+      {{/each}}
+    }
+    additional_domain_certs = {
+      {{#each domain.additional_domains}}
+      {{#unless (eq create_certificate false)}}
+      "{{domain}}" = aws_acm_certificate_validation.additional_{{@index}}.certificate_arn{{#unless @last}},{{/unless}}
+      {{/unless}}
+      {{/each}}
+    }
+  }
+  {{/if}}
 {{/if}}
 
 
@@ -731,8 +818,9 @@ resource "aws_route53_zone" "cloudfront_{{../name}}_{{@index}}" {
 {{/if}}
 {{/each}}
 
-{{#if additional_zones}}
+{{#if (or additional_zones @root.domain.additional_domains)}}
 # Zone lookup map for certificate validation (maps domain suffix to zone_id)
+# Includes: main domain + CloudFront additional_zones (legacy) + domain.additional_domains (centralized)
 locals {
   cloudfront_{{name}}_zone_map = merge(
     # Main domain zone (default fallback)
@@ -741,12 +829,20 @@ locals {
       "{{@root.domain.domain_name}}" = module.domain.zone_id
     },
     {{/if}}
-    # Additional zones
+    # Centralized additional domains from domain.additional_domains (preferred)
+    {{#if @root.domain.additional_domains}}
+    local.additional_domain_zones,
+    {{/if}}
+    # Legacy CloudFront additional_zones (for backward compatibility)
+    {{#if additional_zones}}
     {
       {{#each additional_zones}}
       "{{domain}}" = {{#if create_zone}}aws_route53_zone.cloudfront_{{../name}}_{{@index}}.zone_id{{else}}"{{zone_id}}"{{/if}}{{#unless @last}},{{/unless}}
       {{/each}}
     }
+    {{else}}
+    {}
+    {{/if}}
   )
 }
 {{/if}}
@@ -786,8 +882,8 @@ resource "aws_acm_certificate" "cloudfront_{{name}}" {
 }
 
 # DNS validation for CloudFront certificate: {{name}}
-{{#if additional_zones}}
-# Helper function to find zone_id for a domain
+{{#if (or additional_zones @root.domain.additional_domains)}}
+# Helper function to find zone_id for a domain (uses merged zone map)
 locals {
   cloudfront_{{name}}_domain_to_zone = {
     for dvo in aws_acm_certificate.cloudfront_{{name}}.domain_validation_options : dvo.domain_name => {
