@@ -39,8 +39,18 @@ output "app_arns" {
 }
 
 output "default_domains" {
-  description = "Map of Amplify app default domains"
+  description = "Map of Amplify app default domains (without branch prefix - not directly accessible)"
   value = { for app_name, app in aws_amplify_app.apps : app_name => app.default_domain }
+}
+
+output "production_domains" {
+  description = "Map of Amplify app production domains (with branch prefix - use this for CloudFront origins)"
+  value = {
+    for app_name, app in aws_amplify_app.apps : app_name => "${try(
+      [for b in local.app_branches : b.branch.name if b.app_name == app_name && b.branch.stage == "PRODUCTION"][0],
+      [for b in local.app_branches : b.branch.name if b.app_name == app_name][0]
+    )}.${app.default_domain}"
+  }
 }
 
 output "app_urls" {

@@ -1039,7 +1039,7 @@ module "cloudfront_{{name}}" {
       domain_name = "{{domain_name}}"
       {{else}}
         {{#compare type "==" "amplify"}}
-      domain_name = module.amplify.default_domains["{{amplify_app_name}}"]
+      domain_name = module.amplify.production_domains["{{amplify_app_name}}"]
         {{/compare}}
         {{#compare type "==" "s3"}}
         {{#if create_bucket}}
