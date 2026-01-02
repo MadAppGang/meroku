@@ -678,6 +678,70 @@ export function DeploymentCanvas({
 			});
 		}
 
+		// Add edges for CloudFront distributions
+		if (config?.cloudfront_distributions) {
+			config.cloudfront_distributions.forEach((dist) => {
+				if (dist.enabled) {
+					// Route53 → CloudFront (DNS)
+					allEdges.push({
+						id: `route53-cloudfront-${dist.name}`,
+						source: "route53",
+						target: `cloudfront-${dist.name}`,
+						type: "smoothstep",
+						animated: true,
+						label: "DNS",
+						style: { stroke: "#f97316", strokeWidth: 2 },
+						markerEnd: { type: MarkerType.ArrowClosed, color: "#ea580c" },
+					});
+
+					// Client → CloudFront (HTTPS)
+					allEdges.push({
+						id: `client-cloudfront-${dist.name}`,
+						source: "client-app",
+						target: `cloudfront-${dist.name}`,
+						sourceHandle: "source-right",
+						targetHandle: "target-left",
+						type: "smoothstep",
+						animated: true,
+						label: "HTTPS",
+						style: { stroke: "#f97316", strokeWidth: 2 },
+						markerEnd: { type: MarkerType.ArrowClosed, color: "#ea580c" },
+					});
+
+					// CloudFront → Origins (Amplify, S3, ALB)
+					dist.origins?.forEach((origin) => {
+						if (origin.type === "amplify" && origin.amplify_app_name) {
+							allEdges.push({
+								id: `cloudfront-${dist.name}-amplify-${origin.amplify_app_name}`,
+								source: `cloudfront-${dist.name}`,
+								target: `amplify-${origin.amplify_app_name}`,
+								sourceHandle: "source-right",
+								targetHandle: "target-left",
+								type: "smoothstep",
+								animated: true,
+								label: "origin",
+								style: { stroke: "#f97316", strokeWidth: 2 },
+								markerEnd: { type: MarkerType.ArrowClosed, color: "#ea580c" },
+							});
+						} else if (origin.type === "alb") {
+							allEdges.push({
+								id: `cloudfront-${dist.name}-alb`,
+								source: `cloudfront-${dist.name}`,
+								target: "alb",
+								sourceHandle: "source-right",
+								targetHandle: "target-left",
+								type: "smoothstep",
+								animated: true,
+								label: "origin",
+								style: { stroke: "#f97316", strokeWidth: 2 },
+								markerEnd: { type: MarkerType.ArrowClosed, color: "#ea580c" },
+							});
+						}
+					});
+				}
+			});
+		}
+
 		// Filter edges to only include those where both source and target are enabled
 		return allEdges
 			.filter((edge) => {
