@@ -1132,6 +1132,16 @@ module "cloudfront_{{name}}" {
   default_root_object = "{{default default_root_object "index.html"}}"
   price_class         = "{{default price_class "PriceClass_100"}}"
 
+  # For Amplify origins, do NOT forward Host header (causes 403 error)
+  # For ALB/custom origins, forward Host header as needed
+  {{#each origins}}{{#if @first}}
+    {{#compare type "==" "amplify"}}
+  forward_headers = ["Origin", "Access-Control-Request-Headers", "Access-Control-Request-Method"]
+    {{else}}
+  forward_headers = ["Host", "Origin", "Access-Control-Request-Headers", "Access-Control-Request-Method"]
+    {{/compare}}
+  {{/if}}{{/each}}
+
   {{#if logging}}
   {{#if logging.enabled}}
   logging_bucket          = "{{logging.bucket_name}}.s3.amazonaws.com"
