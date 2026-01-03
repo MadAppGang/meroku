@@ -39,3 +39,9 @@ variable "add_env_domain_prefix" {
   type        = bool
   default     = true
 }
+
+variable "zone_id" {
+  description = "Route53 hosted zone ID for creating DNS records for Amplify domain verification"
+  type        = string
+  default     = ""
+}

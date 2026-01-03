@@ -740,6 +740,11 @@ module "amplify" {
   add_env_domain_prefix = {{domain.add_env_domain_prefix}}
   {{/if}}
 
+  # Route53 zone ID for creating DNS records (ACM validation + subdomain CNAME)
+  {{#if domain.enabled}}
+  zone_id = module.domain.zone_id
+  {{/if}}
+
   amplify_apps = [
     {{#each amplify_apps}}
     {
