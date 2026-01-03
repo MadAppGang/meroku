@@ -1,6 +1,7 @@
 resource "aws_route53_zone" "domain" {
-  count = var.create_domain_zone ? 1 : 0
-  name  = local.domain_name
+  count         = var.create_domain_zone ? 1 : 0
+  name          = local.domain_name
+  force_destroy = var.force_destroy
 
   tags = {
     Name        = "zone-${var.env}"
