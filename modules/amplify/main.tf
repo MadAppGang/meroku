@@ -165,3 +165,71 @@ resource "aws_amplify_domain_association" "domains" {
     create_before_destroy = true
   }
 }
+
+# -----------------------------------------------------------------------------
+# Route53 DNS Records for Amplify Domain Verification
+# These records are required for ACM certificate validation and subdomain routing
+# -----------------------------------------------------------------------------
+
+locals {
+  # Parse certificate verification DNS records from domain associations
+  # Format: "_hash.domain.com. CNAME _hash.acm-validations.aws."
+  cert_validation_records = {
+    for app_name, domain in aws_amplify_domain_association.domains : app_name => {
+      # Extract the record name (everything before " CNAME ")
+      name  = trimspace(split(" CNAME ", domain.certificate_verification_dns_record)[0])
+      # Extract the record value (everything after " CNAME ")
+      value = trimspace(split(" CNAME ", domain.certificate_verification_dns_record)[1])
+    } if var.zone_id != "" && domain.certificate_verification_dns_record != null
+  }
+
+  # Parse subdomain DNS records from domain associations
+  # Format: " CNAME cloudfront.net" or "prefix CNAME cloudfront.net"
+  subdomain_records = flatten([
+    for app_name, domain in aws_amplify_domain_association.domains : [
+      for idx, sub in domain.sub_domain : {
+        app_name    = app_name
+        domain_name = domain.domain_name
+        prefix      = sub.prefix
+        # Extract CloudFront domain from dns_record (format: " CNAME d123.cloudfront.net" or "prefix CNAME d123.cloudfront.net")
+        cloudfront  = trimspace(element(split(" CNAME ", sub.dns_record), 1))
+        # Build the full subdomain name
+        record_name = sub.prefix != "" ? "${sub.prefix}.${domain.domain_name}" : domain.domain_name
+      }
+    ] if var.zone_id != ""
+  ])
+}
+
+# ACM Certificate Validation CNAME Records
+# These records prove domain ownership to AWS Certificate Manager
+resource "aws_route53_record" "amplify_cert_validation" {
+  for_each = local.cert_validation_records
+
+  zone_id         = var.zone_id
+  name            = each.value.name
+  type            = "CNAME"
+  ttl             = 60
+  records         = [each.value.value]
+  allow_overwrite = true
+
+  # Depends on domain association to ensure cert validation record is available
+  depends_on = [aws_amplify_domain_association.domains]
+}
+
+# Subdomain CNAME Records pointing to CloudFront
+# These records route traffic from custom domains to Amplify's CloudFront distribution
+resource "aws_route53_record" "amplify_subdomain" {
+  for_each = {
+    for record in local.subdomain_records : "${record.app_name}-${record.prefix}" => record
+  }
+
+  zone_id         = var.zone_id
+  name            = each.value.record_name
+  type            = "CNAME"
+  ttl             = 300
+  records         = [each.value.cloudfront]
+  allow_overwrite = true
+
+  # Depends on domain association to ensure subdomain info is available
+  depends_on = [aws_amplify_domain_association.domains]
+}
