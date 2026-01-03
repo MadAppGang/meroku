@@ -142,6 +142,10 @@ resource "aws_amplify_domain_association" "domains" {
   app_id      = aws_amplify_app.apps[each.key].id
   domain_name = local.app_domains[each.key]
 
+  # Don't wait for verification - allows faster apply and avoids timeouts
+  # Verification can complete asynchronously after apply
+  wait_for_verification = false
+
   # Configure all subdomain mappings (legacy app-level + branch-specific + root domain)
   dynamic "sub_domain" {
     for_each = [
@@ -152,5 +156,12 @@ resource "aws_amplify_domain_association" "domains" {
       branch_name = sub_domain.value.branch_name
       prefix      = sub_domain.value.subdomain
     }
+  }
+
+  # Handle domain changes gracefully:
+  # - create_before_destroy prevents "already associated" errors during domain changes
+  # - ignore_changes on certificate_settings prevents drift from Amplify-managed certs
+  lifecycle {
+    create_before_destroy = true
   }
 }

@@ -26,3 +26,9 @@ variable "api_domain_prefix" {
 variable "project" {
   type = string
 }
+
+variable "force_destroy" {
+  description = "Allow deletion of Route53 zone even when it contains records (e.g., Amplify ACM validation records). Required when changing domain names."
+  type        = bool
+  default     = true
+}
