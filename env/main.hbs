@@ -651,6 +651,14 @@ module "ses" {
   {{#if domain.enabled}}
   zone_id = module.domain.zone_id
   {{/if}}
+
+  # Email deliverability configuration
+  enable_mail_from    = {{default ses.enable_mail_from true}}
+  mail_from_subdomain = "{{default ses.mail_from_subdomain "bounce"}}"
+  dmarc_policy        = "{{default ses.dmarc_policy "none"}}"
+  {{#if ses.dmarc_rua_email}}
+  dmarc_rua_email     = "{{ses.dmarc_rua_email}}"
+  {{/if}}
 }
 {{/if}}
 
