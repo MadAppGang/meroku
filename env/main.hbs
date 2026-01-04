@@ -477,6 +477,9 @@ module "workloads" {
   sqs_policy_arn = module.sqs.sqs_access_policy_arn
   sqs_enable = true
   {{/if}}
+  {{#if ses.enabled}}
+  ses_enabled = true
+  {{/if}}
   {{#compare (len workload.efs) ">" 0}}
   available_efs = { 
     {{#each efs}}
@@ -563,6 +566,9 @@ module "schedule_task_{{name}}" {
   sqs_policy_arn = module.sqs.sqs_access_policy_arn
   sqs_enable = true
   {{/if}}
+  {{#if @root.ses.enabled}}
+  ses_enabled = true
+  {{/if}}
   {{#if ecr_account_id}}{{#if ecr_account_region}}
   ecr_url = "{{ecr_account_id}}.dkr.ecr.{{ecr_account_region}}.amazonaws.com/{{project}}_task_{{name}}"
   {{/if}}{{/if}}
@@ -612,6 +618,9 @@ module "event_bus_task_{{name}}" {
   sqs_queue_url = module.sqs.queue_url
   sqs_policy_arn = module.sqs.sqs_access_policy_arn
   sqs_enable = true
+  {{/if}}
+  {{#if @root.ses.enabled}}
+  ses_enabled = true
   {{/if}}
   {{#if ecr_account_id}}{{#if ecr_account_region}}
   ecr_url = "{{ecr_account_id}}.dkr.ecr.{{ecr_account_region}}.amazonaws.com/{{project}}_task_{{name}}"

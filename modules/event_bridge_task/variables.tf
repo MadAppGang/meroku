@@ -82,6 +82,12 @@ variable "sqs_enable" {
   default = false
 }
 
+variable "ses_enabled" {
+  description = "Enable SES email sending permissions for this task"
+  type        = bool
+  default     = false
+}
+
 variable "api_domain" {
   description = "External API domain name"
   type        = string
