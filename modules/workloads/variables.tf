@@ -192,6 +192,11 @@ variable "sqs_enable" {
   default = false
 }
 
+variable "ses_enabled" {
+  description = "Enable SES email sending permissions for backend and services"
+  type        = bool
+  default     = false
+}
 
 variable "env_files_s3" {
   type = list(object({

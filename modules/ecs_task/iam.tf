@@ -126,6 +126,40 @@ resource "aws_iam_role_policy_attachment" "sqs_access" {
   policy_arn = var.sqs_policy_arn
 }
 
+# SES email sending permissions
+resource "aws_iam_policy" "send_emails" {
+  count = var.ses_enabled ? 1 : 0
+  name  = "SendSESEmails_${var.project}_task_${var.task}_${var.env}"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ses:SendEmail",
+          "ses:SendRawEmail"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+
+  tags = {
+    Name        = "SendSESEmails_${var.project}_task_${var.task}_${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    Application = "${var.project}-${var.env}"
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "ses_access" {
+  count      = var.ses_enabled ? 1 : 0
+  role       = aws_iam_role.task.name
+  policy_arn = aws_iam_policy.send_emails[0].arn
+}
+
 # EventBridge permissions to allow scheduled tasks to emit and listen to events
 resource "aws_iam_policy" "eventbridge_access" {
   name = "EventBridgeAccess_${var.project}_task_${var.task}_${var.env}"
