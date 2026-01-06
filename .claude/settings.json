@@ -22,7 +22,9 @@
     "ralph-wiggum@claude-code-plugins": true,
     "code-analysis@mag-claude-plugins": true,
     "orchestration@mag-claude-plugins": true,
-    "frontend@mag-claude-plugins": true
+    "frontend@mag-claude-plugins": true,
+    "conductor@mag-claude-plugins": true,
+    "dev@mag-claude-plugins": true
   },
   "installedPluginVersions": {
     "commit-commands@claude-code-plugins": "1.0.0",
@@ -31,8 +33,10 @@
     "frontend-design@claude-code-plugins": "1.0.0",
     "learning-output-style@claude-code-plugins": "1.0.0",
     "ralph-wiggum@claude-code-plugins": "1.0.0",
-    "code-analysis@mag-claude-plugins": "1.3.3",
-    "orchestration@mag-claude-plugins": "0.2.0",
-    "frontend@mag-claude-plugins": "3.11.0"
+    "code-analysis@mag-claude-plugins": "2.12.0",
+    "orchestration@mag-claude-plugins": "0.8.0",
+    "frontend@mag-claude-plugins": "3.13.0",
+    "conductor@mag-claude-plugins": "2.0.0",
+    "dev@mag-claude-plugins": "1.11.0"
   }
 }
