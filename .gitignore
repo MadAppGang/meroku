@@ -54,3 +54,6 @@ Thumbs.db
 # Backup files
 *.backup_*
 project/backup/
+.claudemem/index.db
+.claudemem/vectors/code_chunks.lance
+.claudemem
