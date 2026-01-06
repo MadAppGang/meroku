@@ -9,14 +9,14 @@ locals {
     for app in var.amplify_apps : app.name => (
       # If custom_domain is set, use it directly (manual override)
       app.custom_domain != null && app.custom_domain != ""
-        ? app.custom_domain
-        # If subdomain_prefix is set, auto-construct domain
-        : app.subdomain_prefix != null && app.subdomain_prefix != "" && var.base_domain != ""
-          ? (var.add_env_domain_prefix && var.env != "prod"
-              ? "${app.subdomain_prefix}.${var.env}.${var.base_domain}"  # e.g., app.dev.example.com
-              : "${app.subdomain_prefix}.${var.base_domain}"            # e.g., app.example.com
-            )
-          : ""  # No domain configured
+      ? app.custom_domain
+      # If subdomain_prefix is set, auto-construct domain
+      : app.subdomain_prefix != null && app.subdomain_prefix != "" && var.base_domain != ""
+      ? (var.add_env_domain_prefix && var.env != "prod"
+        ? "${app.subdomain_prefix}.${var.env}.${var.base_domain}" # e.g., app.dev.example.com
+        : "${app.subdomain_prefix}.${var.base_domain}"            # e.g., app.example.com
+      )
+      : "" # No domain configured
     )
   }
 
@@ -24,9 +24,9 @@ locals {
   app_branches = flatten([
     for app in var.amplify_apps : [
       for branch in app.branches : {
-        app_name              = app.name
-        app                   = app
-        branch                = branch
+        app_name = app.name
+        app      = app
+        branch   = branch
       }
     ]
   ])
@@ -36,10 +36,10 @@ locals {
     for app in var.amplify_apps : [
       for branch in app.branches : [
         for subdomain in branch.custom_subdomains : {
-          app_name = app.name
-          subdomain = subdomain
+          app_name    = app.name
+          subdomain   = subdomain
           branch_name = branch.name
-          is_root = false
+          is_root     = false
         }
       ] if length(branch.custom_subdomains) > 0
     ] if local.app_domains[app.name] != ""
@@ -50,7 +50,7 @@ locals {
   root_domain_mappings = flatten([
     for app in var.amplify_apps : [
       {
-        app_name = app.name
+        app_name  = app.name
         subdomain = ""
         branch_name = app.branches[
           coalesce(
@@ -73,11 +73,11 @@ locals {
 resource "aws_amplify_app" "apps" {
   for_each = { for app in var.amplify_apps : app.name => app }
 
-  name                     = each.value.name
-  repository               = each.value.github_repository
-  oauth_token              = data.aws_ssm_parameter.github_token.value
-  platform                 = "WEB"
-  enable_branch_auto_build = true
+  name                        = each.value.name
+  repository                  = each.value.github_repository
+  oauth_token                 = data.aws_ssm_parameter.github_token.value
+  platform                    = "WEB"
+  enable_branch_auto_build    = true
   enable_auto_branch_creation = false
 
   # Build spec is not set here - users should provide amplify.yml in their repository
@@ -111,12 +111,12 @@ resource "aws_amplify_branch" "branches" {
   app_id      = aws_amplify_app.apps[each.value.app_name].id
   branch_name = each.value.branch.name
 
-  display_name = each.value.branch.name
-  enable_notification = false
-  enable_auto_build   = each.value.branch.enable_auto_build
+  display_name                = each.value.branch.name
+  enable_notification         = false
+  enable_auto_build           = each.value.branch.enable_auto_build
   enable_pull_request_preview = each.value.branch.enable_pull_request_preview
 
-  stage     = each.value.branch.stage
+  stage = each.value.branch.stage
 
   # Branch-specific environment variables
   environment_variables = each.value.branch.environment_variables
@@ -172,44 +172,41 @@ resource "aws_amplify_domain_association" "domains" {
 # -----------------------------------------------------------------------------
 
 locals {
-  # Parse certificate verification DNS records from domain associations
-  # Format: "_hash.domain.com. CNAME _hash.acm-validations.aws."
-  cert_validation_records = {
-    for app_name, domain in aws_amplify_domain_association.domains : app_name => {
-      # Extract the record name (everything before " CNAME ")
-      name  = trimspace(split(" CNAME ", domain.certificate_verification_dns_record)[0])
-      # Extract the record value (everything after " CNAME ")
-      value = trimspace(split(" CNAME ", domain.certificate_verification_dns_record)[1])
-    } if var.zone_id != "" && domain.certificate_verification_dns_record != null
+  # Static keys for apps that need certificate validation records
+  # Keys are derived from input configuration (known at plan time), not resource outputs
+  apps_needing_dns = {
+    for app in var.amplify_apps : app.name => {
+      domain_name = local.app_domains[app.name]
+    }
+    if var.zone_id != "" && local.app_domains[app.name] != ""
   }
 
-  # Parse subdomain DNS records from domain associations
-  # Format: " CNAME cloudfront.net" or "prefix CNAME cloudfront.net"
-  subdomain_records = flatten([
-    for app_name, domain in aws_amplify_domain_association.domains : [
-      for idx, sub in domain.sub_domain : {
-        app_name    = app_name
-        domain_name = domain.domain_name
-        prefix      = sub.prefix
-        # Extract CloudFront domain from dns_record (format: " CNAME d123.cloudfront.net" or "prefix CNAME d123.cloudfront.net")
-        cloudfront  = trimspace(element(split(" CNAME ", sub.dns_record), 1))
-        # Build the full subdomain name
-        record_name = sub.prefix != "" ? "${sub.prefix}.${domain.domain_name}" : domain.domain_name
-      }
-    ] if var.zone_id != ""
-  ])
+  # Static keys for subdomain records - computed from input configuration
+  # Maps each app to its configured subdomain mappings (known at plan time)
+  subdomain_keys = {
+    for mapping in local.all_subdomain_mappings : "${mapping.app_name}-${mapping.subdomain == "" ? "root" : mapping.subdomain}" => {
+      app_name    = mapping.app_name
+      domain_name = local.app_domains[mapping.app_name]
+      prefix      = mapping.subdomain
+      record_name = mapping.subdomain != "" ? "${mapping.subdomain}.${local.app_domains[mapping.app_name]}" : local.app_domains[mapping.app_name]
+    }
+    if var.zone_id != "" && local.app_domains[mapping.app_name] != ""
+  }
 }
 
 # ACM Certificate Validation CNAME Records
 # These records prove domain ownership to AWS Certificate Manager
+# Uses static keys derived from input config to avoid for_each unknown keys issue
 resource "aws_route53_record" "amplify_cert_validation" {
-  for_each = local.cert_validation_records
+  for_each = local.apps_needing_dns
 
-  zone_id         = var.zone_id
-  name            = each.value.name
-  type            = "CNAME"
-  ttl             = 60
-  records         = [each.value.value]
+  zone_id = var.zone_id
+  # Extract the record name from certificate_verification_dns_record (format: "_hash.domain. CNAME _hash.acm-validations.aws.")
+  name = trimspace(split(" CNAME ", aws_amplify_domain_association.domains[each.key].certificate_verification_dns_record)[0])
+  type = "CNAME"
+  ttl  = 60
+  # Extract the record value (everything after " CNAME ")
+  records         = [trimspace(split(" CNAME ", aws_amplify_domain_association.domains[each.key].certificate_verification_dns_record)[1])]
   allow_overwrite = true
 
   # Depends on domain association to ensure cert validation record is available
@@ -218,16 +215,21 @@ resource "aws_route53_record" "amplify_cert_validation" {
 
 # Subdomain CNAME Records pointing to CloudFront
 # These records route traffic from custom domains to Amplify's CloudFront distribution
+# Uses static keys derived from input config to avoid for_each unknown keys issue
 resource "aws_route53_record" "amplify_subdomain" {
-  for_each = {
-    for record in local.subdomain_records : "${record.app_name}-${record.prefix}" => record
-  }
+  for_each = local.subdomain_keys
 
-  zone_id         = var.zone_id
-  name            = each.value.record_name
-  type            = "CNAME"
-  ttl             = 300
-  records         = [each.value.cloudfront]
+  zone_id = var.zone_id
+  name    = each.value.record_name
+  type    = "CNAME"
+  ttl     = 300
+  # Dynamically look up the CloudFront domain from the domain association's sub_domain list
+  records = [
+    trimspace(element(split(" CNAME ", [
+      for sub in aws_amplify_domain_association.domains[each.value.app_name].sub_domain : sub.dns_record
+      if sub.prefix == each.value.prefix
+    ][0]), 1))
+  ]
   allow_overwrite = true
 
   # Depends on domain association to ensure subdomain info is available
