@@ -4,6 +4,7 @@ import {
 	Copy,
 	ExternalLink,
 	Github,
+	Globe,
 	Loader2,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -13,6 +14,27 @@ import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+
+/**
+ * Calculate domain preview based on subdomain prefix and config
+ */
+function calculateDomainPreview(
+	subdomainPrefix: string,
+	config?: YamlInfrastructureConfig
+): string {
+	if (!subdomainPrefix || !config?.domain?.enabled || !config?.domain?.domain_name) {
+		return "";
+	}
+
+	const baseDomain = config.domain.domain_name;
+	const addEnvPrefix = config.domain.add_env_domain_prefix ?? true;
+	const env = config.env || "dev";
+
+	if (addEnvPrefix && env !== "prod") {
+		return `${subdomainPrefix}.${env}.${baseDomain}`;
+	}
+	return `${subdomainPrefix}.${baseDomain}`;
+}
 
 interface AmplifyNodePropertiesProps {
 	config: YamlInfrastructureConfig;
@@ -222,6 +244,38 @@ export function AmplifyNodeProperties({
 							placeholder="https://github.com/username/repo"
 							className="mt-1 bg-gray-800 border-gray-600 text-white"
 						/>
+					</div>
+
+					<div>
+						<Label htmlFor="subdomain_prefix">Subdomain Prefix</Label>
+						<Input
+							id="subdomain_prefix"
+							value={amplifyApp.subdomain_prefix || ""}
+							onChange={(e) =>
+								handleChange("subdomain_prefix", e.target.value)
+							}
+							placeholder="app"
+							className="mt-1 bg-gray-800 border-gray-600 text-white"
+						/>
+						{amplifyApp.subdomain_prefix && config?.domain?.enabled && (
+							<div className="mt-2 p-3 bg-gray-800/50 border border-gray-700 rounded-lg">
+								<div className="flex items-center gap-2 mb-1">
+									<Globe className="w-4 h-4 text-blue-400" />
+									<span className="text-xs font-medium text-gray-400">Domain Preview</span>
+								</div>
+								<p className="text-sm text-white font-mono">
+									{calculateDomainPreview(amplifyApp.subdomain_prefix, config)}
+								</p>
+							</div>
+						)}
+						{!config?.domain?.enabled && (
+							<p className="text-xs text-amber-400 mt-1">
+								ℹ️ Enable domain configuration to use custom domains
+							</p>
+						)}
+						<p className="text-xs text-gray-500 mt-1">
+							Leave empty to use default Amplify domain (*.amplifyapp.com)
+						</p>
 					</div>
 
 					<div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
