@@ -3,6 +3,10 @@ terraform {
     bucket = "{{ state_bucket }}"
     key    = "{{ state_file }}"
     region = "{{ region  }}"
+    {{#if state_lock_table}}
+    dynamodb_table = "{{ state_lock_table }}"
+    encrypt        = true
+    {{/if}}
   }
   required_providers {
     aws = {

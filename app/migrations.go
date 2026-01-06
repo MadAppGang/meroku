@@ -24,7 +24,8 @@ import (
 // 13: Multi-rule EventBridge support (rules[] array in event_processor_tasks)
 // 14: CloudFront CDN configuration (cloudfront with origins, cache_behaviors, domain_aliases)
 // 15: Multiple CloudFront distributions support (cloudfront_distributions[] array)
-const CurrentSchemaVersion = 15
+// 16: DynamoDB state locking support (state_lock_table field)
+const CurrentSchemaVersion = 16
 
 // EnvWithVersion extends Env with a schema version field
 type EnvWithVersion struct {
@@ -110,6 +111,11 @@ var AllMigrations = []Migration{
 		Version:     15,
 		Description: "Multiple CloudFront distributions support",
 		Apply:       migrateToV15,
+	},
+	{
+		Version:     16,
+		Description: "DynamoDB state locking support",
+		Apply:       migrateToV16,
 	},
 }
 
@@ -850,6 +856,33 @@ func migrateToV15(data map[string]interface{}) error {
 	delete(data, "cloudfront")
 
 	fmt.Printf("    ✓ Converted existing CloudFront config to distribution '%s-cdn'\n", projectName)
+	return nil
+}
+
+// migrateToV16 adds DynamoDB state locking support with auto-generated table name
+func migrateToV16(data map[string]interface{}) error {
+	fmt.Println("  → Migrating to v16: Adding DynamoDB state locking support")
+
+	// Get project and env for generating table name
+	project, _ := data["project"].(string)
+	env, _ := data["env"].(string)
+
+	// Only auto-generate if project and env exist
+	if project != "" && env != "" {
+		// Check if state_lock_table is not already set
+		if _, exists := data["state_lock_table"]; !exists {
+			// Generate table name following same pattern as S3 bucket
+			tableName := fmt.Sprintf("%s-terraform-locks-%s", project, env)
+			data["state_lock_table"] = tableName
+			fmt.Printf("    ✓ Auto-generated state_lock_table: %s\n", tableName)
+			fmt.Println("    ℹ️  DynamoDB table will be created automatically on first terraform init")
+		} else {
+			fmt.Println("    ℹ️  Using existing state_lock_table configuration")
+		}
+	} else {
+		fmt.Println("    ⚠️  Cannot auto-generate state_lock_table: project or env not set")
+	}
+
 	return nil
 }
 

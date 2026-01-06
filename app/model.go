@@ -18,6 +18,7 @@ type Env struct {
 	AWSProfile          string               `yaml:"aws_profile"`
 	StateBucket         string               `yaml:"state_bucket"`
 	StateFile           string               `yaml:"state_file"`
+	StateLockTable      string               `yaml:"state_lock_table,omitempty"` // DynamoDB table for state locking (Schema v16)
 	// VPC Configuration
 	UseDefaultVPC bool   `yaml:"use_default_vpc"`
 	VPCCIDR       string `yaml:"vpc_cidr,omitempty"` // Optional, VPC module has default

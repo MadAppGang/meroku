@@ -117,6 +117,58 @@ Recovery steps:
 		}
 	}
 
+	// Step 7: Ensure DynamoDB state lock table exists (if configured)
+	if env.StateLockTable != "" {
+		fmt.Printf("🔒 Checking DynamoDB lock table: %s\n", env.StateLockTable)
+		if err := checkDynamoDBTableForEnv(env); err != nil {
+			// If SSO token expired, try to refresh
+			if strings.Contains(err.Error(), "SSO") || strings.Contains(err.Error(), "expired") {
+				fmt.Println("⚠️  SSO token appears expired, attempting to refresh...")
+				if err := refreshSSOToken(awsProfile); err != nil {
+					return fmt.Errorf(`❌ Failed to refresh SSO token: %v
+
+Recovery steps:
+1. Run: aws sso login --profile %s
+2. Then try again`, err, awsProfile)
+				}
+
+				// Retry DynamoDB check after SSO refresh
+				fmt.Println("🔄 Retrying DynamoDB table check after SSO refresh...")
+				if err := checkDynamoDBTableForEnv(env); err != nil {
+					return fmt.Errorf(`❌ DynamoDB table check failed: %v
+
+Recovery steps:
+1. Verify table name is valid: %s
+2. Check region is correct: %s
+3. Ensure you have DynamoDB permissions
+4. Try creating table manually:
+   aws dynamodb create-table \
+     --table-name %s \
+     --attribute-definitions AttributeName=LockID,AttributeType=S \
+     --key-schema AttributeName=LockID,KeyType=HASH \
+     --billing-mode PAY_PER_REQUEST \
+     --region %s`,
+						err, env.StateLockTable, env.Region, env.StateLockTable, env.Region)
+				}
+			} else {
+				return fmt.Errorf(`❌ DynamoDB table check failed: %v
+
+Recovery steps:
+1. Verify table name is valid: %s
+2. Check region is correct: %s
+3. Ensure you have DynamoDB permissions
+4. Try creating table manually:
+   aws dynamodb create-table \
+     --table-name %s \
+     --attribute-definitions AttributeName=LockID,AttributeType=S \
+     --key-schema AttributeName=LockID,KeyType=HASH \
+     --billing-mode PAY_PER_REQUEST \
+     --region %s`,
+					err, env.StateLockTable, env.Region, env.StateLockTable, env.Region)
+			}
+		}
+	}
+
 	fmt.Println("✅ All AWS pre-flight checks passed!")
 	return nil
 }
