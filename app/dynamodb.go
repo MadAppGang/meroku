@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -111,7 +112,7 @@ func createDynamoDBLockTable(ctx context.Context, client *dynamodb.Client, env E
 	waiter := dynamodb.NewTableExistsWaiter(client)
 	err = waiter.Wait(ctx, &dynamodb.DescribeTableInput{
 		TableName: aws.String(env.StateLockTable),
-	}, 60) // Wait up to 60 seconds
+	}, 60*time.Second) // Wait up to 60 seconds
 
 	if err != nil {
 		return fmt.Errorf("timeout waiting for DynamoDB table %s to become active: %v", env.StateLockTable, err)
