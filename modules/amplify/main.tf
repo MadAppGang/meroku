@@ -186,8 +186,9 @@ locals {
 
   # Static keys for subdomain records - computed from input configuration
   # Maps each app to its configured subdomain mappings (known at plan time)
+  # Key format matches original: "${app_name}-${prefix}" to maintain state compatibility
   subdomain_keys = {
-    for mapping in local.all_subdomain_mappings : "${mapping.app_name}-${mapping.subdomain == "" ? "root" : mapping.subdomain}" => {
+    for mapping in local.all_subdomain_mappings : "${mapping.app_name}-${mapping.subdomain}" => {
       app_name    = mapping.app_name
       domain_name = local.app_domains[mapping.app_name]
       prefix      = mapping.subdomain
