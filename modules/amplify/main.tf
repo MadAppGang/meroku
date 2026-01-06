@@ -164,6 +164,9 @@ resource "aws_amplify_domain_association" "domains" {
   lifecycle {
     create_before_destroy = true
   }
+
+  # Branches must exist before domain association can map subdomains to them
+  depends_on = [aws_amplify_branch.branches]
 }
 
 # -----------------------------------------------------------------------------
