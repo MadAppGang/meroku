@@ -45,3 +45,13 @@ variable "zone_id" {
   type        = string
   default     = ""
 }
+
+variable "manage_dns_records" {
+  description = <<-EOT
+    Whether Terraform should manage Route53 DNS records for Amplify domains.
+    Set to FALSE (default) when Route53 is in the SAME AWS account - Amplify auto-creates records.
+    Set to TRUE only when Route53 is in a DIFFERENT account or managed externally.
+  EOT
+  type        = bool
+  default     = false
+}
