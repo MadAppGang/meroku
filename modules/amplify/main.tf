@@ -203,8 +203,10 @@ locals {
 # ACM Certificate Validation CNAME Records
 # These records prove domain ownership to AWS Certificate Manager
 # Uses static keys derived from input config to avoid for_each unknown keys issue
+# NOTE: Only created when manage_dns_records=true (cross-account Route53)
+# When Route53 is in same account, Amplify auto-creates these records
 resource "aws_route53_record" "amplify_cert_validation" {
-  for_each = local.apps_needing_dns
+  for_each = var.manage_dns_records ? local.apps_needing_dns : {}
 
   zone_id = var.zone_id
   # Extract the record name from certificate_verification_dns_record (format: "_hash.domain. CNAME _hash.acm-validations.aws.")
@@ -222,8 +224,10 @@ resource "aws_route53_record" "amplify_cert_validation" {
 # Subdomain CNAME Records pointing to CloudFront
 # These records route traffic from custom domains to Amplify's CloudFront distribution
 # Uses static keys derived from input config to avoid for_each unknown keys issue
+# NOTE: Only created when manage_dns_records=true (cross-account Route53)
+# When Route53 is in same account, Amplify auto-creates these records
 resource "aws_route53_record" "amplify_subdomain" {
-  for_each = local.subdomain_keys
+  for_each = var.manage_dns_records ? local.subdomain_keys : {}
 
   zone_id = var.zone_id
   name    = each.value.record_name
