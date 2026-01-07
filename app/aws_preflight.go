@@ -55,7 +55,9 @@ Recovery steps:
 
 Recovery steps:
 1. Install Terraform: https://developer.hashicorp.com/terraform/install
-2. macOS: brew install terraform
+2. macOS (recommended):
+   brew tap hashicorp/tap
+   brew install hashicorp/tap/terraform
 3. Linux: Download from https://releases.hashicorp.com/terraform/
 4. Windows: Download installer from HashiCorp website
 5. Verify installation: terraform version`, err)
