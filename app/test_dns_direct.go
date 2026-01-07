@@ -1,3 +1,4 @@
+//go:build ignore
 // +build ignore
 
 package main
@@ -9,7 +10,7 @@ import (
 
 func main() {
 	fmt.Println("Testing DNS status directly...")
-	
+
 	config, err := loadDNSConfig()
 	if err != nil {
 		fmt.Printf("Error loading DNS config: %v\n", err)

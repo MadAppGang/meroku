@@ -125,13 +125,13 @@ func (al *AutoLogin) LoginAndValidate(expectedAccountID, expectedRegion string) 
 
 // ValidationResult contains the result of credential validation
 type ValidationResult struct {
-	Profile            string
-	AccountID          string
-	ARN                string
-	UserID             string
-	Success            bool
-	AccountIDMismatch  bool
-	ExpectedAccountID  string
+	Profile           string
+	AccountID         string
+	ARN               string
+	UserID            string
+	Success           bool
+	AccountIDMismatch bool
+	ExpectedAccountID string
 }
 
 // String returns a formatted string representation

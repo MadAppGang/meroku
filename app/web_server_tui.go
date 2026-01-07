@@ -81,7 +81,7 @@ func initialWebServerModel(url string) webServerModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
-	
+
 	return webServerModel{
 		serverURL: url,
 		status:    statusStarting,
@@ -119,32 +119,32 @@ func (m webServerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.messageTimer = time.Now()
 			return m, tea.Tick(3*time.Second, func(t time.Time) tea.Msg { return clearMessageMsg{} })
 		}
-		
+
 	case serverStartedMsg:
 		m.status = statusRunning
 		return m, nil
-		
+
 	case clearMessageMsg:
 		if time.Since(m.messageTimer) >= 3*time.Second {
 			m.message = ""
 		}
 		return m, nil
-		
+
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
 	}
-	
+
 	return m, nil
 }
 
 func (m webServerModel) View() string {
 	var content string
-	
+
 	// Title
 	title := webTitleStyle.Render("🌐 Web Application Server")
-	
+
 	// Server status
 	var statusLine string
 	switch m.status {
@@ -155,7 +155,7 @@ func (m webServerModel) View() string {
 	case statusError:
 		statusLine = webErrorStyle.Render("✗ Server error")
 	}
-	
+
 	// Info box
 	infoContent := lipgloss.JoinVertical(
 		lipgloss.Left,
@@ -164,20 +164,20 @@ func (m webServerModel) View() string {
 		webInfoStyle.Render("The web application is now accessible in your browser."),
 		webInfoStyle.Render("API endpoints are available at "+m.serverURL+"/api/*"),
 	)
-	
+
 	infoBox := webBoxStyle.Render(infoContent)
-	
+
 	// Message (if any)
 	var messageView string
 	if m.message != "" {
 		messageView = "\n" + webSuccessStyle.Render(m.message) + "\n"
 	}
-	
+
 	// Help
 	help := webHelpStyle.Render(
 		"Press 'o' to open web page • Press 'q' to return to main menu",
 	)
-	
+
 	// Combine all elements
 	content = lipgloss.JoinVertical(
 		lipgloss.Left,
@@ -186,7 +186,7 @@ func (m webServerModel) View() string {
 		messageView,
 		help,
 	)
-	
+
 	return content
 }
 

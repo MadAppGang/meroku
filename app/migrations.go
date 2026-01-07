@@ -26,7 +26,8 @@ import (
 // 15: Multiple CloudFront distributions support (cloudfront_distributions[] array)
 // 16: DynamoDB state locking support (state_lock_table field)
 // 17: Multi-domain support for SES (domains[] array with optional zone_id per domain)
-const CurrentSchemaVersion = 17
+// 18: Move test_emails to global SES level (account-wide, not per-domain)
+const CurrentSchemaVersion = 18
 
 // EnvWithVersion extends Env with a schema version field
 type EnvWithVersion struct {
@@ -122,6 +123,11 @@ var AllMigrations = []Migration{
 		Version:     17,
 		Description: "Add multi-domain support to SES configuration",
 		Apply:       migrateToV17,
+	},
+	{
+		Version:     18,
+		Description: "Move test_emails to global SES level (account-wide)",
+		Apply:       migrateToV18,
 	},
 }
 
@@ -967,6 +973,68 @@ func migrateToV17(data map[string]interface{}) error {
 
 	fmt.Printf("    ✓ Migrated legacy SES domain '%s' to domains array\n", domainNameStr)
 	fmt.Println("    ✓ Removed legacy domain_name and test_emails fields")
+
+	return nil
+}
+
+// migrateToV18 moves test_emails from per-domain to global SES level
+// Test email identities in AWS SES are account-wide, not per-domain
+func migrateToV18(data map[string]interface{}) error {
+	fmt.Println("  → Migrating to v18: Moving test_emails to global SES level")
+
+	ses, ok := data["ses"].(map[interface{}]interface{})
+	if !ok || ses == nil {
+		fmt.Println("    ℹ️  No SES configuration to migrate")
+		return nil
+	}
+
+	domains, ok := ses["domains"].([]interface{})
+	if !ok || len(domains) == 0 {
+		fmt.Println("    ℹ️  No domains array found")
+		return nil
+	}
+
+	// Collect all test emails from domains
+	allTestEmails := make(map[string]bool) // Use map for deduplication
+
+	// Add existing global test_emails if any
+	if existingEmails, ok := ses["test_emails"].([]interface{}); ok {
+		for _, email := range existingEmails {
+			if emailStr, ok := email.(string); ok && emailStr != "" {
+				allTestEmails[emailStr] = true
+			}
+		}
+	}
+
+	// Collect test_emails from each domain and remove the field
+	for _, d := range domains {
+		domain, ok := d.(map[interface{}]interface{})
+		if !ok {
+			continue
+		}
+
+		if testEmails, ok := domain["test_emails"].([]interface{}); ok {
+			for _, email := range testEmails {
+				if emailStr, ok := email.(string); ok && emailStr != "" {
+					allTestEmails[emailStr] = true
+				}
+			}
+			// Remove test_emails from domain
+			delete(domain, "test_emails")
+		}
+	}
+
+	// Convert map to slice
+	if len(allTestEmails) > 0 {
+		emailSlice := make([]interface{}, 0, len(allTestEmails))
+		for email := range allTestEmails {
+			emailSlice = append(emailSlice, email)
+		}
+		ses["test_emails"] = emailSlice
+		fmt.Printf("    ✓ Consolidated %d test email(s) to global level\n", len(emailSlice))
+	} else {
+		fmt.Println("    ℹ️  No test emails to migrate")
+	}
 
 	return nil
 }

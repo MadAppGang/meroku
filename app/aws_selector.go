@@ -69,12 +69,12 @@ func processSelectedProfile(selectedProfile string, envName string) error {
 	if selectedProfile != "" {
 		// Store the selected profile globally
 		selectedAWSProfile = selectedProfile
-		
+
 		err := os.Setenv("AWS_PROFILE", selectedProfile)
 		if err != nil {
 			return fmt.Errorf("failed to set AWS_PROFILE: %w", err)
 		}
-		
+
 		// Get the account ID for this profile
 		accountID, err := getAWSAccountID(selectedProfile)
 		if err != nil {
@@ -94,21 +94,21 @@ func processSelectedProfile(selectedProfile string, envName string) error {
 				return fmt.Errorf("failed to get account ID: %w", err)
 			}
 		}
-		
+
 		// Get the region for this profile
 		region, err := getAWSRegion(selectedProfile)
 		if err != nil {
 			fmt.Printf("Warning: failed to get AWS region: %v\n", err)
 			region = "us-east-1" // Default fallback
 		}
-		
+
 		// Save the account_id to the environment file if envName is provided
 		if envName != "" {
 			env, err := loadEnv(envName)
 			if err != nil {
 				return fmt.Errorf("failed to load environment %s: %w", envName, err)
 			}
-			
+
 			// Check for region mismatch if environment already has a region configured
 			if env.Region != "" && env.Region != region {
 				huh.NewNote().
@@ -117,39 +117,39 @@ func processSelectedProfile(selectedProfile string, envName string) error {
 					Run()
 				return fmt.Errorf("region mismatch: profile region %s != environment region %s", region, env.Region)
 			}
-			
+
 			env.AccountID = accountID
 			env.AWSProfile = selectedProfile
 			// Only update region if it was empty
 			if env.Region == "" {
 				env.Region = region
 			}
-			
+
 			// Save the updated environment
 			if err := saveEnvToFile(env, envName+".yaml"); err != nil {
 				return fmt.Errorf("failed to save environment: %w", err)
 			}
-			
+
 			fmt.Printf("AWS profile '%s' selected successfully (Account: %s, Region: %s) and saved to %s.yaml\n", selectedProfile, accountID, region, envName)
 		} else {
 			// If no specific environment, try to update all environments that don't have account_id
 			envFiles, _ := findFilesWithExts([]string{".yaml", ".yml"})
 			updatedEnvs := []string{}
-			
+
 			for _, envFile := range envFiles {
 				// Only process files in current directory
 				// Skip DNS config file
 				if strings.Contains(envFile, "/") || envFile == "dns.yaml" {
 					continue
 				}
-				
+
 				envName := strings.TrimSuffix(envFile, ".yaml")
 				envName = strings.TrimSuffix(envName, ".yml")
 				env, err := loadEnv(envName)
 				if err != nil {
 					continue
 				}
-				
+
 				// Only update if account_id is empty
 				if env.AccountID == "" {
 					// Check for region mismatch if environment already has a region configured
@@ -168,15 +168,15 @@ func processSelectedProfile(selectedProfile string, envName string) error {
 					}
 				}
 			}
-			
+
 			if len(updatedEnvs) > 0 {
-				fmt.Printf("AWS profile '%s' selected successfully (Account: %s) and saved to: %s\n", 
+				fmt.Printf("AWS profile '%s' selected successfully (Account: %s) and saved to: %s\n",
 					selectedProfile, accountID, strings.Join(updatedEnvs, ", "))
 			} else {
 				fmt.Printf("AWS profile '%s' selected successfully (Account: %s)\n", selectedProfile, accountID)
 			}
 		}
-		
+
 		return nil
 	} else {
 		fmt.Println("No profile selected")
@@ -216,26 +216,26 @@ func getAWSAccountID(profile string) (string, error) {
 	oldProfile := os.Getenv("AWS_PROFILE")
 	os.Setenv("AWS_PROFILE", profile)
 	defer os.Setenv("AWS_PROFILE", oldProfile)
-	
+
 	ctx := context.TODO()
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed to load AWS config: %w", err)
 	}
-	
+
 	stsClient := sts.NewFromConfig(cfg)
 	result, err := stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
 	if err != nil {
 		// Check if this is an SSO-related error and try to login automatically
 		if strings.Contains(err.Error(), "SSO") || strings.Contains(err.Error(), "token") || strings.Contains(err.Error(), "expired") {
 			fmt.Printf("AWS SSO session expired for profile '%s'. Attempting automatic login...\n", profile)
-			
+
 			// Try to run aws sso login
 			loginErr := runAWSSSO(profile)
 			if loginErr != nil {
 				return "", fmt.Errorf("failed to refresh SSO login: %w", loginErr)
 			}
-			
+
 			// Retry the identity call after login
 			result, err = stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
 			if err != nil {
@@ -245,11 +245,11 @@ func getAWSAccountID(profile string) (string, error) {
 			return "", fmt.Errorf("failed to get caller identity: %w", err)
 		}
 	}
-	
+
 	if result.Account == nil {
 		return "", fmt.Errorf("account ID is nil")
 	}
-	
+
 	return *result.Account, nil
 }
 
@@ -259,20 +259,20 @@ func findAWSProfileByAccountID(targetAccountID string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to get home directory: %w", err)
 	}
-	
+
 	configPath := filepath.Join(homeDir, ".aws", "config")
 	configFile, err := os.Open(configPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to open AWS config file: %w", err)
 	}
 	defer configFile.Close()
-	
+
 	scanner := bufio.NewScanner(configFile)
 	currentProfile := ""
-	
+
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
-		
+
 		// Check for profile section header
 		if strings.HasPrefix(line, "[profile ") && strings.HasSuffix(line, "]") {
 			currentProfile = strings.TrimPrefix(line, "[profile ")
@@ -291,11 +291,11 @@ func findAWSProfileByAccountID(targetAccountID string) (string, error) {
 			}
 		}
 	}
-	
+
 	if err := scanner.Err(); err != nil {
 		return "", fmt.Errorf("error reading config file: %w", err)
 	}
-	
+
 	return "", fmt.Errorf("no AWS profile found for account ID: %s", targetAccountID)
 }
 
@@ -304,12 +304,12 @@ func runAWSSSO(profile string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
-	
+
 	err := cmd.Run()
 	if err != nil {
 		return fmt.Errorf("aws sso login failed: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -319,13 +319,13 @@ func getAWSRegion(profile string) (string, error) {
 	oldProfile := os.Getenv("AWS_PROFILE")
 	os.Setenv("AWS_PROFILE", profile)
 	defer os.Setenv("AWS_PROFILE", oldProfile)
-	
+
 	ctx := context.TODO()
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed to load AWS config: %w", err)
 	}
-	
+
 	return cfg.Region, nil
 }
 
@@ -367,7 +367,7 @@ func displayAWSResourcesTable() {
 		Background(lipgloss.Color("235")). // Dark background
 		Padding(0, 1).
 		Underline(true)
-	
+
 	resourceLabelStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("220"))
@@ -408,13 +408,13 @@ func displayAWSResourcesTable() {
 	sectionStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("220")) // Yellow for [sections]
-	
+
 	keyStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("39")) // Blue for keys
-	
+
 	equalStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("245")) // Gray for =
-	
+
 	valueStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("82")) // Green for values
 
@@ -483,7 +483,7 @@ func displaySSOHelpTable() {
 		Background(lipgloss.Color("235")). // Dark background
 		Padding(0, 1).
 		Underline(true)
-	
+
 	resourceLabelStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("220"))
@@ -523,13 +523,13 @@ func displaySSOHelpTable() {
 	sectionStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("220")) // Yellow for [sections]
-	
+
 	keyStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("39")) // Blue for keys
-	
+
 	equalStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("245")) // Gray for =
-	
+
 	valueStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("82")) // Green for values
 
@@ -570,7 +570,7 @@ func displaySSOHelpTable() {
 	fmt.Println(configTable)
 
 	// Tip
-	tip := tipStyle.MarginTop(1).Render("💡 Tip: ") + 
+	tip := tipStyle.MarginTop(1).Render("💡 Tip: ") +
 		"Configure SSO manually, then return here to create your profile."
 	fmt.Println(tip)
 	fmt.Println()
@@ -626,13 +626,13 @@ func checkSSOSessions() ([]SSOSession, error) {
 
 	var sessions []SSOSession
 	lines := strings.Split(string(content), "\n")
-	
+
 	var currentSession *SSOSession
 	ssoSessionPattern := regexp.MustCompile(`^\[sso-session\s+(.+)\]$`)
-	
+
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		
+
 		// Check for SSO session header
 		if matches := ssoSessionPattern.FindStringSubmatch(line); matches != nil {
 			if currentSession != nil {
@@ -641,7 +641,7 @@ func checkSSOSessions() ([]SSOSession, error) {
 			currentSession = &SSOSession{Name: matches[1]}
 			continue
 		}
-		
+
 		// Parse SSO session properties
 		if currentSession != nil {
 			if strings.HasPrefix(line, "sso_start_url") {
@@ -668,19 +668,19 @@ func checkSSOSessions() ([]SSOSession, error) {
 			}
 		}
 	}
-	
+
 	// Save the last session if exists
 	if currentSession != nil {
 		sessions = append(sessions, *currentSession)
 	}
-	
+
 	return sessions, nil
 }
 
 // createSSOSession creates a new SSO session configuration
 func createSSOSession() (*SSOSession, error) {
 	var sessionName, startURL, region string
-	
+
 	// Get session name
 	nameForm := huh.NewForm(
 		huh.NewGroup(
@@ -696,11 +696,11 @@ func createSSOSession() (*SSOSession, error) {
 				}),
 		),
 	)
-	
+
 	if err := nameForm.Run(); err != nil {
 		return nil, err
 	}
-	
+
 	// Get SSO start URL
 	urlForm := huh.NewForm(
 		huh.NewGroup(
@@ -716,21 +716,21 @@ func createSSOSession() (*SSOSession, error) {
 				}),
 		),
 	)
-	
+
 	if err := urlForm.Run(); err != nil {
 		return nil, err
 	}
-	
+
 	// Get SSO region - use a searchable select list
 	regions := getAWSRegions()
-	
+
 	regionOptions := make([]huh.Option[string], len(regions))
 	for i, r := range regions {
 		// Display format: "us-east-1 - US East (N. Virginia)"
 		display := fmt.Sprintf("%s - %s", r.Code, r.Name)
 		regionOptions[i] = huh.NewOption(display, r.Code)
 	}
-	
+
 	// Default to us-east-1
 	region = "us-east-1"
 	regionForm := huh.NewForm(
@@ -743,11 +743,11 @@ func createSSOSession() (*SSOSession, error) {
 				Filtering(true), // Enable filtering/search
 		),
 	)
-	
+
 	if err := regionForm.Run(); err != nil {
 		return nil, err
 	}
-	
+
 	// Create the SSO session
 	session := &SSOSession{
 		Name:               sessionName,
@@ -755,12 +755,12 @@ func createSSOSession() (*SSOSession, error) {
 		Region:             region,
 		RegistrationScopes: "sso:account:access",
 	}
-	
+
 	// Write to AWS config file
 	if err := appendSSOSessionToConfig(session); err != nil {
 		return nil, fmt.Errorf("failed to write SSO session to config: %w", err)
 	}
-	
+
 	fmt.Printf("✅ SSO session '%s' created successfully\n", sessionName)
 	return session, nil
 }
@@ -771,23 +771,23 @@ func appendSSOSessionToConfig(session *SSOSession) error {
 	if err != nil {
 		return fmt.Errorf("failed to get user home directory: %w", err)
 	}
-	
+
 	configPath := filepath.Join(homeDir, ".aws", "config")
-	
+
 	// Open file in append mode
 	file, err := os.OpenFile(configPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open AWS config file: %w", err)
 	}
 	defer file.Close()
-	
+
 	// Write SSO session configuration
 	writer := bufio.NewWriter(file)
 	fmt.Fprintf(writer, "\n[sso-session %s]\n", session.Name)
 	fmt.Fprintf(writer, "sso_start_url = %s\n", session.StartURL)
 	fmt.Fprintf(writer, "sso_region = %s\n", session.Region)
 	fmt.Fprintf(writer, "sso_registration_scopes = %s\n", session.RegistrationScopes)
-	
+
 	return writer.Flush()
 }
 
@@ -799,37 +799,37 @@ func createSSOSessionDirectly(sessionName, startURL, region string) error {
 	if err != nil {
 		return fmt.Errorf("failed to get home directory: %w", err)
 	}
-	
+
 	configPath := filepath.Join(homeDir, ".aws", "config")
-	
+
 	// Read existing config
 	configData, err := os.ReadFile(configPath)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to read AWS config: %w", err)
 	}
-	
+
 	// Check if session already exists
 	configStr := string(configData)
 	if strings.Contains(configStr, fmt.Sprintf("[sso-session %s]", sessionName)) {
 		// Session already exists, skip creation
 		return nil
 	}
-	
+
 	// Append new SSO session configuration
 	ssoConfig := fmt.Sprintf("\n[sso-session %s]\nsso_start_url = %s\nsso_region = %s\nsso_registration_scopes = sso:account:access\n",
 		sessionName, startURL, region)
-	
+
 	// Append to config file
 	f, err := os.OpenFile(configPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("failed to open config file: %w", err)
 	}
 	defer f.Close()
-	
+
 	if _, err := f.WriteString(ssoConfig); err != nil {
 		return fmt.Errorf("failed to write SSO session config: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -840,48 +840,48 @@ func createAWSProfileDirectly(profileName, sessionName, accountID, roleName stri
 	if err != nil {
 		return fmt.Errorf("failed to get home directory: %w", err)
 	}
-	
+
 	configPath := filepath.Join(homeDir, ".aws", "config")
-	
+
 	// Read existing config
 	configData, err := os.ReadFile(configPath)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to read AWS config: %w", err)
 	}
-	
+
 	// Check if profile already exists
 	configStr := string(configData)
 	if strings.Contains(configStr, fmt.Sprintf("[profile %s]", profileName)) {
 		// Profile already exists, skip creation
 		return nil
 	}
-	
+
 	// Create profile configuration
 	profileConfig := fmt.Sprintf("\n[profile %s]\nsso_session = %s\nsso_account_id = %s\nsso_role_name = %s\nregion = us-east-1\n",
 		profileName, sessionName, accountID, roleName)
-	
+
 	// Append to config file
 	f, err := os.OpenFile(configPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("failed to open config file: %w", err)
 	}
 	defer f.Close()
-	
+
 	if _, err := f.WriteString(profileConfig); err != nil {
 		return fmt.Errorf("failed to write profile config: %w", err)
 	}
-	
+
 	// Trigger SSO login for the new profile
 	cmd := exec.Command("aws", "sso", "login", "--profile", profileName)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
-	
+
 	if err := cmd.Run(); err != nil {
 		// Login might fail but profile is created, so we don't return error
 		fmt.Printf("Note: SSO login failed, you may need to login manually: aws sso login --profile %s\n", profileName)
 	}
-	
+
 	return nil
 }
 
@@ -901,9 +901,9 @@ func createAWSProfileForAccountIDWithSuggestion(accountID, suggestedName string)
 	if err != nil {
 		return "", fmt.Errorf("failed to check SSO sessions: %w", err)
 	}
-	
+
 	var selectedSession *SSOSession
-	
+
 	if len(sessions) == 0 {
 		// No SSO sessions found, need to create one
 		fmt.Println("\n📋 Setting up AWS SSO for production account...")
@@ -922,7 +922,7 @@ func createAWSProfileForAccountIDWithSuggestion(accountID, suggestedName string)
 				session.Name,
 			)
 		}
-		
+
 		sessionForm := huh.NewForm(
 			huh.NewGroup(
 				huh.NewSelect[string]().
@@ -932,11 +932,11 @@ func createAWSProfileForAccountIDWithSuggestion(accountID, suggestedName string)
 					Value(&sessionName),
 			),
 		)
-		
+
 		if err := sessionForm.Run(); err != nil {
 			return "", err
 		}
-		
+
 		// Find the selected session
 		for i := range sessions {
 			if sessions[i].Name == sessionName {
@@ -945,14 +945,14 @@ func createAWSProfileForAccountIDWithSuggestion(accountID, suggestedName string)
 			}
 		}
 	}
-	
+
 	if selectedSession == nil {
 		return "", fmt.Errorf("no SSO session selected")
 	}
-	
+
 	// Profile configuration
 	var profileName, roleName, region string
-	
+
 	// Profile name
 	profileForm := huh.NewForm(
 		huh.NewGroup(
@@ -977,15 +977,15 @@ func createAWSProfileForAccountIDWithSuggestion(accountID, suggestedName string)
 				}),
 		),
 	)
-	
+
 	if err := profileForm.Run(); err != nil {
 		return "", err
 	}
-	
+
 	if profileName == "" {
 		profileName = suggestedName
 	}
-	
+
 	// Role name - default to AdministratorAccess
 	roleName = "AdministratorAccess"
 	roleForm := huh.NewForm(
@@ -997,15 +997,15 @@ func createAWSProfileForAccountIDWithSuggestion(accountID, suggestedName string)
 				Placeholder("AdministratorAccess"),
 		),
 	)
-	
+
 	if err := roleForm.Run(); err != nil {
 		return "", err
 	}
-	
+
 	if roleName == "" {
 		roleName = "AdministratorAccess"
 	}
-	
+
 	// Region - use a searchable select list
 	regions := getAWSRegions()
 	regionOptions := make([]huh.Option[string], len(regions))
@@ -1013,7 +1013,7 @@ func createAWSProfileForAccountIDWithSuggestion(accountID, suggestedName string)
 		display := fmt.Sprintf("%s - %s", r.Code, r.Name)
 		regionOptions[i] = huh.NewOption(display, r.Code)
 	}
-	
+
 	// Default to us-east-1
 	region = "us-east-1"
 	regionForm := huh.NewForm(
@@ -1026,19 +1026,19 @@ func createAWSProfileForAccountIDWithSuggestion(accountID, suggestedName string)
 				Filtering(true),
 		),
 	)
-	
+
 	if err := regionForm.Run(); err != nil {
 		return "", err
 	}
-	
+
 	// Write the profile to AWS config
 	if err := appendProfileToConfig(profileName, selectedSession.Name, accountID, roleName, region); err != nil {
 		return "", fmt.Errorf("failed to write profile to config: %w", err)
 	}
-	
+
 	fmt.Printf("✅ Profile '%s' created successfully for account %s\n", profileName, accountID)
 	fmt.Println("\nYou may need to run 'aws sso login' to authenticate with this profile.")
-	
+
 	return profileName, nil
 }
 
@@ -1048,9 +1048,9 @@ func createAWSProfile() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to check SSO sessions: %w", err)
 	}
-	
+
 	var selectedSession *SSOSession
-	
+
 	if len(sessions) == 0 {
 		// No SSO sessions found, offer to create one
 		var createChoice string
@@ -1067,11 +1067,11 @@ func createAWSProfile() (string, error) {
 					Value(&createChoice),
 			),
 		)
-		
+
 		if err := createForm.Run(); err != nil {
 			return "", err
 		}
-		
+
 		switch createChoice {
 		case "docs":
 			displaySSOHelpTable()
@@ -1095,7 +1095,7 @@ func createAWSProfile() (string, error) {
 				session.Name,
 			)
 		}
-		
+
 		selectForm := huh.NewForm(
 			huh.NewGroup(
 				huh.NewSelect[string]().
@@ -1104,11 +1104,11 @@ func createAWSProfile() (string, error) {
 					Value(&sessionName),
 			),
 		)
-		
+
 		if err := selectForm.Run(); err != nil {
 			return "", err
 		}
-		
+
 		// Find the selected session
 		for i := range sessions {
 			if sessions[i].Name == sessionName {
@@ -1117,14 +1117,14 @@ func createAWSProfile() (string, error) {
 			}
 		}
 	}
-	
+
 	if selectedSession == nil {
 		return "", fmt.Errorf("no SSO session selected")
 	}
-	
+
 	// Get profile details
 	var profileName, accountID, roleName, region string
-	
+
 	// Profile name
 	profileForm := huh.NewForm(
 		huh.NewGroup(
@@ -1147,11 +1147,11 @@ func createAWSProfile() (string, error) {
 				}),
 		),
 	)
-	
+
 	if err := profileForm.Run(); err != nil {
 		return "", err
 	}
-	
+
 	// Account ID
 	accountForm := huh.NewForm(
 		huh.NewGroup(
@@ -1172,11 +1172,11 @@ func createAWSProfile() (string, error) {
 				}),
 		),
 	)
-	
+
 	if err := accountForm.Run(); err != nil {
 		return "", err
 	}
-	
+
 	// Role name - default to AdministratorAccess
 	roleName = "AdministratorAccess"
 	roleForm := huh.NewForm(
@@ -1194,21 +1194,21 @@ func createAWSProfile() (string, error) {
 				}),
 		),
 	)
-	
+
 	if err := roleForm.Run(); err != nil {
 		return "", err
 	}
-	
+
 	// Region - use a searchable select list
 	regions := getAWSRegions()
-	
+
 	regionOptions := make([]huh.Option[string], len(regions))
 	for i, r := range regions {
 		// Display format: "us-east-1 - US East (N. Virginia)"
 		display := fmt.Sprintf("%s - %s", r.Code, r.Name)
 		regionOptions[i] = huh.NewOption(display, r.Code)
 	}
-	
+
 	// Default to us-east-1
 	region = "us-east-1"
 	regionForm := huh.NewForm(
@@ -1221,19 +1221,19 @@ func createAWSProfile() (string, error) {
 				Filtering(true), // Enable filtering/search
 		),
 	)
-	
+
 	if err := regionForm.Run(); err != nil {
 		return "", err
 	}
-	
+
 	// Write the profile to AWS config
 	if err := appendProfileToConfig(profileName, selectedSession.Name, accountID, roleName, region); err != nil {
 		return "", fmt.Errorf("failed to write profile to config: %w", err)
 	}
-	
+
 	fmt.Printf("✅ Profile '%s' created successfully\n", profileName)
 	fmt.Println("\nYou may need to run 'aws sso login' to authenticate with this profile.")
-	
+
 	return profileName, nil
 }
 
@@ -1243,16 +1243,16 @@ func appendProfileToConfig(profileName, sessionName, accountID, roleName, region
 	if err != nil {
 		return fmt.Errorf("failed to get user home directory: %w", err)
 	}
-	
+
 	configPath := filepath.Join(homeDir, ".aws", "config")
-	
+
 	// Open file in append mode
 	file, err := os.OpenFile(configPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open AWS config file: %w", err)
 	}
 	defer file.Close()
-	
+
 	// Write profile configuration
 	writer := bufio.NewWriter(file)
 	fmt.Fprintf(writer, "\n[profile %s]\n", profileName)
@@ -1261,7 +1261,6 @@ func appendProfileToConfig(profileName, sessionName, accountID, roleName, region
 	fmt.Fprintf(writer, "sso_account_id = %s\n", accountID)
 	fmt.Fprintf(writer, "sso_role_name = %s\n", roleName)
 	fmt.Fprintf(writer, "region = %s\n", region)
-	
+
 	return writer.Flush()
 }
-

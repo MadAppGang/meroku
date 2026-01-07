@@ -25,15 +25,15 @@ type applyState struct {
 	logs           []logEntry
 
 	// Terraform process
-	cmd            *exec.Cmd
-	mu             sync.Mutex
+	cmd *exec.Cmd
+	mu  sync.Mutex
 
 	// State
-	isApplying     bool
-	applyComplete  bool
-	hasErrors      bool
-	errorCount     int
-	warningCount   int
+	isApplying    bool
+	applyComplete bool
+	hasErrors     bool
+	errorCount    int
+	warningCount  int
 
 	// Diagnostic tracking (for associating with errors)
 	diagnostics map[string]*DiagnosticInfo // resource address -> diagnostic
@@ -42,13 +42,13 @@ type applyState struct {
 	statusLogIndex map[string]int // resource address -> log entry index
 
 	// View state
-	showFullLogs    bool
-	showDetails     bool
+	showFullLogs     bool
+	showDetails      bool
 	showErrorDetails bool
-	selectedSection int  // 0=completed, 1=pending, 2=logs
-	selectedError   int  // Index of selected error in completed list
-	animationFrame  int  // For progress bar animation
-	prevOpsCount    int  // Track previous operation count to detect changes
+	selectedSection  int // 0=completed, 1=pending, 2=logs
+	selectedError    int // Index of selected error in completed list
+	animationFrame   int // For progress bar animation
+	prevOpsCount     int // Track previous operation count to detect changes
 
 	// Layout heights (calculated once, fixed during apply)
 	headerHeight       int
@@ -61,14 +61,14 @@ type applyState struct {
 }
 
 type completedResource struct {
-	Address         string
-	Action          string
-	Duration        time.Duration
-	Timestamp       time.Time
-	Success         bool
-	Error           string // Short error message
-	ErrorSummary    string // Diagnostic summary (if available)
-	ErrorDetail     string // Full diagnostic detail (if available)
+	Address      string
+	Action       string
+	Duration     time.Duration
+	Timestamp    time.Time
+	Success      bool
+	Error        string // Short error message
+	ErrorSummary string // Diagnostic summary (if available)
+	ErrorDetail  string // Full diagnostic detail (if available)
 }
 
 type pendingResource struct {
@@ -132,7 +132,7 @@ type logMsg struct {
 
 // TerraformJSONMessage represents the JSON output from terraform apply -json
 type TerraformJSONMessage struct {
-	Type       string          `json:"type"`       // Changed from @type
+	Type       string          `json:"type"` // Changed from @type
 	Level      string          `json:"@level"`
 	Message    string          `json:"@message"`
 	Module     string          `json:"@module"`
@@ -183,13 +183,13 @@ type HookInfo struct {
 }
 
 type ResourceInfo struct {
-	Addr            string `json:"addr"`
-	Module          string `json:"module"`
-	Resource        string `json:"resource"`
-	ResourceType    string `json:"resource_type"`
-	ResourceName    string `json:"resource_name"`
+	Addr            string      `json:"addr"`
+	Module          string      `json:"module"`
+	Resource        string      `json:"resource"`
+	ResourceType    string      `json:"resource_type"`
+	ResourceName    string      `json:"resource_name"`
 	ResourceKey     interface{} `json:"resource_key,omitempty"`
-	ImpliedProvider string `json:"implied_provider,omitempty"`
+	ImpliedProvider string      `json:"implied_provider,omitempty"`
 }
 
 type ChangeInfo struct {
@@ -226,10 +226,10 @@ func (m *modernPlanModel) calculateApplyLayout(terminalHeight int) {
 	if availableHeight < 18 {
 		// Tiny screen (< 21 total lines) - ultra-compact mode
 		// Show only 1 operation on tiny screens
-		m.applyState.progressHeight = 0       // Hidden
-		m.applyState.currentOpHeight = 5      // 5 lines total -> content 3 (1 title + 1 op = 3 lines)
-		m.applyState.errorSummaryHeight = 0   // Hidden
-		m.applyState.columnsHeight = 5        // 5 lines total on screen -> content height 3
+		m.applyState.progressHeight = 0     // Hidden
+		m.applyState.currentOpHeight = 5    // 5 lines total -> content 3 (1 title + 1 op = 3 lines)
+		m.applyState.errorSummaryHeight = 0 // Hidden
+		m.applyState.columnsHeight = 5      // 5 lines total on screen -> content height 3
 		// Logs get the rest: availableHeight - (5 + 5) = availableHeight - 10
 		logsScreenHeight := availableHeight - 10
 		if logsScreenHeight < 4 {
@@ -239,10 +239,10 @@ func (m *modernPlanModel) calculateApplyLayout(terminalHeight int) {
 	} else if availableHeight < 30 {
 		// Small screen (21-32 total lines) - compact mode
 		// Target layout: currentOp(8), columns(7), logs(rest)
-		m.applyState.progressHeight = 0       // Hidden to save space
-		m.applyState.currentOpHeight = 8      // 8 lines total -> content 6 (enough for 2 ops + title)
-		m.applyState.errorSummaryHeight = 0   // Hidden to save space
-		m.applyState.columnsHeight = 7        // 7 lines total -> content 5
+		m.applyState.progressHeight = 0     // Hidden to save space
+		m.applyState.currentOpHeight = 8    // 8 lines total -> content 6 (enough for 2 ops + title)
+		m.applyState.errorSummaryHeight = 0 // Hidden to save space
+		m.applyState.columnsHeight = 7      // 7 lines total -> content 5
 		// Logs: availableHeight - (8 + 7) = availableHeight - 15
 		logsScreenHeight := availableHeight - 15
 		if logsScreenHeight < 5 {
@@ -252,10 +252,10 @@ func (m *modernPlanModel) calculateApplyLayout(terminalHeight int) {
 	} else if availableHeight < 45 {
 		// Medium screen (32-47 total lines) - balanced mode
 		// This covers the 42-row terminal case
-		m.applyState.progressHeight = 3       // Show progress bar (important feedback!)
-		m.applyState.currentOpHeight = 10     // 10 lines total -> content 8 (enough for 3 ops + title)
-		m.applyState.errorSummaryHeight = 0   // Hidden to save space
-		m.applyState.columnsHeight = 8        // 8 lines total -> content 6 (reduced from 10)
+		m.applyState.progressHeight = 3     // Show progress bar (important feedback!)
+		m.applyState.currentOpHeight = 10   // 10 lines total -> content 8 (enough for 3 ops + title)
+		m.applyState.errorSummaryHeight = 0 // Hidden to save space
+		m.applyState.columnsHeight = 8      // 8 lines total -> content 6 (reduced from 10)
 		// Logs: availableHeight - (3 + 10 + 8) = availableHeight - 21
 		logsScreenHeight := availableHeight - 21
 		if logsScreenHeight < 8 {
@@ -264,10 +264,10 @@ func (m *modernPlanModel) calculateApplyLayout(terminalHeight int) {
 		m.applyState.logsHeight = logsScreenHeight
 	} else {
 		// Large screen (47+ total lines) - ideal mode
-		m.applyState.progressHeight = 3       // 3 lines total -> content 1
-		m.applyState.currentOpHeight = 10     // 10 lines total -> content 8 (enough for 3 ops + title)
-		m.applyState.errorSummaryHeight = 4   // 4 lines total -> content 2
-		m.applyState.columnsHeight = 12       // 12 lines total -> content 10
+		m.applyState.progressHeight = 3     // 3 lines total -> content 1
+		m.applyState.currentOpHeight = 10   // 10 lines total -> content 8 (enough for 3 ops + title)
+		m.applyState.errorSummaryHeight = 4 // 4 lines total -> content 2
+		m.applyState.columnsHeight = 12     // 12 lines total -> content 10
 		// Logs: availableHeight - (3 + 10 + 4 + 12) = availableHeight - 29
 		logsScreenHeight := availableHeight - 29
 		if logsScreenHeight < 10 {
@@ -341,22 +341,22 @@ func (m *modernPlanModel) startTerraformApply() tea.Cmd {
 		if m.applyState == nil {
 			m.initApplyState()
 		}
-		
+
 		// Build command arguments
 		args := []string{"apply", "-json", "-auto-approve"}
-		
+
 		// Add replace flags for marked resources
 		for resource := range m.markedForReplace {
 			args = append(args, fmt.Sprintf("-replace=%s", resource))
 		}
-		
+
 		// Only use plan file if no replacements are marked
 		// When using -replace, we need to let terraform create a new plan
 		if len(m.markedForReplace) == 0 {
 			// Add plan file
 			args = append(args, "tfplan")
 		}
-		
+
 		// Log the command being executed if there are replacements
 		if len(m.markedForReplace) > 0 {
 			m.sendLogMessage("info", fmt.Sprintf("Running terraform apply with %d resource replacements", len(m.markedForReplace)), "")
@@ -364,23 +364,23 @@ func (m *modernPlanModel) startTerraformApply() tea.Cmd {
 				m.sendLogMessage("info", fmt.Sprintf("  • Replacing: %s", resource), "")
 			}
 		}
-		
+
 		// Start terraform apply with JSON output
 		cmd := exec.Command("terraform", args...)
 		stdout, err := cmd.StdoutPipe()
 		if err != nil {
 			return applyErrorMsg{err: err}
 		}
-		
+
 		m.applyState.cmd = cmd
-		
+
 		if err := cmd.Start(); err != nil {
 			return applyErrorMsg{err: err}
 		}
-		
+
 		// Start parsing JSON output in goroutine
 		go m.parseTerraformOutput(stdout)
-		
+
 		return applyStartMsg{}
 	}
 }
@@ -447,7 +447,7 @@ func (m *modernPlanModel) parseTerraformOutput(stdout interface{}) {
 		case "refresh_complete":
 			m.sendLogMessage("info", "Refresh completed", "")
 		default:
-			
+
 			// Check if this is an error message by content
 			if msg.Message != "" {
 				// Use the level from the message
@@ -458,9 +458,9 @@ func (m *modernPlanModel) parseTerraformOutput(stdout interface{}) {
 
 				// Check for completion patterns in the message
 				if strings.Contains(msg.Message, ": Creation complete after") ||
-				   strings.Contains(msg.Message, ": Modifications complete after") ||
-				   strings.Contains(msg.Message, ": Destroy complete after") ||
-				   strings.Contains(msg.Message, ": Destruction complete after") {
+					strings.Contains(msg.Message, ": Modifications complete after") ||
+					strings.Contains(msg.Message, ": Destroy complete after") ||
+					strings.Contains(msg.Message, ": Destruction complete after") {
 					// Parse successful completion
 					parts := strings.SplitN(msg.Message, ":", 2)
 					if len(parts) >= 1 {
@@ -474,9 +474,9 @@ func (m *modernPlanModel) parseTerraformOutput(stdout interface{}) {
 						})
 					}
 				} else if msg.Level == "error" ||
-				   (msg.Message != "" && (strings.Contains(msg.Message, ": Creation errored after") ||
-				                         strings.Contains(msg.Message, ": Modification errored after") ||
-				                         strings.Contains(msg.Message, ": Destruction errored after"))) {
+					(msg.Message != "" && (strings.Contains(msg.Message, ": Creation errored after") ||
+						strings.Contains(msg.Message, ": Modification errored after") ||
+						strings.Contains(msg.Message, ": Destruction errored after"))) {
 					// Parse the resource address from error message
 					if strings.Contains(msg.Message, "errored after") {
 						// Override log level to error for these messages
@@ -508,11 +508,11 @@ func (m *modernPlanModel) parseTerraformOutput(stdout interface{}) {
 						}
 					}
 				} else if strings.Contains(msg.Message, ": Still destroying...") ||
-				          strings.Contains(msg.Message, ": Destroying...") ||
-				          strings.Contains(msg.Message, ": Still creating...") ||
-				          strings.Contains(msg.Message, ": Creating...") ||
-				          strings.Contains(msg.Message, ": Still modifying...") ||
-				          strings.Contains(msg.Message, ": Modifying...") {
+					strings.Contains(msg.Message, ": Destroying...") ||
+					strings.Contains(msg.Message, ": Still creating...") ||
+					strings.Contains(msg.Message, ": Creating...") ||
+					strings.Contains(msg.Message, ": Still modifying...") ||
+					strings.Contains(msg.Message, ": Modifying...") {
 					// Parse in-progress operations (actual apply phase, not planning)
 					parts := strings.SplitN(msg.Message, ":", 2)
 					if len(parts) >= 1 {
@@ -539,7 +539,7 @@ func (m *modernPlanModel) parseTerraformOutput(stdout interface{}) {
 							startIdx := strings.LastIndex(msg.Message, "[")
 							endIdx := strings.LastIndex(msg.Message, " elapsed]")
 							if startIdx != -1 && endIdx != -1 && startIdx < endIdx {
-								elapsedTime = msg.Message[startIdx+1:endIdx]
+								elapsedTime = msg.Message[startIdx+1 : endIdx]
 							}
 						}
 
@@ -547,8 +547,8 @@ func (m *modernPlanModel) parseTerraformOutput(stdout interface{}) {
 						// These indicate a new operation is starting
 						if m.applyState != nil {
 							isStartMessage := strings.Contains(msg.Message, ": Creating...") ||
-							                 strings.Contains(msg.Message, ": Destroying...") ||
-							                 strings.Contains(msg.Message, ": Modifying...")
+								strings.Contains(msg.Message, ": Destroying...") ||
+								strings.Contains(msg.Message, ": Modifying...")
 
 							if isStartMessage {
 								// New operation starting - add to currentOps map
@@ -578,12 +578,12 @@ func (m *modernPlanModel) parseTerraformOutput(stdout interface{}) {
 						}
 					}
 				}
-				
+
 				m.sendLogMessage(logLevel, msg.Message, "")
 			}
 		}
 	}
-	
+
 	// Check if process completed
 	if err := m.applyState.cmd.Wait(); err != nil {
 		m.sendMsg(applyErrorMsg{err: err})

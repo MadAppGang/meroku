@@ -107,69 +107,69 @@ type serviceGroup struct {
 }
 
 type providerGroup struct {
-	name      string
-	icon      string
-	services  []serviceGroup
-	expanded  bool
+	name     string
+	icon     string
+	services []serviceGroup
+	expanded bool
 }
 
 type modernPlanModel struct {
-	plan           TerraformPlanVisual
-	providers      []providerGroup
+	plan             TerraformPlanVisual
+	providers        []providerGroup
 	selectedProvider int
 	selectedService  int
 	selectedResource int
-	stats          changeStats
-	currentView    viewMode
-	detailViewport viewport.Model
-	treeViewport   viewport.Model
-	logViewport    viewport.Model
-	diffViewport   viewport.Model  // For full-screen diff view
-	width          int
-	height         int
-	help           help.Model
-	keys           modernKeyMap
-	showHelp       bool
-	progress       progress.Model
-	applyProgress  float64
-	applyState     *applyState
-	program        *tea.Program
+	stats            changeStats
+	currentView      viewMode
+	detailViewport   viewport.Model
+	treeViewport     viewport.Model
+	logViewport      viewport.Model
+	diffViewport     viewport.Model // For full-screen diff view
+	width            int
+	height           int
+	help             help.Model
+	keys             modernKeyMap
+	showHelp         bool
+	progress         progress.Model
+	applyProgress    float64
+	applyState       *applyState
+	program          *tea.Program
 	// Resource replacement tracking
 	markedForReplace map[string]bool
 	showReplaceMode  bool
 	// Full-screen diff state
-	diffResource   *ResourceChange  // Resource being viewed in full-screen
+	diffResource *ResourceChange // Resource being viewed in full-screen
 	// AI error display
-	aiError        string
-	showAIError    bool
-	aiLoading      bool
+	aiError     string
+	showAIError bool
+	aiLoading   bool
 	// AI help view
-	aiHelpProblem        string
-	aiHelpCommands       []string
-	aiHelpErrors         []string
-	aiHelpViewport       viewport.Model  // Top viewport: errors + analysis
+	aiHelpProblem          string
+	aiHelpCommands         []string
+	aiHelpErrors           []string
+	aiHelpViewport         viewport.Model // Top viewport: errors + analysis
 	aiHelpCommandsViewport viewport.Model // Bottom viewport: suggested fix
-	aiHelpLoading        bool
+	aiHelpLoading          bool
 	// AI Agent flag
-	launchAIAgent        bool // Set to true when user presses 's' to launch autonomous agent
+	launchAIAgent bool // Set to true when user presses 's' to launch autonomous agent
 }
 
 type modernKeyMap struct {
-	Up       key.Binding
-	Down     key.Binding
-	Left     key.Binding
-	Right    key.Binding
-	Enter    key.Binding
-	Back     key.Binding
-	Space    key.Binding
-	Tab      key.Binding
-	Apply    key.Binding
-	AskAI    key.Binding
-	Copy     key.Binding
-	Quit     key.Binding
-	Help     key.Binding
-	Replace  key.Binding
-	Import   key.Binding
+	Up      key.Binding
+	Down    key.Binding
+	Left    key.Binding
+	Right   key.Binding
+	Enter   key.Binding
+	Back    key.Binding
+	Space   key.Binding
+	Tab     key.Binding
+	Apply   key.Binding
+	AskAI   key.Binding
+	Copy    key.Binding
+	Quit    key.Binding
+	Help    key.Binding
+	Replace key.Binding
+	Import  key.Binding
 }
 
 func (k modernKeyMap) ShortHelp() []key.Binding {
@@ -250,66 +250,66 @@ var modernKeys = modernKeyMap{
 
 // Modern color palette
 var (
-	bgColor        = lipgloss.Color("#0a0a0a")
-	fgColor        = lipgloss.Color("#ffffff")
-	borderColor    = lipgloss.Color("#333333")
-	primaryColor   = lipgloss.Color("#7c3aed")
-	successColor   = lipgloss.Color("#10b981")
-	warningColor   = lipgloss.Color("#f59e0b")
-	dangerColor    = lipgloss.Color("#ef4444")
-	mutedColor     = lipgloss.Color("#6b7280")
-	accentColor    = lipgloss.Color("#3b82f6")
-	dimColor       = lipgloss.Color("#9ca3af")
-	
+	bgColor      = lipgloss.Color("#0a0a0a")
+	fgColor      = lipgloss.Color("#ffffff")
+	borderColor  = lipgloss.Color("#333333")
+	primaryColor = lipgloss.Color("#7c3aed")
+	successColor = lipgloss.Color("#10b981")
+	warningColor = lipgloss.Color("#f59e0b")
+	dangerColor  = lipgloss.Color("#ef4444")
+	mutedColor   = lipgloss.Color("#6b7280")
+	accentColor  = lipgloss.Color("#3b82f6")
+	dimColor     = lipgloss.Color("#9ca3af")
+
 	// Styles
 	baseStyle = lipgloss.NewStyle().
-		Background(bgColor).
-		Foreground(fgColor)
-		
+			Background(bgColor).
+			Foreground(fgColor)
+
 	headerStyle = lipgloss.NewStyle().
-		Background(lipgloss.Color("#1a1a1a")).
-		Foreground(fgColor).
-		Bold(true).
-		Padding(0, 2)
-		
+			Background(lipgloss.Color("#1a1a1a")).
+			Foreground(fgColor).
+			Bold(true).
+			Padding(0, 2)
+
 	titleStyle = lipgloss.NewStyle().
-		Foreground(primaryColor).
-		Bold(true)
-		
+			Foreground(primaryColor).
+			Bold(true)
+
 	boxStyle = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(borderColor).
-		Padding(0, 1)
-		
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(borderColor).
+			Padding(0, 1)
+
 	selectedBoxStyle = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(primaryColor).
-		Padding(0, 1)
-		
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(primaryColor).
+				Padding(0, 1)
+
 	treeItemStyle = lipgloss.NewStyle().
-		PaddingLeft(2)
-		
+			PaddingLeft(2)
+
 	selectedItemStyle = lipgloss.NewStyle().
-		Background(lipgloss.Color("#374151")).
-		Foreground(lipgloss.Color("#ffffff")).
-		Bold(true)
-		
+				Background(lipgloss.Color("#374151")).
+				Foreground(lipgloss.Color("#ffffff")).
+				Bold(true)
+
 	createIconStyle = lipgloss.NewStyle().Foreground(successColor)
 	updateIconStyle = lipgloss.NewStyle().Foreground(warningColor)
 	deleteIconStyle = lipgloss.NewStyle().Foreground(dangerColor)
-	
+
 	labelStyle = lipgloss.NewStyle().
-		Foreground(mutedColor)
-		
+			Foreground(mutedColor)
+
 	valueStyle = lipgloss.NewStyle().
-		Foreground(fgColor)
-		
+			Foreground(fgColor)
+
 	typeStyle = lipgloss.NewStyle().
-		Foreground(accentColor).
-		Italic(true)
-		
+			Foreground(accentColor).
+			Italic(true)
+
 	dimStyle = lipgloss.NewStyle().
-		Foreground(dimColor)
+			Foreground(dimColor)
 )
 
 // Provider icons
@@ -366,51 +366,51 @@ func getActionSymbol(action string) string {
 
 // Resource type icons
 var resourceIcons = map[string]string{
-	"aws_instance":                     "🖥️ ",
-	"aws_ecs_service":                  "🐳",
-	"aws_ecs_task_definition":          "📋",
-	"aws_ecs_cluster":                  "🎯",
-	"aws_db_instance":                  "🗄️ ",
-	"aws_rds_cluster":                  "🗃️ ",
-	"aws_s3_bucket":                    "🪣",
-	"aws_lambda_function":              "⚡",
-	"aws_api_gateway_rest_api":         "🌐",
-	"aws_cloudfront_distribution":      "☁️ ",
-	"aws_route53_record":               "🔤",
-	"aws_route53_zone":                 "🌍",
-	"aws_security_group":               "🔒",
-	"aws_security_group_rule":          "🔐",
-	"aws_iam_role":                     "👤",
-	"aws_iam_policy":                   "📜",
-	"aws_iam_role_policy_attachment":   "🔗",
-	"aws_vpc":                          "🏗️ ",
-	"aws_subnet":                       "🕸️ ",
-	"aws_internet_gateway":             "🚪",
-	"aws_nat_gateway":                  "🔀",
-	"aws_elasticache_cluster":          "💾",
-	"aws_alb":                          "⚖️ ",
-	"aws_lb":                           "⚖️ ",
-	"aws_lb_target_group":              "🎯",
-	"aws_autoscaling_group":            "📊",
-	"aws_cloudwatch_log_group":         "📝",
-	"aws_sqs_queue":                    "📬",
-	"aws_sns_topic":                    "📢",
-	"aws_dynamodb_table":               "🗂️ ",
-	"aws_ecr_repository":               "📦",
-	"aws_eks_cluster":                  "☸️ ",
-	"aws_cognito_user_pool":            "👥",
-	"aws_secretsmanager_secret":        "🔑",
-	"aws_ssm_parameter":                "⚙️ ",
-	"aws_eventbridge_rule":             "📅",
-	"aws_service_discovery_service":    "🔍",
-	"aws_appsync_graphql_api":          "🕸️ ",
-	"aws_ses_domain_identity":          "✉️ ",
-	"aws_acm_certificate":              "🎖️ ",
-	"aws_wafv2_web_acl":                "🛡️ ",
-	"module":                           "📦",
-	"null_resource":                    "⚪",
-	"random_password":                  "🎲",
-	"time_sleep":                       "⏰",
+	"aws_instance":                   "🖥️ ",
+	"aws_ecs_service":                "🐳",
+	"aws_ecs_task_definition":        "📋",
+	"aws_ecs_cluster":                "🎯",
+	"aws_db_instance":                "🗄️ ",
+	"aws_rds_cluster":                "🗃️ ",
+	"aws_s3_bucket":                  "🪣",
+	"aws_lambda_function":            "⚡",
+	"aws_api_gateway_rest_api":       "🌐",
+	"aws_cloudfront_distribution":    "☁️ ",
+	"aws_route53_record":             "🔤",
+	"aws_route53_zone":               "🌍",
+	"aws_security_group":             "🔒",
+	"aws_security_group_rule":        "🔐",
+	"aws_iam_role":                   "👤",
+	"aws_iam_policy":                 "📜",
+	"aws_iam_role_policy_attachment": "🔗",
+	"aws_vpc":                        "🏗️ ",
+	"aws_subnet":                     "🕸️ ",
+	"aws_internet_gateway":           "🚪",
+	"aws_nat_gateway":                "🔀",
+	"aws_elasticache_cluster":        "💾",
+	"aws_alb":                        "⚖️ ",
+	"aws_lb":                         "⚖️ ",
+	"aws_lb_target_group":            "🎯",
+	"aws_autoscaling_group":          "📊",
+	"aws_cloudwatch_log_group":       "📝",
+	"aws_sqs_queue":                  "📬",
+	"aws_sns_topic":                  "📢",
+	"aws_dynamodb_table":             "🗂️ ",
+	"aws_ecr_repository":             "📦",
+	"aws_eks_cluster":                "☸️ ",
+	"aws_cognito_user_pool":          "👥",
+	"aws_secretsmanager_secret":      "🔑",
+	"aws_ssm_parameter":              "⚙️ ",
+	"aws_eventbridge_rule":           "📅",
+	"aws_service_discovery_service":  "🔍",
+	"aws_appsync_graphql_api":        "🕸️ ",
+	"aws_ses_domain_identity":        "✉️ ",
+	"aws_acm_certificate":            "🎖️ ",
+	"aws_wafv2_web_acl":              "🛡️ ",
+	"module":                         "📦",
+	"null_resource":                  "⚪",
+	"random_password":                "🎲",
+	"time_sleep":                     "⏰",
 }
 
 func getResourceIcon(resourceType string) string {
@@ -437,65 +437,65 @@ func getServiceFromResourceType(resourceType string) string {
 	if len(parts) < 2 {
 		return "general"
 	}
-	
+
 	// Map common AWS services
 	serviceMap := map[string]string{
-		"instance":             "EC2",
-		"security_group":       "EC2",
-		"security_group_rule":  "EC2",
-		"eip":                  "EC2",
-		"ami":                  "EC2",
-		"key_pair":             "EC2",
-		"launch_template":      "EC2",
-		"s3":                   "S3",
-		"bucket":               "S3",
-		"db":                   "RDS",
-		"rds":                  "RDS",
-		"vpc":                  "VPC",
-		"subnet":               "VPC",
-		"internet_gateway":     "VPC",
-		"nat_gateway":          "VPC",
-		"route_table":          "VPC",
-		"route":                "VPC",
-		"vpc_endpoint":         "VPC",
-		"lambda":               "Lambda",
-		"iam":                  "IAM",
-		"role":                 "IAM",
-		"policy":               "IAM",
-		"ecs":                  "ECS",
-		"eks":                  "EKS",
-		"ecr":                  "ECR",
-		"alb":                  "ELB",
-		"lb":                   "ELB",
-		"elb":                  "ELB",
-		"target_group":         "ELB",
-		"cloudfront":           "CloudFront",
-		"route53":              "Route53",
-		"cloudwatch":           "CloudWatch",
-		"sns":                  "SNS",
-		"sqs":                  "SQS",
-		"dynamodb":             "DynamoDB",
-		"elasticache":          "ElastiCache",
-		"cognito":              "Cognito",
-		"api_gateway":          "API Gateway",
-		"appsync":              "AppSync",
-		"secretsmanager":       "Secrets Manager",
-		"ssm":                  "Systems Manager",
-		"eventbridge":          "EventBridge",
-		"ses":                  "SES",
-		"acm":                  "ACM",
-		"waf":                  "WAF",
-		"autoscaling":          "Auto Scaling",
-		"service_discovery":    "Service Discovery",
+		"instance":            "EC2",
+		"security_group":      "EC2",
+		"security_group_rule": "EC2",
+		"eip":                 "EC2",
+		"ami":                 "EC2",
+		"key_pair":            "EC2",
+		"launch_template":     "EC2",
+		"s3":                  "S3",
+		"bucket":              "S3",
+		"db":                  "RDS",
+		"rds":                 "RDS",
+		"vpc":                 "VPC",
+		"subnet":              "VPC",
+		"internet_gateway":    "VPC",
+		"nat_gateway":         "VPC",
+		"route_table":         "VPC",
+		"route":               "VPC",
+		"vpc_endpoint":        "VPC",
+		"lambda":              "Lambda",
+		"iam":                 "IAM",
+		"role":                "IAM",
+		"policy":              "IAM",
+		"ecs":                 "ECS",
+		"eks":                 "EKS",
+		"ecr":                 "ECR",
+		"alb":                 "ELB",
+		"lb":                  "ELB",
+		"elb":                 "ELB",
+		"target_group":        "ELB",
+		"cloudfront":          "CloudFront",
+		"route53":             "Route53",
+		"cloudwatch":          "CloudWatch",
+		"sns":                 "SNS",
+		"sqs":                 "SQS",
+		"dynamodb":            "DynamoDB",
+		"elasticache":         "ElastiCache",
+		"cognito":             "Cognito",
+		"api_gateway":         "API Gateway",
+		"appsync":             "AppSync",
+		"secretsmanager":      "Secrets Manager",
+		"ssm":                 "Systems Manager",
+		"eventbridge":         "EventBridge",
+		"ses":                 "SES",
+		"acm":                 "ACM",
+		"waf":                 "WAF",
+		"autoscaling":         "Auto Scaling",
+		"service_discovery":   "Service Discovery",
 	}
-	
+
 	// Check each part of the resource type
 	for _, part := range parts[1:] {
 		if service, ok := serviceMap[part]; ok {
 			return service
 		}
 	}
-	
+
 	// Check for compound names
 	typeWithoutProvider := strings.Join(parts[1:], "_")
 	for key, service := range serviceMap {
@@ -503,12 +503,12 @@ func getServiceFromResourceType(resourceType string) string {
 			return service
 		}
 	}
-	
+
 	// Default to first meaningful part
 	if len(parts) > 1 && parts[1] != "" {
 		return strings.Title(parts[1])
 	}
-	
+
 	return "Other"
 }
 
@@ -543,7 +543,7 @@ func getServiceIcon(service string) string {
 		"Auto Scaling":      "📈",
 		"Service Discovery": "🔍",
 	}
-	
+
 	if icon, ok := serviceIcons[service]; ok {
 		return icon
 	}
@@ -558,47 +558,47 @@ func initModernTerraformPlanTUI(planJSON string) (tea.Model, error) {
 
 	groups := groupResourceChanges(plan.ResourceChanges)
 	stats := calculateStatistics(groups)
-	
+
 	// Group resources by provider and service
 	providerMap := make(map[string]map[string][]ResourceChange)
 	for _, change := range plan.ResourceChanges {
 		// Skip no-op changes
-		if len(change.Change.Actions) == 0 || 
-		   (len(change.Change.Actions) == 1 && (change.Change.Actions[0] == "no-op" || change.Change.Actions[0] == "read")) {
+		if len(change.Change.Actions) == 0 ||
+			(len(change.Change.Actions) == 1 && (change.Change.Actions[0] == "no-op" || change.Change.Actions[0] == "read")) {
 			continue
 		}
-		
+
 		parts := strings.Split(change.ProviderName, ".")
 		provider := parts[len(parts)-1]
 		if strings.Contains(provider, "/") {
 			provider = strings.Split(provider, "/")[1]
 		}
-		
+
 		// Extract service from resource type
 		service := getServiceFromResourceType(change.Type)
-		
+
 		if providerMap[provider] == nil {
 			providerMap[provider] = make(map[string][]ResourceChange)
 		}
-		
+
 		// Handle replace operations specially - split into delete and create
-		if len(change.Change.Actions) == 2 && 
-		   change.Change.Actions[0] == "delete" && 
-		   change.Change.Actions[1] == "create" {
+		if len(change.Change.Actions) == 2 &&
+			change.Change.Actions[0] == "delete" &&
+			change.Change.Actions[1] == "create" {
 			// Create a delete entry
 			deleteChange := change
 			deleteChange.Change.Actions = []string{"delete"}
-			deleteChange.Change.After = nil  // Delete only has before state
-			
+			deleteChange.Change.After = nil // Delete only has before state
+
 			// Create a create entry
 			createChange := change
 			createChange.Change.Actions = []string{"create"}
-			createChange.Change.Before = nil  // Create only has after state
-			
+			createChange.Change.Before = nil // Create only has after state
+
 			// Append both with modified addresses to distinguish them
 			deleteChange.Address = change.Address + " (destroy)"
 			createChange.Address = change.Address + " (create)"
-			
+
 			providerMap[provider][service] = append(providerMap[provider][service], deleteChange)
 			providerMap[provider][service] = append(providerMap[provider][service], createChange)
 		} else {
@@ -606,19 +606,19 @@ func initModernTerraformPlanTUI(planJSON string) (tea.Model, error) {
 			providerMap[provider][service] = append(providerMap[provider][service], change)
 		}
 	}
-	
+
 	// Create provider groups with service subgroups
 	var providers []providerGroup
 	for providerName, serviceMap := range providerMap {
 		var services []serviceGroup
-		
+
 		// Create service groups
 		for serviceName, resources := range serviceMap {
 			// Sort resources within service
 			sort.Slice(resources, func(i, j int) bool {
 				return resources[i].Address < resources[j].Address
 			})
-			
+
 			services = append(services, serviceGroup{
 				name:      serviceName,
 				icon:      getServiceIcon(serviceName),
@@ -626,12 +626,12 @@ func initModernTerraformPlanTUI(planJSON string) (tea.Model, error) {
 				expanded:  false,
 			})
 		}
-		
+
 		// Sort services by name
 		sort.Slice(services, func(i, j int) bool {
 			return services[i].name < services[j].name
 		})
-		
+
 		providers = append(providers, providerGroup{
 			name:     providerName,
 			icon:     getProviderIcon(providerName),
@@ -639,12 +639,12 @@ func initModernTerraformPlanTUI(planJSON string) (tea.Model, error) {
 			expanded: false,
 		})
 	}
-	
+
 	// Sort providers by name
 	sort.Slice(providers, func(i, j int) bool {
 		return providers[i].name < providers[j].name
 	})
-	
+
 	// Expand first provider and its first service
 	if len(providers) > 0 {
 		providers[0].expanded = true
@@ -652,31 +652,31 @@ func initModernTerraformPlanTUI(planJSON string) (tea.Model, error) {
 			providers[0].services[0].expanded = true
 		}
 	}
-	
+
 	// Create viewports
 	detailVp := viewport.New(0, 0)
 	treeVp := viewport.New(0, 0)
 	logVp := viewport.New(0, 0)
 	diffVp := viewport.New(0, 0)
-	
+
 	// Create progress bar
 	prog := progress.New(progress.WithDefaultGradient())
-	
+
 	return &modernPlanModel{
-		plan:           plan,
-		providers:      providers,
-		stats:          stats,
-		currentView:    dashboardView,
-		detailViewport: detailVp,
-		treeViewport:   treeVp,
-		logViewport:    logVp,
-		diffViewport:   diffVp,
-		help:           help.New(),
-		keys:           modernKeys,
-		progress:       prog,
+		plan:             plan,
+		providers:        providers,
+		stats:            stats,
+		currentView:      dashboardView,
+		detailViewport:   detailVp,
+		treeViewport:     treeVp,
+		logViewport:      logVp,
+		diffViewport:     diffVp,
+		help:             help.New(),
+		keys:             modernKeys,
+		progress:         prog,
 		markedForReplace: make(map[string]bool),
 		showReplaceMode:  false,
-		diffResource:   nil,
+		diffResource:     nil,
 	}, nil
 }
 
@@ -730,8 +730,8 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch m.currentView {
 		case dashboardView:
 			// Split pane layout
-			treeWidth := m.width / 2 - 2
-			detailWidth := m.width / 2 - 2
+			treeWidth := m.width/2 - 2
+			detailWidth := m.width/2 - 2
 			// Calculate height accounting for:
 			// Header: 1 line
 			// Plan summary: 3 lines (with padding)
@@ -740,19 +740,19 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Footer: 1 line
 			// Total overhead: ~10 lines
 			contentHeight := m.height - 10
-			
+
 			m.treeViewport.Width = treeWidth
 			m.treeViewport.Height = contentHeight
-			
+
 			m.detailViewport.Width = detailWidth
 			m.detailViewport.Height = contentHeight
-			
+
 		case fullScreenDiffView:
 			// Full-screen diff view
 			m.diffViewport.Width = m.width - 4
 			m.diffViewport.Height = m.height - 6 // Leave room for header and footer
 			m.updateDiffViewport()
-			
+
 		case applyView:
 			// Recalculate fixed layout on resize
 			m.calculateApplyLayout(m.height)
@@ -772,7 +772,7 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case aiHelpView:
 			// Resize AI help viewports
 			availableHeight := m.height - 2
-			errorsHeight := int(float64(availableHeight) * 0.6) - 2
+			errorsHeight := int(float64(availableHeight)*0.6) - 2
 			commandsHeight := availableHeight - errorsHeight - 4
 
 			// Ensure minimum heights
@@ -788,10 +788,10 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.aiHelpCommandsViewport.Width = m.width - 4
 			m.aiHelpCommandsViewport.Height = commandsHeight
 		}
-		
+
 		m.updateTreeViewport()
 		m.updateDetailViewport()
-		
+
 	case tea.KeyMsg:
 		// If showing AI error, any key dismisses it
 		if m.showAIError {
@@ -813,15 +813,15 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			return m, tea.Quit
-			
+
 		case key.Matches(msg, m.keys.Help):
 			m.showHelp = !m.showHelp
-			
+
 		case key.Matches(msg, m.keys.Back):
 			if m.currentView != dashboardView {
 				m.currentView = dashboardView
 			}
-			
+
 		case key.Matches(msg, m.keys.AskAI):
 			if os.Getenv("ANTHROPIC_API_KEY") != "" {
 				m.aiLoading = true
@@ -833,12 +833,12 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.showAIError = true
 				return m, nil
 			}
-			
+
 		case key.Matches(msg, m.keys.Copy):
 			if m.currentView == dashboardView {
 				m.copyChangesToClipboard()
 			}
-			
+
 		case key.Matches(msg, m.keys.Apply):
 			// Don't apply again if we're already in apply view with completed deployment
 			if m.currentView == applyView && m.applyState != nil && m.applyState.applyComplete {
@@ -850,7 +850,7 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 					// Calculate viewport heights (same as render function)
 					availableHeight := m.height - 2
-					errorsHeight := int(float64(availableHeight) * 0.6) - 2
+					errorsHeight := int(float64(availableHeight)*0.6) - 2
 					commandsHeight := availableHeight - errorsHeight - 4
 
 					// Ensure minimum heights
@@ -886,13 +886,13 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.logViewport.Height = viewportHeight
 			m.updateApplyLogViewport() // Show initial logs
 			return m, m.startTerraformApply()
-			
+
 		case key.Matches(msg, m.keys.Tab):
 			// Tab navigation for apply view
 			if m.currentView == applyView && m.applyState != nil {
 				m.applyState.selectedSection = (m.applyState.selectedSection + 1) % 3
 			}
-			
+
 		case key.Matches(msg, m.keys.Space):
 			if m.currentView == dashboardView && len(m.providers) > 0 {
 				// Space toggles expand/collapse
@@ -915,7 +915,7 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.updateTreeViewport()
 			}
-			
+
 		case key.Matches(msg, m.keys.Enter):
 			if m.currentView == dashboardView && len(m.providers) > 0 {
 				// Enter opens full-screen diff for resources
@@ -949,7 +949,7 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Enter or Escape in full-screen diff goes back to dashboard
 				m.currentView = dashboardView
 			}
-			
+
 		case key.Matches(msg, m.keys.Down):
 			if m.currentView == dashboardView {
 				m.navigateDown()
@@ -997,7 +997,7 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Scroll up in commands viewport
 				m.aiHelpCommandsViewport.LineUp(3)
 			}
-			
+
 		case key.Matches(msg, m.keys.Replace):
 			// Toggle replace mode or mark resource for replacement
 			if m.currentView == dashboardView {
@@ -1016,7 +1016,7 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.showReplaceMode = !m.showReplaceMode
 				}
 			}
-			
+
 		case key.Matches(msg, m.keys.Import):
 			// Show import help for the selected resource
 			if m.currentView == dashboardView {
@@ -1035,7 +1035,7 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					)
 				}
 			}
-			
+
 		case msg.String() == "s":
 			// Context-aware 's' key:
 			// - During apply: Stop the apply process
@@ -1054,7 +1054,7 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, tea.Quit
 				}
 			}
-			
+
 		case msg.String() == "l":
 			// Toggle log view size
 			if m.currentView == applyView && m.applyState != nil {
@@ -1082,19 +1082,19 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.currentView == fullScreenDiffView {
 				m.diffViewport.HalfViewUp()
 			}
-			
+
 		case tea.KeyMsg(msg).String() == "pgdown":
 			// Page down in full-screen diff view
 			if m.currentView == fullScreenDiffView {
 				m.diffViewport.HalfViewDown()
 			}
 		}
-		
+
 	case progress.FrameMsg:
 		progressModel, cmd := m.progress.Update(msg)
 		m.progress = progressModel.(progress.Model)
 		return m, cmd
-		
+
 	// Apply-specific messages
 	case applyStartMsg:
 		if m.applyState != nil {
@@ -1103,13 +1103,13 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Start animation ticker
 		return m, m.tickCmd()
-		
+
 	case applyCompleteMsg:
 		if m.applyState != nil {
 			m.applyState.isApplying = false
 			m.applyState.applyComplete = true
 		}
-		
+
 	case applyErrorMsg:
 		if m.applyState != nil {
 			m.applyState.isApplying = false
@@ -1144,7 +1144,7 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Update log viewport
 			m.updateApplyLogViewport()
 		}
-		
+
 	case resourceProgressMsg:
 		if m.applyState != nil {
 			m.applyState.mu.Lock()
@@ -1154,7 +1154,7 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.applyState.mu.Unlock()
 		}
-		
+
 	case resourceCompleteMsg:
 		if m.applyState != nil {
 			// Get action and duration from currentOps map first
@@ -1279,7 +1279,7 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			m.updateApplyLogViewport()
 		}
-		
+
 	case applyTickMsg:
 		// Update animation frame and continue ticking if still applying
 		if m.applyState != nil && m.applyState.isApplying {
@@ -1302,7 +1302,7 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.tickCmd()
 		}
 	}
-	
+
 	// Update viewports
 	var cmds []tea.Cmd
 	switch m.currentView {
@@ -1312,14 +1312,13 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 		m.detailViewport, cmd = m.detailViewport.Update(msg)
 		cmds = append(cmds, cmd)
-		
-		
+
 	case applyView:
 		var cmd tea.Cmd
 		m.logViewport, cmd = m.logViewport.Update(msg)
 		cmds = append(cmds, cmd)
 	}
-	
+
 	return m, tea.Batch(cmds...)
 }
 
@@ -1352,23 +1351,22 @@ func (m *modernPlanModel) View() string {
 	}
 }
 
-
 func (m *modernPlanModel) renderDashboard() string {
 	// Header
 	header := m.renderHeader()
-	
+
 	// Plan summary
 	summary := m.renderPlanSummary()
-	
+
 	// Main content area with split panes
 	content := m.renderSplitPanes()
-	
+
 	// Change summary
 	changeSummary := m.renderChangeSummary()
-	
+
 	// Footer
 	footer := m.renderFooter()
-	
+
 	// Combine all parts
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
@@ -1387,12 +1385,12 @@ func (m *modernPlanModel) renderHeader() string {
 		env = "Production"
 	}
 	right := fmt.Sprintf("📋 %s │ ⚡ Terraform %s", env, m.plan.TerraformVersion)
-	
+
 	gap := m.width - lipgloss.Width(left) - lipgloss.Width(right) - 4
 	if gap < 0 {
 		gap = 0
 	}
-	
+
 	return headerStyle.Width(m.width).Render(
 		left + strings.Repeat(" ", gap) + right,
 	)
@@ -1404,40 +1402,40 @@ func (m *modernPlanModel) renderPlanSummary() string {
 		m.stats.byAction["update"],
 		m.stats.byAction["delete"],
 	)
-	
+
 	return lipgloss.NewStyle().
 		Padding(1, 2).
 		Render(summary)
 }
 
 func (m *modernPlanModel) renderSplitPanes() string {
-	treeWidth := m.width / 2 - 2
-	detailWidth := m.width / 2 - 2
-	
+	treeWidth := m.width/2 - 2
+	detailWidth := m.width/2 - 2
+
 	// Resources tree
 	treeTitle := "┌─ Resources " + strings.Repeat("─", treeWidth-14) + "┐"
 	treeContent := m.treeViewport.View()
 	treeBottom := "└" + strings.Repeat("─", treeWidth-2) + "┘"
-	
+
 	tree := lipgloss.JoinVertical(
 		lipgloss.Left,
 		treeTitle,
 		treeContent,
 		treeBottom,
 	)
-	
+
 	// Details pane
 	detailTitle := "┌─ Details " + strings.Repeat("─", detailWidth-12) + "┐"
 	detailContent := m.detailViewport.View()
 	detailBottom := "└" + strings.Repeat("─", detailWidth-2) + "┘"
-	
+
 	details := lipgloss.JoinVertical(
 		lipgloss.Left,
 		detailTitle,
 		detailContent,
 		detailBottom,
 	)
-	
+
 	// Join horizontally
 	return lipgloss.JoinHorizontal(
 		lipgloss.Top,
@@ -1449,41 +1447,41 @@ func (m *modernPlanModel) renderSplitPanes() string {
 
 func (m *modernPlanModel) renderChangeSummary() string {
 	width := m.width - 8
-	
+
 	// Calculate percentages
 	total := float64(m.stats.totalChanges)
 	if total == 0 {
 		total = 1
 	}
-	
+
 	createPct := float64(m.stats.byAction["create"]) / total
 	updatePct := float64(m.stats.byAction["update"]) / total
 	deletePct := float64(m.stats.byAction["delete"]) / total
-	
+
 	// Create progress bars
 	createBar := m.renderProgressBar("additions", createPct, successColor, m.stats.byAction["create"])
 	updateBar := m.renderProgressBar("changes", updatePct, warningColor, m.stats.byAction["update"])
 	deleteBar := m.renderProgressBar("deletions", deletePct, dangerColor, m.stats.byAction["delete"])
-	
+
 	content := lipgloss.JoinVertical(
 		lipgloss.Left,
 		createBar,
 		updateBar,
 		deleteBar,
 	)
-	
+
 	return boxStyle.Width(width).Render(content)
 }
 
 func (m *modernPlanModel) renderProgressBar(label string, percent float64, color lipgloss.Color, count int) string {
 	barWidth := 40
 	filled := int(percent * float64(barWidth))
-	
+
 	bar := lipgloss.NewStyle().Foreground(color).Render(strings.Repeat("█", filled)) +
 		lipgloss.NewStyle().Foreground(borderColor).Render(strings.Repeat("░", barWidth-filled))
-	
+
 	pctStr := fmt.Sprintf("%d %s (%.0f%%)", count, label, percent*100)
-	
+
 	return fmt.Sprintf("%s %s", bar, pctStr)
 }
 
@@ -1493,12 +1491,12 @@ func (m *modernPlanModel) renderFooter() string {
 		help += "[e] Ask AI  "
 	}
 	help += "[a] Apply  [?] Help  [q] Quit"
-	
+
 	// Add indicator for marked resources
 	if len(m.markedForReplace) > 0 {
 		help += fmt.Sprintf("  |  %d resources marked for replacement", len(m.markedForReplace))
 	}
-	
+
 	return lipgloss.NewStyle().
 		Foreground(mutedColor).
 		Padding(0, 1).
@@ -1512,32 +1510,32 @@ func (m *modernPlanModel) updateTreeViewport() {
 
 func (m *modernPlanModel) renderTreeContent() string {
 	var b strings.Builder
-	
+
 	// Calculate available width for the tree (half screen minus borders and padding)
-	treeWidth := m.width / 2 - 4
-	
+	treeWidth := m.width/2 - 4
+
 	for i, provider := range m.providers {
 		isProviderSelected := i == m.selectedProvider
-		
+
 		// Count total resources
 		totalResources := 0
 		for _, service := range provider.services {
 			totalResources += len(service.resources)
 		}
-		
+
 		// Provider header
 		chevron := "▶"
 		if provider.expanded {
 			chevron = "▼"
 		}
-		
+
 		providerLine := fmt.Sprintf("%s %s %s (%d resources)",
 			chevron,
 			provider.icon,
 			strings.Title(provider.name),
 			totalResources,
 		)
-		
+
 		if isProviderSelected && m.selectedService == -1 && m.selectedResource == -1 {
 			// Pad the line to full width for consistent highlighting
 			paddedLine := providerLine + strings.Repeat(" ", max(0, treeWidth-lipgloss.Width(providerLine)))
@@ -1546,25 +1544,25 @@ func (m *modernPlanModel) renderTreeContent() string {
 			b.WriteString(providerLine)
 		}
 		b.WriteString("\n")
-		
+
 		// Services
 		if provider.expanded {
 			for j, service := range provider.services {
 				isServiceSelected := isProviderSelected && j == m.selectedService
-				
+
 				// Service header
 				serviceChevron := "▶"
 				if service.expanded {
 					serviceChevron = "▼"
 				}
-				
+
 				serviceLine := fmt.Sprintf("  %s %s %s (%d)",
 					serviceChevron,
 					service.icon,
 					service.name,
 					len(service.resources),
 				)
-				
+
 				if isServiceSelected && m.selectedResource == -1 {
 					// Pad the line to full width for consistent highlighting
 					paddedLine := serviceLine + strings.Repeat(" ", max(0, treeWidth-lipgloss.Width(serviceLine)))
@@ -1573,16 +1571,16 @@ func (m *modernPlanModel) renderTreeContent() string {
 					b.WriteString(serviceLine)
 				}
 				b.WriteString("\n")
-				
+
 				// Resources
 				if service.expanded {
 					for k, resource := range service.resources {
 						isResourceSelected := isServiceSelected && k == m.selectedResource
-						
+
 						// Get action icon and style
 						action := resource.Change.Actions[0]
 						icon := getActionIcon(action)
-						
+
 						var iconStyle lipgloss.Style
 						switch action {
 						case "create":
@@ -1594,12 +1592,12 @@ func (m *modernPlanModel) renderTreeContent() string {
 						default:
 							iconStyle = lipgloss.NewStyle()
 						}
-						
+
 						// Resource name - handle replacement suffixes specially
 						displayName := resource.Address
 						isReplacement := false
 						replacementType := ""
-						
+
 						if strings.HasSuffix(resource.Address, " (destroy)") {
 							displayName = strings.TrimSuffix(resource.Address, " (destroy)")
 							isReplacement = true
@@ -1609,24 +1607,24 @@ func (m *modernPlanModel) renderTreeContent() string {
 							isReplacement = true
 							replacementType = " [CREATE]"
 						}
-						
+
 						// Extract just the resource name from the full address
 						// Handle array notation like module.domain.aws_route53_record.api_domain["api.dev.sava-p.com"]
 						name := displayName
-						
+
 						// If it contains array notation, extract the key
 						arrayKey := ""
 						if idx := strings.Index(displayName, "["); idx != -1 {
 							// Extract the array key
 							if endIdx := strings.Index(displayName, "]"); endIdx > idx {
-								arrayKey = displayName[idx+1:endIdx]
+								arrayKey = displayName[idx+1 : endIdx]
 								// Remove quotes if present
 								arrayKey = strings.Trim(arrayKey, "\"'")
 								// Use the base name without array notation
 								displayName = displayName[:idx]
 							}
 						}
-						
+
 						// Now extract the resource name
 						parts := strings.Split(displayName, ".")
 						if len(parts) > 1 {
@@ -1635,7 +1633,7 @@ func (m *modernPlanModel) renderTreeContent() string {
 						} else {
 							name = parts[len(parts)-1]
 						}
-						
+
 						// Add array key if present
 						if arrayKey != "" {
 							// Shorten long array keys for display
@@ -1644,23 +1642,23 @@ func (m *modernPlanModel) renderTreeContent() string {
 							}
 							name = name + "[" + arrayKey + "]"
 						}
-						
+
 						// Add replacement indicator to the name
 						if isReplacement {
 							name = name + replacementType
 						}
-						
+
 						connector := "├"
 						if k == len(service.resources)-1 {
 							connector = "└"
 						}
-						
+
 						// Check if resource is marked for replacement (using clean address)
 						replaceMarker := ""
 						if m.markedForReplace[displayName] {
 							replaceMarker = " ↻"
 						}
-						
+
 						if isResourceSelected {
 							// When selected, don't apply icon styles that would override the background
 							resourceLine := fmt.Sprintf("    %s %s %s%s",
@@ -1692,7 +1690,7 @@ func (m *modernPlanModel) renderTreeContent() string {
 			b.WriteString("\n")
 		}
 	}
-	
+
 	return b.String()
 }
 
@@ -1702,7 +1700,7 @@ func (m *modernPlanModel) updateDetailViewport() {
 		m.detailViewport.SetContent("Select a resource to view details")
 		return
 	}
-	
+
 	content := m.renderResourceDetails(resource)
 	m.detailViewport.SetContent(content)
 }
@@ -1712,7 +1710,7 @@ func (m *modernPlanModel) updateDiffViewport() {
 		m.diffViewport.SetContent("No resource selected")
 		return
 	}
-	
+
 	content := m.renderFullDiffContent(m.diffResource)
 	m.diffViewport.SetContent(content)
 }
@@ -1722,19 +1720,19 @@ func (m *modernPlanModel) renderFullScreenDiff() string {
 	if m.diffResource == nil {
 		return "No resource selected"
 	}
-	
+
 	// Create header with resource info
 	headerStyle := lipgloss.NewStyle().
 		Background(lipgloss.Color("#1a1a2e")).
 		Foreground(lipgloss.Color("#ffffff")).
 		Padding(1, 2).
 		Width(m.width)
-	
+
 	// Clean up address for display
 	displayAddress := m.diffResource.Address
 	displayAddress = strings.TrimSuffix(displayAddress, " (destroy)")
 	displayAddress = strings.TrimSuffix(displayAddress, " (create)")
-	
+
 	// Get action color and text
 	action := ""
 	actionColor := mutedColor
@@ -1754,34 +1752,34 @@ func (m *modernPlanModel) renderFullScreenDiff() string {
 			actionColor = accentColor
 		}
 	}
-	
+
 	actionBadge := lipgloss.NewStyle().
 		Background(actionColor).
 		Foreground(lipgloss.Color("#ffffff")).
 		Padding(0, 1).
 		Bold(true).
 		Render(action)
-	
+
 	icon := getResourceIcon(m.diffResource.Type)
-	header := headerStyle.Render(fmt.Sprintf("%s %s  %s  %s", 
+	header := headerStyle.Render(fmt.Sprintf("%s %s  %s  %s",
 		icon, m.diffResource.Type, actionBadge, displayAddress))
-	
+
 	// Help text at bottom
 	helpStyle := lipgloss.NewStyle().
 		Foreground(mutedColor).
 		Padding(0, 2)
-	
+
 	helpText := helpStyle.Render("Press Enter or Esc to return • ↑/↓ to scroll • j/k for vim navigation")
-	
+
 	// Calculate available height for viewport
 	availableHeight := m.height - lipgloss.Height(header) - lipgloss.Height(helpText) - 1
-	
+
 	// Update viewport dimensions if needed
 	if m.diffViewport.Height != availableHeight {
 		m.diffViewport.Height = availableHeight
 		m.diffViewport.Width = m.width
 	}
-	
+
 	// Combine all parts
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
@@ -1796,71 +1794,71 @@ func (m *modernPlanModel) renderFullDiffContent(resource *ResourceChange) string
 	if resource == nil {
 		return "No resource selected"
 	}
-	
+
 	var b strings.Builder
-	
+
 	// Section style
 	sectionStyle := lipgloss.NewStyle().
 		Foreground(primaryColor).
 		Bold(true).
 		MarginTop(1).
 		MarginBottom(1)
-	
+
 	// Determine the type of change
 	if len(resource.Change.Actions) > 0 {
 		switch resource.Change.Actions[0] {
 		case "delete":
 			// Deletion - show what's being removed
 			b.WriteString(sectionStyle.Render("🗑️  Resource Deletion") + "\n\n")
-			
+
 			warningStyle := lipgloss.NewStyle().
 				Foreground(dangerColor).
 				Bold(true)
 			b.WriteString(warningStyle.Render("⚠️  This resource will be permanently deleted") + "\n\n")
-			
+
 			if resource.Change.Before != nil {
 				b.WriteString(sectionStyle.Render("Current Configuration (to be deleted):") + "\n")
 				b.WriteString(m.renderExpandedAttributesWithPrefix(resource.Change.Before, lipgloss.NewStyle().Foreground(dangerColor), "- "))
 			}
-			
+
 		case "create":
 			// Creation - show what's being added
 			b.WriteString(sectionStyle.Render("✨ New Resource Creation") + "\n\n")
-			
+
 			if resource.Change.After != nil {
 				b.WriteString(sectionStyle.Render("Configuration:") + "\n")
 				b.WriteString(m.renderExpandedAttributes(resource.Change.After, lipgloss.NewStyle().Foreground(successColor), ""))
 			}
-			
+
 		case "update":
 			// Update - show the diff
 			b.WriteString(sectionStyle.Render("📝 Resource Update") + "\n\n")
-			
+
 			// Show changed attributes
 			b.WriteString(sectionStyle.Render("Changes:") + "\n")
 			b.WriteString(m.renderExpandedUpdateDiff(resource.Change.Before, resource.Change.After))
-			
+
 			// Show unchanged attributes if there are any
 			unchanged := m.getUnchangedAttributes(resource.Change.Before, resource.Change.After)
 			if len(unchanged) > 0 && len(unchanged) < 20 { // Only show if not too many
 				b.WriteString("\n" + sectionStyle.Render("Unchanged Attributes:") + "\n")
 				b.WriteString(m.renderExpandedAttributes(unchanged, lipgloss.NewStyle().Foreground(mutedColor).Faint(true), "  "))
 			}
-			
+
 		case "read":
 			// Read operation
 			b.WriteString(sectionStyle.Render("🔍 Resource Read") + "\n\n")
 			b.WriteString("This resource will be read from the provider to update the state.\n")
 		}
 	}
-	
+
 	// Add metadata section if we have provider info
 	if resource.ProviderName != "" || resource.Type != "" || resource.Name != "" {
 		b.WriteString("\n" + sectionStyle.Render("Metadata:") + "\n")
-		
+
 		metaStyle := lipgloss.NewStyle().Foreground(mutedColor)
 		keyStyle := lipgloss.NewStyle().Foreground(mutedColor)
-		
+
 		// Use consistent formatting for metadata
 		if resource.ProviderName != "" {
 			b.WriteString("  ")
@@ -1891,20 +1889,20 @@ func (m *modernPlanModel) renderFullDiffContent(resource *ResourceChange) string
 			b.WriteString("\n")
 		}
 	}
-	
+
 	return b.String()
 }
 
 // renderUpdateDiff renders a detailed diff for updates with syntax highlighting
 func (m *modernPlanModel) renderUpdateDiff(before, after map[string]interface{}) string {
 	var b strings.Builder
-	
+
 	// Styles for diff
 	addedStyle := lipgloss.NewStyle().Foreground(successColor)
 	removedStyle := lipgloss.NewStyle().Foreground(dangerColor)
 	modifiedStyle := lipgloss.NewStyle().Foreground(warningColor)
 	keyStyle := lipgloss.NewStyle().Foreground(accentColor)
-	
+
 	// Collect all keys
 	allKeys := make(map[string]bool)
 	for k := range before {
@@ -1913,18 +1911,18 @@ func (m *modernPlanModel) renderUpdateDiff(before, after map[string]interface{})
 	for k := range after {
 		allKeys[k] = true
 	}
-	
+
 	// Sort keys for consistent display
 	var keys []string
 	for k := range allKeys {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	
+
 	for _, key := range keys {
 		beforeVal, beforeExists := before[key]
 		afterVal, afterExists := after[key]
-		
+
 		if !beforeExists && afterExists {
 			// Added attribute
 			b.WriteString(addedStyle.Render("+ "))
@@ -1944,70 +1942,70 @@ func (m *modernPlanModel) renderUpdateDiff(before, after map[string]interface{})
 			b.WriteString(addedStyle.Render(fmt.Sprintf("%v\n", m.formatValue(afterVal))))
 		}
 	}
-	
+
 	if b.Len() == 0 {
 		return lipgloss.NewStyle().Foreground(mutedColor).Render("No changes detected")
 	}
-	
+
 	return b.String()
 }
 
 // renderUnchangedAttributes renders attributes that haven't changed
 func (m *modernPlanModel) renderUnchangedAttributes(attributes map[string]interface{}) string {
 	var b strings.Builder
-	
+
 	keyStyle := lipgloss.NewStyle().Foreground(mutedColor)
 	valueStyle := lipgloss.NewStyle().Foreground(mutedColor).Faint(true)
-	
+
 	// Sort keys for consistent display
 	var keys []string
 	for k := range attributes {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	
+
 	for _, key := range keys {
 		b.WriteString("  ")
 		b.WriteString(keyStyle.Render(fmt.Sprintf("%-28s", key+":")))
 		b.WriteString(valueStyle.Render(fmt.Sprintf(" %v\n", m.formatValue(attributes[key]))))
 	}
-	
+
 	return b.String()
 }
 
 // getUnchangedAttributes returns attributes that are the same in before and after
 func (m *modernPlanModel) getUnchangedAttributes(before, after map[string]interface{}) map[string]interface{} {
 	unchanged := make(map[string]interface{})
-	
+
 	for key, beforeVal := range before {
 		if afterVal, exists := after[key]; exists && m.valuesEqual(beforeVal, afterVal) {
 			unchanged[key] = beforeVal
 		}
 	}
-	
+
 	return unchanged
 }
 
 // renderExpandedAttributes renders attributes with full expansion of nested structures
 func (m *modernPlanModel) renderExpandedAttributesWithPrefix(attributes map[string]interface{}, style lipgloss.Style, prefix string) string {
 	var b strings.Builder
-	
+
 	keyStyle := lipgloss.NewStyle().Foreground(accentColor)
-	
+
 	// Sort keys for consistent display
 	var keys []string
 	for k := range attributes {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	
+
 	for _, key := range keys {
 		value := attributes[key]
 		b.WriteString(style.Render(prefix))
-		
+
 		b.WriteString(keyStyle.Render(fmt.Sprintf("%-30s", key+":")))
 		b.WriteString(" ")
-		
+
 		// Always expand arrays and maps in full-screen view
 		switch v := value.(type) {
 		case []interface{}:
@@ -2027,34 +2025,34 @@ func (m *modernPlanModel) renderExpandedAttributesWithPrefix(attributes map[stri
 		}
 		b.WriteString("\n")
 	}
-	
+
 	return b.String()
 }
 
 func (m *modernPlanModel) renderExpandedAttributes(attributes map[string]interface{}, style lipgloss.Style, prefix string) string {
 	var b strings.Builder
-	
+
 	keyStyle := lipgloss.NewStyle().Foreground(accentColor)
-	
+
 	// Sort keys for consistent display
 	var keys []string
 	for k := range attributes {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	
+
 	for _, key := range keys {
 		value := attributes[key]
 		b.WriteString(prefix)
-		
+
 		if prefix == "" {
 			// For added items
 			b.WriteString(style.Render("+ "))
 		}
-		
+
 		b.WriteString(keyStyle.Render(fmt.Sprintf("%-30s", key+":")))
 		b.WriteString(" ")
-		
+
 		// Always expand arrays and maps in full-screen view
 		switch v := value.(type) {
 		case []interface{}:
@@ -2074,7 +2072,7 @@ func (m *modernPlanModel) renderExpandedAttributes(attributes map[string]interfa
 		}
 		b.WriteString("\n")
 	}
-	
+
 	return b.String()
 }
 
@@ -2091,7 +2089,7 @@ func (m *modernPlanModel) renderExpandedArray(arr []interface{}, style lipgloss.
 			break
 		}
 	}
-	
+
 	// Simple arrays can be inline
 	if allSimple {
 		items := make([]string, len(arr))
@@ -2100,7 +2098,7 @@ func (m *modernPlanModel) renderExpandedArray(arr []interface{}, style lipgloss.
 		}
 		return style.Render("[" + strings.Join(items, ", ") + "]")
 	}
-	
+
 	// For single item arrays with a map, try to show inline if simple
 	if len(arr) == 1 {
 		if mp, ok := arr[0].(map[string]interface{}); ok && len(mp) <= 4 && isSimpleMap(mp) {
@@ -2113,15 +2111,15 @@ func (m *modernPlanModel) renderExpandedArray(arr []interface{}, style lipgloss.
 			return style.Render("[{" + strings.Join(items, ", ") + "}]")
 		}
 	}
-	
+
 	// Complex arrays need full expansion
 	var b strings.Builder
 	b.WriteString(style.Render("["))
 	b.WriteString("\n")
-	
+
 	for i, item := range arr {
 		b.WriteString(indent + "    ")
-		
+
 		// Render each item with full expansion
 		switch v := item.(type) {
 		case map[string]interface{}:
@@ -2134,7 +2132,7 @@ func (m *modernPlanModel) renderExpandedArray(arr []interface{}, style lipgloss.
 			// Simple values
 			b.WriteString(style.Render(m.formatSimpleValue(item)))
 		}
-		
+
 		if i < len(arr)-1 {
 			b.WriteString(",")
 		}
@@ -2158,24 +2156,24 @@ func (m *modernPlanModel) renderExpandedMap(mp map[string]interface{}, style lip
 			return style.Render(result)
 		}
 	}
-	
+
 	// Complex maps need expansion
 	var b strings.Builder
 	b.WriteString(style.Render("{"))
-	
+
 	sortedKeys := make([]string, 0, len(mp))
 	for k := range mp {
 		sortedKeys = append(sortedKeys, k)
 	}
 	sort.Strings(sortedKeys)
-	
+
 	// Always start on new line for complex objects
 	b.WriteString("\n")
-	
+
 	for i, k := range sortedKeys {
 		b.WriteString(indent + "    ")
 		b.WriteString(lipgloss.NewStyle().Foreground(accentColor).Render(k + ": "))
-		
+
 		// Recursively render the value
 		val := mp[k]
 		switch v := val.(type) {
@@ -2191,7 +2189,7 @@ func (m *modernPlanModel) renderExpandedMap(mp map[string]interface{}, style lip
 			// Simple values
 			b.WriteString(style.Render(m.formatSimpleValue(val)))
 		}
-		
+
 		if i < len(sortedKeys)-1 {
 			b.WriteString(",")
 		}
@@ -2234,18 +2232,18 @@ func (m *modernPlanModel) formatSimpleValue(value interface{}) string {
 // renderInlineMap renders a map, attempting to show full details when possible
 func (m *modernPlanModel) renderInlineMap(mp map[string]interface{}, style lipgloss.Style) string {
 	items := make([]string, 0, len(mp))
-	
+
 	// Sort keys for consistent output
 	sortedKeys := make([]string, 0, len(mp))
 	for k := range mp {
 		sortedKeys = append(sortedKeys, k)
 	}
 	sort.Strings(sortedKeys)
-	
+
 	for _, k := range sortedKeys {
 		v := mp[k]
 		valStr := ""
-		
+
 		// Render values with more detail
 		switch val := v.(type) {
 		case string:
@@ -2305,10 +2303,10 @@ func (m *modernPlanModel) renderInlineMap(mp map[string]interface{}, style lipgl
 		default:
 			valStr = fmt.Sprintf("%v", v)
 		}
-		
+
 		items = append(items, fmt.Sprintf("%s: %s", k, valStr))
 	}
-	
+
 	return style.Render("{" + strings.Join(items, ", ") + "}")
 }
 
@@ -2331,21 +2329,21 @@ func (m *modernPlanModel) renderParsedJSON(data interface{}, indent string, styl
 		}
 		b.WriteString(indent + style.Render("]"))
 		return b.String()
-		
+
 	case map[string]interface{}:
 		if len(v) == 0 {
 			return style.Render("{}")
 		}
 		var b strings.Builder
 		b.WriteString(style.Render("{\n"))
-		
+
 		// Sort keys for consistent output
 		keys := make([]string, 0, len(v))
 		for k := range v {
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
-		
+
 		for i, k := range keys {
 			b.WriteString(indent + "  ")
 			b.WriteString(lipgloss.NewStyle().Foreground(accentColor).Render(k + ": "))
@@ -2357,23 +2355,23 @@ func (m *modernPlanModel) renderParsedJSON(data interface{}, indent string, styl
 		}
 		b.WriteString(indent + style.Render("}"))
 		return b.String()
-		
+
 	case string:
 		// Quote strings in JSON output
 		return style.Render(fmt.Sprintf("%q", v))
-		
+
 	case float64:
 		if v == float64(int64(v)) {
 			return style.Render(fmt.Sprintf("%d", int64(v)))
 		}
 		return style.Render(fmt.Sprintf("%.2f", v))
-		
+
 	case bool:
 		return style.Render(fmt.Sprintf("%t", v))
-		
+
 	case nil:
 		return style.Render("null")
-		
+
 	default:
 		return style.Render(fmt.Sprintf("%v", v))
 	}
@@ -2408,7 +2406,7 @@ func (m *modernPlanModel) renderExpandedValue(value interface{}, style lipgloss.
 		if len(v) == 0 {
 			return style.Render("[]")
 		}
-		
+
 		// Check if it's a simple array or array of maps
 		allMaps := true
 		allSimple := true
@@ -2423,7 +2421,7 @@ func (m *modernPlanModel) renderExpandedValue(value interface{}, style lipgloss.
 				allSimple = false
 			}
 		}
-		
+
 		// For arrays of simple values, always show inline
 		if allSimple {
 			items := make([]string, len(v))
@@ -2432,7 +2430,7 @@ func (m *modernPlanModel) renderExpandedValue(value interface{}, style lipgloss.
 			}
 			return style.Render("[" + strings.Join(items, ", ") + "]")
 		}
-		
+
 		// For single map in array, show more compact
 		if len(v) == 1 && allMaps {
 			if m, ok := v[0].(map[string]interface{}); ok && isSimpleMap(m) {
@@ -2445,11 +2443,11 @@ func (m *modernPlanModel) renderExpandedValue(value interface{}, style lipgloss.
 				return style.Render("[{" + strings.Join(items, ", ") + "}]")
 			}
 		}
-		
+
 		// For complex arrays or multiple items, show expanded but more compact
 		var b strings.Builder
 		b.WriteString(style.Render("["))
-		
+
 		// If it's an array of maps, use compact formatting for small simple maps
 		if allMaps && len(v) <= 2 {
 			allSimpleMaps := true
@@ -2461,7 +2459,7 @@ func (m *modernPlanModel) renderExpandedValue(value interface{}, style lipgloss.
 					}
 				}
 			}
-			
+
 			if allSimpleMaps {
 				// Inline format for simple maps
 				for i, item := range v {
@@ -2486,7 +2484,7 @@ func (m *modernPlanModel) renderExpandedValue(value interface{}, style lipgloss.
 				return b.String()
 			}
 		}
-		
+
 		// Full expansion for complex structures
 		b.WriteString("\n")
 		for i, item := range v {
@@ -2499,12 +2497,12 @@ func (m *modernPlanModel) renderExpandedValue(value interface{}, style lipgloss.
 		}
 		b.WriteString(indent + style.Render("]"))
 		return b.String()
-		
+
 	case map[string]interface{}:
 		if len(v) == 0 {
 			return style.Render("{}")
 		}
-		
+
 		// For tags and other simple maps, always show inline
 		if _, hasName := v["Name"]; hasName && len(v) <= 3 {
 			// Likely tags, show inline
@@ -2515,7 +2513,7 @@ func (m *modernPlanModel) renderExpandedValue(value interface{}, style lipgloss.
 			sort.Strings(items)
 			return style.Render("{" + strings.Join(items, ", ") + "}")
 		}
-		
+
 		// For small simple maps, show inline
 		if len(v) <= 4 && isSimpleMap(v) {
 			items := make([]string, 0, len(v))
@@ -2529,17 +2527,17 @@ func (m *modernPlanModel) renderExpandedValue(value interface{}, style lipgloss.
 				return style.Render(result)
 			}
 		}
-		
+
 		// For complex maps, show expanded with proper indentation
 		var b strings.Builder
 		b.WriteString(style.Render("{"))
-		
+
 		sortedKeys := make([]string, 0, len(v))
 		for k := range v {
 			sortedKeys = append(sortedKeys, k)
 		}
 		sort.Strings(sortedKeys)
-		
+
 		// Check if we can show in compact form
 		canBeCompact := true
 		for _, k := range sortedKeys {
@@ -2551,7 +2549,7 @@ func (m *modernPlanModel) renderExpandedValue(value interface{}, style lipgloss.
 				}
 			}
 		}
-		
+
 		if canBeCompact && len(v) <= 4 {
 			// Compact inline form
 			items := make([]string, 0, len(v))
@@ -2560,7 +2558,7 @@ func (m *modernPlanModel) renderExpandedValue(value interface{}, style lipgloss.
 			}
 			return style.Render("{" + strings.Join(items, ", ") + "}")
 		}
-		
+
 		// Full expansion
 		b.WriteString("\n")
 		for i, k := range sortedKeys {
@@ -2574,7 +2572,7 @@ func (m *modernPlanModel) renderExpandedValue(value interface{}, style lipgloss.
 		}
 		b.WriteString(indent + style.Render("}"))
 		return b.String()
-		
+
 	default:
 		return style.Render(fmt.Sprintf("%v", v))
 	}
@@ -2636,13 +2634,13 @@ func isSimpleValue(value interface{}) bool {
 // renderExpandedUpdateDiff renders an expanded diff for updates
 func (m *modernPlanModel) renderExpandedUpdateDiff(before, after map[string]interface{}) string {
 	var b strings.Builder
-	
+
 	// Styles for diff
 	addedStyle := lipgloss.NewStyle().Foreground(successColor)
 	removedStyle := lipgloss.NewStyle().Foreground(dangerColor)
 	modifiedStyle := lipgloss.NewStyle().Foreground(warningColor)
 	keyStyle := lipgloss.NewStyle().Foreground(accentColor)
-	
+
 	// Collect all keys
 	allKeys := make(map[string]bool)
 	for k := range before {
@@ -2651,18 +2649,18 @@ func (m *modernPlanModel) renderExpandedUpdateDiff(before, after map[string]inte
 	for k := range after {
 		allKeys[k] = true
 	}
-	
+
 	// Sort keys for consistent display
 	var keys []string
 	for k := range allKeys {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	
+
 	for _, key := range keys {
 		beforeVal, beforeExists := before[key]
 		afterVal, afterExists := after[key]
-		
+
 		if !beforeExists && afterExists {
 			// Added attribute
 			b.WriteString(addedStyle.Render("+ "))
@@ -2690,11 +2688,11 @@ func (m *modernPlanModel) renderExpandedUpdateDiff(before, after map[string]inte
 			b.WriteString("\n")
 		}
 	}
-	
+
 	if b.Len() == 0 {
 		return lipgloss.NewStyle().Foreground(mutedColor).Render("No changes detected")
 	}
-	
+
 	return b.String()
 }
 
@@ -2732,7 +2730,7 @@ func (m *modernPlanModel) valuesEqual(a, b interface{}) bool {
 	if a == nil || b == nil {
 		return false
 	}
-	
+
 	// Use formatValue to normalize and compare
 	return m.formatValue(a) == m.formatValue(b)
 }
@@ -2745,13 +2743,13 @@ func (m *modernPlanModel) formatValue(value interface{}) string {
 // renderAttributesDiff renders attributes in a diff format
 func (m *modernPlanModel) renderAttributesDiff(before, after map[string]interface{}, showUnchanged bool) string {
 	var b strings.Builder
-	
+
 	// Styles
 	addedStyle := lipgloss.NewStyle().Foreground(successColor)
 	removedStyle := lipgloss.NewStyle().Foreground(dangerColor)
 	keyStyle := lipgloss.NewStyle().Foreground(accentColor)
 	unchangedStyle := lipgloss.NewStyle().Foreground(mutedColor)
-	
+
 	// If only showing deletions (before != nil, after == nil)
 	if before != nil && after == nil {
 		var keys []string
@@ -2759,7 +2757,7 @@ func (m *modernPlanModel) renderAttributesDiff(before, after map[string]interfac
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
-		
+
 		for _, key := range keys {
 			b.WriteString(removedStyle.Render("- "))
 			b.WriteString(keyStyle.Render(fmt.Sprintf("%-28s", key+":")))
@@ -2767,7 +2765,7 @@ func (m *modernPlanModel) renderAttributesDiff(before, after map[string]interfac
 		}
 		return b.String()
 	}
-	
+
 	// If only showing additions (before == nil, after != nil)
 	if before == nil && after != nil {
 		var keys []string
@@ -2775,7 +2773,7 @@ func (m *modernPlanModel) renderAttributesDiff(before, after map[string]interfac
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
-		
+
 		for _, key := range keys {
 			b.WriteString(addedStyle.Render("+ "))
 			b.WriteString(keyStyle.Render(fmt.Sprintf("%-28s", key+":")))
@@ -2783,7 +2781,7 @@ func (m *modernPlanModel) renderAttributesDiff(before, after map[string]interfac
 		}
 		return b.String()
 	}
-	
+
 	// If comparing before and after
 	if before != nil && after != nil {
 		allKeys := make(map[string]bool)
@@ -2793,17 +2791,17 @@ func (m *modernPlanModel) renderAttributesDiff(before, after map[string]interfac
 		for k := range after {
 			allKeys[k] = true
 		}
-		
+
 		var keys []string
 		for k := range allKeys {
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
-		
+
 		for _, key := range keys {
 			beforeVal, beforeExists := before[key]
 			afterVal, afterExists := after[key]
-			
+
 			if !beforeExists && afterExists {
 				// Added
 				b.WriteString(addedStyle.Render("+ "))
@@ -2832,24 +2830,24 @@ func (m *modernPlanModel) renderAttributesDiff(before, after map[string]interfac
 			}
 		}
 	}
-	
+
 	return b.String()
 }
 
 func (m *modernPlanModel) renderResourceDetails(resource *ResourceChange) string {
 	var b strings.Builder
-	
+
 	// Clean up the address for display (remove suffixes we added)
 	displayAddress := resource.Address
 	displayAddress = strings.TrimSuffix(displayAddress, " (destroy)")
 	displayAddress = strings.TrimSuffix(displayAddress, " (create)")
-	
+
 	// Resource header with icon
 	icon := getResourceIcon(resource.Type)
 	actionStyle := getActionStyle(resource.Change.Actions[0])
-	
+
 	b.WriteString(fmt.Sprintf("%s %s\n\n", icon, titleStyle.Render(displayAddress)))
-	
+
 	// Action badge - show special indicator for replacement parts
 	actionText := strings.ToUpper(resource.Change.Actions[0])
 	if strings.HasSuffix(resource.Address, " (destroy)") {
@@ -2857,7 +2855,7 @@ func (m *modernPlanModel) renderResourceDetails(resource *ResourceChange) string
 	} else if strings.HasSuffix(resource.Address, " (create)") {
 		actionText = "CREATE (REPLACEMENT)"
 	}
-	
+
 	actionBadge := actionStyle.Padding(0, 1).Render(actionText)
 	replaceBadge := ""
 	if m.markedForReplace[displayAddress] {
@@ -2869,7 +2867,7 @@ func (m *modernPlanModel) renderResourceDetails(resource *ResourceChange) string
 			Render("MARKED FOR REPLACE")
 	}
 	b.WriteString(fmt.Sprintf("%s  %s%s\n\n", actionBadge, typeStyle.Render(resource.Type), replaceBadge))
-	
+
 	// Render based on action type
 	switch resource.Change.Actions[0] {
 	case "create":
@@ -2891,37 +2889,37 @@ func (m *modernPlanModel) renderResourceDetails(resource *ResourceChange) string
 	case "replace":
 		b.WriteString(m.renderReplaceDetails(resource))
 	}
-	
+
 	return b.String()
 }
 
 // renderReplacementDeleteDetails shows the delete part of a replacement
 func (m *modernPlanModel) renderReplacementDeleteDetails(resource *ResourceChange) string {
 	var b strings.Builder
-	
+
 	// Simple header - no box, just text
 	warningStyle := lipgloss.NewStyle().Foreground(dangerColor).Bold(true)
 	b.WriteString(warningStyle.Render("🔄 Delete phase (replacement)") + "\n\n")
-	
+
 	if resource.Change.Before != nil {
 		b.WriteString(m.renderFormattedAttributes(resource.Change.Before, lipgloss.NewStyle().Foreground(dangerColor)))
 	}
-	
+
 	return b.String()
 }
 
 // renderReplacementCreateDetails shows the create part of a replacement
 func (m *modernPlanModel) renderReplacementCreateDetails(resource *ResourceChange) string {
 	var b strings.Builder
-	
+
 	// Simple header - no box, just text
 	createStyle := lipgloss.NewStyle().Foreground(successColor).Bold(true)
 	b.WriteString(createStyle.Render("🔄 Create phase (replacement)") + "\n\n")
-	
+
 	if resource.Change.After != nil {
 		b.WriteString(m.renderFormattedAttributes(resource.Change.After, lipgloss.NewStyle().Foreground(successColor)))
 	}
-	
+
 	return b.String()
 }
 
@@ -2942,27 +2940,27 @@ func getActionStyle(action string) lipgloss.Style {
 
 func (m *modernPlanModel) renderCreateDetails(resource *ResourceChange) string {
 	var b strings.Builder
-	
+
 	if resource.Change.After != nil {
 		b.WriteString(m.renderFormattedAttributes(resource.Change.After, lipgloss.NewStyle().Foreground(fgColor)))
 	}
-	
+
 	return b.String()
 }
 
 func (m *modernPlanModel) renderUpdateDetails(resource *ResourceChange) string {
 	var b strings.Builder
-	
+
 	// Find changed attributes
 	changes := m.findChangedAttributes(resource.Change.Before, resource.Change.After)
-	
+
 	if len(changes) > 0 {
 		changesHeader := lipgloss.NewStyle().
 			Foreground(warningColor).
 			Bold(true)
-		
+
 		b.WriteString(changesHeader.Render("━━━ Changes ━━━") + "\n\n")
-		
+
 		for i, change := range changes {
 			b.WriteString(m.renderSimpleChange(change))
 			if i < len(changes)-1 {
@@ -2970,26 +2968,26 @@ func (m *modernPlanModel) renderUpdateDetails(resource *ResourceChange) string {
 			}
 		}
 	}
-	
+
 	// Show unchanged important attributes (only if there are few changes)
 	if len(changes) < 3 {
 		unchanged := m.findUnchangedImportantAttributes(resource.Type, resource.Change.Before, resource.Change.After)
 		if len(unchanged) > 0 && len(unchanged) < 5 {
 			b.WriteString("\n\n")
-			
+
 			unchangedHeader := lipgloss.NewStyle().
 				Foreground(dimColor)
-			
+
 			b.WriteString(unchangedHeader.Render("━━━ Unchanged ━━━") + "\n\n")
-			
+
 			for _, key := range sortedKeys(unchanged) {
 				b.WriteString(fmt.Sprintf("  %-28s %s\n",
-					lipgloss.NewStyle().Foreground(mutedColor).Render(key + ":"),
+					lipgloss.NewStyle().Foreground(mutedColor).Render(key+":"),
 					lipgloss.NewStyle().Foreground(dimColor).Render(formatValue(unchanged[key]))))
 			}
 		}
 	}
-	
+
 	return b.String()
 }
 
@@ -2998,25 +2996,25 @@ func (m *modernPlanModel) renderSimpleChange(change attributeChange) string {
 	keyStyle := lipgloss.NewStyle().
 		Foreground(accentColor).
 		Bold(true)
-	
+
 	if change.isNew {
 		return fmt.Sprintf("  %s %-20s %s",
 			createIconStyle.Render("+"),
-			keyStyle.Render(change.key + ":"),
+			keyStyle.Render(change.key+":"),
 			createIconStyle.Render(formatValue(change.after)))
 	}
-	
+
 	if change.isRemoved {
 		return fmt.Sprintf("  %s %-20s %s",
 			deleteIconStyle.Render("-"),
-			keyStyle.Render(change.key + ":"),
+			keyStyle.Render(change.key+":"),
 			deleteIconStyle.Render(formatValue(change.before)))
 	}
-	
+
 	// Changed value - show inline
 	return fmt.Sprintf("  %s %-20s %s → %s",
 		updateIconStyle.Render("~"),
-		keyStyle.Render(change.key + ":"),
+		keyStyle.Render(change.key+":"),
 		deleteIconStyle.Render(formatValue(change.before)),
 		createIconStyle.Render(formatValue(change.after)))
 }
@@ -3026,43 +3024,43 @@ func (m *modernPlanModel) renderFormattedChange(change attributeChange) string {
 	keyStyle := lipgloss.NewStyle().
 		Foreground(accentColor).
 		Bold(true)
-	
+
 	if change.isNew {
 		// New attribute
 		box := lipgloss.NewStyle().
 			Border(lipgloss.NormalBorder()).
 			BorderForeground(successColor).
 			Padding(0, 1)
-		
+
 		content := fmt.Sprintf("%s %s\n%s",
 			createIconStyle.Render("ADD"),
 			keyStyle.Render(change.key),
 			createIconStyle.Render(formatValue(change.after)))
-		
+
 		return box.Render(content)
 	}
-	
+
 	if change.isRemoved {
 		// Removed attribute
 		box := lipgloss.NewStyle().
 			Border(lipgloss.NormalBorder()).
 			BorderForeground(dangerColor).
 			Padding(0, 1)
-		
+
 		content := fmt.Sprintf("%s %s\n%s",
 			deleteIconStyle.Render("REMOVE"),
 			keyStyle.Render(change.key),
 			deleteIconStyle.Render(formatValue(change.before)))
-		
+
 		return box.Render(content)
 	}
-	
+
 	// Modified attribute - show diff
 	box := lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder()).
 		BorderForeground(warningColor).
 		Padding(0, 1)
-	
+
 	content := fmt.Sprintf("%s %s\n%s %s\n%s %s",
 		updateIconStyle.Render("MODIFY"),
 		keyStyle.Render(change.key),
@@ -3070,30 +3068,30 @@ func (m *modernPlanModel) renderFormattedChange(change attributeChange) string {
 		formatValue(change.before),
 		createIconStyle.Render("+ "),
 		formatValue(change.after))
-	
+
 	return box.Render(content)
 }
 
 func (m *modernPlanModel) renderDeleteDetails(resource *ResourceChange) string {
 	var b strings.Builder
-	
+
 	// Simple, compact warning message
 	warningStyle := lipgloss.NewStyle().
 		Foreground(dangerColor).
 		Bold(true)
-	
+
 	b.WriteString(warningStyle.Render("⚠️  This resource will be permanently deleted") + "\n\n")
-	
+
 	if resource.Change.Before != nil {
 		b.WriteString(m.renderFormattedAttributes(resource.Change.Before, lipgloss.NewStyle().Foreground(fgColor)))
 	}
-	
+
 	return b.String()
 }
 
 func (m *modernPlanModel) renderReplaceDetails(resource *ResourceChange) string {
 	var b strings.Builder
-	
+
 	// Header with clear replacement indication
 	headerStyle := lipgloss.NewStyle().
 		Foreground(primaryColor).
@@ -3101,18 +3099,18 @@ func (m *modernPlanModel) renderReplaceDetails(resource *ResourceChange) string 
 		Padding(0, 1).
 		Border(lipgloss.ThickBorder()).
 		BorderForeground(primaryColor)
-	
+
 	b.WriteString(headerStyle.Render("⚠️  RESOURCE REPLACEMENT") + "\n\n")
-	
+
 	// Explain what replacement means
 	warningBox := lipgloss.NewStyle().
 		Background(lipgloss.Color("#2a1a2a")).
 		Foreground(lipgloss.Color("#ff9999")).
 		Padding(0, 1).
 		Width(60)
-	
+
 	b.WriteString(warningBox.Render("⚠️  Resource will be destroyed and recreated.\n⚠️  Potential data loss - ensure backups exist.") + "\n\n")
-	
+
 	// Show what's forcing the replacement
 	if resource.Change.Before != nil && resource.Change.After != nil {
 		forceNew := m.findForceNewAttributes(resource.Change.Before, resource.Change.After)
@@ -3121,22 +3119,22 @@ func (m *modernPlanModel) renderReplaceDetails(resource *ResourceChange) string 
 				Foreground(dangerColor).
 				Bold(true).
 				MarginBottom(1)
-			
+
 			b.WriteString(reasonHeader.Render("━━━ Attributes Forcing Replacement ━━━") + "\n\n")
-			
+
 			for _, attr := range forceNew {
 				attrBox := lipgloss.NewStyle().
 					Border(lipgloss.NormalBorder()).
 					BorderForeground(dangerColor).
 					Padding(0, 1).
 					Foreground(dangerColor)
-				
-				b.WriteString(attrBox.Render("⚡ " + attr) + "\n")
+
+				b.WriteString(attrBox.Render("⚡ "+attr) + "\n")
 			}
 			b.WriteString("\n")
 		}
 	}
-	
+
 	// Show side-by-side comparison if both exist
 	if resource.Change.Before != nil && resource.Change.After != nil {
 		// Current state section
@@ -3144,78 +3142,78 @@ func (m *modernPlanModel) renderReplaceDetails(resource *ResourceChange) string 
 			Foreground(dangerColor).
 			Bold(true).
 			MarginBottom(1)
-		
+
 		b.WriteString(deleteHeader.Render("━━━ Current State (to be destroyed) ━━━") + "\n\n")
 		b.WriteString(m.renderFormattedAttributes(resource.Change.Before, lipgloss.NewStyle().Foreground(dangerColor)))
 		b.WriteString("\n")
-		
+
 		// New state section
 		createHeader := lipgloss.NewStyle().
 			Foreground(successColor).
 			Bold(true).
 			MarginBottom(1)
-		
+
 		b.WriteString(createHeader.Render("━━━ New State (to be created) ━━━") + "\n\n")
 		b.WriteString(m.renderFormattedAttributes(resource.Change.After, lipgloss.NewStyle().Foreground(successColor)))
 	}
-	
+
 	return b.String()
 }
 
 func (m *modernPlanModel) renderAttributeTree(title string, attrs map[string]interface{}, style lipgloss.Style) string {
 	var b strings.Builder
-	
+
 	// Title with underline (only if title is provided)
 	if title != "" {
 		titleStyle := lipgloss.NewStyle().Bold(true).Underline(true)
 		b.WriteString(titleStyle.Render(title) + "\n\n")
 	}
-	
+
 	// Use the new formatted attributes renderer
 	b.WriteString(m.renderFormattedAttributes(attrs, style))
-	
+
 	return b.String()
 }
 
 // renderFormattedAttributes renders attributes in a clean, formatted way
 func (m *modernPlanModel) renderFormattedAttributes(attrs map[string]interface{}, style lipgloss.Style) string {
 	var b strings.Builder
-	
+
 	// Group and sort attributes
 	important, others := m.categorizeAttributes(attrs)
-	
+
 	// Create a table-like layout for better readability
 	if len(important) > 0 {
 		// Important attributes section header
 		sectionStyle := lipgloss.NewStyle().
 			Foreground(primaryColor).
 			Bold(true)
-		
+
 		b.WriteString(sectionStyle.Render("━━━ Key Attributes ━━━") + "\n\n")
-		
+
 		for _, key := range sortedKeys(important) {
 			b.WriteString(m.renderFormattedAttribute(key, important[key], style))
 			b.WriteString("\n")
 		}
 	}
-	
+
 	// Other attributes
 	if len(others) > 0 {
 		if len(important) > 0 {
 			b.WriteString("\n")
 		}
-		
+
 		sectionStyle := lipgloss.NewStyle().
 			Foreground(mutedColor)
-		
+
 		b.WriteString(sectionStyle.Render("━━━ Other Attributes ━━━") + "\n\n")
-		
+
 		for _, key := range sortedKeys(others) {
 			b.WriteString(m.renderFormattedAttribute(key, others[key], lipgloss.NewStyle().Foreground(fgColor)))
 			b.WriteString("\n")
 		}
 	}
-	
+
 	return b.String()
 }
 
@@ -3227,7 +3225,7 @@ func (m *modernPlanModel) renderFormattedAttribute(key string, value interface{}
 	case map[string]interface{}:
 		// For nested objects, show them indented on next line
 		formattedValue = m.renderNestedObject(v, 1)
-		return fmt.Sprintf("  %s: %s", 
+		return fmt.Sprintf("  %s: %s",
 			lipgloss.NewStyle().Foreground(accentColor).Bold(true).Render(key),
 			style.Render(formattedValue))
 	case []interface{}:
@@ -3236,16 +3234,16 @@ func (m *modernPlanModel) renderFormattedAttribute(key string, value interface{}
 	default:
 		formattedValue = formatValue(value)
 	}
-	
+
 	// Create a properly formatted row with consistent spacing
 	// Use fixed-width formatting for better alignment
 	keyPart := lipgloss.NewStyle().
 		Foreground(accentColor).
 		Bold(true).
-		Render(fmt.Sprintf("  %-28s", key + ":"))
-	
+		Render(fmt.Sprintf("  %-28s", key+":"))
+
 	valuePart := style.Render(formattedValue)
-	
+
 	return fmt.Sprintf("%s %s", keyPart, valuePart)
 }
 
@@ -3254,7 +3252,7 @@ func (m *modernPlanModel) renderNestedObject(obj map[string]interface{}, indent 
 	if len(obj) == 0 {
 		return "{}"
 	}
-	
+
 	// For small objects, render inline
 	if len(obj) <= 2 {
 		var parts []string
@@ -3263,7 +3261,7 @@ func (m *modernPlanModel) renderNestedObject(obj map[string]interface{}, indent 
 		}
 		return fmt.Sprintf("{ %s }", strings.Join(parts, ", "))
 	}
-	
+
 	// For larger objects, render with indentation
 	var b strings.Builder
 	b.WriteString("\n")
@@ -3279,7 +3277,7 @@ func (m *modernPlanModel) renderArrayCompact(arr []interface{}) string {
 	if len(arr) == 0 {
 		return "[]"
 	}
-	
+
 	// Check if it's an array of complex objects
 	isComplex := false
 	for _, item := range arr {
@@ -3292,12 +3290,12 @@ func (m *modernPlanModel) renderArrayCompact(arr []interface{}) string {
 			break
 		}
 	}
-	
+
 	if isComplex {
 		// For arrays of objects in compact view, just show count
 		return fmt.Sprintf("[%d objects]", len(arr))
 	}
-	
+
 	// For simple arrays, show items inline
 	if len(arr) <= 3 {
 		var items []string
@@ -3306,7 +3304,7 @@ func (m *modernPlanModel) renderArrayCompact(arr []interface{}) string {
 		}
 		return fmt.Sprintf("[%s]", strings.Join(items, ", "))
 	}
-	
+
 	// Show first 2 items and count for longer arrays
 	var items []string
 	for i := 0; i < min(2, len(arr)); i++ {
@@ -3320,7 +3318,7 @@ func (m *modernPlanModel) renderArray(arr []interface{}) string {
 	if len(arr) == 0 {
 		return "[]"
 	}
-	
+
 	// Check if it's an array of simple values or complex objects
 	isComplex := false
 	for _, item := range arr {
@@ -3333,7 +3331,7 @@ func (m *modernPlanModel) renderArray(arr []interface{}) string {
 			break
 		}
 	}
-	
+
 	if isComplex {
 		// For arrays of objects, render them properly formatted
 		var b strings.Builder
@@ -3367,7 +3365,7 @@ func (m *modernPlanModel) renderArray(arr []interface{}) string {
 		b.WriteString("  ]")
 		return b.String()
 	}
-	
+
 	if len(arr) <= 3 {
 		// Show all items if 3 or fewer
 		var items []string
@@ -3376,7 +3374,7 @@ func (m *modernPlanModel) renderArray(arr []interface{}) string {
 		}
 		return fmt.Sprintf("[%s]", strings.Join(items, ", "))
 	}
-	
+
 	// Show first 3 items and count for longer arrays
 	var items []string
 	for i := 0; i < min(3, len(arr)); i++ {
@@ -3391,32 +3389,32 @@ func (m *modernPlanModel) renderArray(arr []interface{}) string {
 // Removed renderAttributeWithStyle - using new formatting functions instead
 
 type attributeChange struct {
-	key    string
-	before interface{}
-	after  interface{}
-	isNew  bool
+	key       string
+	before    interface{}
+	after     interface{}
+	isNew     bool
 	isRemoved bool
 }
 
 func (m *modernPlanModel) findChangedAttributes(before, after map[string]interface{}) []attributeChange {
 	changes := []attributeChange{}
 	allKeys := make(map[string]bool)
-	
+
 	for k := range before {
 		allKeys[k] = true
 	}
 	for k := range after {
 		allKeys[k] = true
 	}
-	
+
 	for key := range allKeys {
 		if isComputedAttribute(key) {
 			continue
 		}
-		
+
 		beforeVal, beforeExists := before[key]
 		afterVal, afterExists := after[key]
-		
+
 		if !beforeExists && afterExists {
 			changes = append(changes, attributeChange{
 				key:   key,
@@ -3437,39 +3435,39 @@ func (m *modernPlanModel) findChangedAttributes(before, after map[string]interfa
 			})
 		}
 	}
-	
+
 	sort.Slice(changes, func(i, j int) bool {
 		return changes[i].key < changes[j].key
 	})
-	
+
 	return changes
 }
 
 func (m *modernPlanModel) renderAttributeChange(change attributeChange) string {
 	// Style for keys with proper padding
 	keyStyle := lipgloss.NewStyle().Bold(true).Foreground(accentColor)
-	
+
 	if change.isNew {
 		return fmt.Sprintf("  %s %-20s %s",
 			createIconStyle.Render("✚"),
-			keyStyle.Render(change.key + ":"),
+			keyStyle.Render(change.key+":"),
 			createIconStyle.Render(formatValue(change.after)))
 	}
-	
+
 	if change.isRemoved {
 		return fmt.Sprintf("  %s %-20s %s",
 			deleteIconStyle.Render("✖"),
-			keyStyle.Render(change.key + ":"),
+			keyStyle.Render(change.key+":"),
 			deleteIconStyle.Render(formatValue(change.before)))
 	}
-	
+
 	// Changed value - show as a diff with better formatting
 	changeBox := lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder()).
 		BorderForeground(warningColor).
 		Padding(0, 1).
 		Width(70)
-	
+
 	var changeContent strings.Builder
 	changeContent.WriteString(fmt.Sprintf("%s %s\n",
 		updateIconStyle.Render("⟳"),
@@ -3480,21 +3478,21 @@ func (m *modernPlanModel) renderAttributeChange(change attributeChange) string {
 	changeContent.WriteString(fmt.Sprintf("  %s %s",
 		createIconStyle.Render("  TO:"),
 		createIconStyle.Render(formatValue(change.after))))
-	
+
 	return changeBox.Render(changeContent.String())
 }
 
 func (m *modernPlanModel) categorizeAttributes(attrs map[string]interface{}) (important, others map[string]interface{}) {
 	important = make(map[string]interface{})
 	others = make(map[string]interface{})
-	
+
 	importantKeys := map[string]bool{
 		// Core identifiers
 		"name": true, "id": true, "arn": true, "domain_name": true,
 		// Instance/compute
 		"instance_type": true, "ami": true, "image": true,
 		"desired_count": true, "min_size": true, "max_size": true,
-		"cpu": true, "memory": true, 
+		"cpu": true, "memory": true,
 		// Lambda/functions
 		"runtime": true, "handler": true, "function_name": true,
 		// Database
@@ -3509,7 +3507,7 @@ func (m *modernPlanModel) categorizeAttributes(attrs map[string]interface{}) (im
 		"certificate_body": true, "certificate_chain": true,
 		"validation_method": true, "key_algorithm": true,
 	}
-	
+
 	for key, value := range attrs {
 		if isComputedAttribute(key) {
 			continue
@@ -3520,15 +3518,15 @@ func (m *modernPlanModel) categorizeAttributes(attrs map[string]interface{}) (im
 			others[key] = value
 		}
 	}
-	
+
 	return
 }
 
 func (m *modernPlanModel) findUnchangedImportantAttributes(resourceType string, before, after map[string]interface{}) map[string]interface{} {
 	unchanged := make(map[string]interface{})
-	
+
 	importantKeys := []string{"vpc_id", "subnet_id", "availability_zone", "region"}
-	
+
 	for _, key := range importantKeys {
 		if beforeVal, exists := before[key]; exists {
 			if afterVal, afterExists := after[key]; afterExists && fmt.Sprintf("%v", beforeVal) == fmt.Sprintf("%v", afterVal) {
@@ -3536,25 +3534,25 @@ func (m *modernPlanModel) findUnchangedImportantAttributes(resourceType string, 
 			}
 		}
 	}
-	
+
 	return unchanged
 }
 
 func (m *modernPlanModel) findForceNewAttributes(before, after map[string]interface{}) []string {
 	forceNew := []string{}
-	
+
 	// Common attributes that force replacement
 	forceNewKeys := []string{"ami", "instance_type", "availability_zone", "subnet_id", "engine", "engine_version"}
-	
+
 	for _, key := range forceNewKeys {
 		beforeVal, beforeExists := before[key]
 		afterVal, afterExists := after[key]
-		
+
 		if beforeExists && afterExists && fmt.Sprintf("%v", beforeVal) != fmt.Sprintf("%v", afterVal) {
 			forceNew = append(forceNew, fmt.Sprintf("%s: %v → %v", key, formatValue(beforeVal), formatValue(afterVal)))
 		}
 	}
-	
+
 	return forceNew
 }
 
@@ -3620,22 +3618,21 @@ func formatValue(value interface{}) string {
 	}
 }
 
-
 func (m *modernPlanModel) getSelectedResource() *ResourceChange {
 	if m.selectedProvider < 0 || m.selectedProvider >= len(m.providers) {
 		return nil
 	}
-	
+
 	provider := &m.providers[m.selectedProvider]
 	if !provider.expanded || m.selectedService < 0 || m.selectedService >= len(provider.services) {
 		return nil
 	}
-	
+
 	service := &provider.services[m.selectedService]
 	if !service.expanded || m.selectedResource < 0 || m.selectedResource >= len(service.resources) {
 		return nil
 	}
-	
+
 	return &service.resources[m.selectedResource]
 }
 
@@ -3643,9 +3640,9 @@ func (m *modernPlanModel) navigateDown() {
 	if len(m.providers) == 0 {
 		return
 	}
-	
+
 	provider := &m.providers[m.selectedProvider]
-	
+
 	// If on provider level
 	if m.selectedService == -1 {
 		if provider.expanded && len(provider.services) > 0 {
@@ -3658,7 +3655,7 @@ func (m *modernPlanModel) navigateDown() {
 		}
 		return
 	}
-	
+
 	// If on service level
 	if m.selectedResource == -1 {
 		service := &provider.services[m.selectedService]
@@ -3674,7 +3671,7 @@ func (m *modernPlanModel) navigateDown() {
 		}
 		return
 	}
-	
+
 	// If on resource level
 	service := &provider.services[m.selectedService]
 	if m.selectedResource < len(service.resources)-1 {
@@ -3693,7 +3690,7 @@ func (m *modernPlanModel) navigateUp() {
 	if len(m.providers) == 0 {
 		return
 	}
-	
+
 	// If on resource level
 	if m.selectedResource > 0 {
 		m.selectedResource--
@@ -3702,7 +3699,7 @@ func (m *modernPlanModel) navigateUp() {
 		m.selectedResource = -1
 		return
 	}
-	
+
 	// If on service level
 	if m.selectedService > 0 {
 		m.selectedService--
@@ -3716,7 +3713,7 @@ func (m *modernPlanModel) navigateUp() {
 		m.selectedService = -1
 		return
 	}
-	
+
 	// If on provider level
 	if m.selectedProvider > 0 {
 		m.selectedProvider--
@@ -3730,7 +3727,6 @@ func (m *modernPlanModel) navigateUp() {
 		}
 	}
 }
-
 
 func (m *modernPlanModel) copyChangesToClipboard() {
 	// Create a minimal structure with only the changes
@@ -3748,27 +3744,27 @@ func (m *modernPlanModel) copyChangesToClipboard() {
 		TerraformVersion: m.plan.TerraformVersion,
 		ResourceChanges:  []ResourceChange{},
 	}
-	
+
 	// Collect all actual changes (already filtered for no-ops)
 	for _, provider := range m.providers {
 		for _, service := range provider.services {
 			planExport.ResourceChanges = append(planExport.ResourceChanges, service.resources...)
 		}
 	}
-	
+
 	// Set summary
 	planExport.Summary.Total = m.stats.totalChanges
 	planExport.Summary.Create = m.stats.byAction["create"]
 	planExport.Summary.Update = m.stats.byAction["update"]
 	planExport.Summary.Delete = m.stats.byAction["delete"]
 	planExport.Summary.Replace = m.stats.byAction["replace"]
-	
+
 	// Convert to JSON
 	jsonData, err := json.MarshalIndent(planExport, "", "  ")
 	if err != nil {
 		return
 	}
-	
+
 	// Copy to clipboard
 	err = clipboard.WriteAll(string(jsonData))
 	if err == nil {
@@ -3832,7 +3828,7 @@ func (m *modernPlanModel) askAIToExplainCmd() tea.Cmd {
 func (m *modernPlanModel) showImportHelp(resource *ResourceChange) {
 	// Generate import ID based on resource type
 	importID := m.getImportIDHint(resource.Type, resource.Address)
-	
+
 	// For certain resources, try to get the name from the resource configuration
 	if resource.Change.After != nil {
 		switch resource.Type {
@@ -3872,16 +3868,16 @@ func (m *modernPlanModel) showImportHelp(resource *ResourceChange) {
 			}
 		}
 	}
-	
+
 	// Clear screen
 	fmt.Print("\033[H\033[2J")
-	
+
 	// Check if this resource requires runtime IDs that can't be predicted
 	if importID == "@REQUIRES_RUNTIME_ID@" {
 		fmt.Printf("\n⚠️  %s Cannot Be Imported\n", resource.Type)
 		fmt.Printf("Resource: %s\n\n", resource.Address)
 		fmt.Printf("This resource type requires IDs that don't exist until the parent resource is created.\n\n")
-		
+
 		// Provide specific guidance based on resource type
 		switch resource.Type {
 		case "aws_apigatewayv2_integration", "aws_apigatewayv2_route":
@@ -3892,12 +3888,12 @@ func (m *modernPlanModel) showImportHelp(resource *ResourceChange) {
 		default:
 			fmt.Printf("This resource will be created automatically once its dependencies exist.\n")
 		}
-		
+
 		fmt.Printf("\nReturning to plan view in 2 seconds...")
 		time.Sleep(2 * time.Second)
 		return
 	}
-	
+
 	// Check if this resource requires looking up the ID
 	if importID == "@REQUIRES_LOOKUP@" {
 		// Extract name from address
@@ -3907,10 +3903,10 @@ func (m *modernPlanModel) showImportHelp(resource *ResourceChange) {
 			name = strings.TrimSuffix(strings.Split(name, "[")[1], "]")
 			name = strings.Trim(name, `"'`)
 		}
-		
+
 		fmt.Printf("\n🔍 Looking up %s ID\n", resource.Type)
 		fmt.Printf("Resource: %s\n", resource.Address)
-		
+
 		// Perform automatic lookup based on resource type
 		switch resource.Type {
 		case "aws_security_group":
@@ -3923,23 +3919,23 @@ func (m *modernPlanModel) showImportHelp(resource *ResourceChange) {
 					}
 				}
 			}
-			
+
 			// If we don't have a name from config, extract from address
 			if sgName == "" {
 				sgName = name
 			}
-			
+
 			fmt.Printf("Looking up security group ID for name: %s\n\n", sgName)
-			
+
 			// Look up security group by name
 			lookupCmd := exec.Command("aws", "ec2", "describe-security-groups",
 				"--filters", fmt.Sprintf("Name=group-name,Values=%s", sgName),
 				"--query", "SecurityGroups[0].GroupId",
 				"--output", "text")
-			
+
 			output, err := lookupCmd.Output()
 			sgID := strings.TrimSpace(string(output))
-			
+
 			if err != nil || sgID == "" || sgID == "None" {
 				fmt.Printf("❌ Could not find security group with name: %s\n", sgName)
 				fmt.Printf("\nYou'll need to find the security group ID manually and run:\n")
@@ -3948,10 +3944,10 @@ func (m *modernPlanModel) showImportHelp(resource *ResourceChange) {
 				time.Sleep(3 * time.Second)
 				return
 			}
-			
+
 			fmt.Printf("✅ Found security group ID: %s\n", sgID)
 			importID = sgID
-			
+
 		case "aws_iam_policy":
 			// First try to get the policy name from configuration
 			var policyName string
@@ -3962,14 +3958,14 @@ func (m *modernPlanModel) showImportHelp(resource *ResourceChange) {
 					}
 				}
 			}
-			
+
 			// If we don't have a name from config, extract from address
 			if policyName == "" {
 				policyName = name
 			}
-			
+
 			fmt.Printf("Looking up IAM policy ARN for name: %s\n\n", policyName)
-			
+
 			// Get current AWS account ID
 			accountCmd := exec.Command("aws", "sts", "get-caller-identity", "--query", "Account", "--output", "text")
 			accountOutput, err := accountCmd.Output()
@@ -3980,14 +3976,14 @@ func (m *modernPlanModel) showImportHelp(resource *ResourceChange) {
 				return
 			}
 			accountID := strings.TrimSpace(string(accountOutput))
-			
+
 			// Construct the ARN
 			policyARN := fmt.Sprintf("arn:aws:iam::%s:policy/%s", accountID, policyName)
-			
+
 			// Verify the policy exists
 			checkCmd := exec.Command("aws", "iam", "get-policy", "--policy-arn", policyARN)
 			_, err = checkCmd.Output()
-			
+
 			if err != nil {
 				fmt.Printf("❌ Could not find IAM policy with ARN: %s\n", policyARN)
 				fmt.Printf("\nYou'll need to find the policy ARN manually and run:\n")
@@ -3996,15 +3992,15 @@ func (m *modernPlanModel) showImportHelp(resource *ResourceChange) {
 				time.Sleep(3 * time.Second)
 				return
 			}
-			
+
 			fmt.Printf("✅ Found IAM policy ARN: %s\n", policyARN)
 			importID = policyARN
-			
+
 		case "aws_iam_role_policy_attachment":
 			// Role policy attachments need role name and policy ARN
 			// Extract both from the configuration
 			var roleName, policyArn string
-			
+
 			if resource.Change.After != nil {
 				if roleValue, exists := resource.Change.After["role"]; exists {
 					if r, ok := roleValue.(string); ok {
@@ -4017,7 +4013,7 @@ func (m *modernPlanModel) showImportHelp(resource *ResourceChange) {
 					}
 				}
 			}
-			
+
 			if roleName == "" || policyArn == "" {
 				fmt.Printf("❌ Could not determine role name or policy ARN from configuration\n")
 				fmt.Printf("\nRole policy attachments need to be imported as: role-name/policy-arn\n")
@@ -4027,11 +4023,11 @@ func (m *modernPlanModel) showImportHelp(resource *ResourceChange) {
 				time.Sleep(3 * time.Second)
 				return
 			}
-			
+
 			// Construct the import ID
 			importID = fmt.Sprintf("%s/%s", roleName, policyArn)
 			fmt.Printf("Using import ID: %s\n", importID)
-			
+
 		case "aws_service_discovery_service":
 			// Get service name from configuration
 			var serviceName string
@@ -4042,20 +4038,20 @@ func (m *modernPlanModel) showImportHelp(resource *ResourceChange) {
 					}
 				}
 			}
-			
+
 			// If we don't have a name from config, extract from address
 			if serviceName == "" {
 				serviceName = name
 			}
-			
+
 			fmt.Printf("Looking up Service Discovery service ID for name: %s\n\n", serviceName)
-			
+
 			// List all namespaces to find the service
 			// First, let's try the default namespace pattern
 			namespaceCmd := exec.Command("aws", "servicediscovery", "list-namespaces",
 				"--query", "Namespaces[?contains(Name, 'moreai')].Id",
 				"--output", "text")
-			
+
 			namespaceOutput, err := namespaceCmd.Output()
 			if err != nil {
 				fmt.Printf("❌ Could not list Service Discovery namespaces: %v\n", err)
@@ -4063,17 +4059,17 @@ func (m *modernPlanModel) showImportHelp(resource *ResourceChange) {
 				time.Sleep(3 * time.Second)
 				return
 			}
-			
+
 			namespaceIDs := strings.Fields(strings.TrimSpace(string(namespaceOutput)))
 			var serviceID string
-			
+
 			// Search for the service in each namespace
 			for _, nsID := range namespaceIDs {
 				listCmd := exec.Command("aws", "servicediscovery", "list-services",
 					"--filters", fmt.Sprintf("Name=NAMESPACE_ID,Values=%s", nsID),
 					"--query", fmt.Sprintf("Services[?Name=='%s'].Id", serviceName),
 					"--output", "text")
-				
+
 				output, err := listCmd.Output()
 				if err == nil {
 					sid := strings.TrimSpace(string(output))
@@ -4083,7 +4079,7 @@ func (m *modernPlanModel) showImportHelp(resource *ResourceChange) {
 					}
 				}
 			}
-			
+
 			if serviceID == "" {
 				fmt.Printf("❌ Could not find Service Discovery service with name: %s\n", serviceName)
 				fmt.Printf("\nYou'll need to find the service ID manually and run:\n")
@@ -4092,22 +4088,22 @@ func (m *modernPlanModel) showImportHelp(resource *ResourceChange) {
 				time.Sleep(3 * time.Second)
 				return
 			}
-			
+
 			fmt.Printf("✅ Found Service Discovery service ID: %s\n", serviceID)
 			importID = serviceID
-			
+
 		case "aws_lb_target_group":
 			fmt.Printf("Searching for target group...\n\n")
-			
+
 			// Look up target group ARN by name
 			lookupCmd := exec.Command("aws", "elbv2", "describe-target-groups",
 				"--names", fmt.Sprintf("moreai-dev-%s-tg", name),
 				"--query", "TargetGroups[0].TargetGroupArn",
 				"--output", "text")
-			
+
 			output, err := lookupCmd.Output()
 			tgARN := strings.TrimSpace(string(output))
-			
+
 			if err != nil || tgARN == "" || tgARN == "None" {
 				fmt.Printf("❌ Could not find target group with name: moreai-dev-%s-tg\n", name)
 				fmt.Printf("\nYou'll need to find the target group ARN manually and run:\n")
@@ -4116,46 +4112,46 @@ func (m *modernPlanModel) showImportHelp(resource *ResourceChange) {
 				bufio.NewReader(os.Stdin).ReadBytes('\n')
 				return
 			}
-			
+
 			// Found the ARN, proceed with import
 			fmt.Printf("✅ Found target group ARN: %s\n", tgARN)
 			importID = tgARN
 		}
-		
+
 		// Clear the lookup message before proceeding to import
 		fmt.Print("\033[H\033[2J")
 	}
-	
+
 	// Check if we need user input (legacy placeholder format)
 	needsUserInput := strings.Contains(importID, "<") && strings.Contains(importID, ">")
-	
+
 	// If we need user input, ask for it
 	if needsUserInput {
 		fmt.Printf("\n🔍 Import %s\n", resource.Type)
 		fmt.Printf("Resource: %s\n", resource.Address)
 		fmt.Printf("\nEnter the resource ID (%s): ", importID)
-		
+
 		reader := bufio.NewReader(os.Stdin)
 		userInput, _ := reader.ReadString('\n')
 		userInput = strings.TrimSpace(userInput)
-		
+
 		if userInput == "" {
 			// User cancelled, return immediately
 			return
 		}
-		
+
 		importID = userInput
 		// Clear screen again after input
 		fmt.Print("\033[H\033[2J")
 	}
-	
+
 	// Show importing progress immediately
 	fmt.Printf("\n⏳ Importing %s\n", resource.Address)
 	fmt.Printf("   ID: %s\n\n", importID)
-	
+
 	// Execute the import command with real-time output
 	cmd := exec.Command("terraform", "import", resource.Address, importID)
-	
+
 	// Create pipes for stdout and stderr
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -4164,7 +4160,7 @@ func (m *modernPlanModel) showImportHelp(resource *ResourceChange) {
 		time.Sleep(2 * time.Second)
 		return
 	}
-	
+
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		fmt.Printf("❌ Failed to create stderr pipe: %v\n", err)
@@ -4172,7 +4168,7 @@ func (m *modernPlanModel) showImportHelp(resource *ResourceChange) {
 		time.Sleep(2 * time.Second)
 		return
 	}
-	
+
 	// Start the command
 	if err := cmd.Start(); err != nil {
 		fmt.Printf("❌ Failed to start import: %v\n", err)
@@ -4180,7 +4176,7 @@ func (m *modernPlanModel) showImportHelp(resource *ResourceChange) {
 		time.Sleep(2 * time.Second)
 		return
 	}
-	
+
 	// Read output in real-time
 	go func() {
 		scanner := bufio.NewScanner(stdout)
@@ -4188,19 +4184,19 @@ func (m *modernPlanModel) showImportHelp(resource *ResourceChange) {
 			fmt.Println(scanner.Text())
 		}
 	}()
-	
+
 	go func() {
 		scanner := bufio.NewScanner(stderr)
 		for scanner.Scan() {
 			fmt.Println(scanner.Text())
 		}
 	}()
-	
+
 	// Wait for command to complete
 	err = cmd.Wait()
-	
+
 	fmt.Println() // Add a blank line
-	
+
 	if err != nil {
 		fmt.Printf("❌ Import failed: %v\n", err)
 		fmt.Print("\nReturning to plan view in 3 seconds...")
@@ -4221,7 +4217,7 @@ func (m *modernPlanModel) getImportIDHint(resourceType, address string) string {
 		name = strings.TrimSuffix(strings.Split(name, "[")[1], "]")
 		name = strings.Trim(name, `"'`)
 	}
-	
+
 	// Provide hints based on resource type
 	switch resourceType {
 	case "aws_cloudwatch_log_group":
@@ -4313,7 +4309,6 @@ func (m *modernPlanModel) getImportIDHint(resourceType, address string) string {
 		return "<resource-name>"
 	}
 }
-
 
 func (m *modernPlanModel) renderApplyView() string {
 	if m.applyState == nil {
@@ -4415,7 +4410,7 @@ func (m *modernPlanModel) renderApplyHeader(elapsed string) string {
 			title = "✅ Apply Complete"
 		}
 	}
-	
+
 	// Build status indicators
 	var status []string
 	if m.applyState.errorCount > 0 {
@@ -4425,14 +4420,14 @@ func (m *modernPlanModel) renderApplyHeader(elapsed string) string {
 		status = append(status, updateIconStyle.Render(fmt.Sprintf("⚠️  %d warnings", m.applyState.warningCount)))
 	}
 	status = append(status, fmt.Sprintf("⏱ %s", elapsed))
-	
+
 	right := strings.Join(status, "  ")
-	
+
 	gap := m.width - lipgloss.Width(title) - lipgloss.Width(right) - 4
 	if gap < 0 {
 		gap = 0
 	}
-	
+
 	return headerStyle.Width(m.width).Render(
 		title + strings.Repeat(" ", gap) + right,
 	)
@@ -4638,13 +4633,13 @@ func (m *modernPlanModel) renderApplyColumns() string {
 	// Each box will get half the width minus the gap between them
 	gap := 2
 	halfWidth := (m.width - gap) / 2
-	
+
 	// Completed column
 	completedBox := m.renderApplyCompleted(halfWidth)
-	
+
 	// Pending column
 	pendingBox := m.renderApplyPending(halfWidth)
-	
+
 	return lipgloss.JoinHorizontal(
 		lipgloss.Top,
 		completedBox,
@@ -4655,7 +4650,7 @@ func (m *modernPlanModel) renderApplyColumns() string {
 
 func (m *modernPlanModel) renderApplyCompleted(width int) string {
 	content := titleStyle.Render("Completed") + "\n"
-	
+
 	if len(m.applyState.completed) == 0 {
 		content += dimStyle.Render("No resources completed yet")
 	} else {
@@ -4666,7 +4661,7 @@ func (m *modernPlanModel) renderApplyCompleted(width int) string {
 			start = len(m.applyState.completed) - displayCount
 			content += dimStyle.Render(fmt.Sprintf("↑ %d earlier completed", start)) + "\n"
 		}
-		
+
 		for _, res := range m.applyState.completed[start:] {
 			icon := "✅"
 			actionStyle := dimStyle
@@ -4688,7 +4683,7 @@ func (m *modernPlanModel) renderApplyCompleted(width int) string {
 					actionStyle = deleteIconStyle
 				}
 			}
-			
+
 			// Truncate long addresses
 			addr := res.Address
 			// The width passed is the outer box width (including border and padding)
@@ -4696,12 +4691,12 @@ func (m *modernPlanModel) renderApplyCompleted(width int) string {
 			// We also need space for icon + space = 2 chars
 			// Total overhead = 2 + 2 + 2 = 6 characters
 			maxLen := width - 6
-			
+
 			if len(addr) > maxLen && maxLen > 10 {
 				// Simple character-based truncation for consistency
 				addr = addr[:maxLen-3] + "..."
 			}
-			
+
 			line := fmt.Sprintf("%s %s", icon, addr)
 
 			// Simplified: Just show the icon and address, no inline errors
@@ -4717,7 +4712,7 @@ func (m *modernPlanModel) renderApplyCompleted(width int) string {
 			}
 		}
 	}
-	
+
 	// Apply highlight if selected and use calculated height
 	// Convert screen height to content height (subtract 2 for borders)
 	screenHeight := 10 // default fallback
@@ -4739,7 +4734,7 @@ func (m *modernPlanModel) renderApplyCompleted(width int) string {
 
 func (m *modernPlanModel) renderApplyPending(width int) string {
 	content := titleStyle.Render("Pending") + "\n"
-	
+
 	if len(m.applyState.pending) == 0 {
 		content += dimStyle.Render("No pending resources")
 	} else {
@@ -4749,7 +4744,7 @@ func (m *modernPlanModel) renderApplyPending(width int) string {
 		if len(m.applyState.pending) < displayCount {
 			end = len(m.applyState.pending)
 		}
-		
+
 		for _, res := range m.applyState.pending[:end] {
 			icon := "⏳"
 			actionStyle := dimStyle
@@ -4764,7 +4759,7 @@ func (m *modernPlanModel) renderApplyPending(width int) string {
 				actionStyle = deleteIconStyle
 				icon = "✗"
 			}
-			
+
 			// Truncate long addresses
 			addr := res.Address
 			// The width passed is the outer box width (including border and padding)
@@ -4772,21 +4767,21 @@ func (m *modernPlanModel) renderApplyPending(width int) string {
 			// We also need space for icon + space = 2 chars
 			// Total overhead = 2 + 2 + 2 = 6 characters
 			maxLen := width - 6
-			
+
 			if len(addr) > maxLen && maxLen > 10 {
 				// Simple character-based truncation for consistency
 				addr = addr[:maxLen-3] + "..."
 			}
-			
+
 			line := fmt.Sprintf("%s %s", icon, addr)
 			content += actionStyle.Render(line) + "\n"
 		}
-		
+
 		if len(m.applyState.pending) > displayCount {
 			content += dimStyle.Render(fmt.Sprintf("↓ %d more pending", len(m.applyState.pending)-displayCount))
 		}
 	}
-	
+
 	// Apply highlight if selected and use calculated height
 	// Convert screen height to content height (subtract 2 for borders)
 	screenHeight := 10 // default fallback
@@ -4873,7 +4868,7 @@ func (m *modernPlanModel) renderApplyErrorSummary() string {
 
 	box := boxStyle.Copy().
 		BorderForeground(borderColor).
-		Width(m.width - 4).
+		Width(m.width-4).
 		Height(contentHeight).
 		Padding(0, 1)
 
@@ -4900,11 +4895,11 @@ func (m *modernPlanModel) renderApplyLogs() string {
 
 func (m *modernPlanModel) renderApplyFooter() string {
 	help := ""
-	
+
 	if !m.applyState.applyComplete && m.applyState.isApplying {
 		help += "[s] Stop  "
 	}
-	
+
 	if m.applyState.showFullLogs {
 		help += "[l] Normal View  "
 	} else {
@@ -4912,11 +4907,11 @@ func (m *modernPlanModel) renderApplyFooter() string {
 	}
 
 	help += "[Tab] Switch Section  "
-	
+
 	if m.applyState.selectedSection == 2 {
 		help += "[↑↓] Scroll Logs  "
 	}
-	
+
 	if m.applyState.applyComplete {
 		if m.applyState.hasErrors && isAIHelperAvailable() {
 			help += "[a] AI Help • [s] Solve with AI • "
@@ -4933,9 +4928,9 @@ func (m *modernPlanModel) updateApplyLogViewport() {
 	if m.applyState == nil {
 		return
 	}
-	
+
 	var content strings.Builder
-	
+
 	// Collect non-debug logs first if not in full log mode
 	var logsToShow []logEntry
 	if !m.applyState.showFullLogs {
@@ -4948,7 +4943,7 @@ func (m *modernPlanModel) updateApplyLogViewport() {
 	} else {
 		logsToShow = m.applyState.logs
 	}
-	
+
 	// Ensure we show at least something if there are logs
 	if len(logsToShow) == 0 && len(m.applyState.logs) > 0 {
 		content.WriteString(dimStyle.Render("No non-debug logs yet. Press 'l' to show all logs.\n"))
@@ -5010,7 +5005,7 @@ func (m *modernPlanModel) updateApplyLogViewport() {
 		if viewportWidth == 0 {
 			viewportWidth = m.width - 4 // fallback
 		}
-		prefixWidth := len(prefix) // Use raw length since it's plain text now
+		prefixWidth := len(prefix)                        // Use raw length since it's plain text now
 		availableWidth := viewportWidth - prefixWidth - 2 // -2 for safety margin
 		if availableWidth < 40 {
 			availableWidth = 40 // minimum width
@@ -5061,7 +5056,7 @@ func (m *modernPlanModel) renderApplyDetailsView(header, elapsed string) string 
 	if m.applyState == nil {
 		return "No apply state available"
 	}
-	
+
 	// Details content
 	var content strings.Builder
 	content.WriteString(titleStyle.Render("📋 Apply Details") + "\n\n")
@@ -5091,7 +5086,7 @@ func (m *modernPlanModel) renderApplyDetailsView(header, elapsed string) string 
 	} else {
 		content.WriteString(dimStyle.Render("No operations currently in progress\n\n"))
 	}
-	
+
 	// Show recent completed operations
 	content.WriteString(titleStyle.Render("Recent Operations") + "\n")
 	if len(m.applyState.completed) > 0 {
@@ -5100,14 +5095,14 @@ func (m *modernPlanModel) renderApplyDetailsView(header, elapsed string) string 
 		if len(m.applyState.completed) > 10 {
 			start = len(m.applyState.completed) - 10
 		}
-		
+
 		for _, res := range m.applyState.completed[start:] {
 			icon := "✅"
 			if !res.Success {
 				icon = "❌"
 			}
-			content.WriteString(fmt.Sprintf("%s %s %s - %s (%v)\n", 
-				icon, 
+			content.WriteString(fmt.Sprintf("%s %s %s - %s (%v)\n",
+				icon,
 				res.Timestamp.Format("15:04:05"),
 				res.Action,
 				res.Address,
@@ -5119,11 +5114,11 @@ func (m *modernPlanModel) renderApplyDetailsView(header, elapsed string) string 
 	} else {
 		content.WriteString(dimStyle.Render("No completed operations yet\n"))
 	}
-	
+
 	// Show pending operations count
 	content.WriteString("\n" + titleStyle.Render("Pending Operations") + "\n")
 	content.WriteString(fmt.Sprintf("Total pending: %d\n", len(m.applyState.pending)))
-	
+
 	// Show error/warning summary
 	if m.applyState.errorCount > 0 || m.applyState.warningCount > 0 {
 		content.WriteString("\n" + titleStyle.Render("Summary") + "\n")
@@ -5134,11 +5129,11 @@ func (m *modernPlanModel) renderApplyDetailsView(header, elapsed string) string 
 			content.WriteString(updateIconStyle.Render(fmt.Sprintf("Warnings: %d\n", m.applyState.warningCount)))
 		}
 	}
-	
+
 	detailBox := boxStyle.Width(m.width - 2).Height(m.height - 6).Render(content.String())
-	
+
 	footer := "[d] Back to overview  [x] Show error details  [q] Quit"
-	
+
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		header,
@@ -5154,7 +5149,7 @@ func groupResourceChanges(changes []ResourceChange) changeGroups {
 		if len(change.Change.Actions) == 0 {
 			continue
 		}
-		
+
 		// Skip no-op changes
 		if len(change.Change.Actions) == 1 && change.Change.Actions[0] == "no-op" {
 			continue
@@ -5442,10 +5437,10 @@ func launchAIAgentForApplyErrors(m *modernPlanModel) {
 		InitialError:   strings.Join(errorMessages, "\n\n"),
 		ResourceErrors: errorMessages,
 		AdditionalInfo: map[string]string{
-			"errors_json":      string(errorsJSON),
-			"error_count":      fmt.Sprintf("%d", len(errors)),
-			"terraform_phase":  "apply",
-			"has_diagnostics":  fmt.Sprintf("%v", errors[0].ErrorSummary != "" || errors[0].ErrorDetail != ""),
+			"errors_json":     string(errorsJSON),
+			"error_count":     fmt.Sprintf("%d", len(errors)),
+			"terraform_phase": "apply",
+			"has_diagnostics": fmt.Sprintf("%v", errors[0].ErrorSummary != "" || errors[0].ErrorDetail != ""),
 		},
 	}
 
@@ -5482,7 +5477,7 @@ func (m *modernPlanModel) renderApplyErrorDetailsView(header, elapsed string) st
 			}
 		}
 	}
-	
+
 	if len(failedResources) == 0 {
 		return lipgloss.JoinVertical(
 			lipgloss.Left,
@@ -5491,21 +5486,21 @@ func (m *modernPlanModel) renderApplyErrorDetailsView(header, elapsed string) st
 			m.renderApplyFooter(),
 		)
 	}
-	
+
 	// Create error details content
 	var content strings.Builder
 	content.WriteString(titleStyle.Render("🔴 Error Details") + "\n\n")
 	content.WriteString(fmt.Sprintf("Total Errors: %d\n\n", len(failedResources)))
-	
+
 	// Show each failed resource
 	for i, res := range failedResources {
 		// Resource header
 		content.WriteString(deleteIconStyle.Bold(true).Render(fmt.Sprintf("Error %d: %s", i+1, res.Address)) + "\n")
 		content.WriteString(strings.Repeat("─", m.width-10) + "\n")
-		
+
 		// Action attempted
 		content.WriteString(fmt.Sprintf("Action: %s\n", res.Action))
-		
+
 		// Duration before failure
 		if res.Duration > 0 {
 			content.WriteString(fmt.Sprintf("Failed after: %v\n", res.Duration))
@@ -5551,20 +5546,20 @@ func (m *modernPlanModel) renderApplyErrorDetailsView(header, elapsed string) st
 			wrapped := wordWrap(errorMsg, maxWidth)
 			content.WriteString(errorStyle.Render(wrapped) + "\n")
 		}
-		
+
 		// Add spacing between errors
 		if i < len(failedResources)-1 {
 			content.WriteString("\n")
 		}
 	}
-	
+
 	// Create scrollable viewport for error details
 	vp := viewport.New(m.width-4, m.height-10)
 	vp.SetContent(content.String())
-	
+
 	// Build the view
-	box := boxStyle.Width(m.width-2).Height(m.height-8)
-	
+	box := boxStyle.Width(m.width - 2).Height(m.height - 8)
+
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		header,
@@ -5578,16 +5573,16 @@ func wordWrap(text string, width int) string {
 	if width <= 0 {
 		return text
 	}
-	
+
 	var result strings.Builder
 	lines := strings.Split(text, "\n")
-	
+
 	for _, line := range lines {
 		if len(line) <= width {
 			result.WriteString(line + "\n")
 			continue
 		}
-		
+
 		// Wrap long lines
 		for len(line) > width {
 			// Find last space before width
@@ -5598,7 +5593,7 @@ func wordWrap(text string, width int) string {
 					break
 				}
 			}
-			
+
 			// If no space found, just cut at width
 			if cutPoint == width {
 				result.WriteString(line[:width] + "\n")
@@ -5608,12 +5603,12 @@ func wordWrap(text string, width int) string {
 				line = line[cutPoint+1:] // Skip the space
 			}
 		}
-		
+
 		if len(line) > 0 {
 			result.WriteString(line + "\n")
 		}
 	}
-	
+
 	return strings.TrimSuffix(result.String(), "\n")
 }
 
@@ -5687,6 +5682,7 @@ func (m *modernPlanModel) renderAIError() string {
 	// Render the background with the error box on top
 	return backgroundStyle.Render(errorBox)
 }
+
 // fetchAIHelpAndShowView fetches AI suggestions and switches to AI help view
 func (m *modernPlanModel) fetchAIHelp() tea.Cmd {
 	return func() tea.Msg {
@@ -5959,9 +5955,9 @@ func (m *modernPlanModel) renderAIHelpView() string {
 	// Split: 60% for errors/analysis (top), 40% for commands (bottom)
 	// Both viewports are scrollable
 
-	availableHeight := m.height - 2 // -2 for header and footer
-	errorsHeight := int(float64(availableHeight) * 0.6) - 2 // -2 for borders
-	commandsHeight := availableHeight - errorsHeight - 4 // -4 for both borders
+	availableHeight := m.height - 2                       // -2 for header and footer
+	errorsHeight := int(float64(availableHeight)*0.6) - 2 // -2 for borders
+	commandsHeight := availableHeight - errorsHeight - 4  // -4 for both borders
 
 	// Ensure minimum heights
 	if errorsHeight < 10 {

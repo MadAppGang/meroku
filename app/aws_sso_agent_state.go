@@ -15,14 +15,14 @@ const (
 
 // SSOAgentState represents persisted agent state
 type SSOAgentState struct {
-	Version         string            `json:"version"`
-	ProfileName     string            `json:"profile_name"`
-	SaveTime        time.Time         `json:"save_time"`
-	Context         *SSOAgentContext  `json:"context"`
-	IsComplete      bool              `json:"is_complete"`
-	CompletionMsg   string            `json:"completion_message"`
-	TotalIterations int               `json:"total_iterations"`
-	RunNumber       int               `json:"run_number"`
+	Version         string           `json:"version"`
+	ProfileName     string           `json:"profile_name"`
+	SaveTime        time.Time        `json:"save_time"`
+	Context         *SSOAgentContext `json:"context"`
+	IsComplete      bool             `json:"is_complete"`
+	CompletionMsg   string           `json:"completion_message"`
+	TotalIterations int              `json:"total_iterations"`
+	RunNumber       int              `json:"run_number"`
 }
 
 // GetStateFilePath generates state file path for a profile

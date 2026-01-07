@@ -25,9 +25,9 @@ type TestEventRequest struct {
 
 // TestEventResponse represents the response after sending an event
 type TestEventResponse struct {
-	Success  bool   `json:"success"`
-	EventId  string `json:"eventId,omitempty"`
-	Message  string `json:"message"`
+	Success bool   `json:"success"`
+	EventId string `json:"eventId,omitempty"`
+	Message string `json:"message"`
 }
 
 // sendTestEvent sends a test event to EventBridge
@@ -72,9 +72,9 @@ func sendTestEvent(w http.ResponseWriter, r *http.Request) {
 	// If detail is not provided, create a default test event detail
 	if req.Detail == nil {
 		req.Detail = map[string]interface{}{
-			"test": true,
+			"test":      true,
 			"timestamp": time.Now().Format(time.RFC3339),
-			"message": "Test event from infrastructure dashboard",
+			"message":   "Test event from infrastructure dashboard",
 		}
 	}
 

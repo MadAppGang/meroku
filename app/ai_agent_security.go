@@ -15,9 +15,9 @@ func validateCommand(command string) error {
 		`rm\s*-rf\s*/`,
 		`rm\s*-rf\s*~`,
 		`rm\s*-rf\s*\*`,
-		`rm\s*-rf?\s*\.`,      // Blocks rm -rf . and rm -r .
-		`rm\s*-r.*\*`,         // Blocks rm -r * variations
-		`rm\s+.*-rf`,          // Catches flag order variations
+		`rm\s*-rf?\s*\.`, // Blocks rm -rf . and rm -r .
+		`rm\s*-r.*\*`,    // Blocks rm -r * variations
+		`rm\s+.*-rf`,     // Catches flag order variations
 		`dd\s+if=`,
 		`mkfs`,
 		`>/dev/sd`,

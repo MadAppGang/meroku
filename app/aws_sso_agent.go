@@ -20,12 +20,12 @@ type SSOAgentContext struct {
 	ProfileInfo  *ProfileInfo
 
 	// Collected information
-	SSOStartURL  string
-	SSORegion    string
-	AccountID    string
-	RoleName     string
-	Region       string
-	Output       string
+	SSOStartURL string
+	SSORegion   string
+	AccountID   string
+	RoleName    string
+	Region      string
+	Output      string
 
 	// Enhanced context
 	AWSConfigContent  string            // Full ~/.aws/config file

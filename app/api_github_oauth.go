@@ -11,17 +11,17 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
-	"github.com/aws/aws-sdk-go-v2/aws"
 )
 
 // GitHub OAuth Device Flow constants
 const (
-	githubDeviceCodeURL = "https://github.com/login/device/code"
+	githubDeviceCodeURL  = "https://github.com/login/device/code"
 	githubAccessTokenURL = "https://github.com/login/oauth/access_token"
-	githubClientID = "Ov23liWgbmfmd4SeoL6c" // GitHub OAuth App Client ID for device flow
+	githubClientID       = "Ov23liWgbmfmd4SeoL6c" // GitHub OAuth App Client ID for device flow
 )
 
 // DeviceFlowSession stores the state of an ongoing device flow authorization
@@ -78,7 +78,7 @@ func initiateGitHubDeviceFlow(w http.ResponseWriter, r *http.Request) {
 		Project     string `json:"project"`
 		Environment string `json:"environment"`
 	}
-	
+
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(ErrorResponse{Error: "invalid request body"})
@@ -105,18 +105,18 @@ func initiateGitHubDeviceFlow(w http.ResponseWriter, r *http.Request) {
 
 	// Request device code from GitHub
 	payload := fmt.Sprintf("client_id=%s&scope=%s", githubClientID, scope)
-	
+
 	httpReq, err := http.NewRequest("POST", githubDeviceCodeURL, bytes.NewBufferString(payload))
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(ErrorResponse{Error: "failed to create request"})
 		return
 	}
-	
+
 	// Set headers as per GitHub docs - form-encoded content, JSON response
 	httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	httpReq.Header.Set("Accept", "application/json")
-	
+
 	client := &http.Client{}
 	resp, err := client.Do(httpReq)
 	if err != nil {
@@ -264,18 +264,18 @@ func pollForAccessToken(session *DeviceFlowSession) {
 		select {
 		case <-ticker.C:
 			// Poll GitHub for access token
-			payload := fmt.Sprintf("client_id=%s&device_code=%s&grant_type=urn:ietf:params:oauth:grant-type:device_code", 
+			payload := fmt.Sprintf("client_id=%s&device_code=%s&grant_type=urn:ietf:params:oauth:grant-type:device_code",
 				githubClientID, session.DeviceCode)
-			
+
 			httpReq, err := http.NewRequest("POST", githubAccessTokenURL, bytes.NewBufferString(payload))
 			if err != nil {
 				continue // Keep trying
 			}
-			
+
 			// Request JSON response
 			httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			httpReq.Header.Set("Accept", "application/json")
-			
+
 			client := &http.Client{}
 			resp, err := client.Do(httpReq)
 			if err != nil {
@@ -353,10 +353,10 @@ func storeTokenInSSM(session *DeviceFlowSession) error {
 	}
 
 	ssmClient := ssm.NewFromConfig(cfg)
-	
+
 	// Use a shared token for all Amplify apps
 	paramName := fmt.Sprintf("/%s/%s/github/amplify-token", session.Project, session.Environment)
-	
+
 	_, err = ssmClient.PutParameter(ctx, &ssm.PutParameterInput{
 		Name:        aws.String(paramName),
 		Value:       aws.String(session.AccessToken),

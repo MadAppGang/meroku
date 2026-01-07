@@ -12,23 +12,23 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/sts"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/ecr"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	"github.com/aws/aws-sdk-go-v2/service/ecs/types"
-	"github.com/aws/aws-sdk-go-v2/service/ec2"
-	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/servicediscovery"
 	sdtypes "github.com/aws/aws-sdk-go-v2/service/servicediscovery/types"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"gopkg.in/yaml.v2"
 )
 
 type Environment struct {
-	Name       string `json:"name"`
-	Path       string `json:"path"`
-	IsActive   bool   `json:"isActive"`
-	Profile    string `json:"profile,omitempty"`
-	AccountID  string `json:"accountId,omitempty"`
+	Name      string `json:"name"`
+	Path      string `json:"path"`
+	IsActive  bool   `json:"isActive"`
+	Profile   string `json:"profile,omitempty"`
+	AccountID string `json:"accountId,omitempty"`
 }
 
 type ConfigResponse struct {
@@ -47,13 +47,13 @@ func corsMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-Requested-With")
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		w.Header().Set("Access-Control-Max-Age", "3600")
-		
+
 		// Handle preflight requests
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		
+
 		next(w, r)
 	}
 }
@@ -65,7 +65,7 @@ func getEnvironments(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var environments []Environment
-	
+
 	// Read only files in the current directory (not subdirectories)
 	files, err := os.ReadDir(".")
 	if err != nil {
@@ -73,7 +73,7 @@ func getEnvironments(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
 		return
 	}
-	
+
 	for _, file := range files {
 		if !file.IsDir() && strings.HasSuffix(file.Name(), ".yaml") {
 			name := strings.TrimSuffix(file.Name(), ".yaml")
@@ -81,22 +81,22 @@ func getEnvironments(w http.ResponseWriter, r *http.Request) {
 				Name: name,
 				Path: file.Name(),
 			}
-			
+
 			// Check if this is the active environment
 			if name == selectedEnvironment {
 				env.IsActive = true
 				env.Profile = selectedAWSProfile
-				
+
 				// Load the environment to get account ID
 				if envData, err := loadEnv(name); err == nil {
 					env.AccountID = envData.AccountID
 				}
 			}
-			
+
 			environments = append(environments, env)
 		}
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(environments)
 }
@@ -113,9 +113,9 @@ func getEnvironmentConfig(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(ErrorResponse{Error: "name parameter is required"})
 		return
 	}
-	
+
 	filename := fmt.Sprintf("%s.yaml", envName)
-	
+
 	content, err := os.ReadFile(filename)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -127,7 +127,7 @@ func getEnvironmentConfig(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(ConfigResponse{Content: string(content)})
 }
@@ -144,7 +144,7 @@ func updateEnvironmentConfig(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(ErrorResponse{Error: "name parameter is required"})
 		return
 	}
-	
+
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -152,26 +152,26 @@ func updateEnvironmentConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer r.Body.Close()
-	
+
 	var req struct {
 		Content string `json:"content"`
 	}
-	
+
 	if err := json.Unmarshal(body, &req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(ErrorResponse{Error: "invalid JSON"})
 		return
 	}
-	
+
 	filename := fmt.Sprintf("%s.yaml", envName)
-	
+
 	err = os.WriteFile(filename, []byte(req.Content), 0644)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"message": "configuration updated successfully"})
 }
@@ -215,12 +215,12 @@ func getCurrentAccount(w http.ResponseWriter, r *http.Request) {
 
 // ECS-related structures
 type ECSClusterInfo struct {
-	ClusterName      string   `json:"clusterName"`
-	ClusterArn       string   `json:"clusterArn"`
-	Status           string   `json:"status"`
-	RegisteredTasks  int32    `json:"registeredTasks"`
-	RunningTasks     int32    `json:"runningTasks"`
-	ActiveServices   int32    `json:"activeServices"`
+	ClusterName       string   `json:"clusterName"`
+	ClusterArn        string   `json:"clusterArn"`
+	Status            string   `json:"status"`
+	RegisteredTasks   int32    `json:"registeredTasks"`
+	RunningTasks      int32    `json:"runningTasks"`
+	ActiveServices    int32    `json:"activeServices"`
 	CapacityProviders []string `json:"capacityProviders"`
 	ContainerInsights string   `json:"containerInsights"`
 }
@@ -239,11 +239,11 @@ type VPCInfo struct {
 }
 
 type SubnetInfo struct {
-	SubnetId           string `json:"subnetId"`
-	AvailabilityZone   string `json:"availabilityZone"`
-	CidrBlock          string `json:"cidrBlock"`
-	AvailableIpCount   int64  `json:"availableIpCount"`
-	Type               string `json:"type"` // public or private
+	SubnetId         string `json:"subnetId"`
+	AvailabilityZone string `json:"availabilityZone"`
+	CidrBlock        string `json:"cidrBlock"`
+	AvailableIpCount int64  `json:"availableIpCount"`
+	Type             string `json:"type"` // public or private
 }
 
 type ServiceDiscovery struct {
@@ -256,7 +256,7 @@ type ECSServicesInfo struct {
 	Services       []ServiceInfo `json:"services"`
 	ScheduledTasks []TaskInfo    `json:"scheduledTasks"`
 	EventTasks     []TaskInfo    `json:"eventTasks"`
-	TotalTasks     int          `json:"totalTasks"`
+	TotalTasks     int           `json:"totalTasks"`
 }
 
 type ServiceInfo struct {
@@ -362,7 +362,7 @@ func getECSClusterInfo(w http.ResponseWriter, r *http.Request) {
 	})
 
 	clusterInfo := ECSClusterInfo{
-		ClusterName: clusterName,
+		ClusterName:       clusterName,
 		CapacityProviders: []string{"FARGATE", "FARGATE_SPOT"},
 	}
 
@@ -435,7 +435,7 @@ func getECSNetworkInfo(w http.ResponseWriter, r *http.Request) {
 
 	networkInfo := ECSNetworkInfo{
 		AvailabilityZones: []string{},
-		Subnets:          []SubnetInfo{},
+		Subnets:           []SubnetInfo{},
 	}
 
 	// First, get the ECS service to find the subnets it's using
@@ -463,7 +463,7 @@ func getECSNetworkInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ec2Client := ec2.NewFromConfig(cfg)
-	
+
 	// If we found subnets, get their details and VPC info
 	if len(subnetIds) > 0 {
 		subnetResult, err := ec2Client.DescribeSubnets(ctx, &ec2.DescribeSubnetsInput{
@@ -495,7 +495,7 @@ func getECSNetworkInfo(w http.ResponseWriter, r *http.Request) {
 				if subnet.MapPublicIpOnLaunch != nil && *subnet.MapPublicIpOnLaunch {
 					subnetType = "public"
 				}
-				
+
 				subnetInfo := SubnetInfo{
 					SubnetId:         *subnet.SubnetId,
 					AvailabilityZone: *subnet.AvailabilityZone,
@@ -506,7 +506,7 @@ func getECSNetworkInfo(w http.ResponseWriter, r *http.Request) {
 				networkInfo.Subnets = append(networkInfo.Subnets, subnetInfo)
 				azMap[*subnet.AvailabilityZone] = true
 			}
-			
+
 			// Extract unique AZs
 			for az := range azMap {
 				networkInfo.AvailabilityZones = append(networkInfo.AvailabilityZones, az)
@@ -549,7 +549,7 @@ func getECSNetworkInfo(w http.ResponseWriter, r *http.Request) {
 					if subnet.MapPublicIpOnLaunch != nil && *subnet.MapPublicIpOnLaunch {
 						subnetType = "public"
 					}
-					
+
 					subnetInfo := SubnetInfo{
 						SubnetId:         *subnet.SubnetId,
 						AvailabilityZone: *subnet.AvailabilityZone,
@@ -560,7 +560,7 @@ func getECSNetworkInfo(w http.ResponseWriter, r *http.Request) {
 					networkInfo.Subnets = append(networkInfo.Subnets, subnetInfo)
 					azMap[*subnet.AvailabilityZone] = true
 				}
-				
+
 				// Extract unique AZs
 				for az := range azMap {
 					networkInfo.AvailabilityZones = append(networkInfo.AvailabilityZones, az)
@@ -572,7 +572,7 @@ func getECSNetworkInfo(w http.ResponseWriter, r *http.Request) {
 	// Get service discovery namespace info
 	sdClient := servicediscovery.NewFromConfig(cfg)
 	nsResult, err := sdClient.ListNamespaces(ctx, &servicediscovery.ListNamespacesInput{})
-	
+
 	if err == nil && len(nsResult.Namespaces) > 0 {
 		// Look for the local namespace
 		for _, ns := range nsResult.Namespaces {
@@ -581,7 +581,7 @@ func getECSNetworkInfo(w http.ResponseWriter, r *http.Request) {
 					NamespaceId:   *ns.Id,
 					NamespaceName: *ns.Name,
 				}
-				
+
 				// Get service count in this namespace
 				servicesResult, err := sdClient.ListServices(ctx, &servicediscovery.ListServicesInput{
 					Filters: []sdtypes.ServiceFilter{
@@ -644,7 +644,7 @@ func getECSServicesInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ecsClient := ecs.NewFromConfig(cfg)
-	
+
 	// List all services in the cluster
 	servicesResult, err := ecsClient.ListServices(ctx, &ecs.ListServicesInput{
 		Cluster: &clusterName,
@@ -718,11 +718,11 @@ func getECSServicesInfo(w http.ResponseWriter, r *http.Request) {
 
 // ECR Sources and Configuration structures
 type ECRSource struct {
-	Name                 string              `json:"name"`
-	AccountID            string              `json:"account_id"`
-	Region               string              `json:"region"`
-	ECRStrategy          string              `json:"ecr_strategy"`
-	TrustedAccounts      []ECRTrustedAccount `json:"trusted_accounts"`
+	Name            string              `json:"name"`
+	AccountID       string              `json:"account_id"`
+	Region          string              `json:"region"`
+	ECRStrategy     string              `json:"ecr_strategy"`
+	TrustedAccounts []ECRTrustedAccount `json:"trusted_accounts"`
 }
 
 type ECRSourcesResponse struct {
@@ -762,6 +762,7 @@ func isValidAWSAccountID(accountID string) bool {
 	}
 	return true
 }
+
 // getECRSources returns all environments with local ECR strategy
 func getECRSources(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -967,8 +968,8 @@ func checkECRTrustPolicyDeployedInAWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		SourceEnv     string `json:"source_env"`      // Environment with ECR repository (e.g., "dev")
-		TargetAccount string `json:"target_account"`  // Account ID to check trust for (e.g., "234567890123")
+		SourceEnv     string `json:"source_env"`     // Environment with ECR repository (e.g., "dev")
+		TargetAccount string `json:"target_account"` // Account ID to check trust for (e.g., "234567890123")
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -1042,10 +1043,10 @@ func checkECRTrustPolicyDeployedInAWS(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(err.Error(), "RepositoryPolicyNotFoundException") {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]interface{}{
-				"deployed":            false,
-				"has_trust_for":       false,
-				"repository":          repositoryName,
-				"reason":              "ECR repository policy not found in AWS",
+				"deployed":      false,
+				"has_trust_for": false,
+				"repository":    repositoryName,
+				"reason":        "ECR repository policy not found in AWS",
 			})
 			return
 		}
@@ -1054,10 +1055,10 @@ func checkECRTrustPolicyDeployedInAWS(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(err.Error(), "RepositoryNotFoundException") {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]interface{}{
-				"deployed":            false,
-				"has_trust_for":       false,
-				"repository":          repositoryName,
-				"reason":              "ECR repository not found in AWS",
+				"deployed":      false,
+				"has_trust_for": false,
+				"repository":    repositoryName,
+				"reason":        "ECR repository not found in AWS",
 			})
 			return
 		}
@@ -1095,11 +1096,3 @@ func checkECRTrustPolicyDeployedInAWS(w http.ResponseWriter, r *http.Request) {
 // ============================================================================
 // Custom Terraform Extensions API
 // ============================================================================
-
-
-
-
-
-
-
-

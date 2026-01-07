@@ -59,11 +59,11 @@ func (v *AWSProfileValidator) ValidateAllProfiles() ([]ProfileValidationResult, 
 // ValidateProfile validates a single profile from environment config
 func (v *AWSProfileValidator) ValidateProfile(env *Env) ProfileValidationResult {
 	result := ProfileValidationResult{
-		EnvName:    env.Env,
-		Profile:    env.AWSProfile,
-		Success:    true,
-		Warnings:   []string{},
-		Errors:     []string{},
+		EnvName:  env.Env,
+		Profile:  env.AWSProfile,
+		Success:  true,
+		Warnings: []string{},
+		Errors:   []string{},
 	}
 
 	// Check if profile is specified

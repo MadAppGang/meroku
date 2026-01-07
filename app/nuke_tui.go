@@ -15,7 +15,7 @@ const (
 	showDetailsStage
 	firstConfirmStage
 	projectNameStage
-	confirmedStage  // User confirmed - ready to destroy
+	confirmedStage // User confirmed - ready to destroy
 	cancelledStage
 )
 
@@ -33,7 +33,6 @@ type nukeModel struct {
 	selectedEnvIdx int
 	yesNoSelected  int // 0 for Yes, 1 for No
 }
-
 
 func initNukeTUI(selectedEnv string) (*nukeModel, error) {
 	m := &nukeModel{
@@ -101,7 +100,6 @@ func (m *nukeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	return m, nil
 }
-
 
 func (m *nukeModel) handleSelectEnvKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
@@ -191,8 +189,6 @@ func (m *nukeModel) handleProjectNameKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	return m, nil
 }
-
-
 
 func (m *nukeModel) View() string {
 	switch m.stage {

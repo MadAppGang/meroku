@@ -1,0 +1,26 @@
+{
+  "session_id": "dev-impl-20260106-220545-646a52d6",
+  "detected_stack": {
+    "primary": "golang",
+    "secondary": ["terraform", "handlebars"],
+    "framework": "Bubble Tea TUI",
+    "build_tool": "go build / make"
+  },
+  "mode": "backend",
+  "feature_request": "Auto-create DynamoDB state lock table when bucket is created, include in migration",
+  "relevant_files": {
+    "model": "app/model.go",
+    "migrations": "app/migrations.go",
+    "template": "env/main.hbs",
+    "terraform_modules": "modules/"
+  },
+  "quality_checks": [
+    "go build ./...",
+    "go test ./..."
+  ],
+  "skills": [
+    "golang",
+    "terraform",
+    "migrations"
+  ]
+}

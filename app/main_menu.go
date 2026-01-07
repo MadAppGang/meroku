@@ -25,7 +25,7 @@ func mainMenu() string {
 	} else if selectedEnvironment != "" {
 		menuTitle = fmt.Sprintf("Select an action (Environment: %s)", selectedEnvironment)
 	}
-	
+
 	options := []huh.Option[string]{
 		huh.NewOption("🌐 Edit environment with web UI", "api"),
 		huh.NewOption("🚀 Deploy environment", "deploy"),
@@ -187,7 +187,7 @@ func createEnvMenu() string {
 		fmt.Println("Error saving environment:", err)
 		os.Exit(1)
 	}
-	
+
 	fmt.Printf("Environment '%s' created successfully.\n", name)
 	return name
 }

@@ -73,34 +73,34 @@ type SSOWizardModel struct {
 	profileName string
 	yamlEnv     *Env // Pre-filled from YAML
 
-	state        SSOWizardState
-	inspector    *ProfileInspector
-	profileInfo  *ProfileInfo
+	state       SSOWizardState
+	inspector   *ProfileInspector
+	profileInfo *ProfileInfo
 
 	// Mode selection
 	setupMode    string // "wizard" or "agent"
 	useModernSSO bool   // true = modern, false = legacy
 
 	// Input fields
-	startURLInput     string
-	startURLCursor    int
-	ssoRegionInput    string
-	ssoRegionCursor   int
-	accountIDInput    string
-	accountIDCursor   int
-	roleInput         string
-	roleCursor        int
-	regionInput       string
-	regionCursor      int
-	outputInput       string
-	outputCursor      int
+	startURLInput   string
+	startURLCursor  int
+	ssoRegionInput  string
+	ssoRegionCursor int
+	accountIDInput  string
+	accountIDCursor int
+	roleInput       string
+	roleCursor      int
+	regionInput     string
+	regionCursor    int
+	outputInput     string
+	outputCursor    int
 
 	// Current focus
 	focusedField string
 
 	// Status
-	errorMsg     string
-	statusMsg    string
+	errorMsg         string
+	statusMsg        string
 	validationResult *ValidationResult
 
 	// UI
@@ -133,8 +133,8 @@ func NewSSOWizardModel(profileName string, yamlEnv *Env) SSOWizardModel {
 			return "us-east-1"
 		}(),
 		ssoRegionInput: "us-east-1", // SSO Region always defaults to us-east-1 (IAM Identity Center location)
-		outputInput: "json",
-		roleInput:   "AdministratorAccess",
+		outputInput:    "json",
+		roleInput:      "AdministratorAccess",
 	}
 
 	return m
@@ -679,12 +679,12 @@ func RunSSOWizardHuh(profileName string, yamlEnv *Env) error {
 
 	// Pre-fill values from YAML or existing profile
 	var (
-		ssoStartURL  string
-		ssoRegion    string
-		accountID    string
-		roleName     string
-		region       string
-		output       string
+		ssoStartURL string
+		ssoRegion   string
+		accountID   string
+		roleName    string
+		region      string
+		output      string
 	)
 
 	// Pre-fill from existing profile (fallback values)

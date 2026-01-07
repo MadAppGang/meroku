@@ -25,26 +25,26 @@ func runDNSStatus(cmd interface{}, args []string) error {
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("211"))
-	
+
 	successStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("42"))
-	
+
 	warningStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("214"))
-	
+
 	errorStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("196"))
 
 	fmt.Println(titleStyle.Render("DNS Configuration Status"))
 	fmt.Println(strings.Repeat("─", 50))
-	
+
 	// Root zone information
 	fmt.Printf("\n%s\n", titleStyle.Render("Root Zone:"))
 	fmt.Printf("  Domain:      %s\n", config.RootDomain)
 	fmt.Printf("  Account ID:  %s\n", config.RootAccount.AccountID)
 	fmt.Printf("  Zone ID:     %s\n", config.RootAccount.ZoneID)
 	fmt.Printf("  Role ARN:    %s\n", config.RootAccount.DelegationRoleArn)
-	
+
 	// Check DNS propagation for root domain
 	fmt.Printf("\n%s\n", titleStyle.Render("Root Domain Propagation:"))
 	ns, err := queryNameservers(config.RootDomain)
@@ -56,15 +56,15 @@ func runDNSStatus(cmd interface{}, args []string) error {
 			fmt.Printf("    • %s\n", n)
 		}
 	}
-	
+
 	// Delegated zones
 	if len(config.DelegatedZones) > 0 {
 		fmt.Printf("\n%s\n", titleStyle.Render("Delegated Zones:"))
-		
+
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 		fmt.Fprintln(w, "  Subdomain\tAccount\tZone ID\tStatus")
 		fmt.Fprintln(w, "  "+strings.Repeat("─", 60))
-		
+
 		for _, zone := range config.DelegatedZones {
 			statusIcon := "✓"
 			statusColor := successStyle
@@ -75,7 +75,7 @@ func runDNSStatus(cmd interface{}, args []string) error {
 				statusIcon = "✗"
 				statusColor = errorStyle
 			}
-			
+
 			fmt.Fprintf(w, "  %s %s\t%s\t%s\t%s\n",
 				statusColor.Render(statusIcon),
 				zone.Subdomain,
@@ -85,7 +85,7 @@ func runDNSStatus(cmd interface{}, args []string) error {
 			)
 		}
 		w.Flush()
-		
+
 		// Check propagation for each subdomain
 		fmt.Printf("\n%s\n", titleStyle.Render("Subdomain Propagation:"))
 		for _, zone := range config.DelegatedZones {
@@ -99,10 +99,10 @@ func runDNSStatus(cmd interface{}, args []string) error {
 	} else {
 		fmt.Printf("\n%s\n", warningStyle.Render("No delegated zones configured."))
 	}
-	
+
 	fmt.Println("\n" + strings.Repeat("─", 50))
 	fmt.Println("Run './meroku dns validate' to perform full validation.")
-	
+
 	return nil
 }
 
@@ -119,10 +119,10 @@ func runDNSValidate(cmd interface{}, args []string) error {
 
 	fmt.Println("Validating DNS configuration...")
 	fmt.Println(strings.Repeat("─", 50))
-	
+
 	var issues []string
 	var warnings []string
-	
+
 	// Validate root zone nameservers
 	fmt.Print("Checking root zone nameservers... ")
 	ns, err := queryNameservers(config.RootDomain)
@@ -135,7 +135,7 @@ func runDNSValidate(cmd interface{}, args []string) error {
 	} else {
 		fmt.Println("✅")
 	}
-	
+
 	// Check DNS propagation
 	fmt.Print("Checking DNS propagation... ")
 	propagation, err := checkDNSPropagation(config.RootDomain, ns)
@@ -159,11 +159,11 @@ func runDNSValidate(cmd interface{}, args []string) error {
 			fmt.Println("❌")
 		}
 	}
-	
+
 	// Validate each delegated zone
 	for _, zone := range config.DelegatedZones {
 		fmt.Printf("Checking %s... ", zone.Subdomain)
-		
+
 		zoneNS, err := queryNameservers(zone.Subdomain)
 		if err != nil {
 			issues = append(issues, fmt.Sprintf("Failed to query nameservers for %s: %v", zone.Subdomain, err))
@@ -185,7 +185,7 @@ func runDNSValidate(cmd interface{}, args []string) error {
 					break
 				}
 			}
-			
+
 			if match {
 				fmt.Println("✅")
 			} else {
@@ -194,9 +194,9 @@ func runDNSValidate(cmd interface{}, args []string) error {
 			}
 		}
 	}
-	
+
 	fmt.Println(strings.Repeat("─", 50))
-	
+
 	// Summary
 	if len(issues) == 0 && len(warnings) == 0 {
 		fmt.Println("✅ All validations passed!")
@@ -207,7 +207,7 @@ func runDNSValidate(cmd interface{}, args []string) error {
 				fmt.Printf("  • %s\n", issue)
 			}
 		}
-		
+
 		if len(warnings) > 0 {
 			fmt.Println("\n⚠️  Warnings:")
 			for _, warning := range warnings {
@@ -215,13 +215,13 @@ func runDNSValidate(cmd interface{}, args []string) error {
 			}
 		}
 	}
-	
+
 	return nil
 }
 
 func runDNSRemove(cmd interface{}, args []string) error {
 	subdomain := args[0]
-	
+
 	config, err := loadDNSConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load DNS config: %w", err)
@@ -238,7 +238,7 @@ func runDNSRemove(cmd interface{}, args []string) error {
 	}
 
 	fmt.Printf("Removing delegation for %s...\n", subdomain)
-	
+
 	// Remove NS records from root zone
 	fmt.Print("Removing NS records from root zone... ")
 	// Find profile for root account
@@ -253,7 +253,7 @@ func runDNSRemove(cmd interface{}, args []string) error {
 	} else {
 		fmt.Println("✅")
 	}
-	
+
 	// Delete the subdomain zone
 	if zone.ZoneID != "" {
 		fmt.Print("Deleting subdomain zone... ")
@@ -270,7 +270,7 @@ func runDNSRemove(cmd interface{}, args []string) error {
 			}
 		}
 	}
-	
+
 	// Update configuration
 	if removeDelegatedZone(config, subdomain) {
 		fmt.Print("Updating configuration... ")
@@ -281,12 +281,11 @@ func runDNSRemove(cmd interface{}, args []string) error {
 		}
 		fmt.Println("✅")
 	}
-	
+
 	fmt.Printf("\n✅ Successfully removed delegation for %s\n", subdomain)
-	
+
 	return nil
 }
-
 
 // Helper function to delete NS records
 func deleteNSRecords(profile, zoneID, recordName string) error {

@@ -12,20 +12,20 @@ import (
 
 // AI Agent TUI Model
 type aiAgentModel struct {
-	agent          *AIAgent
-	updateChan     chan AgentUpdate
-	iterations     []AgentIteration
-	currentStatus  string
-	isThinking     bool
-	isComplete     bool
-	success        bool
-	viewport       viewport.Model
-	ready          bool
-	selectedIndex  int
-	width          int
-	height         int
-	err            error
-	autoScroll     bool // Auto-scroll to bottom when new messages arrive
+	agent         *AIAgent
+	updateChan    chan AgentUpdate
+	iterations    []AgentIteration
+	currentStatus string
+	isThinking    bool
+	isComplete    bool
+	success       bool
+	viewport      viewport.Model
+	ready         bool
+	selectedIndex int
+	width         int
+	height        int
+	err           error
+	autoScroll    bool // Auto-scroll to bottom when new messages arrive
 }
 
 // Messages for TUI updates
@@ -370,7 +370,7 @@ func (m aiAgentModel) renderCommandBlock(iter AgentIteration, selected bool) str
 
 	// Build content
 	var content strings.Builder
-	content.WriteString(lipgloss.NewStyle().Foreground(borderColor).Bold(true).Render(title + " details") + "\n\n")
+	content.WriteString(lipgloss.NewStyle().Foreground(borderColor).Bold(true).Render(title+" details") + "\n\n")
 
 	// Status
 	content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("243")).Render("Status: "))
@@ -452,7 +452,7 @@ func (m aiAgentModel) renderFileEditBlock(iter AgentIteration, selected bool) st
 	}
 
 	if iter.Status == "failed" && iter.ErrorDetail != "" {
-		content.WriteString("\n\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("Error: " + iter.ErrorDetail))
+		content.WriteString("\n\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("Error: "+iter.ErrorDetail))
 	}
 
 	return boxStyle.Render(content.String())

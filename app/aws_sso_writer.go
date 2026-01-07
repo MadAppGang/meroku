@@ -210,15 +210,15 @@ func (cw *ConfigWriter) saveConfig(cfg *ini.File) error {
 
 // ModernSSOProfileOptions contains options for modern SSO profile
 type ModernSSOProfileOptions struct {
-	ProfileName            string
-	SSOSessionName         string // Name of sso-session section
-	SSOStartURL            string
-	SSORegion              string
-	SSOAccountID           string
-	SSORoleName            string
-	SSORegistrationScopes  string // Optional, defaults to "sso:account:access"
-	Region                 string // Optional
-	Output                 string // Optional
+	ProfileName           string
+	SSOSessionName        string // Name of sso-session section
+	SSOStartURL           string
+	SSORegion             string
+	SSOAccountID          string
+	SSORoleName           string
+	SSORegistrationScopes string // Optional, defaults to "sso:account:access"
+	Region                string // Optional
+	Output                string // Optional
 }
 
 // LegacySSOProfileOptions contains options for legacy SSO profile

@@ -22,41 +22,41 @@ type ProfileInspector struct {
 
 // ProfileInfo contains analyzed profile information
 type ProfileInfo struct {
-	Name             string
-	Exists           bool
-	Type             ProfileType
-	Complete         bool
-	MissingFields    []string
-	SSOStartURL      string
-	SSORegion        string
-	SSOAccountID     string
-	SSORoleName      string
-	SSOSession       string // For modern SSO
-	Region           string
-	Output           string
-	SSOSessionInfo   *SSOSessionInfo // For modern SSO
+	Name           string
+	Exists         bool
+	Type           ProfileType
+	Complete       bool
+	MissingFields  []string
+	SSOStartURL    string
+	SSORegion      string
+	SSOAccountID   string
+	SSORoleName    string
+	SSOSession     string // For modern SSO
+	Region         string
+	Output         string
+	SSOSessionInfo *SSOSessionInfo // For modern SSO
 }
 
 // SSOSessionInfo contains sso-session section details
 type SSOSessionInfo struct {
-	Name              string
-	Exists            bool
-	SSOStartURL       string
-	SSORegion         string
+	Name               string
+	Exists             bool
+	SSOStartURL        string
+	SSORegion          string
 	RegistrationScopes string
-	Complete          bool
-	MissingFields     []string
+	Complete           bool
+	MissingFields      []string
 }
 
 // ProfileType indicates the configuration style
 type ProfileType string
 
 const (
-	ProfileTypeUnknown     ProfileType = "unknown"
-	ProfileTypeModernSSO   ProfileType = "modern_sso"   // Uses sso-session
-	ProfileTypeLegacySSO   ProfileType = "legacy_sso"   // Direct SSO fields
-	ProfileTypeStaticKeys  ProfileType = "static_keys"  // Access key/secret
-	ProfileTypeAssumeRole  ProfileType = "assume_role"  // Role assumption
+	ProfileTypeUnknown    ProfileType = "unknown"
+	ProfileTypeModernSSO  ProfileType = "modern_sso"  // Uses sso-session
+	ProfileTypeLegacySSO  ProfileType = "legacy_sso"  // Direct SSO fields
+	ProfileTypeStaticKeys ProfileType = "static_keys" // Access key/secret
+	ProfileTypeAssumeRole ProfileType = "assume_role" // Role assumption
 )
 
 // NewProfileInspector creates a new profile inspector

@@ -14,15 +14,15 @@ import (
 
 // PricingResponse represents the pricing data for all services
 type PricingResponse struct {
-	Region string                     `json:"region"`
-	Nodes  map[string]NodePricing     `json:"nodes"`
+	Region string                 `json:"region"`
+	Nodes  map[string]NodePricing `json:"nodes"`
 }
 
 // NodePricing represents pricing for a single node/service
 type NodePricing struct {
-	ServiceName string                 `json:"serviceName"`
-	ServiceType string                 `json:"serviceType"`
-	Levels      map[string]LevelPrice  `json:"levels"`
+	ServiceName string                `json:"serviceName"`
+	ServiceType string                `json:"serviceType"`
+	Levels      map[string]LevelPrice `json:"levels"`
 }
 
 // LevelPrice represents the price for a specific workload level
@@ -35,27 +35,27 @@ type LevelPrice struct {
 // WorkloadSpecs defines the specifications for each workload level
 var WorkloadSpecs = map[string]map[string]interface{}{
 	"startup": {
-		"ecs_cpu":           256,     // 0.25 vCPU
-		"ecs_memory":        512,     // 512 MB
-		"ecs_desired_count": 1,       // 1 task
+		"ecs_cpu":           256, // 0.25 vCPU
+		"ecs_memory":        512, // 512 MB
+		"ecs_desired_count": 1,   // 1 task
 		"rds_instance":      "db.t3.micro",
-		"alb_requests":      100000,  // 100k requests/month
-		"nat_gateway_gb":    10,      // 10 GB/month
-		"cognito_mau":       1000,    // 1k monthly active users
+		"alb_requests":      100000, // 100k requests/month
+		"nat_gateway_gb":    10,     // 10 GB/month
+		"cognito_mau":       1000,   // 1k monthly active users
 	},
 	"scaleup": {
-		"ecs_cpu":           512,     // 0.5 vCPU
-		"ecs_memory":        1024,    // 1 GB
-		"ecs_desired_count": 2,       // 2 tasks
+		"ecs_cpu":           512,  // 0.5 vCPU
+		"ecs_memory":        1024, // 1 GB
+		"ecs_desired_count": 2,    // 2 tasks
 		"rds_instance":      "db.t3.small",
 		"alb_requests":      1000000, // 1M requests/month
 		"nat_gateway_gb":    100,     // 100 GB/month
 		"cognito_mau":       10000,   // 10k monthly active users
 	},
 	"highload": {
-		"ecs_cpu":           1024,     // 1 vCPU
-		"ecs_memory":        2048,     // 2 GB
-		"ecs_desired_count": 4,        // 4 tasks
+		"ecs_cpu":           1024, // 1 vCPU
+		"ecs_memory":        2048, // 2 GB
+		"ecs_desired_count": 4,    // 4 tasks
 		"rds_instance":      "db.t3.medium",
 		"alb_requests":      10000000, // 10M requests/month
 		"nat_gateway_gb":    1000,     // 1 TB/month
@@ -126,7 +126,7 @@ func getPricing(w http.ResponseWriter, r *http.Request) {
 	} else if env.Workload.BackendDesiredCount > 0 {
 		backendInstanceCount = env.Workload.BackendDesiredCount
 	}
-	
+
 	backendPricing := calculateBackendPricing(ctx, pricingClient, region, env.Workload, backendInstanceCount)
 	if backendPricing != nil {
 		response.Nodes["backend"] = *backendPricing
@@ -282,7 +282,7 @@ func calculateBackendPricing(ctx context.Context, client *pricing.Client, region
 		// Use configured resources for all levels or fallback to spec
 		cpu := configuredCPU
 		memory := configuredMemory
-		
+
 		// If no configuration, use level-specific specs
 		if workload.BackendCPU == "" {
 			cpu = specs["ecs_cpu"].(int)
@@ -335,7 +335,7 @@ func calculateServicePricing(ctx context.Context, client *pricing.Client, region
 		cpu := specs["ecs_cpu"].(int)
 		memory := specs["ecs_memory"].(int)
 		desiredCount := specs["ecs_desired_count"].(int)
-		
+
 		// Use configured desired count if available
 		if configuredDesiredCount > 0 {
 			desiredCount = int(configuredDesiredCount)
@@ -432,13 +432,13 @@ func calculateALBPricing(ctx context.Context, client *pricing.Client, region str
 
 	for level, specs := range WorkloadSpecs {
 		requests := specs["alb_requests"].(int)
-		
+
 		// Estimate LCUs based on requests (simplified calculation)
 		// 1 LCU = 25 new connections/sec = 90,000 connections/hour
 		estimatedLCUs := float64(requests) / (90000.0 * 730) // Monthly requests to hourly LCUs
-		
+
 		hourlyCost := albHourlyPrice + (estimatedLCUs * lcuPrice)
-		
+
 		nodePricing.Levels[level] = LevelPrice{
 			HourlyPrice:  hourlyCost,
 			MonthlyPrice: hourlyCost * 730,
@@ -466,7 +466,7 @@ func calculateAPIGatewayPricing(ctx context.Context, client *pricing.Client, reg
 		requests := specs["alb_requests"].(int) // Reuse ALB request estimates
 		millionRequests := float64(requests) / 1000000.0
 		monthlyCost := millionRequests * requestPrice
-		
+
 		nodePricing.Levels[level] = LevelPrice{
 			HourlyPrice:  monthlyCost / 730,
 			MonthlyPrice: monthlyCost,
@@ -489,7 +489,7 @@ func calculateRoute53Pricing(region string) *NodePricing {
 
 	// Route53 pricing
 	hostedZonePrice := 0.50 // $0.50 per hosted zone per month
-	
+
 	// DNS queries pricing (per million)
 	queryPrices := map[string]float64{
 		"startup":  0.40, // $0.40 per million queries
@@ -507,7 +507,7 @@ func calculateRoute53Pricing(region string) *NodePricing {
 		millionQueries := float64(queries) / 1000000.0
 		queryCost := millionQueries * queryPrices[level]
 		monthlyCost := hostedZonePrice + queryCost
-		
+
 		nodePricing.Levels[level] = LevelPrice{
 			HourlyPrice:  monthlyCost / 730,
 			MonthlyPrice: monthlyCost,
@@ -540,7 +540,7 @@ func calculateSESPricing(region string) *NodePricing {
 	for level, emails := range emailEstimates {
 		thousandEmails := float64(emails) / 1000.0
 		monthlyCost := thousandEmails * emailPrice
-		
+
 		nodePricing.Levels[level] = LevelPrice{
 			HourlyPrice:  monthlyCost / 730,
 			MonthlyPrice: monthlyCost,
@@ -572,7 +572,7 @@ func calculateEventBridgePricing(region string, ruleCount int) *NodePricing {
 	for level, events := range eventEstimates {
 		millionEvents := float64(events) / 1000000.0
 		monthlyCost := millionEvents * eventPrice * float64(ruleCount)
-		
+
 		nodePricing.Levels[level] = LevelPrice{
 			HourlyPrice:  monthlyCost / 730,
 			MonthlyPrice: monthlyCost,
@@ -604,7 +604,7 @@ func calculateECRPricing(ctx context.Context, client *pricing.Client, region str
 
 	for level, storage := range storageEstimates {
 		monthlyCost := float64(storage) * storagePrice
-		
+
 		nodePricing.Levels[level] = LevelPrice{
 			HourlyPrice:  monthlyCost / 730,
 			MonthlyPrice: monthlyCost,
@@ -630,9 +630,9 @@ func calculateVPCPricing(region string) *NodePricing {
 			HourlyPrice:  0,
 			MonthlyPrice: 0,
 			Details: map[string]string{
-				"subnets":         "6",
-				"securityGroups":  "Multiple",
-				"cost":            "Free",
+				"subnets":        "6",
+				"securityGroups": "Multiple",
+				"cost":           "Free",
 			},
 		}
 	}
@@ -653,20 +653,20 @@ func calculateCognitoPricing(region string) *NodePricing {
 
 	for level, specs := range WorkloadSpecs {
 		mau := specs["cognito_mau"].(int)
-		
+
 		// Calculate billable MAUs (after free tier)
 		billableMAUs := 0
 		if mau > 50000 {
 			billableMAUs = mau - 50000
 		}
-		
+
 		monthlyCost := float64(billableMAUs) * pricePerMAU
-		
+
 		nodePricing.Levels[level] = LevelPrice{
 			HourlyPrice:  monthlyCost / 730,
 			MonthlyPrice: monthlyCost,
 			Details: map[string]string{
-				"mau":          fmt.Sprintf("%d", mau),
+				"mau":         fmt.Sprintf("%d", mau),
 				"billableMAU": fmt.Sprintf("%d", billableMAUs),
 			},
 		}
@@ -685,7 +685,7 @@ func calculateS3Pricing(ctx context.Context, client *pricing.Client, region stri
 	// Get S3 standard storage price
 	storagePrice := getS3StoragePrice(ctx, client, region)
 	requestPrice := 0.0004 // $0.0004 per 1,000 requests
-	
+
 	// Estimate storage based on workload
 	storageGB := map[string]int{
 		"startup":  10,   // 10 GB per bucket
@@ -704,7 +704,7 @@ func calculateS3Pricing(ctx context.Context, client *pricing.Client, region stri
 		storageCost := float64(totalGB) * storagePrice
 		requestCost := float64(requestsK[level]) * requestPrice
 		monthlyCost := storageCost + requestCost
-		
+
 		nodePricing.Levels[level] = LevelPrice{
 			HourlyPrice:  monthlyCost / 730,
 			MonthlyPrice: monthlyCost,
@@ -736,15 +736,15 @@ func calculateScheduledTaskPricing(ctx context.Context, client *pricing.Client, 
 	for level, specs := range WorkloadSpecs {
 		cpu := specs["ecs_cpu"].(int)
 		memory := specs["ecs_memory"].(int)
-		
+
 		// Calculate cost per run (assuming 5 minutes average runtime)
 		runtimeHours := 5.0 / 60.0 // 5 minutes in hours
 		vCPUCostPerRun := (float64(cpu) / 1024.0) * vCPUPrice * runtimeHours
 		memoryCostPerRun := (float64(memory) / 1024.0) * memoryPrice * runtimeHours
 		costPerRun := vCPUCostPerRun + memoryCostPerRun
-		
+
 		monthlyCost := costPerRun * float64(runsPerMonth)
-		
+
 		nodePricing.Levels[level] = LevelPrice{
 			HourlyPrice:  monthlyCost / 730,
 			MonthlyPrice: monthlyCost,
@@ -772,7 +772,7 @@ func estimateRunsPerMonth(schedule string) int {
 				value := 1
 				fmt.Sscanf(fields[0], "%d", &value)
 				unit := fields[1]
-				
+
 				switch {
 				case strings.HasPrefix(unit, "minute"):
 					return (30 * 24 * 60) / value
@@ -802,9 +802,9 @@ func calculateEventTaskPricing(ctx context.Context, client *pricing.Client, regi
 	// Estimate runs per month based on workload level
 	// Event tasks typically process events triggered by EventBridge
 	runsPerMonthMap := map[string]int{
-		"startup":   500,   // Low event volume for startups
-		"scaleup":   2000,  // Medium event volume as you scale
-		"highload":  10000, // High event volume for production scale
+		"startup":  500,   // Low event volume for startups
+		"scaleup":  2000,  // Medium event volume as you scale
+		"highload": 10000, // High event volume for production scale
 	}
 
 	for level, specs := range WorkloadSpecs {
@@ -847,17 +847,17 @@ func calculateCloudWatchPricing(ctx context.Context, client *pricing.Client, reg
 
 	// CloudWatch logs ingestion price per GB
 	logsIngestionPrice := getCloudWatchLogsPrice(ctx, client, region)
-	
+
 	// Estimate logs based on workload
 	logsGB := map[string]float64{
-		"startup":  1.0,   // 1 GB/month
-		"scaleup":  10.0,  // 10 GB/month
-		"highload": 50.0,  // 50 GB/month
+		"startup":  1.0,  // 1 GB/month
+		"scaleup":  10.0, // 10 GB/month
+		"highload": 50.0, // 50 GB/month
 	}
 
 	for level, gb := range logsGB {
 		monthlyCost := gb * logsIngestionPrice
-		
+
 		nodePricing.Levels[level] = LevelPrice{
 			HourlyPrice:  monthlyCost / 730,
 			MonthlyPrice: monthlyCost,
@@ -884,22 +884,22 @@ func getRDSInstancePrice(ctx context.Context, client *pricing.Client, region str
 	// Hardcoded prices for current-gen instances (us-east-1, Single-AZ)
 	// These are real AWS prices as of January 2025
 	singleAZPrices := map[string]float64{
-		"db.t4g.micro":    0.016,
-		"db.t4g.small":    0.032,
-		"db.t4g.medium":   0.065,
-		"db.t4g.large":    0.129,
-		"db.t3.micro":     0.018,
-		"db.t3.small":     0.036,
-		"db.t3.medium":    0.073,
-		"db.m6i.large":    0.178,
-		"db.m6i.xlarge":   0.356,
-		"db.m6i.2xlarge":  0.712,
-		"db.m5.large":     0.192,
-		"db.m5.xlarge":    0.384,
-		"db.r6i.large":    0.240,
-		"db.r6i.xlarge":   0.480,
-		"db.r5.large":     0.260,
-		"db.r5.xlarge":    0.520,
+		"db.t4g.micro":   0.016,
+		"db.t4g.small":   0.032,
+		"db.t4g.medium":  0.065,
+		"db.t4g.large":   0.129,
+		"db.t3.micro":    0.018,
+		"db.t3.small":    0.036,
+		"db.t3.medium":   0.073,
+		"db.m6i.large":   0.178,
+		"db.m6i.xlarge":  0.356,
+		"db.m6i.2xlarge": 0.712,
+		"db.m5.large":    0.192,
+		"db.m5.xlarge":   0.384,
+		"db.r6i.large":   0.240,
+		"db.r6i.xlarge":  0.480,
+		"db.r5.large":    0.260,
+		"db.r5.xlarge":   0.520,
 	}
 
 	price := singleAZPrices[instanceType]
@@ -928,7 +928,6 @@ func getALBHourlyPrice(ctx context.Context, client *pricing.Client, region strin
 func getALBLCUPrice(ctx context.Context, client *pricing.Client, region string) float64 {
 	return 0.008 // $0.008 per LCU hour
 }
-
 
 func getS3StoragePrice(ctx context.Context, client *pricing.Client, region string) float64 {
 	return 0.023 // $0.023 per GB per month for standard storage

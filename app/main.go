@@ -149,14 +149,14 @@ func main() {
 		// Use the provided environment directly
 		selectedEnvironment = *envFlag
 		fmt.Printf("Using environment: %s\n", selectedEnvironment)
-		
+
 		// Load the environment to check for account_id
 		env, err := loadEnv(selectedEnvironment)
 		if err != nil {
 			fmt.Printf("Failed to load environment %s: %v\n", selectedEnvironment, err)
 			os.Exit(1)
 		}
-		
+
 		if env.AccountID == "" {
 			// Need to select AWS profile for this environment
 			err = selectAWSProfileForEnv(selectedEnvironment)
@@ -191,7 +191,7 @@ func main() {
 				env.AWSProfile = profile
 				saveEnvToFile(env, selectedEnvironment+".yaml")
 			}
-			
+
 			// Set the AWS profile and region
 			os.Setenv("AWS_PROFILE", env.AWSProfile)
 			selectedAWSProfile = env.AWSProfile
@@ -382,13 +382,13 @@ func runTerraformPlanTUI(planFile string) error {
 	if err != nil {
 		return fmt.Errorf("failed to read plan file: %w", err)
 	}
-	
+
 	// Initialize the TUI model
 	model, err := initModernTerraformPlanTUI(string(planData))
 	if err != nil {
 		return fmt.Errorf("failed to initialize TUI: %w", err)
 	}
-	
+
 	// Create and run the tea program
 	p := tea.NewProgram(model, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {

@@ -52,7 +52,7 @@ func deployMenu() {
 			os.Exit(1)
 		}
 	}
-	
+
 	runCommandToDeploy(env)
 }
 

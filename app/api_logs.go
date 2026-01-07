@@ -23,21 +23,21 @@ func constructLogGroupName(envConfig Env, serviceName string) string {
 	if serviceName == "backend" {
 		return fmt.Sprintf("%s_backend_%s", envConfig.Project, envConfig.Env)
 	}
-	
+
 	// Check if it's a scheduled task
 	for _, task := range envConfig.ScheduledTasks {
 		if task.Name == serviceName {
 			return fmt.Sprintf("%s_task_%s_%s", envConfig.Project, serviceName, envConfig.Env)
 		}
 	}
-	
+
 	// Check if it's an event processor task
 	for _, task := range envConfig.EventProcessorTasks {
 		if task.Name == serviceName {
 			return fmt.Sprintf("%s_task_%s_%s", envConfig.Project, serviceName, envConfig.Env)
 		}
 	}
-	
+
 	// Default to service pattern for regular services
 	return fmt.Sprintf("%s_service_%s_%s", envConfig.Project, serviceName, envConfig.Env)
 }
@@ -123,7 +123,7 @@ func getServiceLogs(w http.ResponseWriter, r *http.Request) {
 
 	// Get logs from CloudWatch
 	cwClient := cloudwatchlogs.NewFromConfig(cfg)
-	
+
 	// Get log streams
 	streamsInput := &cloudwatchlogs.DescribeLogStreamsInput{
 		LogGroupName: aws.String(logGroupName),
@@ -170,7 +170,7 @@ func getServiceLogs(w http.ResponseWriter, r *http.Request) {
 					level := "info"
 					message := *event.Message
 					messageLower := strings.ToLower(message)
-					
+
 					if strings.Contains(messageLower, "error") || strings.Contains(messageLower, "exception") {
 						level = "error"
 					} else if strings.Contains(messageLower, "warn") {
@@ -261,7 +261,7 @@ func streamServiceLogs(w http.ResponseWriter, r *http.Request) {
 	})
 
 	// Keep track of the last timestamp - start from 24 hours ago to get recent logs
-	lastTimestamp := time.Now().Add(-24 * time.Hour).Unix() * 1000
+	lastTimestamp := time.Now().Add(-24*time.Hour).Unix() * 1000
 
 	// Create a ticker for periodic log fetching
 	ticker := time.NewTicker(2 * time.Second)
@@ -269,7 +269,7 @@ func streamServiceLogs(w http.ResponseWriter, r *http.Request) {
 
 	// Channel to handle client disconnection
 	done := make(chan struct{})
-	
+
 	// Read messages from client (for ping/pong and close detection)
 	go func() {
 		for {
@@ -321,7 +321,7 @@ func streamServiceLogs(w http.ResponseWriter, r *http.Request) {
 				filterResult, err := cwClient.FilterLogEvents(ctx, filterInput)
 				if err == nil && len(filterResult.Events) > 0 {
 					newLogs := []LogEntry{}
-					
+
 					for _, event := range filterResult.Events {
 						if event.Message != nil && event.Timestamp != nil {
 							// Update last timestamp
@@ -333,7 +333,7 @@ func streamServiceLogs(w http.ResponseWriter, r *http.Request) {
 							level := "info"
 							message := *event.Message
 							messageLower := strings.ToLower(message)
-							
+
 							if strings.Contains(messageLower, "error") || strings.Contains(messageLower, "exception") {
 								level = "error"
 							} else if strings.Contains(messageLower, "warn") {

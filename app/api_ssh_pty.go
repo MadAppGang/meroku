@@ -33,7 +33,7 @@ func startSSHSessionPTY(w http.ResponseWriter, r *http.Request) {
 	serviceName := r.URL.Query().Get("service")
 	taskArn := r.URL.Query().Get("taskArn")
 	containerName := r.URL.Query().Get("container")
-	
+
 	fmt.Printf("SSH WebSocket request: env=%s, service=%s, taskArn=%s, container=%s\n", envName, serviceName, taskArn, containerName)
 
 	if envName == "" || serviceName == "" || taskArn == "" {
@@ -89,15 +89,15 @@ func startSSHSessionPTY(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close()
 
 	// Set WebSocket timeouts
-	conn.SetReadDeadline(time.Time{}) // No read deadline
+	conn.SetReadDeadline(time.Time{})  // No read deadline
 	conn.SetWriteDeadline(time.Time{}) // No write deadline
-	
+
 	// Configure ping/pong to keep connection alive
 	conn.SetPongHandler(func(string) error {
 		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 		return nil
 	})
-	
+
 	// Handle close gracefully
 	conn.SetCloseHandler(func(code int, text string) error {
 		fmt.Printf("WebSocket close requested: code=%d, text=%s\n", code, text)
@@ -142,10 +142,10 @@ func startSSHSessionPTY(w http.ResponseWriter, r *http.Request) {
 
 	// Start command with PTY
 	fmt.Printf("Starting PTY session...\n")
-	
+
 	// Set up to capture any immediate errors
 	cmd.Stderr = cmd.Stdout // Combine stderr with stdout for PTY
-	
+
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
 		fmt.Printf("Failed to start PTY: %v\n", err)
@@ -156,10 +156,10 @@ func startSSHSessionPTY(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fmt.Printf("PTY session started successfully\n")
-	
+
 	// Give the process a moment to start
 	time.Sleep(100 * time.Millisecond)
-	
+
 	// Check if process is still running
 	if cmd.ProcessState != nil {
 		fmt.Printf("Process exited immediately with: %v\n", cmd.ProcessState)
@@ -169,7 +169,7 @@ func startSSHSessionPTY(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	
+
 	// Handle cleanup
 	defer func() {
 		fmt.Printf("Cleaning up PTY session...\n")
@@ -178,7 +178,7 @@ func startSSHSessionPTY(w http.ResponseWriter, r *http.Request) {
 		}
 		ptmx.Close()
 		cmd.Wait()
-		
+
 		if err := conn.WriteJSON(SSHMessage{
 			Type: "disconnected",
 			Data: "Session ended",
@@ -186,7 +186,7 @@ func startSSHSessionPTY(w http.ResponseWriter, r *http.Request) {
 			fmt.Printf("Failed to send disconnected message: %v\n", err)
 		}
 	}()
-	
+
 	// Set initial terminal size
 	if err := pty.Setsize(ptmx, &pty.Winsize{
 		Rows: 24,

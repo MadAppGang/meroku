@@ -180,9 +180,8 @@ type Ses struct {
 }
 
 type SESDomain struct {
-	Domain     string   `yaml:"domain"`                // Required: e.g., "mail.example.com"
-	ZoneID     string   `yaml:"zone_id,omitempty"`     // Optional: Route53 zone ID
-	TestEmails []string `yaml:"test_emails,omitempty"` // Domain-specific test emails
+	Domain string `yaml:"domain"`            // Required: e.g., "mail.example.com"
+	ZoneID string `yaml:"zone_id,omitempty"` // Optional: Route53 zone ID
 
 	// Per-domain overrides (optional)
 	EnableMailFrom    *bool  `yaml:"enable_mail_from,omitempty"`    // Override global setting

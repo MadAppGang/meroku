@@ -33,9 +33,9 @@ func renderDiffToText(planFile string) error {
 	replaceCount := 0
 
 	for _, change := range plan.ResourceChanges {
-		if len(change.Change.Actions) == 2 && 
-		   change.Change.Actions[0] == "delete" && 
-		   change.Change.Actions[1] == "create" {
+		if len(change.Change.Actions) == 2 &&
+			change.Change.Actions[0] == "delete" &&
+			change.Change.Actions[1] == "create" {
 			replaceCount++
 		} else if len(change.Change.Actions) > 0 {
 			switch change.Change.Actions[0] {
@@ -56,21 +56,21 @@ func renderDiffToText(planFile string) error {
 	// Group by provider
 	providerMap := make(map[string][]ResourceChange)
 	for _, change := range plan.ResourceChanges {
-		if len(change.Change.Actions) == 0 || 
-		   (len(change.Change.Actions) == 1 && (change.Change.Actions[0] == "no-op" || change.Change.Actions[0] == "read")) {
+		if len(change.Change.Actions) == 0 ||
+			(len(change.Change.Actions) == 1 && (change.Change.Actions[0] == "no-op" || change.Change.Actions[0] == "read")) {
 			continue
 		}
-		
+
 		parts := strings.Split(change.ProviderName, ".")
 		provider := parts[len(parts)-1]
 		if strings.Contains(provider, "/") {
 			provider = strings.Split(provider, "/")[1]
 		}
-		
+
 		// Handle replacements - show both delete and create
-		if len(change.Change.Actions) == 2 && 
-		   change.Change.Actions[0] == "delete" && 
-		   change.Change.Actions[1] == "create" {
+		if len(change.Change.Actions) == 2 &&
+			change.Change.Actions[0] == "delete" &&
+			change.Change.Actions[1] == "create" {
 			// Add as replacement
 			providerMap[provider] = append(providerMap[provider], change)
 		} else {
@@ -81,13 +81,13 @@ func renderDiffToText(planFile string) error {
 	// Display changes by provider
 	for provider, changes := range providerMap {
 		fmt.Printf("━━━ Provider: %s (%d changes) ━━━\n\n", provider, len(changes))
-		
+
 		for _, change := range changes {
 			// Determine action and icon
 			var action, icon string
-			if len(change.Change.Actions) == 2 && 
-			   change.Change.Actions[0] == "delete" && 
-			   change.Change.Actions[1] == "create" {
+			if len(change.Change.Actions) == 2 &&
+				change.Change.Actions[0] == "delete" &&
+				change.Change.Actions[1] == "create" {
 				action = "REPLACE"
 				icon = "🔄"
 			} else {
@@ -106,14 +106,14 @@ func renderDiffToText(planFile string) error {
 					icon = "•"
 				}
 			}
-			
+
 			fmt.Printf("%s %s: %s (%s)\n", icon, action, change.Address, change.Type)
-			
+
 			// Show key changes for updates and replacements
 			if action == "UPDATE" || action == "REPLACE" {
 				if change.Change.Before != nil && change.Change.After != nil {
 					fmt.Println("  Changes:")
-					
+
 					// Find what's changing
 					for key, beforeVal := range change.Change.Before {
 						if afterVal, exists := change.Change.After[key]; exists {
@@ -124,7 +124,7 @@ func renderDiffToText(planFile string) error {
 							}
 						}
 					}
-					
+
 					// Find new keys
 					for key, afterVal := range change.Change.After {
 						if _, exists := change.Change.Before[key]; !exists {
@@ -136,7 +136,7 @@ func renderDiffToText(planFile string) error {
 					}
 				}
 			}
-			
+
 			// Show what will be created
 			if action == "CREATE" && change.Change.After != nil {
 				fmt.Println("  Configuration:")
@@ -154,7 +154,7 @@ func renderDiffToText(planFile string) error {
 					count++
 				}
 			}
-			
+
 			fmt.Println()
 		}
 	}
@@ -162,6 +162,6 @@ func renderDiffToText(planFile string) error {
 	fmt.Println("════════════════════════════════════════════════════════════════════")
 	fmt.Println("Use arrow keys to navigate in the full TUI version")
 	fmt.Println("Run without --renderdiff flag for interactive mode")
-	
+
 	return nil
 }
