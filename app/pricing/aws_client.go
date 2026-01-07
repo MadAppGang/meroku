@@ -63,14 +63,15 @@ func (c *AWSPricingClient) FetchRates(region string) (*PriceRates, error) {
 // - Estimated implementation time: 20-30 hours
 //
 // Example implementation:
-//   input := &pricing.GetProductsInput{
-//       ServiceCode: aws.String("AmazonRDS"),
-//       Filters: []types.Filter{
-//           {Type: types.FilterTypeTermMatch, Field: aws.String("location"), Value: aws.String(region)},
-//       },
-//   }
-//   result, err := c.client.GetProducts(context.Background(), input)
-//   // Parse complex JSON response...
+//
+//	input := &pricing.GetProductsInput{
+//	    ServiceCode: aws.String("AmazonRDS"),
+//	    Filters: []types.Filter{
+//	        {Type: types.FilterTypeTermMatch, Field: aws.String("location"), Value: aws.String(region)},
+//	    },
+//	}
+//	result, err := c.client.GetProducts(context.Background(), input)
+//	// Parse complex JSON response...
 func (c *AWSPricingClient) fetchRatesOnce(region string) (*PriceRates, error) {
 	// Not implemented - using fallback prices intentionally
 	return nil, ErrNotImplemented
@@ -102,15 +103,15 @@ func getHardcodedFallbackRates() *PriceRates {
 		// RDS Instance Pricing (hourly rates, Single-AZ)
 		RDS: map[string]float64{
 			// T4g instances (ARM-based, cheapest)
-			"db.t4g.micro":   0.016,
-			"db.t4g.small":   0.032,
-			"db.t4g.medium":  0.065,
-			"db.t4g.large":   0.129,
+			"db.t4g.micro":  0.016,
+			"db.t4g.small":  0.032,
+			"db.t4g.medium": 0.065,
+			"db.t4g.large":  0.129,
 
 			// T3 instances (x86-based)
-			"db.t3.micro":    0.018,
-			"db.t3.small":    0.036,
-			"db.t3.medium":   0.073,
+			"db.t3.micro":  0.018,
+			"db.t3.small":  0.036,
+			"db.t3.medium": 0.073,
 
 			// M6i instances (general purpose)
 			"db.m6i.large":   0.178,
@@ -118,23 +119,23 @@ func getHardcodedFallbackRates() *PriceRates {
 			"db.m6i.2xlarge": 0.712,
 
 			// M5 instances (general purpose, previous gen)
-			"db.m5.large":    0.192,
-			"db.m5.xlarge":   0.384,
+			"db.m5.large":  0.192,
+			"db.m5.xlarge": 0.384,
 
 			// R6i instances (memory optimized)
-			"db.r6i.large":   0.240,
-			"db.r6i.xlarge":  0.480,
+			"db.r6i.large":  0.240,
+			"db.r6i.xlarge": 0.480,
 
 			// R5 instances (memory optimized, previous gen)
-			"db.r5.large":    0.260,
-			"db.r5.xlarge":   0.520,
+			"db.r5.large":  0.260,
+			"db.r5.xlarge": 0.520,
 		},
 
 		// Aurora Serverless v2 Pricing
 		Aurora: AuroraPricing{
-			ACUHourly:      0.12,   // $/ACU/hour
-			StorageGBMonth: 0.10,   // $/GB/month
-			IORequestsPerM: 0.20,   // $/million I/O requests
+			ACUHourly:      0.12, // $/ACU/hour
+			StorageGBMonth: 0.10, // $/GB/month
+			IORequestsPerM: 0.20, // $/million I/O requests
 		},
 
 		// Fargate Pricing
@@ -174,8 +175,8 @@ func getHardcodedFallbackRates() *PriceRates {
 
 		// CloudWatch Pricing
 		CloudWatch: CloudWatchPricing{
-			LogsIngestionPerGB: 0.50,  // $/GB ingested
-			MetricsPerMetric:   0.30,  // $/metric/month (custom metrics)
+			LogsIngestionPerGB: 0.50, // $/GB ingested
+			MetricsPerMetric:   0.30, // $/metric/month (custom metrics)
 		},
 
 		// Route53 Pricing
@@ -186,8 +187,8 @@ func getHardcodedFallbackRates() *PriceRates {
 
 		// Cognito Pricing
 		Cognito: CognitoPricing{
-			MAUPrice: 0.0055,  // $/MAU (after free tier)
-			FreeMAUs: 50000,   // First 50k MAUs free
+			MAUPrice: 0.0055, // $/MAU (after free tier)
+			FreeMAUs: 50000,  // First 50k MAUs free
 		},
 
 		// SES Pricing

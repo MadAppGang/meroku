@@ -10,9 +10,9 @@ import (
 )
 
 type NodePosition struct {
-	NodeID   string  `json:"nodeId"`
-	X        float64 `json:"x"`
-	Y        float64 `json:"y"`
+	NodeID string  `json:"nodeId"`
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
 }
 
 type EdgeHandlePosition struct {
@@ -22,9 +22,9 @@ type EdgeHandlePosition struct {
 }
 
 type BoardPositions struct {
-	Environment  string               `json:"environment"`
-	Positions    []NodePosition       `json:"positions"`
-	EdgeHandles  []EdgeHandlePosition `json:"edgeHandles,omitempty"`
+	Environment string               `json:"environment"`
+	Positions   []NodePosition       `json:"positions"`
+	EdgeHandles []EdgeHandlePosition `json:"edgeHandles,omitempty"`
 }
 
 func getPositionsFilePath(environment string) string {
@@ -48,7 +48,7 @@ func getNodePositions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	filePath := getPositionsFilePath(environment)
-	
+
 	// Check if positions file exists
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		// Return empty positions if file doesn't exist
@@ -109,7 +109,7 @@ func saveNodePositions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	filePath := getPositionsFilePath(positions.Environment)
-	
+
 	// Marshal positions to JSON with indentation for readability
 	data, err := json.MarshalIndent(positions, "", "  ")
 	if err != nil {
@@ -127,7 +127,7 @@ func saveNodePositions(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
-		"message": "Positions saved successfully",
+		"message":     "Positions saved successfully",
 		"environment": positions.Environment,
 	})
 }

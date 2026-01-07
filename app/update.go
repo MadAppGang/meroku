@@ -65,7 +65,7 @@ func updateInfrastructure() error {
 			return nil
 		}
 		_ = spinner.New().Title("Updating the infrastructure...").Action(initProject).Run()
-		
+
 		// Show success message after update
 		huh.NewNote().
 			Title("Update Complete").
@@ -84,10 +84,10 @@ func updateInfrastructure() error {
 
 // VersionCheckResult holds the result of a version check
 type VersionCheckResult struct {
-	LocalVersion     string
-	RemoteVersion    string
-	UpdateAvailable  bool
-	Error            error
+	LocalVersion    string
+	RemoteVersion   string
+	UpdateAvailable bool
+	Error           error
 }
 
 // checkVersionAtStartup performs a silent version check without blocking UI

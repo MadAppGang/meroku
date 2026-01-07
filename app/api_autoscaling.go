@@ -31,9 +31,9 @@ type ServiceAutoscalingInfo struct {
 	CPU                 int32   `json:"cpu"`
 	Memory              int32   `json:"memory"`
 	// Current metrics
-	CurrentCPUUtilization    *float64              `json:"currentCPUUtilization,omitempty"`
-	CurrentMemoryUtilization *float64              `json:"currentMemoryUtilization,omitempty"`
-	LastScalingActivity      *ScalingActivityInfo  `json:"lastScalingActivity,omitempty"`
+	CurrentCPUUtilization    *float64             `json:"currentCPUUtilization,omitempty"`
+	CurrentMemoryUtilization *float64             `json:"currentMemoryUtilization,omitempty"`
+	LastScalingActivity      *ScalingActivityInfo `json:"lastScalingActivity,omitempty"`
 }
 
 type ScalingActivityInfo struct {
@@ -57,8 +57,8 @@ type ScalingEvent struct {
 }
 
 type ServiceMetrics struct {
-	ServiceName string        `json:"serviceName"`
-	Metrics     MetricsData   `json:"metrics"`
+	ServiceName string      `json:"serviceName"`
+	Metrics     MetricsData `json:"metrics"`
 }
 
 type MetricsData struct {
@@ -81,7 +81,7 @@ func getServiceAutoscaling(w http.ResponseWriter, r *http.Request) {
 
 	envName := r.URL.Query().Get("env")
 	serviceName := r.URL.Query().Get("service")
-	
+
 	if envName == "" || serviceName == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(ErrorResponse{Error: "env and service parameters are required"})
@@ -150,7 +150,7 @@ func getServiceAutoscaling(w http.ResponseWriter, r *http.Request) {
 	// Get autoscaling configuration
 	autoscalingClient := applicationautoscaling.NewFromConfig(cfg)
 	resourceId := fmt.Sprintf("service/%s/%s", clusterName, fullServiceName)
-	
+
 	// Check if autoscaling target exists
 	targetsResult, err := autoscalingClient.DescribeScalableTargets(ctx, &applicationautoscaling.DescribeScalableTargetsInput{
 		ServiceNamespace: types.ServiceNamespaceEcs,
@@ -252,7 +252,7 @@ func getServiceScalingHistory(w http.ResponseWriter, r *http.Request) {
 	envName := r.URL.Query().Get("env")
 	serviceName := r.URL.Query().Get("service")
 	hoursStr := r.URL.Query().Get("hours")
-	
+
 	if envName == "" || serviceName == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(ErrorResponse{Error: "env and service parameters are required"})
@@ -295,7 +295,7 @@ func getServiceScalingHistory(w http.ResponseWriter, r *http.Request) {
 	// Get scaling activities
 	autoscalingClient := applicationautoscaling.NewFromConfig(cfg)
 	resourceId := fmt.Sprintf("service/%s/%s", clusterName, fullServiceName)
-	
+
 	startTime := time.Now().Add(-time.Duration(hours) * time.Hour)
 	activitiesResult, err := autoscalingClient.DescribeScalingActivities(ctx, &applicationautoscaling.DescribeScalingActivitiesInput{
 		ServiceNamespace: types.ServiceNamespaceEcs,
@@ -324,7 +324,7 @@ func getServiceScalingHistory(w http.ResponseWriter, r *http.Request) {
 					var toCapacity int32
 					fmt.Sscanf(desc, "Successfully set desired count to %d", &toCapacity)
 					event.ToCapacity = toCapacity
-					
+
 					// Determine if it's scale up or down based on cause
 					if activity.Cause != nil && strings.Contains(*activity.Cause, "monitor alarm") {
 						if strings.Contains(*activity.Cause, "High") {
@@ -353,7 +353,7 @@ func getServiceMetrics(w http.ResponseWriter, r *http.Request) {
 
 	envName := r.URL.Query().Get("env")
 	serviceName := r.URL.Query().Get("service")
-	
+
 	if envName == "" || serviceName == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(ErrorResponse{Error: "env and service parameters are required"})

@@ -91,23 +91,23 @@ func (m *planProgressModel) runTerraformPlan() tea.Cmd {
 		// Create the terraform plan command with no color output for easier parsing
 		cmd := exec.Command("terraform", "plan", "-no-color", "-out=tfplan")
 		m.cmd = cmd
-		
+
 		// Create pipes for stdout and stderr
 		stdout, err := cmd.StdoutPipe()
 		if err != nil {
 			return planErrorMsg{err: err, output: []string{err.Error()}}
 		}
-		
+
 		stderr, err := cmd.StderrPipe()
 		if err != nil {
 			return planErrorMsg{err: err, output: []string{err.Error()}}
 		}
-		
+
 		// Start the command
 		if err := cmd.Start(); err != nil {
 			return planErrorMsg{err: err, output: []string{err.Error()}}
 		}
-		
+
 		// Process stdout in a goroutine
 		go func() {
 			scanner := bufio.NewScanner(stdout)
@@ -122,7 +122,7 @@ func (m *planProgressModel) runTerraformPlan() tea.Cmd {
 				m.outputMutex.Unlock()
 			}
 		}()
-		
+
 		// Process stderr in a goroutine
 		go func() {
 			scanner := bufio.NewScanner(stderr)
@@ -131,23 +131,23 @@ func (m *planProgressModel) runTerraformPlan() tea.Cmd {
 				m.outputMutex.Lock()
 				m.errorOutput = append(m.errorOutput, line)
 				// Also add to output lines so we can see errors in the display
-				m.outputLines = append(m.outputLines, "ERROR: " + line)
+				m.outputLines = append(m.outputLines, "ERROR: "+line)
 				if len(m.outputLines) > 100 {
 					m.outputLines = m.outputLines[len(m.outputLines)-100:]
 				}
 				m.outputMutex.Unlock()
 			}
 		}()
-		
+
 		// Wait for command to complete
 		err = cmd.Wait()
-		
+
 		if err != nil {
 			m.outputMutex.Lock()
 			errorLines := make([]string, len(m.errorOutput))
 			copy(errorLines, m.errorOutput)
 			m.outputMutex.Unlock()
-			
+
 			if len(errorLines) == 0 {
 				m.outputMutex.Lock()
 				errorLines = make([]string, len(m.outputLines))
@@ -156,13 +156,13 @@ func (m *planProgressModel) runTerraformPlan() tea.Cmd {
 			}
 			return planErrorMsg{err: err, output: errorLines}
 		}
-		
+
 		// Get final output for next stage
 		m.outputMutex.Lock()
 		finalLines := make([]string, len(m.outputLines))
 		copy(finalLines, m.outputLines)
 		m.outputMutex.Unlock()
-		
+
 		return planCompleteMsg{output: strings.Join(finalLines, "\n")}
 	}
 }
@@ -173,17 +173,17 @@ func (m *planProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		return m, nil
-		
+
 	case tickMsg:
 		// Increment spinner frame
 		m.spinnerFrame++
-		
+
 		// Process any new output lines
 		m.outputMutex.Lock()
 		lines := make([]string, len(m.outputLines))
 		copy(lines, m.outputLines)
 		m.outputMutex.Unlock()
-		
+
 		// Parse the latest lines to determine phase and current resource
 		for _, line := range lines {
 			if strings.Contains(line, "Initializing") {
@@ -221,18 +221,18 @@ func (m *planProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.currentResource = "No changes required"
 			}
 		}
-		
+
 		// Continue ticking if not complete
 		if m.phase != phaseComplete && m.phase != phaseError {
 			return m, m.tickCmd()
 		}
 		return m, nil
-		
+
 	case planCompleteMsg:
 		m.phase = phaseComplete
 		m.progress = 1.0
 		return m, tea.Quit
-		
+
 	case planErrorMsg:
 		m.errorDetails = msg.err.Error()
 		m.errorOutput = msg.output
@@ -276,7 +276,7 @@ func (m *planProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
-	
+
 	return m, nil
 }
 
@@ -494,13 +494,13 @@ func (m *planProgressModel) renderError() string {
 		Background(lipgloss.Color("52")).
 		Padding(1, 2).
 		MarginBottom(1)
-	
+
 	errorBoxStyle := lipgloss.NewStyle().
 		Border(lipgloss.ThickBorder()).
 		BorderForeground(lipgloss.Color("196")).
 		Padding(1).
 		Width(100)
-	
+
 	// Create error table
 	errorTable := table.New().
 		Border(lipgloss.NormalBorder()).
@@ -519,10 +519,10 @@ func (m *planProgressModel) renderError() string {
 				PaddingRight(1)
 		}).
 		Headers("Error Details")
-	
+
 	// Add error message
 	errorTable.Row(m.errorDetails)
-	
+
 	// Add error output lines if available
 	if len(m.errorOutput) > 0 {
 		for _, line := range m.errorOutput {
@@ -531,28 +531,28 @@ func (m *planProgressModel) renderError() string {
 			}
 		}
 	}
-	
+
 	// Build the error view
 	var content strings.Builder
-	
+
 	content.WriteString(errorTitleStyle.Render("❌ TERRAFORM PLAN FAILED"))
 	content.WriteString("\n\n")
 	content.WriteString(errorTable.String())
 	content.WriteString("\n\n")
-	
+
 	// Add suggestions based on error type
 	suggestions := m.getErrorSuggestions()
 	if suggestions != "" {
 		suggestionStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("220")).
 			Bold(true)
-		
+
 		content.WriteString(suggestionStyle.Render("💡 Suggestions:"))
 		content.WriteString("\n")
 		content.WriteString(suggestions)
 		content.WriteString("\n\n")
 	}
-	
+
 	// Build footer with options based on AI availability
 	footerOptions := "q - exit"
 	if isAIHelperAvailable() {
@@ -563,10 +563,10 @@ func (m *planProgressModel) renderError() string {
 	content.WriteString(lipgloss.NewStyle().
 		Foreground(lipgloss.Color("245")).
 		Render(footerOptions))
-	
+
 	// Wrap in error box
 	errorContent := errorBoxStyle.Render(content.String())
-	
+
 	// Use full height, center horizontally only
 	return lipgloss.Place(
 		m.width,
@@ -598,17 +598,17 @@ func (m *planProgressModel) renderProgressBar() string {
 	// Spinner frames for infinite loading
 	spinnerFrames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 	frame := spinnerFrames[m.spinnerFrame%len(spinnerFrames)]
-	
+
 	spinnerStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("82")).
 		Bold(true)
-	
+
 	countStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("220"))
-	
+
 	// Show spinner with processed items count
 	processedCount := len(m.processedItems)
-	
+
 	var status string
 	switch m.phase {
 	case phaseRefreshing:
@@ -618,43 +618,43 @@ func (m *planProgressModel) renderProgressBar() string {
 	default:
 		status = "Processing..."
 	}
-	
+
 	return spinnerStyle.Render(frame) + " " + countStyle.Render(status)
 }
 
 func (m *planProgressModel) getErrorSuggestions() string {
 	errorStr := strings.ToLower(m.errorDetails + strings.Join(m.errorOutput, " "))
-	
+
 	var suggestions []string
-	
+
 	if strings.Contains(errorStr, "backend") || strings.Contains(errorStr, "init") {
 		suggestions = append(suggestions, "• Run 'terraform init' or 'terraform init -reconfigure'")
 	}
-	
+
 	if strings.Contains(errorStr, "credentials") || strings.Contains(errorStr, "authentication") {
 		suggestions = append(suggestions, "• Check your AWS credentials and profile configuration")
 		suggestions = append(suggestions, "• Ensure AWS_PROFILE is set correctly")
 	}
-	
+
 	if strings.Contains(errorStr, "module") {
 		suggestions = append(suggestions, "• Run 'terraform init' to download required modules")
 	}
-	
+
 	if strings.Contains(errorStr, "state") {
 		suggestions = append(suggestions, "• Check if the state file is locked by another process")
 		suggestions = append(suggestions, "• Verify remote state configuration")
 	}
-	
+
 	if strings.Contains(errorStr, "syntax") || strings.Contains(errorStr, "parse") {
 		suggestions = append(suggestions, "• Check your Terraform configuration files for syntax errors")
 		suggestions = append(suggestions, "• Run 'terraform validate' to check configuration")
 	}
-	
+
 	if len(suggestions) == 0 {
 		suggestions = append(suggestions, "• Check the error details above for more information")
 		suggestions = append(suggestions, "• Ensure all required resources and permissions are available")
 	}
-	
+
 	return strings.Join(suggestions, "\n")
 }
 

@@ -16,14 +16,14 @@ import (
 
 // S3BucketInfo represents information about an S3 bucket
 type S3BucketInfo struct {
-	Name           string        `json:"name"`
-	Type           string        `json:"type"` // "static" or "configured"
-	PublicAccess   bool          `json:"publicAccess"`
-	Versioning     string        `json:"versioning"`
-	CORSRules      []CORSRule    `json:"corsRules,omitempty"`
-	ConsoleURL     string        `json:"consoleUrl"`
-	Region         string        `json:"region"`
-	CreationDate   *string       `json:"creationDate,omitempty"`
+	Name         string     `json:"name"`
+	Type         string     `json:"type"` // "static" or "configured"
+	PublicAccess bool       `json:"publicAccess"`
+	Versioning   string     `json:"versioning"`
+	CORSRules    []CORSRule `json:"corsRules,omitempty"`
+	ConsoleURL   string     `json:"consoleUrl"`
+	Region       string     `json:"region"`
+	CreationDate *string    `json:"creationDate,omitempty"`
 }
 
 // CORSRule represents S3 CORS configuration
@@ -126,7 +126,7 @@ func listBuckets(w http.ResponseWriter, r *http.Request) {
 	// Add configured buckets
 	for _, bucketCfg := range envConfig.Buckets {
 		bucketName := fmt.Sprintf("%s-%s-%s", envConfig.Project, bucketCfg.Name, envName)
-		
+
 		bucket := S3BucketInfo{
 			Name:         bucketName,
 			Type:         "configured",
@@ -191,7 +191,7 @@ func listBuckets(w http.ResponseWriter, r *http.Request) {
 	if err == nil && listOutput != nil {
 		projectPrefix := fmt.Sprintf("%s-", envConfig.Project)
 		envSuffix := fmt.Sprintf("-%s", envName)
-		
+
 		for _, bucket := range listOutput.Buckets {
 			if bucket.Name != nil && strings.HasPrefix(*bucket.Name, projectPrefix) && strings.HasSuffix(*bucket.Name, envSuffix) {
 				// Check if we already have this bucket
@@ -202,7 +202,7 @@ func listBuckets(w http.ResponseWriter, r *http.Request) {
 						break
 					}
 				}
-				
+
 				if !found {
 					// This is an additional bucket not in config
 					additionalBucket := S3BucketInfo{
@@ -213,12 +213,12 @@ func listBuckets(w http.ResponseWriter, r *http.Request) {
 						ConsoleURL:   fmt.Sprintf("https://s3.console.aws.amazon.com/s3/buckets/%s?region=%s", *bucket.Name, cfg.Region),
 						Region:       cfg.Region,
 					}
-					
+
 					if bucket.CreationDate != nil {
 						creationDate := bucket.CreationDate.Format("2006-01-02T15:04:05Z")
 						additionalBucket.CreationDate = &creationDate
 					}
-					
+
 					// Get detailed info
 					if bucketInfo := getBucketInfo(ctx, s3Client, *bucket.Name); bucketInfo != nil {
 						additionalBucket.Versioning = bucketInfo.Versioning
@@ -227,7 +227,7 @@ func listBuckets(w http.ResponseWriter, r *http.Request) {
 							additionalBucket.CORSRules = bucketInfo.CORSRules
 						}
 					}
-					
+
 					buckets = append(buckets, additionalBucket)
 				}
 			}
@@ -295,7 +295,7 @@ func getBucketInfo(ctx context.Context, client *s3.Client, bucketName string) *B
 	if err == nil && corsOutput != nil && len(corsOutput.CORSRules) > 0 {
 		for _, rule := range corsOutput.CORSRules {
 			corsRule := CORSRule{}
-			
+
 			if rule.AllowedHeaders != nil {
 				corsRule.AllowedHeaders = rule.AllowedHeaders
 			}
@@ -311,7 +311,7 @@ func getBucketInfo(ctx context.Context, client *s3.Client, bucketName string) *B
 			if rule.MaxAgeSeconds != nil {
 				corsRule.MaxAgeSeconds = *rule.MaxAgeSeconds
 			}
-			
+
 			info.CORSRules = append(info.CORSRules, corsRule)
 		}
 	}

@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
-	"github.com/aws/aws-sdk-go-v2/aws"
 )
 
 type SSMParameter struct {
@@ -54,13 +54,13 @@ func getSSMParameter(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ssmClient := ssm.NewFromConfig(cfg)
-	
+
 	// Get parameter with decryption
 	result, err := ssmClient.GetParameter(ctx, &ssm.GetParameterInput{
 		Name:           aws.String(paramName),
 		WithDecryption: aws.Bool(true),
 	})
-	
+
 	if err != nil {
 		if strings.Contains(err.Error(), "ParameterNotFound") {
 			w.WriteHeader(http.StatusNotFound)
@@ -78,11 +78,11 @@ func getSSMParameter(w http.ResponseWriter, r *http.Request) {
 		Type:    string(result.Parameter.Type),
 		Version: result.Parameter.Version,
 	}
-	
+
 	if result.Parameter.ARN != nil {
 		param.ARN = *result.Parameter.ARN
 	}
-	
+
 	// Get parameter metadata for description
 	descResult, err := ssmClient.DescribeParameters(ctx, &ssm.DescribeParametersInput{
 		ParameterFilters: []types.ParameterStringFilter{
@@ -92,7 +92,7 @@ func getSSMParameter(w http.ResponseWriter, r *http.Request) {
 			},
 		},
 	})
-	
+
 	if err == nil && len(descResult.Parameters) > 0 && descResult.Parameters[0].Description != nil {
 		param.Description = *descResult.Parameters[0].Description
 	}
@@ -149,14 +149,14 @@ func putSSMParameter(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ssmClient := ssm.NewFromConfig(cfg)
-	
+
 	putInput := &ssm.PutParameterInput{
 		Name:      aws.String(req.Name),
 		Value:     aws.String(req.Value),
 		Type:      types.ParameterType(req.Type),
 		Overwrite: aws.Bool(req.Overwrite),
 	}
-	
+
 	if req.Description != "" {
 		putInput.Description = aws.String(req.Description)
 	}
@@ -208,11 +208,11 @@ func deleteSSMParameter(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ssmClient := ssm.NewFromConfig(cfg)
-	
+
 	_, err = ssmClient.DeleteParameter(ctx, &ssm.DeleteParameterInput{
 		Name: aws.String(paramName),
 	})
-	
+
 	if err != nil {
 		if strings.Contains(err.Error(), "ParameterNotFound") {
 			w.WriteHeader(http.StatusNotFound)
@@ -248,7 +248,7 @@ func listSSMParameters(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ssmClient := ssm.NewFromConfig(cfg)
-	
+
 	var filters []types.ParameterStringFilter
 	if prefix != "" {
 		filters = append(filters, types.ParameterStringFilter{
@@ -260,7 +260,7 @@ func listSSMParameters(w http.ResponseWriter, r *http.Request) {
 
 	var parameters []SSMParameter
 	var nextToken *string
-	
+
 	for {
 		input := &ssm.DescribeParametersInput{
 			MaxResults: aws.Int32(50),

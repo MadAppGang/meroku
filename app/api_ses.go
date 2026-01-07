@@ -18,16 +18,16 @@ import (
 
 // SESStatusResponse represents the SES account status
 type SESStatusResponse struct {
-	InSandbox           bool     `json:"inSandbox"`
-	SendingEnabled      bool     `json:"sendingEnabled"`
-	DailyQuota          int64    `json:"dailyQuota"`
-	MaxSendRate         float64  `json:"maxSendRate"`
-	SentLast24Hours     int64    `json:"sentLast24Hours"`
-	VerifiedDomains     []string `json:"verifiedDomains"`
-	VerifiedEmails      []string `json:"verifiedEmails"`
-	SuppressionList     bool     `json:"suppressionListEnabled"`
-	ReputationStatus    string   `json:"reputationStatus"`
-	Region              string   `json:"region"`
+	InSandbox        bool     `json:"inSandbox"`
+	SendingEnabled   bool     `json:"sendingEnabled"`
+	DailyQuota       int64    `json:"dailyQuota"`
+	MaxSendRate      float64  `json:"maxSendRate"`
+	SentLast24Hours  int64    `json:"sentLast24Hours"`
+	VerifiedDomains  []string `json:"verifiedDomains"`
+	VerifiedEmails   []string `json:"verifiedEmails"`
+	SuppressionList  bool     `json:"suppressionListEnabled"`
+	ReputationStatus string   `json:"reputationStatus"`
+	Region           string   `json:"region"`
 }
 
 // getSESStatus checks if SES is in sandbox mode and returns account status
@@ -261,7 +261,7 @@ func sendTestEmail(w http.ResponseWriter, r *http.Request) {
 
 	// Determine the from email address
 	fromEmail := "noreply@example.com" // Default
-	
+
 	// First, try to use a verified email if available
 	if len(verifiedEmails) > 0 {
 		fromEmail = verifiedEmails[0] // Use the first verified email
@@ -302,7 +302,7 @@ func sendTestEmail(w http.ResponseWriter, r *http.Request) {
 
 	// Log the from email for debugging
 	fmt.Printf("Sending test email from: %s to: %s\n", fromEmail, req.To)
-	
+
 	// Send the email
 	result, err := sesClient.SendEmail(ctx, input)
 	if err != nil {
@@ -323,22 +323,22 @@ func sendTestEmail(w http.ResponseWriter, r *http.Request) {
 
 // ProductionAccessRequest represents the request to submit SES production access
 type ProductionAccessRequest struct {
-	WebsiteURL                string `json:"websiteUrl"`
-	UseCaseDescription        string `json:"useCaseDescription"`
-	MailingListBuildProcess   string `json:"mailingListBuildProcess"`
-	BounceComplaintProcess    string `json:"bounceComplaintProcess"`
-	AdditionalInfo            string `json:"additionalInfo"`
-	ExpectedDailyVolume       string `json:"expectedDailyVolume"`
-	ExpectedPeakVolume        string `json:"expectedPeakVolume"`
-	ContactLanguage           string `json:"contactLanguage"` // "en" or other language codes
+	WebsiteURL              string `json:"websiteUrl"`
+	UseCaseDescription      string `json:"useCaseDescription"`
+	MailingListBuildProcess string `json:"mailingListBuildProcess"`
+	BounceComplaintProcess  string `json:"bounceComplaintProcess"`
+	AdditionalInfo          string `json:"additionalInfo"`
+	ExpectedDailyVolume     string `json:"expectedDailyVolume"`
+	ExpectedPeakVolume      string `json:"expectedPeakVolume"`
+	ContactLanguage         string `json:"contactLanguage"` // "en" or other language codes
 }
 
 // ProductionAccessResponse represents the response after submitting production access request
 type ProductionAccessResponse struct {
-	Success  bool   `json:"success"`
-	CaseID   string `json:"caseId,omitempty"`
-	Error    string `json:"error,omitempty"`
-	Message  string `json:"message,omitempty"`
+	Success bool   `json:"success"`
+	CaseID  string `json:"caseId,omitempty"`
+	Error   string `json:"error,omitempty"`
+	Message string `json:"message,omitempty"`
 }
 
 // submitSESProductionAccess submits a request to move SES out of sandbox mode
@@ -437,13 +437,13 @@ Please review and approve our request to move out of the SES sandbox mode.`,
 
 	// Create the support case
 	createCaseInput := &support.CreateCaseInput{
-		Subject:             aws.String("Request to increase SES sending limits"),
-		ServiceCode:         aws.String("amazon-ses"),
-		SeverityCode:        aws.String("low"),
-		CategoryCode:        aws.String("sending-limits-increase"),
-		CommunicationBody:   aws.String(communicationBody),
-		Language:            aws.String(req.ContactLanguage),
-		IssueType:           aws.String("technical"),
+		Subject:           aws.String("Request to increase SES sending limits"),
+		ServiceCode:       aws.String("amazon-ses"),
+		SeverityCode:      aws.String("low"),
+		CategoryCode:      aws.String("sending-limits-increase"),
+		CommunicationBody: aws.String(communicationBody),
+		Language:          aws.String(req.ContactLanguage),
+		IssueType:         aws.String("technical"),
 	}
 
 	result, err := supportClient.CreateCase(ctx, createCaseInput)
@@ -458,7 +458,7 @@ Please review and approve our request to move out of the SES sandbox mode.`,
 			})
 			return
 		}
-		
+
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(ProductionAccessResponse{
 			Success: false,
@@ -477,14 +477,14 @@ Please review and approve our request to move out of the SES sandbox mode.`,
 
 // ProductionAccessPrefillResponse represents prefilled data for production access request
 type ProductionAccessPrefillResponse struct {
-	WebsiteURL                string `json:"websiteUrl"`
-	UseCaseDescription        string `json:"useCaseDescription"`
-	MailingListBuildProcess   string `json:"mailingListBuildProcess"`
-	BounceComplaintProcess    string `json:"bounceComplaintProcess"`
-	AdditionalInfo            string `json:"additionalInfo"`
-	ExpectedDailyVolume       string `json:"expectedDailyVolume"`
-	ExpectedPeakVolume        string `json:"expectedPeakVolume"`
-	DomainName                string `json:"domainName"`
+	WebsiteURL              string `json:"websiteUrl"`
+	UseCaseDescription      string `json:"useCaseDescription"`
+	MailingListBuildProcess string `json:"mailingListBuildProcess"`
+	BounceComplaintProcess  string `json:"bounceComplaintProcess"`
+	AdditionalInfo          string `json:"additionalInfo"`
+	ExpectedDailyVolume     string `json:"expectedDailyVolume"`
+	ExpectedPeakVolume      string `json:"expectedPeakVolume"`
+	DomainName              string `json:"domainName"`
 }
 
 // getProductionAccessPrefill returns prefilled data for SES production access request
@@ -547,80 +547,80 @@ func getProductionAccessPrefill(w http.ResponseWriter, r *http.Request) {
 	// Create project-specific prefilled data
 	projectName := envConfig.Project
 	websiteURL := fmt.Sprintf("https://%s", domainName)
-	
+
 	response := ProductionAccessPrefillResponse{
 		WebsiteURL: websiteURL,
 		UseCaseDescription: fmt.Sprintf(
 			"We are operating %s, a production web application that requires email capabilities for essential user communications. "+
-			"Our application sends transactional emails including:\n"+
-			"- User registration confirmations and email verification\n"+
-			"- Password reset requests\n"+
-			"- Important account notifications and security alerts\n"+
-			"- Service updates and system notifications\n"+
-			"- Transaction confirmations and receipts\n\n"+
-			"All emails are triggered by user actions or system events and are essential for the operation of our service.",
+				"Our application sends transactional emails including:\n"+
+				"- User registration confirmations and email verification\n"+
+				"- Password reset requests\n"+
+				"- Important account notifications and security alerts\n"+
+				"- Service updates and system notifications\n"+
+				"- Transaction confirmations and receipts\n\n"+
+				"All emails are triggered by user actions or system events and are essential for the operation of our service.",
 			projectName),
-		
+
 		MailingListBuildProcess: fmt.Sprintf(
 			"Our email list is built exclusively through organic user registration on %s. "+
-			"Our process ensures compliance and user consent:\n\n"+
-			"1. Users voluntarily sign up on our platform at %s\n"+
-			"2. We implement double opt-in email verification for all new registrations\n"+
-			"3. Users must explicitly confirm their email address before receiving any communications\n"+
-			"4. We provide clear privacy policy and terms of service during registration\n"+
-			"5. Users can manage their email preferences in their account settings\n"+
-			"6. We never purchase, rent, or acquire email lists from third parties\n"+
-			"7. All user data is stored securely in compliance with data protection regulations",
+				"Our process ensures compliance and user consent:\n\n"+
+				"1. Users voluntarily sign up on our platform at %s\n"+
+				"2. We implement double opt-in email verification for all new registrations\n"+
+				"3. Users must explicitly confirm their email address before receiving any communications\n"+
+				"4. We provide clear privacy policy and terms of service during registration\n"+
+				"5. Users can manage their email preferences in their account settings\n"+
+				"6. We never purchase, rent, or acquire email lists from third parties\n"+
+				"7. All user data is stored securely in compliance with data protection regulations",
 			websiteURL, websiteURL),
-		
+
 		BounceComplaintProcess: fmt.Sprintf(
 			"We have implemented a comprehensive bounce and complaint handling system for %s:\n\n"+
-			"**Automated Handling:**\n"+
-			"- AWS SNS topics configured for bounce and complaint notifications\n"+
-			"- Real-time processing of bounce and complaint events\n"+
-			"- Automatic suppression list management\n\n"+
-			"**Bounce Management:**\n"+
-			"- Hard bounces: Immediately added to suppression list\n"+
-			"- Soft bounces: Retried up to 3 times over 24 hours before suppression\n"+
-			"- Bounce rate monitoring with alerts if rate exceeds 5%%\n\n"+
-			"**Complaint Management:**\n"+
-			"- Complaints result in immediate unsubscription\n"+
-			"- User is added to permanent suppression list\n"+
-			"- Manual review process for complaint patterns\n"+
-			"- Complaint rate monitoring with alerts if rate exceeds 0.1%%\n\n"+
-			"**Additional Measures:**\n"+
-			"- Weekly reports on email metrics\n"+
-			"- Suppression list is checked before every send\n"+
-			"- Re-engagement campaigns for inactive users\n"+
-			"- List hygiene performed quarterly",
+				"**Automated Handling:**\n"+
+				"- AWS SNS topics configured for bounce and complaint notifications\n"+
+				"- Real-time processing of bounce and complaint events\n"+
+				"- Automatic suppression list management\n\n"+
+				"**Bounce Management:**\n"+
+				"- Hard bounces: Immediately added to suppression list\n"+
+				"- Soft bounces: Retried up to 3 times over 24 hours before suppression\n"+
+				"- Bounce rate monitoring with alerts if rate exceeds 5%%\n\n"+
+				"**Complaint Management:**\n"+
+				"- Complaints result in immediate unsubscription\n"+
+				"- User is added to permanent suppression list\n"+
+				"- Manual review process for complaint patterns\n"+
+				"- Complaint rate monitoring with alerts if rate exceeds 0.1%%\n\n"+
+				"**Additional Measures:**\n"+
+				"- Weekly reports on email metrics\n"+
+				"- Suppression list is checked before every send\n"+
+				"- Re-engagement campaigns for inactive users\n"+
+				"- List hygiene performed quarterly",
 			projectName),
-		
+
 		AdditionalInfo: fmt.Sprintf(
 			"**Email Infrastructure for %s:**\n\n"+
-			"**Authentication & Security:**\n"+
-			"- SPF records properly configured for %s\n"+
-			"- DKIM signing enabled for all outbound emails\n"+
-			"- DMARC policy implemented with monitoring\n"+
-			"- TLS encryption for email transmission\n\n"+
-			"**Best Practices Implementation:**\n"+
-			"- Clear and visible unsubscribe links in every email\n"+
-			"- Consistent 'From' address: noreply@%s\n"+
-			"- Descriptive subject lines without misleading content\n"+
-			"- Plain text alternatives for all HTML emails\n"+
-			"- Mobile-responsive email templates\n\n"+
-			"**Monitoring & Compliance:**\n"+
-			"- AWS CloudWatch dashboards for email metrics\n"+
-			"- Automated alerts for bounce/complaint thresholds\n"+
-			"- Regular sender reputation monitoring\n"+
-			"- GDPR and CAN-SPAM compliance measures\n"+
-			"- Data retention policies in place\n\n"+
-			"**Technical Implementation:**\n"+
-			"- Email sending through AWS SDK with proper error handling\n"+
-			"- Rate limiting to respect AWS SES quotas\n"+
-			"- Retry logic with exponential backoff\n"+
-			"- Comprehensive logging for audit trails",
+				"**Authentication & Security:**\n"+
+				"- SPF records properly configured for %s\n"+
+				"- DKIM signing enabled for all outbound emails\n"+
+				"- DMARC policy implemented with monitoring\n"+
+				"- TLS encryption for email transmission\n\n"+
+				"**Best Practices Implementation:**\n"+
+				"- Clear and visible unsubscribe links in every email\n"+
+				"- Consistent 'From' address: noreply@%s\n"+
+				"- Descriptive subject lines without misleading content\n"+
+				"- Plain text alternatives for all HTML emails\n"+
+				"- Mobile-responsive email templates\n\n"+
+				"**Monitoring & Compliance:**\n"+
+				"- AWS CloudWatch dashboards for email metrics\n"+
+				"- Automated alerts for bounce/complaint thresholds\n"+
+				"- Regular sender reputation monitoring\n"+
+				"- GDPR and CAN-SPAM compliance measures\n"+
+				"- Data retention policies in place\n\n"+
+				"**Technical Implementation:**\n"+
+				"- Email sending through AWS SDK with proper error handling\n"+
+				"- Rate limiting to respect AWS SES quotas\n"+
+				"- Retry logic with exponential backoff\n"+
+				"- Comprehensive logging for audit trails",
 			projectName, domainName, domainName),
-		
+
 		ExpectedDailyVolume: "1000-5000",
 		ExpectedPeakVolume:  "10000",
 		DomainName:          domainName,

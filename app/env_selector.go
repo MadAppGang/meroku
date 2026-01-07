@@ -35,12 +35,12 @@ func selectEnvironment() error {
 
 	// Add environment options
 	options := []huh.Option[string]{}
-	
+
 	for _, env := range environments {
 		options = append(options, huh.NewOption(fmt.Sprintf("Use existing: %s", env), env))
 	}
 	options = append(options, huh.NewOption("Create new environment", "create-new"))
-	
+
 	// Check DNS configuration status and add DNS option at the end
 	dnsConfig, _ := loadDNSConfig()
 	dnsLabel := "🌐 DNS Setup - Configure custom domain"
@@ -187,7 +187,7 @@ func selectEnvironment() error {
 			saveEnvToFile(env, selected+".yaml")
 		}
 	}
-	
+
 	// Set AWS_PROFILE and AWS_REGION environment variables
 	if env.AWSProfile != "" {
 		os.Setenv("AWS_PROFILE", env.AWSProfile)

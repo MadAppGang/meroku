@@ -675,9 +675,6 @@ module "ses" {
       # No Route53 domain module enabled - manual DNS required
         {{/if}}
       {{/if}}
-      {{#if this.test_emails}}
-      test_emails = {{{array this.test_emails}}}
-      {{/if}}
       {{#if (exists this.enable_mail_from)}}
       enable_mail_from = {{this.enable_mail_from}}
       {{/if}}
@@ -707,8 +704,10 @@ module "ses" {
   {{#if domain.enabled}}
   zone_id = module.domain.zone_id
   {{/if}}
-  test_emails = {{{array ses.test_emails}}}
   {{/if}}
+
+  # Test email addresses (account-wide, not per-domain)
+  test_emails = {{{array ses.test_emails}}}
 
   # Global email deliverability configuration
   global_enable_mail_from    = {{default ses.enable_mail_from true}}

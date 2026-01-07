@@ -25,19 +25,19 @@ type PriceRates struct {
 	NATGateway NATGatewayPricing `json:"natGateway"`
 
 	// Other services
-	CloudWatch CloudWatchPricing `json:"cloudWatch"`
-	Route53    Route53Pricing    `json:"route53"`
-	Cognito    CognitoPricing    `json:"cognito"`
-	SES        SESPricing        `json:"ses"`
+	CloudWatch  CloudWatchPricing  `json:"cloudWatch"`
+	Route53     Route53Pricing     `json:"route53"`
+	Cognito     CognitoPricing     `json:"cognito"`
+	SES         SESPricing         `json:"ses"`
 	EventBridge EventBridgePricing `json:"eventBridge"`
-	ECR        ECRPricing         `json:"ecr"`
+	ECR         ECRPricing         `json:"ecr"`
 }
 
 // AuroraPricing holds Aurora Serverless v2 pricing
 type AuroraPricing struct {
-	ACUHourly       float64 `json:"acuHourly"`       // $/ACU/hour (e.g., 0.12)
-	StorageGBMonth  float64 `json:"storageGbMonth"`  // $/GB/month
-	IORequestsPerM  float64 `json:"ioRequestsPerM"`  // $/million I/O requests
+	ACUHourly      float64 `json:"acuHourly"`      // $/ACU/hour (e.g., 0.12)
+	StorageGBMonth float64 `json:"storageGbMonth"` // $/GB/month
+	IORequestsPerM float64 `json:"ioRequestsPerM"` // $/million I/O requests
 }
 
 // FargatePricing holds ECS Fargate pricing
@@ -83,14 +83,14 @@ type CloudWatchPricing struct {
 
 // Route53Pricing holds Route 53 pricing
 type Route53Pricing struct {
-	HostedZonePerMonth   float64 `json:"hostedZonePerMonth"`   // $/zone/month (e.g., 0.50)
-	QueriesPerMillion    float64 `json:"queriesPerMillion"`    // $/million queries (e.g., 0.40)
+	HostedZonePerMonth float64 `json:"hostedZonePerMonth"` // $/zone/month (e.g., 0.50)
+	QueriesPerMillion  float64 `json:"queriesPerMillion"`  // $/million queries (e.g., 0.40)
 }
 
 // CognitoPricing holds Cognito pricing
 type CognitoPricing struct {
-	MAUPrice     float64 `json:"mauPrice"`     // $/MAU (e.g., 0.0055)
-	FreeMAUs     int     `json:"freeMAUs"`     // Free tier MAUs (e.g., 50000)
+	MAUPrice float64 `json:"mauPrice"` // $/MAU (e.g., 0.0055)
+	FreeMAUs int     `json:"freeMAUs"` // Free tier MAUs (e.g., 50000)
 }
 
 // SESPricing holds Simple Email Service pricing

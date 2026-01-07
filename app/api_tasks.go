@@ -15,19 +15,19 @@ import (
 )
 
 type ECSTaskInfo struct {
-	TaskArn           string    `json:"taskArn"`
-	TaskDefinitionArn string    `json:"taskDefinitionArn"`
-	ServiceName       string    `json:"serviceName"`
-	LaunchType        string    `json:"launchType"`
-	LastStatus        string    `json:"lastStatus"`
-	DesiredStatus     string    `json:"desiredStatus"`
-	HealthStatus      string    `json:"healthStatus"`
-	CreatedAt         time.Time `json:"createdAt"`
+	TaskArn           string     `json:"taskArn"`
+	TaskDefinitionArn string     `json:"taskDefinitionArn"`
+	ServiceName       string     `json:"serviceName"`
+	LaunchType        string     `json:"launchType"`
+	LastStatus        string     `json:"lastStatus"`
+	DesiredStatus     string     `json:"desiredStatus"`
+	HealthStatus      string     `json:"healthStatus"`
+	CreatedAt         time.Time  `json:"createdAt"`
 	StartedAt         *time.Time `json:"startedAt,omitempty"`
 	StoppedAt         *time.Time `json:"stoppedAt,omitempty"`
-	CPU               string    `json:"cpu"`
-	Memory            string    `json:"memory"`
-	AvailabilityZone  string    `json:"availabilityZone"`
+	CPU               string     `json:"cpu"`
+	Memory            string     `json:"memory"`
+	AvailabilityZone  string     `json:"availabilityZone"`
 	ConnectivityAt    *time.Time `json:"connectivityAt,omitempty"`
 	PullStartedAt     *time.Time `json:"pullStartedAt,omitempty"`
 	PullStoppedAt     *time.Time `json:"pullStoppedAt,omitempty"`
@@ -128,8 +128,8 @@ func getServiceTasks(w http.ResponseWriter, r *http.Request) {
 
 	// List tasks for the service
 	listTasksInput := &ecs.ListTasksInput{
-		Cluster:     &clusterName,
-		ServiceName: &targetServiceArn,
+		Cluster:       &clusterName,
+		ServiceName:   &targetServiceArn,
 		DesiredStatus: types.DesiredStatusRunning,
 	}
 

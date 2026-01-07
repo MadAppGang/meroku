@@ -179,8 +179,8 @@ func runTerraformApply() error {
 
 				// Update summary - handle replace operations specially
 				// Replace operations have ["delete", "create"] actions
-				if len(change.Change.Actions) == 2 && 
-					change.Change.Actions[0] == "delete" && 
+				if len(change.Change.Actions) == 2 &&
+					change.Change.Actions[0] == "delete" &&
 					change.Change.Actions[1] == "create" {
 					// This is a replace operation
 					filteredPlan.Summary.Replace++

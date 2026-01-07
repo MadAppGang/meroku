@@ -81,9 +81,7 @@ export function SESNodeProperties({
 	const [expandedDomains, setExpandedDomains] = useState<Set<string>>(
 		new Set(),
 	);
-	const [newTestEmails, setNewTestEmails] = useState<Record<string, string>>(
-		{},
-	);
+	const [newTestEmail, setNewTestEmail] = useState("");
 
 	const sesConfig: SESConfig = config.ses || { enabled: false };
 
@@ -127,7 +125,6 @@ export function SESNodeProperties({
 			if (!alreadyExists) {
 				domains.push({
 					domain: sesConfig.domain_name,
-					test_emails: sesConfig.test_emails || [],
 				});
 			}
 		}
@@ -157,7 +154,6 @@ export function SESNodeProperties({
 		const newDomainEntry: SESDomain = {
 			domain: newDomain.trim(),
 			...(newDomainZoneId.trim() && { zone_id: newDomainZoneId.trim() }),
-			test_emails: [],
 		};
 
 		// Migrate to new format if using legacy
@@ -167,7 +163,6 @@ export function SESNodeProperties({
 		if (sesConfig.domain_name && !sesConfig.domains) {
 			updatedDomains.unshift({
 				domain: sesConfig.domain_name,
-				test_emails: sesConfig.test_emails || [],
 			});
 		}
 
@@ -216,16 +211,16 @@ export function SESNodeProperties({
 		domainName: string,
 		updates: Partial<SESDomain>,
 	) => {
-		// Handle legacy domain update
+		// Handle legacy domain - migrate to new format on first update
 		if (sesConfig.domain_name === domainName && !sesConfig.domains) {
-			if (updates.test_emails !== undefined) {
-				onConfigChange({
-					ses: {
-						...sesConfig,
-						test_emails: updates.test_emails,
-					},
-				});
-			}
+			const migratedDomains = [{ domain: sesConfig.domain_name, ...updates }];
+			onConfigChange({
+				ses: {
+					...sesConfig,
+					domains: migratedDomains,
+					domain_name: undefined,
+				},
+			});
 			return;
 		}
 
@@ -242,29 +237,29 @@ export function SESNodeProperties({
 		});
 	};
 
-	const handleAddTestEmail = (domainName: string) => {
-		const email = newTestEmails[domainName]?.trim();
+	// Test emails are now global (account-wide in AWS SES)
+	const handleAddTestEmail = () => {
+		const email = newTestEmail.trim();
 		if (!email) return;
 
-		const domain = allDomains.find((d) => d.domain === domainName);
-		if (!domain) return;
-
-		const currentEmails = domain.test_emails || [];
+		const currentEmails = sesConfig.test_emails || [];
 		if (currentEmails.includes(email)) return;
 
-		handleUpdateDomain(domainName, {
-			test_emails: [...currentEmails, email],
+		onConfigChange({
+			ses: {
+				...sesConfig,
+				test_emails: [...currentEmails, email],
+			},
 		});
-
-		setNewTestEmails((prev) => ({ ...prev, [domainName]: "" }));
+		setNewTestEmail("");
 	};
 
-	const handleRemoveTestEmail = (domainName: string, email: string) => {
-		const domain = allDomains.find((d) => d.domain === domainName);
-		if (!domain) return;
-
-		handleUpdateDomain(domainName, {
-			test_emails: (domain.test_emails || []).filter((e) => e !== email),
+	const handleRemoveTestEmail = (email: string) => {
+		onConfigChange({
+			ses: {
+				...sesConfig,
+				test_emails: (sesConfig.test_emails || []).filter((e) => e !== email),
+			},
 		});
 	};
 
@@ -431,17 +426,6 @@ export function SESNodeProperties({
 											onUpdate={(updates) =>
 												handleUpdateDomain(domain.domain, updates)
 											}
-											newTestEmail={newTestEmails[domain.domain] || ""}
-											onNewTestEmailChange={(value) =>
-												setNewTestEmails((prev) => ({
-													...prev,
-													[domain.domain]: value,
-												}))
-											}
-											onAddTestEmail={() => handleAddTestEmail(domain.domain)}
-											onRemoveTestEmail={(email) =>
-												handleRemoveTestEmail(domain.domain, email)
-											}
 											isAutoManaged={isDomainAutoManaged(domain.domain)}
 											managedZoneDomain={managedZoneDomain}
 										/>
@@ -542,6 +526,56 @@ export function SESNodeProperties({
 							</CardDescription>
 						</CardHeader>
 						<CardContent className="space-y-4">
+							{/* Test Email Addresses - Account-wide for SES sandbox */}
+							<div className="space-y-2">
+								<Label className="flex items-center gap-2">
+									<FileText className="w-4 h-4" />
+									Test Email Addresses
+								</Label>
+								<div className="flex items-center gap-2">
+									<Input
+										value={newTestEmail}
+										onChange={(e) => setNewTestEmail(e.target.value)}
+										placeholder="test@example.com"
+										type="email"
+										onKeyDown={(e) => e.key === "Enter" && handleAddTestEmail()}
+									/>
+									<Button
+										size="sm"
+										onClick={handleAddTestEmail}
+										disabled={!newTestEmail.trim()}
+									>
+										<Plus className="w-4 h-4" />
+									</Button>
+								</div>
+
+								{(sesConfig.test_emails?.length ?? 0) > 0 && (
+									<div className="space-y-2">
+										{sesConfig.test_emails?.map((email) => (
+											<div
+												key={email}
+												className="flex items-center justify-between p-2 bg-gray-800 rounded"
+											>
+												<span className="text-sm font-mono">{email}</span>
+												<button
+													type="button"
+													onClick={() => handleRemoveTestEmail(email)}
+													className="text-gray-400 hover:text-red-400 transition-colors"
+												>
+													<X className="w-4 h-4" />
+												</button>
+											</div>
+										))}
+									</div>
+								)}
+								<p className="text-xs text-gray-500">
+									Test emails are verified for SES sandbox mode testing
+									(account-wide, not per-domain)
+								</p>
+							</div>
+
+							<div className="border-t border-gray-700 pt-4" />
+
 							{/* MAIL FROM Settings */}
 							<div className="flex items-center justify-between">
 								<div className="space-y-1">
@@ -696,18 +730,11 @@ export function SESNodeProperties({
 												Test Email Identities
 											</h4>
 											<p className="text-xs text-gray-400 mt-1">
-												{allDomains.reduce(
-													(sum, d) => sum + (d.test_emails?.length || 0),
-													0,
-												)}{" "}
-												test email{" "}
-												{allDomains.reduce(
-													(sum, d) => sum + (d.test_emails?.length || 0),
-													0,
-												) === 1
+												{sesConfig.test_emails?.length || 0} test email{" "}
+												{(sesConfig.test_emails?.length || 0) === 1
 													? "address"
 													: "addresses"}{" "}
-												for sandbox testing
+												for sandbox testing (account-wide)
 											</p>
 										</div>
 									</div>
@@ -797,10 +824,6 @@ interface DomainCardProps {
 	onToggleExpand: () => void;
 	onRemove: () => void;
 	onUpdate: (updates: Partial<SESDomain>) => void;
-	newTestEmail: string;
-	onNewTestEmailChange: (value: string) => void;
-	onAddTestEmail: () => void;
-	onRemoveTestEmail: (email: string) => void;
 	// Route53 auto-detection
 	isAutoManaged: boolean;
 	managedZoneDomain: string;
@@ -813,17 +836,12 @@ function DomainCard({
 	onToggleExpand,
 	onRemove,
 	onUpdate,
-	newTestEmail,
-	onNewTestEmailChange,
-	onAddTestEmail,
-	onRemoveTestEmail,
 	isAutoManaged,
 	managedZoneDomain,
 }: DomainCardProps) {
 	const [showAdvanced, setShowAdvanced] = useState(false);
 
 	const hasExplicitZoneId = Boolean(domain.zone_id);
-	const testEmails = domain.test_emails || [];
 
 	// Determine effective settings (per-domain or global fallback)
 	const effectiveMailFrom =
@@ -919,53 +937,6 @@ function DomainCard({
 								DNS records must be added manually (domain not managed by Route53)
 							</p>
 						)}
-					</div>
-
-					{/* Test Emails */}
-					<div className="space-y-2">
-						<Label className="flex items-center gap-2">
-							<FileText className="w-4 h-4" />
-							Test Email Addresses
-						</Label>
-						<div className="flex items-center gap-2">
-							<Input
-								value={newTestEmail}
-								onChange={(e) => onNewTestEmailChange(e.target.value)}
-								placeholder="test@example.com"
-								type="email"
-								onKeyDown={(e) => e.key === "Enter" && onAddTestEmail()}
-							/>
-							<Button
-								size="sm"
-								onClick={onAddTestEmail}
-								disabled={!newTestEmail.trim()}
-							>
-								<Plus className="w-4 h-4" />
-							</Button>
-						</div>
-
-						{testEmails.length > 0 && (
-							<div className="space-y-2">
-								{testEmails.map((email) => (
-									<div
-										key={email}
-										className="flex items-center justify-between p-2 bg-gray-800 rounded"
-									>
-										<span className="text-sm font-mono">{email}</span>
-										<button
-											type="button"
-											onClick={() => onRemoveTestEmail(email)}
-											className="text-gray-400 hover:text-red-400 transition-colors"
-										>
-											<X className="w-4 h-4" />
-										</button>
-									</div>
-								))}
-							</div>
-						)}
-						<p className="text-xs text-gray-500">
-							Test emails are verified for sandbox mode testing
-						</p>
 					</div>
 
 					{/* Advanced Settings (Collapsible) */}
@@ -1100,6 +1071,14 @@ function generateYamlPreview(
 	const lines: string[] = ["ses:"];
 	lines.push(`  enabled: ${sesConfig.enabled}`);
 
+	// Test emails (global, account-wide)
+	if (sesConfig.test_emails && sesConfig.test_emails.length > 0) {
+		lines.push("  test_emails:");
+		for (const email of sesConfig.test_emails) {
+			lines.push(`    - "${email}"`);
+		}
+	}
+
 	// Global settings
 	if (sesConfig.global_enable_mail_from !== undefined) {
 		lines.push(
@@ -1127,12 +1106,6 @@ function generateYamlPreview(
 			lines.push(`    - domain: "${domain.domain}"`);
 			if (domain.zone_id) {
 				lines.push(`      zone_id: "${domain.zone_id}"`);
-			}
-			if (domain.test_emails && domain.test_emails.length > 0) {
-				lines.push("      test_emails:");
-				for (const email of domain.test_emails) {
-					lines.push(`        - "${email}"`);
-				}
 			}
 			// Per-domain overrides
 			if (domain.enable_mail_from !== undefined) {

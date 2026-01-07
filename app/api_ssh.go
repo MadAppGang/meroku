@@ -109,13 +109,13 @@ func startSSHSession(w http.ResponseWriter, r *http.Request) {
 	var cmd *exec.Cmd
 	if selectedAWSProfile != "" {
 		cmd = exec.Command("aws", cmdArgs...)
-		cmd.Env = append(os.Environ(), 
+		cmd.Env = append(os.Environ(),
 			fmt.Sprintf("AWS_PROFILE=%s", selectedAWSProfile),
 			"AWS_PAGER=", // Disable pager
 		)
 	} else {
 		cmd = exec.Command("aws", cmdArgs...)
-		cmd.Env = append(os.Environ(), 
+		cmd.Env = append(os.Environ(),
 			"AWS_PAGER=", // Disable pager
 		)
 	}
@@ -186,7 +186,7 @@ func startSSHSession(w http.ResponseWriter, r *http.Request) {
 
 	// Start goroutines to handle I/O
 	done := make(chan bool)
-	
+
 	// Read from stdout
 	go func() {
 		buf := make([]byte, 1024)

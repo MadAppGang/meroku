@@ -22,7 +22,6 @@ locals {
   legacy_domain = var.domain != "" ? [{
     domain              = var.domain
     zone_id             = var.zone_id != "" ? var.zone_id : null
-    test_emails         = var.test_emails
     enable_mail_from    = var.enable_mail_from ? true : null # Convert to nullable
     mail_from_subdomain = var.mail_from_subdomain != "bounce" ? var.mail_from_subdomain : null
     dmarc_policy        = var.dmarc_policy != "none" ? var.dmarc_policy : null
@@ -197,17 +196,10 @@ resource "aws_route53_record" "dmarc" {
 
 # =============================================================================
 # Test Email Identities (for SES Sandbox mode)
+# Account-wide - not per-domain (Schema v18+)
 # =============================================================================
 
-locals {
-  # Merge all test emails from all domains (de-duplicate)
-  all_test_emails = distinct(concat(
-    var.test_emails, # Legacy test emails
-    flatten([for d in var.domains : coalesce(d.test_emails, [])])
-  ))
-}
-
 resource "aws_ses_email_identity" "emails" {
-  count = length(local.all_test_emails)
-  email = local.all_test_emails[count.index]
+  count = length(var.test_emails)
+  email = var.test_emails[count.index]
 }

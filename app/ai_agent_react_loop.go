@@ -9,11 +9,11 @@ import (
 // AgentIteration represents a single think/act/observe cycle in the ReAct pattern
 type AgentIteration struct {
 	Number      int           `json:"number"`
-	Thought     string        `json:"thought"`      // Agent's reasoning about what to do
-	Action      string        `json:"action"`       // Tool type: aws_cli, shell, file_edit, terraform_apply
-	Command     string        `json:"command"`      // Exact command or operation
-	Output      string        `json:"output"`       // Command result/observation
-	Status      string        `json:"status"`       // running, success, failed
+	Thought     string        `json:"thought"` // Agent's reasoning about what to do
+	Action      string        `json:"action"`  // Tool type: aws_cli, shell, file_edit, terraform_apply
+	Command     string        `json:"command"` // Exact command or operation
+	Output      string        `json:"output"`  // Command result/observation
+	Status      string        `json:"status"`  // running, success, failed
 	Duration    time.Duration `json:"duration"`
 	Timestamp   time.Time     `json:"timestamp"`
 	ErrorDetail string        `json:"error_detail"` // Detailed error if failed
@@ -21,19 +21,19 @@ type AgentIteration struct {
 
 // AgentState tracks the full execution state
 type AgentState struct {
-	Iterations       []AgentIteration `json:"iterations"`
-	CurrentThinking  bool             `json:"current_thinking"`
-	IsComplete       bool             `json:"is_complete"`
-	FinalOutcome     string           `json:"final_outcome"`      // "success" or "failed"
-	TotalDuration    time.Duration    `json:"total_duration"`
-	IterationLimit   int              `json:"iteration_limit"`    // Maximum iterations to prevent infinite loops
-	Context          *AgentContext    `json:"context"`
+	Iterations      []AgentIteration `json:"iterations"`
+	CurrentThinking bool             `json:"current_thinking"`
+	IsComplete      bool             `json:"is_complete"`
+	FinalOutcome    string           `json:"final_outcome"` // "success" or "failed"
+	TotalDuration   time.Duration    `json:"total_duration"`
+	IterationLimit  int              `json:"iteration_limit"` // Maximum iterations to prevent infinite loops
+	Context         *AgentContext    `json:"context"`
 }
 
 // AgentContext provides the environment and problem details to the agent
 type AgentContext struct {
-	Operation            string            `json:"operation"`              // "terraform_apply", "terraform_destroy", etc.
-	Environment          string            `json:"environment"`            // "dev", "prod", etc.
+	Operation            string            `json:"operation"`   // "terraform_apply", "terraform_destroy", etc.
+	Environment          string            `json:"environment"` // "dev", "prod", etc.
 	AWSProfile           string            `json:"aws_profile"`
 	AWSRegion            string            `json:"aws_region"`
 	WorkingDir           string            `json:"working_dir"`
@@ -54,12 +54,12 @@ type AgentUpdate struct {
 
 // AIAgent is the main agent controller
 type AIAgent struct {
-	state       *AgentState
-	updateChan  chan AgentUpdate
-	executor    *AgentExecutor
-	llmClient   *AgentLLMClient
-	ctx         context.Context
-	cancelFunc  context.CancelFunc
+	state      *AgentState
+	updateChan chan AgentUpdate
+	executor   *AgentExecutor
+	llmClient  *AgentLLMClient
+	ctx        context.Context
+	cancelFunc context.CancelFunc
 }
 
 // NewAIAgent creates a new autonomous agent
@@ -78,12 +78,12 @@ func NewAIAgent(agentContext *AgentContext, updateChan chan AgentUpdate) (*AIAge
 
 	agent := &AIAgent{
 		state: &AgentState{
-			Iterations:       []AgentIteration{},
-			CurrentThinking:  false,
-			IsComplete:       false,
-			FinalOutcome:     "",
-			IterationLimit:   20, // Prevent infinite loops
-			Context:          agentContext,
+			Iterations:      []AgentIteration{},
+			CurrentThinking: false,
+			IsComplete:      false,
+			FinalOutcome:    "",
+			IterationLimit:  20, // Prevent infinite loops
+			Context:         agentContext,
 		},
 		updateChan: updateChan,
 		executor:   executor,

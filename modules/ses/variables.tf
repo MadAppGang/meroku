@@ -17,16 +17,15 @@ variable "domains" {
     List of email domains to configure with SES. Each domain can optionally have:
     - domain: The email domain (required)
     - zone_id: Route53 zone ID for automatic DNS record creation (optional)
-    - test_emails: Domain-specific test email addresses (optional)
     - enable_mail_from: Enable custom MAIL FROM domain (optional, defaults to global)
     - mail_from_subdomain: Subdomain for MAIL FROM (optional, defaults to global)
     - dmarc_policy: DMARC policy for this domain (optional, defaults to global)
     - dmarc_rua_email: DMARC report email (optional, defaults to global)
+    Note: test_emails are at global SES level (account-wide in AWS)
   EOT
   type = list(object({
     domain              = string
     zone_id             = optional(string)
-    test_emails         = optional(list(string), [])
     enable_mail_from    = optional(bool)
     mail_from_subdomain = optional(string)
     dmarc_policy        = optional(string)
@@ -52,7 +51,7 @@ variable "zone_id" {
 }
 
 variable "test_emails" {
-  description = "[DEPRECATED] Use test_emails in domains list. Legacy test email addresses"
+  description = "Test email addresses for SES sandbox mode (account-wide, not per-domain)"
   type        = list(string)
   default     = []
 }

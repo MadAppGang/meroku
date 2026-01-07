@@ -9,10 +9,10 @@ func TestCreateEnv_VPCDefaults(t *testing.T) {
 
 	// Test VPC configuration defaults for new projects
 	tests := []struct {
-		name     string
-		got      interface{}
-		want     interface{}
-		reason   string
+		name   string
+		got    interface{}
+		want   interface{}
+		reason string
 	}{
 		{
 			name:   "UseDefaultVPC should be false",

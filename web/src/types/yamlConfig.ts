@@ -374,13 +374,13 @@ export interface EventProcessorTask {
 }
 
 /**
- * SES Email Domain Configuration (Schema v17)
+ * SES Email Domain Configuration (Schema v18)
  * Defines a single email domain with optional per-domain settings
+ * Note: test_emails are at global SES level (account-wide in AWS)
  */
 export interface SESDomain {
 	domain: string; // Required: The email domain (e.g., "example.com")
 	zone_id?: string; // Optional: Route53 zone ID for automatic DNS record creation
-	test_emails?: string[]; // Optional: Domain-specific test email addresses
 	// Per-domain overrides (optional, defaults to global settings)
 	enable_mail_from?: boolean; // Enable custom MAIL FROM domain
 	mail_from_subdomain?: string; // Subdomain for MAIL FROM (e.g., "bounce")
@@ -389,13 +389,15 @@ export interface SESDomain {
 }
 
 /**
- * SES Configuration (Schema v17)
+ * SES Configuration (Schema v18)
  * Supports both legacy single domain and new multi-domain format
  */
 export interface SESConfig {
 	enabled: boolean;
 	// New multi-domain support (Schema v17+) - preferred format
 	domains?: SESDomain[];
+	// Test emails - account-wide for SES sandbox mode (Schema v18)
+	test_emails?: string[];
 	// Global settings (apply to all domains unless overridden)
 	global_enable_mail_from?: boolean;
 	global_mail_from_subdomain?: string;
@@ -403,5 +405,4 @@ export interface SESConfig {
 	global_dmarc_rua_email?: string;
 	// Legacy single domain configuration (backward compatibility)
 	domain_name?: string;
-	test_emails?: string[];
 }

@@ -14,31 +14,31 @@ import (
 )
 
 type AmplifyAppInfo struct {
-	AppID             string                    `json:"appId"`
-	Name              string                    `json:"name"`
-	DefaultDomain     string                    `json:"defaultDomain"`
-	CustomDomain      string                    `json:"customDomain,omitempty"`
-	Repository        string                    `json:"repository"`
-	CreateTime        time.Time                 `json:"createTime"`
-	LastUpdateTime    time.Time                 `json:"lastUpdateTime"`
-	Branches          []AmplifyBranchInfo       `json:"branches"`
+	AppID          string              `json:"appId"`
+	Name           string              `json:"name"`
+	DefaultDomain  string              `json:"defaultDomain"`
+	CustomDomain   string              `json:"customDomain,omitempty"`
+	Repository     string              `json:"repository"`
+	CreateTime     time.Time           `json:"createTime"`
+	LastUpdateTime time.Time           `json:"lastUpdateTime"`
+	Branches       []AmplifyBranchInfo `json:"branches"`
 }
 
 type AmplifyBranchInfo struct {
-	BranchName        string                    `json:"branchName"`
-	Stage             string                    `json:"stage"`
-	DisplayName       string                    `json:"displayName"`
-	EnableAutoBuild   bool                      `json:"enableAutoBuild"`
-	EnablePullRequestPreview bool               `json:"enablePullRequestPreview"`
-	BranchURL         string                    `json:"branchUrl"`
-	LastBuildStatus   string                    `json:"lastBuildStatus,omitempty"`
-	LastBuildTime     *time.Time                `json:"lastBuildTime,omitempty"`
-	LastBuildDuration int32                     `json:"lastBuildDuration,omitempty"`
-	LastCommitId      string                    `json:"lastCommitId,omitempty"`
-	LastCommitMessage string                    `json:"lastCommitMessage,omitempty"`
-	LastCommitTime    *time.Time                `json:"lastCommitTime,omitempty"`
-	CreateTime        time.Time                 `json:"createTime"`
-	UpdateTime        time.Time                 `json:"updateTime"`
+	BranchName               string     `json:"branchName"`
+	Stage                    string     `json:"stage"`
+	DisplayName              string     `json:"displayName"`
+	EnableAutoBuild          bool       `json:"enableAutoBuild"`
+	EnablePullRequestPreview bool       `json:"enablePullRequestPreview"`
+	BranchURL                string     `json:"branchUrl"`
+	LastBuildStatus          string     `json:"lastBuildStatus,omitempty"`
+	LastBuildTime            *time.Time `json:"lastBuildTime,omitempty"`
+	LastBuildDuration        int32      `json:"lastBuildDuration,omitempty"`
+	LastCommitId             string     `json:"lastCommitId,omitempty"`
+	LastCommitMessage        string     `json:"lastCommitMessage,omitempty"`
+	LastCommitTime           *time.Time `json:"lastCommitTime,omitempty"`
+	CreateTime               time.Time  `json:"createTime"`
+	UpdateTime               time.Time  `json:"updateTime"`
 }
 
 type AmplifyAppsResponse struct {
@@ -61,7 +61,7 @@ func getAmplifyApps(w http.ResponseWriter, r *http.Request) {
 
 	// Get profile from query parameter
 	profile := r.URL.Query().Get("profile")
-	
+
 	// Create AWS config
 	ctx := context.Background()
 	cfg, err := createAWSConfig(ctx, profile)
@@ -140,7 +140,7 @@ func getAmplifyApps(w http.ResponseWriter, r *http.Request) {
 			if err == nil && len(listJobsResp.JobSummaries) > 0 {
 				latestJob := listJobsResp.JobSummaries[0]
 				branchInfo.LastBuildStatus = string(latestJob.Status)
-				
+
 				// Get detailed job info
 				if latestJob.JobId != nil {
 					jobResp, err := amplifyClient.GetJob(ctx, &amplify.GetJobInput{
@@ -187,28 +187,28 @@ func hasEnvironmentTag(tags map[string]string, env string) bool {
 	if tags == nil {
 		return false
 	}
-	
+
 	// Check for Environment tag
 	if envTag, ok := tags["Environment"]; ok && envTag == env {
 		return true
 	}
-	
+
 	// Also check for env tag (lowercase)
 	if envTag, ok := tags["env"]; ok && envTag == env {
 		return true
 	}
-	
+
 	return false
 }
 
 // createAWSConfig creates an AWS config with optional profile
 func createAWSConfig(ctx context.Context, profile string) (aws.Config, error) {
 	var optFns []func(*config.LoadOptions) error
-	
+
 	if profile != "" {
 		optFns = append(optFns, config.WithSharedConfigProfile(profile))
 	}
-	
+
 	return config.LoadDefaultConfig(ctx, optFns...)
 }
 
@@ -223,7 +223,7 @@ func getAmplifyBuildLogs(w http.ResponseWriter, r *http.Request) {
 	appId := r.URL.Query().Get("appId")
 	branchName := r.URL.Query().Get("branchName")
 	jobId := r.URL.Query().Get("jobId")
-	
+
 	if appId == "" || branchName == "" || jobId == "" {
 		http.Error(w, "appId, branchName, and jobId parameters are required", http.StatusBadRequest)
 		return
@@ -231,7 +231,7 @@ func getAmplifyBuildLogs(w http.ResponseWriter, r *http.Request) {
 
 	// Get profile from query parameter
 	profile := r.URL.Query().Get("profile")
-	
+
 	// Create AWS config
 	ctx := context.Background()
 	cfg, err := createAWSConfig(ctx, profile)

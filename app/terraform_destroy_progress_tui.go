@@ -602,7 +602,7 @@ func (m *destroyProgressModel) View() string {
 		// Show actual output
 		// Note: outputHeight is the CONTENT height in lipgloss (padding/borders are added on top)
 		// But we need to account for the internal padding space
-		linesToShow := outputHeight - 2 // Account for top/bottom padding only
+		linesToShow := outputHeight - 2  // Account for top/bottom padding only
 		maxLineWidth := contentWidth - 6 // Account for left/right padding
 
 		// First pass: calculate actual line count needed (accounting for wrapping)

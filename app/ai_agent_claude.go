@@ -382,7 +382,7 @@ IMPORTANT:
 		// AVAILABLE TOOLS section - AWS credentials
 		agentCtx.AWSProfile, agentCtx.AWSRegion, // ALL TOOLS AUTOMATICALLY SET line
 		// EXTRACTING TERRAFORM ERRORS section
-		agentCtx.Environment, // CORRECT FORMAT: cd env/%s
+		agentCtx.Environment,                                             // CORRECT FORMAT: cd env/%s
 		agentCtx.Environment, agentCtx.Environment, agentCtx.Environment, // EXAMPLE COMMANDS (3x cd env/%s)
 		agentCtx.AWSProfile, // NOTE: AWS_PROFILE=%s
 		// Example 1 - Checking ECS service

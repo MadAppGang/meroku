@@ -44,9 +44,9 @@ func TestCalculateStatistics_ReplaceCountsAsTwo(t *testing.T) {
 // Test that multiple replaces are counted correctly
 func TestCalculateStatistics_MultipleReplaces(t *testing.T) {
 	groups := changeGroups{
-		creates:  []ResourceChange{},
-		updates:  []ResourceChange{},
-		deletes:  []ResourceChange{},
+		creates: []ResourceChange{},
+		updates: []ResourceChange{},
+		deletes: []ResourceChange{},
 		replaces: []ResourceChange{
 			{Address: "aws_iam_role.role1", Type: "aws_iam_role"},
 			{Address: "aws_iam_role.role2", Type: "aws_iam_role"},
