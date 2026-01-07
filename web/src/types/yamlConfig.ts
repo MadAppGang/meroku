@@ -6,7 +6,10 @@ export interface ECRConfig {
 	mode?: "create_ecr" | "manual_repo" | "use_existing";
 	repository_uri?: string; // For manual_repo mode
 	source_service_name?: string; // For use_existing mode
-	source_service_type?: "services" | "event_processor_tasks" | "scheduled_tasks"; // For use_existing mode
+	source_service_type?:
+		| "services"
+		| "event_processor_tasks"
+		| "scheduled_tasks"; // For use_existing mode
 }
 
 /**
@@ -147,11 +150,7 @@ export interface YamlInfrastructureConfig {
 	};
 
 	// Email Service Configuration
-	ses?: {
-		enabled: boolean;
-		domain_name?: string;
-		test_emails?: string[];
-	};
+	ses?: SESConfig;
 
 	// Message Queue Configuration
 	sqs?: {
@@ -372,4 +371,37 @@ export interface EventProcessorTask {
 	memory?: number;
 	environment_variables?: Record<string, string>;
 	ecr_config?: ECRConfig;
+}
+
+/**
+ * SES Email Domain Configuration (Schema v17)
+ * Defines a single email domain with optional per-domain settings
+ */
+export interface SESDomain {
+	domain: string; // Required: The email domain (e.g., "example.com")
+	zone_id?: string; // Optional: Route53 zone ID for automatic DNS record creation
+	test_emails?: string[]; // Optional: Domain-specific test email addresses
+	// Per-domain overrides (optional, defaults to global settings)
+	enable_mail_from?: boolean; // Enable custom MAIL FROM domain
+	mail_from_subdomain?: string; // Subdomain for MAIL FROM (e.g., "bounce")
+	dmarc_policy?: "none" | "quarantine" | "reject"; // DMARC policy
+	dmarc_rua_email?: string; // Email for DMARC reports
+}
+
+/**
+ * SES Configuration (Schema v17)
+ * Supports both legacy single domain and new multi-domain format
+ */
+export interface SESConfig {
+	enabled: boolean;
+	// New multi-domain support (Schema v17+) - preferred format
+	domains?: SESDomain[];
+	// Global settings (apply to all domains unless overridden)
+	global_enable_mail_from?: boolean;
+	global_mail_from_subdomain?: string;
+	global_dmarc_policy?: "none" | "quarantine" | "reject";
+	global_dmarc_rua_email?: string;
+	// Legacy single domain configuration (backward compatibility)
+	domain_name?: string;
+	test_emails?: string[];
 }

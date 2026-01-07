@@ -25,7 +25,8 @@ import (
 // 14: CloudFront CDN configuration (cloudfront with origins, cache_behaviors, domain_aliases)
 // 15: Multiple CloudFront distributions support (cloudfront_distributions[] array)
 // 16: DynamoDB state locking support (state_lock_table field)
-const CurrentSchemaVersion = 16
+// 17: Multi-domain support for SES (domains[] array with optional zone_id per domain)
+const CurrentSchemaVersion = 17
 
 // EnvWithVersion extends Env with a schema version field
 type EnvWithVersion struct {
@@ -116,6 +117,11 @@ var AllMigrations = []Migration{
 		Version:     16,
 		Description: "DynamoDB state locking support",
 		Apply:       migrateToV16,
+	},
+	{
+		Version:     17,
+		Description: "Add multi-domain support to SES configuration",
+		Apply:       migrateToV17,
 	},
 }
 
@@ -536,7 +542,7 @@ func migrateToV9(data map[string]interface{}) error {
 			// Remove the base domain
 			prefix := customDomain
 			if len(customDomain) > len(domainName) &&
-			   customDomain[len(customDomain)-len(domainName):] == domainName {
+				customDomain[len(customDomain)-len(domainName):] == domainName {
 				prefix = customDomain[:len(customDomain)-len(domainName)-1] // Remove domain and dot
 			}
 
@@ -654,11 +660,11 @@ func migrateToV12(data map[string]interface{}) error {
 
 	// Define default values for RDS boolean fields
 	booleanDefaults := map[string]interface{}{
-		"multi_az":                             false,
-		"storage_encrypted":                    true,
-		"deletion_protection":                  false,
-		"skip_final_snapshot":                  true,
-		"iam_database_authentication_enabled":  false,
+		"multi_az":                            false,
+		"storage_encrypted":                   true,
+		"deletion_protection":                 false,
+		"skip_final_snapshot":                 true,
+		"iam_database_authentication_enabled": false,
 	}
 
 	// Add missing boolean fields with defaults
@@ -882,6 +888,81 @@ func migrateToV16(data map[string]interface{}) error {
 	} else {
 		fmt.Println("    ⚠️  Cannot auto-generate state_lock_table: project or env not set")
 	}
+
+	return nil
+}
+
+// migrateToV17 adds multi-domain support to SES configuration
+func migrateToV17(data map[string]interface{}) error {
+	fmt.Println("  → Migrating to v17: Adding multi-domain support to SES configuration")
+
+	ses, ok := data["ses"].(map[interface{}]interface{})
+	if !ok || ses == nil {
+		fmt.Println("    ℹ️  No SES configuration to migrate")
+		return nil
+	}
+
+	// Check if already migrated (has domains array)
+	if _, hasNewFormat := ses["domains"]; hasNewFormat {
+		fmt.Println("    ℹ️  SES already has domains array format")
+		return nil
+	}
+
+	// Check if legacy format exists
+	domainName, hasDomain := ses["domain_name"]
+	if !hasDomain {
+		fmt.Println("    ℹ️  No legacy domain_name found, nothing to migrate")
+		return nil
+	}
+
+	domainNameStr, ok := domainName.(string)
+	if !ok || domainNameStr == "" {
+		fmt.Println("    ℹ️  domain_name is empty, nothing to migrate")
+		return nil
+	}
+
+	// Extract zone_id if it exists (will be populated at template render time)
+	var zoneID interface{} = nil
+	if domain, ok := data["domain"].(map[interface{}]interface{}); ok {
+		if enabled, ok := domain["enabled"].(bool); ok && enabled {
+			// Note: zone_id will be populated at template render time via module.domain.zone_id
+			// For migration, we just note that it should use the domain zone
+			// Leave it empty so template will populate it
+			zoneID = nil
+		}
+	}
+
+	// Create new domain entry
+	newDomain := map[interface{}]interface{}{
+		"domain": domainNameStr,
+	}
+
+	// Add zone_id if it was determined
+	if zoneID != nil {
+		newDomain["zone_id"] = zoneID
+	}
+
+	// Migrate test_emails to domain-specific if they exist
+	if testEmails, ok := ses["test_emails"]; ok {
+		newDomain["test_emails"] = testEmails
+	}
+
+	// Create domains array with single domain
+	ses["domains"] = []interface{}{newDomain}
+
+	// Add global default settings if they don't exist
+	if _, ok := ses["enable_mail_from"]; !ok {
+		ses["enable_mail_from"] = true
+	}
+	if _, ok := ses["mail_from_subdomain"]; !ok {
+		ses["mail_from_subdomain"] = "bounce"
+	}
+	if _, ok := ses["dmarc_policy"]; !ok {
+		ses["dmarc_policy"] = "none"
+	}
+
+	fmt.Printf("    ✓ Migrated legacy SES domain '%s' to domains array\n", domainNameStr)
+	fmt.Println("    ℹ️  Legacy domain_name and test_emails fields kept for backward compatibility")
 
 	return nil
 }

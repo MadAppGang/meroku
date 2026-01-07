@@ -40,16 +40,16 @@ func registerCustomHelpers() {
 		if items == nil {
 			panic("array helper: received nil value")
 		}
-		
+
 		// Use reflection to check if it's actually a slice
 		v := reflect.ValueOf(items)
 		if v.Kind() != reflect.Slice && v.Kind() != reflect.Array {
 			panic(fmt.Sprintf("array helper: expected slice or array, got %T", items))
 		}
-		
+
 		// Convert map[interface{}]interface{} to map[string]interface{} for JSON compatibility
 		converted := convertToJSONCompatible(items)
-		
+
 		jsonBytes, err := json.Marshal(converted)
 		if err != nil {
 			panic(fmt.Sprintf("array helper: failed to marshal to JSON: %v", err))
@@ -135,6 +135,35 @@ func registerCustomHelpers() {
 		default:
 			return fmt.Sprintf("%v", a) == fmt.Sprintf("%v", b)
 		}
+	})
+
+	// isSubdomainOf - checks if a domain is a subdomain of or equals the parent domain
+	// Usage: {{#if (isSubdomainOf "mail.example.com" "example.com")}}...{{/if}}
+	// Returns true for:
+	//   - "example.com" is subdomain of "example.com" (exact match)
+	//   - "mail.example.com" is subdomain of "example.com"
+	//   - "dev.mail.example.com" is subdomain of "example.com"
+	// Returns false for:
+	//   - "otherexample.com" is NOT subdomain of "example.com"
+	//   - "mail.other.com" is NOT subdomain of "example.com"
+	raymond.RegisterHelper("isSubdomainOf", func(domain, parentDomain interface{}) bool {
+		domainStr, ok1 := domain.(string)
+		parentStr, ok2 := parentDomain.(string)
+		if !ok1 || !ok2 || domainStr == "" || parentStr == "" {
+			return false
+		}
+
+		// Normalize: remove trailing dots
+		domainStr = strings.TrimSuffix(domainStr, ".")
+		parentStr = strings.TrimSuffix(parentStr, ".")
+
+		// Exact match
+		if domainStr == parentStr {
+			return true
+		}
+
+		// Check if domain ends with ".parentDomain"
+		return strings.HasSuffix(domainStr, "."+parentStr)
 	})
 
 	raymond.RegisterHelper("compare", func(lvalue, operator string, rvalue string, options *raymond.Options) interface{} {
