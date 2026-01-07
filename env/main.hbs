@@ -636,12 +636,65 @@ module "event_bus_task_{{name}}" {
 {{/each}}
 
 
-# Email domain resolved directly in SES module
-{{#if ses.enabled}} 
+# Email domain configuration (Schema v17: Multi-domain support)
+{{#if ses.enabled}}
 module "ses" {
   source = "{{modules}}/ses"
   project = "{{project}}"
   env     = "{{env}}"
+
+  {{#if ses.domains}}
+  # Multi-domain configuration (Schema v17+)
+  # Auto-detects zone_id from Route53 domain module when domain matches
+  domains = [
+    {{#each ses.domains}}
+    {
+      domain = "{{this.domain}}"
+      {{#if this.zone_id}}
+      # Explicit zone_id provided
+      zone_id = "{{this.zone_id}}"
+      {{else}}
+        {{#if ../domain.enabled}}
+          {{!-- Check if domain is managed by our Route53 zone --}}
+          {{#compare ../env "==" "prod"}}
+            {{!-- In prod, zone manages domain.domain_name directly --}}
+            {{#if (isSubdomainOf this.domain ../domain.domain_name)}}
+      zone_id = module.domain.zone_id  # Auto-detected: subdomain of {{../domain.domain_name}}
+            {{else}}
+      # External domain - manual DNS required (not subdomain of {{../domain.domain_name}})
+            {{/if}}
+          {{else}}
+            {{!-- In non-prod, zone manages env.domain.domain_name (e.g., dev.example.com) --}}
+            {{#if (isSubdomainOf this.domain ../domain.domain_name)}}
+      zone_id = module.domain.zone_id  # Auto-detected: subdomain of {{../env}}.{{../domain.domain_name}}
+            {{else}}
+      # External domain - manual DNS required (not subdomain of {{../env}}.{{../domain.domain_name}})
+            {{/if}}
+          {{/compare}}
+        {{else}}
+      # No Route53 domain module enabled - manual DNS required
+        {{/if}}
+      {{/if}}
+      {{#if this.test_emails}}
+      test_emails = {{{array this.test_emails}}}
+      {{/if}}
+      {{#if (exists this.enable_mail_from)}}
+      enable_mail_from = {{this.enable_mail_from}}
+      {{/if}}
+      {{#if this.mail_from_subdomain}}
+      mail_from_subdomain = "{{this.mail_from_subdomain}}"
+      {{/if}}
+      {{#if this.dmarc_policy}}
+      dmarc_policy = "{{this.dmarc_policy}}"
+      {{/if}}
+      {{#if this.dmarc_rua_email}}
+      dmarc_rua_email = "{{this.dmarc_rua_email}}"
+      {{/if}}
+    }{{#unless @last}},{{/unless}}
+    {{/each}}
+  ]
+  {{else}}
+  # Legacy single domain configuration (backward compatibility)
   {{#if ses.domain_name}}
   domain = "{{ses.domain_name}}"
   {{else}}
@@ -651,17 +704,18 @@ module "ses" {
   domain = "mail.{{ env }}.{{ domain.domain_name }}"
     {{/compare}}
   {{/if}}
-  test_emails = {{{array ses.test_emails}}}
   {{#if domain.enabled}}
   zone_id = module.domain.zone_id
   {{/if}}
+  test_emails = {{{array ses.test_emails}}}
+  {{/if}}
 
-  # Email deliverability configuration
-  enable_mail_from    = {{default ses.enable_mail_from true}}
-  mail_from_subdomain = "{{default ses.mail_from_subdomain "bounce"}}"
-  dmarc_policy        = "{{default ses.dmarc_policy "none"}}"
+  # Global email deliverability configuration
+  global_enable_mail_from    = {{default ses.enable_mail_from true}}
+  global_mail_from_subdomain = "{{default ses.mail_from_subdomain "bounce"}}"
+  global_dmarc_policy        = "{{default ses.dmarc_policy "none"}}"
   {{#if ses.dmarc_rua_email}}
-  dmarc_rua_email     = "{{ses.dmarc_rua_email}}"
+  global_dmarc_rua_email     = "{{ses.dmarc_rua_email}}"
   {{/if}}
 }
 {{/if}}
