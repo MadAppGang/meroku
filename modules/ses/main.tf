@@ -81,11 +81,12 @@ resource "aws_route53_record" "domain_amazonses_dkim_record" {
     }
   ]...)
 
-  zone_id = each.value.zone_id
-  name    = "${each.value.dkim_token}._domainkey.${each.value.domain}"
-  type    = "CNAME"
-  ttl     = "3600"
-  records = ["${each.value.dkim_token}.dkim.amazonses.com"]
+  zone_id         = each.value.zone_id
+  name            = "${each.value.dkim_token}._domainkey.${each.value.domain}"
+  type            = "CNAME"
+  ttl             = "3600"
+  records         = ["${each.value.dkim_token}.dkim.amazonses.com"]
+  allow_overwrite = true
 }
 
 # =============================================================================
@@ -147,11 +148,12 @@ resource "aws_ses_domain_mail_from" "mail_from" {
 resource "aws_route53_record" "mail_from_mx" {
   for_each = { for k, v in local.enabled_mail_from : k => v if v.zone_id != null }
 
-  zone_id = each.value.zone_id
-  name    = each.value.mail_from_domain
-  type    = "MX"
-  ttl     = "600"
-  records = ["10 feedback-smtp.${data.aws_region.current.name}.amazonses.com"]
+  zone_id         = each.value.zone_id
+  name            = each.value.mail_from_domain
+  type            = "MX"
+  ttl             = "600"
+  records         = ["10 feedback-smtp.${data.aws_region.current.name}.amazonses.com"]
+  allow_overwrite = true
 }
 
 # SPF record for custom MAIL FROM domain (only if zone_id provided)
