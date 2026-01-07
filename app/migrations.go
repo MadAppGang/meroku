@@ -950,6 +950,10 @@ func migrateToV17(data map[string]interface{}) error {
 	// Create domains array with single domain
 	ses["domains"] = []interface{}{newDomain}
 
+	// Delete legacy fields after migration to avoid duplicates
+	delete(ses, "domain_name")
+	delete(ses, "test_emails")
+
 	// Add global default settings if they don't exist
 	if _, ok := ses["enable_mail_from"]; !ok {
 		ses["enable_mail_from"] = true
@@ -962,7 +966,7 @@ func migrateToV17(data map[string]interface{}) error {
 	}
 
 	fmt.Printf("    ✓ Migrated legacy SES domain '%s' to domains array\n", domainNameStr)
-	fmt.Println("    ℹ️  Legacy domain_name and test_emails fields kept for backward compatibility")
+	fmt.Println("    ✓ Removed legacy domain_name and test_emails fields")
 
 	return nil
 }
