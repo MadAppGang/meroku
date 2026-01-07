@@ -48,11 +48,12 @@ resource "aws_ses_domain_identity" "domain" {
 resource "aws_route53_record" "domain_amazonses_verification_record" {
   for_each = { for k, v in local.domains_map : k => v if v.zone_id != null }
 
-  zone_id = each.value.zone_id
-  name    = "_amazonses.${each.value.domain}"
-  type    = "TXT"
-  ttl     = "600"
-  records = [aws_ses_domain_identity.domain[each.key].verification_token]
+  zone_id         = each.value.zone_id
+  name            = "_amazonses.${each.value.domain}"
+  type            = "TXT"
+  ttl             = "600"
+  records         = [aws_ses_domain_identity.domain[each.key].verification_token]
+  allow_overwrite = true
 }
 
 # =============================================================================
@@ -93,14 +94,16 @@ resource "aws_route53_record" "domain_amazonses_dkim_record" {
 
 # SPF tells receiving mail servers that Amazon SES is authorized to send
 # email on behalf of your domain (only if zone_id provided)
+# Note: allow_overwrite handles cases where TXT record already exists
 resource "aws_route53_record" "spf" {
   for_each = { for k, v in local.domains_map : k => v if v.zone_id != null }
 
-  zone_id = each.value.zone_id
-  name    = each.value.domain
-  type    = "TXT"
-  ttl     = "600"
-  records = ["v=spf1 include:amazonses.com ~all"]
+  zone_id         = each.value.zone_id
+  name            = each.value.domain
+  type            = "TXT"
+  ttl             = "600"
+  records         = ["v=spf1 include:amazonses.com ~all"]
+  allow_overwrite = true
 }
 
 # =============================================================================
@@ -155,11 +158,12 @@ resource "aws_route53_record" "mail_from_mx" {
 resource "aws_route53_record" "mail_from_spf" {
   for_each = { for k, v in local.enabled_mail_from : k => v if v.zone_id != null }
 
-  zone_id = each.value.zone_id
-  name    = each.value.mail_from_domain
-  type    = "TXT"
-  ttl     = "600"
-  records = ["v=spf1 include:amazonses.com ~all"]
+  zone_id         = each.value.zone_id
+  name            = each.value.mail_from_domain
+  type            = "TXT"
+  ttl             = "600"
+  records         = ["v=spf1 include:amazonses.com ~all"]
+  allow_overwrite = true
 }
 
 # =============================================================================
@@ -187,11 +191,12 @@ locals {
 resource "aws_route53_record" "dmarc" {
   for_each = { for k, v in local.domains_with_dmarc : k => v if v.zone_id != null }
 
-  zone_id = each.value.zone_id
-  name    = "_dmarc.${each.value.domain}"
-  type    = "TXT"
-  ttl     = "300"
-  records = ["v=DMARC1; p=${each.value.dmarc_policy}; pct=100; rua=mailto:${each.value.dmarc_rua_email}"]
+  zone_id         = each.value.zone_id
+  name            = "_dmarc.${each.value.domain}"
+  type            = "TXT"
+  ttl             = "300"
+  records         = ["v=DMARC1; p=${each.value.dmarc_policy}; pct=100; rua=mailto:${each.value.dmarc_rua_email}"]
+  allow_overwrite = true
 }
 
 # =============================================================================

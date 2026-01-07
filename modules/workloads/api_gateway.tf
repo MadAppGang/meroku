@@ -53,6 +53,11 @@ resource "aws_apigatewayv2_integration" "services" {
   integration_uri    = aws_service_discovery_service.services[each.key].arn
   connection_id      = aws_apigatewayv2_vpc_link.services[each.key].id
   connection_type    = "VPC_LINK"
+
+  # Forward the path to the backend service
+  request_parameters = {
+    "overwrite:path" = "/$request.path.proxy"
+  }
 }
 
 # Routes for services
@@ -71,6 +76,11 @@ resource "aws_apigatewayv2_integration" "backend" {
   integration_uri    = aws_service_discovery_service.backend[0].arn
   connection_id      = aws_apigatewayv2_vpc_link.backend.id
   connection_type    = "VPC_LINK"
+
+  # Forward the path to the backend service
+  request_parameters = {
+    "overwrite:path" = "/$request.path.proxy"
+  }
 }
 
 resource "aws_apigatewayv2_route" "backend" {

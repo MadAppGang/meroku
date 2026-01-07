@@ -89,23 +89,41 @@ export function SESNodeProperties({
 	const domainConfig = config.domain;
 	const isDomainModuleEnabled = domainConfig?.enabled ?? false;
 	const managedDomain = domainConfig?.domain_name || "";
-	const currentEnv = config.env || "";
 
-	// Calculate the actual managed zone domain based on environment
-	// In prod: manages domain_name directly (e.g., "example.com")
-	// In non-prod: manages env.domain_name (e.g., "dev.example.com")
-	const getManagedZoneDomain = (): string => {
-		if (!managedDomain) return "";
-		if (currentEnv === "prod") return managedDomain;
-		return `${currentEnv}.${managedDomain}`;
+	// Collect all Route53-managed domains (main domain + additional domains)
+	const getAllManagedDomains = (): string[] => {
+		const domains: string[] = [];
+		if (isDomainModuleEnabled && managedDomain) {
+			domains.push(managedDomain);
+		}
+		// Add additional domains that have zone_id or create_zone=true
+		if (domainConfig?.additional_domains) {
+			for (const ad of domainConfig.additional_domains) {
+				if (ad.domain && (ad.zone_id || ad.create_zone)) {
+					domains.push(ad.domain);
+				}
+			}
+		}
+		return domains;
 	};
 
-	const managedZoneDomain = getManagedZoneDomain();
+	const allManagedDomains = getAllManagedDomains();
+
+
+	// Check if a domain will be auto-managed by Route53, returns the matching managed domain
+	const getAutoManagedParent = (domain: string): string | null => {
+		// Check against all managed domains (main + additional)
+		for (const managed of allManagedDomains) {
+			if (isSubdomainOf(domain, managed)) {
+				return managed;
+			}
+		}
+		return null;
+	};
 
 	// Check if a domain will be auto-managed by Route53
 	const isDomainAutoManaged = (domain: string): boolean => {
-		if (!isDomainModuleEnabled || !managedDomain) return false;
-		return isSubdomainOf(domain, managedDomain);
+		return getAutoManagedParent(domain) !== null;
 	};
 
 	// Get all domains (merge legacy + new format, deduplicated)
@@ -427,7 +445,7 @@ export function SESNodeProperties({
 												handleUpdateDomain(domain.domain, updates)
 											}
 											isAutoManaged={isDomainAutoManaged(domain.domain)}
-											managedZoneDomain={managedZoneDomain}
+											managedZoneDomain={getAutoManagedParent(domain.domain) || ""}
 										/>
 									))}
 								</div>
@@ -579,7 +597,7 @@ export function SESNodeProperties({
 							{/* MAIL FROM Settings */}
 							<div className="flex items-center justify-between">
 								<div className="space-y-1">
-									<Label>Enable Custom MAIL FROM</Label>
+									<Label>Enable MAIL FROM</Label>
 									<p className="text-xs text-gray-500">
 										Use your domain for envelope sender (improves
 										deliverability)
@@ -597,7 +615,7 @@ export function SESNodeProperties({
 
 							{sesConfig.global_enable_mail_from !== false && (
 								<div className="space-y-2">
-									<Label>MAIL FROM Subdomain</Label>
+									<Label>Default MAIL FROM Subdomain</Label>
 									<Input
 										value={sesConfig.global_mail_from_subdomain || "bounce"}
 										onChange={(e) =>
@@ -619,7 +637,7 @@ export function SESNodeProperties({
 
 							{/* DMARC Settings */}
 							<div className="space-y-2">
-								<Label>DMARC Policy</Label>
+								<Label>Default DMARC Policy</Label>
 								<Select
 									value={sesConfig.global_dmarc_policy || "none"}
 									onValueChange={(value) =>
@@ -653,7 +671,7 @@ export function SESNodeProperties({
 							</div>
 
 							<div className="space-y-2">
-								<Label>DMARC Report Email</Label>
+								<Label>Default DMARC Report Email</Label>
 								<Input
 									value={sesConfig.global_dmarc_rua_email || ""}
 									onChange={(e) =>
@@ -916,7 +934,7 @@ function DomainCard({
 							}
 							placeholder={
 								isAutoManaged
-									? `Auto-detected from ${managedZoneDomain}`
+									? `Managed by Route53 (${managedZoneDomain} zone)`
 									: "Z1234567890ABC (optional)"
 							}
 						/>
@@ -928,7 +946,7 @@ function DomainCard({
 						) : isAutoManaged ? (
 							<p className="text-xs text-blue-400">
 								<CheckCircle className="w-3 h-3 inline mr-1" />
-								Auto-detected: DNS records will be created in Route53 zone for{" "}
+								DNS records will be created in Route53 zone for{" "}
 								<strong>{managedZoneDomain}</strong>
 							</p>
 						) : (

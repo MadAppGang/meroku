@@ -1,12 +1,10 @@
 terraform {
   backend "s3" {
-    bucket = "{{ state_bucket }}"
-    key    = "{{ state_file }}"
-    region = "{{ region  }}"
-    {{#if state_lock_table}}
-    dynamodb_table = "{{ state_lock_table }}"
-    encrypt        = true
-    {{/if}}
+    bucket       = "{{ state_bucket }}"
+    key          = "{{ state_file }}"
+    region       = "{{ region  }}"
+    encrypt      = true
+    use_lockfile = true  # Native S3 state locking (Terraform 1.10+)
   }
   required_providers {
     aws = {
@@ -707,7 +705,11 @@ module "ses" {
   {{/if}}
 
   # Test email addresses (account-wide, not per-domain)
+  {{#if ses.test_emails}}
   test_emails = {{{array ses.test_emails}}}
+  {{else}}
+  test_emails = []
+  {{/if}}
 
   # Global email deliverability configuration
   global_enable_mail_from    = {{default ses.enable_mail_from true}}
