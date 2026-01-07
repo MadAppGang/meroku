@@ -643,7 +643,7 @@ module "ses" {
 
   {{#if ses.domains}}
   # Multi-domain configuration (Schema v17+)
-  # Auto-detects zone_id from Route53 domain module when domain matches
+  # Auto-detects zone_id from Route53 domain module or additional_domains
   domains = [
     {{#each ses.domains}}
     {
@@ -652,25 +652,29 @@ module "ses" {
       # Explicit zone_id provided
       zone_id = "{{this.zone_id}}"
       {{else}}
+        {{!-- First check additional_domains for exact or parent domain match --}}
+        {{#each ../domain.additional_domains}}
+          {{#if (or (eq this.domain ../this.domain) (isSubdomainOf ../this.domain this.domain))}}
+            {{#if this.zone_id}}
+      zone_id = "{{this.zone_id}}"  # From additional_domains: {{this.domain}}
+            {{else}}
+              {{#if this.create_zone}}
+      zone_id = aws_route53_zone.additional_{{@index}}.zone_id  # From additional_domains: {{this.domain}}
+              {{/if}}
+            {{/if}}
+          {{/if}}
+        {{/each}}
+        {{!-- Then check main domain module --}}
         {{#if ../domain.enabled}}
-          {{!-- Check if domain is managed by our Route53 zone --}}
           {{#compare ../env "==" "prod"}}
-            {{!-- In prod, zone manages domain.domain_name directly --}}
             {{#if (isSubdomainOf this.domain ../domain.domain_name)}}
       zone_id = module.domain.zone_id  # Auto-detected: subdomain of {{../domain.domain_name}}
-            {{else}}
-      # External domain - manual DNS required (not subdomain of {{../domain.domain_name}})
             {{/if}}
           {{else}}
-            {{!-- In non-prod, zone manages env.domain.domain_name (e.g., dev.example.com) --}}
             {{#if (isSubdomainOf this.domain ../domain.domain_name)}}
       zone_id = module.domain.zone_id  # Auto-detected: subdomain of {{../env}}.{{../domain.domain_name}}
-            {{else}}
-      # External domain - manual DNS required (not subdomain of {{../env}}.{{../domain.domain_name}})
             {{/if}}
           {{/compare}}
-        {{else}}
-      # No Route53 domain module enabled - manual DNS required
         {{/if}}
       {{/if}}
       {{#if (exists this.enable_mail_from)}}
