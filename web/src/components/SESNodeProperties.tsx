@@ -110,21 +110,26 @@ export function SESNodeProperties({
 		return isSubdomainOf(domain, managedDomain);
 	};
 
-	// Get all domains (merge legacy + new format)
+	// Get all domains (merge legacy + new format, deduplicated)
 	const getAllDomains = (): SESDomain[] => {
 		const domains: SESDomain[] = [];
 
-		// Add legacy domain if present
-		if (sesConfig.domain_name) {
-			domains.push({
-				domain: sesConfig.domain_name,
-				test_emails: sesConfig.test_emails || [],
-			});
+		// Add new multi-domain format first (preferred)
+		if (sesConfig.domains && sesConfig.domains.length > 0) {
+			domains.push(...sesConfig.domains);
 		}
 
-		// Add new multi-domain format
-		if (sesConfig.domains) {
-			domains.push(...sesConfig.domains);
+		// Add legacy domain only if NOT already in domains array
+		if (sesConfig.domain_name) {
+			const alreadyExists = domains.some(
+				(d) => d.domain === sesConfig.domain_name,
+			);
+			if (!alreadyExists) {
+				domains.push({
+					domain: sesConfig.domain_name,
+					test_emails: sesConfig.test_emails || [],
+				});
+			}
 		}
 
 		return domains;
