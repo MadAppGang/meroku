@@ -15,6 +15,7 @@ import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Separator } from "./ui/separator";
 import { ECRConfigEditor } from "./ECRConfigEditor";
+import { ScheduledTaskEnvironmentVariables } from "./ScheduledTaskEnvironmentVariables";
 
 interface ScheduledTaskPropertiesProps {
 	config: YamlInfrastructureConfig;
@@ -152,6 +153,7 @@ export function ScheduledTaskProperties({
 	};
 
 	return (
+	<>
 		<Card className="w-full">
 			<CardHeader>
 				<CardTitle>Scheduled Task Configuration</CardTitle>
@@ -200,5 +202,13 @@ export function ScheduledTaskProperties({
 
 			</CardContent>
 		</Card>
+
+		{/* Environment Variables Editor */}
+		<ScheduledTaskEnvironmentVariables
+			config={config}
+			node={node}
+			onConfigChange={onConfigChange}
+		/>
+	</>
 	);
 }
