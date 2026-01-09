@@ -27,7 +27,7 @@ resource "aws_scheduler_schedule" "scheduler" {
     role_arn = aws_iam_role.scheduler_role.arn
 
     ecs_parameters {
-      task_definition_arn    = aws_ecs_task_definition.task.arn
+      task_definition_arn    = aws_ecs_task_definition.task.arn_without_revision
       enable_execute_command = true
       launch_type            = "FARGATE"
 
