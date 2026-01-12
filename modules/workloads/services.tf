@@ -291,12 +291,12 @@ resource "aws_iam_role_policy_attachment" "service_task_bucket" {
   policy_arn = aws_iam_policy.full_access_to_backend_bucket.arn
 }
 
-# SES access (conditional on ses_enabled)
+# SES access for all services
 resource "aws_iam_role_policy_attachment" "service_task_ses" {
-  for_each = { for k, v in local.service_names : k => v if var.ses_enabled }
+  for_each = local.service_names
 
   role       = aws_iam_role.services_task_execution[each.key].name
-  policy_arn = aws_iam_policy.send_emails[0].arn
+  policy_arn = aws_iam_policy.send_emails.arn
 }
 
 
