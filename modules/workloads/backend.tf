@@ -358,7 +358,6 @@ EOF
 }
 
 resource "aws_iam_policy" "send_emails" {
-  count  = var.ses_enabled ? 1 : 0
   name   = "SendSESEmails_${var.project}_${var.env}"
   policy = <<EOF
 {
@@ -407,9 +406,8 @@ resource "aws_iam_role_policy_attachment" "backend_task_backend_bucket" {
 }
 
 resource "aws_iam_role_policy_attachment" "backend_task_ses" {
-  count      = var.ses_enabled ? 1 : 0
   role       = aws_iam_role.backend_task.name
-  policy_arn = aws_iam_policy.send_emails[0].arn
+  policy_arn = aws_iam_policy.send_emails.arn
 }
 
 // Add X-Ray permissions to the backend task role
