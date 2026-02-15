@@ -64,6 +64,38 @@ func TestCalculateStatistics_MultipleReplaces(t *testing.T) {
 	}
 }
 
+// Test that read operations are NOT counted in totalChanges
+// Reads are data source refreshes that don't generate apply events
+func TestCalculateStatistics_ReadsNotCounted(t *testing.T) {
+	groups := changeGroups{
+		creates: []ResourceChange{
+			{Address: "aws_instance.new", Type: "aws_instance"},
+		},
+		updates: []ResourceChange{
+			{Address: "aws_instance.existing", Type: "aws_instance"},
+		},
+		deletes: []ResourceChange{},
+		replaces: []ResourceChange{},
+		reads: []ResourceChange{
+			{Address: "data.aws_caller_identity.current", Type: "data.aws_caller_identity"},
+			{Address: "data.aws_region.current", Type: "data.aws_region"},
+		},
+	}
+
+	stats := calculateStatistics(groups)
+
+	// 1 create + 1 update = 2 total (reads should NOT be counted)
+	expectedTotal := 2
+	if stats.totalChanges != expectedTotal {
+		t.Errorf("Expected totalChanges=%d (reads excluded), got %d", expectedTotal, stats.totalChanges)
+	}
+
+	// But reads should still be tracked in byAction
+	if stats.byAction["read"] != 2 {
+		t.Errorf("Expected byAction[read]=2, got %d", stats.byAction["read"])
+	}
+}
+
 // Test pending list creation for replace operations
 func TestPendingListForReplace(t *testing.T) {
 	// Simulate what initApplyState does
