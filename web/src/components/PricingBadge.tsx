@@ -5,10 +5,12 @@ import {
 	calculateAuroraMaxPrice,
 	calculateECSPrice,
 	calculateRDSPrice,
+	calculateScheduledTaskPrice,
 	formatPrice,
 	type AuroraConfig,
 	type ECSConfig,
 	type RDSConfig,
+	type ScheduledTaskConfig,
 } from "../utils/awsPricing";
 import { Badge } from "./ui/badge";
 
@@ -204,29 +206,41 @@ export function PricingBadge({
 		);
 	}
 
-	// Special handling for scheduled tasks
-	if (nodeType === "scheduled-task" && serviceName) {
-		const scheduledKey = `scheduled_${serviceName.toLowerCase()}`;
-		if (pricingData[scheduledKey]) {
-			const price = pricingData[scheduledKey].levels[level];
-			if (price) {
-				// For scheduled tasks, show more precision since costs are typically small
-				const monthlyPrice = price.monthlyPrice;
-				const displayPrice =
-					monthlyPrice < 1
-						? `$${monthlyPrice.toFixed(2)}/mo`
-						: `$${monthlyPrice.toFixed(0)}/mo`;
-
-				return (
-					<Badge
-						variant="secondary"
-						className="absolute -top-2 -right-2 bg-green-600/90 text-white border-green-700 text-xs px-1 py-0.5"
-					>
-							{displayPrice}
-					</Badge>
-				);
-			}
+	// Special handling for scheduled tasks - calculate dynamically from configProperties
+	if (nodeType === "scheduled-task" && configProperties) {
+		if (!rates) {
+			return (
+				<Badge
+					variant="secondary"
+					className="absolute -top-2 -right-2 bg-gray-600/90 text-gray-300 border-gray-700 text-xs px-1 py-0.5"
+				>
+					...
+				</Badge>
+			);
 		}
+
+		const cpu = typeof configProperties.cpu === 'string'
+			? parseInt(configProperties.cpu)
+			: (configProperties.cpu || 256);
+		const memory = typeof configProperties.memory === 'string'
+			? parseInt(configProperties.memory)
+			: (configProperties.memory || 512);
+		const schedule = configProperties.schedule || "rate(1 day)";
+
+		const taskConfig: ScheduledTaskConfig = { cpu, memory, schedule };
+		const monthlyPrice = calculateScheduledTaskPrice(taskConfig, rates);
+		const displayPrice = monthlyPrice < 1
+			? `$${monthlyPrice.toFixed(2)}/mo`
+			: `${formatPrice(monthlyPrice)}/mo`;
+
+		return (
+			<Badge
+				variant="secondary"
+				className="absolute -top-2 -right-2 bg-green-600/90 text-white border-green-700 text-xs px-1 py-0.5"
+			>
+				{displayPrice}
+			</Badge>
+		);
 	}
 
 	// Special handling for event processor tasks

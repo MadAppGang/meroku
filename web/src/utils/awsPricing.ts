@@ -30,6 +30,13 @@ export interface AuroraConfig {
 	level: 'startup' | 'scaleup' | 'highload';
 }
 
+export interface ScheduledTaskConfig {
+	cpu: number;
+	memory: number;
+	schedule: string; // e.g. "rate(1 minute)", "rate(1 hours)", "cron(...)"
+	runtimeMinutes?: number; // average runtime per execution, defaults to 5
+}
+
 export interface ECSConfig {
 	cpu: number; // CPU units (e.g., 256, 512, 1024)
 	memory: number; // Memory in MB (e.g., 512, 1024, 2048)
@@ -189,6 +196,43 @@ export function calculateECSPrice(
 
 	// Calculate monthly cost
 	return totalHourlyCost * HOURS_PER_MONTH;
+}
+
+/**
+ * Estimate runs per month from a schedule expression.
+ * Supports rate() and cron() formats.
+ */
+function estimateRunsPerMonth(schedule: string): number {
+	const rateMatch = schedule.match(/rate\((\d+)\s+(minute|hour|day)s?\)/i);
+	if (rateMatch) {
+		const value = Number.parseInt(rateMatch[1]);
+		const unit = rateMatch[2].toLowerCase();
+		if (unit === "minute") return (60 * 24 * 30) / value;
+		if (unit === "hour") return (24 * 30) / value;
+		if (unit === "day") return 30 / value;
+	}
+	// Default: assume once per day for cron or unknown
+	return 30;
+}
+
+/**
+ * Calculate monthly cost for a scheduled task (Fargate spot pricing).
+ * Accounts for schedule frequency and per-run duration.
+ */
+export function calculateScheduledTaskPrice(
+	config: ScheduledTaskConfig,
+	rates: AWSPriceRates,
+): number {
+	const vCPU = config.cpu / 1024.0;
+	const memoryGB = config.memory / 1024.0;
+	const runtimeHours = (config.runtimeMinutes || 5) / 60.0;
+	const runsPerMonth = estimateRunsPerMonth(config.schedule);
+
+	const vCPUCostPerRun = vCPU * rates.fargate.vcpuHourly * runtimeHours;
+	const memoryCostPerRun = memoryGB * rates.fargate.memoryGbHourly * runtimeHours;
+	const costPerRun = vCPUCostPerRun + memoryCostPerRun;
+
+	return costPerRun * runsPerMonth;
 }
 
 /**
