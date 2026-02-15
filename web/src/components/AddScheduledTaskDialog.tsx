@@ -1,5 +1,6 @@
 import type React from "react";
 import { useState } from "react";
+import { useFargateOptions } from "../hooks/use-fargate-options";
 import type { ScheduledTask } from "../types/components";
 import { Button } from "./ui/button";
 import {
@@ -34,6 +35,7 @@ export function AddScheduledTaskDialog({
 	onAdd,
 	existingTasks,
 }: AddScheduledTaskDialogProps) {
+	const { options: fargateOptions, getMemoryOptions, formatMemory } = useFargateOptions();
 	const [formData, setFormData] = useState({
 		name: "",
 		schedule_type: "rate",
@@ -275,18 +277,24 @@ export function AddScheduledTaskDialog({
 								<Label htmlFor="cpu">CPU (units)</Label>
 								<Select
 									value={formData.cpu.toString()}
-									onValueChange={(value: string) =>
-										setFormData({ ...formData, cpu: Number.parseInt(value) })
-									}
+									onValueChange={(value: string) => {
+										const newCpu = Number.parseInt(value);
+										const validMemory = getMemoryOptions(newCpu);
+										const newMemory = validMemory.includes(formData.memory)
+											? formData.memory
+											: validMemory[0] || 512;
+										setFormData({ ...formData, cpu: newCpu, memory: newMemory });
+									}}
 								>
 									<SelectTrigger id="cpu">
 										<SelectValue />
 									</SelectTrigger>
 									<SelectContent>
-										<SelectItem value="256">256 (0.25 vCPU)</SelectItem>
-										<SelectItem value="512">512 (0.5 vCPU)</SelectItem>
-										<SelectItem value="1024">1024 (1 vCPU)</SelectItem>
-										<SelectItem value="2048">2048 (2 vCPU)</SelectItem>
+										{fargateOptions.map((opt) => (
+											<SelectItem key={opt.cpu} value={opt.cpu.toString()}>
+												{opt.cpu} ({opt.vcpu} vCPU)
+											</SelectItem>
+										))}
 									</SelectContent>
 								</Select>
 							</div>
@@ -303,10 +311,11 @@ export function AddScheduledTaskDialog({
 										<SelectValue />
 									</SelectTrigger>
 									<SelectContent>
-										<SelectItem value="512">512 MB</SelectItem>
-										<SelectItem value="1024">1 GB</SelectItem>
-										<SelectItem value="2048">2 GB</SelectItem>
-										<SelectItem value="4096">4 GB</SelectItem>
+										{getMemoryOptions(formData.cpu).map((mem) => (
+											<SelectItem key={mem} value={mem.toString()}>
+												{formatMemory(mem)}
+											</SelectItem>
+										))}
 									</SelectContent>
 								</Select>
 							</div>

@@ -356,6 +356,16 @@ export interface S3BucketInfo {
 	creationDate?: string;
 }
 
+export interface FargateCPUOption {
+	cpu: number;
+	vcpu: string;
+	memoryOptions: number[];
+}
+
+export interface FargateOptionsResponse {
+	options: FargateCPUOption[];
+}
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || "";
 
 export const infrastructureApi = {
@@ -1111,6 +1121,14 @@ export const infrastructureApi = {
 		if (!response.ok) {
 			const error: ErrorResponse = await response.json();
 			throw new Error(error.error || "Failed to check ECR trust policy");
+		}
+		return response.json();
+	},
+
+	async getFargateOptions(): Promise<FargateOptionsResponse> {
+		const response = await fetch(`${API_BASE_URL}/api/fargate/options`);
+		if (!response.ok) {
+			throw new Error("Failed to fetch Fargate options");
 		}
 		return response.json();
 	},

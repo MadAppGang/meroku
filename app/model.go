@@ -204,6 +204,8 @@ type ScheduledTask struct {
 	Schedule            string     `yaml:"schedule"`
 	ExternalDockerImage string     `yaml:"docker_image"`
 	ContainerCommand    string     `yaml:"container_command"`
+	CPU                 int        `yaml:"cpu,omitempty"`
+	Memory              int        `yaml:"memory,omitempty"`
 	ECRConfig           *ECRConfig `yaml:"ecr_config,omitempty"` // Schema v9
 }
 
