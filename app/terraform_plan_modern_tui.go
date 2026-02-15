@@ -1182,6 +1182,34 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 
+			// Safety: Deduplicate completions.
+			// If this address has no remaining pending entries but already has completions,
+			// it's a duplicate (e.g., from both structured hook and text message).
+			// For replace operations (delete+create), pending entries are consumed one at a time,
+			// so the create phase can still proceed while the delete pending was already removed.
+			pendingForAddr := 0
+			for _, p := range m.applyState.pending {
+				pendingBaseAddr := strings.TrimSuffix(strings.TrimSuffix(p.Address, " (destroy)"), " (create)")
+				if pendingBaseAddr == msg.Address {
+					pendingForAddr++
+				}
+			}
+			completedForAddr := 0
+			for _, c := range m.applyState.completed {
+				if c.Address == msg.Address {
+					completedForAddr++
+				}
+			}
+			if pendingForAddr == 0 && completedForAddr > 0 {
+				// No more expected completions for this address - skip duplicate
+				if debugFile, err := os.OpenFile("/tmp/terraform_debug.log", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644); err == nil {
+					timestamp := time.Now().Format("2006-01-02 15:04:05.000")
+					fmt.Fprintf(debugFile, "[%s] [DEDUP] Skipping duplicate completion: %s action=%s (no pending, %d already completed)\n", timestamp, msg.Address, action, completedForAddr)
+					debugFile.Close()
+				}
+				break
+			}
+
 			// Move from pending to completed - match BOTH address AND action
 			// This is important for replace operations which have 2 entries (delete + create)
 			// Note: Pending addresses may have suffixes like " (destroy)" or " (create)"
@@ -5209,7 +5237,12 @@ func calculateStatistics(groups changeGroups) changeStats {
 		stats.byType[change.Type]++
 		stats.totalChanges += 2 // Each replace is 2 operations: delete + create
 	}
-	countChanges(groups.reads, "read")
+	// Note: reads are tracked for display but NOT counted in totalChanges
+	// because data source reads don't generate apply_complete hooks during apply
+	stats.byAction["read"] = len(groups.reads)
+	for _, change := range groups.reads {
+		stats.byType[change.Type]++
+	}
 
 	return stats
 }

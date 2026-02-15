@@ -298,6 +298,10 @@ func (m *modernPlanModel) initApplyState() {
 	for _, provider := range m.providers {
 		for _, service := range provider.services {
 			for _, resource := range service.resources {
+				// Skip read operations - they don't generate apply events
+				if len(resource.Change.Actions) == 1 && resource.Change.Actions[0] == "read" {
+					continue
+				}
 				// For replace operations (delete + create), add both actions to pending
 				if len(resource.Change.Actions) == 2 &&
 					resource.Change.Actions[0] == "delete" &&
@@ -457,22 +461,14 @@ func (m *modernPlanModel) parseTerraformOutput(stdout interface{}) {
 				}
 
 				// Check for completion patterns in the message
+				// NOTE: Completion signals are handled by apply_complete/apply_errored hooks.
+				// Text messages are only used for logging, not for progress tracking.
+				// Sending resourceCompleteMsg here would cause double-counting.
 				if strings.Contains(msg.Message, ": Creation complete after") ||
 					strings.Contains(msg.Message, ": Modifications complete after") ||
 					strings.Contains(msg.Message, ": Destroy complete after") ||
 					strings.Contains(msg.Message, ": Destruction complete after") {
-					// Parse successful completion
-					parts := strings.SplitN(msg.Message, ":", 2)
-					if len(parts) >= 1 {
-						addr := strings.TrimSpace(parts[0])
-						// Send a resource complete message with success
-						m.sendMsg(resourceCompleteMsg{
-							Address:  addr,
-							Success:  true,
-							Error:    "",
-							Duration: 0,
-						})
-					}
+					// Handled by apply_complete hook - just log the message
 				} else if msg.Level == "error" ||
 					(msg.Message != "" && (strings.Contains(msg.Message, ": Creation errored after") ||
 						strings.Contains(msg.Message, ": Modification errored after") ||
@@ -481,31 +477,8 @@ func (m *modernPlanModel) parseTerraformOutput(stdout interface{}) {
 					if strings.Contains(msg.Message, "errored after") {
 						// Override log level to error for these messages
 						logLevel = "error"
-						parts := strings.SplitN(msg.Message, ":", 2)
-						if len(parts) >= 1 {
-							addr := strings.TrimSpace(parts[0])
-
-							// Check for diagnostic information (if available)
-							m.applyState.mu.Lock()
-							diagnostic := m.applyState.diagnostics[addr]
-							errorSummary := ""
-							errorDetail := ""
-							if diagnostic != nil {
-								errorSummary = diagnostic.Summary
-								errorDetail = diagnostic.Detail
-							}
-							m.applyState.mu.Unlock()
-
-							// Send a resource complete message with error
-							m.sendMsg(resourceCompleteMsg{
-								Address:      addr,
-								Success:      false,
-								Error:        msg.Message,
-								ErrorSummary: errorSummary,
-								ErrorDetail:  errorDetail,
-								Duration:     0,
-							})
-						}
+						// Error completion is handled by apply_errored hook.
+						// Only override log level here, don't send duplicate resourceCompleteMsg.
 					}
 				} else if strings.Contains(msg.Message, ": Still destroying...") ||
 					strings.Contains(msg.Message, ": Destroying...") ||
@@ -703,6 +676,11 @@ func (m *modernPlanModel) handleApplyComplete(msg *TerraformJSONMessage) {
 	}
 	// Normalize action name (Terraform uses "destroy" in hooks, "delete" in plan)
 	action = normalizeAction(action)
+
+	// Skip read operations - data source reads are not tracked for apply progress
+	if action == "read" {
+		return
+	}
 
 	// Use elapsed seconds from the message
 	duration := time.Duration(msg.Hook.ElapsedSeconds * float64(time.Second))
