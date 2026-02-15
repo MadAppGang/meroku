@@ -80,6 +80,18 @@ variable "private_dns_name" {
   default     = ""
 }
 
+variable "cpu" {
+  description = "CPU units for the task (Fargate)"
+  type        = number
+  default     = 256
+}
+
+variable "memory" {
+  description = "Memory in MB for the task (Fargate)"
+  type        = number
+  default     = 512
+}
+
 variable "custom_env_vars" {
   description = "Custom environment variables to pass to the container"
   type = list(object({

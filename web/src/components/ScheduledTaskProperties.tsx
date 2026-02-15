@@ -13,7 +13,15 @@ import {
 } from "./ui/card";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "./ui/select";
 import { Separator } from "./ui/separator";
+import { useFargateOptions } from "../hooks/use-fargate-options";
 import { ECRConfigEditor } from "./ECRConfigEditor";
 import { ScheduledTaskEnvironmentVariables } from "./ScheduledTaskEnvironmentVariables";
 
@@ -144,6 +152,9 @@ export function ScheduledTaskProperties({
 		handleTaskChange({ ecr_config: newConfig });
 	}, [handleTaskChange]);
 
+	const { options: fargateOptions, getMemoryOptions, formatMemory } = useFargateOptions();
+	const memoryOptions = getMemoryOptions(currentTask?.cpu || 256);
+
 	// Use currentTask if it exists, otherwise use defaults
 	const task = currentTask || {
 		name: taskName,
@@ -168,6 +179,60 @@ export function ScheduledTaskProperties({
 						value={task.schedule || "rate(1 day)"}
 						onChange={(schedule) => handleTaskChange({ schedule })}
 					/>
+				</div>
+
+				<Separator />
+
+				{/* CPU and Memory Configuration */}
+				<div className="grid grid-cols-2 gap-4">
+					<div className="space-y-2">
+						<Label>CPU (units)</Label>
+						<Select
+							value={(task.cpu || 256).toString()}
+							onValueChange={(value: string) => {
+								const newCpu = Number.parseInt(value);
+								const option = fargateOptions.find((o) => o.cpu === newCpu);
+								const validMemory = option?.memoryOptions || [];
+								const currentMemory = task.memory || 512;
+								const newMemory = validMemory.includes(currentMemory)
+									? currentMemory
+									: validMemory[0] || 512;
+								handleTaskChange({ cpu: newCpu, memory: newMemory });
+							}}
+						>
+							<SelectTrigger>
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								{fargateOptions.map((option) => (
+									<SelectItem key={option.cpu} value={option.cpu.toString()}>
+										{option.cpu} ({option.vcpu} vCPU)
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					</div>
+
+					<div className="space-y-2">
+						<Label>Memory (MB)</Label>
+						<Select
+							value={(task.memory || 512).toString()}
+							onValueChange={(value: string) =>
+								handleTaskChange({ memory: Number.parseInt(value) })
+							}
+						>
+							<SelectTrigger>
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								{memoryOptions.map((mem) => (
+									<SelectItem key={mem} value={mem.toString()}>
+										{formatMemory(mem)}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					</div>
 				</div>
 
 				<Separator />

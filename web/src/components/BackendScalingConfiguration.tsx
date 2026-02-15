@@ -1,5 +1,6 @@
 import { Activity, AlertCircle, Cpu, Info, Users } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useFargateOptions } from "../hooks/use-fargate-options";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import {
 	Card,
@@ -28,59 +29,14 @@ interface BackendScalingConfigurationProps {
 	serviceName?: string;
 }
 
-// CPU to Memory mapping based on Fargate requirements
-const cpuMemoryMap: { [key: string]: string[] } = {
-	"256": ["512", "1024", "2048"],
-	"512": ["1024", "2048", "3072", "4096"],
-	"1024": ["2048", "3072", "4096", "5120", "6144", "7168", "8192"],
-	"2048": [
-		"4096",
-		"5120",
-		"6144",
-		"7168",
-		"8192",
-		"9216",
-		"10240",
-		"11264",
-		"12288",
-		"13312",
-		"14336",
-		"15360",
-		"16384",
-	],
-	"4096": [
-		"8192",
-		"9216",
-		"10240",
-		"11264",
-		"12288",
-		"13312",
-		"14336",
-		"15360",
-		"16384",
-		"17408",
-		"18432",
-		"19456",
-		"20480",
-		"21504",
-		"22528",
-		"23552",
-		"24576",
-		"25600",
-		"26624",
-		"27648",
-		"28672",
-		"29696",
-		"30720",
-	],
-};
-
 export function BackendScalingConfiguration({
 	config,
 	onConfigChange,
 	isService = false,
 	serviceName,
 }: BackendScalingConfigurationProps) {
+	const { options: fargateOptions, getMemoryOptions, formatMemory } = useFargateOptions();
+
 	// Get service config if this is for a service
 	const serviceConfig =
 		isService && serviceName
@@ -118,11 +74,11 @@ export function BackendScalingConfiguration({
 
 	// Adjust memory when CPU changes
 	useEffect(() => {
-		const availableMemory = cpuMemoryMap[cpu];
-		if (availableMemory && !availableMemory.includes(memory)) {
-			setMemory(availableMemory[0]);
+		const availableMemory = getMemoryOptions(Number.parseInt(cpu));
+		if (availableMemory.length > 0 && !availableMemory.includes(Number.parseInt(memory))) {
+			setMemory(availableMemory[0].toString());
 		}
-	}, [cpu, memory]);
+	}, [cpu, memory, getMemoryOptions]);
 
 	const handleWorkloadChange = (
 		updates: Partial<YamlInfrastructureConfig["workload"]>,
@@ -191,11 +147,11 @@ export function BackendScalingConfiguration({
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
-									<SelectItem value="256">256 (0.25 vCPU)</SelectItem>
-									<SelectItem value="512">512 (0.5 vCPU)</SelectItem>
-									<SelectItem value="1024">1024 (1 vCPU)</SelectItem>
-									<SelectItem value="2048">2048 (2 vCPU)</SelectItem>
-									<SelectItem value="4096">4096 (4 vCPU)</SelectItem>
+									{fargateOptions.map((opt) => (
+										<SelectItem key={opt.cpu} value={opt.cpu.toString()}>
+											{opt.cpu} ({opt.vcpu} vCPU)
+										</SelectItem>
+									))}
 								</SelectContent>
 							</Select>
 						</div>
@@ -216,9 +172,9 @@ export function BackendScalingConfiguration({
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
-									{cpuMemoryMap[cpu]?.map((mem) => (
-										<SelectItem key={mem} value={mem}>
-											{mem} MB ({(Number.parseInt(mem) / 1024).toFixed(1)} GB)
+									{getMemoryOptions(Number.parseInt(cpu)).map((mem) => (
+										<SelectItem key={mem} value={mem.toString()}>
+											{formatMemory(mem)}
 										</SelectItem>
 									))}
 								</SelectContent>

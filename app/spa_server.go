@@ -67,6 +67,9 @@ func mainRouter() http.Handler {
 	mux.HandleFunc("/api/ecs/scaling-history", corsMiddleware(getServiceScalingHistory))
 	mux.HandleFunc("/api/ecs/metrics", corsMiddleware(getServiceMetrics))
 
+	// Fargate
+	mux.HandleFunc("/api/fargate/options", corsMiddleware(getFargateOptions))
+
 	// API Gateway
 	mux.HandleFunc("/api/apigateway/info", corsMiddleware(getAPIGatewayInfo))
 

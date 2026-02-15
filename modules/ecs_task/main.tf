@@ -70,16 +70,16 @@ resource "aws_ecs_task_definition" "task" {
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
   family                   = var.task
-  cpu                      = 256
-  memory                   = 512
+  cpu                      = var.cpu
+  memory                   = var.memory
   execution_role_arn       = aws_iam_role.task_execution.arn
   task_role_arn            = aws_iam_role.task.arn
 
   container_definitions = jsonencode([merge(
     {
       name      = "${var.project}_container_${var.task}_${var.env}"
-      cpu       = 256
-      memory    = 512
+      cpu       = var.cpu
+      memory    = var.memory
       image     = local.docker_image
       secrets   = local.task_env_ssm
       essential = true
