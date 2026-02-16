@@ -34,7 +34,6 @@ export function BackendXRayConfiguration({
 		if (onConfigChange) {
 			onConfigChange({
 				workload: {
-					...config.workload,
 					xray_enabled: checked,
 				},
 			});

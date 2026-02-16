@@ -298,6 +298,7 @@ type AmplifyApp struct {
 	SubdomainPrefix  string            `yaml:"subdomain_prefix,omitempty"`      // NEW: Auto-constructs domain
 	CustomDomain     string            `yaml:"custom_domain,omitempty"`         // For manual override
 	EnvVariables     map[string]string `yaml:"environment_variables,omitempty"` // App-level env vars
+	SPAMode          bool              `yaml:"spa_mode,omitempty"`              // Enable SPA routing (200 rewrite instead of 404-200)
 }
 
 // AmplifyBranch represents a branch configuration for an Amplify app

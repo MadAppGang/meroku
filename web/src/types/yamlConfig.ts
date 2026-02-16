@@ -250,6 +250,7 @@ export interface YamlInfrastructureConfig {
 		subdomain_prefix?: string;
 		custom_domain?: string;
 		environment_variables?: Record<string, string>;
+		spa_mode?: boolean; // Enable SPA routing (200 rewrite instead of 404-200)
 	}>;
 
 	// CloudFront CDN Configuration (Schema v14 -> v15: changed to array)

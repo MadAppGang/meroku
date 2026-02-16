@@ -529,7 +529,7 @@ export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
 						/* Instance count badge */
 						<div className="bg-blue-600 text-white rounded-full px-2 py-0.5 text-xs font-medium flex items-center gap-1">
 							<Copy className="w-3 h-3" />
-							{data.configProperties.desiredCount || 1}
+							{data.configProperties.desiredCount ?? 1}
 						</div>
 					)}
 				</div>

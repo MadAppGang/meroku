@@ -82,7 +82,6 @@ export function BackendS3Buckets({
 			if (onConfigChange) {
 				onConfigChange({
 					workload: {
-						...config.workload,
 						env_files_s3: updatedEnvFiles,
 					},
 				});
@@ -100,7 +99,6 @@ export function BackendS3Buckets({
 		if (onConfigChange) {
 			onConfigChange({
 				workload: {
-					...config.workload,
 					env_files_s3: updated,
 				},
 			});
@@ -115,7 +113,6 @@ export function BackendS3Buckets({
 		if (onConfigChange) {
 			onConfigChange({
 				workload: {
-					...config.workload,
 					env_files_s3: updated,
 				},
 			});

@@ -165,8 +165,30 @@ export default function App() {
     setConfig((prevConfig) => {
       if (!prevConfig) return prevConfig;
 
-      // Create updated config
-      const updatedConfig = { ...prevConfig, ...updates };
+      // Deep merge nested objects to prevent stale closure overwrites.
+      // Components may capture config.workload at render time, which can be stale
+      // if another component just updated a different workload field.
+      // By merging updates into prevConfig (which is always current from setState),
+      // we ensure no fields are accidentally overwritten with stale values.
+      const updatedConfig = { ...prevConfig };
+      const nestedKeys = ['workload', 'domain', 'postgres', 'cognito', 'ses', 'sqs', 'alb', 'pubsub_appsync'] as const;
+
+      for (const [key, value] of Object.entries(updates)) {
+        if (
+          value != null &&
+          typeof value === 'object' &&
+          !Array.isArray(value) &&
+          nestedKeys.includes(key as typeof nestedKeys[number])
+        ) {
+          // Deep merge: prevConfig fields as base, updates override only specified fields
+          (updatedConfig as Record<string, unknown>)[key] = {
+            ...((prevConfig as Record<string, unknown>)[key] as object || {}),
+            ...value,
+          };
+        } else {
+          (updatedConfig as Record<string, unknown>)[key] = value;
+        }
+      }
 
       // Only return new object if something actually changed (deep equality check)
       // This prevents unnecessary re-renders when the data hasn't actually changed

@@ -84,11 +84,27 @@ resource "aws_amplify_app" "apps" {
   # for custom build configurations. Amplify will auto-detect the framework and
   # use appropriate default build settings if amplify.yml is not present.
 
-  # Default redirect for SPAs
-  custom_rule {
-    source = "/<*>"
-    target = "/index.html"
-    status = "404-200"
+  # SPA routing: conditionally use modern 200 rewrite or legacy 404-200 pattern
+  dynamic "custom_rule" {
+    for_each = each.value.spa_mode ? [1] : []
+    content {
+      # Modern SPA rewrite: matches paths without extensions (except static files)
+      # This rewrites to index.html with 200 status BEFORE S3 processes the request
+      # Fixes the 404 status bug where S3 error document returns 404 status
+      source = "</^[^.]+$|\\.(?!(css|gif|ico|jpg|js|png|txt|svg|woff|woff2|ttf|map|json|webmanifest|wasm)$)([^.]+$)/>"
+      target = "/index.html"
+      status = "200"
+    }
+  }
+
+  # Default SPA mode (404-200) - used when spa_mode is false
+  dynamic "custom_rule" {
+    for_each = each.value.spa_mode ? [] : [1]
+    content {
+      source = "/<*>"
+      target = "/index.html"
+      status = "404-200"
+    }
   }
 
   # Environment variables at app level

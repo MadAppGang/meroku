@@ -68,7 +68,6 @@ export function SNSNodeProperties({
 	const handleToggle = (checked: boolean) => {
 		onConfigChange({
 			workload: {
-				...config.workload,
 				setup_fcnsns: checked,
 			},
 		});

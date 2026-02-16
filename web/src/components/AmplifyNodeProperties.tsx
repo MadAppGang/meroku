@@ -9,9 +9,9 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { infrastructureApi } from "../api/infrastructure";
-import type { UpdateHandler } from "../types/components";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import { Button } from "./ui/button";
+import { Checkbox } from "./ui/checkbox";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 
@@ -199,7 +199,7 @@ export function AmplifyNodeProperties({
 		);
 	}
 
-	const handleChange: UpdateHandler<string> = (field: string, value) => {
+	const handleChange = (field: string, value: string | boolean) => {
 		if (onConfigChange && config.amplify_apps) {
 			const updatedApps = [...config.amplify_apps];
 			updatedApps[amplifyAppIndex] = {
@@ -293,6 +293,32 @@ export function AmplifyNodeProperties({
 							</p>
 						</div>
 					</div>
+				</div>
+			</div>
+
+			<div>
+				<h3 className="text-sm font-medium text-white mb-4">SPA Routing</h3>
+				<div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+					<div className="flex items-center justify-between">
+						<div>
+							<p className="text-sm font-medium text-white">Enable SPA Mode</p>
+							<p className="text-xs text-gray-400 mt-1">
+								Use 200 status rewrite (recommended for React, Vue, Angular SPAs)
+							</p>
+						</div>
+						<Checkbox
+							id="spa_mode"
+							checked={amplifyApp.spa_mode ?? true}
+							onCheckedChange={(checked) =>
+								handleChange("spa_mode", checked === true)
+							}
+						/>
+					</div>
+					<p className="text-xs text-gray-500 mt-3">
+						When enabled: Routes like /dashboard return 200 status (not 404).
+						<br />
+						When disabled: Uses default 404-200 pattern.
+					</p>
 				</div>
 			</div>
 

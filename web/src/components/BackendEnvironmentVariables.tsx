@@ -121,7 +121,6 @@ export function BackendEnvironmentVariables({
 			if (onConfigChange) {
 				onConfigChange({
 					workload: {
-						...config.workload,
 						backend_env_variables: updatedVars,
 					},
 				});
@@ -139,7 +138,6 @@ export function BackendEnvironmentVariables({
 		if (onConfigChange) {
 			onConfigChange({
 				workload: {
-					...config.workload,
 					backend_env_variables: updatedVars,
 				},
 			});
@@ -159,7 +157,6 @@ export function BackendEnvironmentVariables({
 		if (onConfigChange) {
 			onConfigChange({
 				workload: {
-					...config.workload,
 					backend_env_variables: updatedVars,
 				},
 			});

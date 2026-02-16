@@ -202,7 +202,7 @@ export function ALBNodeProperties({
 											<div>
 												Desired Count:{" "}
 												<span className="text-white">
-													{service.desired_count || 1}
+													{service.desired_count ?? 1}
 												</span>
 											</div>
 										</div>

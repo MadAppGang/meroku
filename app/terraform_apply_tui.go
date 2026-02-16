@@ -114,6 +114,7 @@ type resourceProgressMsg struct {
 
 type resourceCompleteMsg struct {
 	Address      string
+	Action       string // The action that completed (create, update, delete)
 	Success      bool
 	Error        string // Short error message
 	ErrorSummary string // Diagnostic summary
@@ -694,6 +695,7 @@ func (m *modernPlanModel) handleApplyComplete(msg *TerraformJSONMessage) {
 
 	m.sendMsg(resourceCompleteMsg{
 		Address:  addr,
+		Action:   action,
 		Success:  true,
 		Duration: duration,
 	})
@@ -745,6 +747,7 @@ func (m *modernPlanModel) handleApplyError(msg *TerraformJSONMessage) {
 
 	m.sendMsg(resourceCompleteMsg{
 		Address:      addr,
+		Action:       action,
 		Success:      false,
 		Error:        errorMsg,
 		ErrorSummary: errorSummary,

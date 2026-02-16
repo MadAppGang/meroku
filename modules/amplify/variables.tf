@@ -14,6 +14,7 @@ variable "amplify_apps" {
     }))
     subdomain_prefix     = optional(string)       # NEW: Auto-constructs domain
     custom_domain        = optional(string)       # For manual override (edge cases)
+    spa_mode             = optional(bool, true)   # Per-app SPA routing control
   }))
   default = []
 }
@@ -55,3 +56,4 @@ variable "manage_dns_records" {
   type        = bool
   default     = false
 }
+

@@ -37,22 +37,16 @@ export function BackendServiceProperties({
 	const handleWorkloadChange = (
 		updates: Partial<YamlInfrastructureConfig["workload"]>,
 	) => {
+		// Send only changed fields — App.tsx deep-merges with prevConfig.workload
 		onConfigChange({
-			workload: {
-				...config.workload,
-				...updates,
-			},
+			workload: updates,
 		});
 	};
 
 	const handleCreateApiDomainChange = (checked: boolean) => {
 		onConfigChange({
-			...config,
 			domain: {
 				enabled: config.domain?.enabled ?? false,
-				...config.domain,
-				// When enabled, set default prefix to "api"
-				// When disabled, set to empty string to skip API Gateway custom domain creation
 				api_domain_prefix: checked ? "api" : "",
 			},
 		});
@@ -247,10 +241,8 @@ export function BackendServiceProperties({
 								value={config.domain.api_domain_prefix}
 								onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
 									onConfigChange({
-										...config,
 										domain: {
 											enabled: config.domain?.enabled ?? false,
-											...config.domain,
 											api_domain_prefix: e.target.value || "api",
 										},
 									})
