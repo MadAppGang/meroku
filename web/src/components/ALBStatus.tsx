@@ -52,7 +52,7 @@ export function ALBStatus({ config }: ALBStatusProps) {
 
 			// Simulated health status
 			setHealthStatus({
-				healthy: config.workload?.backend_desired_count || 2,
+				healthy: config.workload?.backend_desired_count ?? 2,
 				unhealthy: 0,
 				draining: 0,
 				initial: 0,

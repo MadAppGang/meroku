@@ -142,7 +142,6 @@ export function ECRNodeProperties({
 			setSelectedSource("");
 			setConfigResult(null);
 			onConfigChange({
-				...config,
 				ecr_strategy: "local",
 				ecr_account_id: undefined,
 				ecr_account_region: undefined,
@@ -150,7 +149,6 @@ export function ECRNodeProperties({
 		} else {
 			// Set to cross_account strategy
 			onConfigChange({
-				...config,
 				ecr_strategy: "cross_account",
 			});
 		}

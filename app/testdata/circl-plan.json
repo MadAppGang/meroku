@@ -1,0 +1,964 @@
+{
+  "terraform_version": "1.14.5",
+  "resource_changes": [
+    {
+      "address": "module.schedule_task_chekku-apply-poll.aws_ecs_task_definition.task",
+      "mode": "managed",
+      "type": "aws_ecs_task_definition",
+      "name": "task",
+      "provider_config_key": "",
+      "change": {
+        "actions": [
+          "delete",
+          "create"
+        ],
+        "before": {
+          "arn": "arn:aws:ecs:ap-southeast-2:285253872242:task-definition/chekku-apply-poll:7",
+          "arn_without_revision": "arn:aws:ecs:ap-southeast-2:285253872242:task-definition/chekku-apply-poll",
+          "container_definitions": "[{\"cpu\":512,\"environment\":[{\"name\":\"API_DOMAIN\",\"value\":\"api.circlmini.com\"},{\"name\":\"AWS_REGION\",\"value\":\"ap-southeast-2\"},{\"name\":\"BACKEND_INTERNAL_URL\",\"value\":\"circl_service_dev.circl_dev.private\"},{\"name\":\"CIRCL_DATABASE_URL\",\"value\":\"postgresql://neondb_owner:npg_0LbeHU7FJDPq@ep-aged-dew-a7dqcxye-pooler.ap-southeast-2.aws.neon.tech/neondb?sslmode=require\u0026channel_binding=require\"},{\"name\":\"DATABASE_URL\",\"value\":\"mysql://chekku_10xlab:Kf9%21rT7%40wQ3%23pZ8uL2%24gN6%5EsV1%26xB4h@rdsrevers.chekku.au:3306/ChekkuProd\"},{\"name\":\"EVENT_BUS_NAME\",\"value\":\"default\"},{\"name\":\"EVENT_SOURCE\",\"value\":\"circl.task.chekku-apply-poll\"},{\"name\":\"PRIVATE_DNS_NAMESPACE\",\"value\":\"circl_dev.private\"},{\"name\":\"SQS_QUEUE_URL\",\"value\":\"\"}],\"essential\":true,\"image\":\"285253872242.dkr.ecr.ap-southeast-2.amazonaws.com/circl_task_chekku-apply-poll:latest\",\"logConfiguration\":{\"logDriver\":\"awslogs\",\"options\":{\"awslogs-region\":\"ap-southeast-2\",\"awslogs-stream-prefix\":\"ecs\",\"awslogs-group\":\"circl_task_chekku-apply-poll_dev\"}},\"memory\":1024,\"mountPoints\":[],\"name\":\"circl_container_chekku-apply-poll_dev\",\"portMappings\":[],\"secrets\":[{\"name\":\"ENV\",\"valueFrom\":\"/dev/circl/task/chekku-apply-poll/env\"},{\"name\":\"FIREBASE_PROJECT_ID\",\"valueFrom\":\"/dev/circl/task/chekku-apply-poll/FIREBASE_PROJECT_ID\"},{\"name\":\"PRIME_AU_CLIENT_ID\",\"valueFrom\":\"/dev/circl/task/chekku-apply-poll/PRIME_AU_CLIENT_ID\"},{\"name\":\"PRIME_AU_CLIENT_SECRET\",\"valueFrom\":\"/dev/circl/task/chekku-apply-poll/PRIME_AU_CLIENT_SECRET\"},{\"name\":\"PRIME_AU_PASSWORD\",\"valueFrom\":\"/dev/circl/task/chekku-apply-poll/PRIME_AU_PASSWORD\"},{\"name\":\"PRIME_AU_USERNAME\",\"valueFrom\":\"/dev/circl/task/chekku-apply-poll/PRIME_AU_USERNAME\"},{\"name\":\"SENTRY_DSN\",\"valueFrom\":\"/dev/circl/task/chekku-apply-poll/SENTRY_DSN\"},{\"name\":\"SENTRY_SERVICE_NAME\",\"valueFrom\":\"/dev/circl/task/chekku-apply-poll/SENTRY_SERVICE_NAME\"}],\"systemControls\":[],\"volumesFrom\":[]}]",
+          "cpu": "512",
+          "enable_fault_injection": false,
+          "ephemeral_storage": [],
+          "execution_role_arn": "arn:aws:iam::285253872242:role/circl_scheduler_chekku-apply-poll_task_execution_dev",
+          "family": "chekku-apply-poll",
+          "id": "chekku-apply-poll",
+          "inference_accelerator": [],
+          "ipc_mode": "",
+          "memory": "1024",
+          "network_mode": "awsvpc",
+          "pid_mode": "",
+          "placement_constraints": [],
+          "proxy_configuration": [],
+          "requires_compatibilities": [
+            "FARGATE"
+          ],
+          "revision": 7,
+          "runtime_platform": [],
+          "skip_destroy": false,
+          "tags": {
+            "Application": "circl-dev",
+            "Environment": "dev",
+            "ManagedBy": "meroku",
+            "Name": "circl-task-chekku-apply-poll-dev",
+            "Project": "circl",
+            "env": "dev",
+            "terraform": "true"
+          },
+          "tags_all": {
+            "Application": "circl-dev",
+            "Environment": "dev",
+            "ManagedBy": "meroku",
+            "Name": "circl-task-chekku-apply-poll-dev",
+            "Project": "circl",
+            "env": "dev",
+            "terraform": "true"
+          },
+          "task_role_arn": "arn:aws:iam::285253872242:role/circl_chekku-apply-poll_task_dev",
+          "track_latest": false,
+          "volume": []
+        },
+        "after": {
+          "container_definitions": "[{\"cpu\":512,\"environment\":[{\"name\":\"API_DOMAIN\",\"value\":\"api.circlmini.com\"},{\"name\":\"AWS_REGION\",\"value\":\"ap-southeast-2\"},{\"name\":\"BACKEND_INTERNAL_URL\",\"value\":\"circl_service_dev.circl_dev.private\"},{\"name\":\"EVENT_BUS_NAME\",\"value\":\"default\"},{\"name\":\"EVENT_SOURCE\",\"value\":\"circl.task.chekku-apply-poll\"},{\"name\":\"PRIVATE_DNS_NAMESPACE\",\"value\":\"circl_dev.private\"},{\"name\":\"SQS_QUEUE_URL\",\"value\":\"\"}],\"essential\":true,\"image\":\"285253872242.dkr.ecr.ap-southeast-2.amazonaws.com/circl_task_chekku-apply-poll:latest\",\"logConfiguration\":{\"logDriver\":\"awslogs\",\"options\":{\"awslogs-group\":\"circl_task_chekku-apply-poll_dev\",\"awslogs-region\":\"ap-southeast-2\",\"awslogs-stream-prefix\":\"ecs\"}},\"memory\":1024,\"name\":\"circl_container_chekku-apply-poll_dev\",\"secrets\":[{\"name\":\"CIRCL_DATABASE_URL\",\"valueFrom\":\"/dev/circl/task/chekku-apply-poll/CIRCL_DATABASE_URL\"},{\"name\":\"DATABASE_URL\",\"valueFrom\":\"/dev/circl/task/chekku-apply-poll/DATABASE_URL\"},{\"name\":\"ENV\",\"valueFrom\":\"/dev/circl/task/chekku-apply-poll/env\"},{\"name\":\"FIREBASE_PROJECT_ID\",\"valueFrom\":\"/dev/circl/task/chekku-apply-poll/FIREBASE_PROJECT_ID\"},{\"name\":\"PRIME_AU_CLIENT_ID\",\"valueFrom\":\"/dev/circl/task/chekku-apply-poll/PRIME_AU_CLIENT_ID\"},{\"name\":\"PRIME_AU_CLIENT_SECRET\",\"valueFrom\":\"/dev/circl/task/chekku-apply-poll/PRIME_AU_CLIENT_SECRET\"},{\"name\":\"PRIME_AU_PASSWORD\",\"valueFrom\":\"/dev/circl/task/chekku-apply-poll/PRIME_AU_PASSWORD\"},{\"name\":\"PRIME_AU_USERNAME\",\"valueFrom\":\"/dev/circl/task/chekku-apply-poll/PRIME_AU_USERNAME\"},{\"name\":\"SENTRY_DSN\",\"valueFrom\":\"/dev/circl/task/chekku-apply-poll/SENTRY_DSN\"},{\"name\":\"SENTRY_SERVICE_NAME\",\"valueFrom\":\"/dev/circl/task/chekku-apply-poll/SENTRY_SERVICE_NAME\"}]}]",
+          "cpu": "512",
+          "ephemeral_storage": [],
+          "execution_role_arn": "arn:aws:iam::285253872242:role/circl_scheduler_chekku-apply-poll_task_execution_dev",
+          "family": "chekku-apply-poll",
+          "inference_accelerator": [],
+          "ipc_mode": null,
+          "memory": "1024",
+          "network_mode": "awsvpc",
+          "pid_mode": null,
+          "placement_constraints": [],
+          "proxy_configuration": [],
+          "requires_compatibilities": [
+            "FARGATE"
+          ],
+          "runtime_platform": [],
+          "skip_destroy": false,
+          "tags": {
+            "Application": "circl-dev",
+            "Environment": "dev",
+            "ManagedBy": "meroku",
+            "Name": "circl-task-chekku-apply-poll-dev",
+            "Project": "circl",
+            "env": "dev",
+            "terraform": "true"
+          },
+          "tags_all": {
+            "Application": "circl-dev",
+            "Environment": "dev",
+            "ManagedBy": "meroku",
+            "Name": "circl-task-chekku-apply-poll-dev",
+            "Project": "circl",
+            "env": "dev",
+            "terraform": "true"
+          },
+          "task_role_arn": "arn:aws:iam::285253872242:role/circl_chekku-apply-poll_task_dev",
+          "track_latest": false,
+          "volume": []
+        }
+      }
+    },
+    {
+      "address": "module.schedule_task_chekku-apply-poll.aws_scheduler_schedule.scheduler",
+      "mode": "managed",
+      "type": "aws_scheduler_schedule",
+      "name": "scheduler",
+      "provider_config_key": "",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "before": {
+          "arn": "arn:aws:scheduler:ap-southeast-2:285253872242:schedule/circl-schedule-group-dev-chekku-apply-poll/circl-scheduler-chekku-apply-poll-dev",
+          "description": "",
+          "end_date": "",
+          "flexible_time_window": [
+            {
+              "maximum_window_in_minutes": 0,
+              "mode": "OFF"
+            }
+          ],
+          "group_name": "circl-schedule-group-dev-chekku-apply-poll",
+          "id": "circl-schedule-group-dev-chekku-apply-poll/circl-scheduler-chekku-apply-poll-dev",
+          "kms_key_arn": "",
+          "name": "circl-scheduler-chekku-apply-poll-dev",
+          "name_prefix": "",
+          "schedule_expression": "rate(1 minute)",
+          "schedule_expression_timezone": "UTC",
+          "start_date": "",
+          "state": "ENABLED",
+          "target": [
+            {
+              "arn": "arn:aws:ecs:ap-southeast-2:285253872242:cluster/circl_cluster_dev",
+              "dead_letter_config": [],
+              "ecs_parameters": [
+                {
+                  "capacity_provider_strategy": [],
+                  "enable_ecs_managed_tags": false,
+                  "enable_execute_command": true,
+                  "group": "",
+                  "launch_type": "FARGATE",
+                  "network_configuration": [
+                    {
+                      "assign_public_ip": true,
+                      "security_groups": [
+                        "sg-07e9537ebd808f82a"
+                      ],
+                      "subnets": [
+                        "subnet-012eb4748fc1ae8e9",
+                        "subnet-03f8012fac067ffed"
+                      ]
+                    }
+                  ],
+                  "placement_constraints": [],
+                  "placement_strategy": [],
+                  "platform_version": "",
+                  "propagate_tags": "",
+                  "reference_id": "",
+                  "tags": {},
+                  "task_count": 1,
+                  "task_definition_arn": "arn:aws:ecs:ap-southeast-2:285253872242:task-definition/chekku-apply-poll"
+                }
+              ],
+              "eventbridge_parameters": [],
+              "input": "",
+              "kinesis_parameters": [],
+              "retry_policy": [
+                {
+                  "maximum_event_age_in_seconds": 86400,
+                  "maximum_retry_attempts": 185
+                }
+              ],
+              "role_arn": "arn:aws:iam::285253872242:role/circl_scheduler_chekku-apply-poll_role_dev",
+              "sagemaker_pipeline_parameters": [],
+              "sqs_parameters": []
+            }
+          ]
+        },
+        "after": {
+          "arn": "arn:aws:scheduler:ap-southeast-2:285253872242:schedule/circl-schedule-group-dev-chekku-apply-poll/circl-scheduler-chekku-apply-poll-dev",
+          "description": "",
+          "end_date": "",
+          "flexible_time_window": [
+            {
+              "maximum_window_in_minutes": 0,
+              "mode": "OFF"
+            }
+          ],
+          "group_name": "circl-schedule-group-dev-chekku-apply-poll",
+          "id": "circl-schedule-group-dev-chekku-apply-poll/circl-scheduler-chekku-apply-poll-dev",
+          "kms_key_arn": "",
+          "name": "circl-scheduler-chekku-apply-poll-dev",
+          "name_prefix": "",
+          "schedule_expression": "rate(1 minute)",
+          "schedule_expression_timezone": "UTC",
+          "start_date": "",
+          "state": "ENABLED",
+          "target": [
+            {
+              "arn": "arn:aws:ecs:ap-southeast-2:285253872242:cluster/circl_cluster_dev",
+              "dead_letter_config": [],
+              "ecs_parameters": [
+                {
+                  "capacity_provider_strategy": [],
+                  "enable_ecs_managed_tags": false,
+                  "enable_execute_command": true,
+                  "group": "",
+                  "launch_type": "FARGATE",
+                  "network_configuration": [
+                    {
+                      "assign_public_ip": true,
+                      "security_groups": [
+                        "sg-07e9537ebd808f82a"
+                      ],
+                      "subnets": [
+                        "subnet-012eb4748fc1ae8e9",
+                        "subnet-03f8012fac067ffed"
+                      ]
+                    }
+                  ],
+                  "placement_constraints": [],
+                  "placement_strategy": [],
+                  "platform_version": "",
+                  "propagate_tags": "",
+                  "reference_id": "",
+                  "tags": {},
+                  "task_count": 1
+                }
+              ],
+              "eventbridge_parameters": [],
+              "input": "",
+              "kinesis_parameters": [],
+              "retry_policy": [
+                {
+                  "maximum_event_age_in_seconds": 86400,
+                  "maximum_retry_attempts": 185
+                }
+              ],
+              "role_arn": "arn:aws:iam::285253872242:role/circl_scheduler_chekku-apply-poll_role_dev",
+              "sagemaker_pipeline_parameters": [],
+              "sqs_parameters": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "address": "module.schedule_task_magento-sync.aws_ecs_task_definition.task",
+      "mode": "managed",
+      "type": "aws_ecs_task_definition",
+      "name": "task",
+      "provider_config_key": "",
+      "change": {
+        "actions": [
+          "delete",
+          "create"
+        ],
+        "before": {
+          "arn": "arn:aws:ecs:ap-southeast-2:285253872242:task-definition/magento-sync:6",
+          "arn_without_revision": "arn:aws:ecs:ap-southeast-2:285253872242:task-definition/magento-sync",
+          "container_definitions": "[{\"cpu\":256,\"environment\":[{\"name\":\"API_DOMAIN\",\"value\":\"api.circlmini.com\"},{\"name\":\"AWS_REGION\",\"value\":\"ap-southeast-2\"},{\"name\":\"BACKEND_INTERNAL_URL\",\"value\":\"circl_service_dev.circl_dev.private\"},{\"name\":\"ENABLE_MAGENTO_SYNC\",\"value\":\"true\"},{\"name\":\"EVENT_BUS_NAME\",\"value\":\"default\"},{\"name\":\"EVENT_SOURCE\",\"value\":\"circl.task.magento-sync\"},{\"name\":\"MAGENTO_DB_HOST\",\"value\":\"127.0.0.1\"},{\"name\":\"MAGENTO_DB_PORT\",\"value\":\"3304\"},{\"name\":\"MAGENTO_SSH_HOST\",\"value\":\"ssh.ap-3.magento.cloud\"},{\"name\":\"MAGENTO_SSH_PORT\",\"value\":\"22\"},{\"name\":\"MAGENTO_SSH_PRIVATE_KEY\",\"value\":\"-----BEGIN OPENSSH PRIVATE KEY-----\\nb3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW\\nQyNTUxOQAAACDyCnznRE+TLBB++Bw8hv0shjupxHUEfmWRJLtG/5hjJQAAAJhyGSXUchkl\\n1AAAAAtzc2gtZWQyNTUxOQAAACDyCnznRE+TLBB++Bw8hv0shjupxHUEfmWRJLtG/5hjJQ\\nAAAEAk8lsFI6/5iqfackypQicDIbl3FdpOuw5Oz6M7JCodcPIKfOdET5MsEH74HDyG/SyG\\nO6nEdQR+ZZEku0b/mGMlAAAAFGFnZW50QDEweGxhYnMuY29tLmF1AQ==\\n-----END OPENSSH PRIVATE KEY-----\"},{\"name\":\"MAGENTO_SSH_USER\",\"value\":\"1.ent-wq57rcwqju2lc-production-vohbr3y\"},{\"name\":\"MAGENTO_SYNC_BATCH_SIZE\",\"value\":\"100\"},{\"name\":\"MAGENTO_SYNC_DRY_RUN\",\"value\":\"true\"},{\"name\":\"MAGENTO_SYNC_MAX_RETRIES\",\"value\":\"3\"},{\"name\":\"MAGENTO_TUNNEL_LOCAL_PORT\",\"value\":\"3304\"},{\"name\":\"PRIME_AU_USERNAME\",\"value\":\"aaron@chekku.au\"},{\"name\":\"PRIVATE_DNS_NAMESPACE\",\"value\":\"circl_dev.private\"},{\"name\":\"SQS_QUEUE_URL\",\"value\":\"\"}],\"essential\":true,\"image\":\"285253872242.dkr.ecr.ap-southeast-2.amazonaws.com/circl_task_magento-sync:latest\",\"logConfiguration\":{\"logDriver\":\"awslogs\",\"options\":{\"awslogs-stream-prefix\":\"ecs\",\"awslogs-group\":\"circl_task_magento-sync_dev\",\"awslogs-region\":\"ap-southeast-2\"}},\"memory\":512,\"mountPoints\":[],\"name\":\"circl_container_magento-sync_dev\",\"portMappings\":[],\"secrets\":[{\"name\":\"CIRCL_DATABASE_URL\",\"valueFrom\":\"/dev/circl/task/magento-sync/CIRCL_DATABASE_URL\"},{\"name\":\"DATABASE_URL\",\"valueFrom\":\"/dev/circl/task/magento-sync/DATABASE_URL\"},{\"name\":\"ENV\",\"valueFrom\":\"/dev/circl/task/magento-sync/env\"},{\"name\":\"MAGENTO_DATABASE_URL\",\"valueFrom\":\"/dev/circl/task/magento-sync/MAGENTO_DATABASE_URL\"},{\"name\":\"PRIME_AU_PASSWORD\",\"valueFrom\":\"/dev/circl/task/magento-sync/PRIME_AU_PASSWORD\"},{\"name\":\"SENTRY_DSN\",\"valueFrom\":\"/dev/circl/task/magento-sync/SENTRY_DSN\"},{\"name\":\"SENTRY_SERVICE_NAME\",\"valueFrom\":\"/dev/circl/task/magento-sync/SENTRY_SERVICE_NAME\"}],\"systemControls\":[],\"volumesFrom\":[]}]",
+          "cpu": "256",
+          "enable_fault_injection": false,
+          "ephemeral_storage": [],
+          "execution_role_arn": "arn:aws:iam::285253872242:role/circl_scheduler_magento-sync_task_execution_dev",
+          "family": "magento-sync",
+          "id": "magento-sync",
+          "inference_accelerator": [],
+          "ipc_mode": "",
+          "memory": "512",
+          "network_mode": "awsvpc",
+          "pid_mode": "",
+          "placement_constraints": [],
+          "proxy_configuration": [],
+          "requires_compatibilities": [
+            "FARGATE"
+          ],
+          "revision": 6,
+          "runtime_platform": [],
+          "skip_destroy": false,
+          "tags": {
+            "Application": "circl-dev",
+            "Environment": "dev",
+            "ManagedBy": "meroku",
+            "Name": "circl-task-magento-sync-dev",
+            "Project": "circl",
+            "env": "dev",
+            "terraform": "true"
+          },
+          "tags_all": {
+            "Application": "circl-dev",
+            "Environment": "dev",
+            "ManagedBy": "meroku",
+            "Name": "circl-task-magento-sync-dev",
+            "Project": "circl",
+            "env": "dev",
+            "terraform": "true"
+          },
+          "task_role_arn": "arn:aws:iam::285253872242:role/circl_magento-sync_task_dev",
+          "track_latest": false,
+          "volume": []
+        },
+        "after": {
+          "container_definitions": "[{\"cpu\":256,\"environment\":[{\"name\":\"API_DOMAIN\",\"value\":\"api.circlmini.com\"},{\"name\":\"AWS_REGION\",\"value\":\"ap-southeast-2\"},{\"name\":\"BACKEND_INTERNAL_URL\",\"value\":\"circl_service_dev.circl_dev.private\"},{\"name\":\"ENABLE_MAGENTO_SYNC\",\"value\":\"true\"},{\"name\":\"EVENT_BUS_NAME\",\"value\":\"default\"},{\"name\":\"EVENT_SOURCE\",\"value\":\"circl.task.magento-sync\"},{\"name\":\"MAGENTO_DB_HOST\",\"value\":\"127.0.0.1\"},{\"name\":\"MAGENTO_DB_PORT\",\"value\":\"3304\"},{\"name\":\"MAGENTO_SSH_HOST\",\"value\":\"ssh.ap-3.magento.cloud\"},{\"name\":\"MAGENTO_SSH_PORT\",\"value\":\"22\"},{\"name\":\"MAGENTO_SSH_USER\",\"value\":\"1.ent-wq57rcwqju2lc-production-vohbr3y\"},{\"name\":\"MAGENTO_SYNC_BATCH_SIZE\",\"value\":\"100\"},{\"name\":\"MAGENTO_SYNC_DRY_RUN\",\"value\":\"true\"},{\"name\":\"MAGENTO_SYNC_MAX_RETRIES\",\"value\":\"3\"},{\"name\":\"MAGENTO_TUNNEL_LOCAL_PORT\",\"value\":\"3304\"},{\"name\":\"PRIME_AU_USERNAME\",\"value\":\"aaron@chekku.au\"},{\"name\":\"PRIVATE_DNS_NAMESPACE\",\"value\":\"circl_dev.private\"},{\"name\":\"SQS_QUEUE_URL\",\"value\":\"\"}],\"essential\":true,\"image\":\"285253872242.dkr.ecr.ap-southeast-2.amazonaws.com/circl_task_magento-sync:latest\",\"logConfiguration\":{\"logDriver\":\"awslogs\",\"options\":{\"awslogs-group\":\"circl_task_magento-sync_dev\",\"awslogs-region\":\"ap-southeast-2\",\"awslogs-stream-prefix\":\"ecs\"}},\"memory\":512,\"name\":\"circl_container_magento-sync_dev\",\"secrets\":[{\"name\":\"CIRCL_DATABASE_URL\",\"valueFrom\":\"/dev/circl/task/magento-sync/CIRCL_DATABASE_URL\"},{\"name\":\"DATABASE_URL\",\"valueFrom\":\"/dev/circl/task/magento-sync/DATABASE_URL\"},{\"name\":\"ENV\",\"valueFrom\":\"/dev/circl/task/magento-sync/env\"},{\"name\":\"MAGENTO_DATABASE_URL\",\"valueFrom\":\"/dev/circl/task/magento-sync/MAGENTO_DATABASE_URL\"},{\"name\":\"MAGENTO_SSH_PRIVATE_KEY\",\"valueFrom\":\"/dev/circl/task/magento-sync/MAGENTO_SSH_PRIVATE_KEY\"},{\"name\":\"PRIME_AU_PASSWORD\",\"valueFrom\":\"/dev/circl/task/magento-sync/PRIME_AU_PASSWORD\"},{\"name\":\"SENTRY_DSN\",\"valueFrom\":\"/dev/circl/task/magento-sync/SENTRY_DSN\"},{\"name\":\"SENTRY_SERVICE_NAME\",\"valueFrom\":\"/dev/circl/task/magento-sync/SENTRY_SERVICE_NAME\"}]}]",
+          "cpu": "256",
+          "ephemeral_storage": [],
+          "execution_role_arn": "arn:aws:iam::285253872242:role/circl_scheduler_magento-sync_task_execution_dev",
+          "family": "magento-sync",
+          "inference_accelerator": [],
+          "ipc_mode": null,
+          "memory": "512",
+          "network_mode": "awsvpc",
+          "pid_mode": null,
+          "placement_constraints": [],
+          "proxy_configuration": [],
+          "requires_compatibilities": [
+            "FARGATE"
+          ],
+          "runtime_platform": [],
+          "skip_destroy": false,
+          "tags": {
+            "Application": "circl-dev",
+            "Environment": "dev",
+            "ManagedBy": "meroku",
+            "Name": "circl-task-magento-sync-dev",
+            "Project": "circl",
+            "env": "dev",
+            "terraform": "true"
+          },
+          "tags_all": {
+            "Application": "circl-dev",
+            "Environment": "dev",
+            "ManagedBy": "meroku",
+            "Name": "circl-task-magento-sync-dev",
+            "Project": "circl",
+            "env": "dev",
+            "terraform": "true"
+          },
+          "task_role_arn": "arn:aws:iam::285253872242:role/circl_magento-sync_task_dev",
+          "track_latest": false,
+          "volume": []
+        }
+      }
+    },
+    {
+      "address": "module.schedule_task_magento-sync.aws_scheduler_schedule.scheduler",
+      "mode": "managed",
+      "type": "aws_scheduler_schedule",
+      "name": "scheduler",
+      "provider_config_key": "",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "before": {
+          "arn": "arn:aws:scheduler:ap-southeast-2:285253872242:schedule/circl-schedule-group-dev-magento-sync/circl-scheduler-magento-sync-dev",
+          "description": "",
+          "end_date": "",
+          "flexible_time_window": [
+            {
+              "maximum_window_in_minutes": 0,
+              "mode": "OFF"
+            }
+          ],
+          "group_name": "circl-schedule-group-dev-magento-sync",
+          "id": "circl-schedule-group-dev-magento-sync/circl-scheduler-magento-sync-dev",
+          "kms_key_arn": "",
+          "name": "circl-scheduler-magento-sync-dev",
+          "name_prefix": "",
+          "schedule_expression": "rate(3 minutes)",
+          "schedule_expression_timezone": "UTC",
+          "start_date": "",
+          "state": "ENABLED",
+          "target": [
+            {
+              "arn": "arn:aws:ecs:ap-southeast-2:285253872242:cluster/circl_cluster_dev",
+              "dead_letter_config": [],
+              "ecs_parameters": [
+                {
+                  "capacity_provider_strategy": [],
+                  "enable_ecs_managed_tags": false,
+                  "enable_execute_command": true,
+                  "group": "",
+                  "launch_type": "FARGATE",
+                  "network_configuration": [
+                    {
+                      "assign_public_ip": true,
+                      "security_groups": [
+                        "sg-01fe2fbde57249ac8"
+                      ],
+                      "subnets": [
+                        "subnet-012eb4748fc1ae8e9",
+                        "subnet-03f8012fac067ffed"
+                      ]
+                    }
+                  ],
+                  "placement_constraints": [],
+                  "placement_strategy": [],
+                  "platform_version": "",
+                  "propagate_tags": "",
+                  "reference_id": "",
+                  "tags": {},
+                  "task_count": 1,
+                  "task_definition_arn": "arn:aws:ecs:ap-southeast-2:285253872242:task-definition/magento-sync"
+                }
+              ],
+              "eventbridge_parameters": [],
+              "input": "",
+              "kinesis_parameters": [],
+              "retry_policy": [
+                {
+                  "maximum_event_age_in_seconds": 86400,
+                  "maximum_retry_attempts": 185
+                }
+              ],
+              "role_arn": "arn:aws:iam::285253872242:role/circl_scheduler_magento-sync_role_dev",
+              "sagemaker_pipeline_parameters": [],
+              "sqs_parameters": []
+            }
+          ]
+        },
+        "after": {
+          "arn": "arn:aws:scheduler:ap-southeast-2:285253872242:schedule/circl-schedule-group-dev-magento-sync/circl-scheduler-magento-sync-dev",
+          "description": "",
+          "end_date": "",
+          "flexible_time_window": [
+            {
+              "maximum_window_in_minutes": 0,
+              "mode": "OFF"
+            }
+          ],
+          "group_name": "circl-schedule-group-dev-magento-sync",
+          "id": "circl-schedule-group-dev-magento-sync/circl-scheduler-magento-sync-dev",
+          "kms_key_arn": "",
+          "name": "circl-scheduler-magento-sync-dev",
+          "name_prefix": "",
+          "schedule_expression": "rate(3 minutes)",
+          "schedule_expression_timezone": "UTC",
+          "start_date": "",
+          "state": "ENABLED",
+          "target": [
+            {
+              "arn": "arn:aws:ecs:ap-southeast-2:285253872242:cluster/circl_cluster_dev",
+              "dead_letter_config": [],
+              "ecs_parameters": [
+                {
+                  "capacity_provider_strategy": [],
+                  "enable_ecs_managed_tags": false,
+                  "enable_execute_command": true,
+                  "group": "",
+                  "launch_type": "FARGATE",
+                  "network_configuration": [
+                    {
+                      "assign_public_ip": true,
+                      "security_groups": [
+                        "sg-01fe2fbde57249ac8"
+                      ],
+                      "subnets": [
+                        "subnet-012eb4748fc1ae8e9",
+                        "subnet-03f8012fac067ffed"
+                      ]
+                    }
+                  ],
+                  "placement_constraints": [],
+                  "placement_strategy": [],
+                  "platform_version": "",
+                  "propagate_tags": "",
+                  "reference_id": "",
+                  "tags": {},
+                  "task_count": 1
+                }
+              ],
+              "eventbridge_parameters": [],
+              "input": "",
+              "kinesis_parameters": [],
+              "retry_policy": [
+                {
+                  "maximum_event_age_in_seconds": 86400,
+                  "maximum_retry_attempts": 185
+                }
+              ],
+              "role_arn": "arn:aws:iam::285253872242:role/circl_scheduler_magento-sync_role_dev",
+              "sagemaker_pipeline_parameters": [],
+              "sqs_parameters": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "address": "module.workloads.aws_ecs_service.backend",
+      "mode": "managed",
+      "type": "aws_ecs_service",
+      "name": "backend",
+      "provider_config_key": "",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "before": {
+          "alarms": [],
+          "availability_zone_rebalancing": "DISABLED",
+          "capacity_provider_strategy": [],
+          "cluster": "arn:aws:ecs:ap-southeast-2:285253872242:cluster/circl_cluster_dev",
+          "deployment_circuit_breaker": [
+            {
+              "enable": false,
+              "rollback": false
+            }
+          ],
+          "deployment_controller": [
+            {
+              "type": "ECS"
+            }
+          ],
+          "deployment_maximum_percent": 200,
+          "deployment_minimum_healthy_percent": 50,
+          "desired_count": 2,
+          "enable_ecs_managed_tags": true,
+          "enable_execute_command": true,
+          "force_delete": null,
+          "force_new_deployment": null,
+          "health_check_grace_period_seconds": 0,
+          "iam_role": "/aws-service-role/ecs.amazonaws.com/AWSServiceRoleForECS",
+          "id": "arn:aws:ecs:ap-southeast-2:285253872242:service/circl_cluster_dev/circl_service_dev",
+          "launch_type": "FARGATE",
+          "load_balancer": [],
+          "name": "circl_service_dev",
+          "network_configuration": [
+            {
+              "assign_public_ip": true,
+              "security_groups": [
+                "sg-010b5c3b092d1a61b"
+              ],
+              "subnets": [
+                "subnet-012eb4748fc1ae8e9",
+                "subnet-03f8012fac067ffed"
+              ]
+            }
+          ],
+          "ordered_placement_strategy": [],
+          "placement_constraints": [],
+          "platform_version": "LATEST",
+          "propagate_tags": "NONE",
+          "scheduling_strategy": "REPLICA",
+          "service_connect_configuration": [],
+          "service_registries": [
+            {
+              "container_name": "circl_service_dev",
+              "container_port": 8080,
+              "port": 0,
+              "registry_arn": "arn:aws:servicediscovery:ap-southeast-2:285253872242:service/srv-t6tpxdrp46ptt44k"
+            }
+          ],
+          "tags": {
+            "Application": "circl-dev",
+            "Environment": "dev",
+            "ManagedBy": "meroku",
+            "Name": "circl_service_dev",
+            "Project": "circl",
+            "terraform": "true"
+          },
+          "tags_all": {
+            "Application": "circl-dev",
+            "Environment": "dev",
+            "ManagedBy": "meroku",
+            "Name": "circl_service_dev",
+            "Project": "circl",
+            "terraform": "true"
+          },
+          "task_definition": "arn:aws:ecs:ap-southeast-2:285253872242:task-definition/circl_service_dev:10",
+          "timeouts": null,
+          "triggers": {},
+          "volume_configuration": [],
+          "vpc_lattice_configurations": [],
+          "wait_for_steady_state": false
+        },
+        "after": {
+          "alarms": [],
+          "availability_zone_rebalancing": "DISABLED",
+          "capacity_provider_strategy": [],
+          "cluster": "arn:aws:ecs:ap-southeast-2:285253872242:cluster/circl_cluster_dev",
+          "deployment_circuit_breaker": [
+            {
+              "enable": false,
+              "rollback": false
+            }
+          ],
+          "deployment_controller": [
+            {
+              "type": "ECS"
+            }
+          ],
+          "deployment_maximum_percent": 200,
+          "deployment_minimum_healthy_percent": 50,
+          "desired_count": 2,
+          "enable_ecs_managed_tags": true,
+          "enable_execute_command": true,
+          "force_delete": null,
+          "force_new_deployment": null,
+          "health_check_grace_period_seconds": 0,
+          "iam_role": "/aws-service-role/ecs.amazonaws.com/AWSServiceRoleForECS",
+          "id": "arn:aws:ecs:ap-southeast-2:285253872242:service/circl_cluster_dev/circl_service_dev",
+          "launch_type": "FARGATE",
+          "load_balancer": [],
+          "name": "circl_service_dev",
+          "network_configuration": [
+            {
+              "assign_public_ip": true,
+              "security_groups": [
+                "sg-010b5c3b092d1a61b"
+              ],
+              "subnets": [
+                "subnet-012eb4748fc1ae8e9",
+                "subnet-03f8012fac067ffed"
+              ]
+            }
+          ],
+          "ordered_placement_strategy": [],
+          "placement_constraints": [],
+          "platform_version": "LATEST",
+          "propagate_tags": "NONE",
+          "scheduling_strategy": "REPLICA",
+          "service_connect_configuration": [],
+          "service_registries": [
+            {
+              "container_name": "circl_service_dev",
+              "container_port": 8080,
+              "port": 0,
+              "registry_arn": "arn:aws:servicediscovery:ap-southeast-2:285253872242:service/srv-t6tpxdrp46ptt44k"
+            }
+          ],
+          "tags": {
+            "Application": "circl-dev",
+            "Environment": "dev",
+            "ManagedBy": "meroku",
+            "Name": "circl_service_dev",
+            "Project": "circl",
+            "terraform": "true"
+          },
+          "tags_all": {
+            "Application": "circl-dev",
+            "Environment": "dev",
+            "ManagedBy": "meroku",
+            "Name": "circl_service_dev",
+            "Project": "circl",
+            "terraform": "true"
+          },
+          "timeouts": null,
+          "triggers": {},
+          "volume_configuration": [],
+          "vpc_lattice_configurations": [],
+          "wait_for_steady_state": false
+        }
+      }
+    },
+    {
+      "address": "module.workloads.aws_ecs_task_definition.backend",
+      "mode": "managed",
+      "type": "aws_ecs_task_definition",
+      "name": "backend",
+      "provider_config_key": "",
+      "change": {
+        "actions": [
+          "delete",
+          "create"
+        ],
+        "before": {
+          "arn": "arn:aws:ecs:ap-southeast-2:285253872242:task-definition/circl_service_dev:10",
+          "arn_without_revision": "arn:aws:ecs:ap-southeast-2:285253872242:task-definition/circl_service_dev",
+          "container_definitions": "[{\"command\":[\"--config=/etc/ecs/container-insights/otel-task-metrics-config.yaml\"],\"environment\":[{\"name\":\"AWS_REGION\",\"value\":\"ap-southeast-2\"}],\"essential\":true,\"image\":\"public.ecr.aws/aws-observability/aws-otel-collector:latest\",\"logConfiguration\":{\"logDriver\":\"awslogs\",\"options\":{\"awslogs-stream-prefix\":\"xray\",\"awslogs-group\":\"circl_adot_collector_dev\",\"awslogs-region\":\"ap-southeast-2\"}},\"mountPoints\":[],\"name\":\"adot-collector\",\"portMappings\":[{\"containerPort\":2000,\"hostPort\":2000,\"protocol\":\"udp\"},{\"containerPort\":4317,\"hostPort\":4317,\"protocol\":\"tcp\"},{\"containerPort\":4318,\"hostPort\":4318,\"protocol\":\"tcp\"},{\"containerPort\":55681,\"hostPort\":55681,\"protocol\":\"tcp\"}],\"systemControls\":[],\"volumesFrom\":[]},{\"command\":[],\"cpu\":256,\"environment\":[{\"name\":\"ADOT_COLLECTOR_URL\",\"value\":\"localhost:2000\"},{\"name\":\"API_DOMAIN\",\"value\":\"api.circlmini.com\"},{\"name\":\"AWS_QUEUE_URL\",\"value\":\"\"},{\"name\":\"AWS_REGION\",\"value\":\"ap-southeast-2\"},{\"name\":\"AWS_S3_BUCKET\",\"value\":\"circl-backend-dev45fcj\"},{\"name\":\"BACKEND_INTERNAL_URL\",\"value\":\"circl_service_dev.circl_dev.private\"},{\"name\":\"EVENT_BUS_NAME\",\"value\":\"default\"},{\"name\":\"EVENT_SOURCE\",\"value\":\"circl.backend\"},{\"name\":\"GOOGLE_MAPS_API_KEY\",\"value\":\"AIzaSyCEbKJmzn766_1kulQTLzZKYROZJ92H7h4\"},{\"name\":\"PG_DATABASE_HOST\",\"value\":\"\"},{\"name\":\"PG_DATABASE_NAME\",\"value\":\"\"},{\"name\":\"PG_DATABASE_USERNAME\",\"value\":\"\"},{\"name\":\"PORT\",\"value\":\"8080\"},{\"name\":\"PRIVATE_DNS_NAMESPACE\",\"value\":\"circl_dev.private\"},{\"name\":\"SQS_QUEUE_URL\",\"value\":\"\"},{\"name\":\"TEST\",\"value\":\"passed\"},{\"name\":\"URL\",\"value\":\"api.circlmini.com\"}],\"environmentFiles\":[{\"type\":\"s3\",\"value\":\"arn:aws:s3:::circl-backend-dev45fcj/backend/.env\"}],\"essential\":true,\"image\":\"285253872242.dkr.ecr.ap-southeast-2.amazonaws.com/circl_backend:latest\",\"logConfiguration\":{\"logDriver\":\"awslogs\",\"options\":{\"awslogs-group\":\"circl_backend_dev\",\"awslogs-region\":\"ap-southeast-2\",\"awslogs-stream-prefix\":\"ecs\"}},\"memory\":512,\"mountPoints\":[],\"name\":\"circl_service_dev\",\"portMappings\":[{\"containerPort\":8080,\"hostPort\":8080,\"name\":\"circl_service_dev\",\"protocol\":\"tcp\"}],\"secrets\":[{\"name\":\"ANTHROPIC_API_KEY\",\"valueFrom\":\"/dev/circl/backend/ANTHROPIC_API_KEY\"},{\"name\":\"ENV\",\"valueFrom\":\"/dev/circl/backend/env\"},{\"name\":\"SENTRY_DSN\",\"valueFrom\":\"/dev/circl/backend/SENTRY_DSN\"},{\"name\":\"SENTRY_SERVICE_NAME\",\"valueFrom\":\"/dev/circl/backend/SENTRY_SERVICE_NAME\"}],\"systemControls\":[],\"volumesFrom\":[]}]",
+          "cpu": "256",
+          "enable_fault_injection": false,
+          "ephemeral_storage": [],
+          "execution_role_arn": "arn:aws:iam::285253872242:role/circl_backend_task_execution_dev",
+          "family": "circl_service_dev",
+          "id": "circl_service_dev",
+          "inference_accelerator": [],
+          "ipc_mode": "",
+          "memory": "512",
+          "network_mode": "awsvpc",
+          "pid_mode": "",
+          "placement_constraints": [],
+          "proxy_configuration": [],
+          "requires_compatibilities": [
+            "FARGATE"
+          ],
+          "revision": 10,
+          "runtime_platform": [],
+          "skip_destroy": false,
+          "tags": {
+            "Application": "circl-dev",
+            "Environment": "dev",
+            "ManagedBy": "meroku",
+            "Name": "circl_service_dev",
+            "Project": "circl",
+            "terraform": "true"
+          },
+          "tags_all": {
+            "Application": "circl-dev",
+            "Environment": "dev",
+            "ManagedBy": "meroku",
+            "Name": "circl_service_dev",
+            "Project": "circl",
+            "terraform": "true"
+          },
+          "task_role_arn": "arn:aws:iam::285253872242:role/circl_backend_task_dev",
+          "track_latest": false,
+          "volume": []
+        },
+        "after": {
+          "container_definitions": "[{\"command\":[\"--config=/etc/ecs/container-insights/otel-task-metrics-config.yaml\"],\"environment\":[{\"name\":\"AWS_REGION\",\"value\":\"ap-southeast-2\"}],\"image\":\"public.ecr.aws/aws-observability/aws-otel-collector:latest\",\"logConfiguration\":{\"logDriver\":\"awslogs\",\"options\":{\"awslogs-group\":\"circl_adot_collector_dev\",\"awslogs-region\":\"ap-southeast-2\",\"awslogs-stream-prefix\":\"xray\"}},\"name\":\"adot-collector\",\"portMappings\":[{\"containerPort\":2000,\"hostPort\":2000,\"protocol\":\"udp\"},{\"containerPort\":4317,\"hostPort\":4317},{\"containerPort\":4318,\"hostPort\":4318},{\"containerPort\":55681,\"hostPort\":55681}]},{\"command\":[],\"cpu\":256,\"environment\":[{\"name\":\"ADOT_COLLECTOR_URL\",\"value\":\"localhost:2000\"},{\"name\":\"API_DOMAIN\",\"value\":\"api.circlmini.com\"},{\"name\":\"AWS_QUEUE_URL\",\"value\":\"\"},{\"name\":\"AWS_REGION\",\"value\":\"ap-southeast-2\"},{\"name\":\"AWS_S3_BUCKET\",\"value\":\"circl-backend-dev45fcj\"},{\"name\":\"BACKEND_INTERNAL_URL\",\"value\":\"circl_service_dev.circl_dev.private\"},{\"name\":\"EVENT_BUS_NAME\",\"value\":\"default\"},{\"name\":\"EVENT_SOURCE\",\"value\":\"circl.backend\"},{\"name\":\"FIREBASE_DATABASE_URL\",\"value\":\"https://circl-d4473-default-rtdb.asia-southeast1.firebasedatabase.app\"},{\"name\":\"PG_DATABASE_HOST\",\"value\":\"\"},{\"name\":\"PG_DATABASE_NAME\",\"value\":\"\"},{\"name\":\"PG_DATABASE_USERNAME\",\"value\":\"\"},{\"name\":\"PORT\",\"value\":\"8080\"},{\"name\":\"PRIVATE_DNS_NAMESPACE\",\"value\":\"circl_dev.private\"},{\"name\":\"SQS_QUEUE_URL\",\"value\":\"\"},{\"name\":\"TEST\",\"value\":\"passed\"},{\"name\":\"URL\",\"value\":\"api.circlmini.com\"}],\"environmentFiles\":[{\"type\":\"s3\",\"value\":\"arn:aws:s3:::circl-backend-dev45fcj/backend/.env\"}],\"essential\":true,\"image\":\"285253872242.dkr.ecr.ap-southeast-2.amazonaws.com/circl_backend:latest\",\"logConfiguration\":{\"logDriver\":\"awslogs\",\"options\":{\"awslogs-group\":\"circl_backend_dev\",\"awslogs-region\":\"ap-southeast-2\",\"awslogs-stream-prefix\":\"ecs\"}},\"memory\":512,\"mountPoints\":[],\"name\":\"circl_service_dev\",\"portMappings\":[{\"containerPort\":8080,\"hostPort\":8080,\"name\":\"circl_service_dev\",\"protocol\":\"tcp\"}],\"secrets\":[{\"name\":\"ANTHROPIC_API_KEY\",\"valueFrom\":\"/dev/circl/backend/ANTHROPIC_API_KEY\"},{\"name\":\"ENV\",\"valueFrom\":\"/dev/circl/backend/env\"},{\"name\":\"GOOGLE_MAPS_API_KEY\",\"valueFrom\":\"/dev/circl/backend/GOOGLE_MAPS_API_KEY\"},{\"name\":\"SENTRY_DSN\",\"valueFrom\":\"/dev/circl/backend/SENTRY_DSN\"},{\"name\":\"SENTRY_SERVICE_NAME\",\"valueFrom\":\"/dev/circl/backend/SENTRY_SERVICE_NAME\"}]}]",
+          "cpu": "256",
+          "ephemeral_storage": [],
+          "execution_role_arn": "arn:aws:iam::285253872242:role/circl_backend_task_execution_dev",
+          "family": "circl_service_dev",
+          "inference_accelerator": [],
+          "ipc_mode": null,
+          "memory": "512",
+          "network_mode": "awsvpc",
+          "pid_mode": null,
+          "placement_constraints": [],
+          "proxy_configuration": [],
+          "requires_compatibilities": [
+            "FARGATE"
+          ],
+          "runtime_platform": [],
+          "skip_destroy": false,
+          "tags": {
+            "Application": "circl-dev",
+            "Environment": "dev",
+            "ManagedBy": "meroku",
+            "Name": "circl_service_dev",
+            "Project": "circl",
+            "terraform": "true"
+          },
+          "tags_all": {
+            "Application": "circl-dev",
+            "Environment": "dev",
+            "ManagedBy": "meroku",
+            "Name": "circl_service_dev",
+            "Project": "circl",
+            "terraform": "true"
+          },
+          "task_role_arn": "arn:aws:iam::285253872242:role/circl_backend_task_dev",
+          "track_latest": false,
+          "volume": []
+        }
+      }
+    },
+    {
+      "address": "module.workloads.aws_lambda_function.lambda_deploy",
+      "mode": "managed",
+      "type": "aws_lambda_function",
+      "name": "lambda_deploy",
+      "provider_config_key": "",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "before": {
+          "architectures": [
+            "x86_64"
+          ],
+          "arn": "arn:aws:lambda:ap-southeast-2:285253872242:function:ci_lambda_dev",
+          "code_sha256": "VKkvm7bbtxCam6OtNd2z/1S/FISYqgJ5FqY5pTQ3ROo=",
+          "code_signing_config_arn": "",
+          "dead_letter_config": [],
+          "description": "",
+          "environment": [
+            {
+              "variables": {
+                "DEPLOYMENT_TIMEOUT_SECONDS": "600",
+                "DRY_RUN": "false",
+                "ECS_CLUSTER_NAME": "circl_cluster_dev",
+                "ECS_SERVICE_MAP": "{\"backend\":{\"service_name\":\"circl_service_dev\",\"task_family\":\"circl_service_dev\"}}",
+                "ENABLE_ECR_MONITORING": "true",
+                "ENABLE_MANUAL_DEPLOY": "true",
+                "ENABLE_S3_MONITORING": "true",
+                "ENABLE_SSM_MONITORING": "true",
+                "LOG_LEVEL": "info",
+                "MAX_DEPLOYMENT_RETRIES": "2",
+                "PROJECT_ENV": "dev",
+                "PROJECT_NAME": "circl",
+                "S3_SERVICE_MAP": "{}",
+                "SERVICE_CONFIG": "{\"circl\":[{\"bucket\":\"circl-backend-dev45fcj\",\"key\":\"backend/.env\"}]}",
+                "SLACK_WEBHOOK_URL": ""
+              }
+            }
+          ],
+          "ephemeral_storage": [
+            {
+              "size": 512
+            }
+          ],
+          "file_system_config": [],
+          "filename": "ci_lambda.zip",
+          "function_name": "ci_lambda_dev",
+          "handler": "bootstrap",
+          "id": "ci_lambda_dev",
+          "image_config": [],
+          "image_uri": "",
+          "invoke_arn": "arn:aws:apigateway:ap-southeast-2:lambda:path/2015-03-31/functions/arn:aws:lambda:ap-southeast-2:285253872242:function:ci_lambda_dev/invocations",
+          "kms_key_arn": "",
+          "last_modified": "2026-02-15T13:20:20.000+0000",
+          "layers": [],
+          "logging_config": [
+            {
+              "application_log_level": "",
+              "log_format": "Text",
+              "log_group": "/aws/lambda/ci_lambda_dev",
+              "system_log_level": ""
+            }
+          ],
+          "memory_size": 128,
+          "package_type": "Zip",
+          "publish": false,
+          "qualified_arn": "arn:aws:lambda:ap-southeast-2:285253872242:function:ci_lambda_dev:$LATEST",
+          "qualified_invoke_arn": "arn:aws:apigateway:ap-southeast-2:lambda:path/2015-03-31/functions/arn:aws:lambda:ap-southeast-2:285253872242:function:ci_lambda_dev:$LATEST/invocations",
+          "replace_security_groups_on_destroy": null,
+          "replacement_security_group_ids": null,
+          "reserved_concurrent_executions": -1,
+          "role": "arn:aws:iam::285253872242:role/lambda_deploy_iam_dev",
+          "runtime": "provided.al2",
+          "s3_bucket": null,
+          "s3_key": null,
+          "s3_object_version": null,
+          "signing_job_arn": "",
+          "signing_profile_version_arn": "",
+          "skip_destroy": false,
+          "snap_start": [],
+          "source_code_hash": "VKkvm7bbtxCam6OtNd2z/1S/FISYqgJ5FqY5pTQ3ROo=",
+          "source_code_size": 8255176,
+          "tags": {
+            "Application": "circl-dev",
+            "Environment": "dev",
+            "ManagedBy": "meroku",
+            "Name": "ci_lambda_dev",
+            "Project": "circl"
+          },
+          "tags_all": {
+            "Application": "circl-dev",
+            "Environment": "dev",
+            "ManagedBy": "meroku",
+            "Name": "ci_lambda_dev",
+            "Project": "circl"
+          },
+          "timeout": 60,
+          "timeouts": null,
+          "tracing_config": [
+            {
+              "mode": "PassThrough"
+            }
+          ],
+          "version": "$LATEST",
+          "vpc_config": []
+        },
+        "after": {
+          "architectures": [
+            "x86_64"
+          ],
+          "arn": "arn:aws:lambda:ap-southeast-2:285253872242:function:ci_lambda_dev",
+          "code_sha256": "VKkvm7bbtxCam6OtNd2z/1S/FISYqgJ5FqY5pTQ3ROo=",
+          "code_signing_config_arn": "",
+          "dead_letter_config": [],
+          "description": "",
+          "environment": [
+            {
+              "variables": {
+                "DEPLOYMENT_TIMEOUT_SECONDS": "600",
+                "DRY_RUN": "false",
+                "ECS_CLUSTER_NAME": "circl_cluster_dev",
+                "ECS_SERVICE_MAP": "{\"backend\":{\"service_name\":\"circl_service_dev\",\"task_family\":\"circl_service_dev\"}}",
+                "ENABLE_ECR_MONITORING": "true",
+                "ENABLE_MANUAL_DEPLOY": "true",
+                "ENABLE_S3_MONITORING": "true",
+                "ENABLE_SSM_MONITORING": "true",
+                "LOG_LEVEL": "info",
+                "MAX_DEPLOYMENT_RETRIES": "2",
+                "PROJECT_ENV": "dev",
+                "PROJECT_NAME": "circl",
+                "S3_SERVICE_MAP": "{}",
+                "SERVICE_CONFIG": "{\"circl\":[{\"bucket\":\"circl-backend-dev45fcj\",\"key\":\"backend/.env\"}]}",
+                "SLACK_WEBHOOK_URL": ""
+              }
+            }
+          ],
+          "ephemeral_storage": [
+            {
+              "size": 512
+            }
+          ],
+          "file_system_config": [],
+          "filename": "ci_lambda.zip",
+          "function_name": "ci_lambda_dev",
+          "handler": "bootstrap",
+          "id": "ci_lambda_dev",
+          "image_config": [],
+          "image_uri": "",
+          "invoke_arn": "arn:aws:apigateway:ap-southeast-2:lambda:path/2015-03-31/functions/arn:aws:lambda:ap-southeast-2:285253872242:function:ci_lambda_dev/invocations",
+          "kms_key_arn": "",
+          "layers": [],
+          "logging_config": [
+            {
+              "application_log_level": "",
+              "log_format": "Text",
+              "log_group": "/aws/lambda/ci_lambda_dev",
+              "system_log_level": ""
+            }
+          ],
+          "memory_size": 128,
+          "package_type": "Zip",
+          "publish": false,
+          "qualified_arn": "arn:aws:lambda:ap-southeast-2:285253872242:function:ci_lambda_dev:$LATEST",
+          "qualified_invoke_arn": "arn:aws:apigateway:ap-southeast-2:lambda:path/2015-03-31/functions/arn:aws:lambda:ap-southeast-2:285253872242:function:ci_lambda_dev:$LATEST/invocations",
+          "replace_security_groups_on_destroy": null,
+          "replacement_security_group_ids": null,
+          "reserved_concurrent_executions": -1,
+          "role": "arn:aws:iam::285253872242:role/lambda_deploy_iam_dev",
+          "runtime": "provided.al2",
+          "s3_bucket": null,
+          "s3_key": null,
+          "s3_object_version": null,
+          "signing_job_arn": "",
+          "signing_profile_version_arn": "",
+          "skip_destroy": false,
+          "snap_start": [],
+          "source_code_hash": "aBCEN3K9DSXAK/sPOVQXpfIZ5QoccPYvRZj2Ns6FbEA=",
+          "source_code_size": 8255176,
+          "tags": {
+            "Application": "circl-dev",
+            "Environment": "dev",
+            "ManagedBy": "meroku",
+            "Name": "ci_lambda_dev",
+            "Project": "circl"
+          },
+          "tags_all": {
+            "Application": "circl-dev",
+            "Environment": "dev",
+            "ManagedBy": "meroku",
+            "Name": "ci_lambda_dev",
+            "Project": "circl"
+          },
+          "timeout": 60,
+          "timeouts": null,
+          "tracing_config": [
+            {
+              "mode": "PassThrough"
+            }
+          ],
+          "version": "$LATEST",
+          "vpc_config": []
+        }
+      }
+    }
+  ],
+  "summary": {
+    "total": 7,
+    "create": 3,
+    "update": 4,
+    "delete": 3,
+    "replace": 3
+  }
+}

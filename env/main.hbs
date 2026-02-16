@@ -868,6 +868,7 @@ module "amplify" {
       {{#if custom_domain}}
       custom_domain = "{{custom_domain}}"
       {{/if}}
+      spa_mode = {{default spa_mode true}}
     }{{#unless @last}},{{/unless}}
     {{/each}}
   ]

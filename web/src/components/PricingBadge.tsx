@@ -192,7 +192,7 @@ export function PricingBadge({
 		}
 
 		// Fixed capacity - show single price
-		const desiredCount = configProperties.desiredCount || 1;
+		const desiredCount = configProperties.desiredCount ?? 1;
 		const ecsConfig: ECSConfig = { cpu, memory, desiredCount };
 		const monthlyPrice = calculateECSPrice(ecsConfig, rates);
 
@@ -288,7 +288,7 @@ export function PricingBadge({
 		const memory = typeof configProperties.memory === 'string'
 			? parseInt(configProperties.memory)
 			: (configProperties.memory || 512);
-		const desiredCount = configProperties.desiredCount || 1;
+		const desiredCount = configProperties.desiredCount ?? 1;
 
 		const ecsConfig: ECSConfig = {
 			cpu,

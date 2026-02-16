@@ -48,9 +48,7 @@ export function Route53NodeProperties({
 
 	const handleDomainEnabledChange = (checked: boolean) => {
 		onConfigChange({
-			...config,
 			domain: {
-				...config.domain,
 				enabled: checked,
 				// Auto-clear domain_name when disabling to prevent API domain creation
 				domain_name: checked ? (config.domain?.domain_name || "") : "",
@@ -60,10 +58,8 @@ export function Route53NodeProperties({
 
 	const handleDomainNameChange = (value: string) => {
 		onConfigChange({
-			...config,
 			domain: {
 				enabled: config.domain?.enabled ?? false,
-				...config.domain,
 				domain_name: value,
 			},
 		});
@@ -71,10 +67,8 @@ export function Route53NodeProperties({
 
 	const handleCreateZoneChange = (checked: boolean) => {
 		onConfigChange({
-			...config,
 			domain: {
 				enabled: config.domain?.enabled ?? false,
-				...config.domain,
 				create_domain_zone: checked,
 			},
 		});
@@ -82,10 +76,8 @@ export function Route53NodeProperties({
 
 	const handleApiPrefixChange = (value: string) => {
 		onConfigChange({
-			...config,
 			domain: {
 				enabled: config.domain?.enabled ?? false,
-				...config.domain,
 				api_domain_prefix: value,
 			},
 		});
@@ -93,10 +85,8 @@ export function Route53NodeProperties({
 
 	const handleAddPrefixChange = (checked: boolean) => {
 		onConfigChange({
-			...config,
 			domain: {
 				enabled: config.domain?.enabled ?? false,
-				...config.domain,
 				add_env_domain_prefix: checked,
 			},
 		});
@@ -104,10 +94,8 @@ export function Route53NodeProperties({
 
 	const handleCreateApiDomainChange = (checked: boolean) => {
 		onConfigChange({
-			...config,
 			domain: {
 				enabled: config.domain?.enabled ?? false,
-				...config.domain,
 				// When enabled, set default prefix to "api"
 				// When disabled, set to empty string (or undefined) to skip API Gateway custom domain creation
 				api_domain_prefix: checked ? "api" : "",
@@ -117,10 +105,8 @@ export function Route53NodeProperties({
 
 	const handleZoneIdChange = (value: string) => {
 		onConfigChange({
-			...config,
 			domain: {
 				enabled: config.domain?.enabled ?? false,
-				...config.domain,
 				zone_id: value,
 			},
 		});
@@ -142,10 +128,8 @@ export function Route53NodeProperties({
 		];
 
 		onConfigChange({
-			...config,
 			domain: {
 				enabled: config.domain?.enabled ?? false,
-				...config.domain,
 				additional_domains: additionalDomains,
 			},
 		});
@@ -165,10 +149,8 @@ export function Route53NodeProperties({
 			(_: AdditionalDomain, i: number) => i !== index
 		);
 		onConfigChange({
-			...config,
 			domain: {
 				enabled: config.domain?.enabled ?? false,
-				...config.domain,
 				additional_domains: additionalDomains,
 			},
 		});

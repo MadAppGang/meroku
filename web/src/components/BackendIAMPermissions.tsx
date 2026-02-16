@@ -69,7 +69,6 @@ export function BackendIAMPermissions({
 			if (onConfigChange && !isService) {
 				onConfigChange({
 					workload: {
-						...config.workload,
 						policy: updatedPolicies,
 					},
 				});
@@ -90,7 +89,6 @@ export function BackendIAMPermissions({
 		if (onConfigChange && !isService) {
 			onConfigChange({
 				workload: {
-					...config.workload,
 					policy: updated,
 				},
 			});
@@ -106,7 +104,6 @@ export function BackendIAMPermissions({
 		if (onConfigChange && !isService) {
 			onConfigChange({
 				workload: {
-					...config.workload,
 					policy: updated,
 				},
 			});

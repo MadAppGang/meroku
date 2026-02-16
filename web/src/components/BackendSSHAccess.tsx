@@ -66,7 +66,6 @@ export function BackendSSHAccess({
 			// Update backend configuration
 			onConfigChange({
 				workload: {
-					...config.workload,
 					backend_remote_access: checked,
 				},
 			});

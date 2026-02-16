@@ -27,7 +27,6 @@ export function GitHubNodeProperties({
 	const handleToggleOIDC = (checked: boolean) => {
 		onConfigChange({
 			workload: {
-				...config.workload,
 				enable_github_oidc: checked,
 				github_oidc_subjects:
 					checked && subjects.length === 0
@@ -41,7 +40,6 @@ export function GitHubNodeProperties({
 		const newSubjects = [...subjects, "repo:Owner/Repo:ref:refs/heads/main"];
 		onConfigChange({
 			workload: {
-				...config.workload,
 				github_oidc_subjects: newSubjects,
 			},
 		});
@@ -51,7 +49,6 @@ export function GitHubNodeProperties({
 		const newSubjects = subjects.filter((_, i) => i !== index);
 		onConfigChange({
 			workload: {
-				...config.workload,
 				github_oidc_subjects: newSubjects,
 			},
 		});
@@ -62,7 +59,6 @@ export function GitHubNodeProperties({
 		newSubjects[index] = value;
 		onConfigChange({
 			workload: {
-				...config.workload,
 				github_oidc_subjects: newSubjects,
 			},
 		});

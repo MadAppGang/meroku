@@ -1157,12 +1157,18 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case resourceCompleteMsg:
 		if m.applyState != nil {
-			// Get action and duration from currentOps map first
-			action := "update"
+			// Use action from the message (set by handleApplyComplete/handleApplyError)
+			action := msg.Action
+			if action == "" {
+				action = "update" // fallback for backwards compatibility
+			}
 			var duration time.Duration
 			m.applyState.mu.Lock()
 			if op, exists := m.applyState.currentOps[msg.Address]; exists {
-				action = op.Action
+				if action == "update" {
+					// Only use currentOps action as fallback when msg has no action
+					action = op.Action
+				}
 				duration = time.Since(op.StartTime)
 				// Remove this specific operation from the map
 				delete(m.applyState.currentOps, msg.Address)
@@ -1171,16 +1177,6 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			opsRemaining := len(m.applyState.currentOps)
 			m.applyState.mu.Unlock()
-
-			// If we didn't get action from currentOps, try pending list
-			if action == "update" {
-				for _, p := range m.applyState.pending {
-					if p.Address == msg.Address {
-						action = p.Action
-						break
-					}
-				}
-			}
 
 			// Safety: Deduplicate completions.
 			// If this address has no remaining pending entries but already has completions,

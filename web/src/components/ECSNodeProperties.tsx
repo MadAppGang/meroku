@@ -1095,7 +1095,6 @@ export function ECSNotifications({
                     setWebhookTestResult(null);
                     onConfigChange({
                       workload: {
-                        ...config.workload,
                         slack_webhook: e.target.value,
                       },
                     });

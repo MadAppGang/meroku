@@ -133,6 +133,7 @@ export const AddAmplifyDialog: React.FC<AddAmplifyDialogProps> = ({
 		github_oauth_token: string;
 		branches: BranchFormData[];
 		subdomain_prefix: string;
+		spa_mode: boolean;
 	}>({
 		name: smartDefaults.suggestedName,
 		github_repository: "",
@@ -150,6 +151,7 @@ export const AddAmplifyDialog: React.FC<AddAmplifyDialogProps> = ({
 			},
 		],
 		subdomain_prefix: smartDefaults.suggestedSubdomain,
+		spa_mode: true,
 	});
 
 	const [tokenSaved, setTokenSaved] = useState(false);
@@ -468,6 +470,7 @@ export const AddAmplifyDialog: React.FC<AddAmplifyDialogProps> = ({
 				custom_subdomains: branch.custom_subdomains || [],
 			})),
 			...(formData.subdomain_prefix && { subdomain_prefix: formData.subdomain_prefix }),
+			spa_mode: formData.spa_mode,
 		};
 
 		await onAdd(amplifyApp);
@@ -508,6 +511,7 @@ export const AddAmplifyDialog: React.FC<AddAmplifyDialogProps> = ({
 				},
 			],
 			subdomain_prefix: smartDefaults.suggestedSubdomain,
+			spa_mode: true,
 		});
 		setErrors({});
 		setTokenSaved(false);
@@ -995,6 +999,30 @@ export const AddAmplifyDialog: React.FC<AddAmplifyDialogProps> = ({
 								</p>
 							)}
 						</div>
+					</div>
+
+					{/* SPA Mode */}
+					<div className="space-y-2">
+						<div className="flex items-center justify-between">
+							<div>
+								<Label htmlFor="spa_mode">SPA Mode</Label>
+								<p className="text-xs text-gray-500">
+									Enable for React, Vue, Angular SPAs (200 status rewrite)
+								</p>
+							</div>
+							<Checkbox
+								id="spa_mode"
+								checked={formData.spa_mode}
+								onCheckedChange={(checked) =>
+									setFormData({ ...formData, spa_mode: checked === true })
+								}
+							/>
+						</div>
+						<p className="text-xs text-gray-500">
+							When enabled: Routes like /dashboard return 200 status (not 404).
+							<br />
+							When disabled: Uses default 404-200 pattern.
+						</p>
 					</div>
 				</div>
 

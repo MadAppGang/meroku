@@ -97,19 +97,17 @@ export function BackendScalingConfiguration({
 									? Number.parseInt(updates.backend_memory)
 									: service.memory,
 								desired_count:
-									updates?.backend_desired_count || service.desired_count,
+									updates?.backend_desired_count ?? service.desired_count,
 							}
 						: service,
 				) || [];
 
 			onConfigChange({ services: updatedServices });
 		} else {
-			// Update backend configuration
+			// Update backend configuration — send only changed fields.
+			// App.tsx deep-merges with prevConfig.workload to avoid stale overwrites.
 			onConfigChange({
-				workload: {
-					...config.workload,
-					...updates,
-				},
+				workload: updates,
 			});
 		}
 	};
