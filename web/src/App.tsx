@@ -181,12 +181,12 @@ export default function App() {
           nestedKeys.includes(key as typeof nestedKeys[number])
         ) {
           // Deep merge: prevConfig fields as base, updates override only specified fields
-          (updatedConfig as Record<string, unknown>)[key] = {
-            ...((prevConfig as Record<string, unknown>)[key] as object || {}),
+          (updatedConfig as unknown as Record<string, unknown>)[key] = {
+            ...((prevConfig as unknown as Record<string, unknown>)[key] as object || {}),
             ...value,
           };
         } else {
-          (updatedConfig as Record<string, unknown>)[key] = value;
+          (updatedConfig as unknown as Record<string, unknown>)[key] = value;
         }
       }
 
