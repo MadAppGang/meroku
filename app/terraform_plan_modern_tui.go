@@ -1108,6 +1108,20 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.applyState != nil {
 			m.applyState.isApplying = false
 			m.applyState.applyComplete = true
+
+			// Move any remaining pending resources to completed as "no-op"
+			// This happens when terraform decides at apply time that a planned
+			// resource doesn't actually need changing (e.g., no real diff)
+			for _, pending := range m.applyState.pending {
+				m.applyState.completed = append(m.applyState.completed, completedResource{
+					Address:   pending.Address,
+					Action:    "no-op",
+					Duration:  0,
+					Timestamp: time.Now(),
+					Success:   true,
+				})
+			}
+			m.applyState.pending = []pendingResource{}
 		}
 
 	case applyErrorMsg:
