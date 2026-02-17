@@ -2,6 +2,23 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## !! THIS REPO IS PUBLIC - NEVER COMMIT SECRETS !!
+
+**ABSOLUTE RULE: No real infrastructure data, investigation files, or debug output may EVER be committed to this repository.**
+
+This repo is **public on GitHub**. Any committed secret is immediately exposed to the world.
+
+**NEVER commit:**
+- Real Terraform plan/state JSON files (they contain embedded secrets: SSH keys, API keys, passwords, account IDs)
+- AWS credentials, SSH keys, API tokens, or any secret material
+- Debug/investigation output from real infrastructure
+- Real YAML configs with account IDs or credentials
+- Any file from a real project's `.terraform/` directory
+
+**For test data:** Always use **synthetic/fake data** with dummy values. Never copy-paste from real infrastructure output.
+
+**If you need test fixtures:** Generate them manually with placeholder values like `REDACTED`, `000000000000`, `fake-key-do-not-use`.
+
 ## Project Overview
 
 This is a comprehensive Terraform Infrastructure as Code (IaC) repository that provides a reusable, modular AWS infrastructure setup. It includes:
