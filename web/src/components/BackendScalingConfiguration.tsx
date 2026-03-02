@@ -72,13 +72,15 @@ export function BackendScalingConfiguration({
 	const [requestBasedScaling, setRequestBasedScaling] = useState(false);
 	const [requestsPerTarget, setRequestsPerTarget] = useState(1000);
 
-	// Adjust memory when CPU changes
+	// Adjust memory when CPU changes - also persist to YAML config
 	useEffect(() => {
 		const availableMemory = getMemoryOptions(Number.parseInt(cpu));
 		if (availableMemory.length > 0 && !availableMemory.includes(Number.parseInt(memory))) {
-			setMemory(availableMemory[0].toString());
+			const newMemory = availableMemory[0].toString();
+			setMemory(newMemory);
+			handleWorkloadChange({ backend_memory: newMemory });
 		}
-	}, [cpu, memory, getMemoryOptions]);
+	}, [cpu, memory, getMemoryOptions]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	const handleWorkloadChange = (
 		updates: Partial<YamlInfrastructureConfig["workload"]>,
@@ -135,7 +137,16 @@ export function BackendScalingConfiguration({
 								value={cpu}
 								onValueChange={(value: string) => {
 									setCpu(value);
-									handleWorkloadChange({ backend_cpu: value });
+									// Auto-adjust memory if current value is invalid for new CPU
+									const availableMemory = getMemoryOptions(Number.parseInt(value));
+									const currentMem = Number.parseInt(memory);
+									if (availableMemory.length > 0 && !availableMemory.includes(currentMem)) {
+										const newMemory = availableMemory[0].toString();
+										setMemory(newMemory);
+										handleWorkloadChange({ backend_cpu: value, backend_memory: newMemory });
+									} else {
+										handleWorkloadChange({ backend_cpu: value });
+									}
 								}}
 							>
 								<SelectTrigger
