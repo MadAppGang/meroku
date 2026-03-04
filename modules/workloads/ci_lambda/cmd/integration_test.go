@@ -148,7 +148,7 @@ func main() {
 	}
 
 	logger.Info("Integration test completed successfully", map[string]interface{}{
-		"total_services":   len(cfg.ServiceMap),
+		"total_services":    len(cfg.ServiceMap),
 		"verified_services": successCount,
 	})
 }

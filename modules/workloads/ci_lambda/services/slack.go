@@ -40,15 +40,15 @@ const (
 
 // NotificationData contains data for Slack messages
 type NotificationData struct {
-	Type          NotificationType
-	Environment   string
-	Service       string
-	Reason        string
-	StateName     string
-	DeploymentID  string
-	TaskDef       string
-	EventID       string
-	Timestamp     time.Time
+	Type         NotificationType
+	Environment  string
+	Service      string
+	Reason       string
+	StateName    string
+	DeploymentID string
+	TaskDef      string
+	EventID      string
+	Timestamp    time.Time
 }
 
 // NewSlackService creates a new Slack notification service

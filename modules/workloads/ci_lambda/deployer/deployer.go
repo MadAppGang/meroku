@@ -34,8 +34,8 @@ func NewDeployerV2(
 
 // DeployOptions contains options for a deployment
 type DeployOptions struct {
-	ServiceIdentifier string // Service ID (empty string for backend, "api" for api, etc.)
-	TaskDefinition    string // Optional: if empty, uses latest
+	ServiceIdentifier string // Service ID (empty string for backend, "api" for api, "task:cleanup" for scheduled tasks)
+	TaskDefinition    string // Optional: if empty, uses latest. For scheduled tasks, this is the new image URI.
 	Reason            string // Reason for deployment (for logging/notifications)
 	SourceEvent       string // Source of the deployment trigger (ECR, SSM, S3, manual)
 }
@@ -82,6 +82,8 @@ func (d *DeployerV2) Deploy(opts DeployOptions) *DeployResult {
 	var lastErr error
 	var result *services.DeploymentResult
 
+	isScheduledTask := d.config.IsScheduledTask(opts.ServiceIdentifier)
+
 	maxRetries := d.config.MaxDeploymentRetries
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		if attempt > 0 {
@@ -93,12 +95,20 @@ func (d *DeployerV2) Deploy(opts DeployOptions) *DeployResult {
 			time.Sleep(time.Duration(attempt) * 5 * time.Second)
 		}
 
-		// Perform deployment using V2 service (direct resource lookup)
-		result, lastErr = d.ecsSvc.Deploy(services.DeploymentRequest{
+		req := services.DeploymentRequest{
 			ServiceIdentifier: opts.ServiceIdentifier,
 			TaskDefinition:    opts.TaskDefinition,
 			ForceNewDeploy:    true,
-		})
+		}
+
+		if isScheduledTask {
+			// Scheduled tasks are deployed by registering a new task definition revision.
+			// opts.TaskDefinition contains the new ECR image URI for this code path.
+			result, lastErr = d.ecsSvc.DeployScheduledTask(req)
+		} else {
+			// Regular ECS services: update the service with UpdateService.
+			result, lastErr = d.ecsSvc.Deploy(req)
+		}
 
 		if lastErr == nil {
 			// Success!

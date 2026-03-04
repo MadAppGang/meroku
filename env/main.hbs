@@ -522,6 +522,9 @@ module "workloads" {
     }{{#unless @last}},{{/unless}}
   {{/each}}
   ]
+  {{#compare (len scheduled_tasks) ">" 0}}
+  scheduled_task_names = [{{#each scheduled_tasks}}"{{name}}"{{#unless @last}}, {{/unless}}{{/each}}]
+  {{/compare}}
 }
 {{#if cognito.enabled}} 
 module "cognito" {

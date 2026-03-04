@@ -76,10 +76,10 @@ func (s *ECSServiceV2) Deploy(req DeploymentRequest) (*DeploymentResult, error) 
 	taskFamily := mapping.TaskFamily
 
 	log.Info("Starting deployment", map[string]interface{}{
-		"cluster":      clusterName,
-		"ecs_service":  ecsServiceName,
-		"task_family":  taskFamily,
-		"service_id":   req.ServiceIdentifier,
+		"cluster":     clusterName,
+		"ecs_service": ecsServiceName,
+		"task_family": taskFamily,
+		"service_id":  req.ServiceIdentifier,
 	})
 
 	// If task definition not specified, find the latest one
@@ -201,6 +201,155 @@ func (s *ECSServiceV2) getLatestTaskDefinition(taskFamily string) (string, error
 	})
 
 	return latestTaskDef, nil
+}
+
+// RegisterNewTaskDefinitionRevision clones the current task definition for taskFamily,
+// replaces every container image that matches the existing image repository with newImageURI,
+// registers the updated definition, and returns the new task definition ARN.
+func (s *ECSServiceV2) RegisterNewTaskDefinitionRevision(taskFamily string, newImageURI string) (string, error) {
+	log := s.logger.WithFields(map[string]interface{}{
+		"task_family":   taskFamily,
+		"new_image_uri": newImageURI,
+		"action":        "register_task_definition",
+	})
+
+	// Dry run check — must come before any AWS API call.
+	if s.config.DryRun {
+		log.Info("DRY RUN: Would register new task definition revision", map[string]interface{}{
+			"family":    taskFamily,
+			"new_image": newImageURI,
+		})
+		return fmt.Sprintf("%s:DRY_RUN", taskFamily), nil
+	}
+
+	log.Info("Fetching current task definition", nil)
+
+	// Get the current (active) task definition for the family.
+	descOut, err := s.client.DescribeTaskDefinition(&ecs.DescribeTaskDefinitionInput{
+		TaskDefinition: aws.String(taskFamily),
+		Include:        []*string{aws.String("TAGS")},
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to describe task definition for family %q: %w", taskFamily, err)
+	}
+
+	td := descOut.TaskDefinition
+
+	// Determine the image repository prefix from the new image URI so we know which
+	// container definitions to update.  We strip the tag/digest suffix to get the repo.
+	// e.g. "123456789.dkr.ecr.us-east-1.amazonaws.com/myapp_task_cleanup:abc123"
+	//      → "123456789.dkr.ecr.us-east-1.amazonaws.com/myapp_task_cleanup"
+	newImageRepo := newImageURI
+	if idx := strings.LastIndex(newImageURI, ":"); idx != -1 {
+		newImageRepo = newImageURI[:idx]
+	}
+
+	// Clone container definitions, replacing matching images.
+	updatedContainers := make([]*ecs.ContainerDefinition, len(td.ContainerDefinitions))
+	for i, container := range td.ContainerDefinitions {
+		cloned := *container // shallow copy
+		if cloned.Image != nil {
+			existingRepo := aws.StringValue(cloned.Image)
+			if idx := strings.LastIndex(existingRepo, ":"); idx != -1 {
+				existingRepo = existingRepo[:idx]
+			}
+			if existingRepo == newImageRepo {
+				cloned.Image = aws.String(newImageURI)
+				log.Info("Updating container image", map[string]interface{}{
+					"container": aws.StringValue(cloned.Name),
+					"old_image": aws.StringValue(container.Image),
+					"new_image": newImageURI,
+				})
+			}
+		}
+		updatedContainers[i] = &cloned
+	}
+
+	// Build the RegisterTaskDefinition input from the existing definition.
+	registerInput := &ecs.RegisterTaskDefinitionInput{
+		Family:                  td.Family,
+		ContainerDefinitions:    updatedContainers,
+		TaskRoleArn:             td.TaskRoleArn,
+		ExecutionRoleArn:        td.ExecutionRoleArn,
+		NetworkMode:             td.NetworkMode,
+		Volumes:                 td.Volumes,
+		PlacementConstraints:    td.PlacementConstraints,
+		RequiresCompatibilities: td.RequiresCompatibilities,
+		Cpu:                     td.Cpu,
+		Memory:                  td.Memory,
+		ProxyConfiguration:      td.ProxyConfiguration,
+		EphemeralStorage:        td.EphemeralStorage,
+		RuntimePlatform:         td.RuntimePlatform,
+	}
+
+	// Carry forward tags if present.
+	if len(descOut.Tags) > 0 {
+		registerInput.Tags = descOut.Tags
+	}
+
+	regOut, err := s.client.RegisterTaskDefinition(registerInput)
+	if err != nil {
+		return "", fmt.Errorf("failed to register new task definition revision for family %q: %w", taskFamily, err)
+	}
+
+	newARN := aws.StringValue(regOut.TaskDefinition.TaskDefinitionArn)
+	log.Info("New task definition revision registered", map[string]interface{}{
+		"task_definition_arn": newARN,
+	})
+
+	return newARN, nil
+}
+
+// DeployScheduledTask deploys a scheduled task by registering a new task definition revision.
+// The EventBridge Scheduler uses the task family ARN without a revision suffix, so it will
+// automatically pick up the latest revision on the next invocation.
+func (s *ECSServiceV2) DeployScheduledTask(req DeploymentRequest) (*DeploymentResult, error) {
+	log := s.logger.WithFields(map[string]interface{}{
+		"service_id": req.ServiceIdentifier,
+		"action":     "deploy_scheduled_task",
+	})
+
+	mapping, err := s.config.GetServiceMapping(req.ServiceIdentifier)
+	if err != nil {
+		log.Error("Scheduled task not found in configuration", map[string]interface{}{
+			"error":      err.Error(),
+			"service_id": req.ServiceIdentifier,
+		})
+		return nil, fmt.Errorf("scheduled task not found: %w", err)
+	}
+
+	taskFamily := mapping.TaskFamily
+
+	log.Info("Deploying scheduled task via new task definition revision", map[string]interface{}{
+		"task_family": taskFamily,
+		"new_image":   req.TaskDefinition,
+	})
+
+	newTaskDefARN, err := s.RegisterNewTaskDefinitionRevision(taskFamily, req.TaskDefinition)
+	if err != nil {
+		log.Error("Failed to register new task definition revision", map[string]interface{}{
+			"error": err.Error(),
+		})
+		return nil, err
+	}
+
+	result := &DeploymentResult{
+		ServiceIdentifier: req.ServiceIdentifier,
+		ServiceName:       taskFamily, // no ECS service; use family name for display
+		ClusterName:       s.config.GetClusterName(),
+		TaskDefinition:    newTaskDefARN,
+		Status:            "REGISTERED",
+		Message: fmt.Sprintf(
+			"New task definition revision registered for scheduled task %q: %s",
+			taskFamily, newTaskDefARN,
+		),
+	}
+
+	log.Info("Scheduled task deployment complete", map[string]interface{}{
+		"task_definition_arn": newTaskDefARN,
+	})
+
+	return result, nil
 }
 
 // DescribeService gets detailed information about an ECS service

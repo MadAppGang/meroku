@@ -35,14 +35,14 @@ func Initialize() (*Application, error) {
 	// Initialize logger
 	logger := utils.NewLogger(cfg)
 	logger.Info("Lambda function initializing (V2 Architecture)", map[string]interface{}{
-		"project":         cfg.ProjectName,
-		"environment":     cfg.Environment,
-		"region":          cfg.AWSRegion,
-		"cluster":         cfg.GetClusterName(),
-		"log_level":       cfg.LogLevel,
-		"dry_run":         cfg.DryRun,
-		"services_count":  len(cfg.ServiceMap),
-		"architecture":    "v2-direct-naming",
+		"project":        cfg.ProjectName,
+		"environment":    cfg.Environment,
+		"region":         cfg.AWSRegion,
+		"cluster":        cfg.GetClusterName(),
+		"log_level":      cfg.LogLevel,
+		"dry_run":        cfg.DryRun,
+		"services_count": len(cfg.ServiceMap),
+		"architecture":   "v2-direct-naming",
 	})
 
 	// Initialize ECS service V2 (uses direct resource names)

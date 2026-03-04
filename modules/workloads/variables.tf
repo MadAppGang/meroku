@@ -400,6 +400,12 @@ variable "backend_autoscaling_target_memory" {
   default     = 80
 }
 
+variable "scheduled_task_names" {
+  description = "List of scheduled task names for Lambda CI/CD auto-deployment"
+  type        = list(string)
+  default     = []
+}
+
 variable "pgadmin_enabled" {
   description = "Enable pgAdmin deployment"
   type        = bool

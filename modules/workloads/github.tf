@@ -80,8 +80,25 @@ data "aws_iam_policy_document" "github" {
       "ecr:CreateRepository",
       "ecs:UpdateService",
       "ecs:DescribeServices",
+      "ecs:RegisterTaskDefinition",
+      "ecs:DescribeTaskDefinition",
       "events:PutEvents"
     ]
     resources = ["*"]
+  }
+
+  # iam:PassRole is required when calling ecs:UpdateService or ecs:RegisterTaskDefinition
+  # because ECS needs to assume the task execution role to pull images from ECR.
+  # Scoped to this project's task and execution roles only.
+  statement {
+    effect = "Allow"
+    actions = [
+      "iam:PassRole"
+    ]
+    resources = [
+      "arn:aws:iam::${local.aws_account_id}:role/${var.project}_*_task_${var.env}",
+      "arn:aws:iam::${local.aws_account_id}:role/${var.project}_*_task_execution_${var.env}",
+      "arn:aws:iam::${local.aws_account_id}:role/${var.project}_scheduler_*_task_execution_${var.env}"
+    ]
   }
 }

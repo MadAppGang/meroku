@@ -170,7 +170,11 @@ func (h *EventHandlerV2) handleECREvent(ctx context.Context, event events.CloudW
 		return fmt.Sprintf("Skipped event: action=%s result=%s", detail.Action, detail.Result), nil
 	}
 
-	// Extract service identifier from repository name
+	// Extract service identifier from repository name.
+	// GetServiceNameFromRepoName returns:
+	//   ""           → backend service
+	//   "{name}"     → named ECS service
+	//   "task:{name}"→ scheduled task (cron job)
 	serviceID, err := utils.GetServiceNameFromRepoName(detail.RepositoryName, h.config.ProjectName)
 	if err != nil {
 		log.Warn("Unable to extract service name from repository", map[string]interface{}{
@@ -185,12 +189,28 @@ func (h *EventHandlerV2) handleECREvent(ctx context.Context, event events.CloudW
 		"service_id": serviceID,
 	})
 
-	// Trigger deployment (V2 - uses direct resource lookup)
-	result := h.deployer.Deploy(deployer.DeployOptions{
+	// Build deploy options.  For scheduled tasks we pass the full image URI so the
+	// deployer can register a new task definition revision with the updated image.
+	deployOpts := deployer.DeployOptions{
 		ServiceIdentifier: serviceID,
 		Reason:            fmt.Sprintf("New ECR image pushed: %s:%s", detail.RepositoryName, detail.Tag),
 		SourceEvent:       "ECR",
-	})
+	}
+
+	if h.config.IsScheduledTask(serviceID) {
+		// Build the full ECR image URI from the event detail.
+		// The ECR event does not include the full registry host, so we derive it from the
+		// account/region embedded in the event.
+		registryHost := fmt.Sprintf("%s.dkr.ecr.%s.amazonaws.com", event.AccountID, event.Region)
+		deployOpts.TaskDefinition = fmt.Sprintf("%s/%s:%s", registryHost, detail.RepositoryName, detail.Tag)
+
+		log.Info("Scheduled task deployment: using image URI as task definition", map[string]interface{}{
+			"image_uri": deployOpts.TaskDefinition,
+		})
+	}
+
+	// Trigger deployment (V2 - uses direct resource lookup)
+	result := h.deployer.Deploy(deployOpts)
 
 	if result.Error != nil {
 		log.Error("Deployment failed", map[string]interface{}{

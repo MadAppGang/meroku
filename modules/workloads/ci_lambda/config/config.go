@@ -8,10 +8,22 @@ import (
 	"strings"
 )
 
+// ServiceMappingType indicates whether a mapping is for an ECS service or a scheduled task.
+type ServiceMappingType string
+
+const (
+	// ServiceMappingTypeService is the default — a live ECS service updated via UpdateService.
+	ServiceMappingTypeService ServiceMappingType = "service"
+	// ServiceMappingTypeScheduledTask means the mapping points to a scheduled (cron) task that
+	// is deployed by registering a new task-definition revision only (no ECS service to update).
+	ServiceMappingTypeScheduledTask ServiceMappingType = "scheduled_task"
+)
+
 // ServiceMapping holds actual ECS resource names from Terraform
 type ServiceMapping struct {
-	ServiceName string `json:"service_name"` // Actual ECS service name
-	TaskFamily  string `json:"task_family"`  // Actual task definition family
+	ServiceName string             `json:"service_name"` // Actual ECS service name (empty for scheduled tasks)
+	TaskFamily  string             `json:"task_family"`  // Actual task definition family
+	Type        ServiceMappingType `json:"type"`         // "service" (default) or "scheduled_task"
 }
 
 // S3ServiceFile represents an S3 file used by a service
@@ -29,9 +41,9 @@ type Config struct {
 	LogLevel    LogLevel
 
 	// ACTUAL ECS Resource Names from Terraform
-	ClusterName     string
-	ServiceMap      map[string]ServiceMapping // Service identifier → actual ECS names
-	S3ToServiceMap  map[string][]S3ServiceFile // Service identifier → S3 files
+	ClusterName    string
+	ServiceMap     map[string]ServiceMapping  // Service identifier → actual ECS names
+	S3ToServiceMap map[string][]S3ServiceFile // Service identifier → S3 files
 
 	// Slack Configuration (if set, notifications are enabled)
 	SlackWebhookURL string
@@ -95,6 +107,22 @@ func LoadFromEnv() (*Config, error) {
 		return nil, fmt.Errorf("failed to parse ECS_SERVICE_MAP: %w", err)
 	}
 
+	// Parse SCHEDULED_TASK_MAP JSON and merge into ServiceMap with type "scheduled_task".
+	// Entries from this map take the form:
+	//   "task:{name}": { "task_family": "...", "type": "scheduled_task" }
+	scheduledTaskMapJSON := getEnv("SCHEDULED_TASK_MAP", "{}")
+	var scheduledTaskMap map[string]ServiceMapping
+	if err := json.Unmarshal([]byte(scheduledTaskMapJSON), &scheduledTaskMap); err != nil {
+		return nil, fmt.Errorf("failed to parse SCHEDULED_TASK_MAP: %w", err)
+	}
+	if cfg.ServiceMap == nil {
+		cfg.ServiceMap = make(map[string]ServiceMapping)
+	}
+	for id, mapping := range scheduledTaskMap {
+		mapping.Type = ServiceMappingTypeScheduledTask
+		cfg.ServiceMap[id] = mapping
+	}
+
 	// Parse S3_SERVICE_MAP JSON
 	s3MapJSON := getEnv("S3_SERVICE_MAP", "{}")
 	if err := json.Unmarshal([]byte(s3MapJSON), &cfg.S3ToServiceMap); err != nil {
@@ -124,14 +152,15 @@ func (c *Config) Validate() error {
 		errors = append(errors, "ECS_CLUSTER_NAME is required")
 	}
 
-	// Service map validation
+	// Service map validation: at least one entry must exist (ECS service or scheduled task)
 	if len(c.ServiceMap) == 0 {
-		errors = append(errors, "ECS_SERVICE_MAP is required and must contain at least one service")
+		errors = append(errors, "ECS_SERVICE_MAP (or SCHEDULED_TASK_MAP) is required and must contain at least one entry")
 	}
 
 	// Validate each service mapping
 	for serviceID, mapping := range c.ServiceMap {
-		if mapping.ServiceName == "" {
+		isScheduledTask := mapping.Type == ServiceMappingTypeScheduledTask
+		if mapping.ServiceName == "" && !isScheduledTask {
 			errors = append(errors, fmt.Sprintf("service '%s': service_name is required", serviceID))
 		}
 		if mapping.TaskFamily == "" {
@@ -242,6 +271,16 @@ func (c *Config) GetServiceInfo(serviceIdentifier string) map[string]interface{}
 		"cluster_name": c.ClusterName,
 		"s3_files":     s3Files,
 	}
+}
+
+// IsScheduledTask returns true when the service identifier refers to a scheduled (cron) task
+// rather than a long-running ECS service.
+func (c *Config) IsScheduledTask(serviceIdentifier string) bool {
+	mapping, err := c.GetServiceMapping(serviceIdentifier)
+	if err != nil {
+		return false
+	}
+	return mapping.Type == ServiceMappingTypeScheduledTask
 }
 
 // Helper functions for environment variable parsing

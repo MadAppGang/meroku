@@ -79,9 +79,10 @@ resource "aws_lambda_function" "lambda_deploy" {
       LOG_LEVEL = "info" # Options: debug, info, warn, error
 
       # ECS Resource Names (ACTUAL resource names from Terraform)
-      ECS_CLUSTER_NAME = aws_ecs_cluster.main.name
-      ECS_SERVICE_MAP  = local.ecs_service_map
-      S3_SERVICE_MAP   = local.s3_to_service_map
+      ECS_CLUSTER_NAME    = aws_ecs_cluster.main.name
+      ECS_SERVICE_MAP     = local.ecs_service_map
+      S3_SERVICE_MAP      = local.s3_to_service_map
+      SCHEDULED_TASK_MAP  = local.scheduled_task_map
 
       # Slack Configuration (if set, notifications are enabled)
       SLACK_WEBHOOK_URL = var.slack_deployment_webhook
@@ -119,6 +120,7 @@ data "aws_iam_policy_document" "lambda_ecs" {
     actions = [
       "ecs:DescribeTaskDefinition",
       "ecs:ListTaskDefinitions",
+      "ecs:RegisterTaskDefinition",
       "ecs:UpdateService",
       "iam:PassRole"
     ]
@@ -324,5 +326,16 @@ locals {
         key    = file.key
       }
     ]
+  })
+
+  // Scheduled task map — maps "task:{name}" identifiers to task definition families.
+  // The Lambda uses this to register a new task definition revision when an ECR image
+  // is pushed to a {project}_task_{name} repository.
+  // Keys must match the identifier returned by GetServiceNameFromRepoName, i.e. "task:{name}".
+  scheduled_task_map = jsonencode({
+    for name in var.scheduled_task_names : "task:${name}" => {
+      task_family = "${var.project}_task_${name}_${var.env}"
+      type        = "scheduled_task"
+    }
   })
 }
