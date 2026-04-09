@@ -239,6 +239,7 @@ type EnvVariable struct {
 
 type Service struct {
 	Name             string            `yaml:"name"`
+	Enabled          *bool             `yaml:"enabled,omitempty"` // Schema v19: nil/true = deployed, false = config kept but not deployed
 	DockerImage      string            `yaml:"docker_image"`
 	ContainerCommand []string          `yaml:"container_command"`
 	ContainerPort    int               `yaml:"container_port"`

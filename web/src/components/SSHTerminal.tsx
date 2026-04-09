@@ -173,9 +173,10 @@ export function SSHTerminal({
 				// Convert http/https to ws/wss
 				wsUrl = `${apiBaseUrl.replace(/^http/, "ws")}/ws/ssh?${params}`;
 			} else {
-				// Default to backend on port 8080
+				// Use current host (works from localhost, Tailscale, etc.)
 				const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-				wsUrl = `${protocol}//localhost:8080/ws/ssh?${params}`;
+				const host = window.location.host;
+				wsUrl = `${protocol}//${host}/ws/ssh?${params}`;
 			}
 
 			console.log("SSHTerminal: Attempting to connect with URL:", wsUrl);

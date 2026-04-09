@@ -27,7 +27,8 @@ import (
 // 16: DynamoDB state locking support (state_lock_table field)
 // 17: Multi-domain support for SES (domains[] array with optional zone_id per domain)
 // 18: Move test_emails to global SES level (account-wide, not per-domain)
-const CurrentSchemaVersion = 18
+// 19: Add enabled field to services (default true, allows disabling without removing config)
+const CurrentSchemaVersion = 19
 
 // EnvWithVersion extends Env with a schema version field
 type EnvWithVersion struct {
@@ -128,6 +129,11 @@ var AllMigrations = []Migration{
 		Version:     18,
 		Description: "Move test_emails to global SES level (account-wide)",
 		Apply:       migrateToV18,
+	},
+	{
+		Version:     19,
+		Description: "Add enabled field to services (allows disabling without removing config)",
+		Apply:       migrateToV19,
 	},
 }
 
@@ -1034,6 +1040,47 @@ func migrateToV18(data map[string]interface{}) error {
 		fmt.Printf("    ✓ Consolidated %d test email(s) to global level\n", len(emailSlice))
 	} else {
 		fmt.Println("    ℹ️  No test emails to migrate")
+	}
+
+	return nil
+}
+
+// migrateToV19 adds enabled=true to all existing services
+func migrateToV19(data map[string]interface{}) error {
+	fmt.Println("  → Migrating to v19: Adding enabled field to services")
+
+	servicesRaw, exists := data["services"]
+	if !exists || servicesRaw == nil {
+		fmt.Println("    ℹ️  No services to migrate")
+		return nil
+	}
+
+	services, ok := servicesRaw.([]interface{})
+	if !ok {
+		fmt.Println("    ⚠️  services is not an array, skipping migration")
+		return nil
+	}
+
+	updatedCount := 0
+	for _, serviceRaw := range services {
+		serviceMap, ok := serviceRaw.(map[interface{}]interface{})
+		if !ok {
+			continue
+		}
+
+		if _, hasEnabled := serviceMap["enabled"]; !hasEnabled {
+			serviceMap["enabled"] = true
+			updatedCount++
+			if name, _ := serviceMap["name"].(string); name != "" {
+				fmt.Printf("    ✓ Service '%s': Set enabled=true\n", name)
+			}
+		}
+	}
+
+	if updatedCount == 0 {
+		fmt.Println("    ℹ️  All services already have enabled field")
+	} else {
+		fmt.Printf("    ✓ Set enabled=true on %d service(s)\n", updatedCount)
 	}
 
 	return nil

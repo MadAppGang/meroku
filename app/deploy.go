@@ -146,6 +146,9 @@ func applyTemplate(env string) {
 		fmt.Printf("error loading environment: %v", err)
 		os.Exit(1)
 	}
+	// Filter out disabled services (enabled=false) before rendering
+	filterDisabledServices(envMap)
+
 	envMap["modules"] = "../../infrastructure/modules"
 	envMap["custom_modules"] = "../../custom"
 
@@ -176,6 +179,37 @@ func applyTemplate(env string) {
 	generateBridgeFile(env, envMap)
 
 	os.WriteFile(filepath.Join("env", env, "main.tf"), []byte(result), 0o644)
+}
+
+// filterDisabledServices removes services with enabled=false from the env map
+// so they are not rendered into the Terraform output.
+// Services with enabled=true or no enabled field are kept.
+func filterDisabledServices(envMap map[string]interface{}) {
+	servicesRaw, ok := envMap["services"]
+	if !ok || servicesRaw == nil {
+		return
+	}
+
+	services, ok := servicesRaw.([]interface{})
+	if !ok {
+		return
+	}
+
+	filtered := make([]interface{}, 0, len(services))
+	for _, svc := range services {
+		svcMap, ok := svc.(map[string]interface{})
+		if !ok {
+			filtered = append(filtered, svc)
+			continue
+		}
+
+		enabled, hasEnabled := svcMap["enabled"]
+		if !hasEnabled || enabled == true {
+			filtered = append(filtered, svc)
+		}
+	}
+
+	envMap["services"] = filtered
 }
 
 // hasCustomModule checks if a custom pre or post module exists

@@ -30,6 +30,7 @@ export interface ScheduledTask {
 // Service related types
 export interface Service {
 	name: string;
+	enabled?: boolean;
 	docker_image: string;
 	container_port: number;
 	host_port?: number;

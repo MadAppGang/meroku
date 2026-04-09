@@ -19,6 +19,7 @@ export function generateAdditionalServiceNodes(
 
 	// Regular services (to the right of backend service)
 	services.forEach((service, index) => {
+		const isDisabled = service.enabled === false;
 		nodes.push({
 			id: `service-${service.name}`,
 			type: "service",
@@ -27,10 +28,12 @@ export function generateAdditionalServiceNodes(
 				id: `service-${service.name}`,
 				type: "service",
 				name: service.name,
-				status: "running",
+				status: isDisabled ? "disabled" : "running",
 				group: "ECS Cluster",
 				subgroup: "Services",
-				description: getServiceDescription(service.name),
+				description: isDisabled
+					? `${getServiceDescription(service.name)} (disabled)`
+					: getServiceDescription(service.name),
 				configProperties: {
 					cpu: service.cpu,
 					memory: service.memory,
@@ -41,7 +44,7 @@ export function generateAdditionalServiceNodes(
 					purpose: getServicePurpose(service.name),
 					domain: undefined,
 					healthStatus: {
-						critical: true,
+						critical: !isDisabled,
 						monitored: service.xray_enabled || false,
 					},
 				},

@@ -195,6 +195,7 @@ export interface YamlInfrastructureConfig {
 	// Additional Services
 	services?: Array<{
 		name: string;
+		enabled?: boolean;
 		docker_image?: string;
 		container_command?: string[];
 		container_port?: number;

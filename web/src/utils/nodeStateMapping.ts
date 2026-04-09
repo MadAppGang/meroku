@@ -258,7 +258,7 @@ export function getDynamicNodeStateMapping(
 				id: `service-${service.name}`,
 				name: service.name,
 				type: "service",
-				enabled: () => true,
+				enabled: () => service.enabled !== false,
 				properties: () => ({
 					desiredCount: service.desired_count ?? 1,
 					cpu: service.cpu || 256,
@@ -267,7 +267,9 @@ export function getDynamicNodeStateMapping(
 					xrayEnabled: service.xray_enabled || false,
 					remoteAccess: service.remote_access || false,
 				}),
-				description: `Additional service: ${service.name}`,
+				description: service.enabled === false
+					? `${service.name} (disabled)`
+					: `Additional service: ${service.name}`,
 			});
 		});
 	}

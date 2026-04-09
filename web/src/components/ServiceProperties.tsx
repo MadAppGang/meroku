@@ -77,7 +77,37 @@ export function ServiceProperties({
 				<CardDescription>Configure your service settings</CardDescription>
 			</CardHeader>
 			<CardContent className="space-y-4">
-				{/* Essential Container Toggle - at the top */}
+				{/* Enabled Toggle - at the very top */}
+				<div className="flex items-center justify-between">
+					<div className="flex-1">
+						<Label htmlFor="enabled">Enabled</Label>
+						<p className="text-xs text-gray-500 mt-1">
+							When disabled, all settings are kept but the service is not deployed
+						</p>
+					</div>
+					<Switch
+						id="enabled"
+						checked={serviceConfig.enabled !== false}
+						onCheckedChange={(checked) =>
+							handleServiceChange({ enabled: checked })
+						}
+						className="data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-gray-600"
+					/>
+				</div>
+
+				{serviceConfig.enabled === false && (
+					<Alert className="border-yellow-600 bg-yellow-900/20">
+						<AlertTriangle className="h-4 w-4 text-yellow-400" />
+						<AlertDescription className="text-xs text-gray-300">
+							This service is <strong>disabled</strong>. It will not be included in the next Terraform generation.
+							All configuration is preserved and can be re-enabled at any time.
+						</AlertDescription>
+					</Alert>
+				)}
+
+				<Separator />
+
+				{/* Essential Container Toggle */}
 				<div className="flex items-center justify-between">
 					<div className="flex-1">
 						<Label htmlFor="essential">Essential Container</Label>
