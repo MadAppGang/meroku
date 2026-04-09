@@ -11,7 +11,7 @@ echo -e "${GREEN}🍺 Push to Homebrew Tap${NC}"
 echo "======================="
 
 # Configuration
-TAP_REPO="MadAppGang/homebrew-meroku"
+TAP_REPO="MadAppGang/homebrew-tap"
 FORMULA_NAME="meroku"
 TEMP_DIR="homebrew-tap-tmp"
 
@@ -30,10 +30,11 @@ fi
 
 gh repo clone "$TAP_REPO" "$TEMP_DIR" -- --depth=1
 cd "$TEMP_DIR"
+mkdir -p Formula
 
 # Step 2: Copy the formula
 echo -e "\n${YELLOW}Step 2: Updating formula...${NC}"
-cp "../app/dist/homebrew/${FORMULA_NAME}.rb" "${FORMULA_NAME}.rb"
+cp "../app/dist/homebrew/${FORMULA_NAME}.rb" "Formula/${FORMULA_NAME}.rb"
 
 # Step 3: Check if there are changes
 if git diff --quiet; then
@@ -45,10 +46,10 @@ fi
 
 # Step 4: Commit and push
 echo -e "\n${YELLOW}Step 3: Committing changes...${NC}"
-git add "${FORMULA_NAME}.rb"
+git add "Formula/${FORMULA_NAME}.rb"
 
 # Get version from formula
-VERSION=$(grep -E '^\s*version\s+' "${FORMULA_NAME}.rb" | sed 's/.*version "\(.*\)".*/\1/')
+VERSION=$(grep -E '^\s*version\s+' "Formula/${FORMULA_NAME}.rb" | sed 's/.*version "\(.*\)".*/\1/')
 
 git commit -m "Update ${FORMULA_NAME} to ${VERSION}"
 
@@ -57,7 +58,7 @@ git push origin main
 
 echo -e "\n${GREEN}✅ Successfully pushed to tap!${NC}"
 echo -e "${GREEN}Users can now install with:${NC}"
-echo "  brew tap MadAppGang/meroku"
+echo "  brew tap MadAppGang/tap"
 echo "  brew install meroku"
 
 # Cleanup

@@ -5,7 +5,7 @@ This document explains how to set up and configure the various package managers 
 ## Overview
 
 Meroku is distributed through the following package managers:
-- **macOS**: Homebrew (Cask)
+- **macOS**: Homebrew (Formula)
 - **Windows**: Chocolatey and Scoop
 - **Linux**: APT (Debian/Ubuntu) and YUM/DNF (RedHat/Fedora) via .deb and .rpm packages
 
@@ -15,12 +15,12 @@ Meroku is distributed through the following package managers:
 
 You need to create the following repositories:
 1. **Scoop Bucket**: `github.com/MadAppGang/scoop-meroku`
-2. **Homebrew Tap**: `github.com/MadAppGang/homebrew-meroku` (already exists)
+2. **Homebrew Tap**: `github.com/MadAppGang/homebrew-tap` (shared tap for all MadAppGang tools)
 
 ### GitHub Secrets
 
 Add the following secrets to your GitHub repository:
-- `HOMEBREW_TAP_GITHUB_TOKEN`: Personal access token with `repo` scope for the Homebrew tap
+- `HOMEBREW_TAP_TOKEN`: Personal access token with `repo` scope for the Homebrew tap
 - `SCOOP_TAP_GITHUB_TOKEN`: Personal access token with `repo` scope for the Scoop bucket
 - `CHOCOLATEY_API_KEY`: API key from your Chocolatey account
 
@@ -28,8 +28,8 @@ Add the following secrets to your GitHub repository:
 
 ### macOS (Homebrew)
 ```bash
-brew tap MadAppGang/meroku
-brew install --cask meroku
+brew tap MadAppGang/tap
+brew install meroku
 ```
 
 ### Windows (Chocolatey)

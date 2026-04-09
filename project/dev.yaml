@@ -40,6 +40,7 @@ amplify_apps:
   - app
   subdomain_prefix: instagram.madappgang.com.au
 aws_profile: ""
+cloudfront_distributions: []
 cognito:
   auto_verified_attributes:
   - email
@@ -72,6 +73,15 @@ event_processor_tasks:
     mode: create_ecr
   name: event_task1
   rule_name: hug_all
+  rules:
+  - detail_types:
+    - SERVICE_DEPLOYMENT_COMPLETED
+    - SERVICE_DEPLOYMENT_FAILED
+    - SERVICE_DEPLOYMENT_IN_PROGRESS
+    name: hug_all
+    sources:
+    - service1
+    - service2
   sources:
   - service1
   - service2
@@ -106,7 +116,7 @@ scheduled_tasks:
     mode: create_ecr
   name: task2
   schedule: rate(1 hours)
-schema_version: 12
+schema_version: 18
 services:
 - container_port: 3000
   cpu: 256
@@ -132,6 +142,7 @@ sqs:
   name: default-queue
 state_bucket: instagram-terraform-state-dev
 state_file: null
+state_lock_table: instagram-terraform-locks-dev
 use_default_vpc: true
 vpc_cidr: 10.0.0.0/16
 workload:

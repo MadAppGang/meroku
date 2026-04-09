@@ -236,7 +236,8 @@ jobs:
 
           ### Homebrew (macOS/Linux)
           \`\`\`bash
-          brew install MadAppGang/meroku/meroku
+          brew tap MadAppGang/tap
+          brew install meroku
           \`\`\`
 
           ### Download
@@ -254,69 +255,62 @@ jobs:
     needs: release
     runs-on: ubuntu-latest
     steps:
-      - name: Get version
-        id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-
-      - name: Download release assets for checksums
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ steps.version.outputs.VERSION }}
+      - name: Get release info
+        id: release
         run: |
-          mkdir -p assets
-          gh release download "$VERSION" --repo MadAppGang/meroku --pattern "*.tar.gz" --dir assets
-          cd assets
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-          # Calculate SHA256 for each Darwin archive
-          DARWIN_AMD64_SHA=$(sha256sum meroku_Darwin_x86_64.tar.gz | cut -d' ' -f1)
-          DARWIN_ARM64_SHA=$(sha256sum meroku_Darwin_arm64.tar.gz | cut -d' ' -f1)
-          LINUX_AMD64_SHA=$(sha256sum meroku_Linux_x86_64.tar.gz | cut -d' ' -f1)
-          LINUX_ARM64_SHA=$(sha256sum meroku_Linux_arm64.tar.gz | cut -d' ' -f1)
+          sleep 10  # wait for release assets to propagate
 
-          echo "DARWIN_AMD64_SHA=$DARWIN_AMD64_SHA" >> $GITHUB_ENV
-          echo "DARWIN_ARM64_SHA=$DARWIN_ARM64_SHA" >> $GITHUB_ENV
-          echo "LINUX_AMD64_SHA=$LINUX_AMD64_SHA" >> $GITHUB_ENV
-          echo "LINUX_ARM64_SHA=$LINUX_ARM64_SHA" >> $GITHUB_ENV
+          curl -sL "https://github.com/${{ github.repository }}/releases/download/v${VERSION}/checksums.txt" -o checksums.txt
 
-      - name: Update Homebrew formula
-        env:
-          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
-          VERSION: ${{ steps.version.outputs.VERSION }}
+          DARWIN_ARM64_SHA=$(grep "Darwin_arm64.tar.gz" checksums.txt | awk '{print $1}')
+          DARWIN_X64_SHA=$(grep "Darwin_x86_64.tar.gz" checksums.txt | awk '{print $1}')
+          LINUX_ARM64_SHA=$(grep "Linux_arm64.tar.gz" checksums.txt | awk '{print $1}')
+          LINUX_X64_SHA=$(grep "Linux_x86_64.tar.gz" checksums.txt | awk '{print $1}')
+
+          echo "darwin_arm64_sha=$DARWIN_ARM64_SHA" >> $GITHUB_OUTPUT
+          echo "darwin_x64_sha=$DARWIN_X64_SHA" >> $GITHUB_OUTPUT
+          echo "linux_arm64_sha=$LINUX_ARM64_SHA" >> $GITHUB_OUTPUT
+          echo "linux_x64_sha=$LINUX_X64_SHA" >> $GITHUB_OUTPUT
+
+      - name: Checkout tap repo
+        uses: actions/checkout@v4
+        with:
+          repository: MadAppGang/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+
+      - name: Update formula
         run: |
-          # Clone the tap repo
-          git clone https://x-access-token:${HOMEBREW_TAP_GITHUB_TOKEN}@github.com/MadAppGang/homebrew-meroku.git tap
-          cd tap
-
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          # Create/update the formula
-          cat > Formula/meroku.rb << EOF
+          mkdir -p tap/Formula
+          cat > tap/Formula/meroku.rb << EOF
           class Meroku < Formula
             desc "Easy infrastructure management"
-            homepage "https://madappgang.com"
-            version "${VERSION#v}"
+            homepage "https://github.com/MadAppGang/meroku"
+            version "${{ steps.release.outputs.version }}"
             license "MIT"
 
             on_macos do
               on_intel do
-                url "https://github.com/MadAppGang/meroku/releases/download/${VERSION}/meroku_Darwin_x86_64.tar.gz"
-                sha256 "${DARWIN_AMD64_SHA}"
+                url "https://github.com/MadAppGang/meroku/releases/download/v${{ steps.release.outputs.version }}/meroku_Darwin_x86_64.tar.gz"
+                sha256 "${{ steps.release.outputs.darwin_x64_sha }}"
               end
               on_arm do
-                url "https://github.com/MadAppGang/meroku/releases/download/${VERSION}/meroku_Darwin_arm64.tar.gz"
-                sha256 "${DARWIN_ARM64_SHA}"
+                url "https://github.com/MadAppGang/meroku/releases/download/v${{ steps.release.outputs.version }}/meroku_Darwin_arm64.tar.gz"
+                sha256 "${{ steps.release.outputs.darwin_arm64_sha }}"
               end
             end
 
             on_linux do
               on_intel do
-                url "https://github.com/MadAppGang/meroku/releases/download/${VERSION}/meroku_Linux_x86_64.tar.gz"
-                sha256 "${LINUX_AMD64_SHA}"
+                url "https://github.com/MadAppGang/meroku/releases/download/v${{ steps.release.outputs.version }}/meroku_Linux_x86_64.tar.gz"
+                sha256 "${{ steps.release.outputs.linux_x64_sha }}"
               end
               on_arm do
-                url "https://github.com/MadAppGang/meroku/releases/download/${VERSION}/meroku_Linux_arm64.tar.gz"
-                sha256 "${LINUX_ARM64_SHA}"
+                url "https://github.com/MadAppGang/meroku/releases/download/v${{ steps.release.outputs.version }}/meroku_Linux_arm64.tar.gz"
+                sha256 "${{ steps.release.outputs.linux_arm64_sha }}"
               end
             end
 
@@ -328,11 +322,16 @@ jobs:
             end
 
             test do
-              system "#{bin}/meroku", "--version"
+              assert_match "meroku", shell_output("#{bin}/meroku --version")
             end
           end
           EOF
 
+      - name: Push to tap
+        run: |
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Formula/meroku.rb
-          git commit -m "Brew formula update for meroku version ${VERSION}"
+          git commit -m "Update meroku to v${{ steps.release.outputs.version }}"
           git push

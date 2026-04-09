@@ -20,7 +20,7 @@ A comprehensive, production-ready AWS infrastructure toolkit that combines Terra
 
 ```bash
 # Add the tap
-brew tap MadAppGang/meroku
+brew tap MadAppGang/tap
 
 # Install meroku
 brew install meroku

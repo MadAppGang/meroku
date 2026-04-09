@@ -28,6 +28,7 @@ func mainMenu() string {
 
 	options := []huh.Option[string]{
 		huh.NewOption("🌐 Edit environment with web UI", "api"),
+		huh.NewOption("📊 Monitor Dashboard", "monitor"),
 		huh.NewOption("🚀 Deploy environment", "deploy"),
 		huh.NewOption("✨ Create new environment", "create"),
 		huh.NewOption("🔄 Change Environment", "change-env"),
@@ -74,6 +75,11 @@ func mainMenu() string {
 		return mainMenu()
 	case action == "api":
 		startSPAServer("8080")
+		return mainMenu()
+	case action == "monitor":
+		if err := runMonitorDashboard(selectedEnvironment); err != nil {
+			fmt.Printf("Error running monitor dashboard: %v\n", err)
+		}
 		return mainMenu()
 	case action == "change-env":
 		// Change environment

@@ -56,4 +56,5 @@ Thumbs.db
 project/backup/
 .claudemem/index.db
 .claudemem/vectors/code_chunks.lance
-.claudemem
+
+.mnemex/

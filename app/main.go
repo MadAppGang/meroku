@@ -33,6 +33,7 @@ var (
 	renderDiffFlag = flag.String("renderdiff", "", "Render terraform plan diff view from JSON file (for testing)")
 	debugFlag      = flag.String("debug", "", "Debug mode to test screens (e.g., api_missing_key)")
 	awsConfigFlag  = flag.String("aws-config", "", "Custom AWS config file path (for testing different scenarios)")
+	monitorFlag    = flag.Bool("monitor", false, "Open infrastructure monitor dashboard")
 )
 
 // GetVersion returns the actual version, reading from infrastructure/version.txt
@@ -142,6 +143,12 @@ func main() {
 		os.Exit(0)
 	}
 
+	// Handle monitor subcommand (before environment selection prompts)
+	if len(args) > 0 && args[0] == "monitor" {
+		handleMonitorCommand(args[1:])
+		os.Exit(0)
+	}
+
 	registerCustomHelpers()
 
 	// Handle environment and profile selection
@@ -225,6 +232,15 @@ func main() {
 		}
 	}
 	// Silently ignore errors from version check to not disrupt startup
+
+	// If --monitor flag is set, open monitor dashboard directly
+	if *monitorFlag {
+		if err := runMonitorDashboard(selectedEnvironment); err != nil {
+			fmt.Printf("Error running monitor: %v\n", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
 
 	// If --web flag is set, open web app directly
 	if *webFlag {
@@ -396,6 +412,19 @@ func runTerraformPlanTUI(planFile string) error {
 	}
 
 	return nil
+}
+
+// handleMonitorCommand handles the `monitor` subcommand.
+// An optional positional argument overrides the selected environment.
+func handleMonitorCommand(args []string) {
+	envName := selectedEnvironment
+	if len(args) > 0 {
+		envName = args[0]
+	}
+	if err := runMonitorDashboard(envName); err != nil {
+		fmt.Printf("Error running monitor dashboard: %v\n", err)
+		os.Exit(1)
+	}
 }
 
 // performAutoSSOValidation validates AWS SSO configuration at startup

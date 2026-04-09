@@ -48,14 +48,14 @@ brews:
   - name: meroku
     repository:
       owner: MadAppGang
-      name: homebrew-meroku
-      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
       branch: main
     directory: Formula
     commit_author:
       name: erudenko
       email: i@madappgang.com
-    commit_msg_template: "Brew formula update for {{ .ProjectName }} version {{ .Tag }}"
+    commit_msg_template: "Update {{ .ProjectName }} to {{ .Tag }}"
     homepage: "https://madappgang.com"
     description: "Easy infrastructure management"
     license: "MIT"
