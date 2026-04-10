@@ -46,6 +46,7 @@ export default function App() {
   >(null);
   const [pricingRefreshTrigger, setPricingRefreshTrigger] = useState(0);
   const [backendError, setBackendError] = useState<string | null>(null);
+  const [connecting, setConnecting] = useState(true);
 
   // Use pricing hook with refresh trigger
   const { pricing } = usePricing(selectedEnvironment, pricingRefreshTrigger);
@@ -89,6 +90,7 @@ export default function App() {
           // No active environment, show selector
           setShowEnvSelector(true);
         }
+        setConnecting(false);
       } catch (error) {
         console.error("Failed to check active environment:", error);
 
@@ -107,6 +109,7 @@ export default function App() {
         } else {
           setShowEnvSelector(true);
         }
+        setConnecting(false);
       }
     };
 
@@ -352,7 +355,39 @@ export default function App() {
   return (
     <PricingProvider>
       <div className="h-screen w-full bg-gray-950 text-white relative overflow-hidden flex flex-col">
-        {backendError ? (
+        {connecting ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="flex flex-col items-center gap-8 text-center px-6">
+              {/* Animated logo / spinner */}
+              <div className="relative">
+                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
+                  <svg viewBox="0 0 24 24" className="w-10 h-10 text-white" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                    <polyline points="7.5 4.21 12 6.81 16.5 4.21" />
+                    <line x1="12" y1="22" x2="12" y2="6.81" className="animate-pulse" />
+                  </svg>
+                </div>
+                {/* Orbiting dot */}
+                <div className="absolute inset-0 animate-spin" style={{ animationDuration: '2s' }}>
+                  <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-blue-400 shadow-md shadow-blue-400/50" />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <h1 className="text-xl font-semibold text-white">Connecting to backend</h1>
+                <div className="flex items-center justify-center gap-1.5">
+                  <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                </div>
+              </div>
+
+              <p className="text-sm text-gray-500 max-w-xs">
+                Waiting for the meroku server on port 8080
+              </p>
+            </div>
+          </div>
+        ) : backendError ? (
           <div className="flex-1 flex items-center justify-center">
             <div className="flex flex-col items-center gap-6 max-w-md text-center px-6">
               <AlertCircle className="w-16 h-16 text-red-400" />
@@ -370,8 +405,7 @@ export default function App() {
                 type="button"
                 onClick={() => {
                   setBackendError(null);
-                  // Re-run the environment check by toggling a re-mount isn't
-                  // possible, so we inline the retry logic here.
+                  setConnecting(true);
                   (async () => {
                     try {
                       const environments =
@@ -389,11 +423,13 @@ export default function App() {
                       } else {
                         setShowEnvSelector(true);
                       }
+                      setConnecting(false);
                     } catch (retryError) {
                       console.error(
                         "Retry failed:",
                         retryError
                       );
+                      setConnecting(false);
                       const isNetworkError =
                         retryError instanceof TypeError ||
                         (retryError instanceof Error &&
