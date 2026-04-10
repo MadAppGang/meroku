@@ -404,6 +404,11 @@ func convertToJSONCompatible(data interface{}) interface{} {
 			m[fmt.Sprintf("%v", key)] = convertToJSONCompatible(value)
 		}
 		return m
+	case map[string]interface{}:
+		for key, value := range v {
+			v[key] = convertToJSONCompatible(value)
+		}
+		return v
 	case []interface{}:
 		for i, item := range v {
 			v[i] = convertToJSONCompatible(item)
