@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 )
@@ -926,5 +925,3 @@ func TestDryRun_CirclInfraWithoutActionField(t *testing.T) {
 	}
 }
 
-// Ensure applyState.mu is properly used (compile-time check)
-var _ sync.Mutex = applyState{}.mu

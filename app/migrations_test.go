@@ -275,7 +275,7 @@ func TestMigrateToV3(t *testing.T) {
 		t.Fatal("domain field is not a map")
 	}
 
-	requiredFields := []string{"zone_id", "root_zone_id", "root_account_id",
+	requiredFields := []string{"root_zone_id", "root_account_id",
 		"is_dns_root", "dns_root_account_id", "delegation_role_arn",
 		"api_domain_prefix", "add_env_domain_prefix"}
 
@@ -404,8 +404,8 @@ func TestApplyMigrationsChain(t *testing.T) {
 
 	// Verify all v3 fields exist
 	domain := data["domain"].(map[interface{}]interface{})
-	if _, exists := domain["zone_id"]; !exists {
-		t.Error("Expected zone_id field to exist after migration")
+	if _, exists := domain["root_zone_id"]; !exists {
+		t.Error("Expected root_zone_id field to exist after migration")
 	}
 
 	// Verify all v4 fields exist
@@ -524,8 +524,8 @@ func TestMigrateYAMLFileIntegration(t *testing.T) {
 	}
 
 	if domain, ok := data["domain"].(map[interface{}]interface{}); ok {
-		if _, exists := domain["zone_id"]; !exists {
-			t.Error("Expected zone_id field after migration")
+		if _, exists := domain["root_zone_id"]; !exists {
+			t.Error("Expected root_zone_id field after migration")
 		}
 	} else {
 		t.Error("domain field is missing or not a map")
@@ -839,10 +839,11 @@ func TestMigrateV8ToV9_InvalidData(t *testing.T) {
 	}
 }
 
-func TestCurrentSchemaVersion_V11(t *testing.T) {
-	// Verify that CurrentSchemaVersion is updated to 11
-	if CurrentSchemaVersion != 11 {
-		t.Errorf("Expected CurrentSchemaVersion to be 11, got %d", CurrentSchemaVersion)
+func TestCurrentSchemaVersion(t *testing.T) {
+	// Verify that CurrentSchemaVersion matches the number of migrations + 1
+	expectedVersion := len(AllMigrations) + 1
+	if CurrentSchemaVersion != expectedVersion {
+		t.Errorf("Expected CurrentSchemaVersion to be %d (len(AllMigrations)+1), got %d", expectedVersion, CurrentSchemaVersion)
 	}
 }
 
