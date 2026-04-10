@@ -1,4 +1,5 @@
 import {
+	AlertTriangle,
 	ChevronDown,
 	ChevronRight,
 	Container,
@@ -15,8 +16,10 @@ import type {
 } from "../types/yamlConfig";
 import { ECRConfigEditor } from "./ECRConfigEditor";
 import { EventRulesList } from "./EventRulesList";
+import { Alert, AlertDescription } from "./ui/alert";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import { Switch } from "./ui/switch";
 
 interface EventTaskPropertiesProps {
 	config: YamlInfrastructureConfig;
@@ -174,6 +177,34 @@ export function EventTaskProperties({
 
 	return (
 		<div className="space-y-4">
+			{/* Enabled Toggle - at the very top */}
+			<div className="flex items-center justify-between">
+				<div className="flex-1">
+					<Label htmlFor="enabled">Enabled</Label>
+					<p className="text-xs text-gray-500 mt-1">
+						When disabled, all settings are kept but the task is not deployed
+					</p>
+				</div>
+				<Switch
+					id="enabled"
+					checked={eventTask.enabled !== false}
+					onCheckedChange={(checked) =>
+						updateTaskConfig({ enabled: checked })
+					}
+					className="data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-gray-600"
+				/>
+			</div>
+
+			{eventTask.enabled === false && (
+				<Alert className="border-yellow-600 bg-yellow-900/20">
+					<AlertTriangle className="h-4 w-4 text-yellow-400" />
+					<AlertDescription className="text-xs text-gray-300">
+						This event task is <strong>disabled</strong>. It will not be included in the next Terraform generation.
+						All configuration is preserved and can be re-enabled at any time.
+					</AlertDescription>
+				</Alert>
+			)}
+
 			{/* Rules Section - Always visible, primary content */}
 			<div className="space-y-4">
 				<EventRulesList rules={getRules()} onRulesChange={handleRulesChange} />

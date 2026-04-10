@@ -1,0 +1,149 @@
+version: '3'
+
+vars:
+  APP_DIR: ./app
+  WEB_DIR: ./web
+  LAMBDA_DIR: ./modules/workloads/ci_lambda
+
+tasks:
+  # ─── Development ────────────────────────────────────────
+  tui:
+    desc: "Run the TUI app (usage: task tui -- path/to/project)"
+    deps: [build]
+    cmd: cd {{.CLI_ARGS | default "."}} && {{.ROOT_DIR}}/meroku
+    vars:
+      ROOT_DIR:
+        sh: pwd
+
+  web:
+    desc: Run the web frontend dev server
+    dir: '{{.WEB_DIR}}'
+    cmd: bun dev
+
+  build:
+    desc: Build the CLI binary
+    dir: '{{.APP_DIR}}'
+    cmd: go build -o ../meroku .
+
+  test:
+    desc: Run Go tests
+    dir: '{{.APP_DIR}}'
+    cmd: go test ./...
+
+  test:web:
+    desc: Run web frontend tests
+    dir: '{{.WEB_DIR}}'
+    cmd: bun test
+
+  generate:
+    desc: Generate code from templates
+    dir: '{{.APP_DIR}}'
+    cmd: go generate ./...
+
+  lint:web:
+    desc: Lint web frontend
+    dir: '{{.WEB_DIR}}'
+    cmd: bunx biome check .
+
+  # ─── Web Build ──────────────────────────────────────────
+  web:build:
+    desc: Build web frontend into app/webapp (embedded in Go binary)
+    dir: '{{.WEB_DIR}}'
+    cmd: bun run build
+
+  # ─── Infrastructure (run from a project directory) ──────
+  infra-gen-dev:
+    desc: Generate Terraform files for dev environment
+    dir: '{{.APP_DIR}}'
+    cmd: go run . template -c vars=dev.yaml -f ./infrastructure/env/main.hbs -o ./env/dev/main.tf
+
+  infra-gen-prod:
+    desc: Generate Terraform files for prod environment
+    dir: '{{.APP_DIR}}'
+    cmd: go run . template -c vars=prod.yaml -f ./infrastructure/env/main.hbs -o ./env/prod/main.tf
+
+  infra-init:
+    desc: Initialize Terraform
+    dir: project/env/{{.env}}
+    cmd: terraform init
+    requires:
+      vars: [env]
+
+  infra-plan:
+    desc: Plan infrastructure changes
+    dir: project/env/{{.env}}
+    cmd: terraform plan
+    requires:
+      vars: [env]
+
+  infra-apply:
+    desc: Apply infrastructure changes
+    dir: project/env/{{.env}}
+    cmd: terraform apply
+    requires:
+      vars: [env]
+
+  infra-destroy:
+    desc: Destroy infrastructure
+    dir: project/env/{{.env}}
+    cmd: terraform destroy
+    requires:
+      vars: [env]
+
+  infra-show:
+    desc: Show current infrastructure state
+    dir: project/env/{{.env}}
+    cmd: terraform show
+    requires:
+      vars: [env]
+
+  infra-update:
+    desc: Update Terraform modules
+    dir: project
+    cmd: |
+      rm -rf ./infrastructure
+      git clone --depth=1 --branch=main https://github.com/MadAppGang/infrastructure.git ./infrastructure
+      rm -rf ./infrastructure/.git
+    requires:
+      vars: [env]
+
+  infra-import:
+    desc: Import existing AWS resources
+    dir: project/env/{{.env}}
+    cmd: terraform import
+    requires:
+      vars: [env]
+
+  # ─── CI Lambda ──────────────────────────────────────────
+  lambda:build:
+    desc: Build CI/CD Lambda function
+    dir: '{{.LAMBDA_DIR}}'
+    cmd: GOOS=linux GOARCH=amd64 go build -o bootstrap main.go
+
+  lambda:test:
+    desc: Run Lambda unit tests
+    dir: '{{.LAMBDA_DIR}}'
+    cmd: go test -v ./...
+
+  lambda:package:
+    desc: Build and package Lambda for deployment
+    dir: '{{.LAMBDA_DIR}}'
+    deps: [lambda:build]
+    cmd: zip ci_lambda.zip bootstrap
+
+  lambda:clean:
+    desc: Clean Lambda build artifacts
+    dir: '{{.LAMBDA_DIR}}'
+    cmd: rm -f bootstrap integration_test ci_lambda.zip
+
+  # ─── Release ────────────────────────────────────────────
+  version:
+    desc: Show current version
+    cmd: cat ./version.txt
+
+  renderdiff:
+    desc: Test terraform plan diff viewer
+    dir: '{{.APP_DIR}}'
+    cmd: go run . --renderdiff {{.file}}
+    requires:
+      vars: [file]

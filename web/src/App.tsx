@@ -45,6 +45,7 @@ export default function App() {
     string | null
   >(null);
   const [pricingRefreshTrigger, setPricingRefreshTrigger] = useState(0);
+  const [backendError, setBackendError] = useState<string | null>(null);
 
   // Use pricing hook with refresh trigger
   const { pricing } = usePricing(selectedEnvironment, pricingRefreshTrigger);
@@ -90,7 +91,22 @@ export default function App() {
         }
       } catch (error) {
         console.error("Failed to check active environment:", error);
-        setShowEnvSelector(true);
+
+        // Detect network/connection errors (backend unreachable)
+        const isNetworkError =
+          error instanceof TypeError ||
+          (error instanceof Error &&
+            /Failed to fetch|NetworkError|net::ERR_|SSL|ECONNREFUSED/i.test(
+              error.message
+            ));
+
+        if (isNetworkError) {
+          setBackendError(
+            error instanceof Error ? error.message : String(error)
+          );
+        } else {
+          setShowEnvSelector(true);
+        }
       }
     };
 
@@ -336,6 +352,77 @@ export default function App() {
   return (
     <PricingProvider>
       <div className="h-screen w-full bg-gray-950 text-white relative overflow-hidden flex flex-col">
+        {backendError ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="flex flex-col items-center gap-6 max-w-md text-center px-6">
+              <AlertCircle className="w-16 h-16 text-red-400" />
+              <h1 className="text-2xl font-semibold text-white">
+                Backend Not Available
+              </h1>
+              <p className="text-gray-400">
+                The meroku backend server is not reachable. The web interface
+                requires a running backend to function.
+              </p>
+              <p className="text-sm text-gray-500 font-mono bg-gray-900 rounded-lg px-4 py-2 w-full break-all">
+                {backendError}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setBackendError(null);
+                  // Re-run the environment check by toggling a re-mount isn't
+                  // possible, so we inline the retry logic here.
+                  (async () => {
+                    try {
+                      const environments =
+                        await infrastructureApi.getEnvironments();
+                      const activeEnv = environments.find(
+                        (env) => env.isActive
+                      );
+                      if (activeEnv) {
+                        setSelectedEnvironment(activeEnv.name);
+                        setActiveEnvironmentProfile(activeEnv.profile || null);
+                        setActiveEnvironmentAccountId(
+                          activeEnv.accountId || null
+                        );
+                        setShowEnvSelector(false);
+                      } else {
+                        setShowEnvSelector(true);
+                      }
+                    } catch (retryError) {
+                      console.error(
+                        "Retry failed:",
+                        retryError
+                      );
+                      const isNetworkError =
+                        retryError instanceof TypeError ||
+                        (retryError instanceof Error &&
+                          /Failed to fetch|NetworkError|net::ERR_|SSL|ECONNREFUSED/i.test(
+                            retryError.message
+                          ));
+                      if (isNetworkError) {
+                        setBackendError(
+                          retryError instanceof Error
+                            ? retryError.message
+                            : String(retryError)
+                        );
+                      } else {
+                        setShowEnvSelector(true);
+                      }
+                    }
+                  })();
+                }}
+                className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium transition-colors"
+              >
+                Retry
+              </button>
+              <p className="text-xs text-gray-600">
+                Make sure the meroku backend is running (task tui)
+              </p>
+            </div>
+          </div>
+        ) : (
+        <>
         <EnvironmentSelector
           open={showEnvSelector}
           onSelect={handleEnvironmentSelect}
@@ -496,6 +583,8 @@ export default function App() {
 
       {/* Toast notifications */}
       <Toaster />
+        </>
+        )}
       </div>
     </PricingProvider>
   );

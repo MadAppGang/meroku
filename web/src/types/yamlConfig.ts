@@ -172,6 +172,7 @@ export interface YamlInfrastructureConfig {
 	// Scheduled Tasks
 	scheduled_tasks?: Array<{
 		name: string;
+		enabled?: boolean;
 		schedule: string;
 		docker_image?: string;
 		container_command?: string;
@@ -360,6 +361,7 @@ export interface EventBridgeRule {
  */
 export interface EventProcessorTask {
 	name: string;
+	enabled?: boolean;
 	// New multi-rule support (Schema v13) - preferred format
 	rules?: EventBridgeRule[];
 	// Legacy single-rule fields (Schema <= 12) - kept for backward compatibility

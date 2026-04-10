@@ -1,0 +1,79 @@
+version: '3'
+
+tasks:
+  clean:
+    desc: Remove generated environments and infrastructure
+    cmd: rm -rf env infrastructure
+
+  init:
+    desc: Initialize project - create env dirs and clone infrastructure modules
+    cmds:
+      - mkdir -p env/dev
+      - mkdir -p env/prod
+      - git clone --depth=1 --branch=main https://github.com/MadAppGang/infrastructure.git ./infrastructure
+      - rm -rf ./infrastructure/.git
+
+  update:
+    desc: Update infrastructure modules to latest
+    cmds:
+      - rm -rf ./infrastructure
+      - git clone --depth=1 --branch=main https://github.com/MadAppGang/infrastructure.git ./infrastructure
+      - rm -rf ./infrastructure/.git
+
+  dev:
+    desc: Generate Terraform files for dev environment
+    cmd: meroku template -c vars=dev.yaml -f ./infrastructure/env/main.hbs -o ./env/dev/main.tf
+
+  prod:
+    desc: Generate Terraform files for prod environment
+    cmd: meroku template -c vars=prod.yaml -f ./infrastructure/env/main.hbs -o ./env/prod/main.tf
+
+  version:
+    desc: Show infrastructure version
+    cmd: cat ./infrastructure/version.txt
+
+  devplan:
+    desc: Run terraform plan for dev
+    dir: env/dev
+    cmds:
+      - terraform init
+      - terraform plan
+
+  prodplan:
+    desc: Run terraform plan for prod
+    dir: env/prod
+    cmds:
+      - terraform init
+      - terraform plan
+
+  devapply:
+    desc: Apply terraform for dev and update prod ECR refs
+    dir: env/dev
+    cmds:
+      - terraform init
+      - terraform apply
+      - |
+        echo "Setting ECR repos values for prod ..."
+        ACCOUNT_ID=$(terraform output -raw account_id)
+        REGION=$(terraform output -raw region)
+        {{if eq OS "darwin"}}
+        sed -i '' "s/ecr_account_id:.*/ecr_account_id: \"$ACCOUNT_ID\"/g; s/ecr_account_region:.*/ecr_account_region: $REGION/g;" ../../prod.yaml
+        {{else}}
+        sed -i "s/ecr_account_id:.*/ecr_account_id: \"$ACCOUNT_ID\"/g; s/ecr_account_region:.*/ecr_account_region: $REGION/g;" ../../prod.yaml
+        {{end}}
+
+  prodapply:
+    desc: Apply terraform for prod
+    dir: env/prod
+    cmds:
+      - terraform init
+      - terraform apply
+
+  buildlambda:
+    desc: Build CI/CD Lambda function
+    dir: infrastructure/modules/workloads/ci_lambda
+    cmds:
+      - rm -f bootstrap
+      - GOOS=linux GOARCH=amd64 go build -o bootstrap
+      - rm -f ../../../../env/dev/ci_lambda.zip
+      - rm -f ../../../../env/prod/ci_lambda.zip

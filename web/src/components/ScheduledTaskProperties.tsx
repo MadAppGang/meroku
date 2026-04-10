@@ -1,9 +1,11 @@
+import { AlertTriangle } from "lucide-react";
 import { useCallback, useRef, useEffect } from "react";
 import type { AccountInfo } from "../api/infrastructure";
 import type { ComponentNode } from "../types";
 import type { ECRConfig, YamlInfrastructureConfig } from "../types/yamlConfig";
 import { ScheduleExpressionBuilder } from "./ScheduleExpressionBuilder";
 import { useDeepMemo } from "../hooks/useDeepMemo";
+import { Alert, AlertDescription } from "./ui/alert";
 import {
 	Card,
 	CardContent,
@@ -21,6 +23,7 @@ import {
 	SelectValue,
 } from "./ui/select";
 import { Separator } from "./ui/separator";
+import { Switch } from "./ui/switch";
 import { useFargateOptions } from "../hooks/use-fargate-options";
 import { ECRConfigEditor } from "./ECRConfigEditor";
 import { ScheduledTaskEnvironmentVariables } from "./ScheduledTaskEnvironmentVariables";
@@ -173,6 +176,36 @@ export function ScheduledTaskProperties({
 				</CardDescription>
 			</CardHeader>
 			<CardContent className="space-y-4">
+				{/* Enabled Toggle - at the very top */}
+				<div className="flex items-center justify-between">
+					<div className="flex-1">
+						<Label htmlFor="enabled">Enabled</Label>
+						<p className="text-xs text-gray-500 mt-1">
+							When disabled, all settings are kept but the task is not deployed
+						</p>
+					</div>
+					<Switch
+						id="enabled"
+						checked={task.enabled !== false}
+						onCheckedChange={(checked) =>
+							handleTaskChange({ enabled: checked })
+						}
+						className="data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-gray-600"
+					/>
+				</div>
+
+				{task.enabled === false && (
+					<Alert className="border-yellow-600 bg-yellow-900/20">
+						<AlertTriangle className="h-4 w-4 text-yellow-400" />
+						<AlertDescription className="text-xs text-gray-300">
+							This scheduled task is <strong>disabled</strong>. It will not be included in the next Terraform generation.
+							All configuration is preserved and can be re-enabled at any time.
+						</AlertDescription>
+					</Alert>
+				)}
+
+				<Separator />
+
 				<div className="space-y-2">
 					<Label>Schedule Expression</Label>
 					<ScheduleExpressionBuilder

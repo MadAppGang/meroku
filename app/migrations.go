@@ -28,7 +28,8 @@ import (
 // 17: Multi-domain support for SES (domains[] array with optional zone_id per domain)
 // 18: Move test_emails to global SES level (account-wide, not per-domain)
 // 19: Add enabled field to services (default true, allows disabling without removing config)
-const CurrentSchemaVersion = 19
+// 20: Add enabled field to scheduled_tasks and event_processor_tasks (same pattern as services)
+const CurrentSchemaVersion = 20
 
 // EnvWithVersion extends Env with a schema version field
 type EnvWithVersion struct {
@@ -134,6 +135,11 @@ var AllMigrations = []Migration{
 		Version:     19,
 		Description: "Add enabled field to services (allows disabling without removing config)",
 		Apply:       migrateToV19,
+	},
+	{
+		Version:     20,
+		Description: "Add enabled field to scheduled_tasks and event_processor_tasks",
+		Apply:       migrateToV20,
 	},
 }
 
@@ -1081,6 +1087,49 @@ func migrateToV19(data map[string]interface{}) error {
 		fmt.Println("    ℹ️  All services already have enabled field")
 	} else {
 		fmt.Printf("    ✓ Set enabled=true on %d service(s)\n", updatedCount)
+	}
+
+	return nil
+}
+
+// migrateToV20 adds enabled=true to all existing scheduled_tasks and event_processor_tasks
+func migrateToV20(data map[string]interface{}) error {
+	fmt.Println("  → Migrating to v20: Adding enabled field to scheduled_tasks and event_processor_tasks")
+
+	for _, key := range []string{"scheduled_tasks", "event_processor_tasks"} {
+		tasksRaw, exists := data[key]
+		if !exists || tasksRaw == nil {
+			fmt.Printf("    ℹ️  No %s to migrate\n", key)
+			continue
+		}
+
+		tasks, ok := tasksRaw.([]interface{})
+		if !ok {
+			fmt.Printf("    ⚠️  %s is not an array, skipping\n", key)
+			continue
+		}
+
+		updatedCount := 0
+		for _, taskRaw := range tasks {
+			taskMap, ok := taskRaw.(map[interface{}]interface{})
+			if !ok {
+				continue
+			}
+
+			if _, hasEnabled := taskMap["enabled"]; !hasEnabled {
+				taskMap["enabled"] = true
+				updatedCount++
+				if name, _ := taskMap["name"].(string); name != "" {
+					fmt.Printf("    ✓ %s '%s': Set enabled=true\n", key, name)
+				}
+			}
+		}
+
+		if updatedCount == 0 {
+			fmt.Printf("    ℹ️  All %s already have enabled field\n", key)
+		} else {
+			fmt.Printf("    ✓ Set enabled=true on %d %s\n", updatedCount, key)
+		}
 	}
 
 	return nil

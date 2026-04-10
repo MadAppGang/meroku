@@ -336,33 +336,35 @@ Get your API key from: https://console.anthropic.com/settings/keys
 
 ## Common Commands
 
+Uses [Task](https://taskfile.dev) (`Taskfile.yml`) — install via `brew install go-task`.
+
 ### Infrastructure Management
 
 ```bash
 # Initialize Terraform (run after creating env/*.tf files)
-make infra-init env=dev
+task infra-init env=dev
 
 # Update Terraform modules
-make infra-update env=dev
+task infra-update env=dev
 
 # Plan infrastructure changes
-make infra-plan env=dev
+task infra-plan env=dev
 
 # Apply infrastructure changes
-make infra-apply env=dev
+task infra-apply env=dev
 
 # Destroy infrastructure
-make infra-destroy env=dev
+task infra-destroy env=dev
 
 # Show current infrastructure state
-make infra-show env=dev
+task infra-show env=dev
 
 # Generate Terraform files from YAML config
-make infra-gen-dev    # For dev environment
-make infra-gen-prod   # For prod environment
+task infra-gen-dev    # For dev environment
+task infra-gen-prod   # For prod environment
 
 # Import existing AWS resources
-make infra-import env=dev
+task infra-import env=dev
 ```
 
 ### First-Time Setup
@@ -376,22 +378,34 @@ git config core.hooksPath .githooks
 
 ```bash
 # Run the TUI application
-make tui
+task tui
 
-# Run the web frontend
-make web
+# Run the web frontend dev server
+task web
 
 # Build the CLI
-make build
+task build
 
 # Run tests
-make test
+task test
+
+# Run web tests
+task test:web
+
+# Lint web frontend
+task lint:web
+
+# Build web frontend into app/webapp (embedded in Go binary)
+task web:build
 
 # Generate code from templates
-make generate
+task generate
 
 # Test terraform plan diff viewer (for debugging)
-./meroku --renderdiff terraform-plan.json
+task renderdiff file=terraform-plan.json
+
+# List all available tasks
+task --list
 ```
 
 ### Web Build Pipeline
@@ -424,16 +438,16 @@ infrastructure/
 
 ## Working with the Codebase
 
-1. **Making Infrastructure Changes**: Edit YAML files in `project/`, then run `make infra-gen-{env}`
+1. **Making Infrastructure Changes**: Edit YAML files in `project/`, then run `task infra-gen-dev` or `task infra-gen-prod`
 2. **Adding New Services**: Update the `services` array in YAML configuration
 3. **Modifying Terraform Modules**: Edit files in `modules/` directory
 4. **Updating Templates**: Modify Handlebars templates in `templates/`
 
 ## Testing Guidelines
 
-- Always run `make infra-plan env={env}` before applying changes
+- Always run `task infra-plan env={env}` before applying changes
 - Test infrastructure changes in dev environment first
-- Use `make test` to run Go tests
+- Use `task test` to run Go tests
 - Frontend tests: `cd web && npm test`
 
 ## Terraform Plan Viewer
@@ -570,7 +584,7 @@ ecr_trusted_accounts:
 The web UI shows real-time deployment status:
 
 - **Warning** (Yellow): Trust policy configured but not deployed to AWS
-  - Action: Run `make infra-apply env=<source>`
+  - Action: Run `task infra-apply env=<source>`
 - **Success** (Green): Trust policy deployed and cross-account access ready
 - **Info** (Blue): Configuration changes will update both YAML files
 

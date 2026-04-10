@@ -201,6 +201,7 @@ type ALB struct {
 
 type ScheduledTask struct {
 	Name                string     `yaml:"name"`
+	Enabled             *bool      `yaml:"enabled,omitempty"` // Schema v20: nil/true = deployed, false = config kept but not deployed
 	Schedule            string     `yaml:"schedule"`
 	ExternalDockerImage string     `yaml:"docker_image"`
 	ContainerCommand    string     `yaml:"container_command"`
@@ -217,7 +218,8 @@ type EventBridgeRule struct {
 }
 
 type EventProcessorTask struct {
-	Name string `yaml:"name"`
+	Name    string `yaml:"name"`
+	Enabled *bool  `yaml:"enabled,omitempty"` // Schema v20: nil/true = deployed, false = config kept but not deployed
 	// New multi-rule support (Schema v13) - preferred format
 	Rules []EventBridgeRule `yaml:"rules,omitempty"`
 	// Legacy single-rule fields (Schema <= 12) - kept for backward compatibility

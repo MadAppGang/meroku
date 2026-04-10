@@ -147,7 +147,9 @@ func applyTemplate(env string) {
 		os.Exit(1)
 	}
 	// Filter out disabled services (enabled=false) before rendering
-	filterDisabledServices(envMap)
+	filterDisabledItems(envMap, "services")
+	filterDisabledItems(envMap, "scheduled_tasks")
+	filterDisabledItems(envMap, "event_processor_tasks")
 
 	envMap["modules"] = "../../infrastructure/modules"
 	envMap["custom_modules"] = "../../custom"
@@ -181,35 +183,35 @@ func applyTemplate(env string) {
 	os.WriteFile(filepath.Join("env", env, "main.tf"), []byte(result), 0o644)
 }
 
-// filterDisabledServices removes services with enabled=false from the env map
+// filterDisabledItems removes items with enabled=false from the given key in env map
 // so they are not rendered into the Terraform output.
-// Services with enabled=true or no enabled field are kept.
-func filterDisabledServices(envMap map[string]interface{}) {
-	servicesRaw, ok := envMap["services"]
-	if !ok || servicesRaw == nil {
+// Items with enabled=true or no enabled field are kept.
+func filterDisabledItems(envMap map[string]interface{}, key string) {
+	itemsRaw, ok := envMap[key]
+	if !ok || itemsRaw == nil {
 		return
 	}
 
-	services, ok := servicesRaw.([]interface{})
+	items, ok := itemsRaw.([]interface{})
 	if !ok {
 		return
 	}
 
-	filtered := make([]interface{}, 0, len(services))
-	for _, svc := range services {
-		svcMap, ok := svc.(map[string]interface{})
+	filtered := make([]interface{}, 0, len(items))
+	for _, item := range items {
+		itemMap, ok := item.(map[string]interface{})
 		if !ok {
-			filtered = append(filtered, svc)
+			filtered = append(filtered, item)
 			continue
 		}
 
-		enabled, hasEnabled := svcMap["enabled"]
+		enabled, hasEnabled := itemMap["enabled"]
 		if !hasEnabled || enabled == true {
-			filtered = append(filtered, svc)
+			filtered = append(filtered, item)
 		}
 	}
 
-	envMap["services"] = filtered
+	envMap[key] = filtered
 }
 
 // hasCustomModule checks if a custom pre or post module exists
