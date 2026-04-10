@@ -82,6 +82,25 @@ func (s *ECSServiceV2) Deploy(req DeploymentRequest) (*DeploymentResult, error) 
 		"service_id":  req.ServiceIdentifier,
 	})
 
+	// Dry run check — must come before any AWS API calls
+	if s.config.DryRun {
+		log.Info("DRY RUN: Would deploy service", map[string]interface{}{
+			"cluster":         clusterName,
+			"service":         ecsServiceName,
+			"task_definition": req.TaskDefinition,
+			"task_family":     taskFamily,
+			"force_new":       req.ForceNewDeploy,
+		})
+		return &DeploymentResult{
+			ServiceIdentifier: req.ServiceIdentifier,
+			ServiceName:       ecsServiceName,
+			ClusterName:       clusterName,
+			TaskDefinition:    fmt.Sprintf("%s:DRY_RUN", taskFamily),
+			Status:            "DRY_RUN",
+			Message:           "Dry run successful - no actual deployment performed",
+		}, nil
+	}
+
 	// If task definition not specified, find the latest one
 	taskDefinitionArn := req.TaskDefinition
 	if taskDefinitionArn == "" {
@@ -97,24 +116,6 @@ func (s *ECSServiceV2) Deploy(req DeploymentRequest) (*DeploymentResult, error) 
 		log.Info("Using latest task definition", map[string]interface{}{
 			"task_definition": taskDefinitionArn,
 		})
-	}
-
-	// Dry run check
-	if s.config.DryRun {
-		log.Info("DRY RUN: Would deploy service", map[string]interface{}{
-			"cluster":         clusterName,
-			"service":         ecsServiceName,
-			"task_definition": taskDefinitionArn,
-			"force_new":       req.ForceNewDeploy,
-		})
-		return &DeploymentResult{
-			ServiceIdentifier: req.ServiceIdentifier,
-			ServiceName:       ecsServiceName,
-			ClusterName:       clusterName,
-			TaskDefinition:    taskDefinitionArn,
-			Status:            "DRY_RUN",
-			Message:           "Dry run successful - no actual deployment performed",
-		}, nil
 	}
 
 	// Build update input

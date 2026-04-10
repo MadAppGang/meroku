@@ -63,7 +63,10 @@ resource "aws_lambda_function" "lambda_deploy" {
   # Disable KMS encryption for environment variables
   kms_key_arn = null
 
-  # Lambda execution timeout (in seconds)
+  # Lambda execution timeout (in seconds).
+  # 60s is sufficient because ECS deployments are async: the Lambda calls
+  # UpdateService (or RegisterTaskDefinition for scheduled tasks) and returns
+  # immediately — it does NOT wait for the deployment to stabilize.
   timeout = 60
 
   # Ensure log group is created first
@@ -91,8 +94,11 @@ resource "aws_lambda_function" "lambda_deploy" {
       SERVICE_CONFIG = local.service_config
 
       # Deployment Configuration
-      DEPLOYMENT_TIMEOUT_SECONDS = "600"   # 10 minutes
-      MAX_DEPLOYMENT_RETRIES     = "2"     # Retry failed deployments twice
+      # Note: DEPLOYMENT_TIMEOUT_SECONDS is currently unused — the Lambda does
+      # fire-and-forget deployments (no waiter). Reserved for future use if we
+      # add deployment stability polling.
+      DEPLOYMENT_TIMEOUT_SECONDS = "600"   # 10 minutes (reserved for future waiter)
+      MAX_DEPLOYMENT_RETRIES     = "2"     # Retry failed UpdateService/RegisterTaskDefinition calls
       DRY_RUN                    = "false" # Set to true for testing without actual deployments
 
       # Feature Flags - Enable/disable specific event monitoring
@@ -121,6 +127,7 @@ data "aws_iam_policy_document" "lambda_ecs" {
       "ecs:DescribeTaskDefinition",
       "ecs:ListTaskDefinitions",
       "ecs:RegisterTaskDefinition",
+      "ecs:TagResource",
       "ecs:UpdateService",
       "iam:PassRole"
     ]
@@ -186,6 +193,7 @@ resource "aws_cloudwatch_event_rule" "ecr_event" {
       "aws.ecs",
       "aws.ssm",
       "action.production",
+      "action.deploy",
     ]
     detail-type = [
       "ECR Image Action",

@@ -88,3 +88,41 @@ func TestRegisterNewTaskDefinitionRevision_DryRun(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "myapp_task_cleanup_dev:DRY_RUN", arn)
 }
+
+// TestDeploy_DryRun_NoAWSCalls verifies that Deploy() in dry-run mode returns
+// immediately without calling getLatestTaskDefinition (which would make a real
+// AWS API call and fail without real task definitions).
+func TestDeploy_DryRun_NoAWSCalls(t *testing.T) {
+	cfg := &config.Config{
+		ProjectName:              "myapp",
+		Environment:              "dev",
+		AWSRegion:                "us-east-1",
+		ClusterName:              "myapp_cluster_dev",
+		LogLevel:                 config.LogLevelInfo,
+		DeploymentTimeoutSeconds: 60,
+		MaxDeploymentRetries:     0,
+		DryRun:                   true,
+		ServiceMap: map[string]config.ServiceMapping{
+			"api": {
+				ServiceName: "myapp_service_api_dev",
+				TaskFamily:  "myapp_service_api_dev",
+				Type:        config.ServiceMappingTypeService,
+			},
+		},
+	}
+	svc := buildTestECSService(t, cfg)
+
+	// No TaskDefinition provided — in the old code this would call
+	// getLatestTaskDefinition and fail. After the fix, dry-run returns early.
+	result, err := svc.Deploy(DeploymentRequest{
+		ServiceIdentifier: "api",
+		ForceNewDeploy:    true,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, "DRY_RUN", result.Status)
+	assert.Equal(t, "api", result.ServiceIdentifier)
+	assert.Equal(t, "myapp_service_api_dev", result.ServiceName)
+	assert.Contains(t, result.TaskDefinition, "DRY_RUN")
+}

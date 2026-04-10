@@ -65,19 +65,32 @@ type ManualDeployEventDetail struct {
 	Reason         string `json:"reason,omitempty"`          // Optional: reason for deployment
 }
 
+// Deployer abstracts deployment operations for testability.
+// *deployer.DeployerV2 satisfies this interface.
+type Deployer interface {
+	Deploy(deployer.DeployOptions) *deployer.DeployResult
+	DeployMultiple([]deployer.DeployOptions) []*deployer.DeployResult
+}
+
+// SlackNotifier abstracts Slack notifications for testability.
+// *services.SlackService satisfies this interface.
+type SlackNotifier interface {
+	SendNotification(services.NotificationData) error
+}
+
 // EventHandlerV2 handles CloudWatch events using V2 architecture (direct resource lookups)
 type EventHandlerV2 struct {
 	config   *config.Config
-	deployer *deployer.DeployerV2
-	slackSvc *services.SlackService
+	deployer Deployer
+	slackSvc SlackNotifier
 	logger   *utils.Logger
 }
 
 // NewEventHandlerV2 creates a new V2 event handler
 func NewEventHandlerV2(
 	cfg *config.Config,
-	dep *deployer.DeployerV2,
-	slackSvc *services.SlackService,
+	dep Deployer,
+	slackSvc SlackNotifier,
 	logger *utils.Logger,
 ) *EventHandlerV2 {
 	return &EventHandlerV2{
