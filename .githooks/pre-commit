@@ -1,0 +1,24 @@
+#!/bin/bash
+
+# Auto-rebuild web app when web source files are staged for commit.
+# This ensures app/webapp/ (Go-embedded assets) stays in sync with web/src/.
+#
+# Setup: git config core.hooksPath .githooks
+
+# Check if any web source files are staged
+if git diff --cached --name-only | grep -q '^web/src/'; then
+    echo "🔨 Web source files changed — rebuilding webapp bundle..."
+
+    # Run vite build from web/ directory
+    (cd web && npx vite build --mode production) 2>&1 | tail -5
+
+    if [ $? -ne 0 ]; then
+        echo "❌ Vite build failed. Fix errors before committing."
+        exit 1
+    fi
+
+    # Stage the rebuilt webapp assets
+    git add app/webapp/
+
+    echo "✅ Webapp bundle rebuilt and staged."
+fi
