@@ -365,6 +365,13 @@ make infra-gen-prod   # For prod environment
 make infra-import env=dev
 ```
 
+### First-Time Setup
+
+```bash
+# Enable shared git hooks (auto-rebuilds webapp on commit)
+git config core.hooksPath .githooks
+```
+
 ### Development Commands
 
 ```bash
@@ -386,6 +393,14 @@ make generate
 # Test terraform plan diff viewer (for debugging)
 ./meroku --renderdiff terraform-plan.json
 ```
+
+### Web Build Pipeline
+
+The React frontend (`web/`) builds into `app/webapp/` which is embedded into the Go binary. A **pre-commit hook** (`.githooks/pre-commit`) auto-rebuilds the webapp bundle whenever `web/src/` files are staged for commit.
+
+- Hook auto-runs `vite build` and stages the output
+- If the build fails, the commit is blocked
+- Requires: `git config core.hooksPath .githooks` (one-time setup)
 
 ## Project Structure
 
