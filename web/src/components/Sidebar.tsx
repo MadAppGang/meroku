@@ -553,6 +553,7 @@ export function Sidebar({
 						config &&
 						onConfigChange ? (
 						<ScheduledTaskProperties
+							key={selectedNode.id}
 							config={config}
 							onConfigChange={onConfigChange}
 							accountInfo={accountInfo}
@@ -560,6 +561,7 @@ export function Sidebar({
 						/>
 					) : selectedNode.type === "event-task" && config && onConfigChange ? (
 						<EventTaskProperties
+							key={selectedNode.id}
 							config={config}
 							onConfigChange={onConfigChange}
 							accountInfo={accountInfo}
@@ -567,6 +569,7 @@ export function Sidebar({
 						/>
 					) : selectedNode.type === "service" && config && onConfigChange ? (
 						<ServiceProperties
+							key={selectedNode.id}
 							config={config}
 							onConfigChange={onConfigChange}
 							accountInfo={accountInfo}
