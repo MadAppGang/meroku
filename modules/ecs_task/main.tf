@@ -41,9 +41,9 @@ resource "aws_scheduler_schedule" "scheduler" {
 }
 
 resource "aws_ecr_repository" "task" {
-  name  = "${var.project}_task_${var.task}"
-  count = var.env == "dev" ? 1 : 0
-
+  name         = "${var.project}_task_${var.task}"
+  count        = var.env == "dev" ? 1 : 0
+  force_delete = true
 
   tags = {
     Name        = "${var.project}_task_${var.task}"

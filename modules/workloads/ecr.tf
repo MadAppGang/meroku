@@ -2,8 +2,9 @@ data "aws_organizations_organization" "org" {}
 
 // backend
 resource "aws_ecr_repository" "backend" {
-  name  = "${var.project}_backend"
-  count = var.ecr_strategy == "local" ? 1 : 0
+  name         = "${var.project}_backend"
+  count        = var.ecr_strategy == "local" ? 1 : 0
+  force_delete = true
 
   tags = {
     Name        = "${var.project}_backend"
@@ -175,7 +176,8 @@ locals {
 resource "aws_ecr_repository" "services" {
   for_each = { for svc in local.services_needing_ecr : svc.name => svc }
 
-  name = "${var.project}_service_${each.value.name}"
+  name         = "${var.project}_service_${each.value.name}"
+  force_delete = true
 
   tags = {
     Name        = "${var.project}_service_${each.value.name}"
