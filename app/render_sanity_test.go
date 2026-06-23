@@ -62,6 +62,23 @@ scheduled_tasks:
   - name: noenv
     schedule: "rate(2 days)"
     docker_image: "img:latest"
+event_processor_tasks:
+  - name: notifier
+    docker_image: "img:latest"
+    container_command: ["bun", "run", "jobs/notify.ts"]
+    rules:
+      - name: invoice-paid
+        sources: ["sample.billing"]
+        detail_types: ["InvoicePaid"]
+    environment_variables:
+      FOO: "bar"
+      LOG_LEVEL: "info"
+  - name: silent
+    docker_image: "img:latest"
+    rules:
+      - name: anything
+        sources: ["sample.x"]
+        detail_types: ["Anything"]
 amplify_apps:
   - name: portal
     github_repository: "https://github.com/x/y"
@@ -145,6 +162,33 @@ amplify_apps:
 		t.Errorf("noenv task must NOT render custom_env_vars; got:\n%s", noenvBlock)
 	}
 
+	// Event-processor-task environment_variables -> custom_env_vars (same mechanism,
+	// rendered into the modules/event_bridge_task module which accepts custom_env_vars).
+	// The "notifier" task declares env vars and MUST render a custom_env_vars block; the
+	// "silent" task declares none and MUST NOT render one.
+	notifierBlock := eventProcessorTaskModuleBlock(t, out, "notifier")
+	if !strings.Contains(notifierBlock, "custom_env_vars = [") {
+		t.Errorf("notifier event task missing custom_env_vars block; got:\n%s", notifierBlock)
+	}
+	for _, kv := range []string{
+		`{ "name" : "FOO", "value" : "bar" }`,
+		`{ "name" : "LOG_LEVEL", "value" : "info" }`,
+	} {
+		if !strings.Contains(notifierBlock, kv) {
+			t.Errorf("notifier event task custom_env_vars missing entry %q; got:\n%s", kv, notifierBlock)
+		}
+	}
+	// container_command on an event task must render as a valid HCL list (regression:
+	// it previously rendered the raw []string via {{{container_command}}}, now uses {{{array}}}).
+	if !strings.Contains(notifierBlock, `container_command = ["bun","run","jobs/notify.ts"]`) {
+		t.Errorf("notifier event task container_command not rendered as HCL list; got:\n%s", notifierBlock)
+	}
+
+	silentBlock := eventProcessorTaskModuleBlock(t, out, "silent")
+	if strings.Contains(silentBlock, "custom_env_vars") {
+		t.Errorf("silent event task must NOT render custom_env_vars; got:\n%s", silentBlock)
+	}
+
 	if t.Failed() {
 		t.Logf("---- RENDER OUTPUT (scheduled+amplify excerpt) ----\n%s", out)
 	}
@@ -159,6 +203,24 @@ func scheduledTaskModuleBlock(t *testing.T, out, name string) string {
 	start := strings.Index(out, header)
 	if start < 0 {
 		t.Fatalf("scheduled task module block %q not found in render output", header)
+	}
+	rest := out[start:]
+	// Block ends at the next top-level `module "` declaration or EOF.
+	if next := strings.Index(rest[len(header):], "\nmodule \""); next >= 0 {
+		return rest[:len(header)+next]
+	}
+	return rest
+}
+
+// eventProcessorTaskModuleBlock extracts the rendered `module "event_bus_task_<name>" { ... }`
+// block from the template output so assertions can be scoped to one event-processor task.
+// The template renders one module per event-processor task as `module "event_bus_task_{{name}}"`.
+func eventProcessorTaskModuleBlock(t *testing.T, out, name string) string {
+	t.Helper()
+	header := `module "event_bus_task_` + name + `"`
+	start := strings.Index(out, header)
+	if start < 0 {
+		t.Fatalf("event processor task module block %q not found in render output", header)
 	}
 	rest := out[start:]
 	// Block ends at the next top-level `module "` declaration or EOF.

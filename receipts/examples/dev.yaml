@@ -55,10 +55,25 @@ scheduled_tasks:
     docker_image: ""
     container_command: '["fees"]'
     allow_public_access: true
+  - name: cleanup
+    schedule: "cron(0 2 * * ? *)"
+    docker_image: ""
+    container_command: ["bun", "run", "jobs/cleanup.ts"]
+    environment_variables: # non-secret env, same mechanism as backend_env_variables; secrets go in SSM /<env>/<project>/task/<name>/*
+      LOG_LEVEL: info
 sqs:
   enabled: true
   name: main
-event_processor_tasks: []
+event_processor_tasks:
+  - name: notifier
+    docker_image: ""
+    container_command: ["bun", "run", "jobs/notify.ts"]
+    rules:
+      - name: invoice-paid
+        sources: ["caremaster.billing"]
+        detail_types: ["InvoicePaid"]
+    environment_variables: # non-secret env, same mechanism as backend_env_variables; secrets go in SSM /<env>/<project>/task/<name>/*
+      LOG_LEVEL: info
 pubsub_appsync:
   enabled: true
   schema: true

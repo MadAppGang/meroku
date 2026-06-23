@@ -631,7 +631,7 @@ module "event_bus_task_{{name}}" {
   docker_image = "{{docker_image}}"
   {{/if}}
   {{#if container_command}}
-  container_command = {{{ container_command }}}
+  container_command = {{{array container_command}}}
   {{/if}}
   subnet_ids = local.subnet_ids
   vpc_id     = local.vpc_id

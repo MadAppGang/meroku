@@ -244,11 +244,12 @@ type EventProcessorTask struct {
 	DetailTypes []string `yaml:"detail_types,omitempty"`
 	Sources     []string `yaml:"sources,omitempty"`
 	// Container configuration
-	ExternalDockerImage string     `yaml:"docker_image,omitempty"`
-	ContainerCommand    []string   `yaml:"container_command,omitempty"`
-	CPU                 int        `yaml:"cpu,omitempty"`
-	Memory              int        `yaml:"memory,omitempty"`
-	ECRConfig           *ECRConfig `yaml:"ecr_config,omitempty"` // Schema v9
+	ExternalDockerImage string            `yaml:"docker_image,omitempty"`
+	ContainerCommand    []string          `yaml:"container_command,omitempty"`
+	CPU                 int               `yaml:"cpu,omitempty"`
+	Memory              int               `yaml:"memory,omitempty"`
+	EnvVariables        map[string]string `yaml:"environment_variables,omitempty"` // Declarative non-secret env vars (rendered as custom_env_vars, same mechanism as backend_env_variables)
+	ECRConfig           *ECRConfig        `yaml:"ecr_config,omitempty"`            // Schema v9
 }
 
 type EnvVariable struct {
