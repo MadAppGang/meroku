@@ -213,17 +213,18 @@ type ALB struct {
 }
 
 type ScheduledTask struct {
-	Name                string     `yaml:"name"`
-	Enabled             *bool      `yaml:"enabled,omitempty"`            // Schema v20: nil/true = deployed, false = config kept but not deployed
-	Schedule            string     `yaml:"schedule"`
-	Timezone            string     `yaml:"timezone,omitempty"`           // Schema v21: IANA tz for schedule_expression_timezone (default "UTC")
-	ExternalDockerImage string     `yaml:"docker_image"`
-	ContainerCommand    []string   `yaml:"container_command,omitempty"`  // Schema v21: real list (was scalar string)
-	CPU                 int        `yaml:"cpu,omitempty"`
-	Memory              int        `yaml:"memory,omitempty"`
-	MaxRetryAttempts    *int       `yaml:"max_retry_attempts,omitempty"` // Schema v21: EventBridge Scheduler retry_policy (default 3)
-	DLQArn              string     `yaml:"dlq_arn,omitempty"`            // Schema v21: optional dead_letter_config target ARN
-	ECRConfig           *ECRConfig `yaml:"ecr_config,omitempty"`         // Schema v9
+	Name                string            `yaml:"name"`
+	Enabled             *bool             `yaml:"enabled,omitempty"` // Schema v20: nil/true = deployed, false = config kept but not deployed
+	Schedule            string            `yaml:"schedule"`
+	Timezone            string            `yaml:"timezone,omitempty"` // Schema v21: IANA tz for schedule_expression_timezone (default "UTC")
+	ExternalDockerImage string            `yaml:"docker_image"`
+	ContainerCommand    []string          `yaml:"container_command,omitempty"` // Schema v21: real list (was scalar string)
+	CPU                 int               `yaml:"cpu,omitempty"`
+	Memory              int               `yaml:"memory,omitempty"`
+	MaxRetryAttempts    *int              `yaml:"max_retry_attempts,omitempty"`    // Schema v21: EventBridge Scheduler retry_policy (default 3)
+	DLQArn              string            `yaml:"dlq_arn,omitempty"`               // Schema v21: optional dead_letter_config target ARN
+	EnvVariables        map[string]string `yaml:"environment_variables,omitempty"` // Declarative non-secret env vars (rendered as custom_env_vars, same mechanism as backend_env_variables)
+	ECRConfig           *ECRConfig        `yaml:"ecr_config,omitempty"`            // Schema v9
 }
 
 // EventBridgeRule defines a single EventBridge rule pattern (Schema v13)
