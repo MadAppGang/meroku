@@ -290,6 +290,27 @@ variable "enable_alb" {
   default     = false
 }
 
+# Realtime (SSE / streaming) ALB — Option A.
+# Additive to the API Gateway + Cloud Map path; when enabled the backend task
+# is fronted by a dedicated public ALB for long-lived SSE connections.
+variable "enable_realtime_alb" {
+  description = "Enable a dedicated public ALB for realtime/SSE traffic in front of the backend task"
+  type        = bool
+  default     = false
+}
+
+variable "realtime_subdomain_prefix" {
+  description = "Subdomain prefix for the realtime ALB hostname (realtime.<env>.<domain>)"
+  type        = string
+  default     = "realtime"
+}
+
+variable "realtime_alb_idle_timeout" {
+  description = "Idle timeout (seconds) for the realtime ALB — large enough to hold SSE connections between heartbeats"
+  type        = number
+  default     = 300
+}
+
 
 variable "backend_remote_access" {
   type    = bool

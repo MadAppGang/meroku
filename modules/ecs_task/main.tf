@@ -20,11 +20,23 @@ resource "aws_scheduler_schedule" "scheduler" {
     mode = "OFF"
   }
 
-  schedule_expression = var.schedule
+  schedule_expression          = var.schedule
+  schedule_expression_timezone = var.schedule_expression_timezone
 
   target {
     arn      = var.cluster
     role_arn = aws_iam_role.scheduler_role.arn
+
+    retry_policy {
+      maximum_retry_attempts = var.max_retry_attempts
+    }
+
+    dynamic "dead_letter_config" {
+      for_each = var.dlq_arn != "" ? [var.dlq_arn] : []
+      content {
+        arn = dead_letter_config.value
+      }
+    }
 
     ecs_parameters {
       task_definition_arn    = aws_ecs_task_definition.task.arn_without_revision
@@ -77,12 +89,12 @@ resource "aws_ecs_task_definition" "task" {
 
   container_definitions = jsonencode([merge(
     {
-      name      = "${var.project}_container_${var.task}_${var.env}"
-      cpu       = var.cpu
-      memory    = var.memory
-      image     = local.docker_image
-      secrets   = local.task_env_ssm
-      essential = true
+      name        = "${var.project}_container_${var.task}_${var.env}"
+      cpu         = var.cpu
+      memory      = var.memory
+      image       = local.docker_image
+      secrets     = local.task_env_ssm
+      essential   = true
       Environment = local.environment_variables
 
       logConfiguration = {

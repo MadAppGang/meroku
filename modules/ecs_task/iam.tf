@@ -119,6 +119,25 @@ resource "aws_iam_role_policy_attachment" "scheduler_ecs_full_access" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonECS_FullAccess"
 }
 
+# Allow the scheduler to deliver failed invocations to the configured dead-letter queue.
+# Only created when a DLQ ARN is provided; zero impact otherwise.
+resource "aws_iam_role_policy" "scheduler_dlq_send" {
+  count = var.dlq_arn != "" ? 1 : 0
+  name  = "SchedulerDLQSend_${var.project}_task_${var.task}_${var.env}"
+  role  = aws_iam_role.scheduler_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["sqs:SendMessage"]
+        Resource = [var.dlq_arn]
+      }
+    ]
+  })
+}
+
 
 resource "aws_iam_role_policy_attachment" "sqs_access" {
   count      = var.sqs_enable == true ? 1 : 0

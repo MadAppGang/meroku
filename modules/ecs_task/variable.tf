@@ -38,6 +38,29 @@ variable "schedule" {
   default = "rate(1 days)"
 }
 
+# IANA timezone for the schedule expression (e.g. "Australia/Sydney" for DST-aware local runs).
+# https://docs.aws.amazon.com/scheduler/latest/UserGuide/managing-schedule-scheduleexpressiontimezone.html
+variable "schedule_expression_timezone" {
+  description = "IANA timezone the schedule expression is evaluated in (DST-aware)"
+  type        = string
+  default     = "UTC"
+}
+
+# EventBridge Scheduler retry policy for the ECS RunTask target.
+# https://docs.aws.amazon.com/scheduler/latest/UserGuide/managing-schedule-retries.html
+variable "max_retry_attempts" {
+  description = "Maximum number of retry attempts for the schedule target invocation"
+  type        = number
+  default     = 3
+}
+
+# Optional dead-letter queue ARN for events the scheduler fails to deliver after retries.
+variable "dlq_arn" {
+  description = "SQS queue ARN to use as the schedule target dead-letter destination (empty = disabled)"
+  type        = string
+  default     = ""
+}
+
 variable "subnet_ids" {
   type = list(string)
 }
@@ -55,7 +78,7 @@ variable "sqs_policy_arn" {
 }
 
 variable "sqs_queue_url" {
-  default =  ""
+  default = ""
 }
 
 variable "sqs_enable" {

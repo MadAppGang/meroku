@@ -46,6 +46,11 @@ type Env struct {
 	CloudFrontDistributions []CloudFront `yaml:"cloudfront_distributions,omitempty"`
 	// Custom Extensions (for SNS, SQS, Lambda, etc.)
 	Extensions Extensions `yaml:"extensions,omitempty"`
+	// ManageDNSRecords controls whether Terraform manages Route53 records for Amplify
+	// domains (consumed by the amplify module). Set true only when the Route53 zone
+	// lives in a DIFFERENT AWS account than Amplify (cross-account zone). Optional
+	// pointer: absent = use the amplify module default (false). No migration needed.
+	ManageDNSRecords *bool `yaml:"manage_dns_records,omitempty"`
 }
 
 type AppSync struct {
@@ -85,6 +90,14 @@ type Workload struct {
 	BackendAutoscalingMaxCapacity int32  `yaml:"backend_autoscaling_max_capacity"`
 	BackendCPU                    string `yaml:"backend_cpu"`
 	BackendMemory                 string `yaml:"backend_memory"`
+
+	// Realtime (SSE / streaming) ALB — additive to the API Gateway + Cloud Map path.
+	// When enabled, a dedicated public ALB fronts the backend task for long-lived
+	// SSE connections at realtime.<env>.<domain>. Optional pointers/strings need no
+	// migration: absent = feature off.
+	EnableRealtimeAlb       *bool  `yaml:"enable_realtime_alb,omitempty"`
+	RealtimeSubdomainPrefix string `yaml:"realtime_subdomain_prefix,omitempty"` // default "realtime"
+	RealtimeAlbIdleTimeout  *int   `yaml:"realtime_alb_idle_timeout,omitempty"` // default 300 (seconds)
 }
 
 type S3EnvFile struct {
@@ -201,13 +214,16 @@ type ALB struct {
 
 type ScheduledTask struct {
 	Name                string     `yaml:"name"`
-	Enabled             *bool      `yaml:"enabled,omitempty"` // Schema v20: nil/true = deployed, false = config kept but not deployed
+	Enabled             *bool      `yaml:"enabled,omitempty"`            // Schema v20: nil/true = deployed, false = config kept but not deployed
 	Schedule            string     `yaml:"schedule"`
+	Timezone            string     `yaml:"timezone,omitempty"`           // Schema v21: IANA tz for schedule_expression_timezone (default "UTC")
 	ExternalDockerImage string     `yaml:"docker_image"`
-	ContainerCommand    string     `yaml:"container_command"`
+	ContainerCommand    []string   `yaml:"container_command,omitempty"`  // Schema v21: real list (was scalar string)
 	CPU                 int        `yaml:"cpu,omitempty"`
 	Memory              int        `yaml:"memory,omitempty"`
-	ECRConfig           *ECRConfig `yaml:"ecr_config,omitempty"` // Schema v9
+	MaxRetryAttempts    *int       `yaml:"max_retry_attempts,omitempty"` // Schema v21: EventBridge Scheduler retry_policy (default 3)
+	DLQArn              string     `yaml:"dlq_arn,omitempty"`            // Schema v21: optional dead_letter_config target ARN
+	ECRConfig           *ECRConfig `yaml:"ecr_config,omitempty"`         // Schema v9
 }
 
 // EventBridgeRule defines a single EventBridge rule pattern (Schema v13)

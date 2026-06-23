@@ -1016,3 +1016,99 @@ func TestMigrateToV11_NoContainerPort(t *testing.T) {
 		t.Errorf("host_port should not be added when container_port is missing")
 	}
 }
+
+// schedTaskCmd returns the container_command of the i-th scheduled task as a []interface{}.
+func schedTaskCmd(t *testing.T, data map[string]interface{}, i int) []interface{} {
+	t.Helper()
+	tasks := data["scheduled_tasks"].([]interface{})
+	task := tasks[i].(map[interface{}]interface{})
+	cmd, ok := task["container_command"].([]interface{})
+	if !ok {
+		t.Fatalf("container_command is not a list: %T (%v)", task["container_command"], task["container_command"])
+	}
+	return cmd
+}
+
+func TestMigrateToV21_WrapsPlainScalar(t *testing.T) {
+	data := map[string]interface{}{
+		"scheduled_tasks": []interface{}{
+			map[interface{}]interface{}{
+				"name":              "a",
+				"container_command": "bun run jobs/x.ts",
+			},
+		},
+	}
+	if err := migrateToV21(data); err != nil {
+		t.Fatalf("migrateToV21: %v", err)
+	}
+	got := schedTaskCmd(t, data, 0)
+	if len(got) != 1 || got[0] != "bun run jobs/x.ts" {
+		t.Errorf("expected single-element list [bun run jobs/x.ts], got %#v", got)
+	}
+}
+
+func TestMigrateToV21_ParsesJSONArrayLiteral(t *testing.T) {
+	data := map[string]interface{}{
+		"scheduled_tasks": []interface{}{
+			map[interface{}]interface{}{
+				"name":              "a",
+				"container_command": `["bun","run","jobs/x.ts"]`,
+			},
+		},
+	}
+	if err := migrateToV21(data); err != nil {
+		t.Fatalf("migrateToV21: %v", err)
+	}
+	got := schedTaskCmd(t, data, 0)
+	want := []interface{}{"bun", "run", "jobs/x.ts"}
+	if len(got) != 3 || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
+		t.Errorf("expected %#v, got %#v", want, got)
+	}
+}
+
+func TestMigrateToV21_IdempotentOnList(t *testing.T) {
+	data := map[string]interface{}{
+		"scheduled_tasks": []interface{}{
+			map[interface{}]interface{}{
+				"name":              "a",
+				"container_command": []interface{}{"bun", "run", "jobs/x.ts"},
+			},
+		},
+	}
+	for pass := 0; pass < 3; pass++ {
+		if err := migrateToV21(data); err != nil {
+			t.Fatalf("pass %d migrateToV21: %v", pass, err)
+		}
+	}
+	got := schedTaskCmd(t, data, 0)
+	want := []interface{}{"bun", "run", "jobs/x.ts"}
+	if len(got) != 3 || got[0] != want[0] || got[2] != want[2] {
+		t.Errorf("idempotency broken: got %#v", got)
+	}
+}
+
+func TestMigrateToV21_LeavesMissingCommandAbsent(t *testing.T) {
+	data := map[string]interface{}{
+		"scheduled_tasks": []interface{}{
+			map[interface{}]interface{}{
+				"name":     "a",
+				"schedule": "rate(1 hours)",
+			},
+		},
+	}
+	if err := migrateToV21(data); err != nil {
+		t.Fatalf("migrateToV21: %v", err)
+	}
+	tasks := data["scheduled_tasks"].([]interface{})
+	task := tasks[0].(map[interface{}]interface{})
+	if _, exists := task["container_command"]; exists {
+		t.Errorf("container_command should remain absent, got %v", task["container_command"])
+	}
+}
+
+func TestMigrateToV21_NoScheduledTasks(t *testing.T) {
+	data := map[string]interface{}{"project": "x"}
+	if err := migrateToV21(data); err != nil {
+		t.Errorf("migrateToV21 should no-op safely, got %v", err)
+	}
+}

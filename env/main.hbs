@@ -511,6 +511,12 @@ module "workloads" {
   alb_arn = module.alb.alb_arn
   enable_alb = true
   {{/if}}{{/if}}
+  {{#if workload.enable_realtime_alb}}
+  # Realtime (SSE / streaming) ALB — additive to API Gateway + Cloud Map
+  enable_realtime_alb = true
+  realtime_subdomain_prefix = "{{default workload.realtime_subdomain_prefix "realtime"}}"
+  realtime_alb_idle_timeout = {{default workload.realtime_alb_idle_timeout 300}}
+  {{/if}}
   {{#compare (len services) ">" 0}}
   services = {{{array services}}} 
   {{/compare}}
@@ -555,7 +561,7 @@ module "schedule_task_{{name}}" {
   docker_image = "{{docker_image}}"
   {{/if}}
   {{#if container_command}}
-  container_command = {{{ container_command }}}
+  container_command = {{{array container_command}}}
   {{/if}}
   {{#if cpu}}
   cpu = {{cpu}}
@@ -565,6 +571,15 @@ module "schedule_task_{{name}}" {
   {{/if}}
   # https://docs.aws.amazon.com/scheduler/latest/UserGuide/schedule-types.html?icmpid=docs_console_unmapped#rate-based
   schedule = "{{schedule}}"
+  {{#if timezone}}
+  schedule_expression_timezone = "{{timezone}}"
+  {{/if}}
+  {{#if (exists max_retry_attempts)}}
+  max_retry_attempts = {{max_retry_attempts}}
+  {{/if}}
+  {{#if dlq_arn}}
+  dlq_arn = "{{dlq_arn}}"
+  {{/if}}
   subnet_ids = local.subnet_ids
   vpc_id     = local.vpc_id
   cluster = module.workloads.ecr_cluster.arn
@@ -832,6 +847,10 @@ module "amplify" {
   # Route53 zone ID for creating DNS records (ACM validation + subdomain CNAME)
   {{#if domain.enabled}}
   zone_id = module.domain.zone_id
+  {{/if}}
+  {{#if (exists manage_dns_records)}}
+  # Whether Terraform manages Route53 records for Amplify domains (cross-account zone)
+  manage_dns_records = {{manage_dns_records}}
   {{/if}}
 
   amplify_apps = [

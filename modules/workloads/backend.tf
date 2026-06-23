@@ -1,5 +1,13 @@
 locals {
   backend_name = "${var.project}_service_${var.env}"
+
+  # Target groups the backend ECS service registers with. Additive: the API
+  # Gateway + Cloud Map path stays intact; enable_alb adds the standard ALB TG,
+  # enable_realtime_alb adds the realtime/SSE ALB TG. A task can be in both.
+  backend_target_group_arns = concat(
+    var.enable_alb ? [aws_lb_target_group.backend[0].arn] : [],
+    var.enable_realtime_alb ? [aws_lb_target_group.realtime[0].arn] : [],
+  )
 }
 
 data "aws_vpc" "selected" {
@@ -25,18 +33,20 @@ resource "aws_ecs_service" "backend" {
   }
 
   dynamic "load_balancer" {
-    for_each = var.enable_alb ? [1] : []
+    for_each = local.backend_target_group_arns
     content {
-      target_group_arn = aws_lb_target_group.backend[0].arn
+      target_group_arn = load_balancer.value
       container_name   = local.backend_name
       container_port   = var.backend_image_port
     }
   }
 
-  # Use service_registries with explicitly created Cloud Map service
-  # This allows API Gateway to reference the service ARN directly
+  # Use service_registries with explicitly created Cloud Map service.
+  # This allows API Gateway to reference the service ARN directly.
+  # Kept for every mode except enable_alb, so enable_realtime_alb retains
+  # Cloud Map + API Gateway while ALSO adding the realtime ALB.
   dynamic "service_registries" {
-    for_each = var.enable_alb ? [] : [1] # Only when using API Gateway
+    for_each = var.enable_alb ? [] : [1] # API Gateway / Cloud Map path (incl. enable_realtime_alb)
     content {
       registry_arn   = aws_service_discovery_service.backend[0].arn
       container_name = local.backend_name
@@ -190,6 +200,18 @@ resource "aws_security_group" "backend" {
       to_port         = var.backend_image_port
       security_groups = [aws_security_group.alb[0].id]
       description     = "Allow traffic from ALB"
+    }
+  }
+
+  # Allow traffic from the realtime/SSE ALB if enabled
+  dynamic "ingress" {
+    for_each = var.enable_realtime_alb ? [1] : []
+    content {
+      protocol        = "tcp"
+      from_port       = var.backend_image_port
+      to_port         = var.backend_image_port
+      security_groups = [aws_security_group.realtime_alb[0].id]
+      description     = "Allow traffic from realtime ALB"
     }
   }
 
