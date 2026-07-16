@@ -61,6 +61,10 @@ scheduled_tasks:
     container_command: ["bun", "run", "jobs/cleanup.ts"]
     environment_variables: # non-secret env, same mechanism as backend_env_variables; secrets go in SSM /<env>/<project>/task/<name>/*
       LOG_LEVEL: info
+    ecr_config: # reuse the aichat service's ECR image (no per-task repository is created)
+      mode: use_existing
+      source_service_name: aichat
+      source_service_type: services
 sqs:
   enabled: true
   name: main

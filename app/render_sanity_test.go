@@ -30,7 +30,8 @@ workload:
   realtime_alb_idle_timeout: 600
 manage_dns_records: true
 buckets: []
-services: []
+services:
+  - name: api
 efs: []
 domain:
   enabled: true
@@ -62,6 +63,19 @@ scheduled_tasks:
   - name: noenv
     schedule: "rate(2 days)"
     docker_image: "img:latest"
+  - name: reuse
+    schedule: "rate(3 days)"
+    ecr_config:
+      mode: use_existing
+      source_service_name: api
+      source_service_type: services
+  - name: pinned
+    schedule: "rate(4 days)"
+    docker_image: "pinned:1.2.3"
+    ecr_config:
+      mode: use_existing
+      source_service_name: api
+      source_service_type: services
 event_processor_tasks:
   - name: notifier
     docker_image: "img:latest"
@@ -133,6 +147,7 @@ amplify_apps:
 		`enable_realtime_alb = true`,
 		`realtime_subdomain_prefix = "realtime"`,
 		`realtime_alb_idle_timeout = 600`,
+		`realtime_parent_domain = module.domain.domain_name`,
 		`manage_dns_records = true`,
 	}
 	for _, c := range checks {
@@ -162,6 +177,32 @@ amplify_apps:
 		t.Errorf("noenv task must NOT render custom_env_vars; got:\n%s", noenvBlock)
 	}
 
+	// ECR use_existing (ecr_config mode "use_existing"): the "reuse" task shares the
+	// "api" service's repository — the module must skip its per-task ECR repo and the
+	// image must resolve from the workloads service ECR map (same precedence as
+	// services.tf: an explicit docker_image wins over the resolved repository).
+	reuseBlock := scheduledTaskModuleBlock(t, out, "reuse")
+	if !strings.Contains(reuseBlock, "create_ecr_repo = false") {
+		t.Errorf("reuse task missing create_ecr_repo = false; got:\n%s", reuseBlock)
+	}
+	if !strings.Contains(reuseBlock, `docker_image = "${module.workloads.service_ecr_url_map["api"]}:latest"`) {
+		t.Errorf("reuse task docker_image not resolved from the source service ECR repo; got:\n%s", reuseBlock)
+	}
+	pinnedBlock := scheduledTaskModuleBlock(t, out, "pinned")
+	if !strings.Contains(pinnedBlock, `docker_image = "pinned:1.2.3"`) {
+		t.Errorf("pinned task must keep its explicit docker_image; got:\n%s", pinnedBlock)
+	}
+	if !strings.Contains(pinnedBlock, "create_ecr_repo = false") {
+		t.Errorf("pinned task missing create_ecr_repo = false; got:\n%s", pinnedBlock)
+	}
+	if strings.Contains(pinnedBlock, "service_ecr_url_map") {
+		t.Errorf("pinned task must NOT resolve docker_image from the ECR map (explicit image wins); got:\n%s", pinnedBlock)
+	}
+	// Feature-off: tasks without ecr_config use_existing render unchanged.
+	if strings.Contains(noenvBlock, "create_ecr_repo") {
+		t.Errorf("noenv task must NOT render create_ecr_repo; got:\n%s", noenvBlock)
+	}
+
 	// Event-processor-task environment_variables -> custom_env_vars (same mechanism,
 	// rendered into the modules/event_bridge_task module which accepts custom_env_vars).
 	// The "notifier" task declares env vars and MUST render a custom_env_vars block; the
@@ -187,6 +228,29 @@ amplify_apps:
 	silentBlock := eventProcessorTaskModuleBlock(t, out, "silent")
 	if strings.Contains(silentBlock, "custom_env_vars") {
 		t.Errorf("silent event task must NOT render custom_env_vars; got:\n%s", silentBlock)
+	}
+	// Feature-off: an event task without container_command renders no command argument
+	// (the event_bridge_task module defaults it to [] and omits the container command).
+	if strings.Contains(silentBlock, "container_command") {
+		t.Errorf("silent event task must NOT render container_command; got:\n%s", silentBlock)
+	}
+
+	// Backward compat: a config WITHOUT enable_realtime_alb renders none of the
+	// realtime wiring (feature-off negative — old configs stay unchanged).
+	// This mutates envMap, so it runs after every assertion on `out`.
+	workloadMap, ok := envMap["workload"].(map[string]interface{})
+	if !ok {
+		t.Fatal("workload map missing from envMap")
+	}
+	delete(workloadMap, "enable_realtime_alb")
+	outOff, err := tmpl.Exec(envMap)
+	if err != nil {
+		t.Fatalf("template exec (realtime off) failed: %v", err)
+	}
+	for _, absent := range []string{"enable_realtime_alb", "realtime_parent_domain"} {
+		if strings.Contains(outOff, absent) {
+			t.Errorf("realtime-off render must not contain %q", absent)
+		}
 	}
 
 	if t.Failed() {

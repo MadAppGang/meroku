@@ -6,16 +6,19 @@
 # existing API Gateway + Cloud Map path is left fully intact — the backend task
 # is registered with BOTH this target group AND Cloud Map (see backend.tf).
 #
-# The realtime hostname is <realtime_subdomain_prefix>.<env>.<domain> (e.g.
-# realtime.dev.example.com), covered by the wildcard certificate
-# *.<env>.<domain> from the domain module (var.subdomains_certificate_arn).
+# The realtime hostname is <realtime_subdomain_prefix>.<domain-module zone>
+# (e.g. realtime.dev.example.com on env-prefixed setups, realtime.example.com
+# on prod where add_env_domain_prefix = false), covered by the wildcard
+# certificate *.<zone> from the domain module (var.subdomains_certificate_arn).
 
 locals {
-  # The domain module creates the Route53 zone as "<env>.<domain>" (env-prefixed)
-  # and var.domain_zone_id points at that zone. var.domain is the root
-  # (e.g. example.com), so the env-qualified domain is "<env>.<domain>".
-  realtime_env_domain  = "${var.env}.${var.domain}"
-  realtime_full_domain = "${var.realtime_subdomain_prefix}.${local.realtime_env_domain}"
+  # Parent domain for the realtime hostname. Preferred source: the domain
+  # module's actual zone name via var.realtime_parent_domain (env-prefixed only
+  # when the domain module prefixes — prod sets add_env_domain_prefix = false).
+  # Fallback keeps the legacy "<env>.<domain>" derivation for callers that do
+  # not pass the variable.
+  realtime_parent_domain = coalesce(var.realtime_parent_domain, "${var.env}.${var.domain}")
+  realtime_full_domain   = "${var.realtime_subdomain_prefix}.${local.realtime_parent_domain}"
 }
 
 resource "aws_lb" "realtime" {

@@ -25,6 +25,12 @@ variable "docker_image" {
   default = ""
 }
 
+variable "container_command" {
+  description = "Optional container command override (exec form). Empty list = use the image's default CMD."
+  type        = list(string)
+  default     = []
+}
+
 variable "subnet_ids" {
   type = list(string)
 }

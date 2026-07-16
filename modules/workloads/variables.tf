@@ -311,6 +311,12 @@ variable "realtime_alb_idle_timeout" {
   default     = 300
 }
 
+variable "realtime_parent_domain" {
+  description = "Parent domain for the realtime hostname — the domain module's actual zone name (env-prefixed only when the module prefixes). Empty = legacy \"<env>.<domain>\" derivation."
+  type        = string
+  default     = ""
+}
+
 
 variable "backend_remote_access" {
   type    = bool

@@ -516,6 +516,10 @@ module "workloads" {
   enable_realtime_alb = true
   realtime_subdomain_prefix = "{{default workload.realtime_subdomain_prefix "realtime"}}"
   realtime_alb_idle_timeout = {{default workload.realtime_alb_idle_timeout 300}}
+  {{#if domain.enabled}}
+  # Hostname parent = the domain module's actual zone (env-prefixed only when the module prefixes)
+  realtime_parent_domain = module.domain.domain_name
+  {{/if}}
   {{/if}}
   {{#compare (len services) ">" 0}}
   services = {{{array services}}} 
@@ -559,6 +563,21 @@ module "schedule_task_{{name}}" {
   task = "{{name}}"
   {{#if docker_image}}
   docker_image = "{{docker_image}}"
+  {{/if}}
+  {{#if (eq ecr_config.mode "use_existing")}}
+  # ecr_config mode "use_existing": reuse the source's ECR repository, skip the per-task one
+  create_ecr_repo = false
+  {{#unless docker_image}}
+  {{#if (eq ecr_config.source_service_type "services")}}
+  docker_image = "${module.workloads.service_ecr_url_map["{{ecr_config.source_service_name}}"]}:latest"
+  {{/if}}
+  {{#if (eq ecr_config.source_service_type "scheduled_tasks")}}
+  docker_image = "${module.schedule_task_{{ecr_config.source_service_name}}.ecr_repo_url}:latest"
+  {{/if}}
+  {{#if (eq ecr_config.source_service_type "event_processor_tasks")}}
+  docker_image = "${module.event_bus_task_{{ecr_config.source_service_name}}.ecr_repo_url}:latest"
+  {{/if}}
+  {{/unless}}
   {{/if}}
   {{#if container_command}}
   container_command = {{{array container_command}}}

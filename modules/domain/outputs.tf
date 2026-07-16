@@ -19,3 +19,8 @@ output "enable_custom_domain" {
   value       = true
 }
 
+output "domain_name" {
+  description = "The zone/hostname this module actually created — env-prefixed only when add_env_domain_prefix is true"
+  value       = local.domain_name
+}
+

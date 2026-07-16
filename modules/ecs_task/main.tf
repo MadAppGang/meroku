@@ -54,7 +54,7 @@ resource "aws_scheduler_schedule" "scheduler" {
 
 resource "aws_ecr_repository" "task" {
   name         = "${var.project}_task_${var.task}"
-  count        = var.env == "dev" ? 1 : 0
+  count        = var.env == "dev" && var.create_ecr_repo ? 1 : 0
   force_delete = true
 
   tags = {
@@ -75,7 +75,7 @@ locals {
 resource "aws_ecr_repository_policy" "task" {
   repository = join("", aws_ecr_repository.task.*.name)
   policy     = data.aws_iam_policy_document.default_ecr_policy.json
-  count      = var.env == "dev" ? 1 : 0
+  count      = var.env == "dev" && var.create_ecr_repo ? 1 : 0
 }
 
 resource "aws_ecs_task_definition" "task" {

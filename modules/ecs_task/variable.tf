@@ -26,6 +26,14 @@ variable "docker_image" {
   default = ""
 }
 
+# Set false when the task reuses another service's image (ecr_config mode
+# "use_existing") so no orphan per-task repository is created.
+variable "create_ecr_repo" {
+  description = "Whether to create the per-task ECR repository (dev env only). Set false when the image comes from an existing repository."
+  type        = bool
+  default     = true
+}
+
 variable "container_command" {
   type    = list(string)
   default = []
