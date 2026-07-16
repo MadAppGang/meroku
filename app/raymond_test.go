@@ -196,6 +196,47 @@ func TestHelpers(t *testing.T) {
 			data:     map[string]interface{}{},
 			expected: "",
 		},
+
+		// array helper tests — MUST handle both []string (typed struct data) and
+		// []interface{} (raw YAML via loadEnvToMap/convertToJSONCompatible).
+		// Regression for the backend_policy rendering pipeline in env/main.hbs.
+		{
+			name:     "array: []string renders JSON list",
+			template: `{{{array value}}}`,
+			data:     map[string]interface{}{"value": []string{"s3:GetObject", "s3:PutObject"}},
+			expected: `["s3:GetObject","s3:PutObject"]`,
+		},
+		{
+			name:     "array: []interface{} of strings renders JSON list",
+			template: `{{{array value}}}`,
+			data:     map[string]interface{}{"value": []interface{}{"s3:GetObject", "s3:PutObject", "s3:DeleteObject"}},
+			expected: `["s3:GetObject","s3:PutObject","s3:DeleteObject"]`,
+		},
+		{
+			name:     "array: empty []interface{} renders empty JSON list",
+			template: `{{{array value}}}`,
+			data:     map[string]interface{}{"value": []interface{}{}},
+			expected: `[]`,
+		},
+		{
+			name:     "array: []interface{} of map[interface{}]interface{} (yaml.v2 shape) renders JSON objects",
+			template: `{{{array value}}}`,
+			data: map[string]interface{}{"value": []interface{}{
+				map[interface{}]interface{}{"name": "uploads", "public": true},
+			}},
+			expected: `[{"name":"uploads","public":true}]`,
+		},
+		{
+			name:     "array: nested policy shape inside #each renders actions/resources",
+			template: `{{#each policy}}actions={{{array actions}}} resources={{{array resources}}}{{/each}}`,
+			data: map[string]interface{}{"policy": []interface{}{
+				map[string]interface{}{
+					"actions":   []interface{}{"s3:GetObject"},
+					"resources": []interface{}{"arn:aws:s3:::b", "arn:aws:s3:::b/*"},
+				},
+			}},
+			expected: `actions=["s3:GetObject"] resources=["arn:aws:s3:::b","arn:aws:s3:::b/*"]`,
+		},
 	}
 
 	for _, tt := range tests {

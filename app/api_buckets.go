@@ -37,10 +37,15 @@ type CORSRule struct {
 
 // BucketConfig represents bucket configuration from YAML
 type BucketConfig struct {
-	Name       string       `yaml:"name"`
-	Public     bool         `yaml:"public"`
-	Versioning *bool        `yaml:"versioning"`
-	CORSRules  []CORSConfig `yaml:"cors_rules"`
+	Name       string `yaml:"name"`
+	Public     bool   `yaml:"public"`
+	Versioning *bool  `yaml:"versioning"`
+	// CORSRules must be omitempty: a typed load->save round-trip otherwise
+	// injects an explicit `cors_rules: []` into every bucket, which renders as
+	// `"cors_rules":[]` in the buckets JSON and defeats the modules/s3 variable
+	// default (length(cors_rules) > 0 gate) — terraform plan then proposes
+	// deleting the live aws_s3_bucket_cors_configuration.
+	CORSRules []CORSConfig `yaml:"cors_rules,omitempty"`
 }
 
 // CORSConfig represents CORS configuration from YAML

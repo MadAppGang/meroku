@@ -72,7 +72,14 @@ type Workload struct {
 	BackendEnvVariables        map[string]string `yaml:"backend_env_variables"`
 	Policies                   []string          `yaml:"policies"`
 	BackendPolicies            []Policy          `yaml:"backend_policies"`
-	EnvFilesS3                 []S3EnvFile       `yaml:"env_files_s3"`
+	// Policy holds the backend IAM policy statements consumed by env/main.hbs
+	// ({{#each workload.policy}} -> backend_policy). The yaml mapping is REQUIRED:
+	// without it any typed load->save round-trip (schema migration, web UI save,
+	// profile update) silently dropped the `workload.policy` key from the YAML,
+	// the template then rendered an empty backend_policy, and terraform plan
+	// proposed deleting the backend's custom IAM policy in AWS.
+	Policy     []Policy    `yaml:"policy,omitempty"`
+	EnvFilesS3 []S3EnvFile `yaml:"env_files_s3"`
 
 	SlackWebhook       string   `yaml:"slack_webhook"`
 	EnableGithubOIDC   bool     `yaml:"enable_github_oidc"`
@@ -269,7 +276,9 @@ type Service struct {
 	DesiredCount     int               `yaml:"desired_count"`
 	RemoteAccess     bool              `yaml:"remote_access"`
 	XrayEnabled      bool              `yaml:"xray_enabled"`
-	Essential        bool              `yaml:"essential"`
+	Essential        *bool             `yaml:"essential,omitempty"`         // tri-state: nil = omit (module default), never inject false on round-trip
+	APIDomainPrefix  string            `yaml:"api_domain_prefix,omitempty"` // preserved on round-trip (was silently dropped)
+	HealthCheckPath  string            `yaml:"health_check_path,omitempty"` // preserved on round-trip (was silently dropped)
 	EnvVars          map[string]string `yaml:"env_vars"`
 	EnvVariables     []EnvVariable     `yaml:"env_variables"`
 	EnvFilesS3       []S3EnvFile       `yaml:"env_files_s3"`
