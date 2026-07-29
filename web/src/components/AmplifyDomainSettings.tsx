@@ -12,6 +12,7 @@ import type { UpdateHandler } from "../types/components";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import { Switch } from "./ui/switch";
 
 /**
  * Calculate domain preview based on subdomain prefix and config
@@ -109,6 +110,32 @@ export function AmplifyDomainSettings({
 				<h3 className="text-sm font-medium text-white mb-4">
 					Domain Configuration
 				</h3>
+
+				<div className="mb-4 bg-gray-800 rounded-lg p-4 border border-gray-700">
+					<div className="flex items-center justify-between gap-4">
+						<div>
+							<Label htmlFor="manage-amplify-dns-records">
+								Manage Route 53 Records
+							</Label>
+							<p className="text-xs text-gray-400 mt-1">
+								Let Terraform create Amplify domain records in the configured
+								hosted zone. This applies to every Amplify app in the
+								environment.
+							</p>
+						</div>
+						<Switch
+							id="manage-amplify-dns-records"
+							checked={config.manage_dns_records ?? false}
+							onCheckedChange={(checked) =>
+								onConfigChange?.({ manage_dns_records: checked })
+							}
+						/>
+					</div>
+					<p className="text-xs text-amber-400 mt-3">
+						Enable this for a cross-account Route 53 zone. Leave it off when
+						Amplify manages DNS in the same account.
+					</p>
+				</div>
 
 				{/* Show API-provided domain info if available */}
 				{apiApp && (

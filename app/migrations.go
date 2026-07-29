@@ -1,9 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v2"
 )
@@ -29,7 +31,8 @@ import (
 // 18: Move test_emails to global SES level (account-wide, not per-domain)
 // 19: Add enabled field to services (default true, allows disabling without removing config)
 // 20: Add enabled field to scheduled_tasks and event_processor_tasks (same pattern as services)
-const CurrentSchemaVersion = 20
+// 21: Normalize scheduled_tasks[].container_command from scalar string to list(string)
+const CurrentSchemaVersion = 21
 
 // EnvWithVersion extends Env with a schema version field
 type EnvWithVersion struct {
@@ -140,6 +143,11 @@ var AllMigrations = []Migration{
 		Version:     20,
 		Description: "Add enabled field to scheduled_tasks and event_processor_tasks",
 		Apply:       migrateToV20,
+	},
+	{
+		Version:     21,
+		Description: "Normalize scheduled_tasks container_command from scalar string to list(string)",
+		Apply:       migrateToV21,
 	},
 }
 
@@ -1133,6 +1141,81 @@ func migrateToV20(data map[string]interface{}) error {
 	}
 
 	return nil
+}
+
+// migrateToV21 normalizes scheduled_tasks[].container_command from a scalar
+// string into a real list of command arguments. JSON/HCL-looking arrays are
+// decoded; all other scalar values are preserved as one argument.
+func migrateToV21(data map[string]interface{}) error {
+	fmt.Println("  → Migrating to v21: Normalizing scheduled_tasks container_command to list(string)")
+
+	tasksRaw, exists := data["scheduled_tasks"]
+	if !exists || tasksRaw == nil {
+		fmt.Println("    ℹ️  No scheduled_tasks to migrate")
+		return nil
+	}
+
+	tasks, ok := tasksRaw.([]interface{})
+	if !ok {
+		fmt.Println("    ⚠️  scheduled_tasks is not an array, skipping migration")
+		return nil
+	}
+
+	updatedCount := 0
+	for _, taskRaw := range tasks {
+		taskMap, ok := taskRaw.(map[interface{}]interface{})
+		if !ok {
+			continue
+		}
+
+		cmdRaw, hasCommand := taskMap["container_command"]
+		if !hasCommand || cmdRaw == nil {
+			continue
+		}
+		if _, isList := cmdRaw.([]interface{}); isList {
+			continue
+		}
+
+		command, ok := cmdRaw.(string)
+		if !ok {
+			// Leave unexpected types for the Env decoder to reject clearly.
+			continue
+		}
+
+		taskMap["container_command"] = scalarCommandToList(command)
+		updatedCount++
+		if name, _ := taskMap["name"].(string); name != "" {
+			fmt.Printf("    ✓ scheduled_task '%s': Converted container_command to list\n", name)
+		}
+	}
+
+	if updatedCount == 0 {
+		fmt.Println("    ℹ️  All scheduled_tasks container_command values already use lists")
+	} else {
+		fmt.Printf("    ✓ Converted container_command to list on %d scheduled task(s)\n", updatedCount)
+	}
+
+	return nil
+}
+
+func scalarCommandToList(command string) []interface{} {
+	trimmed := strings.TrimSpace(command)
+	if trimmed == "" {
+		return []interface{}{}
+	}
+
+	if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
+		var parsed []string
+		if err := json.Unmarshal([]byte(trimmed), &parsed); err == nil {
+			arguments := make([]interface{}, 0, len(parsed))
+			for _, argument := range parsed {
+				arguments = append(arguments, argument)
+			}
+			return arguments
+		}
+	}
+
+	return []interface{}{command}
 }
 
 // applyMigrations applies all necessary migrations to bring data to current version

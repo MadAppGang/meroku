@@ -32,6 +32,11 @@ export interface YamlInfrastructureConfig {
 	// API Configuration
 	api_domain?: string;
 
+	// Amplify DNS Configuration
+	// When true, Terraform creates Route53 records for Amplify custom domains.
+	// Intended for cross-account hosted zones; absent uses the module default (false).
+	manage_dns_records?: boolean;
+
 	// Optional ECR configuration
 	ecr_strategy?: "local" | "cross_account";
 	ecr_account_id?: string;
@@ -167,6 +172,9 @@ export interface YamlInfrastructureConfig {
 	// Load Balancer Configuration
 	alb?: {
 		enabled: boolean;
+		// Seconds an idle connection is held open. Raise above the app's heartbeat
+		// interval for SSE / streaming. Absent = AWS default of 60.
+		idle_timeout?: number;
 	};
 
 	// Scheduled Tasks
@@ -174,10 +182,14 @@ export interface YamlInfrastructureConfig {
 		name: string;
 		enabled?: boolean;
 		schedule: string;
+		timezone?: string;
 		docker_image?: string;
-		container_command?: string;
+		// string is accepted while loading pre-v21 YAML; every UI update writes a list.
+		container_command?: string[] | string;
 		cpu?: number;
 		memory?: number;
+		max_retry_attempts?: number;
+		dlq_arn?: string;
 		environment_variables?: Record<string, string>;
 		ecr_config?: ECRConfig;
 	}>;

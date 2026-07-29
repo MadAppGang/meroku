@@ -2,6 +2,15 @@ import type React from "react";
 import { useState } from "react";
 import { useFargateOptions } from "../hooks/use-fargate-options";
 import type { ScheduledTask } from "../types/components";
+import {
+	DEFAULT_MAX_RETRY_ATTEMPTS,
+	DEFAULT_SCHEDULE_TIMEZONE,
+	isValidScheduleTimezone,
+	isValidSqsQueueArn,
+	MAX_RETRY_ATTEMPTS,
+	parseContainerCommand,
+	parseMaxRetryAttempts,
+} from "../utils/taskSettings";
 import { Button } from "./ui/button";
 import {
 	Dialog,
@@ -42,10 +51,13 @@ export function AddScheduledTaskDialog({
 		rate_value: "1",
 		rate_unit: "hours",
 		cron_expression: "",
+		timezone: DEFAULT_SCHEDULE_TIMEZONE,
 		docker_image: "",
 		container_command: "",
 		cpu: 256,
 		memory: 512,
+		max_retry_attempts: DEFAULT_MAX_RETRY_ATTEMPTS.toString(),
+		dlq_arn: "",
 		environment_variables: "",
 	});
 
@@ -76,6 +88,22 @@ export function AddScheduledTaskDialog({
 			newErrors.cron_expression = "Cron expression is required";
 		}
 
+		if (!isValidScheduleTimezone(formData.timezone)) {
+			newErrors.timezone =
+				"Enter a valid IANA timezone, such as Australia/Sydney or UTC";
+		}
+
+		const retryAttempts = parseMaxRetryAttempts(
+			formData.max_retry_attempts,
+		);
+		if ("error" in retryAttempts) {
+			newErrors.max_retry_attempts = retryAttempts.error;
+		}
+
+		if (!isValidSqsQueueArn(formData.dlq_arn)) {
+			newErrors.dlq_arn = "Enter a valid Amazon SQS queue ARN";
+		}
+
 		if (Object.keys(newErrors).length > 0) {
 			setErrors(newErrors);
 			return;
@@ -84,8 +112,13 @@ export function AddScheduledTaskDialog({
 		const task: ScheduledTask = {
 			name: formData.name,
 			schedule: getScheduleExpression(),
+			timezone: formData.timezone.trim(),
 			cpu: formData.cpu,
 			memory: formData.memory,
+			max_retry_attempts:
+				"value" in retryAttempts
+					? retryAttempts.value
+					: DEFAULT_MAX_RETRY_ATTEMPTS,
 		};
 
 		if (formData.docker_image) {
@@ -93,7 +126,13 @@ export function AddScheduledTaskDialog({
 		}
 
 		if (formData.container_command) {
-			task.container_command = formData.container_command;
+			task.container_command = parseContainerCommand(
+				formData.container_command,
+			);
+		}
+
+		if (formData.dlq_arn.trim()) {
+			task.dlq_arn = formData.dlq_arn.trim();
 		}
 
 		if (formData.environment_variables) {
@@ -133,10 +172,13 @@ export function AddScheduledTaskDialog({
 			rate_value: "1",
 			rate_unit: "hours",
 			cron_expression: "",
+			timezone: DEFAULT_SCHEDULE_TIMEZONE,
 			docker_image: "",
 			container_command: "",
 			cpu: 256,
 			memory: 512,
+			max_retry_attempts: DEFAULT_MAX_RETRY_ATTEMPTS.toString(),
+			dlq_arn: "",
 			environment_variables: "",
 		});
 		setErrors({});
@@ -145,7 +187,7 @@ export function AddScheduledTaskDialog({
 
 	return (
 		<Dialog open={open} onOpenChange={handleClose}>
-			<DialogContent className="sm:max-w-[600px]">
+			<DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
 				<DialogHeader>
 					<DialogTitle>Add Scheduled Task</DialogTitle>
 				</DialogHeader>
@@ -244,6 +286,34 @@ export function AddScheduledTaskDialog({
 						)}
 
 						<div className="grid gap-2">
+							<Label htmlFor="timezone">Schedule Timezone</Label>
+							<Input
+								id="timezone"
+								list="schedule-timezones"
+								value={formData.timezone}
+								onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+									setFormData({ ...formData, timezone: e.target.value })
+								}
+								placeholder="Australia/Sydney"
+							/>
+							<datalist id="schedule-timezones">
+								<option value="UTC" />
+								<option value="Australia/Sydney" />
+								<option value="Australia/Melbourne" />
+								<option value="Australia/Brisbane" />
+								<option value="America/New_York" />
+								<option value="Europe/London" />
+							</datalist>
+							{errors.timezone && (
+								<p className="text-sm text-red-500">{errors.timezone}</p>
+							)}
+							<p className="text-sm text-muted-foreground">
+								IANA timezone used to evaluate the schedule, including daylight
+								saving changes.
+							</p>
+						</div>
+
+						<div className="grid gap-2">
 							<Label htmlFor="docker_image">Docker Image (optional)</Label>
 							<Input
 								id="docker_image"
@@ -256,9 +326,7 @@ export function AddScheduledTaskDialog({
 						</div>
 
 						<div className="grid gap-2">
-							<Label htmlFor="container_command">
-								Container Command (comma-separated)
-							</Label>
+							<Label htmlFor="container_command">Container Command</Label>
 							<Input
 								id="container_command"
 								value={formData.container_command}
@@ -268,8 +336,53 @@ export function AddScheduledTaskDialog({
 										container_command: e.target.value,
 									})
 								}
-								placeholder="node, scripts/cleanup.js"
+								placeholder='["node", "scripts/cleanup.js"]'
 							/>
+							<p className="text-sm text-muted-foreground">
+								Use a JSON array for exact arguments, or a comma-separated list.
+							</p>
+						</div>
+
+						<div className="grid grid-cols-2 gap-4">
+							<div className="grid gap-2">
+								<Label htmlFor="max_retry_attempts">
+									Maximum Retry Attempts
+								</Label>
+								<Input
+									id="max_retry_attempts"
+									type="number"
+									min="0"
+									max={MAX_RETRY_ATTEMPTS}
+									step="1"
+									value={formData.max_retry_attempts}
+									onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+										setFormData({
+											...formData,
+											max_retry_attempts: e.target.value,
+										})
+									}
+								/>
+								{errors.max_retry_attempts && (
+									<p className="text-sm text-red-500">
+										{errors.max_retry_attempts}
+									</p>
+								)}
+							</div>
+
+							<div className="grid gap-2">
+								<Label htmlFor="dlq_arn">Dead-letter Queue ARN</Label>
+								<Input
+									id="dlq_arn"
+									value={formData.dlq_arn}
+									onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+										setFormData({ ...formData, dlq_arn: e.target.value })
+									}
+									placeholder="arn:aws:sqs:region:account-id:queue"
+								/>
+								{errors.dlq_arn && (
+									<p className="text-sm text-red-500">{errors.dlq_arn}</p>
+								)}
+							</div>
 						</div>
 
 						<div className="grid grid-cols-2 gap-4">

@@ -202,12 +202,56 @@ All VPC endpoint code in `modules/workloads/ecs_endpoints.tf` is commented out a
 
 ### API Gateway vs ALB
 
-The infrastructure supports two ingress patterns:
+The infrastructure supports two ingress patterns. They are **mutually exclusive**, and both
+serve the **same hostname** (`api_domain`, e.g. `api.dev.example.com`), so switching between
+them does not change the public API URL:
 
-- **Default (enable_alb: false)**: API Gateway → ECS Services
-- **Alternative (enable_alb: true)**: ALB → ECS Services
+- **Default (`alb.enabled: false`)**: API Gateway → Cloud Map → ECS
+  - Backend: `ANY /{proxy+}`; each named service: `ANY /<name>/{proxy+}`
+  - Cheapest option, but **cannot stream**: the integration timeout is capped at 30s and is
+    not configurable. SSE / long-lived streaming connections are cut off.
+- **Alternative (`alb.enabled: true`)**: ALB → ECS
+  - Backend is the listener's `default_action` catch-all; each named service gets a
+    `path_pattern` rule at `/<name>/*` — the same URL layout API Gateway serves.
+  - Supports streaming. Set `alb.idle_timeout` (seconds, default 60) above the app's
+    heartbeat interval to hold SSE connections open.
 
-Note: Currently, both resources are created regardless of the setting, but only one is used for traffic routing.
+```yaml
+alb:
+  enabled: true
+  idle_timeout: 300  # required for SSE; ALB drops idle connections after this
+```
+
+**If you need realtime/SSE, turn on the ALB.** Do not add a second load balancer — the
+idle timeout is a per-ALB attribute and that is the only knob SSE needs.
+
+When `alb.enabled` is set, the API Gateway custom domain, its Route53 record, and the
+backend integration are not created; the ALB owns `api_domain` instead.
+
+**Cloud Map is registered in BOTH modes — never gate `service_registries` on `enable_alb`.**
+AWS silently ignores `serviceRegistries` changes in `UpdateService`: the task stays
+registered forever, so deleting the Cloud Map service then fails with `ResourceInUse` and
+the switch to the ALB becomes un-appliable. A task can sit in Cloud Map and an ALB target
+group at the same time, so the registration stays put and `enable_alb` only decides who
+routes to the task. (Adding a load balancer to a running ECS service *is* supported
+in-place — it triggers a normal rolling deployment.)
+
+The ALB's security group lives in `modules/alb`, so `workloads` receives it as
+`alb_security_group_id` for the backend's ingress rule. There is no
+`aws_security_group.alb` inside `modules/workloads`.
+
+**Verified end to end** (2026-07-14, real AWS): on API Gateway a 90s stream is cut at
+**30.3s** with a 503; after flipping `alb.enabled: true` + `idle_timeout: 300`, the *same*
+URL completes the full 90s stream. The migration destroys the API Gateway custom domain and
+recreates the identical Route53 record pointing at the ALB.
+
+`workload.backend_alb_domain_name` is an **optional extra hostname** on the ALB, not the
+switch that enables it.
+
+**Hostname derivation:** any resource needing an env-qualified hostname must use
+`module.domain.domain_name` (passed to `workloads` as `env_domain`). Never hand-roll
+`"${var.env}.${var.domain}"` — the env prefix is controlled by `add_env_domain_prefix` and
+re-deriving it puts records in the wrong Route53 zone and outside the wildcard certificate.
 
 ## AWS Resource Naming Conventions
 
@@ -274,6 +318,40 @@ The optional pgAdmin service uses:
 | Resource | Pattern | Example |
 |----------|---------|---------|
 | IAM Role | `${project}-${env}-github-actions-role` | `myapp-dev-github-actions-role` |
+
+### CI/CD Lambda (`modules/workloads/lambda.tf`)
+
+| Resource | Pattern | Example |
+|----------|---------|---------|
+| Lambda Function | `${project}_ci_lambda_${env}` | `myapp_ci_lambda_dev` |
+| CloudWatch Log Group | `/aws/lambda/${project}_ci_lambda_${env}` | `/aws/lambda/myapp_ci_lambda_dev` |
+| IAM Role | `${project}_lambda_deploy_${env}` | `myapp_lambda_deploy_dev` |
+| IAM Policy (ECS) | `${project}_lambda_ecs_${env}` | `myapp_lambda_ecs_dev` |
+| IAM Policy (KMS) | `${project}_lambda_kms_${env}` | `myapp_lambda_kms_dev` |
+| EventBridge Rule (ECR) | `${project}_ecr_events_cicd_${env}` | `myapp_ecr_events_cicd_dev` |
+| EventBridge Rule (S3 env file) | `${project}-${env}-s3env-<key>-<hash>` | `myapp-dev-s3env-cfg_env-1a2b3c4d` |
+
+### ⚠️ Never use an un-namespaced name for an account-global resource
+
+**IAM roles and policies are unique per ACCOUNT; EventBridge rules and Lambda functions are
+unique per REGION.** Any such name missing `${project}` or `${env}` collides with every other
+meroku deployment in the account. The failure is often *silent*: `PutRule` is an upsert, so
+Terraform adopts the other environment's rule instead of erroring.
+
+This actually happened. `ecr_events_cicd` was a bare literal shared by every environment: each
+env's CI/CD lambda was attached as a target of the same rule (so **every lambda received every
+other environment's ECR/ECS events**), and `terraform destroy` on any one env deleted the rule
+out from under all the others. `ManageEndpointsAndPublishFirebaseCloudMessages` (the FCM IAM
+policy) had the same defect and made a second FCM-enabled deployment in an account fail to
+apply with `EntityAlreadyExists`.
+
+`app/module_naming_test.go` enforces this: every top-level `name` on an `aws_iam_role`,
+`aws_iam_policy`, `aws_cloudwatch_event_rule`, or `aws_lambda_function` in `modules/workloads`
+must contain both `${var.project}` and `${var.env}`.
+
+**Upgrade note:** these renames recreate the CI/CD lambda, its role/policies, its log group,
+and the ECR event rule on the next `terraform apply`. Auto-deploy is briefly interrupted while
+that happens, and old lambda logs are dropped with the old log group.
 
 ### Naming Convention Rules
 
@@ -428,6 +506,21 @@ infrastructure/
 ├── web/            # React+TypeScript frontend
 └── scripts/        # Utility scripts
 ```
+
+## AWS Region
+
+The `region` in `project/*.yaml` is authoritative: `env/main.hbs` renders a default
+`provider "aws"` block that pins it.
+
+It did not always. The template previously declared no default provider at all, so the S3
+backend used the YAML `region` while **every resource was created in whatever region the
+shell/profile happened to default to** (`AWS_REGION`, or the profile's `region`). A config
+saying `region: us-east-1` would keep its state in `us-east-1` and its infrastructure in, say,
+`ap-southeast-2`. Never remove that provider block.
+
+**Upgrade note:** if an existing deployment's profile default region differs from its YAML
+`region`, the next `plan` will try to recreate everything in the YAML region. Check the plan;
+if the YAML is the one that is wrong, correct the YAML rather than reverting the provider.
 
 ## Key Configuration Files
 

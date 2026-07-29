@@ -1,5 +1,7 @@
 import type { NodeProperties } from "../types/components";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
+import { DEFAULT_ALB_IDLE_TIMEOUT } from "./alb";
+import { getApiDomainUrl } from "./apiDomain";
 
 export interface NodeStateConfig {
 	id: string;
@@ -47,9 +49,13 @@ export const nodeStateMapping: NodeStateConfig[] = [
 		type: "alb",
 		enabled: (config) => config.alb?.enabled === true, // Enabled when ALB is enabled
 		properties: (config) => ({
-			domainName: config.workload?.backend_alb_domain_name || "",
+			// The ALB serves the API domain — the same hostname API Gateway serves.
+			// backend_alb_domain_name is only an optional additional host.
+			domainName: getApiDomainUrl(config),
+			idleTimeout: config.alb?.idle_timeout ?? DEFAULT_ALB_IDLE_TIMEOUT,
 		}),
-		description: "Application Load Balancer for HTTP/HTTPS routing",
+		description:
+			"Application Load Balancer for HTTP/HTTPS routing (supports SSE)",
 	},
 
 	// Load Balancing Layer
@@ -104,7 +110,8 @@ export const nodeStateMapping: NodeStateConfig[] = [
 				memory: config.workload?.backend_memory || "512",
 				envVariables: config.workload?.backend_env_variables || {},
 				desiredCount: config.workload?.backend_desired_count ?? 1,
-				autoscalingEnabled: config.workload?.backend_autoscaling_enabled || false,
+				autoscalingEnabled:
+					config.workload?.backend_autoscaling_enabled || false,
 				autoscalingMinCapacity:
 					config.workload?.backend_autoscaling_min_capacity || 1,
 				autoscalingMaxCapacity:
@@ -267,9 +274,10 @@ export function getDynamicNodeStateMapping(
 					xrayEnabled: service.xray_enabled || false,
 					remoteAccess: service.remote_access || false,
 				}),
-				description: service.enabled === false
-					? `${service.name} (disabled)`
-					: `Additional service: ${service.name}`,
+				description:
+					service.enabled === false
+						? `${service.name} (disabled)`
+						: `Additional service: ${service.name}`,
 			});
 		});
 	}

@@ -1519,6 +1519,7 @@ jobs:
 							config={config}
 							node={selectedNode}
 							accountInfo={accountInfo}
+							onConfigChange={onConfigChange}
 						/>
 					)}
 

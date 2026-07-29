@@ -14,7 +14,7 @@ import (
 
 func updateInfrastructure() error {
 	// Fetch the remote version.txt file from GitHub repository
-	resp, err := http.Get("https://raw.githubusercontent.com/MadAppGang/infrastructure/main/version.txt")
+	resp, err := http.Get("https://raw.githubusercontent.com/MadAppGang/meroku/main/version.txt")
 	if err != nil {
 		return fmt.Errorf("failed to fetch remote version: %w", err)
 	}
@@ -95,7 +95,7 @@ func checkVersionAtStartup() VersionCheckResult {
 	result := VersionCheckResult{}
 
 	// Fetch the remote version.txt file from GitHub repository
-	resp, err := http.Get("https://raw.githubusercontent.com/MadAppGang/infrastructure/main/version.txt")
+	resp, err := http.Get("https://raw.githubusercontent.com/MadAppGang/meroku/main/version.txt")
 	if err != nil {
 		result.Error = fmt.Errorf("failed to fetch remote version: %w", err)
 		return result

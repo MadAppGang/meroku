@@ -8,8 +8,16 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
+import {
+	DEFAULT_ALB_IDLE_TIMEOUT,
+	MAX_ALB_IDLE_TIMEOUT,
+	MIN_ALB_IDLE_TIMEOUT,
+	parseAlbIdleTimeout,
+} from "../utils/alb";
+import { getAdditionalAlbDomain, getApiDomainUrl } from "../utils/apiDomain";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Switch } from "./ui/switch";
 
@@ -22,10 +30,17 @@ export function ALBNodeProperties({
 	config,
 	onConfigChange,
 }: ALBNodePropertiesProps) {
-	const [isALBEnabled, setIsALBEnabled] = useState(
-		config.alb?.enabled || false,
+	const isALBEnabled = config.alb?.enabled ?? false;
+	const configuredIdleTimeout =
+		config.alb?.idle_timeout ?? DEFAULT_ALB_IDLE_TIMEOUT;
+	const idleTimeoutValidationMessage = `Enter a whole number from ${MIN_ALB_IDLE_TIMEOUT} to ${MAX_ALB_IDLE_TIMEOUT.toLocaleString()}.`;
+	const [idleTimeoutInput, setIdleTimeoutInput] = useState(
+		String(configuredIdleTimeout),
 	);
+	const [idleTimeoutError, setIdleTimeoutError] = useState("");
 	const [costEstimate, setCostEstimate] = useState<string>("");
+	const apiDomain = getApiDomainUrl(config);
+	const additionalDomain = getAdditionalAlbDomain(config);
 
 	useEffect(() => {
 		// Calculate monthly cost estimate for ALB
@@ -35,8 +50,15 @@ export function ALBNodeProperties({
 		setCostEstimate(`$${totalCost.toFixed(2)}/month`);
 	}, []);
 
+	useEffect(() => {
+		const value = String(configuredIdleTimeout);
+		setIdleTimeoutInput(value);
+		setIdleTimeoutError(
+			parseAlbIdleTimeout(value) === null ? idleTimeoutValidationMessage : "",
+		);
+	}, [configuredIdleTimeout, idleTimeoutValidationMessage]);
+
 	const handleALBToggle = (enabled: boolean) => {
-		setIsALBEnabled(enabled);
 		onConfigChange({
 			alb: {
 				...config.alb,
@@ -45,12 +67,42 @@ export function ALBNodeProperties({
 		});
 	};
 
-	const getHealthCheckUrl = () => {
-		if (config.workload?.backend_alb_domain_name) {
-			return `https://${config.workload.backend_alb_domain_name}/health`;
+	const commitIdleTimeout = () => {
+		const seconds = parseAlbIdleTimeout(idleTimeoutInput);
+		if (seconds === null) {
+			setIdleTimeoutError(idleTimeoutValidationMessage);
+			return;
 		}
-		return "Not configured";
+
+		setIdleTimeoutError("");
+		setIdleTimeoutInput(String(seconds));
+		if (seconds === configuredIdleTimeout) {
+			return;
+		}
+
+		onConfigChange({
+			alb: {
+				...config.alb,
+				enabled: isALBEnabled,
+				idle_timeout: seconds,
+			},
+		});
 	};
+
+	const getHealthCheckUrl = () => {
+		const hostname = apiDomain || additionalDomain;
+		if (!hostname) {
+			return "";
+		}
+
+		const healthEndpoint =
+			config.workload?.backend_health_endpoint || "/health";
+		const normalizedEndpoint = healthEndpoint.startsWith("/")
+			? healthEndpoint
+			: `/${healthEndpoint}`;
+		return `https://${hostname}${normalizedEndpoint}`;
+	};
+	const healthCheckUrl = getHealthCheckUrl();
 
 	return (
 		<div className="space-y-4">
@@ -82,8 +134,60 @@ export function ALBNodeProperties({
 						<div className="pl-4 pt-2 border-l-2 border-blue-500 space-y-3">
 							<div className="text-sm text-gray-400">
 								<AlertCircle className="w-4 h-4 inline mr-1 text-yellow-500" />
-								When ALB is enabled, API Gateway will be disabled automatically
+								API Gateway is disabled automatically. The ALB serves the same
+								API domain, so your public URL does not change.
 							</div>
+
+							<div className="space-y-1">
+								<Label htmlFor="alb-idle-timeout">Idle timeout (seconds)</Label>
+								<Input
+									id="alb-idle-timeout"
+									type="number"
+									min={MIN_ALB_IDLE_TIMEOUT}
+									max={MAX_ALB_IDLE_TIMEOUT}
+									step={1}
+									value={idleTimeoutInput}
+									onChange={(event) => {
+										setIdleTimeoutInput(event.target.value);
+										setIdleTimeoutError("");
+									}}
+									onBlur={commitIdleTimeout}
+									onKeyDown={(event) => {
+										if (event.key === "Enter") {
+											event.currentTarget.blur();
+										}
+									}}
+									aria-invalid={Boolean(idleTimeoutError)}
+									aria-describedby="alb-idle-timeout-description alb-idle-timeout-error"
+								/>
+								<p
+									id="alb-idle-timeout-description"
+									className="text-sm text-gray-400"
+								>
+									The ALB closes a connection after this long with no bytes
+									flowing. For SSE / streaming, set it above your app's
+									heartbeat interval (300 is a common choice). API Gateway
+									cannot stream at all — its 30s cap is fixed — so this is the
+									reason to use an ALB.
+								</p>
+								{idleTimeoutError && (
+									<p
+										id="alb-idle-timeout-error"
+										className="text-sm text-red-400"
+										role="alert"
+									>
+										{idleTimeoutError}
+									</p>
+								)}
+							</div>
+
+							{!apiDomain && (
+								<div className="text-sm text-yellow-400">
+									<AlertCircle className="w-4 h-4 inline mr-1" />
+									Enable the domain module and set a domain name before
+									deploying the ALB.
+								</div>
+							)}
 						</div>
 					)}
 				</CardContent>
@@ -225,6 +329,16 @@ export function ALBNodeProperties({
 								<div className="bg-gray-800 rounded-lg p-3">
 									<div className="font-medium text-white mb-2">HTTPS:443</div>
 									<div className="text-sm text-gray-400 space-y-2">
+										{config.services?.map((service) => (
+											<div
+												key={service.name}
+												className="pl-4 border-l-2 border-green-500"
+											>
+												<div className="font-mono">
+													/{service.name}/* → {service.name} Target Group
+												</div>
+											</div>
+										))}
 										<div className="pl-4 border-l-2 border-blue-500">
 											<div className="font-mono">
 												Default Action → Backend Target Group
@@ -261,13 +375,24 @@ export function ALBNodeProperties({
 						</CardHeader>
 						<CardContent className="space-y-4">
 							<div>
-								<Label>ALB Domain</Label>
+								<Label>API Domain (served by the ALB)</Label>
 								<div className="mt-1 font-mono text-sm bg-gray-800 p-2 rounded">
-									{config.workload?.backend_alb_domain_name || "Not configured"}
+									{apiDomain || "Domain not configured"}
+								</div>
+								<p className="text-sm text-gray-400 mt-1">
+									The same hostname API Gateway serves — switching ingress does
+									not change your public URL.
+								</p>
+							</div>
+
+							<div>
+								<Label>Additional hostname (optional)</Label>
+								<div className="mt-1 font-mono text-sm bg-gray-800 p-2 rounded">
+									{additionalDomain || "Not configured"}
 								</div>
 							</div>
 
-							{config.workload?.backend_alb_domain_name && (
+							{healthCheckUrl && (
 								<div className="space-y-3">
 									<div className="flex items-center gap-2 text-sm">
 										<div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
@@ -280,15 +405,12 @@ export function ALBNodeProperties({
 										<Label>Health Check Endpoint</Label>
 										<div className="mt-1 flex items-center gap-2">
 											<code className="text-xs bg-gray-800 px-2 py-1 rounded flex-1">
-												{getHealthCheckUrl()}
+												{healthCheckUrl}
 											</code>
 											<Button
 												size="sm"
 												variant="outline"
-												onClick={() =>
-													window.open(getHealthCheckUrl(), "_blank")
-												}
-												disabled={!config.workload?.backend_alb_domain_name}
+												onClick={() => window.open(healthCheckUrl, "_blank")}
 											>
 												Test
 											</Button>

@@ -110,6 +110,15 @@ variable "domain" {
   default = ""
 }
 
+# Env-resolved domain from the domain module ("<env>.<zone>" or "<zone>", per
+# add_env_domain_prefix). Use this — never "${var.env}.${var.domain}" — whenever a
+# hostname has to sit inside the environment's Route53 zone and wildcard certificate.
+variable "env_domain" {
+  description = "Env-resolved domain name (module.domain.domain_name)"
+  type        = string
+  default     = ""
+}
+
 variable "create_api_domain_record" {
   default = true
 }
@@ -282,6 +291,14 @@ variable "backend_alb_domain_name" {
 
 variable "alb_arn" {
   default = ""
+}
+
+# Security group of the ALB (created in modules/alb). The backend's security group uses
+# it to allow ingress only from the load balancer.
+variable "alb_security_group_id" {
+  description = "Security group ID of the ALB, used as the source for backend ingress"
+  type        = string
+  default     = ""
 }
 
 variable "enable_alb" {

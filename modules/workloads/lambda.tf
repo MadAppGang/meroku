@@ -20,11 +20,11 @@ data "aws_iam_policy_document" "lambda_deploy_assume_role" {
 }
 
 resource "aws_iam_role" "lambda_deploy_iam" {
-  name               = "lambda_deploy_iam_${var.env}"
+  name               = "${var.project}_lambda_deploy_${var.env}"
   assume_role_policy = data.aws_iam_policy_document.lambda_deploy_assume_role.json
 
   tags = {
-    Name        = "lambda_deploy_iam_${var.env}"
+    Name        = "${var.project}_lambda_deploy_${var.env}"
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
@@ -40,11 +40,11 @@ resource "aws_iam_role_policy_attachment" "lambda_basic_esecution" {
 
 # CloudWatch Log Group for Lambda with retention
 resource "aws_cloudwatch_log_group" "lambda_deploy" {
-  name              = "/aws/lambda/ci_lambda_${var.env}"
+  name              = "/aws/lambda/${var.project}_ci_lambda_${var.env}"
   retention_in_days = 7
 
   tags = {
-    Name        = "/aws/lambda/ci_lambda_${var.env}"
+    Name        = "/aws/lambda/${var.project}_ci_lambda_${var.env}"
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
@@ -54,7 +54,7 @@ resource "aws_cloudwatch_log_group" "lambda_deploy" {
 
 resource "aws_lambda_function" "lambda_deploy" {
   filename         = "ci_lambda.zip"
-  function_name    = "ci_lambda_${var.env}"
+  function_name    = "${var.project}_ci_lambda_${var.env}"
   handler          = "bootstrap"
   role             = aws_iam_role.lambda_deploy_iam.arn
   source_code_hash = data.archive_file.lambda.output_base64sha256
@@ -82,10 +82,10 @@ resource "aws_lambda_function" "lambda_deploy" {
       LOG_LEVEL = "info" # Options: debug, info, warn, error
 
       # ECS Resource Names (ACTUAL resource names from Terraform)
-      ECS_CLUSTER_NAME    = aws_ecs_cluster.main.name
-      ECS_SERVICE_MAP     = local.ecs_service_map
-      S3_SERVICE_MAP      = local.s3_to_service_map
-      SCHEDULED_TASK_MAP  = local.scheduled_task_map
+      ECS_CLUSTER_NAME   = aws_ecs_cluster.main.name
+      ECS_SERVICE_MAP    = local.ecs_service_map
+      S3_SERVICE_MAP     = local.s3_to_service_map
+      SCHEDULED_TASK_MAP = local.scheduled_task_map
 
       # Slack Configuration (if set, notifications are enabled)
       SLACK_WEBHOOK_URL = var.slack_deployment_webhook
@@ -110,7 +110,7 @@ resource "aws_lambda_function" "lambda_deploy" {
   }
 
   tags = {
-    Name        = "ci_lambda_${var.env}"
+    Name        = "${var.project}_ci_lambda_${var.env}"
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
@@ -136,11 +136,11 @@ data "aws_iam_policy_document" "lambda_ecs" {
 }
 
 resource "aws_iam_policy" "lambda_ecs" {
-  name   = "LambdaECSDevPolicy_${var.env}"
+  name   = "${var.project}_lambda_ecs_${var.env}"
   policy = data.aws_iam_policy_document.lambda_ecs.json
 
   tags = {
-    Name        = "LambdaECSDevPolicy_${var.env}"
+    Name        = "${var.project}_lambda_ecs_${var.env}"
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
@@ -166,11 +166,11 @@ data "aws_iam_policy_document" "lambda_kms" {
 }
 
 resource "aws_iam_policy" "lambda_kms" {
-  name   = "LambdaKMSPolicy_${var.env}"
+  name   = "${var.project}_lambda_kms_${var.env}"
   policy = data.aws_iam_policy_document.lambda_kms.json
 
   tags = {
-    Name        = "LambdaKMSPolicy_${var.env}"
+    Name        = "${var.project}_lambda_kms_${var.env}"
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
@@ -184,8 +184,15 @@ resource "aws_iam_role_policy_attachment" "lambda_kms" {
 }
 
 # EventBus For ECR
+#
+# The name MUST stay namespaced by project and env. It used to be the bare literal
+# "ecr_events_cicd", which every environment in an account shared. PutRule is an upsert, so
+# Terraform adopted another environment's rule instead of failing: each env's CI/CD lambda was
+# attached as a target of the SAME rule (so every lambda received every other environment's
+# ECR/ECS events), and destroying any env tried to delete the shared rule — breaking CI/CD for
+# every other env in the account, or failing with "Rule can't be deleted since it has targets".
 resource "aws_cloudwatch_event_rule" "ecr_event" {
-  name        = "ecr_events_cicd"
+  name        = "${var.project}_ecr_events_cicd_${var.env}"
   description = "Emmit ECR event on new image push"
   event_pattern = jsonencode({
     source = [
@@ -205,7 +212,7 @@ resource "aws_cloudwatch_event_rule" "ecr_event" {
   })
 
   tags = {
-    Name        = "ecr_events_cicd"
+    Name        = "${var.project}_ecr_events_cicd_${var.env}"
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
@@ -232,7 +239,8 @@ resource "aws_lambda_permission" "ecr_event_call_deploy_lambda" {
 resource "aws_cloudwatch_event_rule" "s3_env_file_change_rule" {
   for_each = { for file in local.env_files_s3 : "${file.bucket}-${file.key}" => file }
 
-  name        = "s3-env-${local.s3_event_rule_names[each.key]}"
+  # Already prefixed with "${var.project}-${var.env}-s3env-" and length-capped by the local.
+  name        = local.s3_event_rule_names[each.key]
   description = "Event rule for S3 env file changes for ${each.value.bucket}/${each.value.key}"
   event_pattern = jsonencode({
     "source" : ["aws.s3"],
@@ -291,11 +299,18 @@ locals {
     }
   }
 
-  # Final safe names: prefix (24 chars) + sanitized key (max 31 chars) + hash (8 chars) + dash (1 char) = 64 max
+  # Namespaced by project+env for the same reason as the ECR rule above: two environments
+  # watching the SAME shared bucket/key would otherwise derive one identical rule name, and
+  # destroying either would delete the rule out from under the other.
+  s3_event_rule_prefix = "${var.project}-${var.env}-s3env-"
+
+  # EventBridge rule names are capped at 64 chars. Reserve the prefix plus the 8-char hash
+  # and its separating dash; whatever is left is how much of the sanitized key we can keep.
+  s3_event_rule_budget = max(64 - length(local.s3_event_rule_prefix) - 9, 0)
+
   s3_event_rule_names = {
-    for key, val in local.s3_event_rule_keys : key => substr(val.sanitized, 0, 31) != val.sanitized
-    ? "${substr(val.sanitized, 0, 31)}-${val.hash}" # Truncated + hash
-    : val.sanitized                                 # Full name fits
+    for key, val in local.s3_event_rule_keys : key =>
+    "${local.s3_event_rule_prefix}${substr(val.sanitized, 0, min(length(val.sanitized), local.s3_event_rule_budget))}-${val.hash}"
   }
 
   service_config = jsonencode({

@@ -15,6 +15,13 @@ terraform {
   required_version = ">= 1.2.6"
 }
 
+# The default provider MUST pin the region from the YAML. Without it the region came only
+# from the shell (AWS_REGION / the profile's default), so the S3 backend used the YAML region
+# while every resource was created in whatever region the profile happened to point at.
+provider "aws" {
+  region = "{{region}}"
+}
+
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
@@ -268,6 +275,8 @@ module "alb" {
   env = "{{env}}"
   vpc_id = local.vpc_id
   private_subnets = local.subnet_ids
+  # Raise above the app's heartbeat interval to hold SSE / streaming connections open.
+  idle_timeout = {{default alb.idle_timeout 60}}
 }
 {{/if}}
 
@@ -419,6 +428,8 @@ module "workloads" {
   subdomains_certificate_arn = module.domain.subdomains_certificate_arn
   api_certificate_arn = module.domain.api_certificate_arn
   domain_zone_id = module.domain.zone_id
+  # Env-resolved domain ("<env>.<zone>" or "<zone>"). Consumers must not re-derive the prefix.
+  env_domain = module.domain.domain_name
   {{/if}}
   ecr_strategy = "{{ecr_strategy}}"
   {{#if ecr_account_id}}
@@ -506,11 +517,16 @@ module "workloads" {
   {{#compare (len workload.env_files_s3) ">" 0}}
   env_files_s3 = {{{array workload.env_files_s3}}} 
   {{/compare}}
-  {{#if alb.enabled}}{{#if workload.backend_alb_domain_name}}
-  backend_alb_domain_name = "{{workload.backend_alb_domain_name}}"
+  {{#if alb.enabled}}
+  # The ALB serves api_domain — the same hostname API Gateway serves — so enabling it does
+  # not change the public API URL. backend_alb_domain_name is an optional EXTRA hostname.
   alb_arn = module.alb.alb_arn
+  alb_security_group_id = module.alb.alb_security_group_id
   enable_alb = true
-  {{/if}}{{/if}}
+  {{#if workload.backend_alb_domain_name}}
+  backend_alb_domain_name = "{{workload.backend_alb_domain_name}}"
+  {{/if}}
+  {{/if}}
   {{#compare (len services) ">" 0}}
   services = {{{array services}}} 
   {{/compare}}
@@ -555,7 +571,7 @@ module "schedule_task_{{name}}" {
   docker_image = "{{docker_image}}"
   {{/if}}
   {{#if container_command}}
-  container_command = {{{ container_command }}}
+  container_command = {{{array container_command}}}
   {{/if}}
   {{#if cpu}}
   cpu = {{cpu}}
@@ -565,6 +581,15 @@ module "schedule_task_{{name}}" {
   {{/if}}
   # https://docs.aws.amazon.com/scheduler/latest/UserGuide/schedule-types.html?icmpid=docs_console_unmapped#rate-based
   schedule = "{{schedule}}"
+  {{#if timezone}}
+  schedule_expression_timezone = "{{timezone}}"
+  {{/if}}
+  {{#if (exists max_retry_attempts)}}
+  max_retry_attempts = {{max_retry_attempts}}
+  {{/if}}
+  {{#if dlq_arn}}
+  dlq_arn = "{{dlq_arn}}"
+  {{/if}}
   subnet_ids = local.subnet_ids
   vpc_id     = local.vpc_id
   cluster = module.workloads.ecr_cluster.arn
@@ -616,7 +641,7 @@ module "event_bus_task_{{name}}" {
   docker_image = "{{docker_image}}"
   {{/if}}
   {{#if container_command}}
-  container_command = {{{ container_command }}}
+  container_command = {{{array container_command}}}
   {{/if}}
   subnet_ids = local.subnet_ids
   vpc_id     = local.vpc_id
@@ -832,6 +857,10 @@ module "amplify" {
   # Route53 zone ID for creating DNS records (ACM validation + subdomain CNAME)
   {{#if domain.enabled}}
   zone_id = module.domain.zone_id
+  {{/if}}
+  {{#if (exists manage_dns_records)}}
+  # Whether Terraform manages Route53 records for Amplify domains (cross-account zone)
+  manage_dns_records = {{manage_dns_records}}
   {{/if}}
 
   amplify_apps = [

@@ -2,6 +2,7 @@ import { Check, Edit2, Lock, Plus, Settings, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import type { AccountInfo } from "../api/infrastructure";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
+import { getApiDomainUrl } from "../utils/apiDomain";
 import { Button } from "./ui/button";
 import {
 	Card,
@@ -37,24 +38,8 @@ export function BackendEnvironmentVariables({
 	const [editingVar, setEditingVar] = useState<string | null>(null);
 	const [editingVarValue, setEditingVarValue] = useState("");
 
-	// Calculate the API domain URL with proper environment prefix
-	const getApiDomainUrl = () => {
-		const isALBEnabled = config.alb?.enabled === true;
-
-		// If ALB is enabled and ALB domain is set, use ALB domain
-		if (isALBEnabled && config.workload?.backend_alb_domain_name) {
-			return config.workload.backend_alb_domain_name;
-		}
-		// Otherwise, construct from domain config (API Gateway path, matching nodeStateMapping.ts logic)
-		if (config.domain?.enabled && config.domain?.domain_name) {
-			const baseDomain = config.domain.domain_name;
-			const apiPrefix = config.domain.api_domain_prefix || "api";
-			const addEnvPrefix = config.domain.add_env_domain_prefix ?? true;
-			const envPrefix = addEnvPrefix ? `${config.env}.` : "";
-			return `${apiPrefix}.${envPrefix}${baseDomain}`;
-		}
-		return "";
-	};
+	// The API hostname is the same whether traffic enters via API Gateway or the ALB.
+	const apiDomainUrl = getApiDomainUrl(config);
 
 	// Automatic environment variables (infrastructure-derived)
 	const automaticEnvVars = [
@@ -81,7 +66,7 @@ export function BackendEnvironmentVariables({
 		{ name: "AWS_REGION", value: config.region, description: "AWS Region" },
 		{
 			name: "URL",
-			value: getApiDomainUrl(),
+			value: apiDomainUrl,
 			description: "API Domain URL",
 		},
 		{

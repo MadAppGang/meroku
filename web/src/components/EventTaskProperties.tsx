@@ -6,7 +6,7 @@ import {
 	Settings,
 	Zap,
 } from "lucide-react";
-import { useCallback, useId, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import type { AccountInfo } from "../api/infrastructure";
 import type { ComponentNode } from "../types";
 import type {
@@ -14,6 +14,10 @@ import type {
 	EventBridgeRule,
 	YamlInfrastructureConfig,
 } from "../types/yamlConfig";
+import {
+	formatContainerCommand,
+	parseContainerCommand,
+} from "../utils/taskSettings";
 import { ECRConfigEditor } from "./ECRConfigEditor";
 import { EventRulesList } from "./EventRulesList";
 import { Alert, AlertDescription } from "./ui/alert";
@@ -103,6 +107,13 @@ export function EventTaskProperties({
 	const [memory, setMemory] = useState(
 		() => eventTask?.memory?.toString() || "512",
 	);
+	const [containerCommand, setContainerCommand] = useState(() =>
+		formatContainerCommand(eventTask?.container_command),
+	);
+
+	useEffect(() => {
+		setContainerCommand(formatContainerCommand(eventTask?.container_command));
+	}, [eventTask?.container_command]);
 
 	// Unique IDs for form elements
 	const dockerImageId = useId();
@@ -259,6 +270,34 @@ export function EventTaskProperties({
 								</code>
 							</div>
 						)}
+					</div>
+
+					<div className="space-y-2">
+						<Label htmlFor="event-container-command" className="text-sm">
+							Container Command Override
+						</Label>
+						<Input
+							id="event-container-command"
+							value={containerCommand}
+							onChange={(event) => setContainerCommand(event.target.value)}
+							onBlur={() =>
+								updateTaskConfig({
+									container_command:
+										parseContainerCommand(containerCommand),
+								})
+							}
+							onKeyDown={(event) => {
+								if (event.key === "Enter") {
+									event.currentTarget.blur();
+								}
+							}}
+							placeholder='["bun", "run", "worker.ts"]'
+							className="font-mono text-sm"
+						/>
+						<p className="text-xs text-gray-500">
+							Use a JSON array for exact arguments, or a comma-separated list.
+							Saved to YAML as a list.
+						</p>
 					</div>
 
 					{/* Resource Configuration */}

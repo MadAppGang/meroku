@@ -4,6 +4,7 @@ resource "aws_lb" "alb" {
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
   subnets            = var.private_subnets
+  idle_timeout       = var.idle_timeout
 
   tags = {
     Name        = "${var.project}-alb-${var.env}"

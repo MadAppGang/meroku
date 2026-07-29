@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync"
 
 	"github.com/aymerick/raymond"
 )
@@ -33,7 +34,15 @@ func isTruthy(value interface{}) bool {
 	}
 }
 
+// helpersOnce guards registration: raymond keeps helpers in global state and panics on a
+// duplicate name, so any second caller (deploy.go, main.go, or a second test) would crash.
+var helpersOnce sync.Once
+
 func registerCustomHelpers() {
+	helpersOnce.Do(registerCustomHelpersOnce)
+}
+
+func registerCustomHelpersOnce() {
 	// Register custom helper for array to JSON string conversion
 	raymond.RegisterHelper("array", func(items interface{}) string {
 		// Handle different input types more gracefully

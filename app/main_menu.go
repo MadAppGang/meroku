@@ -226,7 +226,7 @@ func getProjectName() string {
 
 func initProject() {
 	os.RemoveAll("./infrastructure/")
-	cmd := exec.Command("git", "clone", "--depth=1", "--branch=main", "https://github.com/MadAppGang/infrastructure.git", "./infrastructure")
+	cmd := exec.Command("git", "clone", "--depth=1", "--branch=main", "https://github.com/MadAppGang/meroku.git", "./infrastructure")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		fmt.Println("Error cloning infrastructure:", output)

@@ -34,7 +34,10 @@ resource "aws_iam_role_policy_attachment" "backend_task_sns_fcm_policies" {
 }
 
 resource "aws_iam_policy" "backend_fcm_policies" {
-  name   = "ManageEndpointsAndPublishFirebaseCloudMessages"
+  # IAM policy names are account-global. This was the bare literal
+  # "ManageEndpointsAndPublishFirebaseCloudMessages", so a second meroku deployment in the
+  # same account with setup_FCM_SNS enabled failed to apply with EntityAlreadyExists.
+  name   = "${var.project}_fcm_publish_${var.env}"
   count  = (var.setup_FCM_SNS) ? 1 : 0
   policy = <<EOF
 {

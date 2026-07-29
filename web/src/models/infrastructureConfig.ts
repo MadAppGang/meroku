@@ -8,6 +8,7 @@ export interface InfrastructureConfig {
 	region: string;
 	state_bucket: string;
 	state_file: string;
+	manage_dns_records?: boolean;
 
 	// Optional ECR configuration
 	ecr_account_id?: string;
@@ -142,13 +143,18 @@ export interface S3BucketConfig {
 
 export interface ALBConfig {
 	enabled: boolean;
+	idle_timeout?: number;
 }
 
 export interface ScheduledTaskConfig {
 	name: string;
 	schedule: string;
+	timezone?: string;
 	docker_image?: string;
-	container_command?: string;
+	container_command?: string[] | string;
+	max_retry_attempts?: number;
+	dlq_arn?: string;
+	environment_variables?: Record<string, string>;
 	allow_public_access?: boolean;
 }
 
@@ -158,7 +164,8 @@ export interface EventProcessorTaskConfig {
 	detail_types: string[];
 	sources: string[];
 	docker_image?: string;
-	container_command?: string;
+	container_command?: string[];
+	environment_variables?: Record<string, string>;
 	allow_public_access?: boolean;
 }
 

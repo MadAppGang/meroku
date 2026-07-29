@@ -38,6 +38,29 @@ variable "schedule" {
   default = "rate(1 days)"
 }
 
+variable "schedule_expression_timezone" {
+  description = "IANA timezone the schedule expression is evaluated in (DST-aware)"
+  type        = string
+  default     = "UTC"
+}
+
+variable "max_retry_attempts" {
+  description = "Maximum retry attempts for the schedule target. null (default) omits the retry_policy block so AWS keeps its own default of 185; a bare default here would silently cut every existing task's retry budget to that number on the next apply."
+  type        = number
+  default     = null
+
+  validation {
+    condition     = var.max_retry_attempts == null || (var.max_retry_attempts >= 0 && var.max_retry_attempts <= 185 && floor(var.max_retry_attempts) == var.max_retry_attempts)
+    error_message = "max_retry_attempts must be a whole number from 0 to 185."
+  }
+}
+
+variable "dlq_arn" {
+  description = "SQS queue ARN used as the schedule target dead-letter destination (empty disables the DLQ)"
+  type        = string
+  default     = ""
+}
+
 variable "subnet_ids" {
   type = list(string)
 }
@@ -55,7 +78,7 @@ variable "sqs_policy_arn" {
 }
 
 variable "sqs_queue_url" {
-  default =  ""
+  default = ""
 }
 
 variable "sqs_enable" {
@@ -150,4 +173,3 @@ data "aws_iam_policy_document" "default_ecr_policy" {
     }
   }
 }
-

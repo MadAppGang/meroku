@@ -1,8 +1,18 @@
 import { AlertTriangle } from "lucide-react";
-import { useCallback, useRef, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { AccountInfo } from "../api/infrastructure";
 import type { ComponentNode } from "../types";
 import type { ECRConfig, YamlInfrastructureConfig } from "../types/yamlConfig";
+import {
+	DEFAULT_MAX_RETRY_ATTEMPTS,
+	DEFAULT_SCHEDULE_TIMEZONE,
+	formatContainerCommand,
+	isValidScheduleTimezone,
+	isValidSqsQueueArn,
+	MAX_RETRY_ATTEMPTS,
+	parseContainerCommand,
+	parseMaxRetryAttempts,
+} from "../utils/taskSettings";
 import { ScheduleExpressionBuilder } from "./ScheduleExpressionBuilder";
 import { useDeepMemo } from "../hooks/useDeepMemo";
 import { Alert, AlertDescription } from "./ui/alert";
@@ -158,12 +168,85 @@ export function ScheduledTaskProperties({
 	const { options: fargateOptions, getMemoryOptions, formatMemory } = useFargateOptions();
 	const memoryOptions = getMemoryOptions(currentTask?.cpu || 256);
 
+	const [commandDraft, setCommandDraft] = useState(() =>
+		formatContainerCommand(currentTask?.container_command),
+	);
+	const [timezoneDraft, setTimezoneDraft] = useState(
+		() => currentTask?.timezone || DEFAULT_SCHEDULE_TIMEZONE,
+	);
+	const [retryDraft, setRetryDraft] = useState(
+		() =>
+			currentTask?.max_retry_attempts?.toString() ||
+			DEFAULT_MAX_RETRY_ATTEMPTS.toString(),
+	);
+	const [dlqDraft, setDlqDraft] = useState(() => currentTask?.dlq_arn || "");
+	const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+	useEffect(() => {
+		setCommandDraft(formatContainerCommand(currentTask?.container_command));
+		setTimezoneDraft(currentTask?.timezone || DEFAULT_SCHEDULE_TIMEZONE);
+		setRetryDraft(
+			currentTask?.max_retry_attempts?.toString() ||
+				DEFAULT_MAX_RETRY_ATTEMPTS.toString(),
+		);
+		setDlqDraft(currentTask?.dlq_arn || "");
+		setFieldErrors({});
+	}, [
+		currentTask?.container_command,
+		currentTask?.timezone,
+		currentTask?.max_retry_attempts,
+		currentTask?.dlq_arn,
+	]);
+
+	const commitTimezone = () => {
+		const timezone = timezoneDraft.trim();
+		if (!isValidScheduleTimezone(timezone)) {
+			setFieldErrors((errors) => ({
+				...errors,
+				timezone:
+					"Enter a valid IANA timezone, such as Australia/Sydney or UTC",
+			}));
+			return;
+		}
+
+		setFieldErrors((errors) => ({ ...errors, timezone: "" }));
+		handleTaskChange({ timezone });
+	};
+
+	const commitRetryAttempts = () => {
+		const parsed = parseMaxRetryAttempts(retryDraft);
+		if ("error" in parsed) {
+			setFieldErrors((errors) => ({
+				...errors,
+				max_retry_attempts: parsed.error,
+			}));
+			return;
+		}
+
+		setFieldErrors((errors) => ({ ...errors, max_retry_attempts: "" }));
+		handleTaskChange({ max_retry_attempts: parsed.value });
+	};
+
+	const commitDlqArn = () => {
+		const dlqArn = dlqDraft.trim();
+		if (!isValidSqsQueueArn(dlqArn)) {
+			setFieldErrors((errors) => ({
+				...errors,
+				dlq_arn: "Enter a valid Amazon SQS queue ARN",
+			}));
+			return;
+		}
+
+		setFieldErrors((errors) => ({ ...errors, dlq_arn: "" }));
+		handleTaskChange({ dlq_arn: dlqArn || undefined });
+	};
+
 	// Use currentTask if it exists, otherwise use defaults
 	const task = currentTask || {
 		name: taskName,
 		schedule: "rate(1 day)",
 		docker_image: "",
-		container_command: "",
+		container_command: [] as string[],
 	};
 
 	return (
@@ -212,6 +295,39 @@ export function ScheduledTaskProperties({
 						value={task.schedule || "rate(1 day)"}
 						onChange={(schedule) => handleTaskChange({ schedule })}
 					/>
+				</div>
+
+				<div className="space-y-2">
+					<Label htmlFor="schedule-timezone">Schedule Timezone</Label>
+					<Input
+						id="schedule-timezone"
+						list="schedule-timezone-options"
+						value={timezoneDraft}
+						onChange={(event) => setTimezoneDraft(event.target.value)}
+						onBlur={commitTimezone}
+						onKeyDown={(event) => {
+							if (event.key === "Enter") {
+								event.currentTarget.blur();
+							}
+						}}
+						placeholder="Australia/Sydney"
+						className="bg-gray-800 border-gray-600 text-white"
+					/>
+					<datalist id="schedule-timezone-options">
+						<option value="UTC" />
+						<option value="Australia/Sydney" />
+						<option value="Australia/Melbourne" />
+						<option value="Australia/Brisbane" />
+						<option value="America/New_York" />
+						<option value="Europe/London" />
+					</datalist>
+					{fieldErrors.timezone && (
+						<p className="text-xs text-red-400">{fieldErrors.timezone}</p>
+					)}
+					<p className="text-xs text-gray-500">
+						IANA timezone used to evaluate the schedule, including daylight
+						saving changes.
+					</p>
 				</div>
 
 				<Separator />
@@ -286,16 +402,91 @@ export function ScheduledTaskProperties({
 					<Label htmlFor="container_command">Container Command Override</Label>
 					<Input
 						id="container_command"
-						value={task.container_command || ""}
-						onChange={(e) =>
-							handleTaskChange({ container_command: e.target.value })
+						value={commandDraft}
+						onChange={(event) => setCommandDraft(event.target.value)}
+						onBlur={() =>
+							handleTaskChange({
+								container_command: parseContainerCommand(commandDraft),
+							})
 						}
+						onKeyDown={(event) => {
+							if (event.key === "Enter") {
+								event.currentTarget.blur();
+							}
+						}}
 						placeholder='["npm", "run", "report"]'
 						className="bg-gray-800 border-gray-600 text-white font-mono"
 					/>
 					<p className="text-xs text-gray-500">
-						Override container startup command (JSON array as string)
+						Use a JSON array for exact arguments, or a comma-separated list.
+						Saved to YAML as a list.
 					</p>
+				</div>
+
+				<Separator />
+
+				<div className="space-y-4">
+					<div>
+						<Label className="text-sm font-medium">Failure Handling</Label>
+						<p className="text-xs text-gray-500 mt-1">
+							Control delivery retries and optional dead-letter capture.
+						</p>
+					</div>
+
+					<div className="space-y-2">
+						<Label htmlFor="max-retry-attempts">
+							Maximum Retry Attempts
+						</Label>
+						<Input
+							id="max-retry-attempts"
+							type="number"
+							min="0"
+							max={MAX_RETRY_ATTEMPTS}
+							step="1"
+							value={retryDraft}
+							onChange={(event) => setRetryDraft(event.target.value)}
+							onBlur={commitRetryAttempts}
+							onKeyDown={(event) => {
+								if (event.key === "Enter") {
+									event.currentTarget.blur();
+								}
+							}}
+							className="bg-gray-800 border-gray-600 text-white"
+						/>
+						{fieldErrors.max_retry_attempts && (
+							<p className="text-xs text-red-400">
+								{fieldErrors.max_retry_attempts}
+							</p>
+						)}
+						<p className="text-xs text-gray-500">
+							EventBridge Scheduler accepts 0–{MAX_RETRY_ATTEMPTS}.
+						</p>
+					</div>
+
+					<div className="space-y-2">
+						<Label htmlFor="dlq-arn">Dead-letter Queue ARN</Label>
+						<Input
+							id="dlq-arn"
+							value={dlqDraft}
+							onChange={(event) => setDlqDraft(event.target.value)}
+							onBlur={commitDlqArn}
+							onKeyDown={(event) => {
+								if (event.key === "Enter") {
+									event.currentTarget.blur();
+								}
+							}}
+							placeholder="arn:aws:sqs:ap-southeast-2:123456789012:task-dlq"
+							className="bg-gray-800 border-gray-600 text-white font-mono"
+						/>
+						{fieldErrors.dlq_arn && (
+							<p className="text-xs text-red-400">
+								{fieldErrors.dlq_arn}
+							</p>
+						)}
+						<p className="text-xs text-gray-500">
+							Optional standard SQS queue for failed deliveries.
+						</p>
+					</div>
 				</div>
 
 			</CardContent>

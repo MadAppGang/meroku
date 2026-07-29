@@ -19,10 +19,13 @@ export interface EventTask {
 export interface ScheduledTask {
 	name: string;
 	schedule: string;
+	timezone?: string;
 	docker_image?: string;
-	container_command?: string;
+	container_command?: string[];
 	cpu?: number;
 	memory?: number;
+	max_retry_attempts?: number;
+	dlq_arn?: string;
 	environment_variables?: Record<string, string>;
 	ecr_config?: ECRConfig;
 }

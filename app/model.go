@@ -46,6 +46,10 @@ type Env struct {
 	CloudFrontDistributions []CloudFront `yaml:"cloudfront_distributions,omitempty"`
 	// Custom Extensions (for SNS, SQS, Lambda, etc.)
 	Extensions Extensions `yaml:"extensions,omitempty"`
+	// ManageDNSRecords controls whether Terraform manages Route53 records for Amplify
+	// domains. Set true for a cross-account Route53 zone; absent uses the Amplify
+	// module default (false).
+	ManageDNSRecords *bool `yaml:"manage_dns_records,omitempty"`
 }
 
 type AppSync struct {
@@ -197,17 +201,25 @@ type Sqs struct {
 
 type ALB struct {
 	Enabled bool `yaml:"enabled"`
+	// IdleTimeout holds long-lived connections (SSE, streaming) open. Absent = AWS
+	// default of 60s; raise above the app's heartbeat interval. Optional pointer, so
+	// no migration is needed.
+	IdleTimeout *int `yaml:"idle_timeout,omitempty"`
 }
 
 type ScheduledTask struct {
-	Name                string     `yaml:"name"`
-	Enabled             *bool      `yaml:"enabled,omitempty"` // Schema v20: nil/true = deployed, false = config kept but not deployed
-	Schedule            string     `yaml:"schedule"`
-	ExternalDockerImage string     `yaml:"docker_image"`
-	ContainerCommand    string     `yaml:"container_command"`
-	CPU                 int        `yaml:"cpu,omitempty"`
-	Memory              int        `yaml:"memory,omitempty"`
-	ECRConfig           *ECRConfig `yaml:"ecr_config,omitempty"` // Schema v9
+	Name                string            `yaml:"name"`
+	Enabled             *bool             `yaml:"enabled,omitempty"` // Schema v20: nil/true = deployed, false = config kept but not deployed
+	Schedule            string            `yaml:"schedule"`
+	Timezone            string            `yaml:"timezone,omitempty"` // Schema v21: IANA timezone (default UTC)
+	ExternalDockerImage string            `yaml:"docker_image"`
+	ContainerCommand    []string          `yaml:"container_command,omitempty"` // Schema v21: real list (was scalar string)
+	CPU                 int               `yaml:"cpu,omitempty"`
+	Memory              int               `yaml:"memory,omitempty"`
+	MaxRetryAttempts    *int              `yaml:"max_retry_attempts,omitempty"`
+	DLQArn              string            `yaml:"dlq_arn,omitempty"`
+	EnvVariables        map[string]string `yaml:"environment_variables,omitempty"`
+	ECRConfig           *ECRConfig        `yaml:"ecr_config,omitempty"` // Schema v9
 }
 
 // EventBridgeRule defines a single EventBridge rule pattern (Schema v13)
@@ -227,11 +239,12 @@ type EventProcessorTask struct {
 	DetailTypes []string `yaml:"detail_types,omitempty"`
 	Sources     []string `yaml:"sources,omitempty"`
 	// Container configuration
-	ExternalDockerImage string     `yaml:"docker_image,omitempty"`
-	ContainerCommand    []string   `yaml:"container_command,omitempty"`
-	CPU                 int        `yaml:"cpu,omitempty"`
-	Memory              int        `yaml:"memory,omitempty"`
-	ECRConfig           *ECRConfig `yaml:"ecr_config,omitempty"` // Schema v9
+	ExternalDockerImage string            `yaml:"docker_image,omitempty"`
+	ContainerCommand    []string          `yaml:"container_command,omitempty"`
+	CPU                 int               `yaml:"cpu,omitempty"`
+	Memory              int               `yaml:"memory,omitempty"`
+	EnvVariables        map[string]string `yaml:"environment_variables,omitempty"`
+	ECRConfig           *ECRConfig        `yaml:"ecr_config,omitempty"` // Schema v9
 }
 
 type EnvVariable struct {

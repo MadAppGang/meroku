@@ -6,6 +6,7 @@ export interface InfrastructureConfig {
 	state_bucket?: string;
 	modules?: string;
 	state_file?: string;
+	manage_dns_records?: boolean;
 	ecr_account_id?: string;
 	ecr_account_region?: string;
 	slack_deployment_webhook?: string;
@@ -67,6 +68,12 @@ export interface InfrastructureConfig {
 	scheduled_tasks?: Array<{
 		name: string;
 		schedule: string;
+		timezone?: string;
+		docker_image?: string;
+		container_command?: string[] | string;
+		max_retry_attempts?: number;
+		dlq_arn?: string;
+		environment_variables?: Record<string, string>;
 	}>;
 
 	// Event tasks
@@ -75,6 +82,9 @@ export interface InfrastructureConfig {
 		rule_name: string;
 		sources: string[];
 		detail_types: string[];
+		docker_image?: string;
+		container_command?: string[];
+		environment_variables?: Record<string, string>;
 	}>;
 
 	// SES configuration

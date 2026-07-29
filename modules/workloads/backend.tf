@@ -33,15 +33,14 @@ resource "aws_ecs_service" "backend" {
     }
   }
 
-  # Use service_registries with explicitly created Cloud Map service
-  # This allows API Gateway to reference the service ARN directly
-  dynamic "service_registries" {
-    for_each = var.enable_alb ? [] : [1] # Only when using API Gateway
-    content {
-      registry_arn   = aws_service_discovery_service.backend[0].arn
-      container_name = local.backend_name
-      container_port = var.backend_image_port
-    }
+  # Registered with Cloud Map in BOTH ingress modes. This is NOT gated on enable_alb: AWS
+  # rejects removing service_registries from an existing service, so toggling it would strand
+  # the migration (see aws_service_discovery_service.backend below). The task can be in Cloud
+  # Map and an ALB target group at once; enable_alb only decides who routes to it.
+  service_registries {
+    registry_arn   = aws_service_discovery_service.backend[0].arn
+    container_name = local.backend_name
+    container_port = var.backend_image_port
   }
 
   tags = {
@@ -54,11 +53,25 @@ resource "aws_ecs_service" "backend" {
   }
 }
 
-# Create the Cloud Map service explicitly (instead of letting ECS Service Connect create it)
+# Create the Cloud Map service explicitly (instead of letting ECS Service Connect create it).
+#
+# This is created in BOTH ingress modes, on purpose. AWS does not allow removing
+# service_registries from a running ECS service — UpdateService silently ignores it, the task
+# stays registered, and deleting the Cloud Map service then fails with ResourceInUse. Gating
+# this on enable_alb therefore made switching to the ALB an un-appliable dead end. A task can
+# belong to Cloud Map and an ALB target group at the same time, so we simply keep the
+# registration and let enable_alb decide only who ROUTES to the task.
+#
+# count = 1 is kept (rather than dropping count) so the state address stays ...backend[0] and
+# existing deployments need no state move.
 resource "aws_service_discovery_service" "backend" {
-  count = var.enable_alb ? 0 : 1 # Only needed for API Gateway integration
+  count = 1
 
   name = local.backend_name
+
+  # On `terraform destroy`, ECS deregisters instances asynchronously; without this, deleting
+  # the service races that and fails with ResourceInUse.
+  force_destroy = true
 
   dns_config {
     namespace_id = aws_service_discovery_private_dns_namespace.local.id
@@ -181,14 +194,15 @@ resource "aws_security_group" "backend" {
     description = "Allow traffic from VPC (API Gateway VPC Link)"
   }
 
-  # Allow traffic from ALB if enabled
+  # Allow traffic from the ALB if enabled. The ALB's security group is created in
+  # modules/alb, so it is passed in — there is no aws_security_group.alb here.
   dynamic "ingress" {
-    for_each = var.enable_alb ? [1] : []
+    for_each = var.enable_alb && var.alb_security_group_id != "" ? [1] : []
     content {
       protocol        = "tcp"
       from_port       = var.backend_image_port
       to_port         = var.backend_image_port
-      security_groups = [aws_security_group.alb[0].id]
+      security_groups = [var.alb_security_group_id]
       description     = "Allow traffic from ALB"
     }
   }
