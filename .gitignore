@@ -58,3 +58,16 @@ project/backup/
 .claudemem/vectors/code_chunks.lance
 
 .mnemex/
+
+# Local agent/tooling runtime state (not team history)
+.claude/scheduled_tasks.lock
+.claude/cache/
+.claude/.statusline-worktree-*
+.claude/_profiles/
+.claude/worktrees/
+**/.claude/.coaching/
+.agents/
+gtd/sessions/
+
+# Real infrastructure identifiers - THIS REPO IS PUBLIC, see CLAUDE.md
+modules/neon/scripts/db-access.json
