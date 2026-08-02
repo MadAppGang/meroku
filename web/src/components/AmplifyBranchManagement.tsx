@@ -178,7 +178,11 @@ export function AmplifyBranchManagement({
 	};
 
 	// Update a single env var in local state (no config save)
-	const updateLocalEnvVar = (id: string, field: "key" | "value", newValue: string) => {
+	const updateLocalEnvVar = (
+		id: string,
+		field: "key" | "value",
+		newValue: string,
+	) => {
 		setEditingEnvVars((prev) =>
 			prev.map((entry) =>
 				entry.id === id ? { ...entry, [field]: newValue } : entry,
@@ -459,7 +463,11 @@ export function AmplifyBranchManagement({
 														<Input
 															value={entry.key}
 															onChange={(e) =>
-																updateLocalEnvVar(entry.id, "key", e.target.value)
+																updateLocalEnvVar(
+																	entry.id,
+																	"key",
+																	e.target.value,
+																)
 															}
 															placeholder="KEY"
 															className="flex-1 bg-gray-900 border-gray-600 text-white font-mono text-sm"
@@ -467,7 +475,11 @@ export function AmplifyBranchManagement({
 														<Input
 															value={entry.value}
 															onChange={(e) =>
-																updateLocalEnvVar(entry.id, "value", e.target.value)
+																updateLocalEnvVar(
+																	entry.id,
+																	"value",
+																	e.target.value,
+																)
 															}
 															placeholder="VALUE"
 															className="flex-[2] bg-gray-900 border-gray-600 text-white font-mono text-sm"
@@ -562,9 +574,12 @@ export function AmplifyBranchManagement({
 											<p className="text-gray-400 text-xs mb-1">
 												Environment Variables
 											</p>
-											{Object.keys(branch.environment_variables || {}).length > 0 ? (
+											{Object.keys(branch.environment_variables || {}).length >
+											0 ? (
 												<div className="space-y-1 bg-gray-900 rounded p-2 max-h-32 overflow-y-auto">
-													{Object.entries(branch.environment_variables || {}).map(([key, value]) => (
+													{Object.entries(
+														branch.environment_variables || {},
+													).map(([key, value]) => (
 														<div key={key} className="text-xs font-mono">
 															<span className="text-gray-400">{key}=</span>
 															<span className="text-gray-300">{value}</span>

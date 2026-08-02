@@ -36,15 +36,18 @@ import { PricingBadge } from "./PricingBadge";
 
 // Convert CPU units (256, 512, 1024...) to vCPU display (0.25, 0.5, 1...)
 function formatCpuDisplay(cpu: string | number | undefined): string {
-	const units = typeof cpu === "string" ? Number.parseInt(cpu) : (cpu || 256);
+	const units = typeof cpu === "string" ? Number.parseInt(cpu, 10) : cpu || 256;
 	const vcpu = units / 1024;
 	return vcpu < 1 ? vcpu.toFixed(2) : vcpu.toFixed(0);
 }
 
 // Convert memory MB (512, 1024, 2048...) to readable display (512MB, 1GB, 2GB...)
 function formatMemoryDisplay(memory: string | number | undefined): string {
-	const mb = typeof memory === "string" ? Number.parseInt(memory) : (memory || 512);
-	return mb >= 1024 ? `${(mb / 1024).toFixed(mb % 1024 === 0 ? 0 : 1)}GB` : `${mb}MB`;
+	const mb =
+		typeof memory === "string" ? Number.parseInt(memory, 10) : memory || 512;
+	return mb >= 1024
+		? `${(mb / 1024).toFixed(mb % 1024 === 0 ? 0 : 1)}GB`
+		: `${mb}MB`;
 }
 
 const serviceIcons = {
@@ -443,9 +446,13 @@ export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
 									)}
 								</div>
 								<div className="flex items-center gap-2 text-gray-300">
-									<span>{formatCpuDisplay(data.configProperties.cpu)} vCPU</span>
+									<span>
+										{formatCpuDisplay(data.configProperties.cpu)} vCPU
+									</span>
 									<span className="text-gray-500">•</span>
-									<span>{formatMemoryDisplay(data.configProperties.memory)}</span>
+									<span>
+										{formatMemoryDisplay(data.configProperties.memory)}
+									</span>
 								</div>
 							</div>
 						</div>

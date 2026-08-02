@@ -23,10 +23,7 @@ export function ScheduledTaskIAMPermissions({
 			icon: Container,
 			iconColor: "text-cyan-400",
 			trustedBy: "ecs-tasks.amazonaws.com",
-			permissions: [
-				"CloudWatch Logs (write)",
-				`SSM Parameters (${paramPath})`,
-			],
+			permissions: ["CloudWatch Logs (write)", `SSM Parameters (${paramPath})`],
 		},
 		{
 			name: `${config.project}_scheduler_${taskName}_task_execution_${config.env}`,
@@ -34,7 +31,11 @@ export function ScheduledTaskIAMPermissions({
 			icon: Cloud,
 			iconColor: "text-sky-400",
 			trustedBy: "ecs-tasks.amazonaws.com",
-			permissions: ["ECR (pull images)", "CloudWatch Logs (create)", "SSM (read secrets)"],
+			permissions: [
+				"ECR (pull images)",
+				"CloudWatch Logs (create)",
+				"SSM (read secrets)",
+			],
 		},
 		{
 			name: `${config.project}_scheduler_${taskName}_role_${config.env}`,
@@ -56,10 +57,7 @@ export function ScheduledTaskIAMPermissions({
 			>
 				<div className="space-y-4">
 					{roles.map((role, index) => (
-						<div
-							key={index}
-							className="p-3 bg-gray-900 rounded-lg space-y-2"
-						>
+						<div key={index} className="p-3 bg-gray-900 rounded-lg space-y-2">
 							<div className="flex items-center gap-2">
 								<div className={`p-1 rounded bg-gray-800 ${role.iconColor}`}>
 									<role.icon className="w-3.5 h-3.5" />
@@ -85,9 +83,7 @@ export function ScheduledTaskIAMPermissions({
 								))}
 							</div>
 
-							<p className="text-xs text-gray-600">
-								Trusted: {role.trustedBy}
-							</p>
+							<p className="text-xs text-gray-600">Trusted: {role.trustedBy}</p>
 						</div>
 					))}
 				</div>

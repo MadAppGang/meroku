@@ -1,9 +1,4 @@
-import {
-	CheckCircle,
-	Clock,
-	Send,
-	XCircle,
-} from "lucide-react";
+import { CheckCircle, Clock, Send, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
 	infrastructureApi,

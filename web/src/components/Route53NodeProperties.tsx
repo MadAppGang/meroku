@@ -1,6 +1,9 @@
 import { Globe, Info, Plus, Shield, Trash2 } from "lucide-react";
 import { useState } from "react";
-import type { AdditionalDomain, YamlInfrastructureConfig } from "../types/yamlConfig";
+import type {
+	AdditionalDomain,
+	YamlInfrastructureConfig,
+} from "../types/yamlConfig";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -51,7 +54,7 @@ export function Route53NodeProperties({
 			domain: {
 				enabled: checked,
 				// Auto-clear domain_name when disabling to prevent API domain creation
-				domain_name: checked ? (config.domain?.domain_name || "") : "",
+				domain_name: checked ? config.domain?.domain_name || "" : "",
 			},
 		});
 	};
@@ -146,7 +149,7 @@ export function Route53NodeProperties({
 
 	const removeAdditionalDomain = (index: number) => {
 		const additionalDomains = (config.domain?.additional_domains || []).filter(
-			(_: AdditionalDomain, i: number) => i !== index
+			(_: AdditionalDomain, i: number) => i !== index,
 		);
 		onConfigChange({
 			domain: {
@@ -164,7 +167,7 @@ export function Route53NodeProperties({
 	// Calculate the full domain based on settings
 	const fullDomain =
 		addPrefix && !config.is_prod ? `${config.env}.${domainName}` : domainName;
-// 	const apiDomain = `${apiPrefix}.${fullDomain}`;
+	// 	const apiDomain = `${apiPrefix}.${fullDomain}`;
 
 	return (
 		<div className="space-y-6">
@@ -245,7 +248,8 @@ export function Route53NodeProperties({
 										className="mt-1 bg-gray-800 border-gray-600 text-white"
 									/>
 									<p className="text-xs text-gray-400 mt-1">
-										Route 53 zone ID for existing hosted zone (leave empty to lookup by name)
+										Route 53 zone ID for existing hosted zone (leave empty to
+										lookup by name)
 									</p>
 								</div>
 							)}
@@ -332,7 +336,9 @@ export function Route53NodeProperties({
 														service.api_domain_prefix !== ""
 													}
 													onCheckedChange={(checked) => {
-														const updatedServices = [...(config.services || [])];
+														const updatedServices = [
+															...(config.services || []),
+														];
 														updatedServices[index] = {
 															...service,
 															api_domain_prefix: checked ? service.name : "",
@@ -342,30 +348,37 @@ export function Route53NodeProperties({
 												/>
 											</div>
 
-											{service.api_domain_prefix && service.api_domain_prefix !== "" && (
-												<div className="space-y-2 ml-4">
-													<Label htmlFor={`api-prefix-${service.name}`}>
-														API Domain Prefix
-													</Label>
-													<Input
-														id={`api-prefix-${service.name}`}
-														value={service.api_domain_prefix}
-														onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-															const updatedServices = [...(config.services || [])];
-															updatedServices[index] = {
-																...service,
-																api_domain_prefix: e.target.value || service.name,
-															};
-															onConfigChange({ services: updatedServices });
-														}}
-														placeholder={service.name}
-														className="bg-gray-800 border-gray-600 text-white"
-													/>
-													<p className="text-xs text-gray-400">
-														Subdomain prefix for this service (default: {service.name})
-													</p>
-												</div>
-											)}
+											{service.api_domain_prefix &&
+												service.api_domain_prefix !== "" && (
+													<div className="space-y-2 ml-4">
+														<Label htmlFor={`api-prefix-${service.name}`}>
+															API Domain Prefix
+														</Label>
+														<Input
+															id={`api-prefix-${service.name}`}
+															value={service.api_domain_prefix}
+															onChange={(
+																e: React.ChangeEvent<HTMLInputElement>,
+															) => {
+																const updatedServices = [
+																	...(config.services || []),
+																];
+																updatedServices[index] = {
+																	...service,
+																	api_domain_prefix:
+																		e.target.value || service.name,
+																};
+																onConfigChange({ services: updatedServices });
+															}}
+															placeholder={service.name}
+															className="bg-gray-800 border-gray-600 text-white"
+														/>
+														<p className="text-xs text-gray-400">
+															Subdomain prefix for this service (default:{" "}
+															{service.name})
+														</p>
+													</div>
+												)}
 										</div>
 									))}
 								</div>
@@ -409,14 +422,19 @@ export function Route53NodeProperties({
 																<code className="text-green-300">
 																	{config.domain.api_domain_prefix}.{fullDomain}
 																</code>
-																<span className="text-gray-500 ml-2">(backend)</span>
+																<span className="text-gray-500 ml-2">
+																	(backend)
+																</span>
 															</div>
 														</div>
 													) : (
 														<div className="flex items-start gap-2 mb-1">
 															<Info className="w-3 h-3 text-yellow-400 mt-0.5" />
 															<span className="text-gray-400">
-																Backend: <span className="text-yellow-400">disabled</span>
+																Backend:{" "}
+																<span className="text-yellow-400">
+																	disabled
+																</span>
 															</span>
 														</div>
 													)}
@@ -425,7 +443,8 @@ export function Route53NodeProperties({
 													{config.services
 														?.filter(
 															(s) =>
-																s.api_domain_prefix && s.api_domain_prefix !== ""
+																s.api_domain_prefix &&
+																s.api_domain_prefix !== "",
 														)
 														.map((service) => (
 															<div
@@ -446,10 +465,11 @@ export function Route53NodeProperties({
 
 													{(!config.domain?.api_domain_prefix ||
 														config.domain.api_domain_prefix === "") &&
-														(!config.services?.some(
+														!config.services?.some(
 															(s) =>
-																s.api_domain_prefix && s.api_domain_prefix !== ""
-														)) && (
+																s.api_domain_prefix &&
+																s.api_domain_prefix !== "",
+														) && (
 															<div className="flex items-start gap-2">
 																<Info className="w-3 h-3 text-yellow-400 mt-0.5" />
 																<span className="text-gray-400">
@@ -493,7 +513,8 @@ export function Route53NodeProperties({
 									<div>
 										<Label className="text-base">Additional Domains</Label>
 										<p className="text-xs text-gray-400 mt-1">
-											Add other domains for CloudFront and services (e.g., otherdomain.com)
+											Add other domains for CloudFront and services (e.g.,
+											otherdomain.com)
 										</p>
 									</div>
 									<Button
@@ -516,7 +537,10 @@ export function Route53NodeProperties({
 													placeholder="otherdomain.com"
 													value={newDomain.domain}
 													onChange={(e) =>
-														setNewDomain({ ...newDomain, domain: e.target.value })
+														setNewDomain({
+															...newDomain,
+															domain: e.target.value,
+														})
 													}
 													className="bg-gray-800 border-gray-600"
 												/>
@@ -536,8 +560,12 @@ export function Route53NodeProperties({
 														<SelectValue />
 													</SelectTrigger>
 													<SelectContent>
-														<SelectItem value="create">Create new Route 53 zone</SelectItem>
-														<SelectItem value="existing">Use existing zone</SelectItem>
+														<SelectItem value="create">
+															Create new Route 53 zone
+														</SelectItem>
+														<SelectItem value="existing">
+															Use existing zone
+														</SelectItem>
 													</SelectContent>
 												</Select>
 											</div>
@@ -550,7 +578,10 @@ export function Route53NodeProperties({
 													placeholder="Z1234567890ABC"
 													value={newDomain.zone_id}
 													onChange={(e) =>
-														setNewDomain({ ...newDomain, zone_id: e.target.value })
+														setNewDomain({
+															...newDomain,
+															zone_id: e.target.value,
+														})
 													}
 													className="bg-gray-800 border-gray-600"
 												/>
@@ -570,7 +601,10 @@ export function Route53NodeProperties({
 											<Switch
 												checked={newDomain.create_certificate}
 												onCheckedChange={(checked) =>
-													setNewDomain({ ...newDomain, create_certificate: checked })
+													setNewDomain({
+														...newDomain,
+														create_certificate: checked,
+													})
 												}
 											/>
 										</div>
@@ -601,23 +635,31 @@ export function Route53NodeProperties({
 												<div className="space-y-2">
 													<div className="flex items-center gap-2">
 														<Globe className="h-4 w-4 text-blue-400" />
-														<span className="font-medium">{additionalDomain.domain}</span>
+														<span className="font-medium">
+															{additionalDomain.domain}
+														</span>
 													</div>
 													<div className="flex items-center gap-2 text-xs text-gray-400">
 														<Badge variant="secondary" className="text-xs">
-															{additionalDomain.create_zone ? "New Zone" : "Existing Zone"}
+															{additionalDomain.create_zone
+																? "New Zone"
+																: "Existing Zone"}
 														</Badge>
 														{additionalDomain.create_certificate !== false && (
-															<Badge variant="outline" className="text-xs text-green-400 border-green-600">
+															<Badge
+																variant="outline"
+																className="text-xs text-green-400 border-green-600"
+															>
 																<Shield className="h-3 w-3 mr-1" />
 																Certificate
 															</Badge>
 														)}
-														{!additionalDomain.create_zone && additionalDomain.zone_id && (
-															<span className="text-gray-500">
-																Zone: {additionalDomain.zone_id}
-															</span>
-														)}
+														{!additionalDomain.create_zone &&
+															additionalDomain.zone_id && (
+																<span className="text-gray-500">
+																	Zone: {additionalDomain.zone_id}
+																</span>
+															)}
 													</div>
 												</div>
 												<Button
@@ -642,7 +684,9 @@ export function Route53NodeProperties({
 														<Info className="h-3 w-3 text-green-400" />
 														<span>
 															ACM certificate for{" "}
-															<code className="text-green-300">*.{additionalDomain.domain}</code>{" "}
+															<code className="text-green-300">
+																*.{additionalDomain.domain}
+															</code>{" "}
 															in us-east-1
 														</span>
 													</div>
@@ -655,14 +699,15 @@ export function Route53NodeProperties({
 												</div>
 											</div>
 										</div>
-									)
+									),
 								)}
 
 								{/* Empty state */}
 								{(!config.domain?.additional_domains ||
 									config.domain.additional_domains.length === 0) && (
 									<div className="p-4 border border-dashed border-gray-700 rounded-lg text-center text-gray-500 text-sm">
-										No additional domains configured. Add domains here to use them with CloudFront.
+										No additional domains configured. Add domains here to use
+										them with CloudFront.
 									</div>
 								)}
 							</div>

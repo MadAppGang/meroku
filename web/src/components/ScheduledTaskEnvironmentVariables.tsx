@@ -1,13 +1,5 @@
-import {
-	Check,
-	Edit2,
-	Info,
-	Plus,
-	Settings,
-	Trash2,
-	X,
-} from "lucide-react";
-import { useState, useEffect } from "react";
+import { Check, Edit2, Info, Plus, Settings, Trash2, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import type { ComponentNode } from "../types";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import { Alert, AlertDescription } from "./ui/alert";
@@ -194,9 +186,7 @@ export function ScheduledTaskEnvironmentVariables({
 									value={newVarName}
 									onChange={(e) =>
 										setNewVarName(
-											e.target.value
-												.toUpperCase()
-												.replace(/[^A-Z0-9_]/g, "_"),
+											e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "_"),
 										)
 									}
 									className="mt-1"

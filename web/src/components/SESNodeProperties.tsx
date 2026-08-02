@@ -17,8 +17,8 @@ import {
 } from "lucide-react";
 import { useId, useState } from "react";
 import type {
-	SESDomain,
 	SESConfig,
+	SESDomain,
 	YamlInfrastructureConfig,
 } from "../types/yamlConfig";
 import { Alert, AlertDescription } from "./ui/alert";
@@ -108,7 +108,6 @@ export function SESNodeProperties({
 	};
 
 	const allManagedDomains = getAllManagedDomains();
-
 
 	// Check if a domain will be auto-managed by Route53, returns the matching managed domain
 	const getAutoManagedParent = (domain: string): string | null => {
@@ -445,7 +444,9 @@ export function SESNodeProperties({
 												handleUpdateDomain(domain.domain, updates)
 											}
 											isAutoManaged={isDomainAutoManaged(domain.domain)}
-											managedZoneDomain={getAutoManagedParent(domain.domain) || ""}
+											managedZoneDomain={
+												getAutoManagedParent(domain.domain) || ""
+											}
 										/>
 									))}
 								</div>
@@ -952,7 +953,8 @@ function DomainCard({
 						) : (
 							<p className="text-xs text-yellow-400">
 								<AlertCircle className="w-3 h-3 inline mr-1" />
-								DNS records must be added manually (domain not managed by Route53)
+								DNS records must be added manually (domain not managed by
+								Route53)
 							</p>
 						)}
 					</div>

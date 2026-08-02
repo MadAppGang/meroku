@@ -18,9 +18,13 @@ import { Label } from "./ui/label";
  */
 function calculateDomainPreview(
 	subdomainPrefix: string,
-	config?: YamlInfrastructureConfig
+	config?: YamlInfrastructureConfig,
 ): string {
-	if (!subdomainPrefix || !config?.domain?.enabled || !config?.domain?.domain_name) {
+	if (
+		!subdomainPrefix ||
+		!config?.domain?.enabled ||
+		!config?.domain?.domain_name
+	) {
 		return "";
 	}
 
@@ -158,11 +162,11 @@ export function AmplifyDomainSettings({
 							<div className="mt-3 p-3 bg-gray-800/50 border border-gray-700 rounded-lg">
 								<div className="flex items-center gap-2 mb-1">
 									<Globe className="w-4 h-4 text-blue-400" />
-									<span className="text-xs font-medium text-gray-400">Your Domain</span>
+									<span className="text-xs font-medium text-gray-400">
+										Your Domain
+									</span>
 								</div>
-								<p className="text-sm text-white font-mono">
-									{currentDomain}
-								</p>
+								<p className="text-sm text-white font-mono">{currentDomain}</p>
 								<div className="mt-2 flex items-center gap-2">
 									<CheckCircle className="w-3 h-3 text-green-400" />
 									<span className="text-xs text-green-400">
@@ -309,8 +313,7 @@ export function AmplifyDomainSettings({
 																key={subdomain}
 																className="text-sm text-gray-300 font-mono"
 															>
-																{subdomain}.{currentDomain} →{" "}
-																{branch.name}
+																{subdomain}.{currentDomain} → {branch.name}
 															</p>
 														))}
 												</div>

@@ -2,6 +2,7 @@ import type React from "react";
 import { useMemo, useState } from "react";
 import type { Service } from "../types/components";
 import type { ECRConfig, YamlInfrastructureConfig } from "../types/yamlConfig";
+import { ECRConfigSection } from "./ECRConfigSection";
 import { Button } from "./ui/button";
 import {
 	Dialog,
@@ -21,7 +22,6 @@ import {
 } from "./ui/select";
 import { Separator } from "./ui/separator";
 import { Textarea } from "./ui/textarea";
-import { ECRConfigSection } from "./ECRConfigSection";
 
 interface AddServiceDialogProps {
 	open: boolean;
@@ -55,11 +55,18 @@ export function AddServiceDialog({
 
 	// Build available ECR sources from all service types
 	const availableSources = useMemo(() => {
-		const sources: Array<{ name: string; type: "services" | "event_processor_tasks" | "scheduled_tasks"; displayType: string }> = [];
+		const sources: Array<{
+			name: string;
+			type: "services" | "event_processor_tasks" | "scheduled_tasks";
+			displayType: string;
+		}> = [];
 
 		// Add services with create_ecr mode
-		config.services?.forEach(svc => {
-			if (svc.name !== formData.name && (!svc.ecr_config || svc.ecr_config.mode === "create_ecr")) {
+		config.services?.forEach((svc) => {
+			if (
+				svc.name !== formData.name &&
+				(!svc.ecr_config || svc.ecr_config.mode === "create_ecr")
+			) {
 				sources.push({
 					name: svc.name,
 					type: "services",
@@ -69,7 +76,7 @@ export function AddServiceDialog({
 		});
 
 		// Add event processors with create_ecr mode
-		config.event_processor_tasks?.forEach(ep => {
+		config.event_processor_tasks?.forEach((ep) => {
 			if (!ep.ecr_config || ep.ecr_config.mode === "create_ecr") {
 				sources.push({
 					name: ep.name,
@@ -80,7 +87,7 @@ export function AddServiceDialog({
 		});
 
 		// Add scheduled tasks with create_ecr mode
-		config.scheduled_tasks?.forEach(st => {
+		config.scheduled_tasks?.forEach((st) => {
 			if (!st.ecr_config || st.ecr_config.mode === "create_ecr") {
 				sources.push({
 					name: st.name,
@@ -109,7 +116,8 @@ export function AddServiceDialog({
 
 		// Docker image is only required for manual_repo mode
 		if (ecrConfig.mode === "manual_repo" && !formData.docker_image) {
-			newErrors.docker_image = "Docker image is required for manual repository mode";
+			newErrors.docker_image =
+				"Docker image is required for manual repository mode";
 		}
 
 		// Validate ECR config
@@ -242,7 +250,8 @@ export function AddServiceDialog({
 									onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
 										setFormData({
 											...formData,
-											container_port: Number.parseInt(e.target.value) || 8080,
+											container_port:
+												Number.parseInt(e.target.value, 10) || 8080,
 										})
 									}
 								/>
@@ -257,7 +266,7 @@ export function AddServiceDialog({
 									onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
 										setFormData({
 											...formData,
-											desired_count: Number.parseInt(e.target.value) || 1,
+											desired_count: Number.parseInt(e.target.value, 10) || 1,
 										})
 									}
 									min="0"
@@ -272,7 +281,10 @@ export function AddServiceDialog({
 								<Select
 									value={formData.cpu.toString()}
 									onValueChange={(value: string) =>
-										setFormData({ ...formData, cpu: Number.parseInt(value) })
+										setFormData({
+											...formData,
+											cpu: Number.parseInt(value, 10),
+										})
 									}
 								>
 									<SelectTrigger id="cpu">
@@ -293,7 +305,10 @@ export function AddServiceDialog({
 								<Select
 									value={formData.memory.toString()}
 									onValueChange={(value: string) =>
-										setFormData({ ...formData, memory: Number.parseInt(value) })
+										setFormData({
+											...formData,
+											memory: Number.parseInt(value, 10),
+										})
 									}
 								>
 									<SelectTrigger id="memory">

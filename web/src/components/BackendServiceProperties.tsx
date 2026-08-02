@@ -85,10 +85,12 @@ export function BackendServiceProperties({
 						<div className="flex items-start gap-2">
 							<Info className="w-4 h-4 text-blue-400 mt-0.5 flex-shrink-0" />
 							<p className="text-xs text-gray-300">
-								Automatic deploys are <strong>off</strong> for the backend. Pushes
-								and config changes are still delivered to the CI/CD Lambda and
-								logged as
-								<code className="mx-1">auto_deploy is disabled for backend</code>
+								Automatic deploys are <strong>off</strong> for the backend.
+								Pushes and config changes are still delivered to the CI/CD
+								Lambda and logged as
+								<code className="mx-1">
+									auto_deploy is disabled for backend
+								</code>
 								rather than silently doing nothing. Manual deploys still work.
 							</p>
 						</div>
@@ -231,7 +233,7 @@ export function BackendServiceProperties({
 						value={config.workload?.backend_image_port || 8080}
 						onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
 							handleWorkloadChange({
-								backend_image_port: parseInt(e.target.value) || 8080,
+								backend_image_port: parseInt(e.target.value, 10) || 8080,
 							})
 						}
 						placeholder="8080"
@@ -292,7 +294,9 @@ export function BackendServiceProperties({
 										Subdomain prefix for API Gateway (creates{" "}
 										<code className="text-blue-300">
 											{config.domain.api_domain_prefix || "api"}.
-											{(config.domain.add_env_domain_prefix ?? true) ? `${config.env}.` : ""}
+											{(config.domain.add_env_domain_prefix ?? true)
+												? `${config.env}.`
+												: ""}
 											{config.domain.domain_name}
 										</code>
 										)

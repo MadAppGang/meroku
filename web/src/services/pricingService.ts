@@ -15,7 +15,7 @@
 export interface AWSPriceRates {
 	region: string;
 	lastUpdate: string;
-	source: 'aws_api' | 'fallback';
+	source: "aws_api" | "fallback";
 	pricingDate?: string; // When pricing was sourced (e.g., "2025-01-15")
 
 	// Compute pricing
@@ -77,7 +77,7 @@ export interface AWSPriceRates {
 	};
 }
 
-const STORAGE_KEY = 'aws_pricing_rates';
+const STORAGE_KEY = "aws_pricing_rates";
 const CACHE_DURATION = 60 * 60 * 1000; // 1 hour
 
 /**
@@ -89,7 +89,7 @@ const CACHE_DURATION = 60 * 60 * 1000; // 1 hour
  * @throws Error if fetch fails and no cache available
  */
 export async function fetchPricingRates(
-	region = 'us-east-1',
+	region = "us-east-1",
 ): Promise<AWSPriceRates> {
 	try {
 		const response = await fetch(`/api/pricing/rates?region=${region}`);
@@ -115,12 +115,12 @@ export async function fetchPricingRates(
 
 		return rates;
 	} catch (error) {
-		console.error('[Pricing] Failed to fetch rates:', error);
+		console.error("[Pricing] Failed to fetch rates:", error);
 
 		// Try to use cached data as fallback
 		const cached = getCachedRates();
 		if (cached) {
-			console.warn('[Pricing] Using cached rates due to fetch error');
+			console.warn("[Pricing] Using cached rates due to fetch error");
 			return cached;
 		}
 
@@ -142,13 +142,13 @@ export function getCachedRates(): AWSPriceRates | null {
 
 		// Check if cache is stale (older than 1 hour)
 		if (Date.now() - timestamp > CACHE_DURATION) {
-			console.log('[Pricing] Cache is stale, will refresh');
+			console.log("[Pricing] Cache is stale, will refresh");
 			return null;
 		}
 
 		return rates;
 	} catch (error) {
-		console.error('[Pricing] Error reading cache:', error);
+		console.error("[Pricing] Error reading cache:", error);
 		return null;
 	}
 }
@@ -159,7 +159,7 @@ export function getCachedRates(): AWSPriceRates | null {
  */
 export function clearPricingCache(): void {
 	sessionStorage.removeItem(STORAGE_KEY);
-	console.log('[Pricing] Cache cleared');
+	console.log("[Pricing] Cache cleared");
 }
 
 /**

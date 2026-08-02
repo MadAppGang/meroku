@@ -7,12 +7,6 @@ import type {
 	CloudFrontOrigin,
 	YamlInfrastructureConfig,
 } from "../types/yamlConfig";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipProvider,
-	TooltipTrigger,
-} from "./ui/tooltip";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -26,6 +20,12 @@ import {
 } from "./ui/select";
 import { Separator } from "./ui/separator";
 import { Switch } from "./ui/switch";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+} from "./ui/tooltip";
 
 interface CloudFrontNodePropertiesProps {
 	config: YamlInfrastructureConfig;
@@ -47,7 +47,11 @@ export function CloudFrontNodeProperties({
 		type: "amplify",
 	});
 	const [showAddOrigin, setShowAddOrigin] = useState(false);
-	const [newZone, setNewZone] = useState<{ domain: string; create_zone: boolean; zone_id: string }>({
+	const [newZone, setNewZone] = useState<{
+		domain: string;
+		create_zone: boolean;
+		zone_id: string;
+	}>({
 		domain: "",
 		create_zone: true,
 		zone_id: "",
@@ -64,7 +68,7 @@ export function CloudFrontNodeProperties({
 
 	const updateDistribution = (updates: Partial<CloudFrontConfig>) => {
 		const updatedDistributions = distributions.map((d) =>
-			d.name === distributionName ? { ...d, ...updates } : d
+			d.name === distributionName ? { ...d, ...updates } : d,
 		);
 		onConfigChange?.({
 			cloudfront_distributions: updatedDistributions,
@@ -73,14 +77,17 @@ export function CloudFrontNodeProperties({
 
 	const addDomainAlias = () => {
 		if (!newDomainAlias.trim()) return;
-		const aliases = [...(distribution.domain_aliases || []), newDomainAlias.trim()];
+		const aliases = [
+			...(distribution.domain_aliases || []),
+			newDomainAlias.trim(),
+		];
 		updateDistribution({ domain_aliases: aliases });
 		setNewDomainAlias("");
 	};
 
 	const removeDomainAlias = (index: number) => {
 		const aliases = (distribution.domain_aliases || []).filter(
-			(_: string, i: number) => i !== index
+			(_: string, i: number) => i !== index,
 		);
 		updateDistribution({ domain_aliases: aliases });
 	};
@@ -98,7 +105,7 @@ export function CloudFrontNodeProperties({
 
 	const removeOrigin = (index: number) => {
 		const origins = (distribution.origins || []).filter(
-			(_: CloudFrontOrigin, i: number) => i !== index
+			(_: CloudFrontOrigin, i: number) => i !== index,
 		);
 		updateDistribution({ origins });
 	};
@@ -121,18 +128,21 @@ export function CloudFrontNodeProperties({
 
 	const removeAdditionalZone = (index: number) => {
 		const zones = (distribution.additional_zones || []).filter(
-			(_: CloudFrontAdditionalZone, i: number) => i !== index
+			(_: CloudFrontAdditionalZone, i: number) => i !== index,
 		);
 		updateDistribution({ additional_zones: zones });
 	};
 
 	// Get the URL pattern for an origin (from cache_behaviors or default)
-	const getOriginUrlPattern = (originName: string, originIndex: number): string => {
+	const getOriginUrlPattern = (
+		originName: string,
+		originIndex: number,
+	): string => {
 		// First origin is always the default (handles everything not matched)
 		if (originIndex === 0) return "/*";
 		// Find the cache behavior for this origin
 		const behavior = distribution.cache_behaviors?.find(
-			(b) => b.origin_name === originName
+			(b) => b.origin_name === originName,
 		);
 		return behavior?.path_pattern || "";
 	};
@@ -141,18 +151,20 @@ export function CloudFrontNodeProperties({
 	const updateOriginUrlPattern = (originName: string, pattern: string) => {
 		const existingBehaviors = distribution.cache_behaviors || [];
 		const existingIndex = existingBehaviors.findIndex(
-			(b) => b.origin_name === originName
+			(b) => b.origin_name === originName,
 		);
 
 		let newBehaviors: CloudFrontCacheBehavior[];
 
 		if (pattern.trim() === "") {
 			// Remove the behavior if pattern is empty
-			newBehaviors = existingBehaviors.filter((b) => b.origin_name !== originName);
+			newBehaviors = existingBehaviors.filter(
+				(b) => b.origin_name !== originName,
+			);
 		} else if (existingIndex >= 0) {
 			// Update existing behavior
 			newBehaviors = existingBehaviors.map((b, i) =>
-				i === existingIndex ? { ...b, path_pattern: pattern.trim() } : b
+				i === existingIndex ? { ...b, path_pattern: pattern.trim() } : b,
 			);
 		} else {
 			// Add new behavior
@@ -233,21 +245,23 @@ export function CloudFrontNodeProperties({
 								<Plus className="h-4 w-4" />
 							</Button>
 						</div>
-						{distribution.domain_aliases?.map((alias: string, index: number) => (
-							<div
-								key={`alias-${alias}`}
-								className="flex items-center justify-between p-2 bg-muted rounded-md"
-							>
-								<code className="text-sm">{alias}</code>
-								<Button
-									variant="ghost"
-									size="sm"
-									onClick={() => removeDomainAlias(index)}
+						{distribution.domain_aliases?.map(
+							(alias: string, index: number) => (
+								<div
+									key={`alias-${alias}`}
+									className="flex items-center justify-between p-2 bg-muted rounded-md"
 								>
-									<Trash2 className="h-4 w-4 text-destructive" />
-								</Button>
-							</div>
-						))}
+									<code className="text-sm">{alias}</code>
+									<Button
+										variant="ghost"
+										size="sm"
+										onClick={() => removeDomainAlias(index)}
+									>
+										<Trash2 className="h-4 w-4 text-destructive" />
+									</Button>
+								</div>
+							),
+						)}
 					</div>
 
 					{/* Additional Zones */}
@@ -278,7 +292,9 @@ export function CloudFrontNodeProperties({
 											<Input
 												placeholder="otherdomain.com"
 												value={newZone.domain}
-												onChange={(e) => setNewZone({ ...newZone, domain: e.target.value })}
+												onChange={(e) =>
+													setNewZone({ ...newZone, domain: e.target.value })
+												}
 											/>
 										</div>
 										<div className="space-y-2">
@@ -286,15 +302,22 @@ export function CloudFrontNodeProperties({
 											<Select
 												value={newZone.create_zone ? "create" : "existing"}
 												onValueChange={(value) =>
-													setNewZone({ ...newZone, create_zone: value === "create" })
+													setNewZone({
+														...newZone,
+														create_zone: value === "create",
+													})
 												}
 											>
 												<SelectTrigger>
 													<SelectValue />
 												</SelectTrigger>
 												<SelectContent>
-													<SelectItem value="create">Create new zone</SelectItem>
-													<SelectItem value="existing">Use existing zone</SelectItem>
+													<SelectItem value="create">
+														Create new zone
+													</SelectItem>
+													<SelectItem value="existing">
+														Use existing zone
+													</SelectItem>
 												</SelectContent>
 											</Select>
 										</div>
@@ -306,7 +329,9 @@ export function CloudFrontNodeProperties({
 											<Input
 												placeholder="Z1234567890ABC"
 												value={newZone.zone_id}
-												onChange={(e) => setNewZone({ ...newZone, zone_id: e.target.value })}
+												onChange={(e) =>
+													setNewZone({ ...newZone, zone_id: e.target.value })
+												}
 											/>
 										</div>
 									)}
@@ -326,31 +351,35 @@ export function CloudFrontNodeProperties({
 								</div>
 							)}
 
-							{distribution.additional_zones?.map((zone: CloudFrontAdditionalZone, index: number) => (
-								<div
-									key={`zone-${zone.domain}`}
-									className="flex items-center justify-between p-3 border rounded-lg"
-								>
-									<div>
-										<div className="font-medium">{zone.domain}</div>
-										<div className="text-sm text-muted-foreground">
-											{zone.create_zone ? "Will create new zone" : `Zone ID: ${zone.zone_id}`}
+							{distribution.additional_zones?.map(
+								(zone: CloudFrontAdditionalZone, index: number) => (
+									<div
+										key={`zone-${zone.domain}`}
+										className="flex items-center justify-between p-3 border rounded-lg"
+									>
+										<div>
+											<div className="font-medium">{zone.domain}</div>
+											<div className="text-sm text-muted-foreground">
+												{zone.create_zone
+													? "Will create new zone"
+													: `Zone ID: ${zone.zone_id}`}
+											</div>
+										</div>
+										<div className="flex items-center gap-2">
+											<Badge variant="secondary">
+												{zone.create_zone ? "Create" : "Existing"}
+											</Badge>
+											<Button
+												variant="ghost"
+												size="sm"
+												onClick={() => removeAdditionalZone(index)}
+											>
+												<Trash2 className="h-4 w-4 text-destructive" />
+											</Button>
 										</div>
 									</div>
-									<div className="flex items-center gap-2">
-										<Badge variant="secondary">
-											{zone.create_zone ? "Create" : "Existing"}
-										</Badge>
-										<Button
-											variant="ghost"
-											size="sm"
-											onClick={() => removeAdditionalZone(index)}
-										>
-											<Trash2 className="h-4 w-4 text-destructive" />
-										</Button>
-									</div>
-								</div>
-							))}
+								),
+							)}
 						</div>
 					)}
 
@@ -456,7 +485,8 @@ export function CloudFrontNodeProperties({
 												<p className="text-xs text-muted-foreground">
 													Bucket name:{" "}
 													<code className="text-xs">
-														{config?.project}-{config?.env}-cf-{distribution.name}-{newOrigin.name || "origin"}
+														{config?.project}-{config?.env}-cf-
+														{distribution.name}-{newOrigin.name || "origin"}
 													</code>
 												</p>
 											</div>
@@ -467,7 +497,10 @@ export function CloudFrontNodeProperties({
 													placeholder="my-bucket"
 													value={newOrigin.bucket_name || ""}
 													onChange={(e) =>
-														setNewOrigin({ ...newOrigin, bucket_name: e.target.value })
+														setNewOrigin({
+															...newOrigin,
+															bucket_name: e.target.value,
+														})
 													}
 												/>
 											</div>
@@ -482,7 +515,10 @@ export function CloudFrontNodeProperties({
 											placeholder="api.example.com"
 											value={newOrigin.domain_name || ""}
 											onChange={(e) =>
-												setNewOrigin({ ...newOrigin, domain_name: e.target.value })
+												setNewOrigin({
+													...newOrigin,
+													domain_name: e.target.value,
+												})
 											}
 										/>
 									</div>
@@ -503,85 +539,92 @@ export function CloudFrontNodeProperties({
 							</div>
 						)}
 
-						{distribution.origins?.map((origin: CloudFrontOrigin, index: number) => (
-							<div
-								key={`origin-${origin.name}`}
-								className="p-3 border rounded-lg space-y-3"
-							>
-								<div className="flex items-center justify-between">
-									<div className="flex items-center gap-3">
-										{getOriginTypeIcon(origin.type)}
-										<div>
-											<div className="font-medium">{origin.name}</div>
-											<div className="text-sm text-muted-foreground">
-												{origin.type === "amplify" && `Amplify: ${origin.amplify_app_name}`}
-												{origin.type === "s3" && (
-													origin.create_bucket
-														? `S3: ${config.project}-${config.env}-cf-${distribution.name}-${origin.name} (auto-created)`
-														: `S3: ${origin.bucket_name}`
-												)}
-												{origin.type === "alb" && "Application Load Balancer"}
-												{origin.type === "custom" && origin.domain_name}
+						{distribution.origins?.map(
+							(origin: CloudFrontOrigin, index: number) => (
+								<div
+									key={`origin-${origin.name}`}
+									className="p-3 border rounded-lg space-y-3"
+								>
+									<div className="flex items-center justify-between">
+										<div className="flex items-center gap-3">
+											{getOriginTypeIcon(origin.type)}
+											<div>
+												<div className="font-medium">{origin.name}</div>
+												<div className="text-sm text-muted-foreground">
+													{origin.type === "amplify" &&
+														`Amplify: ${origin.amplify_app_name}`}
+													{origin.type === "s3" &&
+														(origin.create_bucket
+															? `S3: ${config.project}-${config.env}-cf-${distribution.name}-${origin.name} (auto-created)`
+															: `S3: ${origin.bucket_name}`)}
+													{origin.type === "alb" && "Application Load Balancer"}
+													{origin.type === "custom" && origin.domain_name}
+												</div>
 											</div>
 										</div>
+										<div className="flex items-center gap-2">
+											<Badge variant="secondary">{origin.type}</Badge>
+											<Button
+												variant="ghost"
+												size="sm"
+												onClick={() => removeOrigin(index)}
+											>
+												<Trash2 className="h-4 w-4 text-destructive" />
+											</Button>
+										</div>
 									</div>
-									<div className="flex items-center gap-2">
-										<Badge variant="secondary">{origin.type}</Badge>
-										<Button
-											variant="ghost"
-											size="sm"
-											onClick={() => removeOrigin(index)}
-										>
-											<Trash2 className="h-4 w-4 text-destructive" />
-										</Button>
-									</div>
-								</div>
 
-								{/* URL Pattern - shown for all origins when there are multiple */}
-								{(distribution.origins?.length ?? 0) > 1 && (
-									<div className="flex items-center gap-2 pl-7">
-										<span className="text-sm text-muted-foreground whitespace-nowrap">
-											Handles:
-										</span>
-										{index === 0 ? (
-											<TooltipProvider>
-												<Tooltip>
-													<TooltipTrigger asChild>
-														<div className="flex items-center gap-2">
-															<code className="bg-muted px-2 py-1 rounded text-sm font-mono">
-																/*
-															</code>
-															<Badge variant="outline" className="text-xs">
-																Default
-															</Badge>
-														</div>
-													</TooltipTrigger>
-													<TooltipContent>
-														<p>Handles all URLs not matched by other origins</p>
-													</TooltipContent>
-												</Tooltip>
-											</TooltipProvider>
-										) : (
-											<div className="flex items-center gap-2 flex-1">
-												<Input
-													placeholder="/api/*, /images/*, etc."
-													className="font-mono text-sm h-8 max-w-xs"
-													value={getOriginUrlPattern(origin.name, index)}
-													onChange={(e) =>
-														updateOriginUrlPattern(origin.name, e.target.value)
-													}
-												/>
-												{!getOriginUrlPattern(origin.name, index) && (
-													<span className="text-xs text-amber-500">
-														⚠️ No URL pattern set
-													</span>
-												)}
-											</div>
-										)}
-									</div>
-								)}
-							</div>
-						))}
+									{/* URL Pattern - shown for all origins when there are multiple */}
+									{(distribution.origins?.length ?? 0) > 1 && (
+										<div className="flex items-center gap-2 pl-7">
+											<span className="text-sm text-muted-foreground whitespace-nowrap">
+												Handles:
+											</span>
+											{index === 0 ? (
+												<TooltipProvider>
+													<Tooltip>
+														<TooltipTrigger asChild>
+															<div className="flex items-center gap-2">
+																<code className="bg-muted px-2 py-1 rounded text-sm font-mono">
+																	/*
+																</code>
+																<Badge variant="outline" className="text-xs">
+																	Default
+																</Badge>
+															</div>
+														</TooltipTrigger>
+														<TooltipContent>
+															<p>
+																Handles all URLs not matched by other origins
+															</p>
+														</TooltipContent>
+													</Tooltip>
+												</TooltipProvider>
+											) : (
+												<div className="flex items-center gap-2 flex-1">
+													<Input
+														placeholder="/api/*, /images/*, etc."
+														className="font-mono text-sm h-8 max-w-xs"
+														value={getOriginUrlPattern(origin.name, index)}
+														onChange={(e) =>
+															updateOriginUrlPattern(
+																origin.name,
+																e.target.value,
+															)
+														}
+													/>
+													{!getOriginUrlPattern(origin.name, index) && (
+														<span className="text-xs text-amber-500">
+															⚠️ No URL pattern set
+														</span>
+													)}
+												</div>
+											)}
+										</div>
+									)}
+								</div>
+							),
+						)}
 					</div>
 
 					<Separator />
@@ -591,7 +634,8 @@ export function CloudFrontNodeProperties({
 						<div>
 							<Label>SPA Mode</Label>
 							<p className="text-sm text-muted-foreground">
-								Handle 404 errors by returning index.html (for React/Vue/Angular)
+								Handle 404 errors by returning index.html (for
+								React/Vue/Angular)
 							</p>
 						</div>
 						<Switch
@@ -607,7 +651,10 @@ export function CloudFrontNodeProperties({
 							value={distribution.price_class || "PriceClass_100"}
 							onValueChange={(value) =>
 								updateDistribution({
-									price_class: value as "PriceClass_100" | "PriceClass_200" | "PriceClass_All",
+									price_class: value as
+										| "PriceClass_100"
+										| "PriceClass_200"
+										| "PriceClass_All",
 								})
 							}
 						>

@@ -228,7 +228,9 @@ export function PostgresNodeProperties({
 													}),
 												});
 
-												setCapacityWarning(validateCapacity(newMin, correctedMax));
+												setCapacityWarning(
+													validateCapacity(newMin, correctedMax),
+												);
 											}}
 										/>
 										<p className="text-xs text-gray-500">
@@ -397,9 +399,7 @@ export function PostgresNodeProperties({
 											</p>
 										</div>
 										<Switch
-											checked={
-												postgresConfig.storage_encrypted !== false
-											}
+											checked={postgresConfig.storage_encrypted !== false}
 											onCheckedChange={(checked) =>
 												handleUpdateConfig({ storage_encrypted: checked })
 											}
@@ -436,9 +436,7 @@ export function PostgresNodeProperties({
 											</p>
 										</div>
 										<Switch
-											checked={
-												postgresConfig.skip_final_snapshot !== false
-											}
+											checked={postgresConfig.skip_final_snapshot !== false}
 											onCheckedChange={(checked) =>
 												handleUpdateConfig({ skip_final_snapshot: checked })
 											}
@@ -466,7 +464,8 @@ export function PostgresNodeProperties({
 
 												const instanceClass =
 													postgresConfig.instance_class || "db.t4g.micro";
-												let instanceCost = instancePrices[instanceClass] || 23.36;
+												let instanceCost =
+													instancePrices[instanceClass] || 23.36;
 
 												if (postgresConfig.multi_az) {
 													instanceCost *= 2;
@@ -483,8 +482,7 @@ export function PostgresNodeProperties({
 											<div>
 												Instance:{" "}
 												{postgresConfig.instance_class || "db.t4g.micro"}{" "}
-												{postgresConfig.multi_az && "(Multi-AZ)"} - $
-												{(() => {
+												{postgresConfig.multi_az && "(Multi-AZ)"} - ${(() => {
 													const instancePrices: Record<string, number> = {
 														"db.t4g.micro": 11.68,
 														"db.t4g.small": 23.36,
@@ -507,9 +505,9 @@ export function PostgresNodeProperties({
 											<div>
 												Storage: {postgresConfig.allocated_storage || 20}GB gp3
 												- $
-												{((postgresConfig.allocated_storage || 20) * 0.115).toFixed(
-													2,
-												)}
+												{(
+													(postgresConfig.allocated_storage || 20) * 0.115
+												).toFixed(2)}
 												/mo
 											</div>
 										</div>
@@ -589,8 +587,9 @@ export function PostgresNodeProperties({
 								<Alert className="border-yellow-600 bg-yellow-900/20">
 									<AlertCircle className="h-4 w-4 text-yellow-400" />
 									<AlertDescription className="text-yellow-200">
-										<strong>Warning:</strong> Enabling public access exposes your database to the
-										internet. Ensure proper security groups and strong passwords.
+										<strong>Warning:</strong> Enabling public access exposes
+										your database to the internet. Ensure proper security groups
+										and strong passwords.
 									</AlertDescription>
 								</Alert>
 							)}
@@ -602,11 +601,14 @@ export function PostgresNodeProperties({
 										IAM Database Authentication
 									</Label>
 									<p className="text-xs text-gray-400">
-										Use IAM roles for database authentication instead of passwords
+										Use IAM roles for database authentication instead of
+										passwords
 									</p>
 								</div>
 								<Switch
-									checked={postgresConfig.iam_database_authentication_enabled || false}
+									checked={
+										postgresConfig.iam_database_authentication_enabled || false
+									}
 									onCheckedChange={(checked) =>
 										handleUpdateConfig({
 											iam_database_authentication_enabled: checked,

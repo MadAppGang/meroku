@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef } from "react";
 
 /**
  * Deep comparison function for objects and arrays
@@ -8,7 +8,7 @@ function deepEqual(a: any, b: any): boolean {
 
 	if (a == null || b == null) return false;
 
-	if (typeof a !== 'object' || typeof b !== 'object') return false;
+	if (typeof a !== "object" || typeof b !== "object") return false;
 
 	const keysA = Object.keys(a);
 	const keysB = Object.keys(b);

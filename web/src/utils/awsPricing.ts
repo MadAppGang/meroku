@@ -12,7 +12,7 @@
  * @module awsPricing
  */
 
-import type { AWSPriceRates } from '../services/pricingService';
+import type { AWSPriceRates } from "../services/pricingService";
 
 const HOURS_PER_MONTH = 730; // Standard hours per month for cost calculations
 
@@ -27,7 +27,7 @@ export interface RDSConfig {
 export interface AuroraConfig {
 	minCapacity: number;
 	maxCapacity: number;
-	level: 'startup' | 'scaleup' | 'highload';
+	level: "startup" | "scaleup" | "highload";
 }
 
 export interface ScheduledTaskConfig {
@@ -63,7 +63,7 @@ export function calculateRDSPrice(
 ): number {
 	// Get hourly instance price
 	let instanceHourly =
-		rates.rds[config.instanceClass] || rates.rds['db.t4g.micro'];
+		rates.rds[config.instanceClass] || rates.rds["db.t4g.micro"];
 
 	// Multi-AZ doubles instance cost (storage is already replicated)
 	if (config.multiAz) {
@@ -205,7 +205,7 @@ export function calculateECSPrice(
 function estimateRunsPerMonth(schedule: string): number {
 	const rateMatch = schedule.match(/rate\((\d+)\s+(minute|hour|day)s?\)/i);
 	if (rateMatch) {
-		const value = Number.parseInt(rateMatch[1]);
+		const value = Number.parseInt(rateMatch[1], 10);
 		const unit = rateMatch[2].toLowerCase();
 		if (unit === "minute") return (60 * 24 * 30) / value;
 		if (unit === "hour") return (24 * 30) / value;
@@ -229,7 +229,8 @@ export function calculateScheduledTaskPrice(
 	const runsPerMonth = estimateRunsPerMonth(config.schedule);
 
 	const vCPUCostPerRun = vCPU * rates.fargate.vcpuHourly * runtimeHours;
-	const memoryCostPerRun = memoryGB * rates.fargate.memoryGbHourly * runtimeHours;
+	const memoryCostPerRun =
+		memoryGB * rates.fargate.memoryGbHourly * runtimeHours;
 	const costPerRun = vCPUCostPerRun + memoryCostPerRun;
 
 	return costPerRun * runsPerMonth;

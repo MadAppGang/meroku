@@ -1,11 +1,5 @@
 import { faker } from "@faker-js/faker";
-import {
-	CheckCircle,
-	Clock,
-	Send,
-	Sparkles,
-	XCircle,
-} from "lucide-react";
+import { CheckCircle, Clock, Send, Sparkles, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
 	infrastructureApi,
@@ -47,15 +41,23 @@ function generateFakeEvent(detailType: string): object {
 			orderId: faker.string.uuid(),
 			customerId: faker.string.uuid(),
 			timestamp: new Date().toISOString(),
-			status: faker.helpers.arrayElement(["pending", "confirmed", "shipped", "delivered"]),
+			status: faker.helpers.arrayElement([
+				"pending",
+				"confirmed",
+				"shipped",
+				"delivered",
+			]),
 			totalAmount: Number(faker.commerce.price({ min: 10, max: 500 })),
 			currency: "USD",
-			items: Array.from({ length: faker.number.int({ min: 1, max: 3 }) }, () => ({
-				productId: faker.string.uuid(),
-				name: faker.commerce.productName(),
-				quantity: faker.number.int({ min: 1, max: 5 }),
-				price: Number(faker.commerce.price({ min: 5, max: 100 })),
-			})),
+			items: Array.from(
+				{ length: faker.number.int({ min: 1, max: 3 }) },
+				() => ({
+					productId: faker.string.uuid(),
+					name: faker.commerce.productName(),
+					quantity: faker.number.int({ min: 1, max: 5 }),
+					price: Number(faker.commerce.price({ min: 5, max: 100 })),
+				}),
+			),
 			shippingAddress: {
 				street: faker.location.streetAddress(),
 				city: faker.location.city(),
@@ -66,12 +68,20 @@ function generateFakeEvent(detailType: string): object {
 	}
 
 	// User-related events
-	if (lowerType.includes("user") || lowerType.includes("signup") || lowerType.includes("login")) {
+	if (
+		lowerType.includes("user") ||
+		lowerType.includes("signup") ||
+		lowerType.includes("login")
+	) {
 		return {
 			userId: faker.string.uuid(),
 			email: faker.internet.email(),
 			timestamp: new Date().toISOString(),
-			action: lowerType.includes("login") ? "login" : lowerType.includes("signup") ? "signup" : "update",
+			action: lowerType.includes("login")
+				? "login"
+				: lowerType.includes("signup")
+					? "signup"
+					: "update",
 			profile: {
 				firstName: faker.person.firstName(),
 				lastName: faker.person.lastName(),
@@ -93,14 +103,28 @@ function generateFakeEvent(detailType: string): object {
 			timestamp: new Date().toISOString(),
 			amount: Number(faker.finance.amount({ min: 10, max: 1000 })),
 			currency: faker.finance.currencyCode(),
-			status: faker.helpers.arrayElement(["pending", "completed", "failed", "refunded"]),
-			paymentMethod: faker.helpers.arrayElement(["credit_card", "debit_card", "paypal", "bank_transfer"]),
+			status: faker.helpers.arrayElement([
+				"pending",
+				"completed",
+				"failed",
+				"refunded",
+			]),
+			paymentMethod: faker.helpers.arrayElement([
+				"credit_card",
+				"debit_card",
+				"paypal",
+				"bank_transfer",
+			]),
 			last4: faker.finance.creditCardNumber().slice(-4),
 		};
 	}
 
 	// Notification-related events
-	if (lowerType.includes("notification") || lowerType.includes("email") || lowerType.includes("sms")) {
+	if (
+		lowerType.includes("notification") ||
+		lowerType.includes("email") ||
+		lowerType.includes("sms")
+	) {
 		return {
 			notificationId: faker.string.uuid(),
 			recipientId: faker.string.uuid(),
@@ -118,7 +142,12 @@ function generateFakeEvent(detailType: string): object {
 			productId: faker.string.uuid(),
 			sku: faker.string.alphanumeric(8).toUpperCase(),
 			timestamp: new Date().toISOString(),
-			action: faker.helpers.arrayElement(["restock", "sold", "reserved", "released"]),
+			action: faker.helpers.arrayElement([
+				"restock",
+				"sold",
+				"reserved",
+				"released",
+			]),
 			quantity: faker.number.int({ min: 1, max: 100 }),
 			previousStock: faker.number.int({ min: 0, max: 500 }),
 			newStock: faker.number.int({ min: 0, max: 500 }),
@@ -127,12 +156,27 @@ function generateFakeEvent(detailType: string): object {
 	}
 
 	// Job/task-related events
-	if (lowerType.includes("job") || lowerType.includes("task") || lowerType.includes("process")) {
+	if (
+		lowerType.includes("job") ||
+		lowerType.includes("task") ||
+		lowerType.includes("process")
+	) {
 		return {
 			jobId: faker.string.uuid(),
 			timestamp: new Date().toISOString(),
-			type: faker.helpers.arrayElement(["sync", "export", "import", "cleanup", "report"]),
-			status: faker.helpers.arrayElement(["queued", "running", "completed", "failed"]),
+			type: faker.helpers.arrayElement([
+				"sync",
+				"export",
+				"import",
+				"cleanup",
+				"report",
+			]),
+			status: faker.helpers.arrayElement([
+				"queued",
+				"running",
+				"completed",
+				"failed",
+			]),
 			progress: faker.number.int({ min: 0, max: 100 }),
 			metadata: {
 				startedBy: faker.internet.email(),
@@ -165,11 +209,13 @@ function getAllRules(task: EventProcessorTask): EventBridgeRule[] {
 	}
 	// Legacy format
 	if (task.rule_name && task.sources && task.detail_types) {
-		return [{
-			name: task.rule_name,
-			sources: task.sources,
-			detail_types: task.detail_types,
-		}];
+		return [
+			{
+				name: task.rule_name,
+				sources: task.sources,
+				detail_types: task.detail_types,
+			},
+		];
 	}
 	return [];
 }
@@ -182,10 +228,13 @@ export function EventTestPanel({ eventTask }: EventTestPanelProps) {
 	const defaultDetailType = rules[0]?.detail_types[0] || "";
 
 	const [selectedSource, setSelectedSource] = useState(defaultSource);
-	const [selectedDetailType, setSelectedDetailType] = useState(defaultDetailType);
+	const [selectedDetailType, setSelectedDetailType] =
+		useState(defaultDetailType);
 	const [detailJson, setDetailJson] = useState("");
 	const [sendingEvent, setSendingEvent] = useState(false);
-	const [eventResponse, setEventResponse] = useState<TestEventResponse | null>(null);
+	const [eventResponse, setEventResponse] = useState<TestEventResponse | null>(
+		null,
+	);
 	const [jsonError, setJsonError] = useState<string | null>(null);
 
 	// Get all unique sources and detail types
@@ -196,7 +245,7 @@ export function EventTestPanel({ eventTask }: EventTestPanelProps) {
 	const matchesRule = rules.some(
 		(rule) =>
 			rule.sources.includes(selectedSource) &&
-			rule.detail_types.includes(selectedDetailType)
+			rule.detail_types.includes(selectedDetailType),
 	);
 
 	// Generate fake data when detail type changes
@@ -259,7 +308,8 @@ export function EventTestPanel({ eventTask }: EventTestPanelProps) {
 		} catch (error) {
 			setEventResponse({
 				success: false,
-				message: error instanceof Error ? error.message : "Failed to send test event",
+				message:
+					error instanceof Error ? error.message : "Failed to send test event",
 			});
 		} finally {
 			setSendingEvent(false);
@@ -299,7 +349,10 @@ export function EventTestPanel({ eventTask }: EventTestPanelProps) {
 				{/* Detail Type Selection */}
 				<div className="space-y-2">
 					<Label>Detail Type</Label>
-					<Select value={selectedDetailType} onValueChange={setSelectedDetailType}>
+					<Select
+						value={selectedDetailType}
+						onValueChange={setSelectedDetailType}
+					>
 						<SelectTrigger>
 							<SelectValue placeholder="Select detail type" />
 						</SelectTrigger>
@@ -317,8 +370,8 @@ export function EventTestPanel({ eventTask }: EventTestPanelProps) {
 				{selectedSource && selectedDetailType && !matchesRule && (
 					<Alert className="border-yellow-600">
 						<AlertDescription className="text-yellow-400 text-sm">
-							This source/detail-type combination doesn't match any configured rule.
-							The event won't trigger this task.
+							This source/detail-type combination doesn't match any configured
+							rule. The event won't trigger this task.
 						</AlertDescription>
 					</Alert>
 				)}
@@ -349,7 +402,12 @@ export function EventTestPanel({ eventTask }: EventTestPanelProps) {
 				{/* Send Button */}
 				<Button
 					onClick={handleSendTestEvent}
-					disabled={sendingEvent || !!jsonError || !selectedSource || !selectedDetailType}
+					disabled={
+						sendingEvent ||
+						!!jsonError ||
+						!selectedSource ||
+						!selectedDetailType
+					}
 					className="w-full"
 				>
 					{sendingEvent ? (
@@ -367,7 +425,11 @@ export function EventTestPanel({ eventTask }: EventTestPanelProps) {
 
 				{/* Response */}
 				{eventResponse && (
-					<Alert className={eventResponse.success ? "border-green-600" : "border-red-600"}>
+					<Alert
+						className={
+							eventResponse.success ? "border-green-600" : "border-red-600"
+						}
+					>
 						{eventResponse.success ? (
 							<CheckCircle className="h-4 w-4 text-green-600" />
 						) : (

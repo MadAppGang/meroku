@@ -1,6 +1,10 @@
 import { Cloud, Globe, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
-import type { CloudFrontAdditionalZone, CloudFrontConfig, YamlInfrastructureConfig } from "../types/yamlConfig";
+import type {
+	CloudFrontAdditionalZone,
+	CloudFrontConfig,
+	YamlInfrastructureConfig,
+} from "../types/yamlConfig";
 import { Button } from "./ui/button";
 import {
 	Dialog,
@@ -65,12 +69,18 @@ export const AddCloudFrontDialog: React.FC<AddCloudFrontDialogProps> = ({
 	});
 
 	const [newDomainAlias, setNewDomainAlias] = useState("");
-	const [newZone, setNewZone] = useState<{ domain: string; create_zone: boolean; zone_id: string }>({
+	const [newZone, setNewZone] = useState<{
+		domain: string;
+		create_zone: boolean;
+		zone_id: string;
+	}>({
 		domain: "",
 		create_zone: true,
 		zone_id: "",
 	});
-	const [pendingZonePrompt, setPendingZonePrompt] = useState<string | null>(null);
+	const [pendingZonePrompt, setPendingZonePrompt] = useState<string | null>(
+		null,
+	);
 	const [errors, setErrors] = useState<Record<string, string>>({});
 
 	// Extract root domain from an alias (e.g., "*.app.example.com" -> "example.com")
@@ -99,7 +109,7 @@ export const AddCloudFrontDialog: React.FC<AddCloudFrontDialogProps> = ({
 		if (rootDomain !== mainRootDomain) {
 			// Check if we already have a zone for this domain
 			const hasZone = formData.additional_zones.some(
-				(z) => z.domain === rootDomain || rootDomain.endsWith(`.${z.domain}`)
+				(z) => z.domain === rootDomain || rootDomain.endsWith(`.${z.domain}`),
 			);
 			if (!hasZone) {
 				return rootDomain;
@@ -142,11 +152,19 @@ export const AddCloudFrontDialog: React.FC<AddCloudFrontDialogProps> = ({
 	const addAdditionalZone = () => {
 		if (!newZone.domain.trim()) return;
 		if (!newZone.create_zone && !newZone.zone_id.trim()) {
-			setErrors({ ...errors, zone_id: "Zone ID is required when using an existing zone" });
+			setErrors({
+				...errors,
+				zone_id: "Zone ID is required when using an existing zone",
+			});
 			return;
 		}
-		if (formData.additional_zones.some((z) => z.domain === newZone.domain.trim())) {
-			setErrors({ ...errors, zone_domain: "Zone for this domain already added" });
+		if (
+			formData.additional_zones.some((z) => z.domain === newZone.domain.trim())
+		) {
+			setErrors({
+				...errors,
+				zone_domain: "Zone for this domain already added",
+			});
 			return;
 		}
 		setFormData({
@@ -173,7 +191,9 @@ export const AddCloudFrontDialog: React.FC<AddCloudFrontDialogProps> = ({
 	const removeAdditionalZone = (domain: string) => {
 		setFormData({
 			...formData,
-			additional_zones: formData.additional_zones.filter((z) => z.domain !== domain),
+			additional_zones: formData.additional_zones.filter(
+				(z) => z.domain !== domain,
+			),
 		});
 	};
 
@@ -184,7 +204,8 @@ export const AddCloudFrontDialog: React.FC<AddCloudFrontDialogProps> = ({
 		if (!formData.name) {
 			newErrors.name = "Distribution name is required";
 		} else if (!/^[a-z0-9-]+$/.test(formData.name)) {
-			newErrors.name = "Name must contain only lowercase letters, numbers, and hyphens";
+			newErrors.name =
+				"Name must contain only lowercase letters, numbers, and hyphens";
 		} else if (existingDistributions.includes(formData.name)) {
 			newErrors.name = "A distribution with this name already exists";
 		}
@@ -198,8 +219,13 @@ export const AddCloudFrontDialog: React.FC<AddCloudFrontDialogProps> = ({
 			newErrors.amplify_app_name = "Please select an Amplify app";
 		}
 
-		if (formData.origin_type === "s3" && !formData.create_bucket && !formData.bucket_name) {
-			newErrors.bucket_name = "Bucket name is required when not creating a new bucket";
+		if (
+			formData.origin_type === "s3" &&
+			!formData.create_bucket &&
+			!formData.bucket_name
+		) {
+			newErrors.bucket_name =
+				"Bucket name is required when not creating a new bucket";
 		}
 
 		if (formData.origin_type === "custom" && !formData.custom_domain) {
@@ -217,19 +243,31 @@ export const AddCloudFrontDialog: React.FC<AddCloudFrontDialogProps> = ({
 			enabled: formData.enabled,
 			spa_mode: formData.spa_mode,
 			price_class: formData.price_class,
-			domain_aliases: formData.domain_aliases.length > 0 ? formData.domain_aliases : undefined,
-			additional_zones: formData.additional_zones.length > 0 ? formData.additional_zones : undefined,
+			domain_aliases:
+				formData.domain_aliases.length > 0
+					? formData.domain_aliases
+					: undefined,
+			additional_zones:
+				formData.additional_zones.length > 0
+					? formData.additional_zones
+					: undefined,
 			default_root_object: "index.html",
 			origins: [
 				{
 					name: formData.origin_name,
 					type: formData.origin_type,
-					...(formData.origin_type === "amplify" && { amplify_app_name: formData.amplify_app_name }),
+					...(formData.origin_type === "amplify" && {
+						amplify_app_name: formData.amplify_app_name,
+					}),
 					...(formData.origin_type === "s3" && {
-						...(formData.create_bucket ? { create_bucket: true } : { bucket_name: formData.bucket_name }),
+						...(formData.create_bucket
+							? { create_bucket: true }
+							: { bucket_name: formData.bucket_name }),
 						use_oac: true,
 					}),
-					...(formData.origin_type === "custom" && { domain_name: formData.custom_domain }),
+					...(formData.origin_type === "custom" && {
+						domain_name: formData.custom_domain,
+					}),
 				},
 			],
 		};
@@ -268,8 +306,8 @@ export const AddCloudFrontDialog: React.FC<AddCloudFrontDialogProps> = ({
 						Add CloudFront Distribution
 					</DialogTitle>
 					<DialogDescription>
-						Create a new CloudFront CDN distribution for content delivery with support
-						for wildcard domains and path-based routing.
+						Create a new CloudFront CDN distribution for content delivery with
+						support for wildcard domains and path-based routing.
 					</DialogDescription>
 				</DialogHeader>
 
@@ -280,7 +318,9 @@ export const AddCloudFrontDialog: React.FC<AddCloudFrontDialogProps> = ({
 						<Input
 							id="name"
 							value={formData.name}
-							onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+							onChange={(e) =>
+								setFormData({ ...formData, name: e.target.value })
+							}
 							placeholder="frontend-cdn"
 							className={errors.name ? "border-red-500" : ""}
 						/>
@@ -288,7 +328,8 @@ export const AddCloudFrontDialog: React.FC<AddCloudFrontDialogProps> = ({
 							<p className="text-xs text-red-500">{errors.name}</p>
 						)}
 						<p className="text-xs text-muted-foreground">
-							Unique identifier for this distribution (lowercase, hyphens allowed)
+							Unique identifier for this distribution (lowercase, hyphens
+							allowed)
 						</p>
 					</div>
 
@@ -302,7 +343,9 @@ export const AddCloudFrontDialog: React.FC<AddCloudFrontDialogProps> = ({
 						</div>
 						<Switch
 							checked={formData.enabled}
-							onCheckedChange={(enabled) => setFormData({ ...formData, enabled })}
+							onCheckedChange={(enabled) =>
+								setFormData({ ...formData, enabled })
+							}
 						/>
 					</div>
 
@@ -316,7 +359,9 @@ export const AddCloudFrontDialog: React.FC<AddCloudFrontDialogProps> = ({
 								<Input
 									id="origin_name"
 									value={formData.origin_name}
-									onChange={(e) => setFormData({ ...formData, origin_name: e.target.value })}
+									onChange={(e) =>
+										setFormData({ ...formData, origin_name: e.target.value })
+									}
 									placeholder="frontend"
 									className={errors.origin_name ? "border-red-500" : ""}
 								/>
@@ -352,7 +397,9 @@ export const AddCloudFrontDialog: React.FC<AddCloudFrontDialogProps> = ({
 								<Label htmlFor="amplify_app">Amplify App *</Label>
 								<Select
 									value={formData.amplify_app_name}
-									onValueChange={(value) => setFormData({ ...formData, amplify_app_name: value })}
+									onValueChange={(value) =>
+										setFormData({ ...formData, amplify_app_name: value })
+									}
 								>
 									<SelectTrigger
 										id="amplify_app"
@@ -369,9 +416,12 @@ export const AddCloudFrontDialog: React.FC<AddCloudFrontDialogProps> = ({
 									</SelectContent>
 								</Select>
 								{errors.amplify_app_name && (
-									<p className="text-xs text-red-500">{errors.amplify_app_name}</p>
+									<p className="text-xs text-red-500">
+										{errors.amplify_app_name}
+									</p>
 								)}
-								{(!config?.amplify_apps || config.amplify_apps.length === 0) && (
+								{(!config?.amplify_apps ||
+									config.amplify_apps.length === 0) && (
 									<p className="text-xs text-amber-400">
 										No Amplify apps configured. Add an Amplify app first.
 									</p>
@@ -400,34 +450,47 @@ export const AddCloudFrontDialog: React.FC<AddCloudFrontDialogProps> = ({
 										<p className="text-xs text-muted-foreground">
 											Bucket will be created with name:{" "}
 											<code className="text-xs bg-background px-1 py-0.5 rounded">
-												{config?.project || "project"}-{config?.env || "env"}-cf-{formData.name || "dist"}-{formData.origin_name || "origin"}
+												{config?.project || "project"}-{config?.env || "env"}
+												-cf-{formData.name || "dist"}-
+												{formData.origin_name || "origin"}
 											</code>
 										</p>
 									</div>
 								) : (
 									<div className="space-y-2">
-										<Label htmlFor="bucket_name">Existing S3 Bucket Name *</Label>
+										<Label htmlFor="bucket_name">
+											Existing S3 Bucket Name *
+										</Label>
 										<Input
 											id="bucket_name"
 											value={formData.bucket_name}
-											onChange={(e) => setFormData({ ...formData, bucket_name: e.target.value })}
+											onChange={(e) =>
+												setFormData({
+													...formData,
+													bucket_name: e.target.value,
+												})
+											}
 											placeholder="my-static-assets"
 											className={errors.bucket_name ? "border-red-500" : ""}
 										/>
 										{errors.bucket_name && (
-											<p className="text-xs text-red-500">{errors.bucket_name}</p>
+											<p className="text-xs text-red-500">
+												{errors.bucket_name}
+											</p>
 										)}
 									</div>
 								)}
 								<p className="text-xs text-muted-foreground">
-									Origin Access Control (OAC) will be enabled for secure S3 access
+									Origin Access Control (OAC) will be enabled for secure S3
+									access
 								</p>
 							</div>
 						)}
 
 						{formData.origin_type === "alb" && (
 							<p className="text-xs text-muted-foreground">
-								The ALB domain will be automatically resolved from your workloads configuration
+								The ALB domain will be automatically resolved from your
+								workloads configuration
 							</p>
 						)}
 
@@ -437,7 +500,9 @@ export const AddCloudFrontDialog: React.FC<AddCloudFrontDialogProps> = ({
 								<Input
 									id="custom_domain"
 									value={formData.custom_domain}
-									onChange={(e) => setFormData({ ...formData, custom_domain: e.target.value })}
+									onChange={(e) =>
+										setFormData({ ...formData, custom_domain: e.target.value })
+									}
 									placeholder="api.example.com"
 									className={errors.custom_domain ? "border-red-500" : ""}
 								/>
@@ -459,7 +524,9 @@ export const AddCloudFrontDialog: React.FC<AddCloudFrontDialogProps> = ({
 								placeholder="*.app.example.com"
 								value={newDomainAlias}
 								onChange={(e) => setNewDomainAlias(e.target.value)}
-								onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addDomainAlias())}
+								onKeyDown={(e) =>
+									e.key === "Enter" && (e.preventDefault(), addDomainAlias())
+								}
 							/>
 							<Button type="button" onClick={addDomainAlias} size="sm">
 								<Plus className="h-4 w-4" />
@@ -492,10 +559,13 @@ export const AddCloudFrontDialog: React.FC<AddCloudFrontDialogProps> = ({
 					{pendingZonePrompt && (
 						<div className="space-y-3 border-2 border-amber-500 rounded-lg p-4 bg-amber-500/10">
 							<div>
-								<Label className="text-amber-200">DNS Zone Required for "{pendingZonePrompt}"</Label>
+								<Label className="text-amber-200">
+									DNS Zone Required for "{pendingZonePrompt}"
+								</Label>
 								<p className="text-xs text-muted-foreground">
-									This domain is different from your main domain ({config?.domain?.domain_name || "not configured"}).
-									Configure how to handle DNS for certificate validation.
+									This domain is different from your main domain (
+									{config?.domain?.domain_name || "not configured"}). Configure
+									how to handle DNS for certificate validation.
 								</p>
 							</div>
 							<div className="space-y-3">
@@ -509,15 +579,21 @@ export const AddCloudFrontDialog: React.FC<AddCloudFrontDialogProps> = ({
 										<SelectValue />
 									</SelectTrigger>
 									<SelectContent>
-										<SelectItem value="create">Create new Route 53 zone for {pendingZonePrompt}</SelectItem>
-										<SelectItem value="existing">Use existing Route 53 zone</SelectItem>
+										<SelectItem value="create">
+											Create new Route 53 zone for {pendingZonePrompt}
+										</SelectItem>
+										<SelectItem value="existing">
+											Use existing Route 53 zone
+										</SelectItem>
 									</SelectContent>
 								</Select>
 								{!newZone.create_zone && (
 									<Input
 										placeholder="Zone ID (e.g., Z1234567890ABC)"
 										value={newZone.zone_id}
-										onChange={(e) => setNewZone({ ...newZone, zone_id: e.target.value })}
+										onChange={(e) =>
+											setNewZone({ ...newZone, zone_id: e.target.value })
+										}
 										className={errors.zone_id ? "border-red-500" : ""}
 									/>
 								)}
@@ -528,7 +604,12 @@ export const AddCloudFrontDialog: React.FC<AddCloudFrontDialogProps> = ({
 									<Button type="button" onClick={addAdditionalZone} size="sm">
 										Configure Zone
 									</Button>
-									<Button type="button" onClick={dismissZonePrompt} size="sm" variant="ghost">
+									<Button
+										type="button"
+										onClick={dismissZonePrompt}
+										size="sm"
+										variant="ghost"
+									>
 										Skip (use main zone)
 									</Button>
 								</div>
@@ -542,7 +623,8 @@ export const AddCloudFrontDialog: React.FC<AddCloudFrontDialogProps> = ({
 							<div>
 								<Label>Additional DNS Zones (optional)</Label>
 								<p className="text-xs text-muted-foreground">
-									Add Route 53 zones for domains outside your main domain ({config?.domain?.domain_name || "not configured"})
+									Add Route 53 zones for domains outside your main domain (
+									{config?.domain?.domain_name || "not configured"})
 								</p>
 							</div>
 							<div className="space-y-3">
@@ -550,12 +632,17 @@ export const AddCloudFrontDialog: React.FC<AddCloudFrontDialogProps> = ({
 									<Input
 										placeholder="otherdomain.com"
 										value={newZone.domain}
-										onChange={(e) => setNewZone({ ...newZone, domain: e.target.value })}
+										onChange={(e) =>
+											setNewZone({ ...newZone, domain: e.target.value })
+										}
 									/>
 									<Select
 										value={newZone.create_zone ? "create" : "existing"}
 										onValueChange={(value) =>
-											setNewZone({ ...newZone, create_zone: value === "create" })
+											setNewZone({
+												...newZone,
+												create_zone: value === "create",
+											})
 										}
 									>
 										<SelectTrigger>
@@ -563,7 +650,9 @@ export const AddCloudFrontDialog: React.FC<AddCloudFrontDialogProps> = ({
 										</SelectTrigger>
 										<SelectContent>
 											<SelectItem value="create">Create new zone</SelectItem>
-											<SelectItem value="existing">Use existing zone</SelectItem>
+											<SelectItem value="existing">
+												Use existing zone
+											</SelectItem>
 										</SelectContent>
 									</Select>
 								</div>
@@ -571,7 +660,9 @@ export const AddCloudFrontDialog: React.FC<AddCloudFrontDialogProps> = ({
 									<Input
 										placeholder="Zone ID (e.g., Z1234567890ABC)"
 										value={newZone.zone_id}
-										onChange={(e) => setNewZone({ ...newZone, zone_id: e.target.value })}
+										onChange={(e) =>
+											setNewZone({ ...newZone, zone_id: e.target.value })
+										}
 										className={errors.zone_id ? "border-red-500" : ""}
 									/>
 								)}
@@ -581,7 +672,12 @@ export const AddCloudFrontDialog: React.FC<AddCloudFrontDialogProps> = ({
 								{errors.zone_domain && (
 									<p className="text-xs text-red-500">{errors.zone_domain}</p>
 								)}
-								<Button type="button" onClick={addAdditionalZone} size="sm" variant="outline">
+								<Button
+									type="button"
+									onClick={addAdditionalZone}
+									size="sm"
+									variant="outline"
+								>
 									<Plus className="h-4 w-4 mr-1" />
 									Add Zone
 								</Button>
@@ -594,7 +690,9 @@ export const AddCloudFrontDialog: React.FC<AddCloudFrontDialogProps> = ({
 									<div>
 										<code className="text-sm font-medium">{zone.domain}</code>
 										<p className="text-xs text-muted-foreground">
-											{zone.create_zone ? "Will create new Route 53 zone" : `Using zone: ${zone.zone_id}`}
+											{zone.create_zone
+												? "Will create new Route 53 zone"
+												: `Using zone: ${zone.zone_id}`}
 										</p>
 									</div>
 									<Button
@@ -614,12 +712,15 @@ export const AddCloudFrontDialog: React.FC<AddCloudFrontDialogProps> = ({
 						<div>
 							<Label>SPA Mode</Label>
 							<p className="text-xs text-muted-foreground">
-								Handle 404 errors by returning index.html (for React/Vue/Angular)
+								Handle 404 errors by returning index.html (for
+								React/Vue/Angular)
 							</p>
 						</div>
 						<Switch
 							checked={formData.spa_mode}
-							onCheckedChange={(spa_mode) => setFormData({ ...formData, spa_mode })}
+							onCheckedChange={(spa_mode) =>
+								setFormData({ ...formData, spa_mode })
+							}
 						/>
 					</div>
 
@@ -628,9 +729,9 @@ export const AddCloudFrontDialog: React.FC<AddCloudFrontDialogProps> = ({
 						<Label>Price Class</Label>
 						<Select
 							value={formData.price_class}
-							onValueChange={(value: "PriceClass_100" | "PriceClass_200" | "PriceClass_All") =>
-								setFormData({ ...formData, price_class: value })
-							}
+							onValueChange={(
+								value: "PriceClass_100" | "PriceClass_200" | "PriceClass_All",
+							) => setFormData({ ...formData, price_class: value })}
 						>
 							<SelectTrigger>
 								<SelectValue />

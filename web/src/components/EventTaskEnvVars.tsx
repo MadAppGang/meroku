@@ -38,8 +38,10 @@ export function EventTaskEnvVars({
 						</div>
 						<div className="text-xs font-mono text-gray-400 mt-2 break-all">
 							https://sqs.{config.region}.amazonaws.com/
-							{accountInfo?.accountId || config.ecr_account_id || "<ACCOUNT_ID>"}/
-							{config.project}-{config.env}-{config.sqs?.name || "queue"}
+							{accountInfo?.accountId ||
+								config.ecr_account_id ||
+								"<ACCOUNT_ID>"}
+							/{config.project}-{config.env}-{config.sqs?.name || "queue"}
 						</div>
 					</div>
 				</StyledSection>

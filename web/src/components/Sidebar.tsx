@@ -44,7 +44,6 @@ import { AuroraNodeProperties } from "./AuroraNodeProperties";
 import { BackendAlerts } from "./BackendAlerts";
 import { BackendCloudWatch } from "./BackendCloudWatch";
 import { BackendEnvironmentVariables } from "./BackendEnvironmentVariables";
-import { CloudFrontNodeProperties } from "./CloudFrontNodeProperties";
 import { BackendIAMPermissions } from "./BackendIAMPermissions";
 import { BackendParameterStore } from "./BackendParameterStore";
 import { BackendS3Buckets } from "./BackendS3Buckets";
@@ -53,6 +52,7 @@ import { BackendServiceProperties } from "./BackendServiceProperties";
 import { BackendSNS } from "./BackendSNS";
 import { BackendSSHAccess } from "./BackendSSHAccess";
 import { BackendXRayConfiguration } from "./BackendXRayConfiguration";
+import { CloudFrontNodeProperties } from "./CloudFrontNodeProperties";
 import { ECRNodeProperties } from "./ECRNodeProperties";
 import { ECRPushInstructions } from "./ECRPushInstructions";
 import { ECRRepositoryList } from "./ECRRepositoryList";
@@ -83,12 +83,12 @@ import { ScheduledTaskProperties } from "./ScheduledTaskProperties";
 import { SESNodeProperties } from "./SESNodeProperties";
 import { SESSendTestEmail } from "./SESSendTestEmail";
 import { SESStatus } from "./SESStatus";
+import ServiceCICDConfiguration from "./ServiceCICDConfiguration";
 import { ServiceEnvironmentVariables } from "./ServiceEnvironmentVariables";
 import { ServiceLogs } from "./ServiceLogs";
 import { ServiceParameterStore } from "./ServiceParameterStore";
 import { ServiceProperties } from "./ServiceProperties";
 import { ServiceXRayConfiguration } from "./ServiceXRayConfiguration";
-import ServiceCICDConfiguration from "./ServiceCICDConfiguration";
 import { SNSNodeProperties } from "./SNSNodeProperties";
 import { SQSNodeProperties } from "./SQSNodeProperties";
 import { Button } from "./ui/button";
@@ -805,34 +805,34 @@ jobs:
 
       - name: Compute ECR registry
         id: ecr
-        run: echo "ECR_REGISTRY=\${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.\${{ env.AWS_REGION }}.amazonaws.com" >> "\$GITHUB_ENV"
+        run: echo "ECR_REGISTRY=\${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.\${{ env.AWS_REGION }}.amazonaws.com" >> "$GITHUB_ENV"
 
       - name: Ensure ECR repository exists
         run: |
-          aws ecr describe-repositories --repository-names "\$ECR_REPOSITORY" >/dev/null 2>&1 || \\
-          aws ecr create-repository --repository-name "\$ECR_REPOSITORY" >/dev/null
+          aws ecr describe-repositories --repository-names "$ECR_REPOSITORY" >/dev/null 2>&1 || \\
+          aws ecr create-repository --repository-name "$ECR_REPOSITORY" >/dev/null
 
       - name: Login to ECR
         run: |
-          aws ecr get-login-password --region \$AWS_REGION | \\
-          docker login --username AWS --password-stdin \$ECR_REGISTRY
+          aws ecr get-login-password --region $AWS_REGION | \\
+          docker login --username AWS --password-stdin $ECR_REGISTRY
 
       - name: Build and push Docker image
         run: |
-          docker build -t \$ECR_REPOSITORY .
-          docker tag \$ECR_REPOSITORY:latest \$ECR_REGISTRY/\$ECR_REPOSITORY:latest
-          docker tag \$ECR_REPOSITORY:latest \$ECR_REGISTRY/\$ECR_REPOSITORY:\${{ github.sha }}
-          docker push \$ECR_REGISTRY/\$ECR_REPOSITORY:latest
-          docker push \$ECR_REGISTRY/\$ECR_REPOSITORY:\${{ github.sha }}
+          docker build -t $ECR_REPOSITORY .
+          docker tag $ECR_REPOSITORY:latest $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          docker tag $ECR_REPOSITORY:latest $ECR_REGISTRY/$ECR_REPOSITORY:\${{ github.sha }}
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:\${{ github.sha }}
 
       - name: Deploy to ECS (force new deployment)
         run: |
           aws ecs update-service \\
-            --cluster "\$ECS_CLUSTER" \\
-            --service "\$ECS_SERVICE" \\
+            --cluster "$ECS_CLUSTER" \\
+            --service "$ECS_SERVICE" \\
             --force-new-deployment \\
-            --region "\$AWS_REGION"
-          aws ecs wait services-stable --cluster "\$ECS_CLUSTER" --services "\$ECS_SERVICE"`;
+            --region "$AWS_REGION"
+          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"`;
 
 										navigator.clipboard.writeText(scriptContent);
 									}}
@@ -916,34 +916,34 @@ jobs:
 
       - name: Compute ECR registry
         id: ecr
-        run: echo "ECR_REGISTRY=\${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.\${{ env.AWS_REGION }}.amazonaws.com" >> "\$GITHUB_ENV"
+        run: echo "ECR_REGISTRY=\${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.\${{ env.AWS_REGION }}.amazonaws.com" >> "$GITHUB_ENV"
 
       - name: Ensure ECR repository exists
         run: |
-          aws ecr describe-repositories --repository-names "\$ECR_REPOSITORY" >/dev/null 2>&1 || \\
-          aws ecr create-repository --repository-name "\$ECR_REPOSITORY" >/dev/null
+          aws ecr describe-repositories --repository-names "$ECR_REPOSITORY" >/dev/null 2>&1 || \\
+          aws ecr create-repository --repository-name "$ECR_REPOSITORY" >/dev/null
 
       - name: Login to ECR
         run: |
-          aws ecr get-login-password --region \$AWS_REGION | \\
-          docker login --username AWS --password-stdin \$ECR_REGISTRY
+          aws ecr get-login-password --region $AWS_REGION | \\
+          docker login --username AWS --password-stdin $ECR_REGISTRY
 
       - name: Build and push Docker image
         run: |
-          docker build -t \$ECR_REPOSITORY .
-          docker tag \$ECR_REPOSITORY:latest \$ECR_REGISTRY/\$ECR_REPOSITORY:latest
-          docker tag \$ECR_REPOSITORY:latest \$ECR_REGISTRY/\$ECR_REPOSITORY:\${{ github.sha }}
-          docker push \$ECR_REGISTRY/\$ECR_REPOSITORY:latest
-          docker push \$ECR_REGISTRY/\$ECR_REPOSITORY:\${{ github.sha }}
+          docker build -t $ECR_REPOSITORY .
+          docker tag $ECR_REPOSITORY:latest $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          docker tag $ECR_REPOSITORY:latest $ECR_REGISTRY/$ECR_REPOSITORY:\${{ github.sha }}
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:\${{ github.sha }}
 
       - name: Deploy to ECS (force new deployment)
         run: |
           aws ecs update-service \\
-            --cluster "\$ECS_CLUSTER" \\
-            --service "\$ECS_SERVICE" \\
+            --cluster "$ECS_CLUSTER" \\
+            --service "$ECS_SERVICE" \\
             --force-new-deployment \\
-            --region "\$AWS_REGION"
-          aws ecs wait services-stable --cluster "\$ECS_CLUSTER" --services "\$ECS_SERVICE"`;
+            --region "$AWS_REGION"
+          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"`;
 								})()}
 							</pre>
 						</div>

@@ -121,7 +121,10 @@ export function generateHiddenComponentNodes(
 	}
 
 	// CloudFront Distributions
-	if (config.cloudfront_distributions && config.cloudfront_distributions.length > 0) {
+	if (
+		config.cloudfront_distributions &&
+		config.cloudfront_distributions.length > 0
+	) {
 		config.cloudfront_distributions.forEach((dist, index) => {
 			if (!dist.enabled) return; // Skip disabled distributions
 

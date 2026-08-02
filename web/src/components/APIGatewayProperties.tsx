@@ -1,17 +1,17 @@
 import {
 	Activity,
+	Check,
 	Clock,
+	Copy,
+	ExternalLink,
 	FileText,
+	GitBranch,
 	Globe,
 	Link,
 	Route,
+	Server,
 	Shield,
 	Zap,
-	ExternalLink,
-	Copy,
-	Check,
-	Server,
-	GitBranch,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { infrastructureApi } from "../api/infrastructure";
@@ -100,7 +100,9 @@ export function APIGatewayProperties({ config }: APIGatewayPropertiesProps) {
 								</Label>
 								<button
 									type="button"
-									onClick={() => copyToClipboard(apiGatewayInfo.defaultEndpoint)}
+									onClick={() =>
+										copyToClipboard(apiGatewayInfo.defaultEndpoint)
+									}
 									className="flex items-center gap-1.5 px-2 py-1 text-xs text-gray-400 hover:text-white transition-colors rounded hover:bg-gray-800"
 									title="Copy to clipboard"
 								>
@@ -124,7 +126,9 @@ export function APIGatewayProperties({ config }: APIGatewayPropertiesProps) {
 								className="text-sm text-blue-400 hover:text-blue-300 font-mono flex items-center gap-2 break-all transition-colors group"
 							>
 								<ExternalLink className="w-4 h-4 flex-shrink-0 group-hover:scale-110 transition-transform" />
-								<span className="group-hover:underline">{apiGatewayInfo.defaultEndpoint}</span>
+								<span className="group-hover:underline">
+									{apiGatewayInfo.defaultEndpoint}
+								</span>
 							</a>
 						</div>
 					)}
@@ -164,7 +168,9 @@ export function APIGatewayProperties({ config }: APIGatewayPropertiesProps) {
 							</div>
 							<div>
 								<div className="text-xs text-gray-400 mb-0.5">Stage</div>
-								<div className="text-sm font-semibold text-white capitalize">{config.env}</div>
+								<div className="text-sm font-semibold text-white capitalize">
+									{config.env}
+								</div>
 							</div>
 						</div>
 					</CardContent>
@@ -193,14 +199,18 @@ export function APIGatewayProperties({ config }: APIGatewayPropertiesProps) {
 							<Shield className="w-4 h-4 text-green-400" />
 							<div className="flex-1">
 								<div className="text-xs text-gray-400">Security</div>
-								<div className="text-sm text-white">TLS 1.2 with ACM certificate</div>
+								<div className="text-sm text-white">
+									TLS 1.2 with ACM certificate
+								</div>
 							</div>
 						</div>
 						<div className="flex items-center gap-2 p-3 bg-blue-500/5 rounded-lg border border-blue-500/20">
 							<Globe className="w-4 h-4 text-blue-400" />
 							<div className="flex-1">
 								<div className="text-xs text-gray-400">DNS</div>
-								<div className="text-sm text-white">Route 53 A record → API Gateway</div>
+								<div className="text-sm text-white">
+									Route 53 A record → API Gateway
+								</div>
 							</div>
 						</div>
 					</CardContent>
@@ -226,12 +236,16 @@ export function APIGatewayProperties({ config }: APIGatewayPropertiesProps) {
 					<div className="grid grid-cols-2 gap-3">
 						<div className="p-3 bg-gray-900/50 rounded-lg border border-gray-700">
 							<div className="text-xs text-gray-400 mb-1">Burst Limit</div>
-							<div className="text-lg font-bold text-white font-mono">5,000</div>
+							<div className="text-lg font-bold text-white font-mono">
+								5,000
+							</div>
 							<div className="text-xs text-gray-500">requests</div>
 						</div>
 						<div className="p-3 bg-gray-900/50 rounded-lg border border-gray-700">
 							<div className="text-xs text-gray-400 mb-1">Rate Limit</div>
-							<div className="text-lg font-bold text-white font-mono">10,000</div>
+							<div className="text-lg font-bold text-white font-mono">
+								10,000
+							</div>
 							<div className="text-xs text-gray-500">req/sec</div>
 						</div>
 					</div>
@@ -248,7 +262,9 @@ export function APIGatewayProperties({ config }: APIGatewayPropertiesProps) {
 				</CardHeader>
 				<CardContent className="space-y-3">
 					<div className="p-3 bg-gray-900/50 rounded-lg border border-gray-700">
-						<Label className="text-xs text-gray-400 mb-2 block">Log Group</Label>
+						<Label className="text-xs text-gray-400 mb-2 block">
+							Log Group
+						</Label>
 						<div className="text-xs text-white font-mono break-all bg-gray-950 p-2 rounded">
 							{logGroup}
 						</div>

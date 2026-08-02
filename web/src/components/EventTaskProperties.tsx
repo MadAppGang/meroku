@@ -188,9 +188,7 @@ export function EventTaskProperties({
 				<Switch
 					id="enabled"
 					checked={eventTask.enabled !== false}
-					onCheckedChange={(checked) =>
-						updateTaskConfig({ enabled: checked })
-					}
+					onCheckedChange={(checked) => updateTaskConfig({ enabled: checked })}
 					className="data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-gray-600"
 				/>
 			</div>
@@ -199,8 +197,9 @@ export function EventTaskProperties({
 				<Alert className="border-yellow-600 bg-yellow-900/20">
 					<AlertTriangle className="h-4 w-4 text-yellow-400" />
 					<AlertDescription className="text-xs text-gray-300">
-						This event task is <strong>disabled</strong>. It will not be included in the next Terraform generation.
-						All configuration is preserved and can be re-enabled at any time.
+						This event task is <strong>disabled</strong>. It will not be
+						included in the next Terraform generation. All configuration is
+						preserved and can be re-enabled at any time.
 					</AlertDescription>
 				</Alert>
 			)}

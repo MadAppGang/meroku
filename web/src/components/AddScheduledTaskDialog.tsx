@@ -35,7 +35,11 @@ export function AddScheduledTaskDialog({
 	onAdd,
 	existingTasks,
 }: AddScheduledTaskDialogProps) {
-	const { options: fargateOptions, getMemoryOptions, formatMemory } = useFargateOptions();
+	const {
+		options: fargateOptions,
+		getMemoryOptions,
+		formatMemory,
+	} = useFargateOptions();
 	const [formData, setFormData] = useState({
 		name: "",
 		schedule_type: "rate",
@@ -278,12 +282,16 @@ export function AddScheduledTaskDialog({
 								<Select
 									value={formData.cpu.toString()}
 									onValueChange={(value: string) => {
-										const newCpu = Number.parseInt(value);
+										const newCpu = Number.parseInt(value, 10);
 										const validMemory = getMemoryOptions(newCpu);
 										const newMemory = validMemory.includes(formData.memory)
 											? formData.memory
 											: validMemory[0] || 512;
-										setFormData({ ...formData, cpu: newCpu, memory: newMemory });
+										setFormData({
+											...formData,
+											cpu: newCpu,
+											memory: newMemory,
+										});
 									}}
 								>
 									<SelectTrigger id="cpu">
@@ -304,7 +312,10 @@ export function AddScheduledTaskDialog({
 								<Select
 									value={formData.memory.toString()}
 									onValueChange={(value: string) =>
-										setFormData({ ...formData, memory: Number.parseInt(value) })
+										setFormData({
+											...formData,
+											memory: Number.parseInt(value, 10),
+										})
 									}
 								>
 									<SelectTrigger id="memory">

@@ -1,14 +1,14 @@
-import type { PricingResponse } from "../hooks/use-pricing";
 import { usePricingRates } from "../contexts/PricingContext";
+import type { PricingResponse } from "../hooks/use-pricing";
 import {
-	calculateAuroraMinPrice,
+	type AuroraConfig,
 	calculateAuroraMaxPrice,
+	calculateAuroraMinPrice,
 	calculateECSPrice,
 	calculateRDSPrice,
 	calculateScheduledTaskPrice,
-	formatPrice,
-	type AuroraConfig,
 	type ECSConfig,
+	formatPrice,
 	type RDSConfig,
 	type ScheduledTaskConfig,
 } from "../utils/awsPricing";
@@ -48,7 +48,7 @@ export function PricingBadge({
 						variant="secondary"
 						className="absolute -top-2 -right-2 bg-gray-600/90 text-gray-300 border-gray-700 text-xs px-1 py-0.5"
 					>
-							...
+						...
 					</Badge>
 				);
 			}
@@ -94,7 +94,7 @@ export function PricingBadge({
 						variant="secondary"
 						className="absolute -top-2 -right-2 bg-gray-600/90 text-gray-300 border-gray-700 text-xs px-1 py-0.5"
 					>
-							...
+						...
 					</Badge>
 				);
 			}
@@ -150,7 +150,11 @@ export function PricingBadge({
 	};
 
 	// Special handling for backend service - calculate dynamically
-	if (nodeType === "backend" && serviceName === "Backend service" && configProperties) {
+	if (
+		nodeType === "backend" &&
+		serviceName === "Backend service" &&
+		configProperties
+	) {
 		if (!rates) {
 			return (
 				<Badge
@@ -163,12 +167,14 @@ export function PricingBadge({
 		}
 
 		// Extract configuration from configProperties
-		const cpu = typeof configProperties.cpu === 'string'
-			? parseInt(configProperties.cpu)
-			: (configProperties.cpu || 256);
-		const memory = typeof configProperties.memory === 'string'
-			? parseInt(configProperties.memory)
-			: (configProperties.memory || 512);
+		const cpu =
+			typeof configProperties.cpu === "string"
+				? parseInt(configProperties.cpu, 10)
+				: configProperties.cpu || 256;
+		const memory =
+			typeof configProperties.memory === "string"
+				? parseInt(configProperties.memory, 10)
+				: configProperties.memory || 512;
 
 		// If autoscaling is enabled, show price range (min to max)
 		if (configProperties.autoscalingEnabled) {
@@ -219,19 +225,22 @@ export function PricingBadge({
 			);
 		}
 
-		const cpu = typeof configProperties.cpu === 'string'
-			? parseInt(configProperties.cpu)
-			: (configProperties.cpu || 256);
-		const memory = typeof configProperties.memory === 'string'
-			? parseInt(configProperties.memory)
-			: (configProperties.memory || 512);
+		const cpu =
+			typeof configProperties.cpu === "string"
+				? parseInt(configProperties.cpu, 10)
+				: configProperties.cpu || 256;
+		const memory =
+			typeof configProperties.memory === "string"
+				? parseInt(configProperties.memory, 10)
+				: configProperties.memory || 512;
 		const schedule = configProperties.schedule || "rate(1 day)";
 
 		const taskConfig: ScheduledTaskConfig = { cpu, memory, schedule };
 		const monthlyPrice = calculateScheduledTaskPrice(taskConfig, rates);
-		const displayPrice = monthlyPrice < 1
-			? `$${monthlyPrice.toFixed(2)}/mo`
-			: `${formatPrice(monthlyPrice)}/mo`;
+		const displayPrice =
+			monthlyPrice < 1
+				? `$${monthlyPrice.toFixed(2)}/mo`
+				: `${formatPrice(monthlyPrice)}/mo`;
 
 		return (
 			<Badge
@@ -261,7 +270,7 @@ export function PricingBadge({
 						variant="secondary"
 						className="absolute -top-2 -right-2 bg-green-600/90 text-white border-green-700 text-xs px-1 py-0.5"
 					>
-							{displayPrice}
+						{displayPrice}
 					</Badge>
 				);
 			}
@@ -282,12 +291,14 @@ export function PricingBadge({
 		}
 
 		// Extract configuration from configProperties
-		const cpu = typeof configProperties.cpu === 'string'
-			? parseInt(configProperties.cpu)
-			: (configProperties.cpu || 256);
-		const memory = typeof configProperties.memory === 'string'
-			? parseInt(configProperties.memory)
-			: (configProperties.memory || 512);
+		const cpu =
+			typeof configProperties.cpu === "string"
+				? parseInt(configProperties.cpu, 10)
+				: configProperties.cpu || 256;
+		const memory =
+			typeof configProperties.memory === "string"
+				? parseInt(configProperties.memory, 10)
+				: configProperties.memory || 512;
 		const desiredCount = configProperties.desiredCount ?? 1;
 
 		const ecsConfig: ECSConfig = {

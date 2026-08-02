@@ -208,7 +208,7 @@ export function ScheduledTaskParameterStore({
 
 			<StyledSection
 				title="Parameters"
-				description={parameterPath + "*"}
+				description={`${parameterPath}*`}
 				icon={Key}
 				iconColor="text-orange-400"
 				actions={
@@ -236,194 +236,192 @@ export function ScheduledTaskParameterStore({
 					</>
 				}
 			>
-					{loading && !parameters.length ? (
-						<div className="flex items-center justify-center py-8">
-							<Loader2 className="w-6 h-6 animate-spin" />
-						</div>
-					) : (
-						<div className="space-y-3">
-							{/* New Parameter Form */}
-							{showNewForm && (
-								<div className="border border-blue-700 bg-blue-900/10 rounded-lg p-4 space-y-3">
-									<h4 className="text-sm font-medium text-blue-400">
-										Add New Parameter
-									</h4>
-									<div className="grid grid-cols-2 gap-3">
-										<div>
-											<Label htmlFor="new-param-name" className="text-xs">
-												Parameter Name
-											</Label>
-											<Input
-												id="new-param-name"
-												placeholder="parameter_name"
-												value={newParamName}
-												onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-													setNewParamName(e.target.value)
-												}
-												className="mt-1 h-8 text-sm"
-											/>
-											<p className="text-xs text-gray-500 mt-1">
-												{parameterPath}/{newParamName}
-											</p>
-										</div>
-										<div>
-											<Label htmlFor="new-param-type" className="text-xs">
-												Type
-											</Label>
-											<Select
-												value={newParamType}
-												onValueChange={(v: string) =>
-													setNewParamType(
-														v as "String" | "StringList" | "SecureString",
-													)
-												}
-											>
-												<SelectTrigger className="mt-1 h-8 text-sm">
-													<SelectValue />
-												</SelectTrigger>
-												<SelectContent>
-													<SelectItem value="String">String</SelectItem>
-													<SelectItem value="StringList">StringList</SelectItem>
-													<SelectItem value="SecureString">
-														SecureString
-													</SelectItem>
-												</SelectContent>
-											</Select>
-										</div>
-									</div>
+				{loading && !parameters.length ? (
+					<div className="flex items-center justify-center py-8">
+						<Loader2 className="w-6 h-6 animate-spin" />
+					</div>
+				) : (
+					<div className="space-y-3">
+						{/* New Parameter Form */}
+						{showNewForm && (
+							<div className="border border-blue-700 bg-blue-900/10 rounded-lg p-4 space-y-3">
+								<h4 className="text-sm font-medium text-blue-400">
+									Add New Parameter
+								</h4>
+								<div className="grid grid-cols-2 gap-3">
 									<div>
-										<Label htmlFor="new-param-value" className="text-xs">
-											Value
-										</Label>
-										<Textarea
-											id="new-param-value"
-											placeholder="Parameter value..."
-											value={newParamValue}
-											onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-												setNewParamValue(e.target.value)
-											}
-											className="mt-1 h-20 text-sm"
-										/>
-									</div>
-									<div>
-										<Label htmlFor="new-param-desc" className="text-xs">
-											Description (optional)
+										<Label htmlFor="new-param-name" className="text-xs">
+											Parameter Name
 										</Label>
 										<Input
-											id="new-param-desc"
-											placeholder="What is this parameter for?"
-											value={newParamDescription}
+											id="new-param-name"
+											placeholder="parameter_name"
+											value={newParamName}
 											onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-												setNewParamDescription(e.target.value)
+												setNewParamName(e.target.value)
 											}
 											className="mt-1 h-8 text-sm"
 										/>
-									</div>
-									<div className="flex justify-end gap-2">
-										<Button
-											size="sm"
-											variant="ghost"
-											onClick={() => {
-												setShowNewForm(false);
-												setNewParamName("");
-												setNewParamValue("");
-												setNewParamDescription("");
-											}}
-											disabled={creating}
-										>
-											Cancel
-										</Button>
-										<Button
-											size="sm"
-											onClick={handleCreateParameter}
-											disabled={!newParamName || !newParamValue || creating}
-										>
-											{creating ? (
-												<Loader2 className="w-4 h-4 animate-spin mr-1" />
-											) : (
-												<Check className="w-4 h-4 mr-1" />
-											)}
-											Create
-										</Button>
-									</div>
-								</div>
-							)}
-
-							{/* Parameters List */}
-							{parameters.map((param) => {
-								const displayName = getParamDisplayName(param.name);
-
-								return (
-									<div
-										key={param.name}
-										className="border border-gray-700 rounded-lg p-3 space-y-2"
-									>
-										<div className="flex items-start justify-between">
-											<div className="flex items-center gap-2">
-												<Key className="w-4 h-4 text-blue-400" />
-												<code className="text-sm font-mono text-blue-400">
-													{displayName.toUpperCase().replace(/-/g, "_")}
-												</code>
-											</div>
-											<div className="flex items-center gap-2">
-												<Badge variant="outline" className="text-xs">
-													{param.type}
-												</Badge>
-											</div>
-										</div>
-
-										{param.description && (
-											<p className="text-xs text-gray-400">
-												{param.description}
-											</p>
-										)}
-
-										<div className="flex items-center justify-between">
-											<div className="flex items-center gap-2 text-xs">
-												<FileText className="w-3 h-3 text-gray-500" />
-												<code className="text-gray-500">{param.name}</code>
-											</div>
-											<div className="flex items-center gap-1">
-												<Button
-													size="sm"
-													variant="ghost"
-													onClick={() => handleViewParameter(param)}
-													className="h-6 px-2 text-xs"
-												>
-													<Eye className="w-3 h-3 mr-1" />
-													View
-												</Button>
-												<Button
-													size="sm"
-													variant="ghost"
-													onClick={() => handleDeleteParameter(param.name)}
-													className="h-6 w-6 p-0 text-red-400 hover:text-red-300"
-												>
-													<Trash2 className="w-3 h-3" />
-												</Button>
-											</div>
-										</div>
-									</div>
-								);
-							})}
-
-							{!loading && parameters.length === 0 && (
-								<div className="text-center py-8 text-gray-400">
-									<Key className="w-8 h-8 mx-auto mb-2 opacity-50" />
-									<p className="text-sm">No parameters found for this task</p>
-									<p className="text-xs mt-1">
-										Click "Add Parameter" to create one
-									</p>
-									{!error && (
-										<p className="text-xs mt-2 text-gray-500">
-											If the task is not deployed yet, parameters will be
-											available after deployment
+										<p className="text-xs text-gray-500 mt-1">
+											{parameterPath}/{newParamName}
 										</p>
-									)}
+									</div>
+									<div>
+										<Label htmlFor="new-param-type" className="text-xs">
+											Type
+										</Label>
+										<Select
+											value={newParamType}
+											onValueChange={(v: string) =>
+												setNewParamType(
+													v as "String" | "StringList" | "SecureString",
+												)
+											}
+										>
+											<SelectTrigger className="mt-1 h-8 text-sm">
+												<SelectValue />
+											</SelectTrigger>
+											<SelectContent>
+												<SelectItem value="String">String</SelectItem>
+												<SelectItem value="StringList">StringList</SelectItem>
+												<SelectItem value="SecureString">
+													SecureString
+												</SelectItem>
+											</SelectContent>
+										</Select>
+									</div>
 								</div>
-							)}
-						</div>
-					)}
+								<div>
+									<Label htmlFor="new-param-value" className="text-xs">
+										Value
+									</Label>
+									<Textarea
+										id="new-param-value"
+										placeholder="Parameter value..."
+										value={newParamValue}
+										onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+											setNewParamValue(e.target.value)
+										}
+										className="mt-1 h-20 text-sm"
+									/>
+								</div>
+								<div>
+									<Label htmlFor="new-param-desc" className="text-xs">
+										Description (optional)
+									</Label>
+									<Input
+										id="new-param-desc"
+										placeholder="What is this parameter for?"
+										value={newParamDescription}
+										onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+											setNewParamDescription(e.target.value)
+										}
+										className="mt-1 h-8 text-sm"
+									/>
+								</div>
+								<div className="flex justify-end gap-2">
+									<Button
+										size="sm"
+										variant="ghost"
+										onClick={() => {
+											setShowNewForm(false);
+											setNewParamName("");
+											setNewParamValue("");
+											setNewParamDescription("");
+										}}
+										disabled={creating}
+									>
+										Cancel
+									</Button>
+									<Button
+										size="sm"
+										onClick={handleCreateParameter}
+										disabled={!newParamName || !newParamValue || creating}
+									>
+										{creating ? (
+											<Loader2 className="w-4 h-4 animate-spin mr-1" />
+										) : (
+											<Check className="w-4 h-4 mr-1" />
+										)}
+										Create
+									</Button>
+								</div>
+							</div>
+						)}
+
+						{/* Parameters List */}
+						{parameters.map((param) => {
+							const displayName = getParamDisplayName(param.name);
+
+							return (
+								<div
+									key={param.name}
+									className="border border-gray-700 rounded-lg p-3 space-y-2"
+								>
+									<div className="flex items-start justify-between">
+										<div className="flex items-center gap-2">
+											<Key className="w-4 h-4 text-blue-400" />
+											<code className="text-sm font-mono text-blue-400">
+												{displayName.toUpperCase().replace(/-/g, "_")}
+											</code>
+										</div>
+										<div className="flex items-center gap-2">
+											<Badge variant="outline" className="text-xs">
+												{param.type}
+											</Badge>
+										</div>
+									</div>
+
+									{param.description && (
+										<p className="text-xs text-gray-400">{param.description}</p>
+									)}
+
+									<div className="flex items-center justify-between">
+										<div className="flex items-center gap-2 text-xs">
+											<FileText className="w-3 h-3 text-gray-500" />
+											<code className="text-gray-500">{param.name}</code>
+										</div>
+										<div className="flex items-center gap-1">
+											<Button
+												size="sm"
+												variant="ghost"
+												onClick={() => handleViewParameter(param)}
+												className="h-6 px-2 text-xs"
+											>
+												<Eye className="w-3 h-3 mr-1" />
+												View
+											</Button>
+											<Button
+												size="sm"
+												variant="ghost"
+												onClick={() => handleDeleteParameter(param.name)}
+												className="h-6 w-6 p-0 text-red-400 hover:text-red-300"
+											>
+												<Trash2 className="w-3 h-3" />
+											</Button>
+										</div>
+									</div>
+								</div>
+							);
+						})}
+
+						{!loading && parameters.length === 0 && (
+							<div className="text-center py-8 text-gray-400">
+								<Key className="w-8 h-8 mx-auto mb-2 opacity-50" />
+								<p className="text-sm">No parameters found for this task</p>
+								<p className="text-xs mt-1">
+									Click "Add Parameter" to create one
+								</p>
+								{!error && (
+									<p className="text-xs mt-2 text-gray-500">
+										If the task is not deployed yet, parameters will be
+										available after deployment
+									</p>
+								)}
+							</div>
+						)}
+					</div>
+				)}
 			</StyledSection>
 
 			{/* Parameter View/Edit Dialog */}

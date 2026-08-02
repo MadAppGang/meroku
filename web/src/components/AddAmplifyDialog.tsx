@@ -71,9 +71,13 @@ function generateSmartDefaults(config?: YamlInfrastructureConfig): {
  */
 function calculateDomainPreview(
 	subdomainPrefix: string,
-	config?: YamlInfrastructureConfig
+	config?: YamlInfrastructureConfig,
 ): string {
-	if (!subdomainPrefix || !config?.domain?.enabled || !config?.domain?.domain_name) {
+	if (
+		!subdomainPrefix ||
+		!config?.domain?.enabled ||
+		!config?.domain?.domain_name
+	) {
 		return "";
 	}
 
@@ -122,10 +126,7 @@ export const AddAmplifyDialog: React.FC<AddAmplifyDialogProps> = ({
 	config,
 }) => {
 	// Generate smart defaults based on config
-	const smartDefaults = useMemo(
-		() => generateSmartDefaults(config),
-		[config]
-	);
+	const smartDefaults = useMemo(() => generateSmartDefaults(config), [config]);
 
 	const [formData, setFormData] = useState<{
 		name: string;
@@ -469,7 +470,9 @@ export const AddAmplifyDialog: React.FC<AddAmplifyDialogProps> = ({
 				environment_variables: branch.environment_variables,
 				custom_subdomains: branch.custom_subdomains || [],
 			})),
-			...(formData.subdomain_prefix && { subdomain_prefix: formData.subdomain_prefix }),
+			...(formData.subdomain_prefix && {
+				subdomain_prefix: formData.subdomain_prefix,
+			}),
 			spa_mode: formData.spa_mode,
 		};
 
@@ -554,7 +557,8 @@ export const AddAmplifyDialog: React.FC<AddAmplifyDialogProps> = ({
 							)}
 							{smartDefaults.suggestedName && (
 								<p className="text-xs text-blue-400 mt-1">
-									💡 Pre-filled as {smartDefaults.suggestedName} based on project name
+									💡 Pre-filled as {smartDefaults.suggestedName} based on
+									project name
 								</p>
 							)}
 						</div>
@@ -956,9 +960,7 @@ export const AddAmplifyDialog: React.FC<AddAmplifyDialogProps> = ({
 
 					{/* Domain Configuration */}
 					<div className="grid gap-2">
-						<h3 className="text-sm font-semibold">
-							Domain Configuration
-						</h3>
+						<h3 className="text-sm font-semibold">Domain Configuration</h3>
 
 						<div>
 							<Label htmlFor="subdomain_prefix">Subdomain Prefix</Label>
@@ -971,27 +973,36 @@ export const AddAmplifyDialog: React.FC<AddAmplifyDialogProps> = ({
 								placeholder="app"
 								className="mt-1"
 							/>
-							{smartDefaults.suggestedSubdomain && formData.subdomain_prefix === smartDefaults.suggestedSubdomain && (
-								<p className="text-xs text-blue-400 mt-1">
-									💡 Pre-filled based on project name
-								</p>
-							)}
+							{smartDefaults.suggestedSubdomain &&
+								formData.subdomain_prefix ===
+									smartDefaults.suggestedSubdomain && (
+									<p className="text-xs text-blue-400 mt-1">
+										💡 Pre-filled based on project name
+									</p>
+								)}
 
 							{/* Domain Preview */}
-							{formData.subdomain_prefix && config?.domain?.enabled && config?.domain?.domain_name && (
-								<div className="mt-3 p-3 bg-gray-800/50 border border-gray-700 rounded-lg">
-									<div className="flex items-center gap-2 mb-1">
-										<Globe className="w-4 h-4 text-blue-400" />
-										<span className="text-xs font-medium text-gray-400">Domain Preview</span>
+							{formData.subdomain_prefix &&
+								config?.domain?.enabled &&
+								config?.domain?.domain_name && (
+									<div className="mt-3 p-3 bg-gray-800/50 border border-gray-700 rounded-lg">
+										<div className="flex items-center gap-2 mb-1">
+											<Globe className="w-4 h-4 text-blue-400" />
+											<span className="text-xs font-medium text-gray-400">
+												Domain Preview
+											</span>
+										</div>
+										<p className="text-sm text-white font-mono">
+											{calculateDomainPreview(
+												formData.subdomain_prefix,
+												config,
+											)}
+										</p>
+										<p className="text-xs text-gray-500 mt-1">
+											Automatically constructed from domain configuration
+										</p>
 									</div>
-									<p className="text-sm text-white font-mono">
-										{calculateDomainPreview(formData.subdomain_prefix, config)}
-									</p>
-									<p className="text-xs text-gray-500 mt-1">
-										Automatically constructed from domain configuration
-									</p>
-								</div>
-							)}
+								)}
 
 							{!config?.domain?.enabled && (
 								<p className="text-xs text-amber-400 mt-1">

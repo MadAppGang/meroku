@@ -1,8 +1,9 @@
 import type React from "react";
-import { memo, useRef, useEffect, useCallback } from "react";
+import { memo, useCallback, useEffect, useRef } from "react";
+import type { ECRConfig } from "../types/yamlConfig";
+import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
-import { Input } from "./ui/input";
 import {
 	Select,
 	SelectContent,
@@ -10,7 +11,6 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "./ui/select";
-import type { ECRConfig } from "../types/yamlConfig";
 
 interface ECRSource {
 	name: string;
@@ -42,33 +42,56 @@ export const ECRConfigSection = memo(function ECRConfigSection({
 	renderCountRef.current++;
 
 	// Track previous props to detect what changed
-	const prevPropsRef = useRef({ config, onChange, availableSources, errors, accountId, region });
+	const prevPropsRef = useRef({
+		config,
+		onChange,
+		availableSources,
+		errors,
+		accountId,
+		region,
+	});
 	useEffect(() => {
 		const prev = prevPropsRef.current;
 		const changes: string[] = [];
-		if (prev.config !== config) changes.push('config');
-		if (prev.onChange !== onChange) changes.push('onChange');
-		if (prev.availableSources !== availableSources) changes.push('availableSources');
-		if (prev.errors !== errors) changes.push('errors');
-		if (prev.accountId !== accountId) changes.push('accountId');
-		if (prev.region !== region) changes.push('region');
+		if (prev.config !== config) changes.push("config");
+		if (prev.onChange !== onChange) changes.push("onChange");
+		if (prev.availableSources !== availableSources)
+			changes.push("availableSources");
+		if (prev.errors !== errors) changes.push("errors");
+		if (prev.accountId !== accountId) changes.push("accountId");
+		if (prev.region !== region) changes.push("region");
 
 		if (changes.length > 0) {
-			console.log(`🔧 [ECRConfigSection] Props changed: ${changes.join(', ')}`, {
-				configRef: prev.config === config ? 'same' : 'CHANGED',
-				onChangeRef: prev.onChange === onChange ? 'same' : 'CHANGED',
-				availableSourcesRef: prev.availableSources === availableSources ? 'same' : 'CHANGED',
-				availableSourcesLength: availableSources.length,
-			});
+			console.log(
+				`🔧 [ECRConfigSection] Props changed: ${changes.join(", ")}`,
+				{
+					configRef: prev.config === config ? "same" : "CHANGED",
+					onChangeRef: prev.onChange === onChange ? "same" : "CHANGED",
+					availableSourcesRef:
+						prev.availableSources === availableSources ? "same" : "CHANGED",
+					availableSourcesLength: availableSources.length,
+				},
+			);
 		}
-		prevPropsRef.current = { config, onChange, availableSources, errors, accountId, region };
+		prevPropsRef.current = {
+			config,
+			onChange,
+			availableSources,
+			errors,
+			accountId,
+			region,
+		};
 	}, [config, onChange, availableSources, errors, accountId, region]);
 
-	console.log(`🔄 [ECRConfigSection] Render #${renderCountRef.current} for ${currentServiceName}`);
+	console.log(
+		`🔄 [ECRConfigSection] Render #${renderCountRef.current} for ${currentServiceName}`,
+	);
 
 	if (renderCountRef.current > 50) {
-		console.error('⚠️ [ECRConfigSection] INFINITE LOOP DETECTED - More than 50 renders!');
-		console.trace('Stack trace at 50th render');
+		console.error(
+			"⚠️ [ECRConfigSection] INFINITE LOOP DETECTED - More than 50 renders!",
+		);
+		console.trace("Stack trace at 50th render");
 	}
 
 	console.log(`🐳 [ECRConfigSection] Props:`, {
@@ -81,37 +104,50 @@ export const ECRConfigSection = memo(function ECRConfigSection({
 	const mode = config.mode || "create_ecr";
 
 	// Generate preconfigured ECR repository URI
-	const preConfiguredECRUri = currentServiceName && accountId && region
-		? `${accountId}.dkr.ecr.${region}.amazonaws.com/${currentServiceName}`
-		: null;
+	const preConfiguredECRUri =
+		currentServiceName && accountId && region
+			? `${accountId}.dkr.ecr.${region}.amazonaws.com/${currentServiceName}`
+			: null;
 
-	const handleModeChange = useCallback((newMode: string) => {
-		console.log(`🔧 [ECRConfigSection] handleModeChange called:`, newMode);
-		onChange({
-			mode: newMode as ECRConfig["mode"],
-			repository_uri: "",
-			source_service_name: "",
-			source_service_type: undefined,
-		});
-	}, [onChange]);
+	const handleModeChange = useCallback(
+		(newMode: string) => {
+			console.log(`🔧 [ECRConfigSection] handleModeChange called:`, newMode);
+			onChange({
+				mode: newMode as ECRConfig["mode"],
+				repository_uri: "",
+				source_service_name: "",
+				source_service_type: undefined,
+			});
+		},
+		[onChange],
+	);
 
-	const handleRepositoryURIChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-		console.log(`🔧 [ECRConfigSection] handleRepositoryURIChange called:`, e.target.value);
-		onChange({
-			...config,
-			repository_uri: e.target.value,
-		});
-	}, [config, onChange]);
+	const handleRepositoryURIChange = useCallback(
+		(e: React.ChangeEvent<HTMLInputElement>) => {
+			console.log(
+				`🔧 [ECRConfigSection] handleRepositoryURIChange called:`,
+				e.target.value,
+			);
+			onChange({
+				...config,
+				repository_uri: e.target.value,
+			});
+		},
+		[config, onChange],
+	);
 
-	const handleSourceChange = useCallback((value: string) => {
-		console.log(`🔧 [ECRConfigSection] handleSourceChange called:`, value);
-		const [sourceType, sourceName] = value.split("-", 2);
-		onChange({
-			...config,
-			source_service_name: sourceName,
-			source_service_type: sourceType as ECRConfig["source_service_type"],
-		});
-	}, [config, onChange]);
+	const handleSourceChange = useCallback(
+		(value: string) => {
+			console.log(`🔧 [ECRConfigSection] handleSourceChange called:`, value);
+			const [sourceType, sourceName] = value.split("-", 2);
+			onChange({
+				...config,
+				source_service_name: sourceName,
+				source_service_type: sourceType as ECRConfig["source_service_type"],
+			});
+		},
+		[config, onChange],
+	);
 
 	const filteredSources = availableSources.filter(
 		(source) => source.name !== currentServiceName,
@@ -125,7 +161,9 @@ export const ECRConfigSection = memo(function ECRConfigSection({
 	return (
 		<div className="space-y-4">
 			<div>
-				<Label className="text-sm font-medium">Docker Registry Configuration</Label>
+				<Label className="text-sm font-medium">
+					Docker Registry Configuration
+				</Label>
 				<p className="text-sm text-muted-foreground mt-1">
 					Choose how to manage the container registry for this service
 				</p>
@@ -167,7 +205,8 @@ export const ECRConfigSection = memo(function ECRConfigSection({
 					</Label>
 				</div>
 				<p className="text-xs text-muted-foreground ml-6">
-					Share an ECR repository from another service, event processor, or scheduled task
+					Share an ECR repository from another service, event processor, or
+					scheduled task
 				</p>
 			</RadioGroup>
 
@@ -182,7 +221,9 @@ export const ECRConfigSection = memo(function ECRConfigSection({
 						className={errors.repository_uri ? "border-red-500" : ""}
 					/>
 					{errors.repository_uri && (
-						<p className="text-sm text-red-500 -mt-1">{errors.repository_uri}</p>
+						<p className="text-sm text-red-500 -mt-1">
+							{errors.repository_uri}
+						</p>
 					)}
 					<p className="text-xs text-muted-foreground -mt-1">
 						Examples: nginx:latest, ubuntu:22.04, or ECR URI

@@ -15,16 +15,16 @@
 
 import {
 	createContext,
+	type ReactNode,
 	useContext,
 	useEffect,
 	useState,
-	type ReactNode,
-} from 'react';
+} from "react";
 import {
+	type AWSPriceRates,
 	fetchPricingRates,
 	getCachedRates,
-	type AWSPriceRates,
-} from '../services/pricingService';
+} from "../services/pricingService";
 
 interface PricingContextValue {
 	rates: AWSPriceRates | null;
@@ -58,7 +58,7 @@ interface PricingProviderProps {
  */
 export function PricingProvider({
 	children,
-	region = 'us-east-1',
+	region = "us-east-1",
 }: PricingProviderProps) {
 	// Try to get cached rates immediately
 	const [rates, setRates] = useState<AWSPriceRates | null>(getCachedRates());
@@ -88,11 +88,11 @@ export function PricingProvider({
 		} catch (err) {
 			const error = err as Error;
 			setError(error);
-			console.error('[PricingContext] Failed to fetch pricing rates:', error);
+			console.error("[PricingContext] Failed to fetch pricing rates:", error);
 
 			// If we have cached rates, keep using them despite the error
 			if (!rates) {
-				console.error('[PricingContext] No cached rates available');
+				console.error("[PricingContext] No cached rates available");
 			}
 		} finally {
 			setLoading(false);
@@ -102,11 +102,11 @@ export function PricingProvider({
 	// Fetch rates on mount if not cached
 	useEffect(() => {
 		if (!rates) {
-			console.log('[PricingContext] No cached rates, fetching...');
+			console.log("[PricingContext] No cached rates, fetching...");
 			fetchRates();
 		} else {
 			console.log(
-				'[PricingContext] Using cached rates:',
+				"[PricingContext] Using cached rates:",
 				rates.region,
 				rates.source,
 			);
@@ -117,7 +117,7 @@ export function PricingProvider({
 	useEffect(() => {
 		const interval = setInterval(
 			() => {
-				console.log('[PricingContext] Auto-refresh triggered');
+				console.log("[PricingContext] Auto-refresh triggered");
 				fetchRates();
 			},
 			60 * 60 * 1000,
@@ -162,7 +162,7 @@ export function usePricing(): PricingContextValue {
 	const context = useContext(PricingContext);
 
 	if (!context) {
-		throw new Error('usePricing must be used within PricingProvider');
+		throw new Error("usePricing must be used within PricingProvider");
 	}
 
 	return context;

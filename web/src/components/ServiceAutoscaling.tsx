@@ -315,7 +315,7 @@ export function ServiceAutoscaling({
 								<Select
 									value={formData.cpu.toString()}
 									onValueChange={(value) => {
-										const cpu = parseInt(value);
+										const cpu = parseInt(value, 10);
 										setFormData({
 											...formData,
 											cpu,
@@ -342,7 +342,7 @@ export function ServiceAutoscaling({
 								<Select
 									value={formData.memory.toString()}
 									onValueChange={(value) =>
-										setFormData({ ...formData, memory: parseInt(value) })
+										setFormData({ ...formData, memory: parseInt(value, 10) })
 									}
 								>
 									<SelectTrigger>

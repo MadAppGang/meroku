@@ -1,4 +1,10 @@
-import { AlertTriangle, Database, ExternalLink, Info, Share2 } from "lucide-react";
+import {
+	AlertTriangle,
+	Database,
+	ExternalLink,
+	Info,
+	Share2,
+} from "lucide-react";
 import type { AccountInfo } from "../api/infrastructure";
 import type { ComponentNode } from "../types";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
@@ -82,7 +88,8 @@ export function ServiceProperties({
 					<div className="flex-1">
 						<Label htmlFor="enabled">Enabled</Label>
 						<p className="text-xs text-gray-500 mt-1">
-							When disabled, all settings are kept but the service is not deployed
+							When disabled, all settings are kept but the service is not
+							deployed
 						</p>
 					</div>
 					<Switch
@@ -99,8 +106,9 @@ export function ServiceProperties({
 					<Alert className="border-yellow-600 bg-yellow-900/20">
 						<AlertTriangle className="h-4 w-4 text-yellow-400" />
 						<AlertDescription className="text-xs text-gray-300">
-							This service is <strong>disabled</strong>. It will not be included in the next Terraform generation.
-							All configuration is preserved and can be re-enabled at any time.
+							This service is <strong>disabled</strong>. It will not be included
+							in the next Terraform generation. All configuration is preserved
+							and can be re-enabled at any time.
 						</AlertDescription>
 					</Alert>
 				)}
@@ -130,9 +138,12 @@ export function ServiceProperties({
 					<Alert className="border-blue-600 bg-blue-900/20">
 						<Info className="h-4 w-4 text-blue-400" />
 						<AlertDescription className="text-xs text-gray-300">
-							Automatic deploys are <strong>off</strong> for this service. Pushes and
-							config changes are still delivered to the CI/CD Lambda and logged as
-							<code className="mx-1">auto_deploy is disabled for {serviceName}</code>
+							Automatic deploys are <strong>off</strong> for this service.
+							Pushes and config changes are still delivered to the CI/CD Lambda
+							and logged as
+							<code className="mx-1">
+								auto_deploy is disabled for {serviceName}
+							</code>
 							rather than silently doing nothing. Manual deploys still work.
 						</AlertDescription>
 					</Alert>
@@ -182,20 +193,28 @@ export function ServiceProperties({
 								<Database className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
 								<div className="flex-1 space-y-2">
 									<div className="flex items-center gap-2">
-										<Label className="text-xs text-gray-300">ECR Configuration:</Label>
+										<Label className="text-xs text-gray-300">
+											ECR Configuration:
+										</Label>
 										{serviceConfig.ecr_config.mode === "create_ecr" && (
 											<Badge variant="default" className="text-xs">
 												Dedicated Repository
 											</Badge>
 										)}
 										{serviceConfig.ecr_config.mode === "manual_repo" && (
-											<Badge variant="secondary" className="text-xs flex items-center gap-1">
+											<Badge
+												variant="secondary"
+												className="text-xs flex items-center gap-1"
+											>
 												<ExternalLink className="w-3 h-3" />
 												Manual Repository
 											</Badge>
 										)}
 										{serviceConfig.ecr_config.mode === "use_existing" && (
-											<Badge variant="outline" className="text-xs flex items-center gap-1">
+											<Badge
+												variant="outline"
+												className="text-xs flex items-center gap-1"
+											>
 												<Share2 className="w-3 h-3" />
 												Shared Repository
 											</Badge>
@@ -208,27 +227,34 @@ export function ServiceProperties({
 												{ecrUri}
 											</p>
 											<p className="text-xs text-gray-500 mt-1">
-												A dedicated ECR repository will be created for this service
+												A dedicated ECR repository will be created for this
+												service
 											</p>
 										</div>
 									)}
 
-									{serviceConfig.ecr_config.mode === "manual_repo" && serviceConfig.ecr_config.repository_uri && (
-										<div>
-											<p className="text-xs text-gray-400 font-mono break-all">
-												{serviceConfig.ecr_config.repository_uri}
-											</p>
-											<p className="text-xs text-gray-500 mt-1">
-												Using manually specified ECR repository
-											</p>
-										</div>
-									)}
+									{serviceConfig.ecr_config.mode === "manual_repo" &&
+										serviceConfig.ecr_config.repository_uri && (
+											<div>
+												<p className="text-xs text-gray-400 font-mono break-all">
+													{serviceConfig.ecr_config.repository_uri}
+												</p>
+												<p className="text-xs text-gray-500 mt-1">
+													Using manually specified ECR repository
+												</p>
+											</div>
+										)}
 
 									{serviceConfig.ecr_config.mode === "use_existing" && (
 										<div>
 											<p className="text-xs text-gray-300">
-												Source: <span className="font-mono text-gray-400">
-													{serviceConfig.ecr_config.source_service_type?.replace("_", " ")} / {serviceConfig.ecr_config.source_service_name}
+												Source:{" "}
+												<span className="font-mono text-gray-400">
+													{serviceConfig.ecr_config.source_service_type?.replace(
+														"_",
+														" ",
+													)}{" "}
+													/ {serviceConfig.ecr_config.source_service_name}
 												</span>
 											</p>
 											<p className="text-xs text-gray-500 mt-1">
@@ -256,9 +282,9 @@ export function ServiceProperties({
 										{ecrUri}
 									</p>
 									<p className="text-xs text-gray-500 mt-2">
-										ECR repositories for services are only created in development
-										environment. In production, you must use an external Docker
-										image.
+										ECR repositories for services are only created in
+										development environment. In production, you must use an
+										external Docker image.
 									</p>
 								</div>
 							</div>
@@ -321,7 +347,7 @@ export function ServiceProperties({
 						type="number"
 						value={serviceConfig.container_port || 3000}
 						onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-							const port = parseInt(e.target.value) || 3000;
+							const port = parseInt(e.target.value, 10) || 3000;
 							handleServiceChange({
 								container_port: port,
 								host_port: port, // Always sync for awsvpc compatibility
@@ -345,12 +371,14 @@ export function ServiceProperties({
 					<Input
 						id="host_port"
 						type="number"
-						value={serviceConfig.host_port || serviceConfig.container_port || 3000}
+						value={
+							serviceConfig.host_port || serviceConfig.container_port || 3000
+						}
 						onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
 							// Only allow editing if using default VPC
 							if (config.use_default_vpc) {
 								handleServiceChange({
-									host_port: parseInt(e.target.value) || 3000,
+									host_port: parseInt(e.target.value, 10) || 3000,
 								});
 							}
 						}}
@@ -398,29 +426,31 @@ export function ServiceProperties({
 				</div>
 
 				{/* API Domain Prefix Input - shown when enabled */}
-				{serviceConfig.api_domain_prefix && serviceConfig.api_domain_prefix !== "" && (
-					<div className="space-y-2 ml-4">
-						<Label htmlFor={`api-prefix-${serviceName}`}>
-							API Domain Prefix
-						</Label>
-						<Input
-							id={`api-prefix-${serviceName}`}
-							value={serviceConfig.api_domain_prefix}
-							onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-								handleServiceChange({
-									api_domain_prefix: e.target.value || serviceName,
-								})
-							}
-							placeholder={serviceName}
-							className="bg-gray-800 border-gray-600 text-white"
-						/>
-						<p className="text-xs text-gray-500">
-							Subdomain prefix for this service (default: service name)
-						</p>
-					</div>
-				)}
+				{serviceConfig.api_domain_prefix &&
+					serviceConfig.api_domain_prefix !== "" && (
+						<div className="space-y-2 ml-4">
+							<Label htmlFor={`api-prefix-${serviceName}`}>
+								API Domain Prefix
+							</Label>
+							<Input
+								id={`api-prefix-${serviceName}`}
+								value={serviceConfig.api_domain_prefix}
+								onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+									handleServiceChange({
+										api_domain_prefix: e.target.value || serviceName,
+									})
+								}
+								placeholder={serviceName}
+								className="bg-gray-800 border-gray-600 text-white"
+							/>
+							<p className="text-xs text-gray-500">
+								Subdomain prefix for this service (default: service name)
+							</p>
+						</div>
+					)}
 
-				{serviceConfig.api_domain_prefix && serviceConfig.api_domain_prefix !== "" ? (
+				{serviceConfig.api_domain_prefix &&
+				serviceConfig.api_domain_prefix !== "" ? (
 					<div className="p-3 bg-green-900/20 border border-green-700 rounded-lg">
 						<div className="flex items-start gap-2">
 							<Info className="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0" />

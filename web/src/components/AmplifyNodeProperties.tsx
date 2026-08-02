@@ -20,9 +20,13 @@ import { Label } from "./ui/label";
  */
 function calculateDomainPreview(
 	subdomainPrefix: string,
-	config?: YamlInfrastructureConfig
+	config?: YamlInfrastructureConfig,
 ): string {
-	if (!subdomainPrefix || !config?.domain?.enabled || !config?.domain?.domain_name) {
+	if (
+		!subdomainPrefix ||
+		!config?.domain?.enabled ||
+		!config?.domain?.domain_name
+	) {
 		return "";
 	}
 
@@ -251,9 +255,7 @@ export function AmplifyNodeProperties({
 						<Input
 							id="subdomain_prefix"
 							value={amplifyApp.subdomain_prefix || ""}
-							onChange={(e) =>
-								handleChange("subdomain_prefix", e.target.value)
-							}
+							onChange={(e) => handleChange("subdomain_prefix", e.target.value)}
 							placeholder="app"
 							className="mt-1 bg-gray-800 border-gray-600 text-white"
 						/>
@@ -261,7 +263,9 @@ export function AmplifyNodeProperties({
 							<div className="mt-2 p-3 bg-gray-800/50 border border-gray-700 rounded-lg">
 								<div className="flex items-center gap-2 mb-1">
 									<Globe className="w-4 h-4 text-blue-400" />
-									<span className="text-xs font-medium text-gray-400">Domain Preview</span>
+									<span className="text-xs font-medium text-gray-400">
+										Domain Preview
+									</span>
 								</div>
 								<p className="text-sm text-white font-mono">
 									{calculateDomainPreview(amplifyApp.subdomain_prefix, config)}
@@ -303,7 +307,8 @@ export function AmplifyNodeProperties({
 						<div>
 							<p className="text-sm font-medium text-white">Enable SPA Mode</p>
 							<p className="text-xs text-gray-400 mt-1">
-								Use 200 status rewrite (recommended for React, Vue, Angular SPAs)
+								Use 200 status rewrite (recommended for React, Vue, Angular
+								SPAs)
 							</p>
 						</div>
 						<Checkbox

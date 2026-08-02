@@ -3,6 +3,7 @@ import type React from "react";
 import { useMemo, useState } from "react";
 import type { EventTask } from "../types/components";
 import type { ECRConfig, YamlInfrastructureConfig } from "../types/yamlConfig";
+import { ECRConfigSection } from "./ECRConfigSection";
 import { Button } from "./ui/button";
 import {
 	Dialog,
@@ -22,7 +23,6 @@ import {
 } from "./ui/select";
 import { Separator } from "./ui/separator";
 import { Textarea } from "./ui/textarea";
-import { ECRConfigSection } from "./ECRConfigSection";
 
 interface AddEventTaskDialogProps {
 	open: boolean;
@@ -68,7 +68,10 @@ export function AddEventTaskDialog({
 			return `${accountId}.dkr.ecr.${region}.amazonaws.com/${taskEcrRepoName}`;
 		} else if (ecrConfig.mode === "manual_repo" && ecrConfig.repository_uri) {
 			return ecrConfig.repository_uri;
-		} else if (ecrConfig.mode === "use_existing" && ecrConfig.source_service_name) {
+		} else if (
+			ecrConfig.mode === "use_existing" &&
+			ecrConfig.source_service_name
+		) {
 			const sourceRepoName = `${config.project}_task_${ecrConfig.source_service_name}`;
 			return `${accountId}.dkr.ecr.${region}.amazonaws.com/${sourceRepoName}`;
 		}
@@ -77,10 +80,14 @@ export function AddEventTaskDialog({
 
 	// Build available ECR sources from all service types
 	const availableSources = useMemo(() => {
-		const sources: Array<{ name: string; type: "services" | "event_processor_tasks" | "scheduled_tasks"; displayType: string }> = [];
+		const sources: Array<{
+			name: string;
+			type: "services" | "event_processor_tasks" | "scheduled_tasks";
+			displayType: string;
+		}> = [];
 
 		// Add services with create_ecr mode
-		config.services?.forEach(svc => {
+		config.services?.forEach((svc) => {
 			if (!svc.ecr_config || svc.ecr_config.mode === "create_ecr") {
 				sources.push({
 					name: svc.name,
@@ -91,8 +98,11 @@ export function AddEventTaskDialog({
 		});
 
 		// Add event processors with create_ecr mode
-		config.event_processor_tasks?.forEach(ep => {
-			if (ep.name !== formData.name && (!ep.ecr_config || ep.ecr_config.mode === "create_ecr")) {
+		config.event_processor_tasks?.forEach((ep) => {
+			if (
+				ep.name !== formData.name &&
+				(!ep.ecr_config || ep.ecr_config.mode === "create_ecr")
+			) {
 				sources.push({
 					name: ep.name,
 					type: "event_processor_tasks",
@@ -102,7 +112,7 @@ export function AddEventTaskDialog({
 		});
 
 		// Add scheduled tasks with create_ecr mode
-		config.scheduled_tasks?.forEach(st => {
+		config.scheduled_tasks?.forEach((st) => {
 			if (!st.ecr_config || st.ecr_config.mode === "create_ecr") {
 				sources.push({
 					name: st.name,
@@ -300,10 +310,7 @@ export function AddEventTaskDialog({
 						<div className="grid gap-2">
 							<Label>Event Detail Types</Label>
 							{formData.detail_types.map((detailType, index) => (
-								<div
-									key={`detail-type-${index}`}
-									className="flex gap-2"
-								>
+								<div key={`detail-type-${index}`} className="flex gap-2">
 									<Input
 										value={detailType}
 										onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
@@ -448,7 +455,7 @@ export function AddEventTaskDialog({
 								<Select
 									value={formData.cpu.toString()}
 									onValueChange={(value: string) =>
-										setFormData({ ...formData, cpu: parseInt(value) })
+										setFormData({ ...formData, cpu: parseInt(value, 10) })
 									}
 								>
 									<SelectTrigger id="cpu">
@@ -468,7 +475,7 @@ export function AddEventTaskDialog({
 								<Select
 									value={formData.memory.toString()}
 									onValueChange={(value: string) =>
-										setFormData({ ...formData, memory: parseInt(value) })
+										setFormData({ ...formData, memory: parseInt(value, 10) })
 									}
 								>
 									<SelectTrigger id="memory">

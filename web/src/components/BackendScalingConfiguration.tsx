@@ -35,7 +35,11 @@ export function BackendScalingConfiguration({
 	isService = false,
 	serviceName,
 }: BackendScalingConfigurationProps) {
-	const { options: fargateOptions, getMemoryOptions, formatMemory } = useFargateOptions();
+	const {
+		options: fargateOptions,
+		getMemoryOptions,
+		formatMemory,
+	} = useFargateOptions();
 
 	// Get service config if this is for a service
 	const serviceConfig =
@@ -55,8 +59,8 @@ export function BackendScalingConfiguration({
 	);
 	const [desiredCount, setDesiredCount] = useState(
 		isService && serviceConfig
-			? serviceConfig.desired_count ?? 1
-			: config.workload?.backend_desired_count ?? 1,
+			? (serviceConfig.desired_count ?? 1)
+			: (config.workload?.backend_desired_count ?? 1),
 	);
 	const [autoscalingEnabled, setAutoscalingEnabled] = useState(
 		isService ? false : config.workload?.backend_autoscaling_enabled || false,
@@ -74,8 +78,11 @@ export function BackendScalingConfiguration({
 
 	// Adjust memory when CPU changes - also persist to YAML config
 	useEffect(() => {
-		const availableMemory = getMemoryOptions(Number.parseInt(cpu));
-		if (availableMemory.length > 0 && !availableMemory.includes(Number.parseInt(memory))) {
+		const availableMemory = getMemoryOptions(Number.parseInt(cpu, 10));
+		if (
+			availableMemory.length > 0 &&
+			!availableMemory.includes(Number.parseInt(memory, 10))
+		) {
 			const newMemory = availableMemory[0].toString();
 			setMemory(newMemory);
 			handleWorkloadChange({ backend_memory: newMemory });
@@ -93,10 +100,10 @@ export function BackendScalingConfiguration({
 						? {
 								...service,
 								cpu: updates?.backend_cpu
-									? Number.parseInt(updates.backend_cpu)
+									? Number.parseInt(updates.backend_cpu, 10)
 									: service.cpu,
 								memory: updates?.backend_memory
-									? Number.parseInt(updates.backend_memory)
+									? Number.parseInt(updates.backend_memory, 10)
 									: service.memory,
 								desired_count:
 									updates?.backend_desired_count ?? service.desired_count,
@@ -138,12 +145,20 @@ export function BackendScalingConfiguration({
 								onValueChange={(value: string) => {
 									setCpu(value);
 									// Auto-adjust memory if current value is invalid for new CPU
-									const availableMemory = getMemoryOptions(Number.parseInt(value));
-									const currentMem = Number.parseInt(memory);
-									if (availableMemory.length > 0 && !availableMemory.includes(currentMem)) {
+									const availableMemory = getMemoryOptions(
+										Number.parseInt(value, 10),
+									);
+									const currentMem = Number.parseInt(memory, 10);
+									if (
+										availableMemory.length > 0 &&
+										!availableMemory.includes(currentMem)
+									) {
 										const newMemory = availableMemory[0].toString();
 										setMemory(newMemory);
-										handleWorkloadChange({ backend_cpu: value, backend_memory: newMemory });
+										handleWorkloadChange({
+											backend_cpu: value,
+											backend_memory: newMemory,
+										});
 									} else {
 										handleWorkloadChange({ backend_cpu: value });
 									}
@@ -181,7 +196,7 @@ export function BackendScalingConfiguration({
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
-									{getMemoryOptions(Number.parseInt(cpu)).map((mem) => (
+									{getMemoryOptions(Number.parseInt(cpu, 10)).map((mem) => (
 										<SelectItem key={mem} value={mem.toString()}>
 											{formatMemory(mem)}
 										</SelectItem>
@@ -200,7 +215,7 @@ export function BackendScalingConfiguration({
 							max="100"
 							value={desiredCount}
 							onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-								const value = Number.parseInt(e.target.value) || 1;
+								const value = Number.parseInt(e.target.value, 10) || 1;
 								setDesiredCount(value);
 								handleWorkloadChange({ backend_desired_count: value });
 							}}
@@ -278,7 +293,7 @@ export function BackendScalingConfiguration({
 											max={maxCapacity}
 											value={minCapacity}
 											onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-												const value = Number.parseInt(e.target.value) || 1;
+												const value = Number.parseInt(e.target.value, 10) || 1;
 												setMinCapacity(value);
 												handleWorkloadChange({
 													backend_autoscaling_min_capacity: value,
@@ -297,7 +312,7 @@ export function BackendScalingConfiguration({
 											max="100"
 											value={maxCapacity}
 											onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-												const value = Number.parseInt(e.target.value) || 1;
+												const value = Number.parseInt(e.target.value, 10) || 1;
 												setMaxCapacity(value);
 												handleWorkloadChange({
 													backend_autoscaling_max_capacity: value,
@@ -394,7 +409,7 @@ export function BackendScalingConfiguration({
 														e: React.ChangeEvent<HTMLInputElement>,
 													) => {
 														const value =
-															Number.parseInt(e.target.value) || 1000;
+															Number.parseInt(e.target.value, 10) || 1000;
 														setRequestsPerTarget(value);
 														// Note: requests_per_target is not persisted in config
 													}}
@@ -480,11 +495,11 @@ export function BackendScalingConfiguration({
 						<div className="bg-gray-800 rounded-lg p-3">
 							<p className="text-xs text-gray-400 mb-1">Maximum Resources</p>
 							<p className="text-sm text-gray-300">
-								{Number.parseInt(cpu) *
+								{Number.parseInt(cpu, 10) *
 									(autoscalingEnabled ? maxCapacity : desiredCount)}{" "}
 								CPU units /{" "}
 								{(
-									(Number.parseInt(memory) *
+									(Number.parseInt(memory, 10) *
 										(autoscalingEnabled ? maxCapacity : desiredCount)) /
 									1024
 								).toFixed(1)}{" "}

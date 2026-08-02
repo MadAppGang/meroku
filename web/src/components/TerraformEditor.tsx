@@ -122,7 +122,7 @@ export function TerraformEditor({
 				">>>=",
 			],
 
-			symbols: /[=><!~?:&|+\-*\/\^%]+/,
+			symbols: /[=><!~?:&|+\-*/^%]+/,
 
 			escapes:
 				/\\(?:[abfnrtv\\"']|x[0-9A-Fa-f]{1,4}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8})/,
@@ -140,13 +140,13 @@ export function TerraformEditor({
 							},
 						},
 					],
-					[/[A-Z][\w\$]*/, "type.identifier"],
+					[/[A-Z][\w$]*/, "type.identifier"],
 
 					// whitespace
 					{ include: "@whitespace" },
 
 					// delimiters and operators
-					[/[{}()\[\]]/, "@brackets"],
+					[/[{}()[\]]/, "@brackets"],
 					[/[<>](?!@symbols)/, "@brackets"],
 					[
 						/@symbols/,
@@ -159,7 +159,7 @@ export function TerraformEditor({
 					],
 
 					// numbers
-					[/\d*\.\d+([eE][\-+]?\d+)?/, "number.float"],
+					[/\d*\.\d+([eE][-+]?\d+)?/, "number.float"],
 					[/0[xX][0-9a-fA-F]+/, "number.hex"],
 					[/\d+/, "number"],
 
@@ -172,10 +172,10 @@ export function TerraformEditor({
 				],
 
 				comment: [
-					[/[^\/*]+/, "comment"],
+					[/[^/*]+/, "comment"],
 					[/\/\*/, "comment", "@push"], // nested comment
 					["\\*/", "comment", "@pop"],
-					[/[\/*]/, "comment"],
+					[/[/*]/, "comment"],
 				],
 
 				string: [

@@ -1,4 +1,12 @@
-import { ArrowLeft, FileCode, Folder, FolderOpen, Plus, Save, Trash2 } from "lucide-react";
+import {
+	ArrowLeft,
+	FileCode,
+	Folder,
+	FolderOpen,
+	Plus,
+	Save,
+	Trash2,
+} from "lucide-react";
 import { useCallback, useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 import { customTerraformApi } from "../api/customTerraform";
@@ -184,7 +192,7 @@ export function CustomTerraformManager({
 	};
 
 	const handleInsert = (text: string) => {
-		setEditorContent((prev) => prev + "\n" + text);
+		setEditorContent((prev) => `${prev}\n${text}`);
 		setHasUnsavedChanges(true);
 		toast.success("Inserted");
 	};
@@ -358,7 +366,11 @@ export function CustomTerraformManager({
 			</div>
 
 			{/* Bridge Variables Reference Panel */}
-			<SidebarRight variables={bridgeVariables} onInsert={handleInsert} environment={environment} />
+			<SidebarRight
+				variables={bridgeVariables}
+				onInsert={handleInsert}
+				environment={environment}
+			/>
 
 			{/* New File Dialog */}
 			<Dialog open={showNewFileDialog} onOpenChange={setShowNewFileDialog}>

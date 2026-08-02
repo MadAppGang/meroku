@@ -150,10 +150,16 @@ function MultiSelectField({
 }
 
 // Helper function to parse rate expression
-function parseRateExpression(value: string): { rateValue: string; rateUnit: "minute" | "hour" | "day" } {
+function parseRateExpression(value: string): {
+	rateValue: string;
+	rateUnit: "minute" | "hour" | "day";
+} {
 	const match = value.match(/rate\((\d+)\s+(minute|hour|day)s?\)/);
 	if (match) {
-		return { rateValue: match[1], rateUnit: match[2] as "minute" | "hour" | "day" };
+		return {
+			rateValue: match[1],
+			rateUnit: match[2] as "minute" | "hour" | "day",
+		};
 	}
 	return { rateValue: "1", rateUnit: "day" };
 }
@@ -167,7 +173,9 @@ function parseCronExpression(value: string): {
 	dayOfWeek: string;
 	year: string;
 } {
-	const match = value.match(/cron\((.*?)\s+(.*?)\s+(.*?)\s+(.*?)\s+(.*?)\s+(.*?)\)/);
+	const match = value.match(
+		/cron\((.*?)\s+(.*?)\s+(.*?)\s+(.*?)\s+(.*?)\s+(.*?)\)/,
+	);
 	if (match) {
 		return {
 			minute: match[1],
@@ -178,7 +186,14 @@ function parseCronExpression(value: string): {
 			year: match[6],
 		};
 	}
-	return { minute: "0", hour: "12", dayOfMonth: "*", month: "*", dayOfWeek: "?", year: "*" };
+	return {
+		minute: "0",
+		hour: "12",
+		dayOfMonth: "*",
+		month: "*",
+		dayOfWeek: "?",
+		year: "*",
+	};
 }
 
 export function ScheduleExpressionBuilder({
@@ -204,16 +219,32 @@ export function ScheduleExpressionBuilder({
 	);
 
 	// Rate expression state - initialize from parsed value
-	const [rateValue, setRateValue] = useState(() => isRate ? initialRate.rateValue : "1");
-	const [rateUnit, setRateUnit] = useState<"minute" | "hour" | "day">(() => isRate ? initialRate.rateUnit : "day");
+	const [rateValue, setRateValue] = useState(() =>
+		isRate ? initialRate.rateValue : "1",
+	);
+	const [rateUnit, setRateUnit] = useState<"minute" | "hour" | "day">(() =>
+		isRate ? initialRate.rateUnit : "day",
+	);
 
 	// Cron expression state - initialize from parsed value
-	const [cronMinute, setCronMinute] = useState(() => isCron ? initialCron.minute : "0");
-	const [cronHour, setCronHour] = useState(() => isCron ? initialCron.hour : "12");
-	const [cronDayOfMonth, setCronDayOfMonth] = useState(() => isCron ? initialCron.dayOfMonth : "*");
-	const [cronMonth, setCronMonth] = useState(() => isCron ? initialCron.month : "*");
-	const [cronDayOfWeek, setCronDayOfWeek] = useState(() => isCron ? initialCron.dayOfWeek : "?");
-	const [cronYear, setCronYear] = useState(() => isCron ? initialCron.year : "*");
+	const [cronMinute, setCronMinute] = useState(() =>
+		isCron ? initialCron.minute : "0",
+	);
+	const [cronHour, setCronHour] = useState(() =>
+		isCron ? initialCron.hour : "12",
+	);
+	const [cronDayOfMonth, setCronDayOfMonth] = useState(() =>
+		isCron ? initialCron.dayOfMonth : "*",
+	);
+	const [cronMonth, setCronMonth] = useState(() =>
+		isCron ? initialCron.month : "*",
+	);
+	const [cronDayOfWeek, setCronDayOfWeek] = useState(() =>
+		isCron ? initialCron.dayOfWeek : "?",
+	);
+	const [cronYear, setCronYear] = useState(() =>
+		isCron ? initialCron.year : "*",
+	);
 
 	// Common presets
 	const [preset, setPreset] = useState<string>("");
@@ -254,7 +285,7 @@ export function ScheduleExpressionBuilder({
 
 	// Build rate expression
 	const buildRateExpression = () => {
-		const unit = parseInt(rateValue) === 1 ? rateUnit : `${rateUnit}s`;
+		const unit = parseInt(rateValue, 10) === 1 ? rateUnit : `${rateUnit}s`;
 		return `rate(${rateValue} ${unit})`;
 	};
 
@@ -272,12 +303,24 @@ export function ScheduleExpressionBuilder({
 		}
 
 		if (expressionType === "rate") {
-			const unit = parseInt(rateValue) === 1 ? rateUnit : `${rateUnit}s`;
+			const unit = parseInt(rateValue, 10) === 1 ? rateUnit : `${rateUnit}s`;
 			onChangeRef.current(`rate(${rateValue} ${unit})`);
 		} else {
-			onChangeRef.current(`cron(${cronMinute} ${cronHour} ${cronDayOfMonth} ${cronMonth} ${cronDayOfWeek} ${cronYear})`);
+			onChangeRef.current(
+				`cron(${cronMinute} ${cronHour} ${cronDayOfMonth} ${cronMonth} ${cronDayOfWeek} ${cronYear})`,
+			);
 		}
-	}, [expressionType, rateValue, rateUnit, cronMinute, cronHour, cronDayOfMonth, cronMonth, cronDayOfWeek, cronYear]);
+	}, [
+		expressionType,
+		rateValue,
+		rateUnit,
+		cronMinute,
+		cronHour,
+		cronDayOfMonth,
+		cronMonth,
+		cronDayOfWeek,
+		cronYear,
+	]);
 
 	// Apply preset
 	const applyPreset = (presetValue: string) => {
@@ -397,7 +440,7 @@ export function ScheduleExpressionBuilder({
 					</div>
 					<div className="text-xs text-gray-400">
 						Runs every {rateValue} {rateUnit}
-						{parseInt(rateValue) !== 1 ? "s" : ""}
+						{parseInt(rateValue, 10) !== 1 ? "s" : ""}
 					</div>
 				</TabsContent>
 

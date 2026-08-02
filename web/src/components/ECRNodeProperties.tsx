@@ -1,7 +1,11 @@
 import { AlertCircle, CheckCircle2, Info, Loader2 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+import type {
+	AccountInfo,
+	ConfigureCrossAccountECRResponse,
+	ECRSource,
+} from "../api/infrastructure";
 import { infrastructureApi } from "../api/infrastructure";
-import type { AccountInfo, ECRSource, ConfigureCrossAccountECRResponse } from "../api/infrastructure";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import { Alert, AlertDescription } from "./ui/alert";
 import {
@@ -34,7 +38,8 @@ export function ECRNodeProperties({
 	const [selectedSource, setSelectedSource] = useState<string>("");
 	const [isLoadingSources, setIsLoadingSources] = useState(false);
 	const [isConfiguring, setIsConfiguring] = useState(false);
-	const [configResult, setConfigResult] = useState<ConfigureCrossAccountECRResponse | null>(null);
+	const [configResult, setConfigResult] =
+		useState<ConfigureCrossAccountECRResponse | null>(null);
 	const [error, setError] = useState<string>("");
 
 	// Deployment status (from real AWS check)
@@ -62,7 +67,9 @@ export function ECRNodeProperties({
 			// Pre-select the current source if already configured
 			if (config.ecr_account_id && config.ecr_account_region) {
 				const currentSource = response.sources.find(
-					s => s.account_id === config.ecr_account_id && s.region === config.ecr_account_region
+					(s) =>
+						s.account_id === config.ecr_account_id &&
+						s.region === config.ecr_account_region,
 				);
 				if (currentSource) {
 					setSelectedSource(currentSource.name);
@@ -71,7 +78,9 @@ export function ECRNodeProperties({
 				}
 			}
 		} catch (err) {
-			setError(err instanceof Error ? err.message : "Failed to load ECR sources");
+			setError(
+				err instanceof Error ? err.message : "Failed to load ECR sources",
+			);
 		} finally {
 			setIsLoadingSources(false);
 		}
@@ -83,12 +92,16 @@ export function ECRNodeProperties({
 			return;
 		}
 
-		setDeploymentStatus({ deployed: false, has_trust_for: false, checking: true });
+		setDeploymentStatus({
+			deployed: false,
+			has_trust_for: false,
+			checking: true,
+		});
 
 		try {
 			const result = await infrastructureApi.checkECRTrustPolicy(
 				sourceEnvName,
-				config.account_id
+				config.account_id,
 			);
 			setDeploymentStatus({
 				deployed: result.deployed,
@@ -98,7 +111,11 @@ export function ECRNodeProperties({
 			});
 		} catch (err) {
 			console.error("Failed to check deployment status:", err);
-			setDeploymentStatus({ deployed: false, has_trust_for: false, checking: false });
+			setDeploymentStatus({
+				deployed: false,
+				has_trust_for: false,
+				checking: false,
+			});
 		}
 	};
 
@@ -126,7 +143,11 @@ export function ECRNodeProperties({
 			// Check deployment status after configuration
 			await checkDeploymentStatus(sourceEnvName);
 		} catch (err) {
-			setError(err instanceof Error ? err.message : "Failed to configure cross-account ECR");
+			setError(
+				err instanceof Error
+					? err.message
+					: "Failed to configure cross-account ECR",
+			);
 		} finally {
 			setIsConfiguring(false);
 		}
@@ -272,7 +293,8 @@ export function ECRNodeProperties({
 								<Info className="h-4 w-4 text-blue-400" />
 								<AlertDescription className="text-xs">
 									Selecting a source will automatically update both YAML files
-									(source and target). The source will grant access to this environment.
+									(source and target). The source will grant access to this
+									environment.
 								</AlertDescription>
 							</Alert>
 
@@ -339,85 +361,111 @@ export function ECRNodeProperties({
 							)}
 
 							{/* Info: Configuration will update both files */}
-							{selectedSource && (() => {
-								const selectedSourceData = ecrSources.find(s => s.name === selectedSource);
-								const isAlreadyTrusted = selectedSourceData?.trusted_accounts.some(
-									ta => ta.account_id === config.account_id && ta.env === config.env
-								);
-
-								if (isAlreadyTrusted) {
-									return (
-										<Alert className="bg-blue-900/20 border-blue-700">
-											<Info className="h-4 w-4 text-blue-400" />
-											<AlertDescription className="text-sm text-blue-400">
-												This environment is already configured to trust {config.env}.
-												Re-selecting will update the configuration files.
-											</AlertDescription>
-										</Alert>
+							{selectedSource &&
+								(() => {
+									const selectedSourceData = ecrSources.find(
+										(s) => s.name === selectedSource,
 									);
-								}
+									const isAlreadyTrusted =
+										selectedSourceData?.trusted_accounts.some(
+											(ta) =>
+												ta.account_id === config.account_id &&
+												ta.env === config.env,
+										);
 
-								return null;
-							})()}
+									if (isAlreadyTrusted) {
+										return (
+											<Alert className="bg-blue-900/20 border-blue-700">
+												<Info className="h-4 w-4 text-blue-400" />
+												<AlertDescription className="text-sm text-blue-400">
+													This environment is already configured to trust{" "}
+													{config.env}. Re-selecting will update the
+													configuration files.
+												</AlertDescription>
+											</Alert>
+										);
+									}
+
+									return null;
+								})()}
 
 							{/* Deployment Status Check */}
-							{deploymentStatus && !deploymentStatus.checking && selectedSource && (
-								<>
-									{deploymentStatus.deployed && deploymentStatus.has_trust_for && (
-										<Alert className="bg-green-900/20 border-green-700">
-											<CheckCircle2 className="h-4 w-4 text-green-400" />
-											<AlertDescription className="text-sm text-green-400">
-												<div className="font-medium">✓ Trust Policy Deployed in AWS</div>
-												<div className="text-xs mt-1">
-													Cross-account access is ready. Repository: {deploymentStatus.repository}
-												</div>
-											</AlertDescription>
-										</Alert>
-									)}
+							{deploymentStatus &&
+								!deploymentStatus.checking &&
+								selectedSource && (
+									<>
+										{deploymentStatus.deployed &&
+											deploymentStatus.has_trust_for && (
+												<Alert className="bg-green-900/20 border-green-700">
+													<CheckCircle2 className="h-4 w-4 text-green-400" />
+													<AlertDescription className="text-sm text-green-400">
+														<div className="font-medium">
+															✓ Trust Policy Deployed in AWS
+														</div>
+														<div className="text-xs mt-1">
+															Cross-account access is ready. Repository:{" "}
+															{deploymentStatus.repository}
+														</div>
+													</AlertDescription>
+												</Alert>
+											)}
 
-									{deploymentStatus.deployed && !deploymentStatus.has_trust_for && (
-										<Alert className="bg-yellow-900/20 border-yellow-700">
-											<Info className="h-4 w-4 text-yellow-400" />
-											<AlertDescription className="text-sm text-yellow-400">
-												<div className="font-medium">⚠ Configuration Updated - Deployment Required</div>
-												<div className="text-xs mt-1 space-y-2">
-													<div>
-														We've updated <strong>{selectedSource}.yaml</strong> to grant access to this account ({config.account_id}).
-														Now deploy the source environment to apply the trust policy to AWS:
-													</div>
-													<pre className="bg-gray-800 rounded p-2 text-xs">
-														make infra-apply env={selectedSource}
-													</pre>
-													<div className="text-yellow-300">
-														This will update the ECR repository policy in AWS to allow cross-account pull access.
-													</div>
-												</div>
-											</AlertDescription>
-										</Alert>
-									)}
+										{deploymentStatus.deployed &&
+											!deploymentStatus.has_trust_for && (
+												<Alert className="bg-yellow-900/20 border-yellow-700">
+													<Info className="h-4 w-4 text-yellow-400" />
+													<AlertDescription className="text-sm text-yellow-400">
+														<div className="font-medium">
+															⚠ Configuration Updated - Deployment Required
+														</div>
+														<div className="text-xs mt-1 space-y-2">
+															<div>
+																We've updated{" "}
+																<strong>{selectedSource}.yaml</strong> to grant
+																access to this account ({config.account_id}).
+																Now deploy the source environment to apply the
+																trust policy to AWS:
+															</div>
+															<pre className="bg-gray-800 rounded p-2 text-xs">
+																make infra-apply env={selectedSource}
+															</pre>
+															<div className="text-yellow-300">
+																This will update the ECR repository policy in
+																AWS to allow cross-account pull access.
+															</div>
+														</div>
+													</AlertDescription>
+												</Alert>
+											)}
 
-									{!deploymentStatus.deployed && (
-										<Alert className="bg-yellow-900/20 border-yellow-700">
-											<Info className="h-4 w-4 text-yellow-400" />
-											<AlertDescription className="text-sm text-yellow-400">
-												<div className="font-medium">⚠ Configuration Updated - Deployment Required</div>
-												<div className="text-xs mt-1 space-y-2">
-													<div>
-														We've updated <strong>{selectedSource}.yaml</strong> to grant access to this account ({config.account_id}).
-														Deploy the source environment to create the trust policy in AWS:
+										{!deploymentStatus.deployed && (
+											<Alert className="bg-yellow-900/20 border-yellow-700">
+												<Info className="h-4 w-4 text-yellow-400" />
+												<AlertDescription className="text-sm text-yellow-400">
+													<div className="font-medium">
+														⚠ Configuration Updated - Deployment Required
 													</div>
-													<pre className="bg-gray-800 rounded p-2 text-xs">
-														make infra-apply env={selectedSource}
-													</pre>
-													<div className="text-yellow-300">
-														This will create the ECR repository policy in AWS and enable cross-account pull access.
+													<div className="text-xs mt-1 space-y-2">
+														<div>
+															We've updated{" "}
+															<strong>{selectedSource}.yaml</strong> to grant
+															access to this account ({config.account_id}).
+															Deploy the source environment to create the trust
+															policy in AWS:
+														</div>
+														<pre className="bg-gray-800 rounded p-2 text-xs">
+															make infra-apply env={selectedSource}
+														</pre>
+														<div className="text-yellow-300">
+															This will create the ECR repository policy in AWS
+															and enable cross-account pull access.
+														</div>
 													</div>
-												</div>
-											</AlertDescription>
-										</Alert>
-									)}
-								</>
-							)}
+												</AlertDescription>
+											</Alert>
+										)}
+									</>
+								)}
 
 							{/* Checking Deployment Status */}
 							{deploymentStatus?.checking && (
@@ -461,7 +509,9 @@ export function ECRNodeProperties({
 									</h4>
 									<div className="bg-gray-800 rounded p-2">
 										<code className="text-xs text-gray-300 break-all">
-											{config.ecr_account_id}.dkr.ecr.{config.ecr_account_region}.amazonaws.com/{config.project}_backend
+											{config.ecr_account_id}.dkr.ecr.
+											{config.ecr_account_region}.amazonaws.com/{config.project}
+											_backend
 										</code>
 									</div>
 									<p className="text-xs text-gray-400 mt-2">
