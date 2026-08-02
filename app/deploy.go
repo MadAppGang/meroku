@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -89,12 +90,79 @@ func runCommandToDeploy(env string) error {
 		os.Exit(1)
 	}
 
+	// Decide which deployment plan this environment needs before touching
+	// terraform. An undelegated DNS zone otherwise parks the whole apply on ACM
+	// validation, because module.workloads consumes certificate ARNs that come
+	// from aws_acm_certificate_validation.
+	ctx := context.Background()
+	needsZoneBootstrap := false
+
+	dnsResult, dnsErr := checkDNSPreflight(ctx, e)
+	if dnsErr != nil {
+		// Fail open: an unreachable Route53 or resolver must not block a deploy
+		// that would otherwise succeed. Say so rather than pretending it passed.
+		fmt.Printf("\n⚠️  Could not verify DNS delegation: %v\n", dnsErr)
+		fmt.Println("   Continuing anyway — if the domain is not delegated, certificate")
+		fmt.Println("   validation will time out and the apply will fail.")
+	} else {
+		fmt.Printf("\n%s", describeDNSPreflight(dnsResult))
+
+		switch dnsResult.Plan {
+		case dnsPlanBlocked:
+			// The zone exists but is not delegated. meroku can usually fix this
+			// itself, so offer rather than just reporting.
+			fmt.Println("\n❌ Deployment stopped before it could stall on certificate validation.")
+			if err := runDelegationFlow(ctx, e, dnsResult); err != nil {
+				fmt.Printf("   %v\n", err)
+			}
+			// Re-check: if the delegation just landed we can carry straight on.
+			if recheck, err := checkDNSPreflight(ctx, e); err == nil && recheck.Plan == dnsPlanNormal {
+				fmt.Println("\n✅ Delegation verified — continuing with the deployment.")
+			} else {
+				fmt.Println("\n   Run the deploy again once delegation is in place.")
+				os.Exit(1)
+			}
+
+		case dnsPlanMissingZone:
+			fmt.Println("\n❌ Deployment stopped: DNS configuration problem.")
+			fmt.Println("   Fix the issue above, then run the deploy again.")
+			os.Exit(1)
+
+		case dnsPlanBootstrap:
+			// Two-phase deploy. Phase 1 needs terraform, so it has to wait until
+			// after the chdir and init below.
+			needsZoneBootstrap = true
+		}
+	}
+
 	err = os.Chdir(filepath.Join("env", env))
 	if err != nil {
 		fmt.Println("Error changing directory to env folder:", err)
 		os.Exit(1)
 	}
 	terraformInitIfNeeded()
+
+	// Phase 1 of a two-phase deploy: create the hosted zone on its own, set up
+	// delegation, and only then run the full apply. Splitting is what makes a
+	// brand-new domain deployable at all — in one pass the certificate validation
+	// waits on a delegation that cannot exist until the zone it is waiting for has
+	// been created.
+	if needsZoneBootstrap {
+		ready, err := runDNSBootstrapAndDelegate(ctx, e)
+		if err != nil {
+			fmt.Printf("\n❌ DNS bootstrap failed: %v\n", err)
+			os.Exit(1)
+		}
+		if !ready {
+			fmt.Println("\n⏸  Stopping before phase 2.")
+			fmt.Println("   The hosted zone exists, but delegation is not visible yet.")
+			fmt.Println("   Re-run the deploy once it resolves; nothing needs to be undone.")
+			fmt.Println("   Check with: meroku dns validate")
+			os.Exit(0)
+		}
+		fmt.Println("\n🌐 Phase 2 of 2: deploying everything else")
+	}
+
 	return runTerraformApply()
 }
 

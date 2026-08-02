@@ -86,11 +86,13 @@ resource "aws_ecs_service" "pgadmin" {
   }
 }
 
+# The task definition family was hardcoded to "pgadmin", so every meroku project
+# in the account wrote revisions into one shared family.
 resource "aws_ecs_task_definition" "pgadmin" {
   count                    = var.pgadmin_enabled ? 1 : 0
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  family                   = "pgadmin"
+  family                   = "${var.project}_pgadmin_${var.env}"
   cpu                      = 256
   memory                   = 512
   execution_role_arn       = aws_iam_role.pgadmin_task_execution[0].arn

@@ -69,7 +69,12 @@ resource "aws_ecr_repository_policy" "task" {
 resource "aws_ecs_task_definition" "task" {
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  family                   = var.task
+  # Task definition families are account+region-global. This must match the
+  # SCHEDULED_TASK_MAP built in modules/workloads/lambda.tf, which looks up
+  # "${var.project}_task_${name}_${var.env}" — with a bare var.task those
+  # families never existed, so ECR-push auto-deploy for scheduled tasks
+  # could not work.
+  family                   = "${var.project}_task_${var.task}_${var.env}"
   cpu                      = var.cpu
   memory                   = var.memory
   execution_role_arn       = aws_iam_role.task_execution.arn

@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -568,14 +569,14 @@ func (m *modernPlanModel) parseTerraformOutput(stdout interface{}) {
 
 func (m *modernPlanModel) handleApplyStart(msg *TerraformJSONMessage) {
 	// Debug to dedicated file
-	if f, err := os.OpenFile("/tmp/handleApplyStart.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+	if f, err := tuiDebugFile("/tmp/handleApplyStart.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
 		timestamp := time.Now().Format("2006-01-02 15:04:05.000")
 		fmt.Fprintf(f, "[%s] CALLED, msg=%v, hook=%v\n", timestamp, msg != nil, msg != nil && msg.Hook != nil)
 		f.Close()
 	}
 
 	if msg.Hook == nil || msg.Hook.Resource == nil {
-		if f, err := os.OpenFile("/tmp/handleApplyStart.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+		if f, err := tuiDebugFile("/tmp/handleApplyStart.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
 			timestamp := time.Now().Format("2006-01-02 15:04:05.000")
 			fmt.Fprintf(f, "[%s] Early return: hook=%v, resource=%v\n", timestamp, msg.Hook != nil, msg != nil && msg.Hook != nil && msg.Hook.Resource != nil)
 			f.Close()
@@ -591,7 +592,7 @@ func (m *modernPlanModel) handleApplyStart(msg *TerraformJSONMessage) {
 	// Normalize action name (Terraform uses "destroy" in hooks, "delete" in plan)
 	action = normalizeAction(action)
 
-	if f, err := os.OpenFile("/tmp/handleApplyStart.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+	if f, err := tuiDebugFile("/tmp/handleApplyStart.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
 		timestamp := time.Now().Format("2006-01-02 15:04:05.000")
 		fmt.Fprintf(f, "[%s] addr=%s, action=%s, applyState=%v\n", timestamp, addr, action, m.applyState != nil)
 		f.Close()
@@ -610,14 +611,14 @@ func (m *modernPlanModel) handleApplyStart(msg *TerraformJSONMessage) {
 		m.applyState.mu.Unlock()
 
 		// Debug: Log that we added currentOp
-		if f, err := os.OpenFile("/tmp/handleApplyStart.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+		if f, err := tuiDebugFile("/tmp/handleApplyStart.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
 			timestamp := time.Now().Format("2006-01-02 15:04:05.000")
 			fmt.Fprintf(f, "[%s] CURRENTOP ADDED: %s (%s), total ops: %d\n", timestamp, addr, action, opsCount)
 			f.Close()
 		}
 	} else {
 		// Debug: Log that applyState is nil
-		if f, err := os.OpenFile("/tmp/handleApplyStart.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+		if f, err := tuiDebugFile("/tmp/handleApplyStart.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
 			timestamp := time.Now().Format("2006-01-02 15:04:05.000")
 			fmt.Fprintf(f, "[%s] CANNOT ADD CURRENTOP: applyState is nil!\n", timestamp)
 			f.Close()
@@ -766,7 +767,7 @@ func (m *modernPlanModel) handleDiagnostic(msg *TerraformJSONMessage) {
 	}
 
 	// Debug logging
-	if debugFile, err := os.OpenFile("/tmp/terraform_debug.log", os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+	if debugFile, err := tuiDebugFile("/tmp/terraform_debug.log", os.O_APPEND|os.O_WRONLY, 0644); err == nil {
 		fmt.Fprintf(debugFile, "[DIAGNOSTIC] Received diagnostic:\n")
 		fmt.Fprintf(debugFile, "  Address: '%s'\n", msg.Diagnostic.Address)
 		fmt.Fprintf(debugFile, "  Severity: %s\n", msg.Diagnostic.Severity)
@@ -785,7 +786,7 @@ func (m *modernPlanModel) handleDiagnostic(msg *TerraformJSONMessage) {
 			m.applyState.mu.Lock()
 
 			// Debug: log the storage
-			if debugFile, err := os.OpenFile("/tmp/terraform_debug.log", os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+			if debugFile, err := tuiDebugFile("/tmp/terraform_debug.log", os.O_APPEND|os.O_WRONLY, 0644); err == nil {
 				fmt.Fprintf(debugFile, "[DIAGNOSTIC] Storing diagnostic for address: %s\n", msg.Diagnostic.Address)
 				debugFile.Close()
 			}
@@ -801,7 +802,7 @@ func (m *modernPlanModel) handleDiagnostic(msg *TerraformJSONMessage) {
 					foundMatch = true
 
 					// Debug: log the backfill
-					if debugFile, err := os.OpenFile("/tmp/terraform_debug.log", os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+					if debugFile, err := tuiDebugFile("/tmp/terraform_debug.log", os.O_APPEND|os.O_WRONLY, 0644); err == nil {
 						fmt.Fprintf(debugFile, "[DIAGNOSTIC] Backfilled completed resource at index %d\n", i)
 						debugFile.Close()
 					}
@@ -811,7 +812,7 @@ func (m *modernPlanModel) handleDiagnostic(msg *TerraformJSONMessage) {
 
 			// Debug: log if no match found
 			if !foundMatch {
-				if debugFile, err := os.OpenFile("/tmp/terraform_debug.log", os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+				if debugFile, err := tuiDebugFile("/tmp/terraform_debug.log", os.O_APPEND|os.O_WRONLY, 0644); err == nil {
 					fmt.Fprintf(debugFile, "[DIAGNOSTIC] No matching completed resource found for: %s\n", msg.Diagnostic.Address)
 					debugFile.Close()
 				}
@@ -895,4 +896,25 @@ func (m *modernPlanModel) sendMsg(msg tea.Msg) {
 	if m.program != nil {
 		m.program.Send(msg)
 	}
+}
+
+// tuiDebugEnabled gates the verbose debug logs written by the apply TUI.
+//
+// These call sites sit in the render and parse hot paths: the apply view alone
+// opened and appended to /tmp/render_debug.log eight times per frame, and the
+// JSON parser wrote per-message traces. Useful when debugging the TUI, pure
+// overhead (and surprise files in /tmp) otherwise.
+//
+//	MEROKU_TUI_DEBUG=1 meroku ...
+var tuiDebugEnabled = os.Getenv("MEROKU_TUI_DEBUG") == "1"
+
+var errTUIDebugDisabled = errors.New("tui debug logging disabled")
+
+// tuiDebugFile is a drop-in replacement for os.OpenFile at debug call sites.
+// It fails fast when debugging is off, so the guarded blocks are skipped.
+func tuiDebugFile(path string, flag int, perm os.FileMode) (*os.File, error) {
+	if !tuiDebugEnabled {
+		return nil, errTUIDebugDisabled
+	}
+	return os.OpenFile(path, flag, perm)
 }

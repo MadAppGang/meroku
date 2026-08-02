@@ -74,6 +74,14 @@ resource "aws_route53_record" "api_domain" {
 resource "aws_acm_certificate_validation" "api_domain" {
   certificate_arn         = aws_acm_certificate.api_domain.arn
   validation_record_fqdns = [for record in aws_route53_record.api_domain : record.fqdn]
+
+  # ACM can only validate once the CNAME below resolves on the public internet,
+  # which requires this zone to be delegated from its parent. If delegation is
+  # missing, the default 75m timeout parks the entire apply with no explanation
+  # (every consumer of the cert ARN waits on this resource). Fail legibly instead.
+  timeouts {
+    create = "20m"
+  }
 }
 
 
@@ -97,5 +105,10 @@ resource "aws_route53_record" "subdomains" {
 resource "aws_acm_certificate_validation" "subdomains" {
   certificate_arn         = aws_acm_certificate.subdomains.arn
   validation_record_fqdns = [for record in aws_route53_record.subdomains : record.fqdn]
+
+  # See the api_domain validation above — same delegation dependency.
+  timeouts {
+    create = "20m"
+  }
 }
 

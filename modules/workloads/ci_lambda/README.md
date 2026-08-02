@@ -270,8 +270,8 @@ Error: Service deployment timeout
 ## Monitoring
 
 **CloudWatch Logs:**
-- Log Group: `/aws/lambda/ci_lambda_{env}`
-- Retention: 30 days (configurable in Terraform)
+- Log Group: `/aws/lambda/{project}_ci_lambda_{env}`
+- Retention: 7 days (configurable in Terraform)
 
 **Metrics:**
 - Lambda invocations

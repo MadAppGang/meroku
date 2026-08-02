@@ -714,7 +714,7 @@ func queryNameservers(domain string) ([]string, error) {
 	}
 
 	// If DoH fails, try standard DNS as fallback
-	fmt.Printf("[DNS DEBUG] DoH failed (%v), trying standard DNS...\n", dohErr)
+	dnsDebugf("[DNS DEBUG] DoH failed (%v), trying standard DNS...\n", dohErr)
 
 	// Clean and prepare the domain
 	domain = strings.TrimSpace(domain)
@@ -725,15 +725,15 @@ func queryNameservers(domain string) ([]string, error) {
 		domain = domain + "."
 	}
 
-	fmt.Printf("[DNS DEBUG] Querying for FQDN: '%s'\n", domain)
+	dnsDebugf("[DNS DEBUG] Querying for FQDN: '%s'\n", domain)
 
 	// First, try to get authoritative servers for the parent domain
 	parentDomain := getParentDomain(domain)
 	if parentDomain != "" {
-		fmt.Printf("[DNS DEBUG] Parent domain: %s\n", parentDomain)
+		dnsDebugf("[DNS DEBUG] Parent domain: %s\n", parentDomain)
 		authNS := queryAuthoritativeServers(parentDomain, domain)
 		if len(authNS) > 0 {
-			fmt.Printf("[DNS DEBUG] ✅ Got authoritative answer!\n")
+			dnsDebugf("[DNS DEBUG] ✅ Got authoritative answer!\n")
 			return authNS, nil
 		}
 	}
@@ -757,7 +757,7 @@ func queryNameservers(domain string) ([]string, error) {
 
 	// Query ALL DNS servers to see what each one returns
 	for _, server := range publicDNSServers {
-		fmt.Printf("\n[DNS DEBUG] --- Querying %s ---\n", server)
+		dnsDebugf("\n[DNS DEBUG] --- Querying %s ---\n", server)
 
 		// Create a new DNS client - try TCP first as it often bypasses caches
 		c := new(dns.Client)
@@ -773,28 +773,28 @@ func queryNameservers(domain string) ([]string, error) {
 		m.SetEdns0(4096, true)
 
 		// Debug: Show the actual DNS query being sent
-		fmt.Printf("[DNS DEBUG] Query details: Question=%s Type=NS RD=true DO=true Protocol=TCP\n", domain)
+		dnsDebugf("[DNS DEBUG] Query details: Question=%s Type=NS RD=true DO=true Protocol=TCP\n", domain)
 
 		// Query the DNS server using TCP
 		r, rtt, err := c.Exchange(m, server)
 
 		// If TCP fails, fallback to UDP
 		if err != nil {
-			fmt.Printf("[DNS DEBUG] TCP failed (%v), trying UDP...\n", err)
+			dnsDebugf("[DNS DEBUG] TCP failed (%v), trying UDP...\n", err)
 			c.Net = "udp"
 			r, rtt, err = c.Exchange(m, server)
 		}
 		if err != nil {
-			fmt.Printf("[DNS DEBUG] ❌ Query failed: %v\n", err)
+			dnsDebugf("[DNS DEBUG] ❌ Query failed: %v\n", err)
 			serverResults[server] = []string{"ERROR: " + err.Error()}
 			lastErr = err
 			continue
 		}
 
-		fmt.Printf("[DNS DEBUG] ✓ Got response in %v\n", rtt)
-		fmt.Printf("[DNS DEBUG] Response code: %s\n", dns.RcodeToString[r.Rcode])
-		fmt.Printf("[DNS DEBUG] Answer section has %d records\n", len(r.Answer))
-		fmt.Printf("[DNS DEBUG] Authority section has %d records\n", len(r.Ns))
+		dnsDebugf("[DNS DEBUG] ✓ Got response in %v\n", rtt)
+		dnsDebugf("[DNS DEBUG] Response code: %s\n", dns.RcodeToString[r.Rcode])
+		dnsDebugf("[DNS DEBUG] Answer section has %d records\n", len(r.Answer))
+		dnsDebugf("[DNS DEBUG] Authority section has %d records\n", len(r.Ns))
 
 		var currentNS []string
 
@@ -824,36 +824,36 @@ func queryNameservers(domain string) ([]string, error) {
 
 			// Print what this server returned
 			if len(currentNS) > 0 {
-				fmt.Printf("[DNS DEBUG] Found %d NS records:\n", len(currentNS))
+				dnsDebugf("[DNS DEBUG] Found %d NS records:\n", len(currentNS))
 				for i, ns := range currentNS {
-					fmt.Printf("[DNS DEBUG]   %d. %s\n", i+1, ns)
+					dnsDebugf("[DNS DEBUG]   %d. %s\n", i+1, ns)
 				}
 				// Use the first successful result as our final result
 				if len(finalNameservers) == 0 {
 					finalNameservers = currentNS
 				}
 			} else {
-				fmt.Printf("[DNS DEBUG] ⚠️  No NS records found\n")
+				dnsDebugf("[DNS DEBUG] ⚠️  No NS records found\n")
 				serverResults[server] = []string{"NO_NS_RECORDS"}
 			}
 		} else if r != nil {
-			fmt.Printf("[DNS DEBUG] ⚠️  Response code: %s\n", dns.RcodeToString[r.Rcode])
+			dnsDebugf("[DNS DEBUG] ⚠️  Response code: %s\n", dns.RcodeToString[r.Rcode])
 			serverResults[server] = []string{"RCODE: " + dns.RcodeToString[r.Rcode]}
 		}
 	}
 
 	// Print comparison of all server results
-	fmt.Printf("\n[DNS DEBUG] ============================================\n")
-	fmt.Printf("[DNS DEBUG] COMPARISON OF ALL DNS SERVER RESPONSES:\n")
-	fmt.Printf("[DNS DEBUG] ============================================\n")
+	dnsDebugf("\n[DNS DEBUG] ============================================\n")
+	dnsDebugf("[DNS DEBUG] COMPARISON OF ALL DNS SERVER RESPONSES:\n")
+	dnsDebugf("[DNS DEBUG] ============================================\n")
 
 	for server, results := range serverResults {
-		fmt.Printf("\n[DNS DEBUG] %s:\n", server)
+		dnsDebugf("\n[DNS DEBUG] %s:\n", server)
 		if len(results) == 0 {
-			fmt.Printf("[DNS DEBUG]   (no results)\n")
+			dnsDebugf("[DNS DEBUG]   (no results)\n")
 		} else {
 			for _, ns := range results {
-				fmt.Printf("[DNS DEBUG]   - %s\n", ns)
+				dnsDebugf("[DNS DEBUG]   - %s\n", ns)
 			}
 		}
 	}
@@ -872,13 +872,13 @@ func queryNameservers(domain string) ([]string, error) {
 	}
 
 	if inconsistent {
-		fmt.Printf("\n[DNS DEBUG] ⚠️  WARNING: DNS servers returning DIFFERENT results!\n")
-		fmt.Printf("[DNS DEBUG] This indicates DNS propagation is still in progress.\n")
+		dnsDebugf("\n[DNS DEBUG] ⚠️  WARNING: DNS servers returning DIFFERENT results!\n")
+		dnsDebugf("[DNS DEBUG] This indicates DNS propagation is still in progress.\n")
 	} else if len(finalNameservers) > 0 {
-		fmt.Printf("\n[DNS DEBUG] ✅ All responding DNS servers agree on the nameservers.\n")
+		dnsDebugf("\n[DNS DEBUG] ✅ All responding DNS servers agree on the nameservers.\n")
 	}
 
-	fmt.Printf("[DNS DEBUG] ============================================\n\n")
+	dnsDebugf("[DNS DEBUG] ============================================\n\n")
 
 	// Return the nameservers we found
 	if len(finalNameservers) > 0 {
@@ -958,7 +958,7 @@ func queryAuthoritativeServers(parentDomain, targetDomain string) []string {
 		}
 	}
 
-	fmt.Printf("[DNS DEBUG] Trying to find authoritative servers for parent %s\n", parentDomain)
+	dnsDebugf("[DNS DEBUG] Trying to find authoritative servers for parent %s\n", parentDomain)
 
 	// First, get the NS records for the parent domain to find its authoritative servers
 	c := new(dns.Client)
@@ -1006,11 +1006,11 @@ func queryAuthoritativeServers(parentDomain, targetDomain string) []string {
 	}
 
 	if len(parentNS) == 0 {
-		fmt.Printf("[DNS DEBUG] Could not find parent nameservers\n")
+		dnsDebugf("[DNS DEBUG] Could not find parent nameservers\n")
 		return nil
 	}
 
-	fmt.Printf("[DNS DEBUG] Found %d parent nameservers, querying them for %s\n", len(parentNS), targetDomain)
+	dnsDebugf("[DNS DEBUG] Found %d parent nameservers, querying them for %s\n", len(parentNS), targetDomain)
 
 	// Now query the parent's authoritative servers for our target domain
 	var results []string
@@ -1029,7 +1029,7 @@ func queryAuthoritativeServers(parentDomain, targetDomain string) []string {
 		}
 
 		if r != nil && r.Authoritative {
-			fmt.Printf("[DNS DEBUG] Got AUTHORITATIVE answer from %s\n", nsServer)
+			dnsDebugf("[DNS DEBUG] Got AUTHORITATIVE answer from %s\n", nsServer)
 			for _, rr := range r.Answer {
 				if ns, ok := rr.(*dns.NS); ok {
 					results = append(results, strings.TrimSuffix(ns.Ns, "."))

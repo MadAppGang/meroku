@@ -34,7 +34,8 @@ resource "aws_iam_role_policy_attachment" "backend_task_sns_fcm_policies" {
 }
 
 resource "aws_iam_policy" "backend_fcm_policies" {
-  name   = "ManageEndpointsAndPublishFirebaseCloudMessages"
+  # Account-global; was hardcoded while the tags already carried project/env.
+  name   = "ManageEndpointsAndPublishFirebaseCloudMessages_${var.project}_${var.env}"
   count  = (var.setup_FCM_SNS) ? 1 : 0
   policy = <<EOF
 {

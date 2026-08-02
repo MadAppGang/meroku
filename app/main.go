@@ -263,6 +263,7 @@ func handleDNSCommand(args []string) {
 		fmt.Println("  dns setup    - Run DNS setup wizard")
 		fmt.Println("  dns status   - Show DNS configuration status")
 		fmt.Println("  dns validate - Validate DNS configuration")
+		fmt.Println("  dns delegate - Delegate an environment's zone from its parent")
 		fmt.Println("  dns remove   - Remove subdomain delegation")
 		return
 	}
@@ -270,6 +271,11 @@ func handleDNSCommand(args []string) {
 	switch args[0] {
 	case "setup":
 		runDNSSetupWizard()
+	case "delegate":
+		if err := runDNSDelegateCommand(args[1:]); err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
 	case "status":
 		if err := runDNSStatus(nil, args[1:]); err != nil {
 			fmt.Printf("Error: %v\n", err)
@@ -291,7 +297,7 @@ func handleDNSCommand(args []string) {
 		}
 	default:
 		fmt.Printf("Unknown DNS command: %s\n", args[0])
-		fmt.Println("Available commands: setup, status, validate, remove")
+		fmt.Println("Available commands: setup, status, validate, delegate, remove")
 		os.Exit(1)
 	}
 }

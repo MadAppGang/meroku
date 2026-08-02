@@ -20,11 +20,13 @@ data "aws_iam_policy_document" "lambda_deploy_assume_role" {
 }
 
 resource "aws_iam_role" "lambda_deploy_iam" {
-  name               = "lambda_deploy_iam_${var.env}"
+  # IAM role names are account-global: a second meroku project deployed into the
+  # same AWS account collides unless the name carries ${var.project}.
+  name               = "${var.project}_lambda_deploy_iam_${var.env}"
   assume_role_policy = data.aws_iam_policy_document.lambda_deploy_assume_role.json
 
   tags = {
-    Name        = "lambda_deploy_iam_${var.env}"
+    Name        = "${var.project}_lambda_deploy_iam_${var.env}"
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
@@ -39,12 +41,15 @@ resource "aws_iam_role_policy_attachment" "lambda_basic_esecution" {
 }
 
 # CloudWatch Log Group for Lambda with retention
+# Log group names are account+region-global, and must stay exactly
+# "/aws/lambda/<function_name>" or the Lambda writes to an untracked group —
+# so this name and aws_lambda_function.lambda_deploy.function_name move together.
 resource "aws_cloudwatch_log_group" "lambda_deploy" {
-  name              = "/aws/lambda/ci_lambda_${var.env}"
+  name              = "/aws/lambda/${var.project}_ci_lambda_${var.env}"
   retention_in_days = 7
 
   tags = {
-    Name        = "/aws/lambda/ci_lambda_${var.env}"
+    Name        = "/aws/lambda/${var.project}_ci_lambda_${var.env}"
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
@@ -52,9 +57,10 @@ resource "aws_cloudwatch_log_group" "lambda_deploy" {
   }
 }
 
+# Lambda function names are account+region-global — see the log group above.
 resource "aws_lambda_function" "lambda_deploy" {
   filename         = "ci_lambda.zip"
-  function_name    = "ci_lambda_${var.env}"
+  function_name    = "${var.project}_ci_lambda_${var.env}"
   handler          = "bootstrap"
   role             = aws_iam_role.lambda_deploy_iam.arn
   source_code_hash = data.archive_file.lambda.output_base64sha256
@@ -82,10 +88,10 @@ resource "aws_lambda_function" "lambda_deploy" {
       LOG_LEVEL = "info" # Options: debug, info, warn, error
 
       # ECS Resource Names (ACTUAL resource names from Terraform)
-      ECS_CLUSTER_NAME    = aws_ecs_cluster.main.name
-      ECS_SERVICE_MAP     = local.ecs_service_map
-      S3_SERVICE_MAP      = local.s3_to_service_map
-      SCHEDULED_TASK_MAP  = local.scheduled_task_map
+      ECS_CLUSTER_NAME   = aws_ecs_cluster.main.name
+      ECS_SERVICE_MAP    = local.ecs_service_map
+      S3_SERVICE_MAP     = local.s3_to_service_map
+      SCHEDULED_TASK_MAP = local.scheduled_task_map
 
       # Slack Configuration (if set, notifications are enabled)
       SLACK_WEBHOOK_URL = var.slack_deployment_webhook
@@ -110,7 +116,7 @@ resource "aws_lambda_function" "lambda_deploy" {
   }
 
   tags = {
-    Name        = "ci_lambda_${var.env}"
+    Name        = "${var.project}_ci_lambda_${var.env}"
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
@@ -136,11 +142,13 @@ data "aws_iam_policy_document" "lambda_ecs" {
 }
 
 resource "aws_iam_policy" "lambda_ecs" {
-  name   = "LambdaECSDevPolicy_${var.env}"
+  # IAM policy names are account-global. ("Dev" in the old name was a misnomer —
+  # it was applied to every environment.)
+  name   = "LambdaECSPolicy_${var.project}_${var.env}"
   policy = data.aws_iam_policy_document.lambda_ecs.json
 
   tags = {
-    Name        = "LambdaECSDevPolicy_${var.env}"
+    Name        = "LambdaECSPolicy_${var.project}_${var.env}"
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
@@ -166,11 +174,12 @@ data "aws_iam_policy_document" "lambda_kms" {
 }
 
 resource "aws_iam_policy" "lambda_kms" {
-  name   = "LambdaKMSPolicy_${var.env}"
+  # IAM policy names are account-global.
+  name   = "LambdaKMSPolicy_${var.project}_${var.env}"
   policy = data.aws_iam_policy_document.lambda_kms.json
 
   tags = {
-    Name        = "LambdaKMSPolicy_${var.env}"
+    Name        = "LambdaKMSPolicy_${var.project}_${var.env}"
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
@@ -184,8 +193,12 @@ resource "aws_iam_role_policy_attachment" "lambda_kms" {
 }
 
 # EventBus For ECR
+# NOTE: this name was hardcoded, with neither project nor env. EventBridge
+# PutRule/PutTargets are upserts rather than creates, so a colliding apply did
+# not error — it silently repointed another project's deploy trigger at this
+# project's Lambda. Scoping the name is what makes that impossible.
 resource "aws_cloudwatch_event_rule" "ecr_event" {
-  name        = "ecr_events_cicd"
+  name        = "${var.project}_ecr_events_cicd_${var.env}"
   description = "Emmit ECR event on new image push"
   event_pattern = jsonencode({
     source = [
@@ -205,7 +218,7 @@ resource "aws_cloudwatch_event_rule" "ecr_event" {
   })
 
   tags = {
-    Name        = "ecr_events_cicd"
+    Name        = "${var.project}_ecr_events_cicd_${var.env}"
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
@@ -232,7 +245,10 @@ resource "aws_lambda_permission" "ecr_event_call_deploy_lambda" {
 resource "aws_cloudwatch_event_rule" "s3_env_file_change_rule" {
   for_each = { for file in local.env_files_s3 : "${file.bucket}-${file.key}" => file }
 
-  name        = "s3-env-${local.s3_event_rule_names[each.key]}"
+  # Account+region-global, and PutRule is an upsert — so two projects declaring
+  # the same bucket/key silently shared one rule. The name is derived from the
+  # raw YAML bucket/key, which carries no project, hence the explicit prefix.
+  name        = "s3-env-${var.project}-${var.env}-${local.s3_event_rule_names[each.key]}"
   description = "Event rule for S3 env file changes for ${each.value.bucket}/${each.value.key}"
   event_pattern = jsonencode({
     "source" : ["aws.s3"],
@@ -286,16 +302,19 @@ locals {
     for file in local.env_files_s3 : "${file.bucket}-${file.key}" => {
       # Sanitize: replace / and other invalid chars with _
       sanitized = replace(replace("${file.bucket}-${file.key}", "/", "_"), ".", "_")
-      # Create short hash for uniqueness (first 8 chars of md5)
-      hash = substr(md5("${file.bucket}-${file.key}"), 0, 8)
+      # Short hash for uniqueness. Includes project and env so that two projects
+      # declaring the same bucket/key still produce distinct rule names.
+      hash = substr(md5("${var.project}-${var.env}-${file.bucket}-${file.key}"), 0, 8)
     }
   }
 
-  # Final safe names: prefix (24 chars) + sanitized key (max 31 chars) + hash (8 chars) + dash (1 char) = 64 max
+  # The rule name is assembled as:
+  #   "s3-env-" (7) + project + "-" + env + "-" + sanitized (<=12) + "-" + hash (8)
+  # which stays inside the 64-character EventBridge limit for any realistic
+  # project and environment name. The hash is always appended rather than only
+  # on truncation, so uniqueness never depends on the readable part surviving.
   s3_event_rule_names = {
-    for key, val in local.s3_event_rule_keys : key => substr(val.sanitized, 0, 31) != val.sanitized
-    ? "${substr(val.sanitized, 0, 31)}-${val.hash}" # Truncated + hash
-    : val.sanitized                                 # Full name fits
+    for key, val in local.s3_event_rule_keys : key => "${substr(val.sanitized, 0, 12)}-${val.hash}"
   }
 
   service_config = jsonencode({

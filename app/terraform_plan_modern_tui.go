@@ -170,6 +170,7 @@ type modernKeyMap struct {
 	Help    key.Binding
 	Replace key.Binding
 	Import  key.Binding
+	Details key.Binding
 }
 
 func (k modernKeyMap) ShortHelp() []key.Binding {
@@ -245,6 +246,10 @@ var modernKeys = modernKeyMap{
 	Import: key.NewBinding(
 		key.WithKeys("i"),
 		key.WithHelp("i", "import existing"),
+	),
+	Details: key.NewBinding(
+		key.WithKeys("d"),
+		key.WithHelp("d", "error details"),
 	),
 }
 
@@ -887,6 +892,14 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.updateApplyLogViewport() // Show initial logs
 			return m, m.startTerraformApply()
 
+		case key.Matches(msg, m.keys.Details):
+			// Toggle the full-screen error details view. The summary box can only
+			// fit two truncated lines, so this is the only way to read the actual
+			// AWS error text (e.g. EntityAlreadyExists) that terraform reported.
+			if m.currentView == applyView && m.applyState != nil && m.applyState.errorCount > 0 {
+				m.applyState.showErrorDetails = !m.applyState.showErrorDetails
+			}
+
 		case key.Matches(msg, m.keys.Tab):
 			// Tab navigation for apply view
 			if m.currentView == applyView && m.applyState != nil {
@@ -1212,7 +1225,7 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if pendingForAddr == 0 && completedForAddr > 0 {
 				// No more expected completions for this address - skip duplicate
-				if debugFile, err := os.OpenFile("/tmp/terraform_debug.log", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644); err == nil {
+				if debugFile, err := tuiDebugFile("/tmp/terraform_debug.log", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644); err == nil {
 					timestamp := time.Now().Format("2006-01-02 15:04:05.000")
 					fmt.Fprintf(debugFile, "[%s] [DEDUP] Skipping duplicate completion: %s action=%s (no pending, %d already completed)\n", timestamp, msg.Address, action, completedForAddr)
 					debugFile.Close()
@@ -1257,7 +1270,7 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			// Debug: Log that we're removing specific operation from currentOps
-			if debugFile, err := os.OpenFile("/tmp/terraform_debug.log", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644); err == nil {
+			if debugFile, err := tuiDebugFile("/tmp/terraform_debug.log", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644); err == nil {
 				timestamp := time.Now().Format("2006-01-02 15:04:05.000")
 				fmt.Fprintf(debugFile, "[%s] [CURRENTOP REMOVED] Resource completed: %s (success: %v), ops remaining: %d\n", timestamp, msg.Address, msg.Success, opsRemaining)
 				debugFile.Close()
@@ -4354,7 +4367,7 @@ func (m *modernPlanModel) renderApplyView() string {
 	}
 
 	// DEBUG LOGGING
-	if debugFile, err := os.OpenFile("/tmp/render_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+	if debugFile, err := tuiDebugFile("/tmp/render_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
 		timestamp := time.Now().Format("15:04:05.000")
 		fmt.Fprintf(debugFile, "\n[%s] === RENDER START ===\n", timestamp)
 		fmt.Fprintf(debugFile, "  Terminal size: %dx%d\n", m.width, m.height)
@@ -4369,6 +4382,12 @@ func (m *modernPlanModel) renderApplyView() string {
 	// Calculate elapsed time
 	elapsed := time.Since(m.applyState.startTime)
 	elapsedStr := fmt.Sprintf("%02d:%02d", int(elapsed.Minutes()), int(elapsed.Seconds())%60)
+
+	// Full-screen error details, toggled with 'd'. Without this the detailed
+	// view was unreachable and the full AWS error text could never be read.
+	if m.applyState.showErrorDetails {
+		return m.renderApplyErrorDetailsView(m.renderApplyHeader(elapsedStr), elapsedStr)
+	}
 
 	// BULLETPROOF APPROACH: Build a fixed-height view using lipgloss.Place
 	// This ensures the view always takes up the same space, preventing ghosting
@@ -4388,7 +4407,7 @@ func (m *modernPlanModel) renderApplyView() string {
 		sections = append(sections, progressSection)
 
 		// DEBUG
-		if debugFile, err := os.OpenFile("/tmp/render_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+		if debugFile, err := tuiDebugFile("/tmp/render_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
 			fmt.Fprintf(debugFile, "  Progress section lines: %d\n", strings.Count(progressSection, "\n")+1)
 			debugFile.Close()
 		}
@@ -4400,7 +4419,7 @@ func (m *modernPlanModel) renderApplyView() string {
 		sections = append(sections, currentOpSection)
 
 		// DEBUG
-		if debugFile, err := os.OpenFile("/tmp/render_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+		if debugFile, err := tuiDebugFile("/tmp/render_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
 			fmt.Fprintf(debugFile, "  CurrentOp section lines: %d\n", strings.Count(currentOpSection, "\n")+1)
 			debugFile.Close()
 		}
@@ -4486,14 +4505,23 @@ func (m *modernPlanModel) renderApplyOverallProgress() string {
 		statusText = "Deployment Failed"
 	}
 
-	progressBar := m.progress.ViewAs(percent)
 	stats := fmt.Sprintf("%d/%d", completed, m.applyState.totalResources)
 
-	progressLine := fmt.Sprintf("%s: %s %s (%d%%)",
-		statusText, progressBar, stats, int(percent*100))
+	// Size the bar to the terminal, leaving room for the label, the bar's own
+	// percentage and the count. Without this the line overflows and wraps onto a
+	// second row, which also breaks the fixed 1-line height set below.
+	barWidth := m.width - lipgloss.Width(statusText) - lipgloss.Width(stats) - 18
+	if barWidth < 10 {
+		barWidth = 10
+	}
+	m.progress.Width = barWidth
+
+	// The progress model already renders the percentage; appending "(88%)" as
+	// well printed it twice.
+	progressLine := fmt.Sprintf("%s: %s %s", statusText, m.progress.ViewAs(percent), stats)
 
 	// DEBUG
-	if debugFile, err := os.OpenFile("/tmp/render_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+	if debugFile, err := tuiDebugFile("/tmp/render_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
 		fmt.Fprintf(debugFile, "  [renderApplyOverallProgress] completed=%d, total=%d, percent=%.2f%%\n", completed, m.applyState.totalResources, percent*100)
 		fmt.Fprintf(debugFile, "  [renderApplyOverallProgress] progressLine: %q\n", progressLine)
 		debugFile.Close()
@@ -4503,7 +4531,7 @@ func (m *modernPlanModel) renderApplyOverallProgress() string {
 	result := boxStyle.Width(m.width - 4).Height(1).Render(progressLine)
 
 	// DEBUG rendered output
-	if debugFile, err := os.OpenFile("/tmp/render_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+	if debugFile, err := tuiDebugFile("/tmp/render_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
 		lineCount := strings.Count(result, "\n") + 1
 		fmt.Fprintf(debugFile, "  [renderApplyOverallProgress] result has %d lines\n", lineCount)
 		debugFile.Close()
@@ -4522,7 +4550,7 @@ func (m *modernPlanModel) renderApplyCurrentOperation() string {
 	m.applyState.mu.Unlock()
 
 	// DEBUG
-	if debugFile, err := os.OpenFile("/tmp/render_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+	if debugFile, err := tuiDebugFile("/tmp/render_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
 		fmt.Fprintf(debugFile, "  [renderApplyCurrentOperation] currentOps count: %d\n", len(currentOps))
 		debugFile.Close()
 	}
@@ -4544,7 +4572,7 @@ func (m *modernPlanModel) renderApplyCurrentOperation() string {
 	}
 
 	// DEBUG
-	if debugFile, err := os.OpenFile("/tmp/render_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+	if debugFile, err := tuiDebugFile("/tmp/render_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
 		fmt.Fprintf(debugFile, "  [renderApplyCurrentOperation] screenHeight=%d, contentHeight=%d\n", screenHeight, contentHeight)
 		debugFile.Close()
 	}
@@ -4615,7 +4643,7 @@ func (m *modernPlanModel) renderApplyCurrentOperation() string {
 			opLine := fmt.Sprintf(
 				"%s %s %s\n%s%s",
 				icon,
-				actionStyle.Render(strings.Title(op.Action)+"ing"),
+				actionStyle.Render(applyActionVerb(op.Action)),
 				op.Address,
 				bar,
 				elapsedDisplay,
@@ -4649,7 +4677,7 @@ func (m *modernPlanModel) renderApplyCurrentOperation() string {
 	result := box.Render(title + "\n" + content)
 
 	// DEBUG final output
-	if debugFile, err := os.OpenFile("/tmp/render_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+	if debugFile, err := tuiDebugFile("/tmp/render_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
 		lineCount := strings.Count(result, "\n") + 1
 		fmt.Fprintf(debugFile, "  [renderApplyCurrentOperation] result has %d lines (expected ~%d)\n", lineCount, contentHeight+2)
 		// Log first few lines to see the actual content
@@ -4839,13 +4867,113 @@ func (m *modernPlanModel) renderApplyPending(width int) string {
 	return box.Render(content)
 }
 
+// truncateToWidth cuts a string to a display width, counting runes rather than
+// bytes so multi-byte characters are not sliced in half.
+func truncateToWidth(s string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	if lipgloss.Width(s) <= width {
+		return s
+	}
+	runes := []rune(s)
+	for len(runes) > 0 && lipgloss.Width(string(runes)) > width {
+		runes = runes[:len(runes)-1]
+	}
+	return string(runes)
+}
+
+// applyActionVerb renders a terraform action as a present participle.
+//
+// This was strings.Title(action)+"ing", which produced "Createing",
+// "Updateing" and "Deleteing" on screen.
+func applyActionVerb(action string) string {
+	switch action {
+	case "create":
+		return "Creating"
+	case "update":
+		return "Updating"
+	case "delete", "destroy":
+		return "Destroying"
+	case "read":
+		return "Reading"
+	case "replace":
+		return "Replacing"
+	case "":
+		return "Working"
+	}
+	// Unknown action: capitalise without inventing a suffix.
+	return strings.ToUpper(action[:1]) + action[1:]
+}
+
+// errorSummaryFor returns the best available human-readable text for a failed
+// resource.
+//
+// handleApplyError copies the diagnostic into the completedResource, but it can
+// run before terraform has emitted the matching "diagnostic" message. In that
+// ordering the copy is empty, and handleDiagnostic's back-fill can also miss
+// because the resource has not been appended to applyState.completed yet (it is
+// still in flight as a resourceCompleteMsg). The diagnostics map is the one
+// place the text always survives, so fall back to it.
+func (m *modernPlanModel) errorSummaryFor(res completedResource) string {
+	if res.ErrorSummary != "" {
+		return res.ErrorSummary
+	}
+	m.applyState.mu.Lock()
+	diagnostic := m.applyState.diagnostics[res.Address]
+	m.applyState.mu.Unlock()
+	if diagnostic != nil && diagnostic.Summary != "" {
+		return diagnostic.Summary
+	}
+	return ""
+}
+
+// errorDetailFor is errorSummaryFor for the long-form detail text.
+func (m *modernPlanModel) errorDetailFor(res completedResource) string {
+	if res.ErrorDetail != "" {
+		return res.ErrorDetail
+	}
+	m.applyState.mu.Lock()
+	diagnostic := m.applyState.diagnostics[res.Address]
+	m.applyState.mu.Unlock()
+	if diagnostic != nil {
+		return diagnostic.Detail
+	}
+	return ""
+}
+
+// collisionHint recognises the AWS "that name is taken" family. IAM names are
+// account-global and Lambda/log-group/EventBridge names are account+region
+// global, so in an account hosting more than one project this nearly always
+// means a different project already owns the name.
+func collisionHint(text string) string {
+	for _, code := range []string{
+		"EntityAlreadyExists",
+		"ResourceConflictException",
+		"ResourceAlreadyExistsException",
+		"AlreadyExistsException",
+		"BucketAlreadyOwnedByYou",
+	} {
+		if strings.Contains(text, code) {
+			return "This name already exists in the AWS account. If another meroku " +
+				"project is deployed here, the name is probably owned by that project — " +
+				"check the resource's Project tag in AWS."
+		}
+	}
+	return ""
+}
+
 func (m *modernPlanModel) renderApplyErrorSummary() string {
 	// Always show error summary box to maintain fixed layout
 	var content string
 
 	if m.applyState.errorCount > 0 {
-		// Has errors - show error content
-		content = deleteIconStyle.Bold(true).Render("⚠️  Errors Detected") + "\n"
+		// Only two content lines fit in this box (errorSummaryHeight = 4), so the
+		// header carries the total count and points at the details view. Without
+		// that, an apply with six failures looked like an apply with two.
+		title := fmt.Sprintf("⚠️  Errors Detected (%d)", m.applyState.errorCount)
+		content = deleteIconStyle.Bold(true).Render(title) +
+			dimStyle.Render("  ·  press d for full details") + "\n"
 
 		// Collect error summaries from failed resources (more informative)
 		var errorMessages []string
@@ -4854,8 +4982,8 @@ func (m *modernPlanModel) renderApplyErrorSummary() string {
 			if !res.Success {
 				// Prefer diagnostic summary over raw error message
 				msg := ""
-				if res.ErrorSummary != "" {
-					msg = fmt.Sprintf("%s: %s", res.Address, res.ErrorSummary)
+				if summary := m.errorSummaryFor(res); summary != "" {
+					msg = fmt.Sprintf("%s: %s", res.Address, summary)
 				} else if res.Error != "" {
 					// Extract just the important part from error
 					parts := strings.SplitN(res.Error, ":", 2)
@@ -4868,9 +4996,17 @@ func (m *modernPlanModel) renderApplyErrorSummary() string {
 					msg = fmt.Sprintf("%s: Operation failed", res.Address)
 				}
 
-				// Truncate if still too long
-				if len(msg) > 100 {
-					msg = msg[:97] + "..."
+				// Truncate to the box, not to a fixed 100 columns.
+				//
+				// The old constant cut "EntityAlreadyExists" down to "Entit..."
+				// on a 160-column terminal — losing the one word that identifies
+				// the failure — while still overflowing a narrow one.
+				limit := m.width - 8 // borders, padding and the "• " bullet
+				if limit < 40 {
+					limit = 40
+				}
+				if lipgloss.Width(msg) > limit {
+					msg = truncateToWidth(msg, limit-3) + "..."
 				}
 				errorMessages = append(errorMessages, fmt.Sprintf("• %s", msg))
 			}
@@ -4945,6 +5081,15 @@ func (m *modernPlanModel) renderApplyFooter() string {
 	}
 
 	help += "[Tab] Switch Section  "
+
+	// Only advertise error details once there is something to show.
+	if m.applyState.errorCount > 0 {
+		if m.applyState.showErrorDetails {
+			help += "[d] Back to Apply  "
+		} else {
+			help += "[d] Error Details  "
+		}
+	}
 
 	if m.applyState.selectedSection == 2 {
 		help += "[↑↓] Scroll Logs  "
@@ -5549,30 +5694,44 @@ func (m *modernPlanModel) renderApplyErrorDetailsView(header, elapsed string) st
 			content.WriteString(fmt.Sprintf("Failed after: %v\n", res.Duration))
 		}
 
+		// Resolve through the diagnostics map so a lost back-fill doesn't hide
+		// the real AWS error (see errorSummaryFor).
+		resSummary := m.errorSummaryFor(res)
+		resDetail := m.errorDetailFor(res)
+
 		// Error Summary (if available from diagnostic)
-		if res.ErrorSummary != "" {
+		if resSummary != "" {
 			content.WriteString("\n" + lipgloss.NewStyle().Bold(true).Foreground(dangerColor).Render("Error Summary:") + "\n")
 			summaryStyle := lipgloss.NewStyle().
 				Foreground(dangerColor).
 				PaddingLeft(2)
 			maxWidth := m.width - 10
-			wrapped := wordWrap(res.ErrorSummary, maxWidth)
+			wrapped := wordWrap(resSummary, maxWidth)
 			content.WriteString(summaryStyle.Render(wrapped) + "\n")
 		}
 
 		// Error Detail (full diagnostic detail)
-		if res.ErrorDetail != "" {
+		if resDetail != "" {
 			content.WriteString("\n" + lipgloss.NewStyle().Bold(true).Foreground(dangerColor).Render("Detailed Error Information:") + "\n")
 			detailStyle := lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#FF6B6B")).
 				PaddingLeft(2)
 			maxWidth := m.width - 10
-			wrapped := wordWrap(res.ErrorDetail, maxWidth)
+			wrapped := wordWrap(resDetail, maxWidth)
 			content.WriteString(detailStyle.Render(wrapped) + "\n")
 		}
 
+		// Point at the likely cause when AWS reports a name clash.
+		if hint := collisionHint(resSummary + " " + resDetail + " " + res.Error); hint != "" {
+			content.WriteString("\n" + lipgloss.NewStyle().Bold(true).Foreground(warningColor).Render("Likely cause:") + "\n")
+			hintStyle := lipgloss.NewStyle().
+				Foreground(warningColor).
+				PaddingLeft(2)
+			content.WriteString(hintStyle.Render(wordWrap(hint, m.width-10)) + "\n")
+		}
+
 		// Raw error message (fallback if no diagnostic available)
-		if res.ErrorSummary == "" && res.ErrorDetail == "" {
+		if resSummary == "" && resDetail == "" {
 			content.WriteString("\nError Message:\n")
 			errorStyle := lipgloss.NewStyle().
 				Foreground(dangerColor).
@@ -5596,19 +5755,29 @@ func (m *modernPlanModel) renderApplyErrorDetailsView(header, elapsed string) st
 		}
 	}
 
-	// Create scrollable viewport for error details
-	vp := viewport.New(m.width-4, m.height-10)
+	// Fill the terminal exactly: header (1) + box (inner + 2 border) + footer (1).
+	// The old sizing left this view four rows short, so the bottom of the screen
+	// kept whatever had been drawn before it — the ghosting the main apply view
+	// goes out of its way to avoid.
+	inner := m.height - 4
+	if inner < 3 {
+		inner = 3
+	}
+
+	vp := viewport.New(m.width-4, inner)
 	vp.SetContent(content.String())
 
-	// Build the view
-	box := boxStyle.Width(m.width - 2).Height(m.height - 8)
+	box := boxStyle.Width(m.width - 2).Height(inner)
 
-	return lipgloss.JoinVertical(
+	view := lipgloss.JoinVertical(
 		lipgloss.Left,
 		header,
 		box.Render(vp.View()),
 		m.renderApplyFooter(),
 	)
+
+	// Pin to the full frame so a short render can never leave stale rows behind.
+	return lipgloss.Place(m.width, m.height, lipgloss.Left, lipgloss.Top, view)
 }
 
 // Simple word wrap helper
@@ -5736,7 +5905,7 @@ func (m *modernPlanModel) fetchAIHelp() tea.Cmd {
 		defer m.applyState.mu.Unlock()
 
 		// Debug: Log what's in the diagnostics map
-		if debugFile, err := os.OpenFile("/tmp/terraform_debug.log", os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+		if debugFile, err := tuiDebugFile("/tmp/terraform_debug.log", os.O_APPEND|os.O_WRONLY, 0644); err == nil {
 			fmt.Fprintf(debugFile, "[AI HELP DEBUG] Diagnostics map contents:\n")
 			for addr, diag := range m.applyState.diagnostics {
 				if diag != nil {

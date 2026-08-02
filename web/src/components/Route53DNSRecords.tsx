@@ -1,5 +1,6 @@
-import { AlertCircle, Globe, Mail, Server, Shield } from "lucide-react";
+import { AlertCircle, Globe, Mail, Server } from "lucide-react";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
+import { DNSDelegationStatus } from "./DNSDelegationStatus";
 import {
 	Card,
 	CardContent,
@@ -85,20 +86,19 @@ export function Route53DNSRecords({ config }: Route53DNSRecordsProps) {
 		});
 	}
 
-	// Certificate Validation Records
-	dnsRecords.push({
-		type: "CNAME",
-		name: `_acme-challenge.${fullDomain}`,
-		value: "ACM certificate validation",
-		icon: Shield,
-		description: "SSL/TLS certificate validation records",
-		color: "text-yellow-400",
-		bgColor: "bg-yellow-900/20",
-		borderColor: "border-yellow-700",
-	});
+	// Certificate validation records are deliberately NOT listed here.
+	//
+	// This used to show `_acme-challenge.<domain>`, which is a Let's Encrypt name
+	// that ACM never creates — ACM emits `_<hash>.<domain>` CNAMEs whose value is
+	// only known after the certificate is requested. Showing a fabricated record
+	// was worse than showing none: it invited people to add a record that does
+	// nothing. The real validation state comes from DNSDelegationStatus below.
 
 	return (
 		<div className="space-y-4">
+			{/* Real delegation state, read from Route53 and public DNS. */}
+			<DNSDelegationStatus env={config.env} />
+
 			<Card>
 				<CardHeader>
 					<CardTitle>DNS Records</CardTitle>

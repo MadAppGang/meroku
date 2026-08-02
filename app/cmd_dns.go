@@ -107,6 +107,9 @@ func runDNSStatus(cmd interface{}, args []string) error {
 }
 
 func runDNSValidate(cmd interface{}, args []string) error {
+	// Resolver tracing is the point of this command, unlike the deploy preflight.
+	dnsDebugEnabled = true
+
 	config, err := loadDNSConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load DNS config: %w", err)

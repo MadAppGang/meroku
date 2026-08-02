@@ -31,7 +31,9 @@ resource "aws_ecr_repository_policy" "task" {
 resource "aws_ecs_task_definition" "task" {
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  family                   = var.task
+  # Account+region-global. Distinct "event_task" infix so an event processor
+  # and a scheduled task sharing a name do not write revisions into one family.
+  family                   = "${var.project}_event_task_${var.task}_${var.env}"
   cpu                      = 256
   memory                   = 512
   execution_role_arn       = aws_iam_role.task_execution.arn

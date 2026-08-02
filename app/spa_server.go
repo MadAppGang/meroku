@@ -49,6 +49,11 @@ func mainRouter() http.Handler {
 	mux.HandleFunc("/api/account", corsMiddleware(getCurrentAccount))
 	mux.HandleFunc("/api/aws/profiles", corsMiddleware(getAWSProfiles))
 
+	// DNS — delegation status, parent-zone discovery and the delegation write.
+	// Until these existed the DNS subsystem was CLI-only, so the web UI had to
+	// guess at the records it displayed.
+	registerDNSRoutes(mux)
+
 	// Positions
 	mux.HandleFunc("/api/positions", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {

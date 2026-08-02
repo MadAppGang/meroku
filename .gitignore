@@ -71,3 +71,6 @@ gtd/sessions/
 
 # Real infrastructure identifiers - THIS REPO IS PUBLIC, see CLAUDE.md
 modules/neon/scripts/db-access.json
+
+# dev-session.sh build output
+/bin/

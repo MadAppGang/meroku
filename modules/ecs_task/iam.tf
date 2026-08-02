@@ -57,11 +57,13 @@ data "aws_iam_policy_document" "ecs_tasks_assume_role" {
 
 // SSM IAM access policy
 resource "aws_iam_policy" "ssm_parameter_access" {
-  name   = "Task${var.task}SSMAccessPolicy"
+  # IAM policy names are account-global; scope by project and env or two
+  # projects (or two envs) with a task of the same name collide.
+  name   = "Task${var.task}SSMAccessPolicy_${var.project}_${var.env}"
   policy = data.aws_iam_policy_document.ssm_parameter_access.json
 
   tags = {
-    Name        = "Task${var.task}SSMAccessPolicy"
+    Name        = "Task${var.task}SSMAccessPolicy_${var.project}_${var.env}"
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"

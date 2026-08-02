@@ -27,7 +27,8 @@ data "aws_iam_policy_document" "sqs_policy" {
 
 # Create IAM policy
 resource "aws_iam_policy" "sqs_access_policy" {
-  name        = "sqs-access-policy"
+  # Was fully hardcoded: any second meroku project with sqs.enabled collided.
+  name        = "sqs-access-policy-${var.project}-${var.env}"
   path        = "/"
   description = "IAM policy for accessing SQS"
   policy      = data.aws_iam_policy_document.sqs_policy.json

@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
+	"sync"
 
 	"github.com/aymerick/raymond"
 )
@@ -33,9 +35,21 @@ func isTruthy(value interface{}) bool {
 	}
 }
 
+// helpersOnce guards helper registration.
+//
+// raymond.RegisterHelper panics on a duplicate name, so calling this twice in one
+// process crashes. Both main.go and handleGenerateCommand call it; today that is
+// survivable only because the generate branch exits first, which is a fragile
+// thing to rely on.
+var helpersOnce sync.Once
+
 func registerCustomHelpers() {
+	helpersOnce.Do(registerCustomHelpersOnce)
+}
+
+func registerCustomHelpersOnce() {
 	// Register custom helper for array to JSON string conversion
-	raymond.RegisterHelper("array", func(items interface{}) string {
+	raymond.RegisterHelper("array", func(items interface{}) raymond.SafeString {
 		// Handle different input types more gracefully
 		if items == nil {
 			panic("array helper: received nil value")
@@ -54,12 +68,11 @@ func registerCustomHelpers() {
 		if err != nil {
 			panic(fmt.Sprintf("array helper: failed to marshal to JSON: %v", err))
 		}
-		return string(jsonBytes)
+		return raymond.SafeString(jsonBytes)
 	})
 
 	//   [{ "name" : "PG_DATABASE_HOST", "value" : var.db_endpoint }, ...]
-	raymond.RegisterHelper("envToEnvArray", func(t any) string {
-		fmt.Printf("t: %+v\n", t)
+	raymond.RegisterHelper("envToEnvArray", func(t any) raymond.SafeString {
 		text, ok := t.(string)
 		if !ok {
 			fmt.Printf("could not convert envToEnvArray, expecting string, but type of t: %T\n", t)
@@ -81,12 +94,18 @@ func registerCustomHelpers() {
 
 		var tfMap strings.Builder
 		tfMap.WriteString("[\n")
-		for key, value := range result {
-			tfMap.WriteString(fmt.Sprintf("    { \"name\" : \"%s\", \"value\" : \"%s\" },\n", key, value))
+		// Sorted for reproducible output — see sortedKeys.
+		keys := make([]string, 0, len(result))
+		for key := range result {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			tfMap.WriteString(fmt.Sprintf("    { \"name\" : \"%s\", \"value\" : \"%s\" },\n", key, result[key]))
 		}
 		tfMap.WriteString(" ]")
 
-		return tfMap.String()
+		return raymond.SafeString(tfMap.String())
 	})
 
 	// Helper for OR logic - used for Aurora capacity where 0 is valid
@@ -300,7 +319,7 @@ func registerCustomHelpers() {
 		return options.Fn()
 	})
 
-	raymond.RegisterHelper("mmap", func(value interface{}) string {
+	raymond.RegisterHelper("mmap", func(value interface{}) raymond.SafeString {
 		if value == nil {
 			return "{}"
 		}
@@ -330,7 +349,7 @@ func registerCustomHelpers() {
 			}
 
 			builder.WriteString("}")
-			return builder.String()
+			return raymond.SafeString(builder.String())
 		}
 
 		// If it's already a map, format it as Terraform map
@@ -338,8 +357,11 @@ func registerCustomHelpers() {
 			var builder strings.Builder
 			builder.WriteString("{\n")
 
-			for k, v := range m {
-				strValue := fmt.Sprintf("%v", v)
+			// Sort keys: Go map iteration order is randomised, so ranging directly
+			// makes generation non-reproducible and every `generate` produces a
+			// spurious diff.
+			for _, k := range sortedKeys(m) {
+				strValue := fmt.Sprintf("%v", m[k])
 
 				// Handle boolean values properly
 				if strValue == "true" || strValue == "false" {
@@ -351,13 +373,13 @@ func registerCustomHelpers() {
 			}
 
 			builder.WriteString("}")
-			return builder.String()
+			return raymond.SafeString(builder.String())
 		}
 
 		return "{}"
 	})
 
-	raymond.RegisterHelper("envArray", func(value interface{}) string {
+	raymond.RegisterHelper("envArray", func(value interface{}) raymond.SafeString {
 		if value == nil {
 			return "[]"
 		}
@@ -377,19 +399,55 @@ func registerCustomHelpers() {
 				}
 			}
 		} else if m, ok := value.(map[string]interface{}); ok {
-			// If it's a regular map, convert to name/value format
-			for k, v := range m {
-				builder.WriteString(fmt.Sprintf("    { \"name\" : \"%s\", \"value\" : \"%v\" },\n", k, v))
+			// If it's a regular map, convert to name/value format.
+			// Sorted: Go randomises map iteration order, which made generation
+			// non-reproducible (the REACT_APP_* variables reshuffled every run).
+			for _, k := range sortedKeys(m) {
+				builder.WriteString(fmt.Sprintf("    { \"name\" : \"%s\", \"value\" : \"%v\" },\n", k, m[k]))
 			}
 		} else if m, ok := value.(map[interface{}]interface{}); ok {
 			// Handle map[interface{}]interface{} from YAML unmarshaling
+			normalized := make(map[string]interface{}, len(m))
 			for k, v := range m {
-				builder.WriteString(fmt.Sprintf("    { \"name\" : \"%v\", \"value\" : \"%v\" },\n", k, v))
+				normalized[fmt.Sprintf("%v", k)] = v
+			}
+			for _, k := range sortedKeys(normalized) {
+				builder.WriteString(fmt.Sprintf("    { \"name\" : \"%v\", \"value\" : \"%v\" },\n", k, normalized[k]))
 			}
 		}
 
 		builder.WriteString("  ]")
-		return builder.String()
+		return raymond.SafeString(builder.String())
+	})
+
+	// sortedPairs turns a map into a key-ordered slice of {key, value} entries.
+	//
+	// {{#each someMap}} walks a Go map, and Go randomises map iteration order, so
+	// templates that iterate maps directly emit their entries in a different order
+	// on every run. That is what made `meroku generate` non-reproducible.
+	// Use {{#each (sortedPairs someMap)}} with {{key}} / {{value}} instead.
+	raymond.RegisterHelper("sortedPairs", func(value interface{}) []map[string]interface{} {
+		normalized := map[string]interface{}{}
+
+		switch m := value.(type) {
+		case map[string]interface{}:
+			for k, v := range m {
+				normalized[k] = v
+			}
+		case map[interface{}]interface{}:
+			// YAML unmarshalling produces this shape.
+			for k, v := range m {
+				normalized[fmt.Sprintf("%v", k)] = v
+			}
+		default:
+			return nil
+		}
+
+		pairs := make([]map[string]interface{}, 0, len(normalized))
+		for _, k := range sortedKeys(normalized) {
+			pairs = append(pairs, map[string]interface{}{"key": k, "value": normalized[k]})
+		}
+		return pairs
 	})
 }
 

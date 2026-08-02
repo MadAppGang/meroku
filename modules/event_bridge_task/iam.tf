@@ -145,7 +145,9 @@ resource "aws_iam_role_policy_attachment" "task_eventbridge" {
   policy_arn = aws_iam_policy.eventbridge_access.arn
 }
 resource "aws_iam_policy" "ssm_parameter_access" {
-  name   = "Task${var.task}SSMAccessPolicy"
+  # Account-global, and additionally collides with modules/ecs_task when the
+  # same task name is used for both kinds of task in one project.
+  name   = "Task${var.task}SSMAccessPolicy_${var.project}_${var.env}"
   policy = data.aws_iam_policy_document.ssm_parameter_access.json
 
   tags = {

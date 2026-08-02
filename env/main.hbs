@@ -15,6 +15,26 @@ terraform {
   required_version = ">= 1.2.6"
 }
 
+# Stamp every resource in this environment with identifying tags, so the whole
+# application can be found in one query (Resource Groups / Tag Editor:
+# Application = "{{ project }}-{{ env }}").
+#
+# Deliberately no `region` here: today the default provider takes its region
+# from AWS_REGION / the profile, and pinning it would silently relocate the
+# stack for anyone whose shell region differs from their YAML.
+#
+# Resource-level tags win over these, so existing tag blocks keep working.
+provider "aws" {
+  default_tags {
+    tags = {
+      Application = "{{ project }}-{{ env }}"
+      Project     = "{{ project }}"
+      Environment = "{{ env }}"
+      ManagedBy   = "meroku"
+    }
+  }
+}
+
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
@@ -854,8 +874,8 @@ module "amplify" {
           {{/if}}
           {{#if environment_variables}}
           environment_variables = {
-            {{#each environment_variables}}
-            {{@key}} = "{{this}}"{{#unless @last}},{{/unless}}
+            {{#each (sortedPairs environment_variables)}}
+            {{key}} = "{{value}}"{{#unless @last}},{{/unless}}
             {{/each}}
           }
           {{/if}}
@@ -885,9 +905,19 @@ module "amplify" {
 # ============================================================================
 
 # CloudFront requires certificate in us-east-1
+# Aliased providers do not inherit default_tags, so repeat them here.
 provider "aws" {
   alias  = "us_east_1"
   region = "us-east-1"
+
+  default_tags {
+    tags = {
+      Application = "{{ project }}-{{ env }}"
+      Project     = "{{ project }}"
+      Environment = "{{ env }}"
+      ManagedBy   = "meroku"
+    }
+  }
 }
 
 {{#each cloudfront_distributions}}

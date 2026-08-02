@@ -109,7 +109,8 @@ resource "aws_cognito_user_group" "admin_group" {
 }
 
 resource "aws_iam_policy" "allow_admin_confirm_signup_policy" {
-  name   = "AllowAdminConfirmSignUpForBackend"
+  # Account-global; was hardcoded while the tags already carried project/env.
+  name   = "AllowAdminConfirmSignUpForBackend_${var.project}_${var.env}"
   policy = <<EOF
 {
   "Version": "2012-10-17",
