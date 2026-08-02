@@ -110,17 +110,16 @@ func runCommandToDeploy(env string) error {
 		switch dnsResult.Plan {
 		case dnsPlanBlocked:
 			// The zone exists but is not delegated. meroku can usually fix this
-			// itself, so offer rather than just reporting.
-			fmt.Println("\n❌ Deployment stopped before it could stall on certificate validation.")
-			if err := runDelegationFlow(ctx, e, dnsResult); err != nil {
-				fmt.Printf("   %v\n", err)
-			}
-			// Re-check: if the delegation just landed we can carry straight on.
-			if recheck, err := checkDNSPreflight(ctx, e); err == nil && recheck.Plan == dnsPlanNormal {
-				fmt.Println("\n✅ Delegation verified — continuing with the deployment.")
-			} else {
-				fmt.Println("\n   Run the deploy again once delegation is in place.")
+			// itself, so hand off to the DNS setup screen rather than stopping.
+			delegated, err := runDNSSetupTUI(e, dnsResult)
+			if err != nil {
+				fmt.Printf("\n❌ DNS setup failed: %v\n", err)
 				os.Exit(1)
+			}
+			if !delegated {
+				fmt.Println("\n⏸  Delegation is not in place yet — stopping before the apply stalls.")
+				fmt.Println("   Re-run the deploy once it resolves. Check with: meroku dns validate")
+				os.Exit(0)
 			}
 
 		case dnsPlanMissingZone:

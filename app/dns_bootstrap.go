@@ -82,7 +82,20 @@ func bootstrapDNSZone() error {
 // then re-checks. It reports whether the environment is ready for the full apply.
 //
 // Returns true when delegation is verified and phase 2 can proceed immediately.
+// It drives the full-screen DNS setup screen rather than printing progress, so
+// the deploy never drops out of its interface mid-run.
 func runDNSBootstrapAndDelegate(ctx context.Context, e Env) (bool, error) {
+	res, err := checkDNSPreflight(ctx, e)
+	if err != nil {
+		return false, fmt.Errorf("could not inspect DNS state: %w", err)
+	}
+	return runDNSSetupTUI(e, res)
+}
+
+// runDNSBootstrapAndDelegateText is the original non-interactive path, kept for
+// environments without a TTY (CI, piped output) where a full-screen program
+// cannot run.
+func runDNSBootstrapAndDelegateText(ctx context.Context, e Env) (bool, error) {
 	if err := bootstrapDNSZone(); err != nil {
 		return false, err
 	}

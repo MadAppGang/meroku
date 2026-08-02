@@ -214,7 +214,8 @@ func renderNameserverPanel(zone, parent string, nameservers []string, width int)
 	b.WriteString(label.Render("TTL") + value.Render("300") + "\n")
 	b.WriteString(label.Render("Value") + "\n")
 
-	nsStyle := lipgloss.NewStyle().Foreground(accentColor).PaddingLeft(8)
+	// Brightest thing on the panel: these are the values being copied out.
+	nsStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#60a5fa")).Bold(true).PaddingLeft(8)
 	for _, ns := range nameservers {
 		b.WriteString(nsStyle.Render(ns) + "\n")
 	}
@@ -230,6 +231,7 @@ func renderNameserverPanel(zone, parent string, nameservers []string, width int)
 func profileCandidateLine(c parentZoneCandidate, selected bool, width int) string {
 	// Fixed width so the detail column aligns across rows.
 	const statusW = 10
+
 	var status string
 	switch {
 	case c.Err != nil:
@@ -254,6 +256,17 @@ func profileCandidateLine(c parentZoneCandidate, selected bool, width int) strin
 	detailStyle := lipgloss.NewStyle().Foreground(mutedColor)
 	if selected {
 		detailStyle = detailStyle.Foreground(dimColor)
+	}
+
+	// Truncate to the row budget. Letting the detail wrap pushes the overflow to
+	// column 0 — outside the panel border — which breaks every row below it.
+	//   cursor(2) + name(18) + space + badge(statusW) + space
+	detailBudget := width - 2 - 18 - 1 - statusW - 1
+	if detailBudget < 12 {
+		detailBudget = 12
+	}
+	if lipgloss.Width(detail) > detailBudget {
+		detail = truncateToWidth(detail, detailBudget-1) + "…"
 	}
 
 	// Selection is shown with a cursor and a bright left bar rather than a
