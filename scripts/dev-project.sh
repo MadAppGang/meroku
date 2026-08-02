@@ -17,20 +17,18 @@
 # rather type `meroku` than `./meroku`.)
 #
 # Usage:
-#   scripts/dev-project.sh <project-dir> [aws-profile]
+#   scripts/dev-project.sh <project-dir>
 #
-# Examples:
-#   scripts/dev-project.sh ~/dev/meroku-test meroku2
-#   scripts/dev-project.sh /Users/jack/dev/circl/coretechx-infra
+# The AWS profile is not passed here — meroku reads it from aws_profile in the
+# environment's YAML and exports AWS_PROFILE itself.
 
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT="${1:-}"
-PROFILE="${2:-}"
 
 if [ -z "$PROJECT" ]; then
-	echo "usage: $0 <project-dir> [aws-profile]" >&2
+	echo "usage: $0 <project-dir>" >&2
 	exit 1
 fi
 
@@ -83,24 +81,12 @@ fi
 [ -f "$LINK/env/main.hbs" ] && echo "    template: env/main.hbs reachable" || echo "    template: WARNING — env/main.hbs missing" >&2
 echo "    binary:   $("$PROJECT/meroku" --help 2>&1 | head -1 | cut -c1-60)"
 
-# --- AWS profile sanity --------------------------------------------------------
-if [ -n "$PROFILE" ]; then
-	echo
-	echo "==> AWS profile: $PROFILE"
-	if ACCOUNT="$(AWS_PROFILE="$PROFILE" aws sts get-caller-identity --query Account --output text 2>/dev/null)"; then
-		REGION="$(aws configure get region --profile "$PROFILE" 2>/dev/null || echo '<unset>')"
-		echo "    account: $ACCOUNT   region: $REGION"
-	else
-		echo "    WARNING: could not authenticate. Try: aws sso login --profile $PROFILE" >&2
-	fi
-fi
-
 cat <<EOF
 
 Ready.
 
   cd $PROJECT
-  ${PROFILE:+AWS_PROFILE=$PROFILE }./meroku
+  ./meroku
 
 To undo:  rm $PROJECT/infrastructure $PROJECT/meroku
 To reset an environment to empty:

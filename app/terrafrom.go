@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -40,7 +41,27 @@ func terraformInit(flags ...string) (string, error) {
 // so it won't exist in project copies. This prevents terraform errors during
 // destroy operations when the archive_file data source tries to create an archive.
 func ensureLambdaBootstrapExists() {
-	bootstrapPath := "infrastructure/modules/workloads/ci_lambda/bootstrap"
+	// This runs both from the project root and from inside env/<env> (via
+	// terraformInitIfNeeded, which is called after the chdir). A single relative
+	// path is therefore wrong half the time — it was resolving to
+	// env/<env>/infrastructure/... and failing with "no such file or directory",
+	// which then surfaced as an archive_file error during plan and destroy.
+	candidates := []string{
+		"infrastructure/modules/workloads/ci_lambda/bootstrap",       // project root
+		"../../infrastructure/modules/workloads/ci_lambda/bootstrap", // env/<env>
+	}
+
+	bootstrapPath := ""
+	for _, candidate := range candidates {
+		if _, err := os.Stat(filepath.Dir(candidate)); err == nil {
+			bootstrapPath = candidate
+			break
+		}
+	}
+	if bootstrapPath == "" {
+		// No ci_lambda directory anywhere we know about; nothing to do.
+		return
+	}
 
 	// Check if file exists
 	if _, err := os.Stat(bootstrapPath); os.IsNotExist(err) {
