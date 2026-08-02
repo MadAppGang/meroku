@@ -18,7 +18,7 @@ tasks:
   web:
     desc: Run the web frontend dev server
     dir: '{{.WEB_DIR}}'
-    cmd: bun dev
+    cmd: pnpm run dev
 
   build:
     desc: Build the CLI binary
@@ -33,7 +33,7 @@ tasks:
   test:web:
     desc: Run web frontend tests
     dir: '{{.WEB_DIR}}'
-    cmd: bun test
+    cmd: pnpm run test
 
   generate:
     desc: Generate code from templates
@@ -43,13 +43,13 @@ tasks:
   lint:web:
     desc: Lint web frontend
     dir: '{{.WEB_DIR}}'
-    cmd: bunx biome check .
+    cmd: pnpm exec biome check .
 
   # ─── Web Build ──────────────────────────────────────────
   web:build:
     desc: Build web frontend into app/webapp (embedded in Go binary)
     dir: '{{.WEB_DIR}}'
-    cmd: bun run build
+    cmd: pnpm run build
 
   # ─── Infrastructure (run from a project directory) ──────
   infra-gen-dev:

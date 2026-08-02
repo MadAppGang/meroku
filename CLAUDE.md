@@ -412,9 +412,15 @@ task --list
 
 The React frontend (`web/`) builds into `app/webapp/` which is embedded into the Go binary. A **pre-commit hook** (`.githooks/pre-commit`) auto-rebuilds the webapp bundle whenever `web/src/` files are staged for commit.
 
-- Hook auto-runs `vite build` and stages the output
+- Hook auto-runs `pnpm exec vite build` and stages the output
 - If the build fails, the commit is blocked
 - Requires: `git config core.hooksPath .githooks` (one-time setup)
+
+**Package manager: pnpm only.** `web/pnpm-lock.yaml` is the single source of truth, enforced in CI
+via `pnpm install --frozen-lockfile`. The pnpm version is pinned in two places that must stay in
+sync: `packageManager` in `web/package.json` and `PNPM_VERSION` in `.github/workflows/release.yml`.
+Do not run `npm install`, `yarn`, or `bun install` in `web/` — their lockfiles are gitignored, and
+they resolve `^` ranges differently than what CI ships.
 
 ## Project Structure
 
@@ -448,7 +454,7 @@ infrastructure/
 - Always run `task infra-plan env={env}` before applying changes
 - Test infrastructure changes in dev environment first
 - Use `task test` to run Go tests
-- Frontend tests: `cd web && npm test`
+- Frontend tests: none exist yet — `web/` has no test runner installed. `task test:web` is a placeholder until vitest is added.
 
 ## Terraform Plan Viewer
 

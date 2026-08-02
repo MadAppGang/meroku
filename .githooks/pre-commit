@@ -10,9 +10,10 @@ if git diff --cached --name-only | grep -q '^web/src/'; then
     echo "🔨 Web source files changed — rebuilding webapp bundle..."
 
     # Run vite build from web/ directory
-    (cd web && npx vite build --mode production) 2>&1 | tail -5
+    (cd web && pnpm exec vite build --mode production) 2>&1 | tail -5
 
-    if [ $? -ne 0 ]; then
+    # $? here is tail's status, not the build's — read the build's via PIPESTATUS.
+    if [ "${PIPESTATUS[0]}" -ne 0 ]; then
         echo "❌ Vite build failed. Fix errors before committing."
         exit 1
     fi

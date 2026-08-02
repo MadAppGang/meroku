@@ -12,7 +12,8 @@ permissions:
 env:
   GO_VERSION: '1.23'
   NODE_VERSION: '20'
-  PNPM_VERSION: '9'
+  # Keep in sync with "packageManager" in web/package.json.
+  PNPM_VERSION: '9.15.9'
 
 jobs:
   # Job 1: Build web assets once (shared across all builds)

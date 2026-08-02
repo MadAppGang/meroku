@@ -25,3 +25,10 @@ dist-ssr
 
 *storybook.log
 storybook-static
+
+# Foreign lockfiles — pnpm-lock.yaml is the single source of truth.
+# CI enforces it with `pnpm install --frozen-lockfile` (.github/workflows/release.yml).
+bun.lock
+bun.lockb
+package-lock.json
+yarn.lock

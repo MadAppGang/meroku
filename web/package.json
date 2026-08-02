@@ -3,13 +3,15 @@
 	"private": true,
 	"version": "0.0.0",
 	"type": "module",
+	"packageManager": "pnpm@9.15.9",
 	"scripts": {
 		"dev": "vite",
 		"build": "tsc -b && vite build",
 		"build:skip-tsc": "vite build",
 		"preview": "vite preview",
 		"storybook": "storybook dev -p 6006",
-		"build-storybook": "storybook build"
+		"build-storybook": "storybook build",
+		"test": "echo 'No web test runner is installed — 0 tests exist. Install vitest to enable.'"
 	},
 	"dependencies": {
 		"@biomejs/biome": "^2.2.6",
