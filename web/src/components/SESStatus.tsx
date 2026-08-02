@@ -16,7 +16,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
 	infrastructureApi,
 	type SESSandboxInfo,
-	type SESStatusResponse as SESStatus,
+	type SESStatusResponse,
 } from "../api/infrastructure";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import { Alert, AlertDescription } from "./ui/alert";
@@ -35,7 +35,7 @@ interface SESStatusProps {
 }
 
 export function SESStatus({ config }: SESStatusProps) {
-	const [status, setStatus] = useState<SESStatus | null>(null);
+	const [status, setStatus] = useState<SESStatusResponse | null>(null);
 	const [sandboxInfo, setSandboxInfo] = useState<SESSandboxInfo | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);

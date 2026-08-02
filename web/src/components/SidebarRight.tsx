@@ -241,10 +241,8 @@ export function SidebarRight({
 			groups[groupName].push(v);
 		});
 
-		// Auto-expand groups if searching
+		// Auto-expand groups if searching (consumed via isSearching at render)
 		if (filterText) {
-			const allOpen: Record<string, boolean> = {};
-			Object.keys(groups).forEach((k) => (allOpen[k] = true));
 			return { groups, isSearching: true };
 		}
 

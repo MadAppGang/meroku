@@ -28,6 +28,25 @@ interface AmplifyBranchManagementProps {
 	onConfigChange?: (config: Partial<YamlInfrastructureConfig>) => void;
 }
 
+const STAGE_COLORS: Record<string, string> = {
+	PRODUCTION:
+		"bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+	BETA: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
+	DEVELOPMENT: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
+	EXPERIMENTAL:
+		"bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
+};
+
+// Defined at module scope: nesting it inside the parent recreated the
+// component type on every render, remounting the badge and discarding state.
+const StageBadge = ({ stage }: { stage?: string }) => (
+	<span
+		className={`px-2 py-0.5 text-xs font-medium rounded-full ${STAGE_COLORS[stage || "DEVELOPMENT"]}`}
+	>
+		{stage || "DEVELOPMENT"}
+	</span>
+);
+
 export function AmplifyBranchManagement({
 	config,
 	nodeId,
@@ -50,6 +69,28 @@ export function AmplifyBranchManagement({
 
 	// Local state for env vars being edited (with stable IDs)
 	const [editingEnvVars, setEditingEnvVars] = useState<EnvVarEntry[]>([]);
+
+	const branches = amplifyApp?.branches || [];
+
+	// Initialize local env vars state when starting to edit a branch.
+	// Must stay above the early return below: React requires every hook to run in
+	// the same order on every render, so a hook after a conditional return crashes
+	// with "rendered fewer hooks than expected" when amplifyApp becomes undefined.
+	useEffect(() => {
+		if (editingBranch !== null && branches[editingBranch]) {
+			const branch = branches[editingBranch];
+			const envVars = Object.entries(branch.environment_variables || {}).map(
+				([key, value], idx) => ({
+					id: `env-${idx}-${Date.now()}`,
+					key,
+					value,
+				}),
+			);
+			setEditingEnvVars(envVars);
+		} else {
+			setEditingEnvVars([]);
+		}
+	}, [editingBranch]);
 
 	if (!amplifyApp) {
 		return (
@@ -125,46 +166,6 @@ export function AmplifyBranchManagement({
 		};
 		handleUpdateBranches(updatedBranches);
 	};
-
-	// Helper component for stage badges
-	const StageBadge = ({ stage }: { stage?: string }) => {
-		const colorMap: Record<string, string> = {
-			PRODUCTION:
-				"bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-			BETA: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
-			DEVELOPMENT:
-				"bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-			EXPERIMENTAL:
-				"bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
-		};
-
-		return (
-			<span
-				className={`px-2 py-0.5 text-xs font-medium rounded-full ${colorMap[stage || "DEVELOPMENT"]}`}
-			>
-				{stage || "DEVELOPMENT"}
-			</span>
-		);
-	};
-
-	const branches = amplifyApp.branches || [];
-
-	// Initialize local env vars state when starting to edit a branch
-	useEffect(() => {
-		if (editingBranch !== null && branches[editingBranch]) {
-			const branch = branches[editingBranch];
-			const envVars = Object.entries(branch.environment_variables || {}).map(
-				([key, value], idx) => ({
-					id: `env-${idx}-${Date.now()}`,
-					key,
-					value,
-				}),
-			);
-			setEditingEnvVars(envVars);
-		} else {
-			setEditingEnvVars([]);
-		}
-	}, [editingBranch]);
 
 	// Save env vars from local state to config
 	const saveEnvVarsToConfig = (branchIndex: number) => {

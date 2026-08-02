@@ -524,9 +524,12 @@ export const AddCloudFrontDialog: React.FC<AddCloudFrontDialogProps> = ({
 								placeholder="*.app.example.com"
 								value={newDomainAlias}
 								onChange={(e) => setNewDomainAlias(e.target.value)}
-								onKeyDown={(e) =>
-									e.key === "Enter" && (e.preventDefault(), addDomainAlias())
-								}
+								onKeyDown={(e) => {
+									if (e.key === "Enter") {
+										e.preventDefault();
+										addDomainAlias();
+									}
+								}}
 							/>
 							<Button type="button" onClick={addDomainAlias} size="sm">
 								<Plus className="h-4 w-4" />

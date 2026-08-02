@@ -130,7 +130,7 @@ This email confirms that your SES configuration is working correctly.`,
 		},
 		{
 			name: "Welcome Email",
-			subject: "Welcome to ${project}!",
+			subject: `Welcome to ${config.project}!`,
 			body: `Hello,
 
 Welcome to ${config.project}! We're excited to have you on board.
