@@ -140,7 +140,16 @@ func runDelegationFlow(ctx context.Context, e Env, res dnsPreflightResult) error
 
 	fmt.Printf("\n✅ %s is now delegated to this account.\n", res.ZoneName)
 
-	if err := recordDelegation(res.ParentDomain, res.ZoneName, e.AccountID, res.ZoneID, res.ZoneNameservers); err != nil {
+	if err := recordDelegation(delegationRecord{
+		Subdomain:       res.ZoneName,
+		AccountID:       e.AccountID,
+		ZoneID:          res.ZoneID,
+		Nameservers:     res.ZoneNameservers,
+		ParentDomain:    res.ParentDomain,
+		ParentProfile:   selected.Profile,
+		ParentZoneID:    selected.ZoneID,
+		ParentAccountID: selected.AccountID,
+	}); err != nil {
 		// Persistence is a convenience, not correctness — the DNS change succeeded.
 		fmt.Printf("   (note: could not record this in %s: %v)\n", DNSConfigFile, err)
 	}

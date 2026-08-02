@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v2"
 )
@@ -67,6 +68,43 @@ func removeDelegatedZone(config *DNSConfig, subdomain string) bool {
 		}
 	}
 	return false
+}
+
+// findParentZone returns the remembered profile for a parent domain, if any.
+//
+// Matching is case-insensitive and ignores a trailing dot so that a zone
+// recorded as "coretechx.dev." still matches a lookup for "coretechx.dev".
+func findParentZone(config *DNSConfig, domain string) *ParentZoneRef {
+	if config == nil {
+		return nil
+	}
+
+	want := normalizeDomain(domain)
+	for i := range config.ParentZones {
+		if normalizeDomain(config.ParentZones[i].Domain) == want {
+			return &config.ParentZones[i]
+		}
+	}
+	return nil
+}
+
+func addOrUpdateParentZone(config *DNSConfig, ref ParentZoneRef) {
+	if config == nil || ref.Domain == "" || ref.Profile == "" {
+		return
+	}
+
+	want := normalizeDomain(ref.Domain)
+	for i, existing := range config.ParentZones {
+		if normalizeDomain(existing.Domain) == want {
+			config.ParentZones[i] = ref
+			return
+		}
+	}
+	config.ParentZones = append(config.ParentZones, ref)
+}
+
+func normalizeDomain(d string) string {
+	return strings.TrimSuffix(strings.ToLower(strings.TrimSpace(d)), ".")
 }
 
 func addOrUpdateDelegatedZone(config *DNSConfig, zone DelegatedZone) {

@@ -98,6 +98,31 @@ func TestRenderDNSModel(t *testing.T) {
 			m.elapsed = 51 * time.Second
 			return m
 		},
+		"model-8-streaming": func() *dnsSetupModel {
+			m := base()
+			m.step = stepWriteRecord
+			m.states[stepCreateZone] = stepOK
+			m.states[stepShowNameservers] = stepOK
+			m.states[stepFindParent] = stepOK
+			m.candidates = candidates[:2]
+			m.choosing = true
+			m.scanning = true
+			m.scanned, m.scanTotal = 3, 9
+			m.elapsed = 11 * time.Second
+			return m
+		},
+		"model-9-cached": func() *dnsSetupModel {
+			m := base()
+			m.step = stepWriteRecord
+			m.states[stepCreateZone] = stepOK
+			m.states[stepShowNameservers] = stepOK
+			m.states[stepFindParent] = stepOK
+			m.candidates = candidates[:1]
+			m.cachedProfile = "mag"
+			m.choosing = true
+			m.elapsed = 3 * time.Second
+			return m
+		},
 		"model-7-narrow": func() *dnsSetupModel {
 			m := base()
 			m.width, m.height = 80, 24

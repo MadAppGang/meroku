@@ -71,71 +71,135 @@ func shortError(err error) string {
 	return msg
 }
 
-// scanProfilesForParentZone inspects every local AWS profile for a public hosted
-// zone matching parentDomain, and marks the ones whose delegation set matches
-// what the internet actually returns.
+// probeProfileForParentZone asks one profile whether it holds the parent zone,
+// and whether that zone is the one the internet actually consults.
 //
-// This exists to make the right choice obvious in the picker, not to make the
-// choice automatically — several profiles can legitimately hold a zone of the
-// same name.
-func scanProfilesForParentZone(ctx context.Context, profiles []string, parentDomain string, publicNS []string) []parentZoneCandidate {
-	results := make([]parentZoneCandidate, len(profiles))
+// Never returns an error: an unreachable profile is a candidate carrying an
+// error, because "this profile was tried and here is why it did not work" is
+// information the operator needs.
+func probeProfileForParentZone(ctx context.Context, profile, parentDomain string, publicNS []string) parentZoneCandidate {
+	c := parentZoneCandidate{Profile: profile}
 
-	var wg sync.WaitGroup
-	// Modest concurrency: each profile may trigger an SSO token refresh.
-	sem := make(chan struct{}, 6)
+	// Bound each profile: an unreachable or unauthenticated one must not stall
+	// the whole scan.
+	profileCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
 
-	for i, profile := range profiles {
-		wg.Add(1)
-		go func(i int, profile string) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
-			c := parentZoneCandidate{Profile: profile}
-
-			// Bound each profile: an unreachable or unauthenticated profile must
-			// not stall the whole scan.
-			profileCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
-			defer cancel()
-
-			zoneID, ns, err := findHostedZoneByName(profileCtx, profile, parentDomain)
-			if err != nil {
-				c.Err = err
-				results[i] = c
-				return
-			}
-
-			c.ZoneID = zoneID
-			c.Nameservers = ns
-			if zoneID != "" {
-				c.Authoritative = nameserverSetsMatch(ns, publicNS)
-				c.AccountID = lookupAccountID(profileCtx, profile)
-			}
-			results[i] = c
-		}(i, profile)
+	zoneID, ns, err := findHostedZoneByName(profileCtx, profile, parentDomain)
+	if err != nil {
+		c.Err = err
+		return c
 	}
-	wg.Wait()
 
-	// Most useful first: authoritative, then has-a-zone, then the rest.
-	sort.SliceStable(results, func(a, b int) bool {
-		ra, rb := results[a], results[b]
-		rank := func(c parentZoneCandidate) int {
-			switch {
-			case c.Authoritative:
-				return 0
-			case c.ZoneID != "":
-				return 1
-			case c.Err == nil:
-				return 2
-			default:
-				return 3
-			}
+	c.ZoneID = zoneID
+	c.Nameservers = ns
+	if zoneID != "" {
+		c.Authoritative = nameserverSetsMatch(ns, publicNS)
+		c.AccountID = lookupAccountID(profileCtx, profile)
+	}
+	return c
+}
+
+// scanProfilesForParentZoneStream probes every profile concurrently and emits
+// each result the moment it lands, closing the channel when all are done.
+//
+// Streaming rather than batching is what stops one profile with an expired SSO
+// token from holding the whole picker hostage for its full 20-second budget:
+// the profiles that answered in 300ms are selectable while the slow one is
+// still being waited on.
+//
+// Cancel ctx to stop early. Outstanding probes then drop their results rather
+// than blocking forever on a channel nobody is draining.
+func scanProfilesForParentZoneStream(ctx context.Context, profiles []string, parentDomain string, publicNS []string) <-chan parentZoneCandidate {
+	out := make(chan parentZoneCandidate)
+
+	go func() {
+		defer close(out)
+
+		var wg sync.WaitGroup
+		// Modest concurrency: each profile may trigger an SSO token refresh.
+		sem := make(chan struct{}, 6)
+
+		for _, profile := range profiles {
+			wg.Add(1)
+			go func(profile string) {
+				defer wg.Done()
+
+				select {
+				case sem <- struct{}{}:
+				case <-ctx.Done():
+					return
+				}
+				defer func() { <-sem }()
+
+				c := probeProfileForParentZone(ctx, profile, parentDomain, publicNS)
+				select {
+				case out <- c:
+				case <-ctx.Done():
+				}
+			}(profile)
 		}
-		return rank(ra) < rank(rb)
-	})
+		wg.Wait()
+	}()
 
+	return out
+}
+
+// scanProfilesForParentZone drains the stream into a sorted slice, for callers
+// that cannot show partial results (the HTTP handlers and the text flow).
+func scanProfilesForParentZone(ctx context.Context, profiles []string, parentDomain string, publicNS []string) []parentZoneCandidate {
+	var results []parentZoneCandidate
+	for c := range scanProfilesForParentZoneStream(ctx, profiles, parentDomain, publicNS) {
+		results = append(results, c)
+	}
+	sortCandidates(results)
 	return results
+}
+
+// candidateRank orders candidates by how useful they are: authoritative first,
+// then has-a-zone, then reachable-but-empty, then errored.
+func candidateRank(c parentZoneCandidate) int {
+	switch {
+	case c.Authoritative:
+		return 0
+	case c.ZoneID != "":
+		return 1
+	case c.Err == nil:
+		return 2
+	default:
+		return 3
+	}
+}
+
+// sortCandidates sorts by rank, then by profile name.
+//
+// The name tiebreak matters now that results arrive in completion order: without
+// it the list would be ordered by how fast each profile's credentials resolved,
+// which reshuffles between runs for no reason the operator can see.
+func sortCandidates(candidates []parentZoneCandidate) {
+	sort.SliceStable(candidates, func(a, b int) bool {
+		ra, rb := candidateRank(candidates[a]), candidateRank(candidates[b])
+		if ra != rb {
+			return ra < rb
+		}
+		return candidates[a].Profile < candidates[b].Profile
+	})
+}
+
+// cachedParentProfile returns the profile last known to manage parentDomain.
+//
+// The answer is a starting point, not a conclusion — the caller still probes it
+// and still requires the public-DNS match before it can be used.
+func cachedParentProfile(parentDomain string) (string, bool) {
+	cfg, err := loadDNSConfig()
+	if err != nil || cfg == nil {
+		return "", false
+	}
+	ref := findParentZone(cfg, parentDomain)
+	if ref == nil || ref.Profile == "" {
+		return "", false
+	}
+	return ref.Profile, true
 }
 
 // lookupAccountID resolves a profile to its AWS account ID, best effort.
@@ -238,26 +302,54 @@ func waitForDelegation(ctx context.Context, subdomain string, expected []string,
 	}
 }
 
-// recordDelegation remembers a successful delegation in dns.yaml so that other
-// environments of the same project never have to ask again.
-func recordDelegation(rootDomain, subdomain, accountID, zoneID string, nameservers []string) error {
+// delegationRecord is what gets written to dns.yaml after a successful
+// delegation. Grouped into a struct because half of these fields describe the
+// delegated zone and half describe its parent, and seven positional strings at
+// the call site made it easy to swap them.
+type delegationRecord struct {
+	// The zone we created and delegated to.
+	Subdomain   string
+	AccountID   string
+	ZoneID      string
+	Nameservers []string
+
+	// Where the NS record was written.
+	ParentDomain    string
+	ParentProfile   string
+	ParentZoneID    string
+	ParentAccountID string
+}
+
+// recordDelegation remembers a successful delegation in dns.yaml.
+//
+// Two things are saved for two different reasons: the delegated zone, so
+// `meroku dns status` can report it, and the parent zone's profile, so the next
+// environment of this project skips the profile scan entirely.
+func recordDelegation(r delegationRecord) error {
 	cfg, err := loadDNSConfig()
 	if err != nil {
 		return err
 	}
 	if cfg == nil {
-		cfg = &DNSConfig{RootDomain: rootDomain}
+		cfg = &DNSConfig{RootDomain: r.ParentDomain}
 	}
 	if cfg.RootDomain == "" {
-		cfg.RootDomain = rootDomain
+		cfg.RootDomain = r.ParentDomain
 	}
 
 	addOrUpdateDelegatedZone(cfg, DelegatedZone{
-		Subdomain: subdomain,
-		AccountID: accountID,
-		ZoneID:    zoneID,
-		NSRecords: nameservers,
+		Subdomain: r.Subdomain,
+		AccountID: r.AccountID,
+		ZoneID:    r.ZoneID,
+		NSRecords: r.Nameservers,
 		Status:    "delegated",
+	})
+
+	addOrUpdateParentZone(cfg, ParentZoneRef{
+		Domain:    r.ParentDomain,
+		Profile:   r.ParentProfile,
+		ZoneID:    r.ParentZoneID,
+		AccountID: r.ParentAccountID,
 	})
 
 	return saveDNSConfig(cfg)

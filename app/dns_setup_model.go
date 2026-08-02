@@ -36,10 +36,28 @@ type dnsZoneCreatedMsg struct {
 
 type dnsCandidatesMsg struct {
 	candidates []parentZoneCandidate
+	// cached names the profile that dns.yaml remembered, when it still verified
+	// and so made a full scan unnecessary.
+	cached string
 	// reason is set when we cannot offer automatic delegation at all.
 	reason string
 	err    error
 }
+
+// dnsScanStartedMsg hands the model a live stream of profile probes.
+type dnsScanStartedMsg struct {
+	ch     <-chan parentZoneCandidate
+	cancel context.CancelFunc
+	total  int
+	// note explains why a full scan is running when a shortcut was expected.
+	note string
+}
+
+// dnsCandidateMsg is one profile's answer, delivered as soon as it lands.
+type dnsCandidateMsg struct{ c parentZoneCandidate }
+
+// dnsScanDoneMsg means every profile has reported, or the scan was cancelled.
+type dnsScanDoneMsg struct{}
 
 type dnsDelegatedMsg struct{ err error }
 
@@ -53,25 +71,27 @@ type dnsTickMsg time.Time
 // ------------------------------------------------------------------- keys ---
 
 type dnsKeyMap struct {
-	Up     key.Binding
-	Down   key.Binding
-	Enter  key.Binding
-	Manual key.Binding
-	Copy   key.Binding
-	Retry  key.Binding
-	Skip   key.Binding
-	Quit   key.Binding
+	Up      key.Binding
+	Down    key.Binding
+	Enter   key.Binding
+	Manual  key.Binding
+	Copy    key.Binding
+	Retry   key.Binding
+	Skip    key.Binding
+	ScanAll key.Binding
+	Quit    key.Binding
 }
 
 var dnsKeys = dnsKeyMap{
-	Up:     key.NewBinding(key.WithKeys("up", "k")),
-	Down:   key.NewBinding(key.WithKeys("down", "j")),
-	Enter:  key.NewBinding(key.WithKeys("enter")),
-	Manual: key.NewBinding(key.WithKeys("m")),
-	Copy:   key.NewBinding(key.WithKeys("c")),
-	Retry:  key.NewBinding(key.WithKeys("r")),
-	Skip:   key.NewBinding(key.WithKeys("s")),
-	Quit:   key.NewBinding(key.WithKeys("ctrl+c", "q")),
+	Up:      key.NewBinding(key.WithKeys("up", "k")),
+	Down:    key.NewBinding(key.WithKeys("down", "j")),
+	Enter:   key.NewBinding(key.WithKeys("enter")),
+	Manual:  key.NewBinding(key.WithKeys("m")),
+	Copy:    key.NewBinding(key.WithKeys("c")),
+	Retry:   key.NewBinding(key.WithKeys("r")),
+	Skip:    key.NewBinding(key.WithKeys("s")),
+	ScanAll: key.NewBinding(key.WithKeys("a")),
+	Quit:    key.NewBinding(key.WithKeys("ctrl+c", "q")),
 }
 
 // ------------------------------------------------------------------ model ---
@@ -98,6 +118,22 @@ type dnsSetupModel struct {
 	candidates []parentZoneCandidate
 	cursor     int
 	choosing   bool
+	// cursorPinned records that the operator has moved the cursor themselves.
+	// Until then it tracks the best candidate as results stream in.
+	cursorPinned bool
+
+	// live profile scan
+	scanCh     <-chan parentZoneCandidate
+	scanCancel context.CancelFunc
+	scanTotal  int
+	scanned    int
+	scanning   bool
+	scanNote   string
+	// cachedProfile is the profile dns.yaml remembered, when it verified and no
+	// scan was needed.
+	cachedProfile string
+	// rescanAll forces a full scan even when a cached profile would do.
+	rescanAll bool
 
 	// propagate
 	resolvers       []string
@@ -201,9 +237,14 @@ func (m *dnsSetupModel) createZoneCmd() tea.Cmd {
 	}
 }
 
-// findParentCmd resolves the parent domain and scans local AWS profiles for it.
+// findParentCmd resolves the parent domain, then either uses the profile
+// dns.yaml remembered or starts a live scan of every local AWS profile.
 func (m *dnsSetupModel) findParentCmd() tea.Cmd {
+	// Copy what the closure needs: it runs on its own goroutine while Update
+	// keeps mutating the model.
 	parent := m.parent
+	rescanAll := m.rescanAll
+
 	return func() tea.Msg {
 		if parent == "" {
 			return dnsCandidatesMsg{reason: "this is a root domain — delegate it at your registrar"}
@@ -225,20 +266,101 @@ func (m *dnsSetupModel) findParentCmd() tea.Cmd {
 			return dnsCandidatesMsg{reason: "no local AWS profiles found"}
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
-		defer cancel()
+		ctx, cancel := context.WithCancel(context.Background())
 
-		var usable []parentZoneCandidate
-		for _, c := range scanProfilesForParentZone(ctx, profiles, parent, publicNS) {
-			if c.ZoneID != "" || c.Err != nil {
-				usable = append(usable, c)
+		// Try the remembered profile before scanning: one API call instead of
+		// one per profile. The memory is only a hint about where to look first —
+		// the probe still has to pass the same public-DNS check as any other
+		// candidate, so a stale entry costs a wasted call and nothing more.
+		note := ""
+		if !rescanAll {
+			if profile, ok := cachedParentProfile(parent); ok {
+				c := probeProfileForParentZone(ctx, profile, parent, publicNS)
+				if c.Authoritative {
+					cancel()
+					return dnsCandidatesMsg{
+						candidates: []parentZoneCandidate{c},
+						cached:     profile,
+					}
+				}
+				note = fmt.Sprintf(
+					"%s was remembered for %s but no longer matches public DNS — scanning every profile",
+					profile, parent)
 			}
 		}
-		if len(usable) == 0 {
-			return dnsCandidatesMsg{reason: fmt.Sprintf(
-				"no local AWS profile holds a %s zone", parent)}
+
+		return dnsScanStartedMsg{
+			ch:     scanProfilesForParentZoneStream(ctx, profiles, parent, publicNS),
+			cancel: cancel,
+			total:  len(profiles),
+			note:   note,
 		}
-		return dnsCandidatesMsg{candidates: usable}
+	}
+}
+
+// waitForCandidate blocks on the next profile result.
+//
+// This is the standard Bubble Tea bridge from a channel into the message loop:
+// one command per receive, each scheduling the next. It keeps the model
+// single-threaded while the probes run concurrently behind it.
+func waitForCandidate(ch <-chan parentZoneCandidate) tea.Cmd {
+	return func() tea.Msg {
+		if ch == nil {
+			return dnsScanDoneMsg{}
+		}
+		c, ok := <-ch
+		if !ok {
+			return dnsScanDoneMsg{}
+		}
+		return dnsCandidateMsg{c: c}
+	}
+}
+
+// stopScan abandons any in-flight probes.
+//
+// Called whenever the operator commits to a choice or leaves: without it the
+// goroutines would keep running against a channel nobody drains.
+func (m *dnsSetupModel) stopScan() {
+	m.scanning = false
+	if m.scanCancel != nil {
+		m.scanCancel()
+		m.scanCancel = nil
+	}
+}
+
+// addCandidate inserts a streamed result and keeps the selection sensible.
+func (m *dnsSetupModel) addCandidate(c parentZoneCandidate) {
+	// The list is re-sorted on every arrival, so a cursor held as an index would
+	// slide onto a different profile under the operator's finger. Track the
+	// selection by identity instead.
+	selected := ""
+	if m.cursorPinned && m.cursor < len(m.candidates) {
+		selected = m.candidates[m.cursor].Profile
+	}
+
+	m.candidates = append(m.candidates, c)
+	sortCandidates(m.candidates)
+
+	m.states[stepFindParent] = stepOK
+	m.step = stepWriteRecord
+	m.choosing = true
+
+	if selected != "" {
+		for i, x := range m.candidates {
+			if x.Profile == selected {
+				m.cursor = i
+				return
+			}
+		}
+	}
+
+	// Until the operator moves it, the cursor follows the best candidate.
+	m.cursor = 0
+	for i, x := range m.candidates {
+		if x.Authoritative {
+			m.cursor = i
+			break
+		}
 	}
 }
 
@@ -250,16 +372,23 @@ func (m *dnsSetupModel) delegateCmd(c parentZoneCandidate) tea.Cmd {
 		Subdomain:     m.zone,
 		Nameservers:   m.nameservers,
 	}
-	env := m.env
-	parent := m.parent
-	zoneID := m.zoneID
-	ns := m.nameservers
+	record := delegationRecord{
+		Subdomain:       m.zone,
+		AccountID:       m.env.AccountID,
+		ZoneID:          m.zoneID,
+		Nameservers:     m.nameservers,
+		ParentDomain:    m.parent,
+		ParentProfile:   c.Profile,
+		ParentZoneID:    c.ZoneID,
+		ParentAccountID: c.AccountID,
+	}
 	return func() tea.Msg {
 		if err := applyDelegation(req); err != nil {
 			return dnsDelegatedMsg{err: err}
 		}
 		// Persistence is a convenience; a failure here does not undo the write.
-		_ = recordDelegation(parent, req.Subdomain, env.AccountID, zoneID, ns)
+		// It is what lets the next environment skip the profile scan.
+		_ = recordDelegation(record)
 		return dnsDelegatedMsg{}
 	}
 }
@@ -353,6 +482,7 @@ func (m *dnsSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case dnsCandidatesMsg:
 		if msg.reason != "" || msg.err != nil {
+			m.stopScan()
 			m.manualReason = msg.reason
 			if msg.err != nil {
 				m.manualReason = msg.err.Error()
@@ -362,6 +492,7 @@ func (m *dnsSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.candidates = msg.candidates
+		m.cachedProfile = msg.cached
 		m.states[stepFindParent] = stepOK
 		m.step = stepWriteRecord
 		m.choosing = true
@@ -371,6 +502,39 @@ func (m *dnsSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor = i
 				break
 			}
+		}
+		return m, nil
+
+	case dnsScanStartedMsg:
+		m.scanCh = msg.ch
+		m.scanCancel = msg.cancel
+		m.scanTotal = msg.total
+		m.scanned = 0
+		m.scanning = true
+		m.scanNote = msg.note
+		return m, waitForCandidate(msg.ch)
+
+	case dnsCandidateMsg:
+		// Ignore anything that arrives after the operator has committed; the
+		// picker must not reopen underneath a write that is already running.
+		if !m.scanning {
+			return m, nil
+		}
+		m.scanned++
+		// Profiles with neither a zone nor an error are silent misses — listing
+		// them would bury the two rows that matter under eight that do not.
+		if msg.c.ZoneID != "" || msg.c.Err != nil {
+			m.addCandidate(msg.c)
+		}
+		return m, waitForCandidate(m.scanCh)
+
+	case dnsScanDoneMsg:
+		m.scanning = false
+		m.scanCancel = nil
+		if m.step == stepFindParent && len(m.candidates) == 0 {
+			m.manualReason = fmt.Sprintf("no local AWS profile holds a %s zone", m.parent)
+			m.states[stepFindParent] = stepFailed
+			m.states[stepWriteRecord] = stepSkipped
 		}
 		return m, nil
 
@@ -413,18 +577,21 @@ type dnsTickPollMsg struct{}
 func (m *dnsSetupModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case key.Matches(msg, m.keys.Quit):
+		m.stopScan()
 		m.quitting = true
 		return m, tea.Quit
 
 	case key.Matches(msg, m.keys.Up):
 		if m.choosing && m.cursor > 0 {
 			m.cursor--
+			m.cursorPinned = true
 		}
 		return m, nil
 
 	case key.Matches(msg, m.keys.Down):
 		if m.choosing && m.cursor < len(m.candidates)-1 {
 			m.cursor++
+			m.cursorPinned = true
 		}
 		return m, nil
 
@@ -440,6 +607,7 @@ func (m *dnsSetupModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if !c.Authoritative {
 				return m, nil
 			}
+			m.stopScan()
 			m.choosing = false
 			return m, m.delegateCmd(c)
 		}
@@ -447,16 +615,38 @@ func (m *dnsSetupModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, m.keys.Manual):
 		if m.choosing {
+			m.stopScan()
 			m.choosing = false
 			m.manualReason = "you chose to add the record yourself"
 			m.states[stepWriteRecord] = stepSkipped
 		}
 		return m, nil
 
+	case key.Matches(msg, m.keys.ScanAll):
+		// Escape hatch from the remembered profile: the operator may know the
+		// domain moved, or simply want to see what else is out there.
+		if m.choosing && m.cachedProfile != "" {
+			m.stopScan()
+			m.rescanAll = true
+			m.cachedProfile = ""
+			m.candidates = nil
+			m.cursor = 0
+			m.cursorPinned = false
+			m.choosing = false
+			m.step = stepFindParent
+			m.states[stepFindParent] = stepPending
+			return m, m.findParentCmd()
+		}
+		return m, nil
+
 	case key.Matches(msg, m.keys.Retry):
 		if m.manualReason != "" {
+			m.stopScan()
 			m.manualReason = ""
 			m.err = nil
+			m.candidates = nil
+			m.cursor = 0
+			m.cursorPinned = false
 			m.states[stepFindParent] = stepPending
 			m.step = stepFindParent
 			return m, m.findParentCmd()
@@ -521,7 +711,11 @@ func (m *dnsSetupModel) renderBody(inner int) string {
 		body := titleStyle.Render("Looking for the "+m.parent+" zone") + "\n" +
 			lipgloss.NewStyle().Foreground(dimColor).
 				Render("scanning local AWS profiles — a match is proved against public DNS") + "\n\n" +
-			meterRow(inner-4, pulse(m.elapsed), "#3b82f6", "#10b981", "scanning")
+			m.scanMeter(inner-4)
+		if m.scanNote != "" {
+			body += "\n" + lipgloss.NewStyle().Foreground(warningColor).
+				Render(truncateToWidth(m.scanNote, inner-6))
+		}
 		return renderNameserverPanel(m.zone, m.parent, m.nameservers, inner) + "\n\n" +
 			boxStyle.Width(inner).Render(body)
 
@@ -532,6 +726,19 @@ func (m *dnsSetupModel) renderBody(inner int) string {
 			Render("only a profile whose nameservers match public DNS can be delegated to") + "\n\n")
 		for i, c := range m.candidates {
 			rows.WriteString(profileCandidateLine(c, i == m.cursor, inner-4) + "\n")
+		}
+		// The list is still filling in — show how much is left rather than
+		// letting a short list look like the final answer.
+		if m.scanning {
+			rows.WriteString("\n" + m.scanMeter(inner-4) + "\n")
+		}
+		// Explain why only one profile is listed. The key hint itself lives in the
+		// footer with every other binding, so it is not repeated here.
+		if m.cachedProfile != "" {
+			rows.WriteString("\n" + lipgloss.NewStyle().Foreground(mutedColor).Render(
+				truncateToWidth(fmt.Sprintf(
+					"%s remembered this profile for %s; re-verified against public DNS just now",
+					DNSConfigFile, m.parent), inner-6)) + "\n")
 		}
 		return boxStyle.Width(inner).Render(strings.TrimRight(rows.String(), "\n"))
 
@@ -566,6 +773,20 @@ func (m *dnsSetupModel) renderBody(inner int) string {
 	return ""
 }
 
+// scanMeter renders scan progress as a real fraction once the total is known.
+//
+// Streaming turns this from an indeterminate pulse into an honest ratio: we know
+// exactly how many profiles there are and how many have answered, so the meter
+// can say so instead of miming activity.
+func (m *dnsSetupModel) scanMeter(width int) string {
+	if m.scanTotal == 0 {
+		return meterRow(width, pulse(m.elapsed), "#3b82f6", "#10b981", "resolving")
+	}
+	ratio := float64(m.scanned) / float64(m.scanTotal)
+	return meterRow(width, ratio, "#3b82f6", "#10b981",
+		fmt.Sprintf("%d/%d profiles", m.scanned, m.scanTotal))
+}
+
 // pulse drives an indeterminate meter for work whose duration is unknown.
 // It ramps to ~90% over a minute rather than pretending to be complete.
 func pulse(elapsed time.Duration) float64 {
@@ -579,6 +800,8 @@ func (m *dnsSetupModel) footerHints() []string {
 		return []string{"[r] re-check", "[Ctrl+C] continue without delegating"}
 	case m.step == stepDone:
 		return []string{"[Enter] continue to phase 2"}
+	case m.choosing && m.cachedProfile != "":
+		return []string{"[Enter] delegate", "[a] scan all profiles", "[m] I'll do it myself", "[Ctrl+C] cancel"}
 	case m.choosing:
 		return []string{"[↑↓] select", "[Enter] delegate", "[m] I'll do it myself", "[Ctrl+C] cancel"}
 	case m.step == stepPropagate:

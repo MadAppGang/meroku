@@ -313,7 +313,16 @@ func postDNSDelegate(w http.ResponseWriter, r *http.Request) {
 	if _, ok := waitForDelegation(waitCtx, res.ZoneName, res.ZoneNameservers, 10*time.Second); ok {
 		resp.Verified = true
 		resp.Message = res.ZoneName + " is now delegated and certificate validation can proceed."
-		if err := recordDelegation(res.ParentDomain, res.ZoneName, e.AccountID, res.ZoneID, res.ZoneNameservers); err != nil {
+		if err := recordDelegation(delegationRecord{
+			Subdomain:       res.ZoneName,
+			AccountID:       e.AccountID,
+			ZoneID:          res.ZoneID,
+			Nameservers:     res.ZoneNameservers,
+			ParentDomain:    res.ParentDomain,
+			ParentProfile:   chosen.Profile,
+			ParentZoneID:    chosen.ZoneID,
+			ParentAccountID: chosen.AccountID,
+		}); err != nil {
 			resp.Message += " (could not record it in " + DNSConfigFile + ": " + err.Error() + ")"
 		}
 	} else {

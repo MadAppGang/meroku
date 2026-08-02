@@ -262,6 +262,28 @@ type DNSConfig struct {
 	RootDomain     string          `yaml:"root_domain"`
 	RootAccount    DNSRootAccount  `yaml:"root_account"`
 	DelegatedZones []DelegatedZone `yaml:"delegated_zones"`
+
+	// ParentZones remembers where each parent domain is hosted, so the next
+	// environment does not have to rediscover it by scanning every AWS profile.
+	//
+	// Keyed by parent domain rather than by subdomain: what is worth remembering
+	// is "coretechx.dev lives in profile mag", which is what makes
+	// staging.coretechx.dev cheap after dev.coretechx.dev has been set up.
+	// DelegatedZones is keyed by subdomain and so can never serve that purpose.
+	ParentZones []ParentZoneRef `yaml:"parent_zones,omitempty"`
+}
+
+// ParentZoneRef is a remembered answer to "which AWS profile manages this
+// domain?".
+//
+// It is a hint, never a fact: the profile is re-probed and re-verified against
+// public DNS on every use, so a stale entry costs one wasted API call and
+// nothing else.
+type ParentZoneRef struct {
+	Domain    string `yaml:"domain"`
+	Profile   string `yaml:"profile"`
+	ZoneID    string `yaml:"zone_id,omitempty"`
+	AccountID string `yaml:"account_id,omitempty"`
 }
 
 type DNSRootAccount struct {

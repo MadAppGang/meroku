@@ -166,6 +166,226 @@ func TestDNSModel_DelegatedOnlyAfterPropagation(t *testing.T) {
 	}
 }
 
+// startScan puts the model into the streaming state without doing any I/O.
+func startScan(t *testing.T, m *dnsSetupModel, total int) chan parentZoneCandidate {
+	t.Helper()
+	ch := make(chan parentZoneCandidate, total)
+	updated, _ := m.Update(dnsScanStartedMsg{ch: ch, cancel: func() {}, total: total})
+	if updated.(*dnsSetupModel) != m {
+		t.Fatal("Update should return the same model pointer")
+	}
+	return ch
+}
+
+// The picker opens on the first usable result, not after the last one — that is
+// the entire point of streaming.
+func TestDNSModel_PickerOpensOnFirstCandidate(t *testing.T) {
+	m := testDNSModel(t)
+	m.step = stepFindParent
+	startScan(t, m, 8)
+
+	if m.choosing {
+		t.Error("nothing has arrived yet; the picker should not be open")
+	}
+
+	updated, _ := m.Update(dnsCandidateMsg{c: parentZoneCandidate{
+		Profile: "mag", ZoneID: "Z1", Authoritative: true}})
+	m = updated.(*dnsSetupModel)
+
+	if !m.choosing {
+		t.Error("the picker should open as soon as a usable candidate lands")
+	}
+	if m.step != stepWriteRecord {
+		t.Errorf("expected stepWriteRecord, got %v", m.step)
+	}
+	if m.scanned != 1 || m.scanTotal != 8 {
+		t.Errorf("progress should read 1/8, got %d/%d", m.scanned, m.scanTotal)
+	}
+	if !m.scanning {
+		t.Error("the scan should still be running behind the open picker")
+	}
+}
+
+// Profiles with neither a zone nor an error are silent misses; listing them
+// would bury the rows that matter.
+func TestDNSModel_SilentMissesCountButDoNotList(t *testing.T) {
+	m := testDNSModel(t)
+	m.step = stepFindParent
+	startScan(t, m, 3)
+
+	updated, _ := m.Update(dnsCandidateMsg{c: parentZoneCandidate{Profile: "empty"}})
+	m = updated.(*dnsSetupModel)
+
+	if len(m.candidates) != 0 {
+		t.Errorf("a profile with no zone should not be listed, got %v", m.candidates)
+	}
+	if m.scanned != 1 {
+		t.Errorf("it should still count toward progress, got %d", m.scanned)
+	}
+}
+
+// The list is re-sorted on every arrival. A cursor tracked as a bare index would
+// slide onto a different profile mid-scan — the operator could press Enter and
+// delegate to something they never selected.
+func TestDNSModel_CursorStaysOnSelectedProfileAcrossResorts(t *testing.T) {
+	m := testDNSModel(t)
+	m.step = stepFindParent
+	startScan(t, m, 4)
+
+	send := func(c parentZoneCandidate) {
+		updated, _ := m.Update(dnsCandidateMsg{c: c})
+		m = updated.(*dnsSetupModel)
+	}
+
+	send(parentZoneCandidate{Profile: "zeta", ZoneID: "Z1", Authoritative: true})
+	send(parentZoneCandidate{Profile: "yankee", ZoneID: "Z2", Authoritative: true})
+
+	// The operator deliberately moves to "zeta".
+	for m.candidates[m.cursor].Profile != "zeta" {
+		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+		m = updated.(*dnsSetupModel)
+	}
+	if !m.cursorPinned {
+		t.Fatal("moving the cursor should pin it")
+	}
+
+	// A candidate that sorts ahead of zeta arrives.
+	send(parentZoneCandidate{Profile: "alpha", ZoneID: "Z3", Authoritative: true})
+
+	if got := m.candidates[m.cursor].Profile; got != "zeta" {
+		t.Errorf("cursor moved off the operator's selection to %q", got)
+	}
+}
+
+// Before the operator touches it, the cursor should follow the best candidate,
+// so a verified profile arriving third is still what Enter would pick.
+func TestDNSModel_UnpinnedCursorFollowsBestCandidate(t *testing.T) {
+	m := testDNSModel(t)
+	m.step = stepFindParent
+	startScan(t, m, 4)
+
+	send := func(c parentZoneCandidate) {
+		updated, _ := m.Update(dnsCandidateMsg{c: c})
+		m = updated.(*dnsSetupModel)
+	}
+
+	send(parentZoneCandidate{Profile: "alpha", ZoneID: "Z1"})
+	send(parentZoneCandidate{Profile: "bravo", Err: errors.New("expired")})
+	send(parentZoneCandidate{Profile: "zulu", ZoneID: "Z3", Authoritative: true})
+
+	if got := m.candidates[m.cursor].Profile; got != "zulu" {
+		t.Errorf("cursor should sit on the verified candidate, got %q", got)
+	}
+}
+
+// Once a write is underway, a straggler must not reopen the picker on top of it.
+func TestDNSModel_LateCandidateIgnoredAfterCommit(t *testing.T) {
+	m := testDNSModel(t)
+	m.step = stepFindParent
+	m.nameservers = []string{"ns-1.example.net"}
+	startScan(t, m, 4)
+
+	updated, _ := m.Update(dnsCandidateMsg{c: parentZoneCandidate{
+		Profile: "mag", ZoneID: "Z1", Authoritative: true}})
+	m = updated.(*dnsSetupModel)
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(*dnsSetupModel)
+	if cmd == nil {
+		t.Fatal("Enter on a verified candidate should start the write")
+	}
+	if m.scanning {
+		t.Error("committing should stop the scan")
+	}
+
+	updated, cmd = m.Update(dnsCandidateMsg{c: parentZoneCandidate{
+		Profile: "late", ZoneID: "Z9", Authoritative: true}})
+	m = updated.(*dnsSetupModel)
+
+	if m.choosing {
+		t.Error("a late candidate must not reopen the picker during a write")
+	}
+	if len(m.candidates) != 1 {
+		t.Errorf("a late candidate must not be added, got %v", profileNames(m.candidates))
+	}
+	if cmd != nil {
+		t.Error("draining should stop once the scan is over")
+	}
+}
+
+// A scan that finds nothing must land on manual instructions, not an empty list.
+func TestDNSModel_EmptyScanFallsBackToManual(t *testing.T) {
+	m := testDNSModel(t)
+	m.step = stepFindParent
+	startScan(t, m, 2)
+
+	updated, _ := m.Update(dnsScanDoneMsg{})
+	m = updated.(*dnsSetupModel)
+
+	if m.manualReason == "" {
+		t.Error("expected a manual fallback when no profile holds the zone")
+	}
+	if m.scanning {
+		t.Error("the scan should be marked finished")
+	}
+}
+
+// Finishing the scan must not overwrite a picker the operator is already using.
+func TestDNSModel_ScanDoneDoesNotDisturbOpenPicker(t *testing.T) {
+	m := testDNSModel(t)
+	m.step = stepFindParent
+	startScan(t, m, 2)
+
+	updated, _ := m.Update(dnsCandidateMsg{c: parentZoneCandidate{
+		Profile: "mag", ZoneID: "Z1", Authoritative: true}})
+	m = updated.(*dnsSetupModel)
+
+	updated, _ = m.Update(dnsScanDoneMsg{})
+	m = updated.(*dnsSetupModel)
+
+	if m.manualReason != "" {
+		t.Errorf("picker had a candidate; should not fall back to manual (%q)", m.manualReason)
+	}
+	if !m.choosing {
+		t.Error("the picker should stay open")
+	}
+}
+
+// A cache hit shows one pre-verified row and offers the escape hatch.
+func TestDNSModel_CachedHitOffersFullScan(t *testing.T) {
+	m := testDNSModel(t)
+	m.step = stepFindParent
+
+	updated, _ := m.Update(dnsCandidatesMsg{
+		cached:     "mag",
+		candidates: []parentZoneCandidate{{Profile: "mag", ZoneID: "Z1", Authoritative: true}},
+	})
+	m = updated.(*dnsSetupModel)
+
+	if m.cachedProfile != "mag" {
+		t.Errorf("expected the cached profile to be recorded, got %q", m.cachedProfile)
+	}
+	if !strings.Contains(m.View(), "[a] scan all profiles") {
+		t.Error("the escape hatch should be offered in the footer")
+	}
+	if !strings.Contains(m.View(), "remembered this profile") {
+		t.Error("the panel should explain why only one profile is listed")
+	}
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	m = updated.(*dnsSetupModel)
+
+	if cmd == nil {
+		t.Error("[a] should restart discovery")
+	}
+	if !m.rescanAll {
+		t.Error("[a] should force a full scan")
+	}
+	if m.cachedProfile != "" || len(m.candidates) != 0 {
+		t.Error("[a] should clear the cached result before rescanning")
+	}
+}
+
 // Layout lock: no rendered line may exceed the terminal width, at any size or
 // state. Overflow pushes content outside the panel border and corrupts the frame.
 func TestDNSModel_NoLineExceedsWidth(t *testing.T) {
