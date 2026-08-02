@@ -58,3 +58,7 @@ project/backup/
 .claudemem/vectors/code_chunks.lance
 
 .mnemex/
+
+# IDE + Claude agent scratch
+.idea/
+.agent-workspace/
