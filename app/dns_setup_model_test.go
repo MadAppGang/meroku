@@ -766,7 +766,7 @@ func TestDNSModel_HoldsForFullAgreementBeforeFinishing(t *testing.T) {
 	m.step = stepPropagate
 
 	// Two of four: live, but not settled.
-	updated, cmd := m.Update(dnsPropagationMsg{
+	updated, _ := m.Update(dnsPropagationMsg{
 		results: map[string]bool{
 			"8.8.8.8": true, "1.1.1.1": true,
 			"9.9.9.9": false, "208.67.222.222": false,
@@ -778,8 +778,10 @@ func TestDNSModel_HoldsForFullAgreementBeforeFinishing(t *testing.T) {
 	if m.Delegated {
 		t.Error("must not report done while resolvers still disagree")
 	}
-	if cmd == nil {
-		t.Error("expected it to keep polling")
+	// Polling is driven by the one-second tick now, so "keeps going" means the
+	// countdown was re-armed rather than a command being returned here.
+	if m.propagateIn != secondsBetweenPropagationChecks {
+		t.Errorf("expected it to keep polling, countdown = %d", m.propagateIn)
 	}
 	if !strings.Contains(flattenStacked(m), "does not race") {
 		t.Errorf("the screen should say why it is still waiting:\n%s", m.View())
@@ -825,5 +827,117 @@ func TestDNSModel_SettleGivesUpAfterTheCap(t *testing.T) {
 
 	if !m.Delegated {
 		t.Error("past the cap it should proceed on a partial answer rather than block")
+	}
+}
+
+// The propagate screen must show that it is working.
+//
+// At 0/4 the agreement bar is empty and the resolver dots are static, so with no
+// countdown and no activity indicator the screen is indistinguishable from a
+// hung one — which is exactly how it was reported.
+func TestDNSModel_PropagateShowsActivity(t *testing.T) {
+	m := testDNSModel(t)
+	m.step = stepPropagate
+	m.zoneID = "Z058180424YA3V73YX3RD"
+	m.propagateIn = 7
+
+	view := flattenStacked(m)
+	if !strings.Contains(view, "next check in") {
+		t.Errorf("a waiting screen must say when it will look again:\n%s", view)
+	}
+
+	// While a check is in flight, the countdown is replaced by a loader rather
+	// than freezing at whatever second it reached.
+	m.propagateChecking = true
+	busy := flattenStacked(m)
+	if !strings.Contains(busy, "asking the resolvers") {
+		t.Errorf("an in-flight check should be visible:\n%s", busy)
+	}
+	if strings.Contains(busy, "next check in") {
+		t.Error("the countdown and the loader should not both be shown")
+	}
+}
+
+// The countdown drives the polling, so it must actually fire.
+func TestDNSModel_PropagateCountdownTriggersACheck(t *testing.T) {
+	m := testDNSModel(t)
+	m.step = stepPropagate
+	m.propagateIn = 2
+
+	var cmd tea.Cmd
+	for i := 0; i < 2; i++ {
+		var updated tea.Model
+		updated, cmd = m.Update(dnsTickMsg(time.Now()))
+		m = updated.(*dnsSetupModel)
+	}
+
+	if !m.propagateChecking {
+		t.Error("reaching zero should start a check")
+	}
+	if cmd == nil {
+		t.Error("expected the poll command to be issued")
+	}
+}
+
+// A result re-arms the countdown rather than leaving it at zero, which would
+// make every subsequent tick fire another check.
+func TestDNSModel_PropagateResultRearmsCountdown(t *testing.T) {
+	m := testDNSModel(t)
+	m.step = stepPropagate
+	m.propagateChecking = true
+	m.propagateIn = 0
+
+	updated, _ := m.Update(dnsPropagationMsg{
+		results: map[string]bool{"8.8.8.8": false}, ok: false})
+	m = updated.(*dnsSetupModel)
+
+	if m.propagateChecking {
+		t.Error("the check has finished")
+	}
+	if m.propagateIn != secondsBetweenPropagationChecks {
+		t.Errorf("countdown should be re-armed, got %d", m.propagateIn)
+	}
+}
+
+// The dnschecker link must land on a populated lookup, not an empty form.
+func TestDNSCheckerURL(t *testing.T) {
+	cases := map[string]string{
+		"dev.sploty.app":  "https://dnschecker.org/#NS/dev.sploty.app",
+		"dev.sploty.app.": "https://dnschecker.org/#NS/dev.sploty.app",
+		"DEV.Sploty.App":  "https://dnschecker.org/#NS/dev.sploty.app",
+	}
+	for zone, want := range cases {
+		if got := dnsCheckerURL(zone); got != want {
+			t.Errorf("dnsCheckerURL(%q) = %q, want %q", zone, got, want)
+		}
+	}
+}
+
+// While waiting, the first question is "is it even the right record" — a zone id
+// alone cannot answer that.
+func TestDNSModel_PropagateShowsTheRecordItWrote(t *testing.T) {
+	m := testDNSModel(t)
+	m.step = stepPropagate
+	m.zoneID = "Z058180424YA3V73YX3RD"
+	m.nameservers = []string{"ns-839.awsdns-40.net", "ns-1058.awsdns-04.org"}
+	m.propagateIn = 6
+
+	view := flattenStacked(m)
+	for _, want := range []string{
+		"dev.example.com",       // the name
+		"NS",                    // the type
+		"Z058180424YA3V73YX3RD", // the zone it went into
+		"ns-839.awsdns-40.net",  // the values
+		"dnschecker.org",        // the wider check
+	} {
+		if !strings.Contains(view, want) {
+			t.Errorf("propagate screen should show %q:\n%s", want, view)
+		}
+	}
+
+	for _, k := range []string{"w", "c", "s", "^C"} {
+		if !hintBound(m.footerHints(), k) {
+			t.Errorf("key %q should be offered while propagating", k)
+		}
 	}
 }

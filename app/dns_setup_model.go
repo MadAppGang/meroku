@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"net/url"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -92,6 +93,7 @@ type dnsKeyMap struct {
 	SkipDomain key.Binding
 	Adopt      key.Binding
 	ScanAll    key.Binding
+	Web        key.Binding
 	Continue   key.Binding
 	Quit       key.Binding
 }
@@ -108,6 +110,7 @@ var dnsKeys = dnsKeyMap{
 	SkipDomain: key.NewBinding(key.WithKeys("s")),
 	Adopt:      key.NewBinding(key.WithKeys("t")),
 	ScanAll:    key.NewBinding(key.WithKeys("a")),
+	Web:        key.NewBinding(key.WithKeys("w")),
 	// Esc continues without delegating; Ctrl+C aborts. Those are opposite
 	// intentions and used to share one binding, so the only way to proceed was
 	// the key every other screen uses to cancel.
@@ -163,6 +166,11 @@ type dnsSetupModel struct {
 	// between that and every resolver agreeing is what the certificate request
 	// must not run inside.
 	firstAgreementAt time.Time
+	// propagateIn counts down to the next resolver check, and propagateChecking
+	// says one is in flight. Without them this screen showed an empty bar and no
+	// other sign of life, which reads as hung rather than waiting.
+	propagateIn       int
+	propagateChecking bool
 
 	// manual fallback: poll public DNS on a timer, so a record added by hand at a
 	// registrar is picked up without the operator having to press anything.
@@ -226,6 +234,10 @@ const secondsBetweenDNSChecks = 20
 // allowed to block a deploy indefinitely — past the cap we proceed on a partial
 // answer and say so, rather than holding a deploy hostage to one slow cache.
 const dnsSettleCap = 3 * time.Minute
+
+// secondsBetweenPropagationChecks paces the resolver polling on the propagate
+// screen. Shorter than the manual wait because nothing here depends on a human.
+const secondsBetweenPropagationChecks = 10
 
 // newDNSSetupModel builds the screen for an environment whose zone is missing
 // (bootstrap) or undelegated (blocked).
@@ -584,6 +596,18 @@ func (m *dnsSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.copiedNote = ""
 		}
 
+		// Count down to the next resolver check while propagating, so the screen
+		// shows it is working rather than sitting on a bar that never moves.
+		if m.step == stepPropagate && !m.propagateChecking {
+			if m.propagateIn > 0 {
+				m.propagateIn--
+			}
+			if m.propagateIn == 0 {
+				m.propagateChecking = true
+				return m, tea.Batch(m.tick(), m.pollPropagationCmd())
+			}
+		}
+
 		// While waiting on a human to add the record somewhere else, count down
 		// and re-check by ourselves. Requiring a keypress to discover that the
 		// record already landed is the difference between a screen you can leave
@@ -690,10 +714,14 @@ func (m *dnsSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.states[stepWriteRecord] = stepOK
 		m.step = stepPropagate
+		m.propagateChecking = true
+		m.propagateIn = secondsBetweenPropagationChecks
 		return m, m.pollPropagationCmd()
 
 	case dnsPropagationMsg:
 		m.resolverResults = msg.results
+		m.propagateChecking = false
+		m.propagateIn = secondsBetweenPropagationChecks
 		agreed := 0
 		for _, ok := range msg.results {
 			if ok {
@@ -722,9 +750,7 @@ func (m *dnsSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// available evidence that the negative caches have expired.
 			if agreed < len(m.resolvers) && time.Since(m.firstAgreementAt) < dnsSettleCap {
 				m.states[stepPropagate] = stepActive
-				return m, tea.Tick(5*time.Second, func(time.Time) tea.Msg {
-					return dnsTickPollMsg{}
-				})
+				return m, nil
 			}
 
 			// However the record got there — written by us, added by hand at a
@@ -751,10 +777,8 @@ func (m *dnsSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		// Keep polling until the operator stops us.
-		return m, tea.Tick(10*time.Second, func(time.Time) tea.Msg {
-			return dnsTickPollMsg{}
-		})
+		// The one-second tick owns the cadence now, so nothing is scheduled here.
+		return m, nil
 
 	case dnsTickPollMsg:
 		return m, m.pollPropagationCmd()
@@ -856,6 +880,20 @@ func (m *dnsSetupModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.choosing = false
 			m.manualReason = "you chose to add the record yourself"
 			m.states[stepWriteRecord] = stepSkipped
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.Web):
+		// Our four resolvers are a sample; dnschecker queries dozens worldwide.
+		// Worth offering because "meroku says no" and "the internet says no" are
+		// different claims, and the operator should be able to check the second.
+		if m.step == stepPropagate || m.manualReason != "" {
+			if err := openBrowser(dnsCheckerURL(m.zone)); err != nil {
+				m.copiedNote = "could not open a browser — " + dnsCheckerURL(m.zone)
+			} else {
+				m.copiedNote = "opened dnschecker.org for " + m.zone
+			}
+			m.copiedAt = time.Now()
 		}
 		return m, nil
 
@@ -1002,24 +1040,69 @@ func (m *dnsSetupModel) renderBody(width int) string {
 			}
 		}
 		ratio := float64(matched) / float64(len(m.resolvers))
+		half, sideBySide := columnWidth(width)
+
+		// Show the record that was written, not just that one was. When a wait
+		// goes on the first question is "is it even the right record", and a zone
+		// id alone cannot answer that.
+		var rec strings.Builder
+		rec.WriteString(kvRow("NAME", m.zone, 7) + "\n")
+		rec.WriteString(kvRow("TYPE", "NS", 7) +
+			lipgloss.NewStyle().Foreground(mutedColor).Render("    TTL  ") +
+			lipgloss.NewStyle().Foreground(fgColor).Render("300") + "\n")
+		rec.WriteString(kvRow("ZONE", m.zoneID, 7) + "\n\n")
+
+		val := lipgloss.NewStyle().Foreground(lipgloss.Color("#60a5fa")).Bold(true)
+		for i, ns := range m.nameservers {
+			rec.WriteString(keycap(fmt.Sprintf("%d", i+1)) + " " + val.Render(ns) + "\n")
+		}
+		if len(m.nameservers) > 1 {
+			rec.WriteString(keycap("c") + " " +
+				lipgloss.NewStyle().Foreground(mutedColor).
+					Render(fmt.Sprintf("copy all %d", len(m.nameservers))) + "\n")
+		}
+		left := panel("record written", rec.String(), half, successColor)
 
 		title := "Waiting for the delegation to appear"
-		note := fmt.Sprintf("NS record written to zone %s", m.zoneID)
-
-		// Once it resolves somewhere, say plainly why we are still here — a screen
-		// that looks finished but keeps waiting reads as stuck.
+		note := "Resolvers pick it up at their own pace."
 		if matched > 0 && matched < len(m.resolvers) {
 			title = "Letting the delegation settle"
 			note = "It resolves already. Waiting for the rest so the certificate " +
 				"request does not race a resolver that still has the old answer cached."
 		}
 
-		return boxStyle.Width(inner).Render(
-			titleStyle.Render(title) + "\n" +
-				lipgloss.NewStyle().Foreground(dimColor).Render(wordWrap(note, inner-6)) + "\n\n" +
-				renderResolverGrid(m.resolverResults, m.resolvers) + "\n\n" +
-				meterRow(inner-4, ratio, "#f59e0b", "#10b981",
-					fmt.Sprintf("%d/%d resolvers", matched, len(m.resolvers))))
+		// Something has to move. At 0/4 the agreement bar is empty and the resolver
+		// dots are static, so without this the screen is indistinguishable from a
+		// hung one.
+		var activity string
+		if m.propagateChecking {
+			activity = indeterminateRow(half-8, m.anim, "asking the resolvers")
+		} else {
+			activity = countdownRow(m.propagateIn, secondsBetweenPropagationChecks,
+				"next check in", half-8)
+		}
+
+		var status strings.Builder
+		status.WriteString(lipgloss.NewStyle().Foreground(fgColor).
+			Render(wordWrap(note, half-6)) + "\n\n")
+		status.WriteString(renderResolverGrid(m.resolverResults, m.resolvers) + "\n\n")
+		status.WriteString(meterRow(half-8, ratio, "#f59e0b", "#10b981",
+			fmt.Sprintf("%d/%d resolvers", matched, len(m.resolvers))) + "\n")
+		status.WriteString(activity)
+		if m.copiedNote != "" {
+			status.WriteString("\n" + lipgloss.NewStyle().Foreground(successColor).
+				Render("✓ "+truncateToWidth(m.copiedNote, half-8)))
+		}
+		status.WriteString("\n\n" + lipgloss.NewStyle().Foreground(mutedColor).Render(wordWrap(
+			"These four are a sample. Press [w] to check dozens worldwide on "+
+				"dnschecker.org.", half-6)))
+
+		right := panel(title, status.String(), half, accentColor)
+
+		if sideBySide {
+			return joinColumns(left, right)
+		}
+		return left + "\n" + right
 
 	case m.step == stepDone:
 		// Say how many resolvers actually confirmed. We continue at two of four,
@@ -1067,6 +1150,15 @@ func (m *dnsSetupModel) renderRecheckLine(width int) string {
 			m.nextCheckIn))
 }
 
+// dnsCheckerURL builds a prefilled dnschecker.org lookup for a zone's NS record.
+//
+// The path form is what the site's own share links use; the query-string form it
+// also accepts is easier to get subtly wrong, and a link that lands on an empty
+// form is worse than no link at all.
+func dnsCheckerURL(zone string) string {
+	return "https://dnschecker.org/#NS/" + url.PathEscape(normalizeDomain(zone))
+}
+
 // scanMeter renders scan progress as a real fraction once the total is known.
 //
 // Streaming turns this from an indeterminate pulse into an honest ratio: we know
@@ -1096,6 +1188,7 @@ func (m *dnsSetupModel) footerHints() []keyHint {
 		}
 		return append(hints,
 			keyHint{"r", "check now"},
+			keyHint{"w", "check on dnschecker.org"},
 			keyHint{"t", "move to route53"},
 			keyHint{"s", "deploy without domain"},
 			keyHint{"esc", "continue anyway"},
@@ -1115,7 +1208,16 @@ func (m *dnsSetupModel) footerHints() []keyHint {
 			{"m", "do it myself"}, {"^C", "abort deploy"}}
 
 	case m.step == stepPropagate:
-		return []keyHint{{"s", "stop waiting"}, {"^C", "abort deploy"}}
+		hints := []keyHint{}
+		if len(m.nameservers) > 0 {
+			hints = append(hints,
+				keyHint{"c", "copy all"},
+				keyHint{fmt.Sprintf("1-%d", len(m.nameservers)), "copy one"})
+		}
+		return append(hints,
+			keyHint{"w", "check on dnschecker.org"},
+			keyHint{"s", "stop waiting"},
+			keyHint{"^C", "abort deploy"})
 
 	default:
 		return []keyHint{{"^C", "abort deploy"}}
