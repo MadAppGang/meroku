@@ -62,9 +62,14 @@ echo "==> infrastructure -> $REPO"
 ln -sf "$REPO/bin/meroku" "$PROJECT/meroku"
 echo "==> meroku -> $REPO/bin/meroku"
 
+# ./reset -> the teardown script, so the whole test cycle is two commands typed
+# from this directory: `./reset dev --greenfield` then `./meroku`.
+ln -sf "$REPO/scripts/dev-reset.sh" "$PROJECT/reset"
+echo "==> reset -> $REPO/scripts/dev-reset.sh"
+
 # Keep the symlinks and generated output out of the project's git history.
 if [ -d "$PROJECT/.git" ]; then
-	for entry in "/infrastructure" "/meroku" "/bin/"; do
+	for entry in "/infrastructure" "/meroku" "/reset" "/bin/"; do
 		grep -qxF "$entry" "$PROJECT/.gitignore" 2>/dev/null || echo "$entry" >>"$PROJECT/.gitignore"
 	done
 	echo "==> added symlinks to $PROJECT/.gitignore"
@@ -83,12 +88,16 @@ echo "    binary:   $("$PROJECT/meroku" --help 2>&1 | head -1 | cut -c1-60)"
 
 cat <<EOF
 
-Ready.
+Ready. Everything runs from $PROJECT — no paths to remember.
 
   cd $PROJECT
-  ./meroku
 
-To undo:  rm $PROJECT/infrastructure $PROJECT/meroku
-To reset an environment to empty:
-  $REPO/scripts/dev-reset.sh $PROJECT <env>
+  ./meroku                   deploy, edit, destroy
+  ./reset <env>              show what a teardown would remove (changes nothing)
+  ./reset <env> --yes        destroy the AWS resources, keep the config
+  ./reset <env> --greenfield destroy everything, including the config, the state
+                             bucket and the parent-zone NS record, so the next
+                             ./meroku starts at the create-environment wizard
+
+To undo:  rm $PROJECT/infrastructure $PROJECT/meroku $PROJECT/reset
 EOF

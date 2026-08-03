@@ -44,12 +44,29 @@
 
 set -euo pipefail
 
-PROJECT="${1:-}"
-ENVNAME="${2:-}"
-CONFIRM="${3:-}"
+# Argument forms, so this can be run from inside a project without repeating
+# where the project is:
+#
+#   dev-reset.sh dev              -> project is the current directory
+#   dev-reset.sh ../foo dev       -> project given explicitly
+#
+# They are told apart by whether the first argument is a directory. An env is
+# never a directory, and a project directory never doubles as an env name, so
+# there is no ambiguity to resolve.
+if [ -d "${1:-}" ]; then
+	PROJECT="$1"
+	ENVNAME="${2:-}"
+	CONFIRM="${3:-}"
+else
+	PROJECT="."
+	ENVNAME="${1:-}"
+	CONFIRM="${2:-}"
+fi
 
-if [ -z "$PROJECT" ] || [ -z "$ENVNAME" ]; then
-	echo "usage: $0 <project-dir> <env> [--yes|--greenfield]" >&2
+if [ -z "$ENVNAME" ]; then
+	echo "usage: $0 [project-dir] <env> [--yes|--greenfield]" >&2
+	echo "       run from inside a project and the directory can be omitted:" >&2
+	echo "         $0 dev --greenfield" >&2
 	exit 1
 fi
 
