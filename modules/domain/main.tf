@@ -80,7 +80,18 @@ resource "aws_acm_certificate_validation" "api_domain" {
   # missing, the default 75m timeout parks the entire apply with no explanation
   # (every consumer of the cert ARN waits on this resource). Fail legibly instead.
   timeouts {
-    create = "20m"
+    # ACM's own DNS validation is documented as taking up to 30 minutes, and it
+    # backs off after a failed check — so a certificate created moments after the
+    # delegation lands can sit pending well past the half hour before ACM looks
+    # again. 20m was too tight and failed a deploy whose DNS was provably
+    # correct: the validation record resolved from the root, with no cache, to
+    # exactly the value ACM had asked for.
+    #
+    # Fast failure is no longer this timeout's job. app/dns_preflight.go catches
+    # a genuinely undelegated zone in about two seconds, before the apply starts,
+    # so all this bound has to do is stop a stuck apply running for the 75-minute
+    # provider default.
+    create = "45m"
   }
 }
 
@@ -108,7 +119,18 @@ resource "aws_acm_certificate_validation" "subdomains" {
 
   # See the api_domain validation above — same delegation dependency.
   timeouts {
-    create = "20m"
+    # ACM's own DNS validation is documented as taking up to 30 minutes, and it
+    # backs off after a failed check — so a certificate created moments after the
+    # delegation lands can sit pending well past the half hour before ACM looks
+    # again. 20m was too tight and failed a deploy whose DNS was provably
+    # correct: the validation record resolved from the root, with no cache, to
+    # exactly the value ACM had asked for.
+    #
+    # Fast failure is no longer this timeout's job. app/dns_preflight.go catches
+    # a genuinely undelegated zone in about two seconds, before the apply starts,
+    # so all this bound has to do is stop a stuck apply running for the 75-minute
+    # provider default.
+    create = "45m"
   }
 }
 
