@@ -308,13 +308,13 @@ func (m *dnsSetupModel) renderAdopt(width int) string {
 			titleStyle.Render("Reading the current "+m.parent+" zone") + "\n" +
 				lipgloss.NewStyle().Foreground(dimColor).Render(
 					"asking the nameservers that serve it today what they hold") + "\n\n" +
-				meterRow(inner-4, pulse(m.elapsed), "#3b82f6", "#10b981", "scanning"))
+				indeterminateRow(inner-4, m.anim, "reading the zone"))
 	case adoptReview:
 		return m.renderAdoptReview(width)
 	case adoptCopying:
 		return boxStyle.Width(inner).Render(
 			titleStyle.Render("Creating the zone and copying records") + "\n\n" +
-				meterRow(inner-4, pulse(m.elapsed), "#3b82f6", "#10b981", "copying"))
+				indeterminateRow(inner-4, m.anim, "copying records"))
 	case adoptVerify:
 		return m.renderAdoptVerify(width)
 	case adoptWaitNS:
@@ -446,7 +446,7 @@ func (m *dnsSetupModel) renderAdoptVerify(width int) string {
 	}
 
 	if m.adopt.diffs == nil {
-		b.WriteString(meterRow(inner-4, pulse(m.elapsed), "#3b82f6", "#10b981", "comparing"))
+		b.WriteString(indeterminateRow(inner-4, m.anim, "comparing old and new"))
 		return boxStyle.Width(inner).Render(b.String())
 	}
 
@@ -479,34 +479,57 @@ func (m *dnsSetupModel) renderAdoptVerify(width int) string {
 }
 
 func (m *dnsSetupModel) renderAdoptWaitNS(width int) string {
-	inner := width - 4
+	half, sideBySide := columnWidth(width)
 	ns := m.adopt.summary.Zone.Nameservers
 
-	var b strings.Builder
-	b.WriteString(titleStyle.Render("Set these nameservers at your registrar") + "\n")
-	b.WriteString(lipgloss.NewStyle().Foreground(dimColor).Render(
-		"for "+m.parent+" — replace the existing ones entirely") + "\n\n")
+	// Same treatment as the delegation record: the key that copies each line sits
+	// in front of the line, so there is nothing to look up.
+	var rec strings.Builder
+	rec.WriteString(kvRow("DOMAIN", m.parent, 9) + "\n")
+	rec.WriteString(kvRow("REPLACE", "all existing nameservers", 9) + "\n\n")
 
-	idx := lipgloss.NewStyle().Foreground(mutedColor).PaddingLeft(2)
 	val := lipgloss.NewStyle().Foreground(lipgloss.Color("#60a5fa")).Bold(true)
 	for i, n := range ns {
-		b.WriteString(idx.Render(fmt.Sprintf("%d ", i+1)) + val.Render(n) + "\n")
+		rec.WriteString(keycap(fmt.Sprintf("%d", i+1)) + " " + val.Render(n) + "\n")
+	}
+	if len(ns) > 1 {
+		rec.WriteString(keycap("c") + " " +
+			lipgloss.NewStyle().Foreground(mutedColor).
+				Render(fmt.Sprintf("copy all %d", len(ns))) + "\n")
 	}
 
-	b.WriteString("\n" + lipgloss.NewStyle().Foreground(warningColor).Render(wordWrap(
-		"This is the step that moves the domain. Mail and anything else on "+m.parent+
-			" starts being answered by the new zone as it propagates, which can take "+
-			"up to 48 hours depending on the old TTL.", inner-6)) + "\n\n")
-
-	if m.adopt.checking {
-		b.WriteString(lipgloss.NewStyle().Foreground(accentColor).Render("⟳ checking…"))
-	} else {
-		b.WriteString(lipgloss.NewStyle().Foreground(mutedColor).Render(fmt.Sprintf(
-			"next check in %ds — the subdomain is delegated automatically once this lands",
-			m.adopt.nsCheckIn)))
+	rec.WriteString("\n")
+	switch {
+	case m.copiedNote != "":
+		rec.WriteString(lipgloss.NewStyle().Foreground(successColor).
+			Render("✓ " + truncateToWidth(m.copiedNote, half-8)))
+	case m.adopt.checking:
+		rec.WriteString(indeterminateRow(half-8, m.anim, "checking"))
+	default:
+		rec.WriteString(countdownRow(m.adopt.nsCheckIn, secondsBetweenDNSChecks,
+			"rechecking in", half-8))
 	}
 
-	return boxStyle.Width(inner).Render(b.String())
+	left := panel("set these at your registrar", rec.String(), half, accentColor)
+
+	var why strings.Builder
+	why.WriteString(lipgloss.NewStyle().Foreground(fgColor).Render(wordWrap(
+		"This is the step that moves the domain. From the moment you save it, "+m.parent+
+			" — mail included — starts being answered by the new zone rather than "+
+			"your old provider.", half-6)) + "\n\n")
+	why.WriteString(lipgloss.NewStyle().Foreground(mutedColor).Render(wordWrap(
+		"It does not happen everywhere at once. Resolvers hold the old answer "+
+			"until it expires, which can take up to 48 hours.", half-6)) + "\n\n")
+	why.WriteString(lipgloss.NewStyle().Foreground(successColor).Render(wordWrap(
+		"✓ "+m.zone+" is delegated automatically as soon as this lands. "+
+			"You can leave this running.", half-6)))
+
+	right := panel("what this does", why.String(), half, warningColor)
+
+	if sideBySide {
+		return joinColumns(left, right)
+	}
+	return left + "\n" + right
 }
 
 // adoptFooterHints returns the key hints for the current adoption phase.

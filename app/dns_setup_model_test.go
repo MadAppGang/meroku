@@ -440,26 +440,6 @@ func TestDNSModel_NoLineExceedsWidth(t *testing.T) {
 	}
 }
 
-// pulse must stay inside [0,1) and never claim completion for work of unknown
-// duration — a meter that reaches 100% and keeps waiting reads as a hang.
-func TestPulse_StaysBelowComplete(t *testing.T) {
-	for _, secs := range []int{0, 1, 10, 60, 600, 36000} {
-		got := pulse(durationSeconds(secs))
-		if got < 0 || got >= 1 {
-			t.Errorf("pulse(%ds) = %v, want [0,1)", secs, got)
-		}
-	}
-	if pulse(durationSeconds(0)) != 0 {
-		t.Error("pulse should start at zero")
-	}
-	if pulse(durationSeconds(60)) <= pulse(durationSeconds(10)) {
-		t.Error("pulse should increase with elapsed time")
-	}
-}
-
-// durationSeconds is a readability helper for the pulse table.
-func durationSeconds(n int) time.Duration { return time.Duration(n) * time.Second }
-
 // The done panel must not claim more than was observed. Delegation is accepted
 // at two of four resolvers, so an unqualified "resolves" would overstate it
 // while two resolvers are still serving cached negative answers.
@@ -675,4 +655,90 @@ func TestDNSModel_ManualRecheckFailingRearmsCountdown(t *testing.T) {
 	if m.Delegated {
 		t.Error("a failed check must not report delegation")
 	}
+}
+
+// Indeterminate work must not be drawn as a measurement.
+//
+// The previous version eased a normal progress meter toward 90% from elapsed
+// time, so a bar identical to the determinate ones ("3/12 profiles") was in fact
+// reporting nothing but how long it had been running. A terraform apply, a zone
+// copy and a record comparison have no total to divide by.
+func TestIndeterminateRow_MovesAndNeverFills(t *testing.T) {
+	const width = 60
+
+	seen := map[string]bool{}
+	for phase := 0; phase < 40; phase++ {
+		row := indeterminateRow(width, phase, "working")
+		seen[row] = true
+
+		if lipgloss.Width(row) > width {
+			t.Fatalf("phase %d overflows: %d > %d", phase, lipgloss.Width(row), width)
+		}
+		// A full track would be indistinguishable from a completed meter.
+		if !strings.Contains(row, "░") {
+			t.Fatalf("phase %d has no empty track left — it reads as complete", phase)
+		}
+	}
+
+	if len(seen) < 5 {
+		t.Errorf("expected the loader to animate, got %d distinct frames", len(seen))
+	}
+}
+
+// It bounces rather than wrapping: a block reappearing at the left reads as a
+// restart, which suggests a retry that is not happening.
+func TestIndeterminateRow_Bounces(t *testing.T) {
+	pos := func(phase int) int {
+		return strings.Index(stripANSI(indeterminateRow(80, phase, "x")), "█")
+	}
+	first, mid := pos(0), pos(20)
+	if first == mid {
+		t.Skip("chosen phases happen to coincide")
+	}
+	// Somewhere in a long run the block must reverse direction.
+	reversed := false
+	prev, dir := pos(0), 0
+	for p := 1; p < 200; p++ {
+		cur := pos(p)
+		d := cur - prev
+		if d != 0 && dir != 0 && (d > 0) != (dir > 0) {
+			reversed = true
+			break
+		}
+		if d != 0 {
+			dir = d
+		}
+		prev = cur
+	}
+	if !reversed {
+		t.Error("the block should bounce, not wrap around")
+	}
+}
+
+// Very narrow panels degrade to the label rather than a broken track.
+func TestIndeterminateRow_DegradesWhenNarrow(t *testing.T) {
+	row := indeterminateRow(12, 3, "comparing old and new")
+	if lipgloss.Width(row) > 30 {
+		t.Errorf("narrow row should not build a track, got width %d", lipgloss.Width(row))
+	}
+	if !strings.Contains(row, "comparing") {
+		t.Error("the label must survive")
+	}
+}
+
+// stripANSI removes colour escapes so positions can be measured.
+func stripANSI(s string) string {
+	var b strings.Builder
+	inEsc := false
+	for _, r := range s {
+		switch {
+		case r == 0x1b:
+			inEsc = true
+		case inEsc && r == 'm':
+			inEsc = false
+		case !inEsc:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }

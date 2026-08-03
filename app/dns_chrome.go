@@ -232,6 +232,65 @@ func renderKeyLegend(hints []keyHint, width int) string {
 
 // ------------------------------------------------------------- misc pieces ---
 
+// spinnerFrames is a braille rotation — eight frames, one glyph, no width
+// change between them so nothing beside it shifts.
+var spinnerFrames = []string{"⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"}
+
+func spinnerFrame(phase int) string {
+	return spinnerFrames[phase%len(spinnerFrames)]
+}
+
+// indeterminateRow renders work whose duration is genuinely unknown: a lit block
+// sweeping back and forth along a dim track, with a spinner and a label.
+//
+// This exists because the alternative was a lie. The previous version drove a
+// normal progress meter from elapsed time, easing toward 90% — so a bar that
+// looked exactly like the determinate ones ("3/12 profiles") was in fact
+// reporting nothing but how long it had been since it started. A terraform
+// apply, a zone copy and a record comparison have no total to divide by, and a
+// bar that fills anyway teaches the operator to distrust the ones that mean
+// something. A sweeping block cannot be mistaken for a measurement.
+func indeterminateRow(width, phase int, label string) string {
+	labelText := spinnerFrame(phase) + " " + label
+	trackW := width - lipgloss.Width(labelText) - 2
+	if trackW < 8 {
+		return lipgloss.NewStyle().Foreground(accentColor).Render(labelText)
+	}
+
+	const block = 8
+	travel := trackW - block
+	if travel < 1 {
+		travel = 1
+	}
+
+	// Bounce rather than wrap: a block that reappears at the left after leaving
+	// the right reads as a restart, which suggests a retry that is not happening.
+	pos := phase % (2 * travel)
+	if pos > travel {
+		pos = 2*travel - pos
+	}
+
+	var b strings.Builder
+	for i := 0; i < trackW; i++ {
+		if i >= pos && i < pos+block {
+			// Shade across the block so it has a leading edge and reads as moving
+			// in a direction rather than blinking in place.
+			t := float64(i-pos) / float64(block-1)
+			r1, g1, b1 := hexToRGB("#3b82f6")
+			r2, g2, b2 := hexToRGB("#10b981")
+			c := fmt.Sprintf("#%02x%02x%02x",
+				int(float64(r1)+(float64(r2)-float64(r1))*t),
+				int(float64(g1)+(float64(g2)-float64(g1))*t),
+				int(float64(b1)+(float64(b2)-float64(b1))*t))
+			b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(c)).Render("█"))
+		} else {
+			b.WriteString(lipgloss.NewStyle().Foreground(borderColor).Render("░"))
+		}
+	}
+
+	return b.String() + "  " + lipgloss.NewStyle().Foreground(accentColor).Render(labelText)
+}
+
 // countdownRow shows a wait as a draining meter plus the seconds left, so the
 // screen reads as "working" rather than "stuck".
 func countdownRow(remaining, total int, label string, width int) string {

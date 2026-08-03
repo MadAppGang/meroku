@@ -70,6 +70,14 @@ type dnsPropagationMsg struct {
 
 type dnsTickMsg time.Time
 
+// dnsAnimMsg drives the indeterminate loaders.
+//
+// It is separate from the one-second tick because a sweeping block needs to
+// move several times a second to read as motion, while everything else on
+// screen — elapsed time, countdowns — only changes once a second and would
+// flicker if redrawn eight times as often for no reason.
+type dnsAnimMsg time.Time
+
 // ------------------------------------------------------------------- keys ---
 
 type dnsKeyMap struct {
@@ -161,6 +169,9 @@ type dnsSetupModel struct {
 	// that cannot delegate a subdomain at all.
 	adopt adoptState
 
+	// anim advances the indeterminate loaders, several frames a second.
+	anim int
+
 	// transient "copied" confirmation
 	copiedNote string
 	copiedAt   time.Time
@@ -235,13 +246,21 @@ func newDNSSetupModel(e Env, res dnsPreflightResult) *dnsSetupModel {
 
 func (m *dnsSetupModel) Init() tea.Cmd {
 	if m.step == stepCreateZone {
-		return tea.Batch(m.tick(), m.createZoneCmd())
+		return tea.Batch(m.tick(), m.animTick(), m.createZoneCmd())
 	}
-	return tea.Batch(m.tick(), m.findParentCmd())
+	return tea.Batch(m.tick(), m.animTick(), m.findParentCmd())
 }
 
 func (m *dnsSetupModel) tick() tea.Cmd {
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg { return dnsTickMsg(t) })
+}
+
+// animInterval is the frame time for indeterminate loaders. Fast enough that the
+// block glides, slow enough that a remote terminal is not repainting constantly.
+const animInterval = 120 * time.Millisecond
+
+func (m *dnsSetupModel) animTick() tea.Cmd {
+	return tea.Tick(animInterval, func(t time.Time) tea.Msg { return dnsAnimMsg(t) })
 }
 
 // --------------------------------------------------------------- commands ---
@@ -534,6 +553,13 @@ func (m *dnsSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		return m, nil
+
+	case dnsAnimMsg:
+		if m.quitting {
+			return m, nil
+		}
+		m.anim++
+		return m, m.animTick()
 
 	case dnsTickMsg:
 		m.elapsed = time.Since(m.startTime)
@@ -866,8 +892,8 @@ func (m *dnsSetupModel) renderBody(width int) string {
 		body := titleStyle.Render("Creating hosted zone") + "\n" +
 			lipgloss.NewStyle().Foreground(dimColor).
 				Render("the zone must exist before its nameservers can be delegated") + "\n\n" +
-			meterRow(inner-4, pulse(m.elapsed), "#3b82f6", "#10b981",
-				fmt.Sprintf("%ds", int(m.elapsed.Seconds())))
+			indeterminateRow(inner-4, m.anim,
+				fmt.Sprintf("creating (%ds)", int(m.elapsed.Seconds())))
 		return boxStyle.Width(inner).Render(body)
 
 	case m.step == stepFindParent:
@@ -908,7 +934,7 @@ func (m *dnsSetupModel) renderBody(width int) string {
 	case m.step == stepWriteRecord:
 		return boxStyle.Width(inner).Render(
 			titleStyle.Render("Writing delegation record") + "\n\n" +
-				meterRow(inner-4, pulse(m.elapsed), "#3b82f6", "#10b981", "writing"))
+				indeterminateRow(inner-4, m.anim, "writing the record"))
 
 	case m.step == stepPropagate:
 		matched := 0
@@ -979,18 +1005,11 @@ func (m *dnsSetupModel) renderRecheckLine(width int) string {
 // can say so instead of miming activity.
 func (m *dnsSetupModel) scanMeter(width int) string {
 	if m.scanTotal == 0 {
-		return meterRow(width, pulse(m.elapsed), "#3b82f6", "#10b981", "resolving")
+		return indeterminateRow(width, m.anim, "resolving")
 	}
 	ratio := float64(m.scanned) / float64(m.scanTotal)
 	return meterRow(width, ratio, "#3b82f6", "#10b981",
 		fmt.Sprintf("%d/%d profiles", m.scanned, m.scanTotal))
-}
-
-// pulse drives an indeterminate meter for work whose duration is unknown.
-// It ramps to ~90% over a minute rather than pretending to be complete.
-func pulse(elapsed time.Duration) float64 {
-	s := elapsed.Seconds()
-	return 0.9 * (1 - 1/(1+s/20))
 }
 
 func (m *dnsSetupModel) footerHints() []keyHint {
