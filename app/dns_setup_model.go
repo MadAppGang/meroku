@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net"
 	"net/url"
 	"os/exec"
 	"strconv"
@@ -250,7 +249,7 @@ func newDNSSetupModel(e Env, res dnsPreflightResult) *dnsSetupModel {
 		nameservers:     res.ZoneNameservers,
 		states:          map[dnsStep]stepState{},
 		startTime:       time.Now(),
-		resolvers:       []string{"8.8.8.8", "1.1.1.1", "9.9.9.9", "208.67.222.222"},
+		resolvers:       dohResolverNames(),
 		resolverResults: map[string]bool{},
 		keys:            dnsKeys,
 		width:           100,
@@ -503,55 +502,33 @@ func (m *dnsSetupModel) delegateCmd(c parentZoneCandidate) tea.Cmd {
 	}
 }
 
-// pollPropagationCmd checks each public resolver individually.
+// pollPropagationCmd asks each public resolver, over HTTPS, whether it sees the
+// delegation yet.
 //
 // Per-resolver results are what make partial propagation visible; a single
 // "waiting" spinner hides the fact that it is already live in half the world.
+//
+// The queries go over DoH rather than port 53 because a UDP query to 8.8.8.8 is
+// answered by whatever intercepts port 53 on the operator's network, not by
+// Google — see dns_doh.go for the measurement that established this.
 func (m *dnsSetupModel) pollPropagationCmd() tea.Cmd {
 	zone := m.zone
 	expected := m.nameservers
-	servers := m.resolvers
 	return func() tea.Msg {
-		results := map[string]bool{}
+		results := checkPropagationDoH(zone, expected)
+
 		matched := 0
-		for _, s := range servers {
-			ok := resolverSeesDelegation(s, zone, expected)
-			results[s] = ok
+		for _, ok := range results {
 			if ok {
 				matched++
 			}
 		}
 		// Two independent resolvers agreeing is enough to proceed. That is half,
 		// not a majority: resolvers cache negative answers for minutes after a
-		// zone is created, so waiting for all four routinely stalls long after
-		// the record is genuinely live at the authoritative servers — which is
-		// all ACM actually needs. The count is reported rather than rounded up
-		// to "fully propagated", because at this point it usually is not.
+		// zone is created, so waiting for all of them routinely stalls long after
+		// the record is genuinely live at the authoritative servers.
 		return dnsPropagationMsg{results: results, ok: matched >= 2}
 	}
-}
-
-// resolverSeesDelegation asks one resolver whether the zone is delegated to us.
-func resolverSeesDelegation(server, domain string, expected []string) bool {
-	r := &net.Resolver{
-		PreferGo: true,
-		Dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
-			d := net.Dialer{Timeout: 4 * time.Second}
-			return d.DialContext(ctx, network, net.JoinHostPort(server, "53"))
-		},
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	found, err := r.LookupNS(ctx, domain)
-	if err != nil || len(found) == 0 {
-		return false
-	}
-	got := make([]string, 0, len(found))
-	for _, ns := range found {
-		got = append(got, ns.Host)
-	}
-	return nameserverSetsMatch(expected, got)
 }
 
 func lastN(s []string, n int) []string {
