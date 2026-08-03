@@ -1,5 +1,5 @@
 import { Activity, AlertCircle, Cpu, Info, Users } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { useFargateOptions } from "../hooks/use-fargate-options";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import {
@@ -77,6 +77,41 @@ export function BackendScalingConfiguration({
 	const [requestBasedScaling, setRequestBasedScaling] = useState(false);
 	const [requestsPerTarget, setRequestsPerTarget] = useState(1000);
 
+	// Declared above the effect that lists it as a dependency, since dep arrays
+	// are evaluated during render.
+	const handleWorkloadChange = useCallback(
+		(updates: Partial<YamlInfrastructureConfig["workload"]>) => {
+			if (isService && serviceName) {
+				// Update service configuration
+				const updatedServices =
+					config.services?.map((service) =>
+						service.name === serviceName
+							? {
+									...service,
+									cpu: updates?.backend_cpu
+										? Number.parseInt(updates.backend_cpu, 10)
+										: service.cpu,
+									memory: updates?.backend_memory
+										? Number.parseInt(updates.backend_memory, 10)
+										: service.memory,
+									desired_count:
+										updates?.backend_desired_count ?? service.desired_count,
+								}
+							: service,
+					) || [];
+
+				onConfigChange({ services: updatedServices });
+			} else {
+				// Update backend configuration — send only changed fields.
+				// App.tsx deep-merges with prevConfig.workload to avoid stale overwrites.
+				onConfigChange({
+					workload: updates,
+				});
+			}
+		},
+		[isService, serviceName, config.services, onConfigChange],
+	);
+
 	// Adjust memory when CPU changes - also persist to YAML config
 	useEffect(() => {
 		const availableMemory = getMemoryOptions(Number.parseInt(cpu, 10));
@@ -88,39 +123,7 @@ export function BackendScalingConfiguration({
 			setMemory(newMemory);
 			handleWorkloadChange({ backend_memory: newMemory });
 		}
-	}, [cpu, memory, getMemoryOptions]); // eslint-disable-line react-hooks/exhaustive-deps
-
-	const handleWorkloadChange = (
-		updates: Partial<YamlInfrastructureConfig["workload"]>,
-	) => {
-		if (isService && serviceName) {
-			// Update service configuration
-			const updatedServices =
-				config.services?.map((service) =>
-					service.name === serviceName
-						? {
-								...service,
-								cpu: updates?.backend_cpu
-									? Number.parseInt(updates.backend_cpu, 10)
-									: service.cpu,
-								memory: updates?.backend_memory
-									? Number.parseInt(updates.backend_memory, 10)
-									: service.memory,
-								desired_count:
-									updates?.backend_desired_count ?? service.desired_count,
-							}
-						: service,
-				) || [];
-
-			onConfigChange({ services: updatedServices });
-		} else {
-			// Update backend configuration — send only changed fields.
-			// App.tsx deep-merges with prevConfig.workload to avoid stale overwrites.
-			onConfigChange({
-				workload: updates,
-			});
-		}
-	};
+	}, [cpu, memory, getMemoryOptions, handleWorkloadChange]);
 
 	// X-Ray no longer affects resource allocation
 

@@ -16,8 +16,10 @@
 import {
 	createContext,
 	type ReactNode,
+	useCallback,
 	useContext,
 	useEffect,
+	useRef,
 	useState,
 } from "react";
 import {
@@ -70,10 +72,22 @@ export function PricingProvider({
 	 * Fetch pricing rates from backend
 	 * Automatically called on mount and can be manually triggered
 	 */
-	const fetchRates = async () => {
-		// Don't fetch if already loading
-		if (loading) return;
+	// Mirrors of state read inside fetchRates. Reading them through refs keeps
+	// fetchRates stable across renders, which matters because it is handed to
+	// consumers as `refresh` and used as an effect dependency below.
+	const loadingRef = useRef(false);
+	const ratesRef = useRef(rates);
+	useEffect(() => {
+		ratesRef.current = rates;
+	}, [rates]);
 
+	const fetchRates = useCallback(async () => {
+		// Don't fetch if already loading. This guards on a ref rather than the
+		// `loading` state because state captured in the closure is a render-old
+		// snapshot, so two calls in the same tick would both slip past it.
+		if (loadingRef.current) return;
+
+		loadingRef.current = true;
 		setLoading(true);
 		setError(null);
 
@@ -91,13 +105,14 @@ export function PricingProvider({
 			console.error("[PricingContext] Failed to fetch pricing rates:", error);
 
 			// If we have cached rates, keep using them despite the error
-			if (!rates) {
+			if (!ratesRef.current) {
 				console.error("[PricingContext] No cached rates available");
 			}
 		} finally {
+			loadingRef.current = false;
 			setLoading(false);
 		}
-	};
+	}, [region]);
 
 	// Fetch rates on mount if not cached
 	useEffect(() => {
@@ -111,7 +126,10 @@ export function PricingProvider({
 				rates.source,
 			);
 		}
-	}, []); // Only run once on mount
+		// Re-runs when rates arrive, which just takes the cached branch and logs.
+		// It cannot loop: the only path that calls fetchRates requires rates to be
+		// null, and a successful fetch makes it non-null.
+	}, [rates, fetchRates]);
 
 	// Auto-refresh every hour to keep rates current
 	useEffect(() => {
@@ -124,7 +142,9 @@ export function PricingProvider({
 		); // 1 hour
 
 		return () => clearInterval(interval);
-	}, [region]); // Re-create interval if region changes
+		// fetchRates is the effect's only real dependency and is itself rebuilt
+		// when region changes, so the interval still resets on a region switch.
+	}, [fetchRates]);
 
 	return (
 		<PricingContext.Provider

@@ -187,7 +187,7 @@ export function ScheduledTaskProperties({
 			);
 			handleTaskChange({ ecr_config: newConfig });
 		},
-		[handleTaskChange],
+		[handleTaskChange, taskName],
 	);
 
 	const {

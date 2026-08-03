@@ -1,5 +1,5 @@
 import { FileCode, Info, Package } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { customTerraformApi } from "../api/customTerraform";
 import type {
 	CustomModuleStatus,
@@ -21,11 +21,7 @@ export function CustomTerraformNodeProperties({
 	const [modules, setModules] = useState<CustomModuleStatus[]>([]);
 	const [isLoading, setIsLoading] = useState(true);
 
-	useEffect(() => {
-		loadData();
-	}, [environment]);
-
-	const loadData = async () => {
+	const loadData = useCallback(async () => {
 		try {
 			setIsLoading(true);
 			const [filesData, modulesData] = await Promise.all([
@@ -39,7 +35,13 @@ export function CustomTerraformNodeProperties({
 		} finally {
 			setIsLoading(false);
 		}
-	};
+	}, [environment]);
+
+	// loadData is rebuilt only when environment changes, so this still reloads
+	// exactly once per environment.
+	useEffect(() => {
+		loadData();
+	}, [loadData]);
 
 	return (
 		<Tabs defaultValue="editor" className="h-full flex flex-col">

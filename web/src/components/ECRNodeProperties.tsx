@@ -1,5 +1,5 @@
 import { AlertCircle, CheckCircle2, Info, Loader2 } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import type {
 	AccountInfo,
 	ConfigureCrossAccountECRResponse,
@@ -51,14 +51,44 @@ export function ECRNodeProperties({
 		repository?: string;
 	} | null>(null);
 
-	// Load ECR sources when cross-account mode is selected
-	useEffect(() => {
-		if (ecrMode === "cross-account") {
-			loadECRSources();
-		}
-	}, [ecrMode]);
+	// Check real AWS deployment status. Declared before loadECRSources because
+	// that callback lists it as a dependency, which is evaluated during render.
+	const checkDeploymentStatus = useCallback(
+		async (sourceEnvName: string) => {
+			if (!config.account_id) {
+				return;
+			}
 
-	const loadECRSources = async () => {
+			setDeploymentStatus({
+				deployed: false,
+				has_trust_for: false,
+				checking: true,
+			});
+
+			try {
+				const result = await infrastructureApi.checkECRTrustPolicy(
+					sourceEnvName,
+					config.account_id,
+				);
+				setDeploymentStatus({
+					deployed: result.deployed,
+					has_trust_for: result.has_trust_for,
+					checking: false,
+					repository: result.repository,
+				});
+			} catch (err) {
+				console.error("Failed to check deployment status:", err);
+				setDeploymentStatus({
+					deployed: false,
+					has_trust_for: false,
+					checking: false,
+				});
+			}
+		},
+		[config.account_id],
+	);
+
+	const loadECRSources = useCallback(async () => {
 		setIsLoadingSources(true);
 		setError("");
 		try {
@@ -85,40 +115,16 @@ export function ECRNodeProperties({
 		} finally {
 			setIsLoadingSources(false);
 		}
-	};
+	}, [config.ecr_account_id, config.ecr_account_region, checkDeploymentStatus]);
 
-	// Check real AWS deployment status
-	const checkDeploymentStatus = async (sourceEnvName: string) => {
-		if (!config.account_id) {
-			return;
+	// Load ECR sources when cross-account mode is selected. loadECRSources is
+	// rebuilt only when the configured source account changes, so this still
+	// fires once per entry into cross-account mode.
+	useEffect(() => {
+		if (ecrMode === "cross-account") {
+			loadECRSources();
 		}
-
-		setDeploymentStatus({
-			deployed: false,
-			has_trust_for: false,
-			checking: true,
-		});
-
-		try {
-			const result = await infrastructureApi.checkECRTrustPolicy(
-				sourceEnvName,
-				config.account_id,
-			);
-			setDeploymentStatus({
-				deployed: result.deployed,
-				has_trust_for: result.has_trust_for,
-				checking: false,
-				repository: result.repository,
-			});
-		} catch (err) {
-			console.error("Failed to check deployment status:", err);
-			setDeploymentStatus({
-				deployed: false,
-				has_trust_for: false,
-				checking: false,
-			});
-		}
-	};
+	}, [ecrMode, loadECRSources]);
 
 	const handleSourceSelection = async (sourceEnvName: string) => {
 		setSelectedSource(sourceEnvName);

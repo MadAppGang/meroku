@@ -9,7 +9,7 @@ import {
 	TrendingDown,
 	TrendingUp,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
 	CartesianGrid,
 	Legend,
@@ -94,8 +94,10 @@ export function ServiceAutoscaling({
 		targetMemory: 80,
 	});
 
-	// Fetch all data
-	const fetchData = async () => {
+	// Fetch all data. Memoised because the effect below both calls it and lists
+	// it as a dependency: as a plain function it was rebuilt every render, so the
+	// 30s interval was being torn down and recreated on each one.
+	const fetchData = useCallback(async () => {
 		try {
 			setRefreshing(true);
 			const [info, history, metricsData] = await Promise.all([
@@ -131,7 +133,7 @@ export function ServiceAutoscaling({
 			setLoading(false);
 			setRefreshing(false);
 		}
-	};
+	}, [environment, serviceName]);
 
 	useEffect(() => {
 		fetchData();

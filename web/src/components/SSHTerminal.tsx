@@ -48,6 +48,7 @@ export function SSHTerminal({
 		setConnectionStatus(status);
 	};
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: this effect builds the xterm instance and opens the SSH socket exactly once. connectionKey is a useRef frozen at mount, so the component is designed to be remounted per target rather than reconnected in place; re-running on env/serviceName/taskArn/containerName would tear down a live terminal session mid-use.
 	useEffect(() => {
 		if (!terminalRef.current || isInitialized.current) return;
 
@@ -322,8 +323,7 @@ export function SSHTerminal({
 		// Start the initialization process
 		checkAndInitialize();
 
-		// Don't re-run effect on prop changes since we're managing initialization
-		// eslint-disable-next-line react-hooks/exhaustive-deps
+		// Deliberately mount-only -- see the suppression above the hook.
 	}, []);
 
 	// Handle fullscreen toggle

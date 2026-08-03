@@ -77,21 +77,26 @@ export function AmplifyBranchManagement({
 	// Must stay above the early return below: React requires every hook to run in
 	// the same order on every render, so a hook after a conditional return crashes
 	// with "rendered fewer hooks than expected" when amplifyApp becomes undefined.
+	// Depend on the branch element rather than the branches array: the array is
+	// rebuilt by `|| []` on every render and would loop, whereas the element is a
+	// stable reference from config (or a stable undefined when absent).
+	const editingBranchData =
+		editingBranch !== null ? branches[editingBranch] : undefined;
+
 	useEffect(() => {
-		if (editingBranch !== null && branches[editingBranch]) {
-			const branch = branches[editingBranch];
-			const envVars = Object.entries(branch.environment_variables || {}).map(
-				([key, value], idx) => ({
-					id: `env-${idx}-${Date.now()}`,
-					key,
-					value,
-				}),
-			);
+		if (editingBranchData) {
+			const envVars = Object.entries(
+				editingBranchData.environment_variables || {},
+			).map(([key, value], idx) => ({
+				id: `env-${idx}-${Date.now()}`,
+				key,
+				value,
+			}));
 			setEditingEnvVars(envVars);
 		} else {
 			setEditingEnvVars([]);
 		}
-	}, [editingBranch]);
+	}, [editingBranchData]);
 
 	if (!amplifyApp) {
 		return (
