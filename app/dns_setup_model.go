@@ -411,8 +411,12 @@ func (m *dnsSetupModel) pollPropagationCmd() tea.Cmd {
 				matched++
 			}
 		}
-		// A majority is enough: ACM only needs the record visible to its own
-		// resolvers, and waiting for every last one stalls on slow caches.
+		// Two independent resolvers agreeing is enough to proceed. That is half,
+		// not a majority: resolvers cache negative answers for minutes after a
+		// zone is created, so waiting for all four routinely stalls long after
+		// the record is genuinely live at the authoritative servers — which is
+		// all ACM actually needs. The count is reported rather than rounded up
+		// to "fully propagated", because at this point it usually is not.
 		return dnsPropagationMsg{results: results, ok: matched >= 2}
 	}
 }
@@ -764,11 +768,28 @@ func (m *dnsSetupModel) renderBody(inner int) string {
 					fmt.Sprintf("%d/%d resolvers", matched, len(m.resolvers))))
 
 	case m.step == stepDone:
+		// Say how many resolvers actually confirmed. We continue at two of four,
+		// so an unqualified "resolves" would overstate what was observed —
+		// typically two of them are still serving a cached negative answer.
+		matched := 0
+		for _, ok := range m.resolverResults {
+			if ok {
+				matched++
+			}
+		}
+		detail := "Certificate validation can now succeed. Continuing with the full deploy."
+		if matched < len(m.resolvers) {
+			detail = fmt.Sprintf(
+				"%d of %d resolvers see it so far; the rest are still serving cached answers.\n"+
+					"That is enough for certificate validation. Continuing with the full deploy.",
+				matched, len(m.resolvers))
+		}
 		return boxStyle.Width(inner).Render(
 			badge("DELEGATED", successColor) + "  " +
-				lipgloss.NewStyle().Foreground(fgColor).Render(m.zone+" resolves to this account") + "\n\n" +
-				lipgloss.NewStyle().Foreground(dimColor).
-					Render("Certificate validation can now succeed. Continuing with the full deploy."))
+				lipgloss.NewStyle().Foreground(fgColor).
+					Render(fmt.Sprintf("%s now resolves to this account", m.zone)) + "\n\n" +
+				lipgloss.NewStyle().Foreground(dimColor).Render(detail) + "\n\n" +
+				renderResolverGrid(m.resolverResults, m.resolvers))
 	}
 	return ""
 }

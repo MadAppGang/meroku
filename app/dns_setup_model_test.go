@@ -459,3 +459,48 @@ func TestPulse_StaysBelowComplete(t *testing.T) {
 
 // durationSeconds is a readability helper for the pulse table.
 func durationSeconds(n int) time.Duration { return time.Duration(n) * time.Second }
+
+// The done panel must not claim more than was observed. Delegation is accepted
+// at two of four resolvers, so an unqualified "resolves" would overstate it
+// while two resolvers are still serving cached negative answers.
+func TestDNSModel_DoneStateReportsPartialPropagation(t *testing.T) {
+	m := testDNSModel(t)
+	m.step = stepPropagate
+
+	updated, _ := m.Update(dnsPropagationMsg{
+		results: map[string]bool{
+			"8.8.8.8": false, "1.1.1.1": true,
+			"9.9.9.9": false, "208.67.222.222": true,
+		},
+		ok: true,
+	})
+	m = updated.(*dnsSetupModel)
+
+	view := m.View()
+	if !strings.Contains(view, "DELEGATED") {
+		t.Error("expected the delegated badge")
+	}
+	if !strings.Contains(view, "2 of 4 resolvers") {
+		t.Errorf("the done panel should report the observed count, got:\n%s", view)
+	}
+	if !strings.Contains(view, "cached") {
+		t.Error("it should explain why the others do not see it yet")
+	}
+}
+
+// With every resolver agreeing there is nothing to qualify.
+func TestDNSModel_DoneStateIsUnqualifiedWhenFullyPropagated(t *testing.T) {
+	m := testDNSModel(t)
+	m.step = stepPropagate
+
+	all := map[string]bool{}
+	for _, r := range m.resolvers {
+		all[r] = true
+	}
+	updated, _ := m.Update(dnsPropagationMsg{results: all, ok: true})
+	m = updated.(*dnsSetupModel)
+
+	if strings.Contains(m.View(), "so far") {
+		t.Error("a fully propagated delegation should not be hedged")
+	}
+}
