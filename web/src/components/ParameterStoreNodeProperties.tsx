@@ -169,10 +169,10 @@ export function ParameterStoreNodeProperties({
 							Parameters Created
 						</h3>
 						<div className="space-y-2">
-							{parameters.map((param, index) => {
+							{parameters.map((param) => {
 								const Icon = param.icon;
 								return (
-									<div key={index} className="bg-gray-800 rounded-lg p-3">
+									<div key={param.name} className="bg-gray-800 rounded-lg p-3">
 										<div className="flex items-start gap-3">
 											<Icon className={`w-4 h-4 ${param.color} mt-0.5`} />
 											<div className="flex-1 space-y-1">

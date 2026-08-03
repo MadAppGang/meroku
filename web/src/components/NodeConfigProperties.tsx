@@ -42,8 +42,13 @@ export function NodeConfigProperties({ node }: NodeConfigPropertiesProps) {
 				return <span className="text-gray-500">None</span>;
 			return (
 				<div className="space-y-1">
-					{value.map((item, index) => (
-						<div key={index} className="text-sm">
+					{value.map((item) => (
+						<div
+							key={
+								typeof item === "object" ? JSON.stringify(item) : String(item)
+							}
+							className="text-sm"
+						>
 							{typeof item === "object" ? JSON.stringify(item, null, 2) : item}
 						</div>
 					))}

@@ -249,9 +249,9 @@ export function SESStatus({ config }: SESStatusProps) {
 									Verified Domains
 								</h4>
 								<div className="space-y-2">
-									{status.verifiedDomains.map((domain, index) => (
+									{status.verifiedDomains.map((domain) => (
 										<div
-											key={index}
+											key={domain}
 											className="flex items-center gap-2 p-2 bg-gray-800 rounded"
 										>
 											<CheckCircle className="w-4 h-4 text-green-400" />
@@ -269,9 +269,9 @@ export function SESStatus({ config }: SESStatusProps) {
 									Verified Email Addresses
 								</h4>
 								<div className="space-y-2">
-									{status.verifiedEmails.map((email, index) => (
+									{status.verifiedEmails.map((email) => (
 										<div
-											key={index}
+											key={email}
 											className="flex items-center gap-2 p-2 bg-gray-800 rounded"
 										>
 											<CheckCircle className="w-4 h-4 text-green-400" />
@@ -340,8 +340,8 @@ export function SESStatus({ config }: SESStatusProps) {
 							<AlertDescription>
 								<p className="font-medium mb-2">Current Sandbox Limitations:</p>
 								<ul className="space-y-1 text-sm">
-									{sandboxInfo.limitations.map((limitation, index) => (
-										<li key={index}>• {limitation}</li>
+									{sandboxInfo.limitations.map((limitation) => (
+										<li key={limitation}>• {limitation}</li>
 									))}
 								</ul>
 							</AlertDescription>

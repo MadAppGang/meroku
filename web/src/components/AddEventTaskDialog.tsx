@@ -311,6 +311,7 @@ export function AddEventTaskDialog({
 						<div className="grid gap-2">
 							<Label>Event Detail Types</Label>
 							{formData.detail_types.map((detailType, index) => (
+								// biome-ignore lint/suspicious/noArrayIndexKey: detail_types is an editable string[]; keying by value would change the key on every keystroke, remounting the Input and losing focus mid-edit
 								<div key={`detail-type-${index}`} className="flex gap-2">
 									<Input
 										value={detailType}
@@ -349,6 +350,7 @@ export function AddEventTaskDialog({
 						<div className="grid gap-2">
 							<Label>Event Sources</Label>
 							{formData.sources.map((source, index) => (
+								// biome-ignore lint/suspicious/noArrayIndexKey: sources is an editable string[]; keying by value would change the key on every keystroke, remounting the Input and losing focus mid-edit
 								<div key={`source-${index}`} className="flex gap-2">
 									<Select
 										value={source}

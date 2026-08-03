@@ -324,7 +324,7 @@ export function BackendS3Buckets({
 
 							return (
 								<div
-									key={index}
+									key={`${envFile.bucket}/${envFile.key}`}
 									className="border border-gray-700 rounded-lg p-3"
 								>
 									{isEditing ? (

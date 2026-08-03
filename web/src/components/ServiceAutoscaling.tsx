@@ -553,9 +553,9 @@ export function ServiceAutoscaling({
 						</CardHeader>
 						<CardContent>
 							<div className="space-y-4">
-								{scalingHistory?.events.map((event, index) => (
+								{scalingHistory?.events.map((event) => (
 									<div
-										key={index}
+										key={`${event.timestamp}-${event.activityType}`}
 										className="flex items-center gap-4 p-4 border rounded-lg"
 									>
 										<div className="flex-shrink-0">

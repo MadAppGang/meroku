@@ -349,9 +349,9 @@ export function BackendIAMPermissions({
 				</CardHeader>
 				<CardContent>
 					<div className="space-y-3">
-						{unconditionalPermissions.map((perm, index) => (
+						{unconditionalPermissions.map((perm) => (
 							<div
-								key={index}
+								key={perm.name}
 								className="border border-gray-700 rounded-lg p-3 space-y-2"
 							>
 								<div className="flex items-start justify-between">
@@ -380,9 +380,9 @@ export function BackendIAMPermissions({
 												Actions:
 											</p>
 											<div className="flex flex-wrap gap-1 mt-1">
-												{perm.actions?.map((action, idx) => (
+												{perm.actions?.map((action) => (
 													<Badge
-														key={idx}
+														key={action}
 														variant="outline"
 														className="text-xs font-mono"
 													>
@@ -396,9 +396,9 @@ export function BackendIAMPermissions({
 												Resources:
 											</p>
 											<div className="space-y-1 mt-1">
-												{perm.resources?.map((resource, idx) => (
+												{perm.resources?.map((resource) => (
 													<code
-														key={idx}
+														key={resource}
 														className="text-xs text-gray-400 block font-mono"
 													>
 														{resource}
@@ -503,6 +503,7 @@ export function BackendIAMPermissions({
 
 								return (
 									<div
+										// biome-ignore lint/suspicious/noArrayIndexKey: custom policies are persisted to config.workload.policy as bare {actions, resources} with no id, and every operation here (edit, expand, delete) addresses them by array position, so the index is the identity; giving them stable ids would require a YAML schema migration
 										key={index}
 										className="border border-gray-700 rounded-lg p-3"
 									>
@@ -595,9 +596,9 @@ export function BackendIAMPermissions({
 															{(isExpanded
 																? policy.actions
 																: policy.actions.slice(0, 3)
-															).map((action, idx) => (
+															).map((action) => (
 																<Badge
-																	key={idx}
+																	key={action}
 																	variant="secondary"
 																	className="text-xs font-mono"
 																>
@@ -618,9 +619,9 @@ export function BackendIAMPermissions({
 																Resources:
 															</p>
 															<div className="space-y-1">
-																{policy.resources.map((resource, idx) => (
+																{policy.resources.map((resource) => (
 																	<code
-																		key={idx}
+																		key={resource}
 																		className="text-xs text-gray-300 block font-mono"
 																	>
 																		{resource}
@@ -670,9 +671,9 @@ export function BackendIAMPermissions({
 				</CardHeader>
 				<CardContent>
 					<div className="space-y-3">
-						{conditionalPermissions.map((perm, index) => (
+						{conditionalPermissions.map((perm) => (
 							<div
-								key={index}
+								key={perm.name}
 								className={`border rounded-lg p-3 space-y-2 ${
 									perm.enabled
 										? "border-gray-700"
@@ -714,9 +715,9 @@ export function BackendIAMPermissions({
 														Actions:
 													</p>
 													<div className="flex flex-wrap gap-1 mt-1">
-														{perm.actions.map((action, idx) => (
+														{perm.actions.map((action) => (
 															<Badge
-																key={idx}
+																key={action}
 																variant="outline"
 																className="text-xs font-mono"
 															>
@@ -731,9 +732,9 @@ export function BackendIAMPermissions({
 															Resources:
 														</p>
 														<div className="space-y-1 mt-1">
-															{perm.resources.map((resource, idx) => (
+															{perm.resources.map((resource) => (
 																<code
-																	key={idx}
+																	key={resource}
 																	className="text-xs text-gray-400 block font-mono"
 																>
 																	{resource}
@@ -776,9 +777,9 @@ export function BackendIAMPermissions({
 							</p>
 						</div>
 
-						{executionRolePermissions.map((perm, index) => (
+						{executionRolePermissions.map((perm) => (
 							<div
-								key={index}
+								key={perm.name}
 								className="border border-gray-700 rounded-lg p-3 space-y-2"
 							>
 								<div className="flex items-start justify-between">
@@ -807,9 +808,9 @@ export function BackendIAMPermissions({
 												Actions:
 											</p>
 											<div className="flex flex-wrap gap-1 mt-1">
-												{perm.actions?.map((action, idx) => (
+												{perm.actions?.map((action) => (
 													<Badge
-														key={idx}
+														key={action}
 														variant="outline"
 														className="text-xs font-mono"
 													>
@@ -824,9 +825,9 @@ export function BackendIAMPermissions({
 													Resources:
 												</p>
 												<div className="space-y-1 mt-1">
-													{perm.resources.map((resource, idx) => (
+													{perm.resources.map((resource) => (
 														<code
-															key={idx}
+															key={resource}
 															className="text-xs text-gray-400 block font-mono"
 														>
 															{resource}

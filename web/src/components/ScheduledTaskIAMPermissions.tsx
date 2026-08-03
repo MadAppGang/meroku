@@ -56,8 +56,11 @@ export function ScheduledTaskIAMPermissions({
 				iconColor="text-green-400"
 			>
 				<div className="space-y-4">
-					{roles.map((role, index) => (
-						<div key={index} className="p-3 bg-gray-900 rounded-lg space-y-2">
+					{roles.map((role) => (
+						<div
+							key={role.name}
+							className="p-3 bg-gray-900 rounded-lg space-y-2"
+						>
 							<div className="flex items-center gap-2">
 								<div className={`p-1 rounded bg-gray-800 ${role.iconColor}`}>
 									<role.icon className="w-3.5 h-3.5" />
@@ -72,9 +75,9 @@ export function ScheduledTaskIAMPermissions({
 							</code>
 
 							<div className="flex flex-wrap gap-1.5 pt-1">
-								{role.permissions.map((perm, i) => (
+								{role.permissions.map((perm) => (
 									<Badge
-										key={i}
+										key={perm}
 										variant="secondary"
 										className="text-xs font-normal"
 									>

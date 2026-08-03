@@ -362,7 +362,7 @@ export function S3NodeProperties({
 
 						return (
 							<div
-								key={index}
+								key={bucket.name}
 								className="border border-gray-700 rounded-lg p-3"
 							>
 								{isEditing ? (

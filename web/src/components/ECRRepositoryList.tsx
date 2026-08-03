@@ -91,8 +91,8 @@ export function ECRRepositoryList({
 							<div className="text-xs font-medium text-gray-300 mb-2">
 								Additional Services
 							</div>
-							{config.services.map((service, index) => (
-								<div key={index} className="space-y-1">
+							{config.services.map((service) => (
+								<div key={service.name} className="space-y-1">
 									<div className="text-blue-400 font-mono text-xs">
 										{config.project}_service_{service.name}
 									</div>
@@ -131,8 +131,8 @@ export function ECRRepositoryList({
 							<div className="text-xs font-medium text-gray-300 mb-2">
 								Task Repositories
 							</div>
-							{config.scheduled_tasks?.map((task, index) => (
-								<div key={`scheduled-${index}`} className="space-y-1">
+							{config.scheduled_tasks?.map((task) => (
+								<div key={task.name} className="space-y-1">
 									<div className="text-blue-400 font-mono text-xs">
 										{config.project}_task_{task.name}
 									</div>
@@ -161,8 +161,8 @@ export function ECRRepositoryList({
 									</div>
 								</div>
 							))}
-							{config.event_processor_tasks?.map((task, index) => (
-								<div key={`event-${index}`} className="space-y-1">
+							{config.event_processor_tasks?.map((task) => (
+								<div key={task.name} className="space-y-1">
 									<div className="text-blue-400 font-mono text-xs">
 										{config.project}_task_{task.name}
 									</div>

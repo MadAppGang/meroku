@@ -96,9 +96,9 @@ export function BackendCloudWatch({ config, node }: BackendCloudWatchProps) {
 				</CardHeader>
 				<CardContent>
 					<div className="space-y-4">
-						{logGroups.map((group, index) => (
+						{logGroups.map((group) => (
 							<div
-								key={index}
+								key={group.name}
 								className="border border-gray-700 rounded-lg p-4 space-y-3"
 							>
 								<div className="flex items-start justify-between">
@@ -160,7 +160,7 @@ export function BackendCloudWatch({ config, node }: BackendCloudWatchProps) {
 				</CardHeader>
 				<CardContent className="space-y-6">
 					{logGroups.map((group, groupIndex) => (
-						<div key={groupIndex} className="space-y-4">
+						<div key={group.name} className="space-y-4">
 							<h4 className="text-sm font-medium text-gray-300 border-b border-gray-700 pb-2">
 								{group.name} Commands
 							</h4>

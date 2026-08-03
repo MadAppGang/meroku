@@ -108,11 +108,11 @@ export function Route53DNSRecords({ config }: Route53DNSRecordsProps) {
 					</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-4">
-					{dnsRecords.map((record, index) => {
+					{dnsRecords.map((record) => {
 						const Icon = record.icon;
 						return (
 							<div
-								key={index}
+								key={`${record.type}-${record.name}`}
 								className={`${record.bgColor} border ${record.borderColor} rounded-lg p-4`}
 							>
 								<div className="flex items-start gap-3">

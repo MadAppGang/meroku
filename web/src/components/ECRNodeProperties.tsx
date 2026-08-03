@@ -499,8 +499,8 @@ export function ECRNodeProperties({
 											</ul>
 											<div className="mt-3">Next steps:</div>
 											<ol className="list-decimal list-inside space-y-1">
-												{configResult.next_steps.map((step, index) => (
-													<li key={index}>{step}</li>
+												{configResult.next_steps.map((step) => (
+													<li key={step}>{step}</li>
 												))}
 											</ol>
 										</div>

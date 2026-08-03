@@ -271,8 +271,8 @@ This is an automated message from ${actualDomain}`,
 					</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-3">
-					{templates.map((template, index) => (
-						<div key={index} className="p-3 bg-gray-800 rounded-lg">
+					{templates.map((template) => (
+						<div key={template.name} className="p-3 bg-gray-800 rounded-lg">
 							<div className="flex items-center justify-between mb-2">
 								<h4 className="text-sm font-medium">{template.name}</h4>
 								<Button
