@@ -107,7 +107,7 @@ func TestRenderDNSScreens(t *testing.T) {
 				titleStyle.Render("Waiting for delegation to appear")+"\n"+
 					lipgloss.NewStyle().Foreground(dimColor).Render(
 						"NS record written to zone Z039 in account 891880437329")+"\n\n"+
-					renderResolverGrid(results, resolvers)+"\n\n"+
+					renderResolverList(results, resolvers, false, 0, w-10)+"\n\n"+
 					meterRow(w-8, 0.5, "#f59e0b", "#10b981", "2/4 resolvers")) + "\n\n")
 			b.WriteString(renderDNSFooter([]string{"[s] stop waiting (record is saved)", "[Ctrl+C] cancel"}, w))
 			return b.String()

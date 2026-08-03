@@ -941,3 +941,53 @@ func TestDNSModel_PropagateShowsTheRecordItWrote(t *testing.T) {
 		}
 	}
 }
+
+// Each resolver gets its own line, with a badge once it has answered.
+func TestRenderResolverList_StatesAreDistinct(t *testing.T) {
+	order := []string{"8.8.8.8", "1.1.1.1", "9.9.9.9"}
+	results := map[string]bool{"8.8.8.8": true, "1.1.1.1": false}
+
+	idle := renderResolverList(results, order, false, 0, 40)
+	if n := len(strings.Split(idle, "\n")); n != 3 {
+		t.Errorf("expected one line per resolver, got %d:\n%s", n, idle)
+	}
+	if !strings.Contains(idle, "RESOLVED") {
+		t.Error("an answered resolver should carry a badge")
+	}
+	if !strings.Contains(idle, "not yet") {
+		t.Error("an unanswered resolver should say so")
+	}
+	if strings.Contains(idle, "checking") {
+		t.Error("nothing is in flight, so nothing should claim to be checking")
+	}
+
+	busy := renderResolverList(results, order, true, 3, 40)
+	if !strings.Contains(busy, "checking") {
+		t.Errorf("an in-flight check should be visible per resolver:\n%s", busy)
+	}
+	// One already answered — the delegation does not un-resolve, so re-asking it
+	// must not blink its badge back to uncertainty.
+	if strings.Count(busy, "RESOLVED") != 1 {
+		t.Errorf("an already-resolved resolver should keep its badge while others check:\n%s", busy)
+	}
+}
+
+// The spinner has to actually turn, and rows must not overflow their panel.
+func TestRenderResolverList_AnimatesAndFits(t *testing.T) {
+	order := []string{"8.8.8.8", "208.67.222.222"}
+	results := map[string]bool{}
+
+	seen := map[string]bool{}
+	for anim := 0; anim < 8; anim++ {
+		out := renderResolverList(results, order, true, anim, 40)
+		seen[out] = true
+		for _, line := range strings.Split(out, "\n") {
+			if w := lipgloss.Width(line); w > 40 {
+				t.Fatalf("row overflows: %d > 40\n%q", w, line)
+			}
+		}
+	}
+	if len(seen) < 4 {
+		t.Errorf("expected the spinner to animate, got %d distinct frames", len(seen))
+	}
+}

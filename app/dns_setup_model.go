@@ -1085,7 +1085,8 @@ func (m *dnsSetupModel) renderBody(width int) string {
 		var status strings.Builder
 		status.WriteString(lipgloss.NewStyle().Foreground(fgColor).
 			Render(wordWrap(note, half-6)) + "\n\n")
-		status.WriteString(renderResolverGrid(m.resolverResults, m.resolvers) + "\n\n")
+		status.WriteString(renderResolverList(
+			m.resolverResults, m.resolvers, m.propagateChecking, m.anim, half-6) + "\n\n")
 		status.WriteString(meterRow(half-8, ratio, "#f59e0b", "#10b981",
 			fmt.Sprintf("%d/%d resolvers", matched, len(m.resolvers))) + "\n")
 		status.WriteString(activity)
@@ -1126,7 +1127,7 @@ func (m *dnsSetupModel) renderBody(width int) string {
 				lipgloss.NewStyle().Foreground(fgColor).
 					Render(fmt.Sprintf("%s now resolves to this account", m.zone)) + "\n\n" +
 				lipgloss.NewStyle().Foreground(dimColor).Render(detail) + "\n\n" +
-				renderResolverGrid(m.resolverResults, m.resolvers))
+				renderResolverList(m.resolverResults, m.resolvers, false, m.anim, inner-6))
 	}
 	return ""
 }

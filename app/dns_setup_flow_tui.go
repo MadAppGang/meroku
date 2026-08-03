@@ -283,25 +283,55 @@ func profileCandidateLine(c parentZoneCandidate, selected bool, width int) strin
 	return cursor + name + " " + status + " " + detailStyle.Render(detail)
 }
 
-// renderResolverGrid shows per-resolver propagation state.
+// renderResolverList shows one resolver per line with its own state.
 //
-// Delegation does not appear everywhere at once, so a single "waiting" spinner
-// hides the fact that it is partially live. One badge per resolver makes the
-// rollout visible.
-func renderResolverGrid(results map[string]bool, order []string) string {
-	var cells []string
+// A compact grid of dots fits on one line but says almost nothing: the shapes
+// are small, the colours are the only signal, and while a check runs nothing
+// moves. One row each gives every resolver a spinner while it is being asked and
+// a badge once it answers, so the screen shows both what is happening and what
+// has already been established.
+//
+// A resolver that has already answered yes keeps its badge through later checks.
+// It is not being re-asked in any meaningful sense — the delegation does not
+// un-resolve — and blinking it back to "checking" would suggest doubt about
+// something already settled.
+func renderResolverList(results map[string]bool, order []string, checking bool, anim, width int) string {
+	nameW := 0
 	for _, r := range order {
-		ok, checked := results[r]
-		switch {
-		case !checked:
-			cells = append(cells, lipgloss.NewStyle().Foreground(mutedColor).Render("○ "+r))
-		case ok:
-			cells = append(cells, lipgloss.NewStyle().Foreground(successColor).Render("● "+r))
-		default:
-			cells = append(cells, lipgloss.NewStyle().Foreground(warningColor).Render("◐ "+r))
+		if n := lipgloss.Width(r); n > nameW {
+			nameW = n
 		}
 	}
-	return lipgloss.JoinHorizontal(lipgloss.Top, strings.Join(cells, "   "))
+	if nameW > width-16 {
+		nameW = max(8, width-16)
+	}
+
+	var b strings.Builder
+	for i, r := range order {
+		resolved := results[r]
+
+		var icon, badgeCell string
+		switch {
+		case resolved:
+			icon = lipgloss.NewStyle().Foreground(successColor).Render("✓")
+			badgeCell = badge("RESOLVED", successColor)
+		case checking:
+			icon = lipgloss.NewStyle().Foreground(accentColor).Render(spinnerFrame(anim + i*2))
+			badgeCell = lipgloss.NewStyle().Foreground(accentColor).Render("checking…")
+		default:
+			icon = lipgloss.NewStyle().Foreground(mutedColor).Render("·")
+			badgeCell = lipgloss.NewStyle().Foreground(mutedColor).Render("not yet")
+		}
+
+		name := lipgloss.NewStyle().Foreground(fgColor).Width(nameW + 2).
+			Render(truncateToWidth(r, nameW))
+
+		b.WriteString(icon + " " + name + badgeCell)
+		if i < len(order)-1 {
+			b.WriteString("\n")
+		}
+	}
+	return b.String()
 }
 
 // renderDNSHeader is the title bar: what we are doing and to which zone.
