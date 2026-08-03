@@ -156,10 +156,13 @@ func TestDNSModel_DelegatedOnlyAfterPropagation(t *testing.T) {
 	}
 
 	updated, _ = m.Update(dnsPropagationMsg{
-		results: map[string]bool{"8.8.8.8": true, "1.1.1.1": true}, ok: true})
+		results: map[string]bool{
+			"8.8.8.8": true, "1.1.1.1": true,
+			"9.9.9.9": true, "208.67.222.222": true,
+		}, ok: true})
 	m = updated.(*dnsSetupModel)
 	if !m.Delegated {
-		t.Error("expected delegated once propagation is confirmed")
+		t.Error("expected delegated once every resolver agrees")
 	}
 	if m.step != stepDone {
 		t.Errorf("expected stepDone, got %v", m.step)
@@ -446,6 +449,10 @@ func TestDNSModel_NoLineExceedsWidth(t *testing.T) {
 func TestDNSModel_DoneStateReportsPartialPropagation(t *testing.T) {
 	m := testDNSModel(t)
 	m.step = stepPropagate
+	// Partial agreement no longer finishes on its own — it holds for the settle
+	// window first. Past the cap it proceeds anyway, and that is the state whose
+	// wording this test pins.
+	m.firstAgreementAt = time.Now().Add(-dnsSettleCap - time.Second)
 
 	updated, _ := m.Update(dnsPropagationMsg{
 		results: map[string]bool{
@@ -623,7 +630,10 @@ func TestDNSModel_ManualRecheckSucceedingCompletesTheFlow(t *testing.T) {
 	m.checking = true
 
 	updated, _ := m.Update(dnsPropagationMsg{
-		results: map[string]bool{"8.8.8.8": true, "1.1.1.1": true}, ok: true})
+		results: map[string]bool{
+			"8.8.8.8": true, "1.1.1.1": true,
+			"9.9.9.9": true, "208.67.222.222": true,
+		}, ok: true})
 	m = updated.(*dnsSetupModel)
 
 	if !m.Delegated {
@@ -741,4 +751,79 @@ func stripANSI(s string) string {
 		}
 	}
 	return b.String()
+}
+
+// Delegation resolving somewhere is not enough to build on.
+//
+// The deploy requests an ACM certificate within seconds of this screen
+// returning. ACM resolves the validation record through its own resolvers, and
+// a resolver still holding a negative answer for the zone makes that first check
+// fail — after which ACM backs off in a way a correct record does not undo. One
+// deploy sat PENDING_VALIDATION for 43 minutes with DNS that resolved perfectly
+// from the root throughout.
+func TestDNSModel_HoldsForFullAgreementBeforeFinishing(t *testing.T) {
+	m := testDNSModel(t)
+	m.step = stepPropagate
+
+	// Two of four: live, but not settled.
+	updated, cmd := m.Update(dnsPropagationMsg{
+		results: map[string]bool{
+			"8.8.8.8": true, "1.1.1.1": true,
+			"9.9.9.9": false, "208.67.222.222": false,
+		},
+		ok: true,
+	})
+	m = updated.(*dnsSetupModel)
+
+	if m.Delegated {
+		t.Error("must not report done while resolvers still disagree")
+	}
+	if cmd == nil {
+		t.Error("expected it to keep polling")
+	}
+	if !strings.Contains(flattenStacked(m), "does not race") {
+		t.Errorf("the screen should say why it is still waiting:\n%s", m.View())
+	}
+
+	// All four: safe to proceed.
+	updated, _ = m.Update(dnsPropagationMsg{
+		results: map[string]bool{
+			"8.8.8.8": true, "1.1.1.1": true,
+			"9.9.9.9": true, "208.67.222.222": true,
+		},
+		ok: true,
+	})
+	m = updated.(*dnsSetupModel)
+
+	if !m.Delegated || m.step != stepDone {
+		t.Error("unanimous agreement should finish the flow")
+	}
+}
+
+// One permanently slow resolver must not hold a deploy hostage.
+func TestDNSModel_SettleGivesUpAfterTheCap(t *testing.T) {
+	m := testDNSModel(t)
+	m.step = stepPropagate
+	partial := dnsPropagationMsg{
+		results: map[string]bool{
+			"8.8.8.8": true, "1.1.1.1": true,
+			"9.9.9.9": false, "208.67.222.222": false,
+		},
+		ok: true,
+	}
+
+	updated, _ := m.Update(partial)
+	m = updated.(*dnsSetupModel)
+	if m.Delegated {
+		t.Fatal("should still be settling")
+	}
+
+	// Pretend the cap has passed.
+	m.firstAgreementAt = time.Now().Add(-dnsSettleCap - time.Second)
+	updated, _ = m.Update(partial)
+	m = updated.(*dnsSetupModel)
+
+	if !m.Delegated {
+		t.Error("past the cap it should proceed on a partial answer rather than block")
+	}
 }

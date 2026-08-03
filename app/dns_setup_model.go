@@ -159,6 +159,10 @@ type dnsSetupModel struct {
 	// propagate
 	resolvers       []string
 	resolverResults map[string]bool
+	// firstAgreementAt is when the delegation first resolved anywhere. The gap
+	// between that and every resolver agreeing is what the certificate request
+	// must not run inside.
+	firstAgreementAt time.Time
 
 	// manual fallback: poll public DNS on a timer, so a record added by hand at a
 	// registrar is picked up without the operator having to press anything.
@@ -214,6 +218,14 @@ type dnsSetupOutcome struct {
 // produces a busier screen; 20s is frequent enough that the operator sees the
 // change land while they are still watching.
 const secondsBetweenDNSChecks = 20
+
+// dnsSettleCap bounds the wait for full agreement once the delegation resolves
+// somewhere.
+//
+// A resolver can lag for reasons that have nothing to do with us, so this is not
+// allowed to block a deploy indefinitely — past the cap we proceed on a partial
+// answer and say so, rather than holding a deploy hostage to one slow cache.
+const dnsSettleCap = 3 * time.Minute
 
 // newDNSSetupModel builds the screen for an environment whose zone is missing
 // (bootstrap) or undelegated (blocked).
@@ -682,7 +694,39 @@ func (m *dnsSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case dnsPropagationMsg:
 		m.resolverResults = msg.results
+		agreed := 0
+		for _, ok := range msg.results {
+			if ok {
+				agreed++
+			}
+		}
+
 		if msg.ok {
+			if m.firstAgreementAt.IsZero() {
+				m.firstAgreementAt = time.Now()
+			}
+
+			// Resolving somewhere is not the same as being safe to build on.
+			//
+			// The deploy asks ACM for a certificate within seconds of this screen
+			// returning. ACM resolves the validation record through its own
+			// resolvers, and if any of them still hold a negative answer for this
+			// zone — cached while the delegation did not yet exist — that first
+			// check fails and ACM drops into a back-off that a correct DNS record
+			// afterwards does not clear. One deploy sat PENDING_VALIDATION for
+			// three quarters of an hour with a record that resolved perfectly from
+			// the root the whole time.
+			//
+			// So hold until every resolver we can see agrees. They are not ACM's
+			// resolvers, but unanimity across four independent ones is the best
+			// available evidence that the negative caches have expired.
+			if agreed < len(m.resolvers) && time.Since(m.firstAgreementAt) < dnsSettleCap {
+				m.states[stepPropagate] = stepActive
+				return m, tea.Tick(5*time.Second, func(time.Time) tea.Msg {
+					return dnsTickPollMsg{}
+				})
+			}
+
 			// However the record got there — written by us, added by hand at a
 			// registrar, or arriving while the adoption flow was still waiting on
 			// the apex — the delegation is live and the screen's job is done. Any
@@ -958,10 +1002,21 @@ func (m *dnsSetupModel) renderBody(width int) string {
 			}
 		}
 		ratio := float64(matched) / float64(len(m.resolvers))
+
+		title := "Waiting for the delegation to appear"
+		note := fmt.Sprintf("NS record written to zone %s", m.zoneID)
+
+		// Once it resolves somewhere, say plainly why we are still here — a screen
+		// that looks finished but keeps waiting reads as stuck.
+		if matched > 0 && matched < len(m.resolvers) {
+			title = "Letting the delegation settle"
+			note = "It resolves already. Waiting for the rest so the certificate " +
+				"request does not race a resolver that still has the old answer cached."
+		}
+
 		return boxStyle.Width(inner).Render(
-			titleStyle.Render("Waiting for delegation to appear") + "\n" +
-				lipgloss.NewStyle().Foreground(dimColor).
-					Render(fmt.Sprintf("NS record written to zone %s", m.zoneID)) + "\n\n" +
+			titleStyle.Render(title) + "\n" +
+				lipgloss.NewStyle().Foreground(dimColor).Render(wordWrap(note, inner-6)) + "\n\n" +
 				renderResolverGrid(m.resolverResults, m.resolvers) + "\n\n" +
 				meterRow(inner-4, ratio, "#f59e0b", "#10b981",
 					fmt.Sprintf("%d/%d resolvers", matched, len(m.resolvers))))

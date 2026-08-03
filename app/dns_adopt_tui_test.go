@@ -316,9 +316,13 @@ func TestAdopt_CompletedFlowIsNotMaskedByAdoptScreen(t *testing.T) {
 	m.adopt.summary = adoptionSummary{Zone: adoptedZone{ZoneID: "ZNEW",
 		Nameservers: []string{"ns-423.awsdns-52.com"}}}
 
-	// The delegation resolves by some other route while adoption waits.
+	// The delegation resolves by some other route while adoption waits. All four
+	// resolvers agree, so it is settled and the flow can finish.
 	updated, _ := m.Update(dnsPropagationMsg{
-		results: map[string]bool{"8.8.8.8": true, "1.1.1.1": true}, ok: true})
+		results: map[string]bool{
+			"8.8.8.8": true, "1.1.1.1": true,
+			"9.9.9.9": true, "208.67.222.222": true,
+		}, ok: true})
 	m = updated.(*dnsSetupModel)
 
 	if !m.Delegated || m.step != stepDone {
