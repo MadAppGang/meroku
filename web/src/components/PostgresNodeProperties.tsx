@@ -121,9 +121,11 @@ export function PostgresNodeProperties({
 				`/${config.env}/${config.project}/pgadmin_password`,
 			);
 			setPgAdminPasswordValue(parameter.value);
-		} catch (error: any) {
+		} catch (error) {
 			setPgAdminPasswordError(
-				error.message || "Failed to fetch pgAdmin password",
+				error instanceof Error
+					? error.message
+					: "Failed to fetch pgAdmin password",
 			);
 		} finally {
 			setPgAdminPasswordLoading(false);

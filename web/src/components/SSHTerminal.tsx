@@ -289,7 +289,9 @@ export function SSHTerminal({
 					connectionStatusRef.current === "connected"
 				) {
 					console.log("Sending input to WebSocket:", JSON.stringify(data));
-					(ws as any).sendInput(data);
+					(
+						ws as WebSocket & { sendInput?: (input: string) => void }
+					).sendInput?.(data);
 				}
 			});
 

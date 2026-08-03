@@ -57,8 +57,10 @@ export function PostgresConnectionInfo({
 				`/${config.env}/${config.project}/postgres_password`,
 			);
 			setPasswordValue(parameter.value);
-		} catch (error: any) {
-			setPasswordError(error.message || "Failed to fetch password");
+		} catch (error) {
+			setPasswordError(
+				error instanceof Error ? error.message : "Failed to fetch password",
+			);
 		} finally {
 			setPasswordLoading(false);
 		}
@@ -84,8 +86,12 @@ export function PostgresConnectionInfo({
 			} else {
 				throw new Error("No endpoint found in database info");
 			}
-		} catch (error: any) {
-			setHostError(error.message || "Failed to fetch database endpoint");
+		} catch (error) {
+			setHostError(
+				error instanceof Error
+					? error.message
+					: "Failed to fetch database endpoint",
+			);
 			// Fallback to a reasonable default pattern
 			const defaultHost = postgresConfig.aurora
 				? `${config.project}-aurora-${config.env}.cluster-xxxxx.${config.region}.rds.amazonaws.com`

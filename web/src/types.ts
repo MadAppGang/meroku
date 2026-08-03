@@ -68,8 +68,51 @@ export interface ComponentNode {
 	subgroup?: string;
 	hasTelemetry?: boolean;
 	disabled?: boolean;
-	configProperties?: Record<string, any>;
+	configProperties?: NodeConfigValues;
 	pricing?: PricingResponse | null;
+}
+
+/**
+ * Node-specific configuration surfaced on the canvas and fed into pricing
+ * estimates. Every field is optional because which ones are present depends on
+ * the node type: a scheduled task has a schedule, a database has an instance
+ * class, and so on.
+ */
+export interface NodeConfigValues {
+	// Compute sizing. cpu/memory arrive as strings from YAML but as numbers from
+	// some producers, so both are accepted and narrowed at the use site.
+	cpu?: string | number;
+	memory?: string | number;
+	desiredCount?: number;
+	autoscalingEnabled?: boolean;
+	autoscalingMinCapacity?: number;
+	autoscalingMaxCapacity?: number;
+
+	// Database
+	aurora?: boolean;
+	instanceClass?: string;
+	allocatedStorage?: number;
+	multiAz?: boolean;
+	minCapacity?: number;
+	maxCapacity?: number;
+
+	// Scheduling and event routing
+	schedule?: string;
+	sources?: string[];
+	detailTypes?: string[];
+
+	// Deployment metadata
+	domain?: string;
+	customDomain?: string;
+	branch?: string;
+	branches?: string[];
+	repository?: string;
+	environment?: string;
+	profile?: string;
+	healthStatus?: {
+		critical: boolean;
+		monitored: boolean;
+	};
 }
 
 export interface LogEntry {

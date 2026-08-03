@@ -13,6 +13,7 @@ import ReactFlow, {
 	MarkerType,
 	MiniMap,
 	type Node,
+	type NodeChange,
 	useEdgesState,
 	useNodesState,
 } from "reactflow";
@@ -1042,13 +1043,12 @@ export function DeploymentCanvas({
 
 	// Handle node position changes with debouncing
 	const handleNodesChange = useCallback(
-		(changes: any) => {
+		(changes: NodeChange[]) => {
 			onNodesChange(changes);
 
 			// Check if any changes are position changes
 			const hasPositionChange = changes.some(
-				(change: any) =>
-					change.type === "position" && change.dragging === false,
+				(change) => change.type === "position" && change.dragging === false,
 			);
 
 			if (hasPositionChange && environmentName) {

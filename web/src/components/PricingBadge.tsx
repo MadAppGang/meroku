@@ -1,5 +1,6 @@
 import { usePricingRates } from "../contexts/PricingContext";
 import type { PricingResponse } from "../hooks/use-pricing";
+import type { NodeConfigValues } from "../types";
 import {
 	type AuroraConfig,
 	calculateAuroraMaxPrice,
@@ -19,7 +20,7 @@ interface PricingBadgeProps {
 	pricing: PricingResponse | null;
 	level?: "startup" | "scaleup" | "highload";
 	serviceName?: string;
-	configProperties?: any;
+	configProperties?: NodeConfigValues;
 }
 
 export function PricingBadge({

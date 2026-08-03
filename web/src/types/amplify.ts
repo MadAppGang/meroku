@@ -44,7 +44,7 @@ export interface AmplifyAppsResponse {
 
 export interface AmplifyBuildLogsResponse {
 	logUrl: string;
-	job: any; // Full job details
+	job: unknown; // Full job details, shape defined by the AWS Amplify API
 }
 
 export interface TriggerBuildRequest {

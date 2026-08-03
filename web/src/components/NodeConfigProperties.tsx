@@ -29,7 +29,7 @@ export function NodeConfigProperties({ node }: NodeConfigPropertiesProps) {
 		);
 	}
 
-	const renderValue = (value: any): React.ReactNode => {
+	const renderValue = (value: unknown): React.ReactNode => {
 		if (typeof value === "boolean") {
 			return (
 				<Badge variant={value ? "default" : "secondary"}>
@@ -62,7 +62,10 @@ export function NodeConfigProperties({ node }: NodeConfigPropertiesProps) {
 				</pre>
 			);
 		}
-		return value?.toString() || <span className="text-gray-500">Not set</span>;
+		// Primitives only by this point. Empty string and null both fall through to
+		// "Not set", matching the previous `value?.toString() || ...` behaviour.
+		const text = value == null ? "" : String(value);
+		return text || <span className="text-gray-500">Not set</span>;
 	};
 
 	const formatKey = (key: string): string => {

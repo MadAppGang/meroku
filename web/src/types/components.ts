@@ -103,6 +103,6 @@ export interface NodeProperties {
 		| string[]
 		| number[]
 		| Record<string, string>
-		| Record<string, any>[]
-		| any;
+		| Record<string, unknown>[]
+		| undefined;
 }

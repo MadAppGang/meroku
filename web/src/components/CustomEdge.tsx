@@ -1,9 +1,14 @@
+import type { CSSProperties } from "react";
 import {
 	BaseEdge,
 	EdgeLabelRenderer,
 	type EdgeProps,
 	getSmoothStepPath,
 } from "reactflow";
+
+// Edges on this canvas smuggle a non-standard `animated` flag through `style`,
+// so widen the CSS type rather than asserting it away at the use site.
+type EdgeStyle = CSSProperties & { animated?: boolean };
 
 export function CustomEdge({
 	id,
@@ -29,7 +34,7 @@ export function CustomEdge({
 
 	// Extract stroke color from style to use for label background
 	const strokeColor = style.stroke || "#6b7280";
-	const isAnimated = (style as any).animated !== false;
+	const isAnimated = (style as EdgeStyle).animated !== false;
 	const isDimmed = style.opacity && Number(style.opacity) < 1;
 
 	return (

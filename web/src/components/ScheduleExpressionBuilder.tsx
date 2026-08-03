@@ -425,7 +425,9 @@ export function ScheduleExpressionBuilder({
 							<Label>Unit</Label>
 							<Select
 								value={rateUnit}
-								onValueChange={(v) => setRateUnit(v as any)}
+								onValueChange={(v) =>
+									setRateUnit(v as "minute" | "hour" | "day")
+								}
 							>
 								<SelectTrigger className="bg-gray-800 border-gray-600">
 									<SelectValue />

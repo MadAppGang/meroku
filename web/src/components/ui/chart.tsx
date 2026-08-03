@@ -124,10 +124,11 @@ function ChartTooltipContent({
 		active?: boolean;
 		payload?: Array<{
 			name?: string;
-			value?: any;
+			value?: string | number;
 			dataKey?: string;
 			color?: string;
-			[key: string]: any;
+			payload?: { fill?: string; [key: string]: unknown };
+			[key: string]: unknown;
 		}>;
 		label?: string;
 		hideLabel?: boolean;
@@ -189,10 +190,10 @@ function ChartTooltipContent({
 		>
 			{!nestLabel ? tooltipLabel : null}
 			<div className="grid gap-1.5">
-				{payload?.map((item: any, index: number) => {
+				{payload?.map((item, index) => {
 					const key = `${nameKey || item.name || item.dataKey || "value"}`;
 					const itemConfig = getPayloadConfigFromPayload(config, item, key);
-					const indicatorColor = color || item.payload.fill || item.color;
+					const indicatorColor = color || item.payload?.fill || item.color;
 
 					return (
 						<div
@@ -203,7 +204,19 @@ function ChartTooltipContent({
 							)}
 						>
 							{formatter && item?.value !== undefined && item.name ? (
-								formatter(item.value, item.name, item, index, item.payload)
+								formatter(
+									item.value,
+									item.name,
+									item,
+									index,
+									// shadcn types payload as the datum object while Recharts'
+									// Formatter declares an array, so the two genuinely do not
+									// overlap. Route through unknown rather than widening the
+									// whole field back to `any`.
+									item.payload as unknown as Parameters<
+										NonNullable<typeof formatter>
+									>[4],
+								)
 							) : (
 								<>
 									{itemConfig?.icon ? (
@@ -273,7 +286,7 @@ function ChartLegendContent({
 		id?: string;
 		color?: string;
 		dataKey?: string;
-		[key: string]: any;
+		[key: string]: unknown;
 	}>;
 	verticalAlign?: "top" | "bottom";
 } & {
@@ -294,7 +307,7 @@ function ChartLegendContent({
 				className,
 			)}
 		>
-			{payload.map((item: any) => {
+			{payload.map((item) => {
 				const key = `${nameKey || item.dataKey || "value"}`;
 				const itemConfig = getPayloadConfigFromPayload(config, item, key);
 
