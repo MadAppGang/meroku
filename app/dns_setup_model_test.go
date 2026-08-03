@@ -935,9 +935,16 @@ func TestDNSModel_PropagateShowsTheRecordItWrote(t *testing.T) {
 		}
 	}
 
-	for _, k := range []string{"w", "c", "s", "^C"} {
+	for _, k := range []string{"w", "s", "^C"} {
 		if !hintBound(m.footerHints(), k) {
 			t.Errorf("key %q should be offered while propagating", k)
+		}
+	}
+	// The record was written by meroku, so there is nothing to copy and the
+	// legend must not advertise keys that do nothing here.
+	for _, k := range []string{"c", "1-4"} {
+		if hintBound(m.footerHints(), k) {
+			t.Errorf("key %q should not be offered while propagating", k)
 		}
 	}
 }

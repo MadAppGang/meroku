@@ -1052,14 +1052,13 @@ func (m *dnsSetupModel) renderBody(width int) string {
 			lipgloss.NewStyle().Foreground(fgColor).Render("300") + "\n")
 		rec.WriteString(kvRow("ZONE", m.zoneID, 7) + "\n\n")
 
+		// No copy keys here: meroku wrote this record itself, so there is nothing
+		// for anyone to paste anywhere. They belong on the manual screen, where a
+		// human has to carry the values to a registrar.
+		idx := lipgloss.NewStyle().Foreground(mutedColor)
 		val := lipgloss.NewStyle().Foreground(lipgloss.Color("#60a5fa")).Bold(true)
 		for i, ns := range m.nameservers {
-			rec.WriteString(keycap(fmt.Sprintf("%d", i+1)) + " " + val.Render(ns) + "\n")
-		}
-		if len(m.nameservers) > 1 {
-			rec.WriteString(keycap("c") + " " +
-				lipgloss.NewStyle().Foreground(mutedColor).
-					Render(fmt.Sprintf("copy all %d", len(m.nameservers))) + "\n")
+			rec.WriteString(idx.Render(fmt.Sprintf(" %d ", i+1)) + val.Render(ns) + "\n")
 		}
 		left := panel("record written", rec.String(), half, successColor)
 
@@ -1209,16 +1208,10 @@ func (m *dnsSetupModel) footerHints() []keyHint {
 			{"m", "do it myself"}, {"^C", "abort deploy"}}
 
 	case m.step == stepPropagate:
-		hints := []keyHint{}
-		if len(m.nameservers) > 0 {
-			hints = append(hints,
-				keyHint{"c", "copy all"},
-				keyHint{fmt.Sprintf("1-%d", len(m.nameservers)), "copy one"})
-		}
-		return append(hints,
-			keyHint{"w", "check on dnschecker.org"},
-			keyHint{"s", "stop waiting"},
-			keyHint{"^C", "abort deploy"})
+		return []keyHint{
+			{"w", "check on dnschecker.org"},
+			{"s", "stop waiting"},
+			{"^C", "abort deploy"}}
 
 	default:
 		return []keyHint{{"^C", "abort deploy"}}
