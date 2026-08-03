@@ -82,6 +82,7 @@ type dnsKeyMap struct {
 	Retry      key.Binding
 	Skip       key.Binding
 	SkipDomain key.Binding
+	Adopt      key.Binding
 	ScanAll    key.Binding
 	Continue   key.Binding
 	Quit       key.Binding
@@ -97,6 +98,7 @@ var dnsKeys = dnsKeyMap{
 	Retry:      key.NewBinding(key.WithKeys("r")),
 	Skip:       key.NewBinding(key.WithKeys("s")),
 	SkipDomain: key.NewBinding(key.WithKeys("s")),
+	Adopt:      key.NewBinding(key.WithKeys("t")),
 	ScanAll:    key.NewBinding(key.WithKeys("a")),
 	// Esc continues without delegating; Ctrl+C aborts. Those are opposite
 	// intentions and used to share one binding, so the only way to proceed was
@@ -154,6 +156,10 @@ type dnsSetupModel struct {
 	// registrar is picked up without the operator having to press anything.
 	nextCheckIn int
 	checking    bool
+
+	// domain adoption: moving the whole parent domain into Route53, for hosts
+	// that cannot delegate a subdomain at all.
+	adopt adoptState
 
 	// transient "copied" confirmation
 	copiedNote string
@@ -515,6 +521,15 @@ func lastN(s []string, n int) []string {
 // ----------------------------------------------------------------- update ---
 
 func (m *dnsSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// The adoption sub-flow owns its own messages and, while on screen, its own
+	// keys. It returns handled=false for anything it does not claim so the main
+	// switch below still sees ticks and window resizes.
+	if cmd, handled := m.updateAdopt(msg); handled {
+		return m, cmd
+	} else if cmd != nil {
+		return m, tea.Batch(cmd, m.tick())
+	}
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
@@ -666,6 +681,9 @@ func (m *dnsSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.pollPropagationCmd()
 
 	case tea.KeyMsg:
+		if cmd, handled := m.handleAdoptKey(msg); handled {
+			return m, cmd
+		}
 		return m.handleKey(msg)
 	}
 	return m, nil
@@ -698,6 +716,13 @@ func (m *dnsSetupModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.copyToClipboard(ns, "copied "+ns)
 			}
 		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.Adopt) && m.manualReason != "":
+		// The escape hatch for DNS hosts that cannot delegate a subdomain at all:
+		// move the whole domain to Route53, where the delegation is ours to write.
+		m.stopScan()
+		m.beginAdoption()
 		return m, nil
 
 	case key.Matches(msg, m.keys.SkipDomain) && m.manualReason != "":
@@ -813,6 +838,9 @@ func (m *dnsSetupModel) View() string {
 }
 
 func (m *dnsSetupModel) renderBody(inner int) string {
+	if m.adopt.phase != adoptOff {
+		return m.renderAdopt(inner)
+	}
 	switch {
 	case m.err != nil && m.manualReason == "":
 		return boxStyle.Width(inner).Render(
@@ -840,8 +868,10 @@ func (m *dnsSetupModel) renderBody(inner int) string {
 					"minutes and then fails.", inner-8)) + "\n\n")
 		head.WriteString(lipgloss.NewStyle().Foreground(mutedColor).
 			Render(wordWrap(
-				"Add the record below, or press [s] to turn the custom domain off and "+
-					"deploy everything else now. You can enable it again later.", inner-8)))
+				"Add the record below. If your DNS host cannot add NS records for a "+
+					"subdomain at all, press [t] to move the whole domain to Route53 — "+
+					"every registrar can change nameservers. Or press [s] to turn the "+
+					"custom domain off and deploy everything else now.", inner-8)))
 
 		panel := boxStyle.Width(inner).Render(head.String())
 
@@ -984,6 +1014,9 @@ func pulse(elapsed time.Duration) float64 {
 }
 
 func (m *dnsSetupModel) footerHints() []string {
+	if m.adopt.phase != adoptOff {
+		return m.adoptFooterHints()
+	}
 	switch {
 	case m.manualReason != "":
 		hints := []string{}
@@ -993,6 +1026,7 @@ func (m *dnsSetupModel) footerHints() []string {
 		}
 		return append(hints,
 			"[r] check now",
+			"[t] move domain to Route53",
 			"[s] skip custom domain",
 			"[Esc] continue anyway",
 			"[Ctrl+C] cancel")
