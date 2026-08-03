@@ -67,7 +67,16 @@ type adoptCopiedMsg struct {
 
 type adoptVerifiedMsg struct{ diffs []resolutionDiff }
 
-type adoptNSLiveMsg struct{ live bool }
+type adoptNSLiveMsg struct {
+	// live means the apex now answers from the new Route53 zone.
+	live bool
+	// subdomainLive means the delegation this whole flow exists to create is
+	// already resolving. That can happen while we are still watching the apex —
+	// the registrar change lands, the record gets written, and both propagate
+	// between two polls — so the flow has to recognise its own goal state rather
+	// than only the step it happens to be waiting on.
+	subdomainLive bool
+}
 
 // ---------------------------------------------------------------- commands ---
 
@@ -141,14 +150,26 @@ func (m *dnsSetupModel) adoptVerifyCmd() tea.Cmd {
 
 // adoptCheckApexCmd asks whether the registrar change has taken effect yet.
 func (m *dnsSetupModel) adoptCheckApexCmd() tea.Cmd {
-	domain := m.parent
-	expected := m.adopt.summary.Zone.Nameservers
+	parent := m.parent
+	zone := m.zone
+	expectedApex := m.adopt.summary.Zone.Nameservers
+	expectedZone := m.nameservers
+
 	return func() tea.Msg {
-		observed, err := queryNameservers(domain)
-		if err != nil {
-			return adoptNSLiveMsg{live: false}
+		// Ask about the goal first. If the subdomain already resolves to our zone
+		// there is nothing left to wait for, whatever the apex looks like.
+		if len(expectedZone) > 0 {
+			if observed, err := queryNameservers(zone); err == nil &&
+				nameserverSetsMatch(expectedZone, observed) {
+				return adoptNSLiveMsg{live: true, subdomainLive: true}
+			}
 		}
-		return adoptNSLiveMsg{live: nameserverSetsMatch(expected, observed)}
+
+		observed, err := queryNameservers(parent)
+		if err != nil {
+			return adoptNSLiveMsg{}
+		}
+		return adoptNSLiveMsg{live: nameserverSetsMatch(expectedApex, observed)}
 	}
 }
 
@@ -186,6 +207,20 @@ func (m *dnsSetupModel) updateAdopt(msg tea.Msg) (tea.Cmd, bool) {
 		m.adopt.checking = false
 		if !msg.live {
 			m.adopt.nsCheckIn = secondsBetweenDNSChecks
+			return nil, true
+		}
+
+		// The delegation is already live — nothing left to write or wait for.
+		if msg.subdomainLive {
+			m.adopt.phase = adoptOff
+			m.manualReason = ""
+			for _, st := range dnsStepOrder {
+				if m.states[st] == stepPending || m.states[st] == stepFailed {
+					m.states[st] = stepOK
+				}
+			}
+			m.step = stepDone
+			m.Delegated = true
 			return nil, true
 		}
 		// The apex is ours now, so the parent zone is one we control and the

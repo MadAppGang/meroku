@@ -576,7 +576,12 @@ func (m *dnsSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// and re-check by ourselves. Requiring a keypress to discover that the
 		// record already landed is the difference between a screen you can leave
 		// running and one you have to babysit.
-		if m.manualReason != "" && !m.checking {
+		//
+		// Not while the adoption flow is up: it runs its own countdown, and two
+		// pollers on the same screen produced results the other did not expect —
+		// the manual one completing the whole flow underneath a sub-screen that
+		// then kept rendering as if nothing had happened.
+		if m.manualReason != "" && m.adopt.phase == adoptOff && !m.checking {
 			if m.nextCheckIn > 0 {
 				m.nextCheckIn--
 			}
@@ -678,10 +683,14 @@ func (m *dnsSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case dnsPropagationMsg:
 		m.resolverResults = msg.results
 		if msg.ok {
-			// However the record got there — written by us, or added by hand at a
-			// registrar while this screen waited — the delegation is live.
+			// However the record got there — written by us, added by hand at a
+			// registrar, or arriving while the adoption flow was still waiting on
+			// the apex — the delegation is live and the screen's job is done. Any
+			// sub-flow still on screen is now describing work that has completed.
 			m.checking = false
 			m.manualReason = ""
+			m.adopt.phase = adoptOff
+			m.adopt.checking = false
 			m.states[stepFindParent] = stepOK
 			m.states[stepWriteRecord] = stepOK
 			m.states[stepPropagate] = stepOK
@@ -875,7 +884,12 @@ func (m *dnsSetupModel) View() string {
 // terminal width; panels that want a single box derive their own inner width.
 func (m *dnsSetupModel) renderBody(width int) string {
 	inner := width - 4
-	if m.adopt.phase != adoptOff {
+
+	// Terminal states win over any sub-flow. Rendering the adoption screen ahead
+	// of them once left a completed run showing "rechecking in 2s" under a rail
+	// of green ticks, because the flow had finished by a route the sub-screen did
+	// not know about.
+	if m.step != stepDone && m.err == nil && m.adopt.phase != adoptOff {
 		return m.renderAdopt(width)
 	}
 	switch {

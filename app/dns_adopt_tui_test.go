@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -296,5 +297,88 @@ func TestAdopt_NoLineExceedsWidth(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// A finished flow must never keep rendering a sub-screen.
+//
+// Regression test for a run that showed every step green — including
+// Propagate — while the body still said "SET THESE AT YOUR REGISTRAR ·
+// rechecking in 2s". Two pollers were running at once: the adoption flow
+// watching the apex, and the manual auto-recheck still armed from the screen
+// adoption was launched from. The manual one saw the delegation resolve and
+// completed the flow, but renderBody tested adopt.phase before the terminal
+// state, so the finished run stayed hidden behind a screen describing work
+// that had already happened.
+func TestAdopt_CompletedFlowIsNotMaskedByAdoptScreen(t *testing.T) {
+	m := adoptingModel(t)
+	m.adopt.phase = adoptWaitNS
+	m.adopt.summary = adoptionSummary{Zone: adoptedZone{ZoneID: "ZNEW",
+		Nameservers: []string{"ns-423.awsdns-52.com"}}}
+
+	// The delegation resolves by some other route while adoption waits.
+	updated, _ := m.Update(dnsPropagationMsg{
+		results: map[string]bool{"8.8.8.8": true, "1.1.1.1": true}, ok: true})
+	m = updated.(*dnsSetupModel)
+
+	if !m.Delegated || m.step != stepDone {
+		t.Fatalf("expected the flow to complete, got step %v delegated=%v", m.step, m.Delegated)
+	}
+	if m.adopt.phase != adoptOff {
+		t.Error("the adoption sub-flow should end once the delegation is live")
+	}
+
+	view := flattenStacked(m)
+	if strings.Contains(view, "SET THESE AT YOUR REGISTRAR") {
+		t.Errorf("a completed run must not still show the registrar screen:\n%s", view)
+	}
+	if strings.Contains(view, "rechecking in") {
+		t.Error("a completed run must not still be counting down")
+	}
+	if !strings.Contains(view, "DELEGATED") {
+		t.Errorf("the done state should be on screen:\n%s", view)
+	}
+}
+
+// Only one countdown may run at a time. Two pollers on one screen is what let
+// the flow finish by a route the visible sub-screen knew nothing about.
+func TestAdopt_ManualRecheckPausesWhileAdopting(t *testing.T) {
+	m := adoptingModel(t)
+	m.adopt.phase = adoptWaitNS
+	// The adoption countdown must be mid-flight, or its own branch fires on this
+	// tick and returns before the main handler is reached — which would make this
+	// test pass without ever exercising the thing it is checking.
+	m.adopt.nsCheckIn = 10
+	m.nextCheckIn = 1
+
+	updated, _ := m.Update(dnsTickMsg(time.Now()))
+	m = updated.(*dnsSetupModel)
+
+	if m.checking {
+		t.Error("the manual recheck must not fire while the adoption flow owns the screen")
+	}
+	if m.adopt.nsCheckIn != 9 {
+		t.Errorf("the adoption countdown should be the one advancing, got %d", m.adopt.nsCheckIn)
+	}
+}
+
+// The apex watcher must recognise the thing it is ultimately waiting for, not
+// only the step it happens to be on.
+func TestAdopt_SubdomainGoingLiveFinishesEverything(t *testing.T) {
+	m := adoptingModel(t)
+	m.adopt.phase = adoptWaitNS
+	m.states[stepFindParent] = stepFailed
+
+	updated, _ := m.Update(adoptNSLiveMsg{live: true, subdomainLive: true})
+	m = updated.(*dnsSetupModel)
+
+	if !m.Delegated || m.step != stepDone {
+		t.Error("a subdomain that already resolves should finish the flow")
+	}
+	if m.adopt.phase != adoptOff {
+		t.Error("adoption should be over")
+	}
+	if m.states[stepFindParent] != stepOK {
+		t.Error("a step left failed from an earlier attempt should not stay red once it succeeded another way")
 	}
 }
