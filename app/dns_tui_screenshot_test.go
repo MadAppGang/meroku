@@ -48,7 +48,7 @@ func TestRenderDNSScreens(t *testing.T) {
 					lipgloss.NewStyle().Foreground(dimColor).Render(
 						"the zone must exist before its nameservers can be delegated")+"\n\n"+
 					meterRow(w-8, 0.55, "#3b82f6", "#10b981", "12s")) + "\n\n")
-			b.WriteString(renderDNSFooter([]string{"[Ctrl+C] cancel"}))
+			b.WriteString(renderDNSFooter([]string{"[Ctrl+C] cancel"}, w))
 			return b.String()
 		},
 
@@ -64,7 +64,7 @@ func TestRenderDNSScreens(t *testing.T) {
 					lipgloss.NewStyle().Foreground(dimColor).Render(
 						"scanning 12 local AWS profiles — a match is proved against public DNS")+"\n\n"+
 					meterRow(w-8, 0.75, "#3b82f6", "#10b981", "9/12 profiles")) + "\n\n")
-			b.WriteString(renderDNSFooter([]string{"[c] copy nameservers", "[Ctrl+C] cancel"}))
+			b.WriteString(renderDNSFooter([]string{"[c] copy nameservers", "[Ctrl+C] cancel"}, w))
 			return b.String()
 		},
 
@@ -87,7 +87,7 @@ func TestRenderDNSScreens(t *testing.T) {
 			rows.WriteString("\n" + lipgloss.NewStyle().Foreground(mutedColor).
 				Render("  I'll add the record myself   ·   Cancel"))
 			b.WriteString(boxStyle.Width(w-4).Render(rows.String()) + "\n\n")
-			b.WriteString(renderDNSFooter([]string{"[↑↓] select", "[Enter] delegate", "[m] do it manually", "[Ctrl+C] cancel"}))
+			b.WriteString(renderDNSFooter([]string{"[↑↓] select", "[Enter] delegate", "[m] do it manually", "[Ctrl+C] cancel"}, w))
 			return b.String()
 		},
 
@@ -109,7 +109,7 @@ func TestRenderDNSScreens(t *testing.T) {
 						"NS record written to zone Z039 in account 891880437329")+"\n\n"+
 					renderResolverGrid(results, resolvers)+"\n\n"+
 					meterRow(w-8, 0.5, "#f59e0b", "#10b981", "2/4 resolvers")) + "\n\n")
-			b.WriteString(renderDNSFooter([]string{"[s] stop waiting (record is saved)", "[Ctrl+C] cancel"}))
+			b.WriteString(renderDNSFooter([]string{"[s] stop waiting (record is saved)", "[Ctrl+C] cancel"}, w))
 			return b.String()
 		},
 
@@ -127,7 +127,7 @@ func TestRenderDNSScreens(t *testing.T) {
 					lipgloss.NewStyle().Foreground(fgColor).Render(zone+" resolves to this account")+"\n\n"+
 					lipgloss.NewStyle().Foreground(dimColor).Render(
 						"Certificate validation can now succeed. Continuing with the full deploy.")) + "\n\n")
-			b.WriteString(renderDNSFooter([]string{"[Enter] continue to phase 2"}))
+			b.WriteString(renderDNSFooter([]string{"[Enter] continue to phase 2"}, w))
 			return b.String()
 		},
 
@@ -146,7 +146,7 @@ func TestRenderDNSScreens(t *testing.T) {
 					lipgloss.NewStyle().Foreground(dimColor).Render(
 						"Why: coretechx.dev is not hosted on Route53 (nameservers: ada.ns.cloudflare.com)")) + "\n\n")
 			b.WriteString(renderNameserverPanel(zone, parent, ns, w-4) + "\n\n")
-			b.WriteString(renderDNSFooter([]string{"[c] copy", "[r] re-check", "[Ctrl+C] cancel"}))
+			b.WriteString(renderDNSFooter([]string{"[c] copy", "[r] re-check", "[Ctrl+C] cancel"}, w))
 			return b.String()
 		},
 	}

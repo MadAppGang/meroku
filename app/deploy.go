@@ -111,15 +111,14 @@ func runCommandToDeploy(env string) error {
 		case dnsPlanBlocked:
 			// The zone exists but is not delegated. meroku can usually fix this
 			// itself, so hand off to the DNS setup screen rather than stopping.
-			delegated, err := runDNSSetupTUI(e, dnsResult)
+			outcome, err := runDNSSetupTUI(e, dnsResult)
 			if err != nil {
 				fmt.Printf("\n❌ DNS setup failed: %v\n", err)
 				os.Exit(1)
 			}
-			if !delegated {
-				fmt.Println("\n⏸  Delegation is not in place yet — stopping before the apply stalls.")
-				fmt.Println("   Re-run the deploy once it resolves. Check with: meroku dns validate")
-				os.Exit(0)
+			if applyDNSOutcome(env, &e, outcome) {
+				// The config changed, so the generated terraform is now stale.
+				applyTemplate(env)
 			}
 
 		case dnsPlanMissingZone:
@@ -147,18 +146,31 @@ func runCommandToDeploy(env string) error {
 	// waits on a delegation that cannot exist until the zone it is waiting for has
 	// been created.
 	if needsZoneBootstrap {
-		ready, err := runDNSBootstrapAndDelegate(ctx, e)
+		outcome, err := runDNSBootstrapAndDelegate(ctx, e)
 		if err != nil {
 			fmt.Printf("\n❌ DNS bootstrap failed: %v\n", err)
 			os.Exit(1)
 		}
-		if !ready {
-			fmt.Println("\n⏸  Stopping before phase 2.")
-			fmt.Println("   The hosted zone exists, but delegation is not visible yet.")
-			fmt.Println("   Re-run the deploy once it resolves; nothing needs to be undone.")
-			fmt.Println("   Check with: meroku dns validate")
-			os.Exit(0)
+
+		// Regeneration reads <env>.yaml and writes env/<env>/, both relative to
+		// the project root — but we are inside env/<env> by now, so it has to be
+		// done from there and the directory restored afterwards.
+		if outcome.SkipDomain {
+			if err := os.Chdir(wd); err != nil {
+				fmt.Println("Error returning to the project directory:", err)
+				os.Exit(1)
+			}
+			applyDNSOutcome(env, &e, outcome)
+			applyTemplate(env)
+			if err := os.Chdir(filepath.Join("env", env)); err != nil {
+				fmt.Println("Error changing directory to env folder:", err)
+				os.Exit(1)
+			}
+			terraformInitIfNeeded()
+		} else {
+			applyDNSOutcome(env, &e, outcome)
 		}
+
 		fmt.Println("\n🌐 Phase 2 of 2: deploying everything else")
 	}
 

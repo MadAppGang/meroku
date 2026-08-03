@@ -214,10 +214,13 @@ func renderNameserverPanel(zone, parent string, nameservers []string, width int)
 	b.WriteString(label.Render("TTL") + value.Render("300") + "\n")
 	b.WriteString(label.Render("Value") + "\n")
 
-	// Brightest thing on the panel: these are the values being copied out.
-	nsStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#60a5fa")).Bold(true).PaddingLeft(8)
-	for _, ns := range nameservers {
-		b.WriteString(nsStyle.Render(ns) + "\n")
+	// Numbered, because registrar forms take one nameserver per field and the
+	// number is the key that copies that line. Brightest thing on the panel:
+	// these are the values being copied out.
+	idxStyle := lipgloss.NewStyle().Foreground(mutedColor).PaddingLeft(6)
+	nsStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#60a5fa")).Bold(true)
+	for i, ns := range nameservers {
+		b.WriteString(idxStyle.Render(fmt.Sprintf("%d ", i+1)) + nsStyle.Render(ns) + "\n")
 	}
 
 	return boxStyle.Width(width).Render(strings.TrimRight(b.String(), "\n"))
@@ -316,7 +319,39 @@ func renderDNSHeader(zone string, elapsed time.Duration, width int) string {
 	return headerStyle.Width(width).Render(left + strings.Repeat(" ", gap) + right)
 }
 
-// renderDNSFooter renders contextual key hints, dimmed as chrome.
-func renderDNSFooter(hints []string) string {
-	return lipgloss.NewStyle().Foreground(mutedColor).Render("  " + strings.Join(hints, "   "))
+// renderDNSFooter renders contextual key hints, dimmed as chrome, packed onto
+// as many lines as the width needs.
+//
+// The manual screen offers six bindings, which is 114 columns on one line — so
+// a fixed single-line footer overflowed the frame on any terminal under that.
+// Hints are never dropped: a key the operator cannot see is a key that does not
+// exist to them.
+func renderDNSFooter(hints []string, width int) string {
+	style := lipgloss.NewStyle().Foreground(mutedColor)
+	const indent = "  "
+	const sep = "   "
+
+	var lines []string
+	cur := ""
+	for _, h := range hints {
+		candidate := h
+		if cur != "" {
+			candidate = cur + sep + h
+		}
+		if lipgloss.Width(indent+candidate) > width && cur != "" {
+			lines = append(lines, style.Render(indent+cur))
+			cur = h
+			continue
+		}
+		cur = candidate
+	}
+	if cur != "" {
+		// A single hint wider than the terminal still has to be cut, or it would
+		// wrap at column 0 and break the frame below it.
+		if lipgloss.Width(indent+cur) > width {
+			cur = truncateToWidth(cur, width-len(indent))
+		}
+		lines = append(lines, style.Render(indent+cur))
+	}
+	return strings.Join(lines, "\n")
 }

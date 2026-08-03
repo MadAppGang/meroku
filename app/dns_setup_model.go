@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"net"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -71,27 +73,36 @@ type dnsTickMsg time.Time
 // ------------------------------------------------------------------- keys ---
 
 type dnsKeyMap struct {
-	Up      key.Binding
-	Down    key.Binding
-	Enter   key.Binding
-	Manual  key.Binding
-	Copy    key.Binding
-	Retry   key.Binding
-	Skip    key.Binding
-	ScanAll key.Binding
-	Quit    key.Binding
+	Up         key.Binding
+	Down       key.Binding
+	Enter      key.Binding
+	Manual     key.Binding
+	Copy       key.Binding
+	CopyOne    key.Binding
+	Retry      key.Binding
+	Skip       key.Binding
+	SkipDomain key.Binding
+	ScanAll    key.Binding
+	Continue   key.Binding
+	Quit       key.Binding
 }
 
 var dnsKeys = dnsKeyMap{
-	Up:      key.NewBinding(key.WithKeys("up", "k")),
-	Down:    key.NewBinding(key.WithKeys("down", "j")),
-	Enter:   key.NewBinding(key.WithKeys("enter")),
-	Manual:  key.NewBinding(key.WithKeys("m")),
-	Copy:    key.NewBinding(key.WithKeys("c")),
-	Retry:   key.NewBinding(key.WithKeys("r")),
-	Skip:    key.NewBinding(key.WithKeys("s")),
-	ScanAll: key.NewBinding(key.WithKeys("a")),
-	Quit:    key.NewBinding(key.WithKeys("ctrl+c", "q")),
+	Up:         key.NewBinding(key.WithKeys("up", "k")),
+	Down:       key.NewBinding(key.WithKeys("down", "j")),
+	Enter:      key.NewBinding(key.WithKeys("enter")),
+	Manual:     key.NewBinding(key.WithKeys("m")),
+	Copy:       key.NewBinding(key.WithKeys("c")),
+	CopyOne:    key.NewBinding(key.WithKeys("1", "2", "3", "4", "5", "6")),
+	Retry:      key.NewBinding(key.WithKeys("r")),
+	Skip:       key.NewBinding(key.WithKeys("s")),
+	SkipDomain: key.NewBinding(key.WithKeys("s")),
+	ScanAll:    key.NewBinding(key.WithKeys("a")),
+	// Esc continues without delegating; Ctrl+C aborts. Those are opposite
+	// intentions and used to share one binding, so the only way to proceed was
+	// the key every other screen uses to cancel.
+	Continue: key.NewBinding(key.WithKeys("esc")),
+	Quit:     key.NewBinding(key.WithKeys("ctrl+c", "q")),
 }
 
 // ------------------------------------------------------------------ model ---
@@ -139,6 +150,15 @@ type dnsSetupModel struct {
 	resolvers       []string
 	resolverResults map[string]bool
 
+	// manual fallback: poll public DNS on a timer, so a record added by hand at a
+	// registrar is picked up without the operator having to press anything.
+	nextCheckIn int
+	checking    bool
+
+	// transient "copied" confirmation
+	copiedNote string
+	copiedAt   time.Time
+
 	// outcome
 	err          error
 	manualReason string
@@ -148,8 +168,35 @@ type dnsSetupModel struct {
 	// whether phase 2 can run.
 	Delegated bool
 
+	// SkipDomain means the operator chose to turn the custom domain off rather
+	// than wait for delegation. The caller disables it in the env YAML and
+	// regenerates, so the apply never reaches certificate validation at all.
+	SkipDomain bool
+
+	// ContinueAnyway means the operator accepted the risk and wants the apply to
+	// run undelegated. It will stall on certificate validation.
+	ContinueAnyway bool
+
 	keys dnsKeyMap
 }
+
+// dnsSetupOutcome is what the deploy needs to know when the screen closes.
+//
+// Three distinct answers, and conflating any two of them produces a wrong
+// deploy: Delegated proceeds normally, SkipDomain requires rewriting the config
+// first, and ContinueAnyway proceeds into an apply that is expected to stall.
+type dnsSetupOutcome struct {
+	Delegated      bool
+	SkipDomain     bool
+	ContinueAnyway bool
+}
+
+// secondsBetweenDNSChecks is how often the manual screen re-checks public DNS.
+//
+// Registrar propagation is measured in minutes, so polling faster mostly
+// produces a busier screen; 20s is frequent enough that the operator sees the
+// change land while they are still watching.
+const secondsBetweenDNSChecks = 20
 
 // newDNSSetupModel builds the screen for an environment whose zone is missing
 // (bootstrap) or undelegated (blocked).
@@ -316,6 +363,20 @@ func waitForCandidate(ch <-chan parentZoneCandidate) tea.Cmd {
 	}
 }
 
+// copyToClipboard puts text on the system clipboard and shows a brief note.
+//
+// A failure here is not worth interrupting the flow for — the nameservers are
+// still on screen to be selected by hand — so it is reported in the same place
+// the success would have been.
+func (m *dnsSetupModel) copyToClipboard(text, note string) {
+	if err := clipboard.WriteAll(text); err != nil {
+		m.copiedNote = "could not reach the clipboard — select the text instead"
+	} else {
+		m.copiedNote = note
+	}
+	m.copiedAt = time.Now()
+}
+
 // stopScan abandons any in-flight probes.
 //
 // Called whenever the operator commits to a choice or leaves: without it the
@@ -464,6 +525,25 @@ func (m *dnsSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.quitting {
 			return m, nil
 		}
+
+		// Clear the copy confirmation after a moment.
+		if m.copiedNote != "" && time.Since(m.copiedAt) > 2*time.Second {
+			m.copiedNote = ""
+		}
+
+		// While waiting on a human to add the record somewhere else, count down
+		// and re-check by ourselves. Requiring a keypress to discover that the
+		// record already landed is the difference between a screen you can leave
+		// running and one you have to babysit.
+		if m.manualReason != "" && !m.checking {
+			if m.nextCheckIn > 0 {
+				m.nextCheckIn--
+			}
+			if m.nextCheckIn == 0 {
+				m.checking = true
+				return m, tea.Batch(m.tick(), m.pollPropagationCmd())
+			}
+		}
 		return m, m.tick()
 
 	case dnsZoneProgressMsg:
@@ -493,6 +573,7 @@ func (m *dnsSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.states[stepFindParent] = stepFailed
 			m.states[stepWriteRecord] = stepSkipped
+			m.nextCheckIn = secondsBetweenDNSChecks
 			return m, nil
 		}
 		m.candidates = msg.candidates
@@ -556,11 +637,26 @@ func (m *dnsSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case dnsPropagationMsg:
 		m.resolverResults = msg.results
 		if msg.ok {
+			// However the record got there — written by us, or added by hand at a
+			// registrar while this screen waited — the delegation is live.
+			m.checking = false
+			m.manualReason = ""
+			m.states[stepFindParent] = stepOK
+			m.states[stepWriteRecord] = stepOK
 			m.states[stepPropagate] = stepOK
 			m.step = stepDone
 			m.Delegated = true
 			return m, nil
 		}
+
+		// Manual mode owns its own cadence via the countdown, so it must not also
+		// schedule a poll here or the two would compound.
+		if m.manualReason != "" {
+			m.checking = false
+			m.nextCheckIn = secondsBetweenDNSChecks
+			return m, nil
+		}
+
 		// Keep polling until the operator stops us.
 		return m, tea.Tick(10*time.Second, func(time.Time) tea.Msg {
 			return dnsTickPollMsg{}
@@ -583,6 +679,39 @@ func (m *dnsSetupModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.Quit):
 		m.stopScan()
 		m.quitting = true
+		return m, tea.Quit
+
+	case key.Matches(msg, m.keys.Copy):
+		// Only meaningful where the nameservers are on screen to be copied.
+		if len(m.nameservers) > 0 && (m.manualReason != "" || m.step == stepFindParent) {
+			m.copyToClipboard(strings.Join(m.nameservers, "\n"),
+				fmt.Sprintf("copied all %d nameservers", len(m.nameservers)))
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.CopyOne):
+		// Registrar forms usually take one nameserver per field, so copying them
+		// individually is the common case, not the exception.
+		if len(m.nameservers) > 0 && (m.manualReason != "" || m.step == stepFindParent) {
+			if n, err := strconv.Atoi(msg.String()); err == nil && n >= 1 && n <= len(m.nameservers) {
+				ns := m.nameservers[n-1]
+				m.copyToClipboard(ns, "copied "+ns)
+			}
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.SkipDomain) && m.manualReason != "":
+		// Turn the custom domain off rather than deploy into a certificate that
+		// cannot validate. The caller rewrites the env YAML and regenerates.
+		m.SkipDomain = true
+		m.quitting = true
+		m.stopScan()
+		return m, tea.Quit
+
+	case key.Matches(msg, m.keys.Continue) && m.manualReason != "":
+		m.ContinueAnyway = true
+		m.quitting = true
+		m.stopScan()
 		return m, tea.Quit
 
 	case key.Matches(msg, m.keys.Up):
@@ -644,16 +773,14 @@ func (m *dnsSetupModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case key.Matches(msg, m.keys.Retry):
-		if m.manualReason != "" {
-			m.stopScan()
-			m.manualReason = ""
-			m.err = nil
-			m.candidates = nil
-			m.cursor = 0
-			m.cursorPinned = false
-			m.states[stepFindParent] = stepPending
-			m.step = stepFindParent
-			return m, m.findParentCmd()
+		// Check public DNS now rather than waiting out the countdown. This polls
+		// resolvers rather than rescanning profiles: in the manual case the record
+		// is being added somewhere meroku cannot see, so the only useful question
+		// is whether it has appeared on the internet yet.
+		if m.manualReason != "" && !m.checking {
+			m.checking = true
+			m.nextCheckIn = secondsBetweenDNSChecks
+			return m, m.pollPropagationCmd()
 		}
 		return m, nil
 
@@ -680,7 +807,7 @@ func (m *dnsSetupModel) View() string {
 	b.WriteString(renderDNSHeader(m.zone, m.elapsed, w) + "\n\n")
 	b.WriteString(renderStepRail(m.step, m.states, w) + "\n\n")
 	b.WriteString(m.renderBody(inner) + "\n\n")
-	b.WriteString(renderDNSFooter(m.footerHints()))
+	b.WriteString(renderDNSFooter(m.footerHints(), w))
 
 	return lipgloss.Place(w, m.height, lipgloss.Left, lipgloss.Top, b.String())
 }
@@ -694,12 +821,34 @@ func (m *dnsSetupModel) renderBody(inner int) string {
 				lipgloss.NewStyle().Foreground(dimColor).Render(wordWrap(m.err.Error(), inner-4)))
 
 	case m.manualReason != "":
-		panel := boxStyle.Width(inner).Render(
-			badge("MANUAL", warningColor) + "  " +
-				lipgloss.NewStyle().Foreground(fgColor).Render("meroku cannot write this record for you") + "\n\n" +
-				lipgloss.NewStyle().Foreground(dimColor).Render("Why: "+wordWrap(m.manualReason, inner-8)))
+		var head strings.Builder
+		head.WriteString(badge("MANUAL", warningColor) + "  " +
+			lipgloss.NewStyle().Foreground(fgColor).
+				Render("meroku cannot write this record for you") + "\n\n")
+		head.WriteString(lipgloss.NewStyle().Foreground(dimColor).
+			Render("Why: "+wordWrap(m.manualReason, inner-8)) + "\n\n")
+
+		// State the consequence of skipping, in the place the decision is made.
+		// The apply does not fail fast here: it creates the certificate, waits on
+		// a validation record that cannot resolve, and only gives up on the 20
+		// minute timeout — so "continue anyway" costs 20 minutes, not seconds.
+		head.WriteString(lipgloss.NewStyle().Foreground(warningColor).
+			Render("⚠ "+wordWrap(
+				"This environment has a custom domain, so the deploy will request an "+
+					"ACM certificate and wait for it to validate. Without this NS record "+
+					"that validation cannot succeed — the apply stalls on it for 20 "+
+					"minutes and then fails.", inner-8)) + "\n\n")
+		head.WriteString(lipgloss.NewStyle().Foreground(mutedColor).
+			Render(wordWrap(
+				"Add the record below, or press [s] to turn the custom domain off and "+
+					"deploy everything else now. You can enable it again later.", inner-8)))
+
+		panel := boxStyle.Width(inner).Render(head.String())
+
 		if len(m.nameservers) > 0 {
-			return panel + "\n\n" + renderNameserverPanel(m.zone, m.parent, m.nameservers, inner)
+			return panel + "\n\n" +
+				renderNameserverPanel(m.zone, m.parent, m.nameservers, inner) + "\n" +
+				m.renderRecheckLine(inner)
 		}
 		return panel
 
@@ -794,6 +943,25 @@ func (m *dnsSetupModel) renderBody(inner int) string {
 	return ""
 }
 
+// renderRecheckLine shows the auto re-check countdown, or the copy confirmation
+// when one is pending. The copy note takes the slot because it is transient and
+// the operator has just asked for it.
+func (m *dnsSetupModel) renderRecheckLine(width int) string {
+	if m.copiedNote != "" {
+		return lipgloss.NewStyle().Foreground(successColor).
+			Render("  ✓ " + truncateToWidth(m.copiedNote, width-4))
+	}
+
+	if m.checking {
+		return lipgloss.NewStyle().Foreground(accentColor).
+			Render("  ⟳ checking public DNS…")
+	}
+
+	return lipgloss.NewStyle().Foreground(mutedColor).
+		Render(fmt.Sprintf("  next check in %ds — it will continue on its own once the record resolves",
+			m.nextCheckIn))
+}
+
 // scanMeter renders scan progress as a real fraction once the total is known.
 //
 // Streaming turns this from an indeterminate pulse into an honest ratio: we know
@@ -818,7 +986,16 @@ func pulse(elapsed time.Duration) float64 {
 func (m *dnsSetupModel) footerHints() []string {
 	switch {
 	case m.manualReason != "":
-		return []string{"[r] re-check", "[Ctrl+C] continue without delegating"}
+		hints := []string{}
+		if len(m.nameservers) > 0 {
+			hints = append(hints, "[c] copy all",
+				fmt.Sprintf("[1-%d] copy one", len(m.nameservers)))
+		}
+		return append(hints,
+			"[r] check now",
+			"[s] skip custom domain",
+			"[Esc] continue anyway",
+			"[Ctrl+C] cancel")
 	case m.step == stepDone:
 		return []string{"[Enter] continue to phase 2"}
 	case m.choosing && m.cachedProfile != "":
@@ -832,18 +1009,22 @@ func (m *dnsSetupModel) footerHints() []string {
 	}
 }
 
-// runDNSSetupTUI runs the screen and reports whether delegation is verified.
-func runDNSSetupTUI(e Env, res dnsPreflightResult) (bool, error) {
+// runDNSSetupTUI runs the screen and reports what the operator decided.
+func runDNSSetupTUI(e Env, res dnsPreflightResult) (dnsSetupOutcome, error) {
 	m := newDNSSetupModel(e, res)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	final, err := p.Run()
 	if err != nil {
-		return false, err
+		return dnsSetupOutcome{}, err
 	}
 	if fm, ok := final.(*dnsSetupModel); ok {
-		return fm.Delegated, fm.err
+		return dnsSetupOutcome{
+			Delegated:      fm.Delegated,
+			SkipDomain:     fm.SkipDomain,
+			ContinueAnyway: fm.ContinueAnyway,
+		}, fm.err
 	}
-	return false, nil
+	return dnsSetupOutcome{}, nil
 }
 
 // decodeTerraformLine is used when terraform is run with -json; kept separate so

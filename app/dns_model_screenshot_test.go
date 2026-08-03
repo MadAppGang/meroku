@@ -94,8 +94,21 @@ func TestRenderDNSModel(t *testing.T) {
 			m.states[stepShowNameservers] = stepOK
 			m.states[stepFindParent] = stepFailed
 			m.states[stepWriteRecord] = stepSkipped
-			m.manualReason = "coretechx.dev is not hosted on Route53 (ada.ns.cloudflare.com)"
+			m.manualReason = "coretechx.dev is not hosted on Route53 (ns1.hover.com)"
+			m.nextCheckIn = 14
 			m.elapsed = 51 * time.Second
+			return m
+		},
+		"model-10-manual-copied": func() *dnsSetupModel {
+			m := base()
+			m.step = stepFindParent
+			m.states[stepCreateZone] = stepOK
+			m.states[stepShowNameservers] = stepOK
+			m.states[stepFindParent] = stepFailed
+			m.states[stepWriteRecord] = stepSkipped
+			m.manualReason = "coretechx.dev is not hosted on Route53 (ns1.hover.com)"
+			m.copiedNote = "copied ns-1050.awsdns-03.org"
+			m.elapsed = 62 * time.Second
 			return m
 		},
 		"model-8-streaming": func() *dnsSetupModel {
@@ -121,6 +134,19 @@ func TestRenderDNSModel(t *testing.T) {
 			m.cachedProfile = "mag"
 			m.choosing = true
 			m.elapsed = 3 * time.Second
+			return m
+		},
+		"model-11-manual-narrow": func() *dnsSetupModel {
+			m := base()
+			m.width, m.height = 80, 30
+			m.step = stepFindParent
+			m.states[stepCreateZone] = stepOK
+			m.states[stepShowNameservers] = stepOK
+			m.states[stepFindParent] = stepFailed
+			m.states[stepWriteRecord] = stepSkipped
+			m.manualReason = "coretechx.dev is not hosted on Route53 (ns1.hover.com)"
+			m.nextCheckIn = 7
+			m.elapsed = 51 * time.Second
 			return m
 		},
 		"model-7-narrow": func() *dnsSetupModel {

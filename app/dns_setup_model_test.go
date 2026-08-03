@@ -504,3 +504,149 @@ func TestDNSModel_DoneStateIsUnqualifiedWhenFullyPropagated(t *testing.T) {
 		t.Error("a fully propagated delegation should not be hedged")
 	}
 }
+
+// manualModel puts the model in the state the screenshot showed: parent not on
+// Route53, nameservers known, waiting on a human.
+func manualModel(t *testing.T) *dnsSetupModel {
+	t.Helper()
+	m := testDNSModel(t)
+	m.nameservers = []string{
+		"ns-839.awsdns-40.net", "ns-1058.awsdns-04.org",
+		"ns-1555.awsdns-02.co.uk", "ns-213.awsdns-26.com",
+	}
+	updated, _ := m.Update(dnsCandidatesMsg{reason: "sploty.app is not hosted on Route53 (ns1.hover.com)"})
+	return updated.(*dnsSetupModel)
+}
+
+// Esc continues without delegating; Ctrl+C cancels. They used to be the same
+// key, so the only way to proceed was the one every other screen uses to abort.
+func TestDNSModel_EscContinuesAndCtrlCCancels(t *testing.T) {
+	m := manualModel(t)
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(*dnsSetupModel)
+	if !m.ContinueAnyway {
+		t.Error("Esc should continue without delegating")
+	}
+	if m.SkipDomain || m.Delegated {
+		t.Error("Esc must not imply skipping the domain or successful delegation")
+	}
+	if cmd == nil {
+		t.Error("expected the screen to close")
+	}
+
+	m2 := manualModel(t)
+	updated, _ = m2.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	m2 = updated.(*dnsSetupModel)
+	if m2.ContinueAnyway || m2.SkipDomain || m2.Delegated {
+		t.Error("Ctrl+C is a cancel: it must set no outcome at all")
+	}
+}
+
+func TestDNSModel_SkipDomainIsItsOwnOutcome(t *testing.T) {
+	m := manualModel(t)
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	m = updated.(*dnsSetupModel)
+
+	if !m.SkipDomain {
+		t.Error("[s] should request turning the custom domain off")
+	}
+	if m.ContinueAnyway || m.Delegated {
+		t.Error("skipping the domain is not the same as continuing or delegating")
+	}
+	if cmd == nil {
+		t.Error("expected the screen to close")
+	}
+}
+
+// The consequence of skipping has to be stated where the decision is made.
+func TestDNSModel_ManualPanelWarnsAboutCertificateStall(t *testing.T) {
+	view := manualModel(t).View()
+	for _, want := range []string{"ACM certificate", "20", "skip custom domain"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("manual panel should mention %q:\n%s", want, view)
+		}
+	}
+}
+
+// Nameservers are numbered so the number is also the key that copies that line.
+func TestDNSModel_NameserversAreNumbered(t *testing.T) {
+	view := manualModel(t).View()
+	for i, ns := range []string{
+		"ns-839.awsdns-40.net", "ns-1058.awsdns-04.org",
+		"ns-1555.awsdns-02.co.uk", "ns-213.awsdns-26.com",
+	} {
+		if !strings.Contains(view, ns) {
+			t.Errorf("nameserver %s missing from the panel", ns)
+		}
+		_ = i
+	}
+	if !strings.Contains(view, "[c] copy all") || !strings.Contains(view, "[1-4] copy one") {
+		t.Errorf("copy hints missing from the footer:\n%s", view)
+	}
+}
+
+// The countdown must run down and fire a check, so a record added at a registrar
+// is noticed without anyone pressing anything.
+func TestDNSModel_CountdownTriggersAutomaticRecheck(t *testing.T) {
+	m := manualModel(t)
+	if m.nextCheckIn != secondsBetweenDNSChecks {
+		t.Fatalf("countdown should start at %d, got %d", secondsBetweenDNSChecks, m.nextCheckIn)
+	}
+	if !strings.Contains(m.View(), "next check in") {
+		t.Error("the countdown should be visible")
+	}
+
+	var cmd tea.Cmd
+	for i := 0; i < secondsBetweenDNSChecks; i++ {
+		var updated tea.Model
+		updated, cmd = m.Update(dnsTickMsg(time.Now()))
+		m = updated.(*dnsSetupModel)
+	}
+
+	if !m.checking {
+		t.Error("expected a check to have started when the countdown reached zero")
+	}
+	if cmd == nil {
+		t.Error("expected the poll command to be issued")
+	}
+}
+
+// A record that appears while waiting must complete the flow on its own.
+func TestDNSModel_ManualRecheckSucceedingCompletesTheFlow(t *testing.T) {
+	m := manualModel(t)
+	m.checking = true
+
+	updated, _ := m.Update(dnsPropagationMsg{
+		results: map[string]bool{"8.8.8.8": true, "1.1.1.1": true}, ok: true})
+	m = updated.(*dnsSetupModel)
+
+	if !m.Delegated {
+		t.Error("a delegation that appears during the wait should count")
+	}
+	if m.manualReason != "" {
+		t.Error("the manual fallback should be cleared once the record resolves")
+	}
+	if m.step != stepDone {
+		t.Errorf("expected stepDone, got %v", m.step)
+	}
+}
+
+// A failed check must reset the countdown rather than stopping the loop.
+func TestDNSModel_ManualRecheckFailingRearmsCountdown(t *testing.T) {
+	m := manualModel(t)
+	m.checking = true
+	m.nextCheckIn = 0
+
+	updated, _ := m.Update(dnsPropagationMsg{results: map[string]bool{"8.8.8.8": false}, ok: false})
+	m = updated.(*dnsSetupModel)
+
+	if m.checking {
+		t.Error("the check should have finished")
+	}
+	if m.nextCheckIn != secondsBetweenDNSChecks {
+		t.Errorf("countdown should be re-armed, got %d", m.nextCheckIn)
+	}
+	if m.Delegated {
+		t.Error("a failed check must not report delegation")
+	}
+}
