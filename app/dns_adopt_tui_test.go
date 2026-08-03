@@ -40,11 +40,15 @@ func adoptingModel(t *testing.T) *dnsSetupModel {
 // [t] is only offered where it is the answer: the manual fallback.
 func TestAdopt_OfferedFromManualFallback(t *testing.T) {
 	m := adoptingModel(t)
-	if !strings.Contains(m.View(), "[t] move domain to Route53") {
-		t.Errorf("the adoption route should be offered:\n%s", m.View())
+	flat := flatten(m.View())
+	if !strings.Contains(flat, "MOVE DOMAIN TO ROUTE53") {
+		t.Errorf("the adoption route should be offered as an action:\n%s", m.View())
 	}
-	if !strings.Contains(flatten(m.View()), "every registrar can change nameservers") {
-		t.Error("the panel should explain why moving the domain is the way out")
+	if !strings.Contains(flat, "move to route53") {
+		t.Error("and bound in the key legend")
+	}
+	if !strings.Contains(flat, "every registrar can change nameservers") {
+		t.Error("the action should say why moving the domain is the way out")
 	}
 }
 
@@ -108,7 +112,7 @@ func TestAdopt_ReviewShowsIncompletenessWarning(t *testing.T) {
 			t.Errorf("review should surface %q:\n%s", want, view)
 		}
 	}
-	if !strings.Contains(flatten(view), "until you update the nameservers") {
+	if !strings.Contains(flatten(view), "nothing resolves differently yet") {
 		t.Error("review should say the copy changes nothing yet")
 	}
 }

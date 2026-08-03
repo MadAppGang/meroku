@@ -826,20 +826,31 @@ func (m *dnsSetupModel) View() string {
 	if w < 60 {
 		w = 60
 	}
-	inner := w - 4
+
+	// Which account this will change stays on screen for the whole flow. It is
+	// the fact that makes a wrong run wrong, and a confirmation that has already
+	// scrolled past protects nobody.
+	context := m.env.AWSProfile
+	if context != "" && m.env.Region != "" {
+		context = context + " · " + m.env.Region
+	}
+	clock := fmt.Sprintf("%02d:%02d", int(m.elapsed.Minutes()), int(m.elapsed.Seconds())%60)
 
 	var b strings.Builder
-	b.WriteString(renderDNSHeader(m.zone, m.elapsed, w) + "\n\n")
+	b.WriteString(renderAppHeader("DNS", m.zone, context, clock, w) + "\n\n")
 	b.WriteString(renderStepRail(m.step, m.states, w) + "\n\n")
-	b.WriteString(m.renderBody(inner) + "\n\n")
-	b.WriteString(renderDNSFooter(m.footerHints(), w))
+	b.WriteString(m.renderBody(w) + "\n\n")
+	b.WriteString(renderKeyLegend(m.footerHints(), w))
 
 	return lipgloss.Place(w, m.height, lipgloss.Left, lipgloss.Top, b.String())
 }
 
-func (m *dnsSetupModel) renderBody(inner int) string {
+// renderBody dispatches to the screen for the current step. It takes the full
+// terminal width; panels that want a single box derive their own inner width.
+func (m *dnsSetupModel) renderBody(width int) string {
+	inner := width - 4
 	if m.adopt.phase != adoptOff {
-		return m.renderAdopt(inner)
+		return m.renderAdopt(width)
 	}
 	switch {
 	case m.err != nil && m.manualReason == "":
@@ -849,38 +860,7 @@ func (m *dnsSetupModel) renderBody(inner int) string {
 				lipgloss.NewStyle().Foreground(dimColor).Render(wordWrap(m.err.Error(), inner-4)))
 
 	case m.manualReason != "":
-		var head strings.Builder
-		head.WriteString(badge("MANUAL", warningColor) + "  " +
-			lipgloss.NewStyle().Foreground(fgColor).
-				Render("meroku cannot write this record for you") + "\n\n")
-		head.WriteString(lipgloss.NewStyle().Foreground(dimColor).
-			Render("Why: "+wordWrap(m.manualReason, inner-8)) + "\n\n")
-
-		// State the consequence of skipping, in the place the decision is made.
-		// The apply does not fail fast here: it creates the certificate, waits on
-		// a validation record that cannot resolve, and only gives up on the 20
-		// minute timeout — so "continue anyway" costs 20 minutes, not seconds.
-		head.WriteString(lipgloss.NewStyle().Foreground(warningColor).
-			Render("⚠ "+wordWrap(
-				"This environment has a custom domain, so the deploy will request an "+
-					"ACM certificate and wait for it to validate. Without this NS record "+
-					"that validation cannot succeed — the apply stalls on it for 20 "+
-					"minutes and then fails.", inner-8)) + "\n\n")
-		head.WriteString(lipgloss.NewStyle().Foreground(mutedColor).
-			Render(wordWrap(
-				"Add the record below. If your DNS host cannot add NS records for a "+
-					"subdomain at all, press [t] to move the whole domain to Route53 — "+
-					"every registrar can change nameservers. Or press [s] to turn the "+
-					"custom domain off and deploy everything else now.", inner-8)))
-
-		panel := boxStyle.Width(inner).Render(head.String())
-
-		if len(m.nameservers) > 0 {
-			return panel + "\n\n" +
-				renderNameserverPanel(m.zone, m.parent, m.nameservers, inner) + "\n" +
-				m.renderRecheckLine(inner)
-		}
-		return panel
+		return m.renderManual(width)
 
 	case m.step == stepCreateZone:
 		body := titleStyle.Render("Creating hosted zone") + "\n" +
@@ -1013,33 +993,44 @@ func pulse(elapsed time.Duration) float64 {
 	return 0.9 * (1 - 1/(1+s/20))
 }
 
-func (m *dnsSetupModel) footerHints() []string {
+func (m *dnsSetupModel) footerHints() []keyHint {
 	if m.adopt.phase != adoptOff {
 		return m.adoptFooterHints()
 	}
+
 	switch {
 	case m.manualReason != "":
-		hints := []string{}
+		hints := []keyHint{}
 		if len(m.nameservers) > 0 {
-			hints = append(hints, "[c] copy all",
-				fmt.Sprintf("[1-%d] copy one", len(m.nameservers)))
+			hints = append(hints,
+				keyHint{"c", "copy all"},
+				keyHint{fmt.Sprintf("1-%d", len(m.nameservers)), "copy one"})
 		}
 		return append(hints,
-			"[r] check now",
-			"[t] move domain to Route53",
-			"[s] skip custom domain",
-			"[Esc] continue anyway",
-			"[Ctrl+C] cancel")
+			keyHint{"r", "check now"},
+			keyHint{"t", "move to route53"},
+			keyHint{"s", "skip domain"},
+			keyHint{"esc", "continue anyway"},
+			keyHint{"^C", "cancel"})
+
 	case m.step == stepDone:
-		return []string{"[Enter] continue to phase 2"}
+		return []keyHint{{"enter", "continue to phase 2"}}
+
 	case m.choosing && m.cachedProfile != "":
-		return []string{"[Enter] delegate", "[a] scan all profiles", "[m] I'll do it myself", "[Ctrl+C] cancel"}
+		return []keyHint{
+			{"enter", "delegate"}, {"a", "scan all profiles"},
+			{"m", "do it myself"}, {"^C", "cancel"}}
+
 	case m.choosing:
-		return []string{"[↑↓] select", "[Enter] delegate", "[m] I'll do it myself", "[Ctrl+C] cancel"}
+		return []keyHint{
+			{"↑↓", "select"}, {"enter", "delegate"},
+			{"m", "do it myself"}, {"^C", "cancel"}}
+
 	case m.step == stepPropagate:
-		return []string{"[s] stop waiting (record is saved)", "[Ctrl+C] cancel"}
+		return []keyHint{{"s", "stop waiting"}, {"^C", "cancel"}}
+
 	default:
-		return []string{"[Ctrl+C] cancel"}
+		return []keyHint{{"^C", "cancel"}}
 	}
 }
 
@@ -1071,4 +1062,68 @@ func decodeTerraformLine(line string) (string, bool) {
 		return "", false
 	}
 	return msg.Message, msg.Message != ""
+}
+
+// renderManual is the fallback screen: the record on the left, why we cannot
+// write it and what to do instead on the right.
+//
+// It replaced three paragraphs of prose. The options were always there — they
+// were just spelled out in sentences the operator had to read through to find
+// the one key they needed. As a menu they are scannable, and the consequence of
+// each sits on its own line rather than buried mid-paragraph.
+func (m *dnsSetupModel) renderManual(width int) string {
+	half, sideBySide := columnWidth(width)
+
+	// Left: the record itself, as data.
+	var rec strings.Builder
+	rec.WriteString(kvRow("NAME", m.zone, 7) + "\n")
+	rec.WriteString(kvRow("TYPE", "NS", 7) +
+		lipgloss.NewStyle().Foreground(mutedColor).Render("    TTL  ") +
+		lipgloss.NewStyle().Foreground(fgColor).Render("300") + "\n\n")
+
+	idx := lipgloss.NewStyle().Foreground(mutedColor)
+	val := lipgloss.NewStyle().Foreground(lipgloss.Color("#60a5fa")).Bold(true)
+	for i, ns := range m.nameservers {
+		rec.WriteString(idx.Render(fmt.Sprintf(" %d ", i+1)) + val.Render(ns) + "\n")
+	}
+
+	rec.WriteString("\n")
+	switch {
+	case m.copiedNote != "":
+		rec.WriteString(lipgloss.NewStyle().Foreground(successColor).
+			Render("✓ " + truncateToWidth(m.copiedNote, half-8)))
+	case m.checking:
+		rec.WriteString(lipgloss.NewStyle().Foreground(accentColor).Render("⟳ checking public DNS…"))
+	default:
+		rec.WriteString(countdownRow(m.nextCheckIn, secondsBetweenDNSChecks, "recheck", half-8))
+	}
+
+	left := panel("delegation record · add to "+m.parent, rec.String(), half, accentColor)
+
+	// Right: the diagnosis, then the choices.
+	var why strings.Builder
+	why.WriteString(badge("BLOCKED", warningColor) + " " +
+		lipgloss.NewStyle().Foreground(fgColor).Render("meroku cannot write it") + "\n")
+	why.WriteString(lipgloss.NewStyle().Foreground(mutedColor).
+		Render(truncateToWidth(m.manualReason, half-8)) + "\n\n")
+	why.WriteString(badge("RISK", dangerColor) + " " +
+		lipgloss.NewStyle().Foreground(dimColor).
+			Render("ACM cert stalls 20m, then fails"))
+
+	acts := renderActions([]action{
+		{key: "t", title: "MOVE DOMAIN TO ROUTE53", tone: successColor,
+			detail: "every registrar can change nameservers"},
+		{key: "s", title: "SKIP CUSTOM DOMAIN", tone: accentColor,
+			detail: "deploy everything else now, add it later"},
+		{key: "esc", title: "CONTINUE ANYWAY", tone: warningColor,
+			detail: "apply runs and stalls on the certificate"},
+	}, half-6)
+
+	right := panel("why", why.String(), half, warningColor) + "\n" +
+		panel("what now", acts, half, successColor)
+
+	if sideBySide {
+		return joinColumns(left, right)
+	}
+	return left + "\n" + right
 }

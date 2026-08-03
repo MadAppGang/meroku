@@ -87,8 +87,8 @@ func TestDNSModel_NoCandidatesFallsBackToManual(t *testing.T) {
 	if m.states[stepFindParent] != stepFailed {
 		t.Error("find-parent should be marked failed")
 	}
-	if !strings.Contains(m.View(), "MANUAL") {
-		t.Error("the manual badge should be visible in the view")
+	if !strings.Contains(m.View(), "BLOCKED") {
+		t.Error("the blocked badge should be visible in the view")
 	}
 }
 
@@ -365,8 +365,8 @@ func TestDNSModel_CachedHitOffersFullScan(t *testing.T) {
 	if m.cachedProfile != "mag" {
 		t.Errorf("expected the cached profile to be recorded, got %q", m.cachedProfile)
 	}
-	if !strings.Contains(m.View(), "[a] scan all profiles") {
-		t.Error("the escape hatch should be offered in the footer")
+	if !strings.Contains(m.View(), "scan all profiles") {
+		t.Error("the escape hatch should be offered in the legend")
 	}
 	if !strings.Contains(m.View(), "remembered this profile") {
 		t.Error("the panel should explain why only one profile is listed")
@@ -560,10 +560,12 @@ func TestDNSModel_SkipDomainIsItsOwnOutcome(t *testing.T) {
 
 // The consequence of skipping has to be stated where the decision is made.
 func TestDNSModel_ManualPanelWarnsAboutCertificateStall(t *testing.T) {
-	view := manualModel(t).View()
-	for _, want := range []string{"ACM certificate", "20", "skip custom domain"} {
+	view := flatten(manualModel(t).View())
+	// The consequence and both escape routes must be on screen at the moment of
+	// the decision — as badges and menu rows now, not as a paragraph.
+	for _, want := range []string{"RISK", "ACM cert stalls 20m", "SKIP CUSTOM DOMAIN", "MOVE DOMAIN TO ROUTE53"} {
 		if !strings.Contains(view, want) {
-			t.Errorf("manual panel should mention %q:\n%s", want, view)
+			t.Errorf("manual panel should surface %q:\n%s", want, view)
 		}
 	}
 }
@@ -580,8 +582,9 @@ func TestDNSModel_NameserversAreNumbered(t *testing.T) {
 		}
 		_ = i
 	}
-	if !strings.Contains(view, "[c] copy all") || !strings.Contains(view, "[1-4] copy one") {
-		t.Errorf("copy hints missing from the footer:\n%s", view)
+	flat := flatten(view)
+	if !strings.Contains(flat, "copy all") || !strings.Contains(flat, "copy one") {
+		t.Errorf("copy hints missing from the legend:\n%s", view)
 	}
 }
 
@@ -592,8 +595,8 @@ func TestDNSModel_CountdownTriggersAutomaticRecheck(t *testing.T) {
 	if m.nextCheckIn != secondsBetweenDNSChecks {
 		t.Fatalf("countdown should start at %d, got %d", secondsBetweenDNSChecks, m.nextCheckIn)
 	}
-	if !strings.Contains(m.View(), "next check in") {
-		t.Error("the countdown should be visible")
+	if !strings.Contains(flatten(m.View()), "recheck") {
+		t.Error("the recheck countdown should be visible")
 	}
 
 	var cmd tea.Cmd

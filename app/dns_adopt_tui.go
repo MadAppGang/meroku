@@ -298,10 +298,11 @@ func (m *dnsSetupModel) handleAdoptKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 
 // -------------------------------------------------------------------- view ---
 
-func (m *dnsSetupModel) renderAdopt(inner int) string {
+func (m *dnsSetupModel) renderAdopt(width int) string {
+	inner := width - 4
 	switch m.adopt.phase {
 	case adoptPickProfile:
-		return m.renderAdoptPickProfile(inner)
+		return m.renderAdoptPickProfile(width)
 	case adoptDiscovering:
 		return boxStyle.Width(inner).Render(
 			titleStyle.Render("Reading the current "+m.parent+" zone") + "\n" +
@@ -309,20 +310,21 @@ func (m *dnsSetupModel) renderAdopt(inner int) string {
 					"asking the nameservers that serve it today what they hold") + "\n\n" +
 				meterRow(inner-4, pulse(m.elapsed), "#3b82f6", "#10b981", "scanning"))
 	case adoptReview:
-		return m.renderAdoptReview(inner)
+		return m.renderAdoptReview(width)
 	case adoptCopying:
 		return boxStyle.Width(inner).Render(
 			titleStyle.Render("Creating the zone and copying records") + "\n\n" +
 				meterRow(inner-4, pulse(m.elapsed), "#3b82f6", "#10b981", "copying"))
 	case adoptVerify:
-		return m.renderAdoptVerify(inner)
+		return m.renderAdoptVerify(width)
 	case adoptWaitNS:
-		return m.renderAdoptWaitNS(inner)
+		return m.renderAdoptWaitNS(width)
 	}
 	return ""
 }
 
-func (m *dnsSetupModel) renderAdoptPickProfile(inner int) string {
+func (m *dnsSetupModel) renderAdoptPickProfile(width int) string {
+	inner := width - 4
 	var b strings.Builder
 	b.WriteString(titleStyle.Render("Move "+m.parent+" to Route53") + "\n")
 	b.WriteString(lipgloss.NewStyle().Foreground(dimColor).Render(wordWrap(
@@ -355,7 +357,8 @@ func (m *dnsSetupModel) renderAdoptPickProfile(inner int) string {
 	return boxStyle.Width(inner).Render(strings.TrimRight(b.String(), "\n"))
 }
 
-func (m *dnsSetupModel) renderAdoptReview(inner int) string {
+func (m *dnsSetupModel) renderAdoptReview(width int) string {
+	inner := width - 4
 	if m.adopt.err != nil {
 		return boxStyle.Width(inner).Render(
 			badge("FAILED", dangerColor) + "  " +
@@ -367,13 +370,20 @@ func (m *dnsSetupModel) renderAdoptReview(inner int) string {
 	snap := m.adopt.snapshot
 	records := recordsToCopy(snap)
 
-	var b strings.Builder
-	b.WriteString(titleStyle.Render(fmt.Sprintf("Found %d records in %s", len(records), snap.Domain)) + "\n")
-	b.WriteString(lipgloss.NewStyle().Foreground(dimColor).
-		Render("via "+snap.Method) + "\n\n")
+	// Counts as chips, not a sentence — the numbers are what the operator checks
+	// against their provider's own record list.
+	confidence := badge("PARTIAL", warningColor)
+	if snap.Complete {
+		confidence = badge("COMPLETE", successColor)
+	}
+	head := confidence + "  " +
+		statChip("records", fmt.Sprintf("%d", len(records)), fgColor) + "   " +
+		statChip("probed", fmt.Sprintf("%d", snap.NamesProbed), dimColor) + "   " +
+		lipgloss.NewStyle().Foreground(mutedColor).Render(snap.Method)
 
-	// Honesty first, and above the list rather than below it: a sweep cannot
-	// prove absence, and the operator is about to bet their mail on this.
+	var b strings.Builder
+	b.WriteString(head + "\n\n")
+
 	if w := snap.Warning(); w != "" {
 		b.WriteString(lipgloss.NewStyle().Foreground(warningColor).
 			Render("⚠ "+wordWrap(w, inner-6)) + "\n\n")
@@ -383,33 +393,38 @@ func (m *dnsSetupModel) renderAdoptReview(inner int) string {
 			Render(wordWrap(snap.WildcardHint, inner-6)) + "\n\n")
 	}
 
+	// Column header, so the table reads as a table.
+	b.WriteString(lipgloss.NewStyle().Foreground(mutedColor).Bold(true).Render(
+		lipgloss.NewStyle().Width(30).Render("NAME")+
+			lipgloss.NewStyle().Width(8).Render("TYPE")+"VALUE") + "\n")
+
 	shown := records
-	const maxRows = 12
+	const maxRows = 10
 	if len(shown) > maxRows {
 		shown = shown[:maxRows]
 	}
 	for _, r := range shown {
-		name := lipgloss.NewStyle().Foreground(fgColor).Width(28).
-			Render(truncateToWidth(r.Name, 28))
-		typ := lipgloss.NewStyle().Foreground(accentColor).Width(6).Render(r.Type)
-		val := truncateToWidth(strings.Join(r.Values, ", "), max(12, inner-44))
-		b.WriteString("  " + name + typ +
-			lipgloss.NewStyle().Foreground(mutedColor).Render(val) + "\n")
+		name := lipgloss.NewStyle().Foreground(fgColor).Width(30).
+			Render(truncateToWidth(r.Name, 29))
+		val := truncateToWidth(strings.Join(r.Values, ", "), max(12, inner-46))
+		b.WriteString(name + recordTypeBadge(r.Type) + " " +
+			lipgloss.NewStyle().Foreground(dimColor).Render(val) + "\n")
 	}
 	if len(records) > maxRows {
 		b.WriteString(lipgloss.NewStyle().Foreground(mutedColor).
-			Render(fmt.Sprintf("  … and %d more\n", len(records)-maxRows)))
+			Render(fmt.Sprintf("… %d more", len(records)-maxRows)) + "\n")
 	}
 
-	b.WriteString("\n" + lipgloss.NewStyle().Foreground(dimColor).Render(wordWrap(
-		fmt.Sprintf("[Enter] creates the zone in %s and copies these across. Nothing "+
-			"changes where %s resolves until you update the nameservers at your "+
-			"registrar, which is a later step.", m.adopt.profile(), snap.Domain), inner-6)))
+	b.WriteString("\n" + renderActions([]action{
+		{key: "enter", title: "CREATE ZONE IN " + strings.ToUpper(m.adopt.profile()),
+			tone: successColor, detail: "copies these records; nothing resolves differently yet"},
+	}, inner-4))
 
-	return boxStyle.Width(inner).Render(b.String())
+	return panel("review "+snap.Domain, b.String(), width, accentColor)
 }
 
-func (m *dnsSetupModel) renderAdoptVerify(inner int) string {
+func (m *dnsSetupModel) renderAdoptVerify(width int) string {
+	inner := width - 4
 	var b strings.Builder
 	sum := m.adopt.summary
 
@@ -463,7 +478,8 @@ func (m *dnsSetupModel) renderAdoptVerify(inner int) string {
 	return boxStyle.Width(inner).Render(b.String())
 }
 
-func (m *dnsSetupModel) renderAdoptWaitNS(inner int) string {
+func (m *dnsSetupModel) renderAdoptWaitNS(width int) string {
+	inner := width - 4
 	ns := m.adopt.summary.Zone.Nameservers
 
 	var b strings.Builder
@@ -494,19 +510,25 @@ func (m *dnsSetupModel) renderAdoptWaitNS(inner int) string {
 }
 
 // adoptFooterHints returns the key hints for the current adoption phase.
-func (m *dnsSetupModel) adoptFooterHints() []string {
+func (m *dnsSetupModel) adoptFooterHints() []keyHint {
 	switch m.adopt.phase {
 	case adoptPickProfile:
-		return []string{"[↑↓] choose account", "[Enter] read the zone", "[Esc] back", "[Ctrl+C] cancel"}
+		return []keyHint{
+			{"↑↓", "choose account"}, {"enter", "read the zone"},
+			{"esc", "back"}, {"^C", "cancel"}}
 	case adoptReview:
 		if m.adopt.err != nil {
-			return []string{"[Esc] back", "[Ctrl+C] cancel"}
+			return []keyHint{{"esc", "back"}, {"^C", "cancel"}}
 		}
-		return []string{"[Enter] create zone and copy", "[Esc] back", "[Ctrl+C] cancel"}
+		return []keyHint{
+			{"enter", "create zone and copy"}, {"esc", "back"}, {"^C", "cancel"}}
 	case adoptVerify:
-		return []string{"[Enter] show nameservers", "[Esc] stop here", "[Ctrl+C] cancel"}
+		return []keyHint{
+			{"enter", "show nameservers"}, {"esc", "stop here"}, {"^C", "cancel"}}
 	case adoptWaitNS:
-		return []string{"[c] copy all", "[1-4] copy one", "[Esc] stop waiting", "[Ctrl+C] cancel"}
+		return []keyHint{
+			{"c", "copy all"}, {"1-4", "copy one"},
+			{"esc", "stop waiting"}, {"^C", "cancel"}}
 	}
-	return []string{"[Ctrl+C] cancel"}
+	return []keyHint{{"^C", "cancel"}}
 }
