@@ -10,7 +10,7 @@ import {
 	Shield,
 	Trash2,
 } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -48,6 +48,7 @@ export function S3NodeProperties({
 	config,
 	onConfigChange,
 }: S3NodePropertiesProps) {
+	const uid = useId();
 	const [showNewBucket, setShowNewBucket] = useState(false);
 	const [newBucketName, setNewBucketName] = useState("");
 	const [newBucketPublic, setNewBucketPublic] = useState(false);
@@ -237,9 +238,11 @@ export function S3NodeProperties({
 						<div className="border border-blue-700 bg-blue-900/10 rounded-lg p-4 space-y-4">
 							<div className="space-y-3">
 								<div>
-									<Label htmlFor="bucket-name">Bucket Name Suffix</Label>
+									<Label htmlFor={`${uid}-bucket-name`}>
+										Bucket Name Suffix
+									</Label>
 									<Input
-										id="bucket-name"
+										id={`${uid}-bucket-name`}
 										value={newBucketName}
 										onChange={(e) => setNewBucketName(e.target.value)}
 										placeholder="uploads"
@@ -255,7 +258,7 @@ export function S3NodeProperties({
 									<div className="flex items-center justify-between p-3 bg-gray-900 rounded-lg">
 										<div className="space-y-1">
 											<Label
-												htmlFor="bucket-public"
+												htmlFor={`${uid}-bucket-public`}
 												className="text-sm font-medium"
 											>
 												Public Access
@@ -265,7 +268,7 @@ export function S3NodeProperties({
 											</p>
 										</div>
 										<Switch
-											id="bucket-public"
+											id={`${uid}-bucket-public`}
 											checked={newBucketPublic}
 											onCheckedChange={(checked) => {
 												setNewBucketPublic(checked);
@@ -282,7 +285,7 @@ export function S3NodeProperties({
 									<div className="flex items-center justify-between p-3 bg-gray-900 rounded-lg">
 										<div className="space-y-1">
 											<Label
-												htmlFor="bucket-versioning"
+												htmlFor={`${uid}-bucket-versioning`}
 												className="text-sm font-medium"
 											>
 												Versioning
@@ -292,7 +295,7 @@ export function S3NodeProperties({
 											</p>
 										</div>
 										<Switch
-											id="bucket-versioning"
+											id={`${uid}-bucket-versioning`}
 											checked={newBucketVersioning}
 											onCheckedChange={setNewBucketVersioning}
 										/>
@@ -300,11 +303,11 @@ export function S3NodeProperties({
 								</div>
 
 								<div>
-									<Label htmlFor="bucket-cors">
+									<Label htmlFor={`${uid}-bucket-cors`}>
 										CORS Rules (JSON, optional)
 									</Label>
 									<Textarea
-										id="bucket-cors"
+										id={`${uid}-bucket-cors`}
 										value={newBucketCors}
 										onChange={(e) => setNewBucketCors(e.target.value)}
 										placeholder={

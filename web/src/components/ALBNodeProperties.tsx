@@ -6,7 +6,7 @@ import {
 	Network,
 	Shield,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
@@ -22,6 +22,7 @@ export function ALBNodeProperties({
 	config,
 	onConfigChange,
 }: ALBNodePropertiesProps) {
+	const uid = useId();
 	const [isALBEnabled, setIsALBEnabled] = useState(
 		config.alb?.enabled || false,
 	);
@@ -65,14 +66,14 @@ export function ALBNodeProperties({
 				<CardContent className="space-y-4">
 					<div className="flex items-center justify-between">
 						<div className="space-y-1">
-							<Label htmlFor="alb-enabled">Enable ALB</Label>
+							<Label htmlFor={`${uid}-alb-enabled`}>Enable ALB</Label>
 							<p className="text-sm text-gray-400">
 								Use Application Load Balancer instead of API Gateway for
 								incoming traffic
 							</p>
 						</div>
 						<Switch
-							id="alb-enabled"
+							id={`${uid}-alb-enabled`}
 							checked={isALBEnabled}
 							onCheckedChange={handleALBToggle}
 						/>

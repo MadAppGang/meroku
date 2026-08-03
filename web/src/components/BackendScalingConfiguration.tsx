@@ -1,5 +1,5 @@
 import { Activity, AlertCircle, Cpu, Info, Users } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useFargateOptions } from "../hooks/use-fargate-options";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import {
@@ -35,6 +35,7 @@ export function BackendScalingConfiguration({
 	isService = false,
 	serviceName,
 }: BackendScalingConfigurationProps) {
+	const uid = useId();
 	const {
 		options: fargateOptions,
 		getMemoryOptions,
@@ -139,7 +140,7 @@ export function BackendScalingConfiguration({
 				<CardContent className="space-y-4">
 					<div className="grid grid-cols-2 gap-4">
 						<div>
-							<Label htmlFor="cpu-units">CPU Units</Label>
+							<Label htmlFor={`${uid}-cpu-units`}>CPU Units</Label>
 							<Select
 								value={cpu}
 								onValueChange={(value: string) => {
@@ -165,7 +166,7 @@ export function BackendScalingConfiguration({
 								}}
 							>
 								<SelectTrigger
-									id="cpu-units"
+									id={`${uid}-cpu-units`}
 									className="mt-1 bg-gray-800 border-gray-600"
 								>
 									<SelectValue />
@@ -181,7 +182,7 @@ export function BackendScalingConfiguration({
 						</div>
 
 						<div>
-							<Label htmlFor="memory">Memory (MB)</Label>
+							<Label htmlFor={`${uid}-memory`}>Memory (MB)</Label>
 							<Select
 								value={memory}
 								onValueChange={(value: string) => {
@@ -190,7 +191,7 @@ export function BackendScalingConfiguration({
 								}}
 							>
 								<SelectTrigger
-									id="memory"
+									id={`${uid}-memory`}
 									className="mt-1 bg-gray-800 border-gray-600"
 								>
 									<SelectValue />
@@ -207,9 +208,9 @@ export function BackendScalingConfiguration({
 					</div>
 
 					<div>
-						<Label htmlFor="base-count">Base Instance Count</Label>
+						<Label htmlFor={`${uid}-base-count`}>Base Instance Count</Label>
 						<Input
-							id="base-count"
+							id={`${uid}-base-count`}
 							type="number"
 							min="1"
 							max="100"
@@ -263,13 +264,15 @@ export function BackendScalingConfiguration({
 					<CardContent className="space-y-4">
 						<div className="flex items-center justify-between">
 							<div className="flex-1">
-								<Label htmlFor="enable-autoscaling">Enable Autoscaling</Label>
+								<Label htmlFor={`${uid}-enable-autoscaling`}>
+									Enable Autoscaling
+								</Label>
 								<p className="text-xs text-gray-500 mt-1">
 									Automatically adjust the number of instances based on load
 								</p>
 							</div>
 							<Switch
-								id="enable-autoscaling"
+								id={`${uid}-enable-autoscaling`}
 								checked={autoscalingEnabled}
 								onCheckedChange={(checked) => {
 									setAutoscalingEnabled(checked);
@@ -285,9 +288,11 @@ export function BackendScalingConfiguration({
 							<>
 								<div className="grid grid-cols-2 gap-4">
 									<div>
-										<Label htmlFor="min-instances">Minimum Instances</Label>
+										<Label htmlFor={`${uid}-min-instances`}>
+											Minimum Instances
+										</Label>
 										<Input
-											id="min-instances"
+											id={`${uid}-min-instances`}
 											type="number"
 											min="1"
 											max={maxCapacity}
@@ -304,9 +309,11 @@ export function BackendScalingConfiguration({
 									</div>
 
 									<div>
-										<Label htmlFor="max-instances">Maximum Instances</Label>
+										<Label htmlFor={`${uid}-max-instances`}>
+											Maximum Instances
+										</Label>
 										<Input
-											id="max-instances"
+											id={`${uid}-max-instances`}
 											type="number"
 											min={minCapacity}
 											max="100"
@@ -379,7 +386,7 @@ export function BackendScalingConfiguration({
 									<div className="space-y-2">
 										<div className="flex items-center gap-2">
 											<Checkbox
-												id="request-scaling"
+												id={`${uid}-request-scaling`}
 												checked={requestBasedScaling}
 												onCheckedChange={(checked) => {
 													setRequestBasedScaling(checked as boolean);
@@ -387,7 +394,7 @@ export function BackendScalingConfiguration({
 												}}
 											/>
 											<Label
-												htmlFor="request-scaling"
+												htmlFor={`${uid}-request-scaling`}
 												className="text-sm font-normal cursor-pointer"
 											>
 												Enable Request-based Scaling (requires ALB)
@@ -396,11 +403,11 @@ export function BackendScalingConfiguration({
 
 										{requestBasedScaling && (
 											<div className="ml-6">
-												<Label htmlFor="requests-per-instance">
+												<Label htmlFor={`${uid}-requests-per-instance`}>
 													Requests per Instance
 												</Label>
 												<Input
-													id="requests-per-instance"
+													id={`${uid}-requests-per-instance`}
 													type="number"
 													min="100"
 													max="10000"

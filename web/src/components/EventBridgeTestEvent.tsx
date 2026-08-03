@@ -1,5 +1,5 @@
 import { CheckCircle, Clock, Info, Send, XCircle, Zap } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import {
 	infrastructureApi,
 	type TestEventRequest,
@@ -24,6 +24,7 @@ interface EventBridgeTestEventProps {
 }
 
 export function EventBridgeTestEvent({ config }: EventBridgeTestEventProps) {
+	const uid = useId();
 	// Test event state - default source to 'meroku.test'
 	const [testEvent, setTestEvent] = useState<TestEventRequest>({
 		source: "meroku.test",
@@ -112,9 +113,9 @@ export function EventBridgeTestEvent({ config }: EventBridgeTestEventProps) {
 				</CardHeader>
 				<CardContent className="space-y-4">
 					<div className="space-y-2">
-						<Label htmlFor="test-source">Event Source</Label>
+						<Label htmlFor={`${uid}-test-source`}>Event Source</Label>
 						<Input
-							id="test-source"
+							id={`${uid}-test-source`}
 							value={testEvent.source}
 							onChange={(e) =>
 								setTestEvent((prev) => ({ ...prev, source: e.target.value }))
@@ -139,9 +140,9 @@ export function EventBridgeTestEvent({ config }: EventBridgeTestEventProps) {
 					</div>
 
 					<div className="space-y-2">
-						<Label htmlFor="test-detail-type">Detail Type</Label>
+						<Label htmlFor={`${uid}-test-detail-type`}>Detail Type</Label>
 						<Input
-							id="test-detail-type"
+							id={`${uid}-test-detail-type`}
 							value={testEvent.detailType}
 							onChange={(e) =>
 								setTestEvent((prev) => ({
@@ -170,9 +171,9 @@ export function EventBridgeTestEvent({ config }: EventBridgeTestEventProps) {
 					</div>
 
 					<div className="space-y-2">
-						<Label htmlFor="test-detail">Event Detail (JSON)</Label>
+						<Label htmlFor={`${uid}-test-detail`}>Event Detail (JSON)</Label>
 						<Textarea
-							id="test-detail"
+							id={`${uid}-test-detail`}
 							value={detailJson}
 							onChange={(e) => handleDetailJsonChange(e.target.value)}
 							placeholder='{"test": true, "message": "EventBridge test event"}'

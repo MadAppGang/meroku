@@ -9,7 +9,7 @@ import {
 	Trash2,
 	X,
 } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { ComponentNode } from "../types";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import { Badge } from "./ui/badge";
@@ -35,6 +35,7 @@ export function BackendIAMPermissions({
 	node,
 	onConfigChange,
 }: BackendIAMPermissionsProps) {
+	const uid = useId();
 	// Determine if this is for a service or backend
 	const isService = node?.type === "service";
 	const serviceName = isService ? node.id.replace("service-", "") : null;
@@ -444,11 +445,11 @@ export function BackendIAMPermissions({
 									</h4>
 									<div className="space-y-3">
 										<div>
-											<Label htmlFor="new-actions" className="text-xs">
+											<Label htmlFor={`${uid}-new-actions`} className="text-xs">
 												Actions (one per line)
 											</Label>
 											<Textarea
-												id="new-actions"
+												id={`${uid}-new-actions`}
 												placeholder="s3:GetObject\ns3:PutObject\ndynamodb:GetItem"
 												value={newActions}
 												onChange={(e) => setNewActions(e.target.value)}
@@ -456,11 +457,14 @@ export function BackendIAMPermissions({
 											/>
 										</div>
 										<div>
-											<Label htmlFor="new-resources" className="text-xs">
+											<Label
+												htmlFor={`${uid}-new-resources`}
+												className="text-xs"
+											>
 												Resources (one per line)
 											</Label>
 											<Textarea
-												id="new-resources"
+												id={`${uid}-new-resources`}
 												placeholder="arn:aws:s3:::my-bucket/*\narn:aws:dynamodb:*:*:table/my-table"
 												value={newResources}
 												onChange={(e) => setNewResources(e.target.value)}

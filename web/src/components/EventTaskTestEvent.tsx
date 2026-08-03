@@ -1,5 +1,5 @@
 import { CheckCircle, Clock, Send, XCircle } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import {
 	infrastructureApi,
 	type TestEventRequest,
@@ -20,6 +20,7 @@ interface EventTaskTestEventProps {
 }
 
 export function EventTaskTestEvent({ config, node }: EventTaskTestEventProps) {
+	const uid = useId();
 	const taskName = node.id.replace("event-", "");
 
 	const eventTask = config.event_processor_tasks?.find(
@@ -97,9 +98,9 @@ export function EventTaskTestEvent({ config, node }: EventTaskTestEventProps) {
 				<div className="space-y-4">
 					<div className="grid grid-cols-2 gap-4">
 						<div className="space-y-2">
-							<Label htmlFor="test-source">Source</Label>
+							<Label htmlFor={`${uid}-test-source`}>Source</Label>
 							<Input
-								id="test-source"
+								id={`${uid}-test-source`}
 								value={testEvent.source}
 								onChange={(e) =>
 									setTestEvent((prev) => ({ ...prev, source: e.target.value }))
@@ -117,9 +118,9 @@ export function EventTaskTestEvent({ config, node }: EventTaskTestEventProps) {
 						</div>
 
 						<div className="space-y-2">
-							<Label htmlFor="test-detail-type">Detail Type</Label>
+							<Label htmlFor={`${uid}-test-detail-type`}>Detail Type</Label>
 							<Input
-								id="test-detail-type"
+								id={`${uid}-test-detail-type`}
 								value={testEvent.detailType}
 								onChange={(e) =>
 									setTestEvent((prev) => ({
@@ -141,9 +142,9 @@ export function EventTaskTestEvent({ config, node }: EventTaskTestEventProps) {
 					</div>
 
 					<div className="space-y-2">
-						<Label htmlFor="test-detail">Event Detail (JSON)</Label>
+						<Label htmlFor={`${uid}-test-detail`}>Event Detail (JSON)</Label>
 						<Textarea
-							id="test-detail"
+							id={`${uid}-test-detail`}
 							value={detailJson}
 							onChange={(e) => handleDetailJsonChange(e.target.value)}
 							placeholder='{"orderId": "123"}'

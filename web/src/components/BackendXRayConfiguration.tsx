@@ -7,6 +7,7 @@ import {
 	Settings,
 	XCircle,
 } from "lucide-react";
+import { useId } from "react";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import {
 	Card,
@@ -27,6 +28,7 @@ export function BackendXRayConfiguration({
 	config,
 	onConfigChange,
 }: BackendXRayConfigurationProps) {
+	const uid = useId();
 	const xrayEnabled = config.workload?.xray_enabled || false;
 	const logGroupName = `${config.project}_adot_collector_${config.env}`;
 
@@ -53,13 +55,15 @@ export function BackendXRayConfiguration({
 				<CardContent className="space-y-4">
 					<div className="flex items-center justify-between">
 						<div className="flex-1">
-							<Label htmlFor="enable-xray">Enable AWS X-Ray Tracing</Label>
+							<Label htmlFor={`${uid}-enable-xray`}>
+								Enable AWS X-Ray Tracing
+							</Label>
 							<p className="text-xs text-gray-500 mt-1">
 								Adds ADOT collector sidecar to capture and forward traces
 							</p>
 						</div>
 						<Switch
-							id="enable-xray"
+							id={`${uid}-enable-xray`}
 							checked={xrayEnabled}
 							onCheckedChange={handleXRayToggle}
 							disabled={!onConfigChange}

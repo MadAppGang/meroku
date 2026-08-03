@@ -9,7 +9,7 @@ import {
 	RefreshCw,
 	Trash2,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import {
 	infrastructureApi,
 	type SSMParameterMetadata,
@@ -50,6 +50,7 @@ export function ScheduledTaskParameterStore({
 	config,
 	node,
 }: ScheduledTaskParameterStoreProps) {
+	const uid = useId();
 	// Extract task name from node id (e.g., "scheduled-daily-report" -> "daily-report", "event-order-processor" -> "order-processor")
 	const taskName = node.id.replace(/^(scheduled|event)-/, "");
 	const parameterPath = `/${config.env}/${config.project}/task/${taskName}`;
@@ -250,11 +251,14 @@ export function ScheduledTaskParameterStore({
 								</h4>
 								<div className="grid grid-cols-2 gap-3">
 									<div>
-										<Label htmlFor="new-param-name" className="text-xs">
+										<Label
+											htmlFor={`${uid}-new-param-name`}
+											className="text-xs"
+										>
 											Parameter Name
 										</Label>
 										<Input
-											id="new-param-name"
+											id={`${uid}-new-param-name`}
 											placeholder="parameter_name"
 											value={newParamName}
 											onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
@@ -292,11 +296,11 @@ export function ScheduledTaskParameterStore({
 									</div>
 								</div>
 								<div>
-									<Label htmlFor="new-param-value" className="text-xs">
+									<Label htmlFor={`${uid}-new-param-value`} className="text-xs">
 										Value
 									</Label>
 									<Textarea
-										id="new-param-value"
+										id={`${uid}-new-param-value`}
 										placeholder="Parameter value..."
 										value={newParamValue}
 										onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
@@ -306,11 +310,11 @@ export function ScheduledTaskParameterStore({
 									/>
 								</div>
 								<div>
-									<Label htmlFor="new-param-desc" className="text-xs">
+									<Label htmlFor={`${uid}-new-param-desc`} className="text-xs">
 										Description (optional)
 									</Label>
 									<Input
-										id="new-param-desc"
+										id={`${uid}-new-param-desc`}
 										placeholder="What is this parameter for?"
 										value={newParamDescription}
 										onChange={(e: React.ChangeEvent<HTMLInputElement>) =>

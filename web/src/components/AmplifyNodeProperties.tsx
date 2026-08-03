@@ -7,7 +7,7 @@ import {
 	Globe,
 	Loader2,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { infrastructureApi } from "../api/infrastructure";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import { Button } from "./ui/button";
@@ -51,6 +51,7 @@ export function AmplifyNodeProperties({
 	nodeId,
 	onConfigChange,
 }: AmplifyNodePropertiesProps) {
+	const uid = useId();
 	const appName = nodeId.replace("amplify-", "");
 	const amplifyAppIndex =
 		config.amplify_apps?.findIndex((app) => app.name === appName) ?? -1;
@@ -225,9 +226,9 @@ export function AmplifyNodeProperties({
 				</h3>
 				<div className="space-y-3">
 					<div>
-						<Label htmlFor="name">App Name</Label>
+						<Label htmlFor={`${uid}-name`}>App Name</Label>
 						<Input
-							id="name"
+							id={`${uid}-name`}
 							value={amplifyApp.name}
 							className="mt-1 bg-gray-800 border-gray-600 text-white"
 							disabled
@@ -238,9 +239,11 @@ export function AmplifyNodeProperties({
 					</div>
 
 					<div>
-						<Label htmlFor="github_repository">GitHub Repository URL</Label>
+						<Label htmlFor={`${uid}-github_repository`}>
+							GitHub Repository URL
+						</Label>
 						<Input
-							id="github_repository"
+							id={`${uid}-github_repository`}
 							value={amplifyApp.github_repository}
 							onChange={(e) =>
 								handleChange("github_repository", e.target.value)
@@ -251,9 +254,9 @@ export function AmplifyNodeProperties({
 					</div>
 
 					<div>
-						<Label htmlFor="subdomain_prefix">Subdomain Prefix</Label>
+						<Label htmlFor={`${uid}-subdomain_prefix`}>Subdomain Prefix</Label>
 						<Input
-							id="subdomain_prefix"
+							id={`${uid}-subdomain_prefix`}
 							value={amplifyApp.subdomain_prefix || ""}
 							onChange={(e) => handleChange("subdomain_prefix", e.target.value)}
 							placeholder="app"
@@ -305,14 +308,19 @@ export function AmplifyNodeProperties({
 				<div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
 					<div className="flex items-center justify-between">
 						<div>
-							<p className="text-sm font-medium text-white">Enable SPA Mode</p>
+							<Label
+								htmlFor={`${uid}-spa_mode`}
+								className="text-sm font-medium text-white"
+							>
+								Enable SPA Mode
+							</Label>
 							<p className="text-xs text-gray-400 mt-1">
 								Use 200 status rewrite (recommended for React, Vue, Angular
 								SPAs)
 							</p>
 						</div>
 						<Checkbox
-							id="spa_mode"
+							id={`${uid}-spa_mode`}
 							checked={amplifyApp.spa_mode ?? true}
 							onCheckedChange={(checked) =>
 								handleChange("spa_mode", checked === true)

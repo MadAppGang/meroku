@@ -11,7 +11,7 @@ import {
 	Server,
 	Zap,
 } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { infrastructureApi } from "../api/infrastructure";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import { Alert, AlertDescription } from "./ui/alert";
@@ -37,6 +37,7 @@ export function PostgresNodeProperties({
 	config,
 	onConfigChange,
 }: PostgresNodePropertiesProps) {
+	const uid = useId();
 	const postgresConfig = config.postgres || { enabled: false };
 	const workloadConfig = config.workload || {};
 	// Remove unused password state variables that are only needed in PostgresConnectionInfo component
@@ -153,7 +154,7 @@ export function PostgresNodeProperties({
 				<CardContent>
 					<div className="flex items-center justify-between">
 						<div className="space-y-1">
-							<Label htmlFor="postgres-enabled" className="text-base">
+							<Label htmlFor={`${uid}-postgres-enabled`} className="text-base">
 								Enable PostgreSQL
 							</Label>
 							<p className="text-sm text-gray-500">
@@ -161,7 +162,7 @@ export function PostgresNodeProperties({
 							</p>
 						</div>
 						<Switch
-							id="postgres-enabled"
+							id={`${uid}-postgres-enabled`}
 							checked={postgresConfig.enabled}
 							onCheckedChange={handleTogglePostgres}
 						/>
@@ -205,9 +206,11 @@ export function PostgresNodeProperties({
 							{postgresConfig.aurora && (
 								<div className="grid grid-cols-2 gap-4 p-3 bg-gray-800 rounded-lg">
 									<div className="space-y-2">
-										<Label htmlFor="min-capacity">Min Capacity (ACUs)</Label>
+										<Label htmlFor={`${uid}-min-capacity`}>
+											Min Capacity (ACUs)
+										</Label>
 										<Input
-											id="min-capacity"
+											id={`${uid}-min-capacity`}
 											type="number"
 											step="0.5"
 											min="0"
@@ -239,9 +242,11 @@ export function PostgresNodeProperties({
 									</div>
 
 									<div className="space-y-2">
-										<Label htmlFor="max-capacity">Max Capacity (ACUs)</Label>
+										<Label htmlFor={`${uid}-max-capacity`}>
+											Max Capacity (ACUs)
+										</Label>
 										<Input
-											id="max-capacity"
+											id={`${uid}-max-capacity`}
 											type="number"
 											step="0.5"
 											min="1"
@@ -298,9 +303,11 @@ export function PostgresNodeProperties({
 
 									{/* Instance Class Dropdown */}
 									<div className="space-y-2">
-										<Label htmlFor="instance-class">Instance Class</Label>
+										<Label htmlFor={`${uid}-instance-class`}>
+											Instance Class
+										</Label>
 										<select
-											id="instance-class"
+											id={`${uid}-instance-class`}
 											value={postgresConfig.instance_class || "db.t4g.micro"}
 											onChange={(e) =>
 												handleUpdateConfig({ instance_class: e.target.value })
@@ -348,11 +355,11 @@ export function PostgresNodeProperties({
 
 									{/* Storage Size */}
 									<div className="space-y-2">
-										<Label htmlFor="allocated-storage">
+										<Label htmlFor={`${uid}-allocated-storage`}>
 											Allocated Storage (GB)
 										</Label>
 										<Input
-											id="allocated-storage"
+											id={`${uid}-allocated-storage`}
 											type="number"
 											min={20}
 											max={65536}
@@ -517,9 +524,9 @@ export function PostgresNodeProperties({
 
 							<div className="grid grid-cols-2 gap-4">
 								<div className="space-y-2">
-									<Label htmlFor="db-name">Database Name</Label>
+									<Label htmlFor={`${uid}-db-name`}>Database Name</Label>
 									<Input
-										id="db-name"
+										id={`${uid}-db-name`}
 										value={postgresConfig.dbname || ""}
 										onChange={(e) =>
 											handleUpdateConfig({ dbname: e.target.value })
@@ -532,9 +539,9 @@ export function PostgresNodeProperties({
 								</div>
 
 								<div className="space-y-2">
-									<Label htmlFor="db-username">Master Username</Label>
+									<Label htmlFor={`${uid}-db-username`}>Master Username</Label>
 									<Input
-										id="db-username"
+										id={`${uid}-db-username`}
 										value={postgresConfig.username || ""}
 										onChange={(e) =>
 											handleUpdateConfig({ username: e.target.value })
@@ -546,9 +553,11 @@ export function PostgresNodeProperties({
 							</div>
 
 							<div className="space-y-2">
-								<Label htmlFor="engine-version">PostgreSQL Version</Label>
+								<Label htmlFor={`${uid}-engine-version`}>
+									PostgreSQL Version
+								</Label>
 								<select
-									id="engine-version"
+									id={`${uid}-engine-version`}
 									value={postgresConfig.engine_version || "16"}
 									onChange={(e) =>
 										handleUpdateConfig({ engine_version: e.target.value })
@@ -647,9 +656,11 @@ export function PostgresNodeProperties({
 							{workloadConfig.install_pg_admin && (
 								<div className="space-y-4">
 									<div className="space-y-2">
-										<Label htmlFor="pgadmin-email">pgAdmin Login Email</Label>
+										<Label htmlFor={`${uid}-pgadmin-email`}>
+											pgAdmin Login Email
+										</Label>
 										<Input
-											id="pgadmin-email"
+											id={`${uid}-pgadmin-email`}
 											type="email"
 											value={workloadConfig.pg_admin_email || ""}
 											onChange={(e) => handleUpdatePgAdminEmail(e.target.value)}

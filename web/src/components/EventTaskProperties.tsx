@@ -84,6 +84,7 @@ export function EventTaskProperties({
 	accountInfo,
 	node,
 }: EventTaskPropertiesProps) {
+	const uid = useId();
 	// Extract task name from node id (e.g., "event-order-processor" -> "order-processor")
 	const taskName = node.id.replace("event-", "");
 
@@ -180,13 +181,13 @@ export function EventTaskProperties({
 			{/* Enabled Toggle - at the very top */}
 			<div className="flex items-center justify-between">
 				<div className="flex-1">
-					<Label htmlFor="enabled">Enabled</Label>
+					<Label htmlFor={`${uid}-enabled`}>Enabled</Label>
 					<p className="text-xs text-gray-500 mt-1">
 						When disabled, all settings are kept but the task is not deployed
 					</p>
 				</div>
 				<Switch
-					id="enabled"
+					id={`${uid}-enabled`}
 					checked={eventTask.enabled !== false}
 					onCheckedChange={(checked) => updateTaskConfig({ enabled: checked })}
 					className="data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-gray-600"

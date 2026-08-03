@@ -8,7 +8,7 @@ import {
 	Mail,
 	Send,
 } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { infrastructureApi } from "../api/infrastructure";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import { Alert, AlertDescription } from "./ui/alert";
@@ -29,6 +29,7 @@ interface SESSendTestEmailProps {
 }
 
 export function SESSendTestEmail({ config }: SESSendTestEmailProps) {
+	const uid = useId();
 	const [to, setTo] = useState("");
 	const [subject, setSubject] = useState("Test Email from SES");
 	const [body, setBody] = useState(`This is a test email sent from AWS SES.
@@ -172,9 +173,9 @@ This is an automated message from ${actualDomain}`,
 				</CardHeader>
 				<CardContent className="space-y-4">
 					<div className="space-y-2">
-						<Label htmlFor="to-email">To Email Address</Label>
+						<Label htmlFor={`${uid}-to-email`}>To Email Address</Label>
 						<Input
-							id="to-email"
+							id={`${uid}-to-email`}
 							type="email"
 							value={to}
 							onChange={(e) => setTo(e.target.value)}
@@ -187,9 +188,9 @@ This is an automated message from ${actualDomain}`,
 					</div>
 
 					<div className="space-y-2">
-						<Label htmlFor="subject">Subject</Label>
+						<Label htmlFor={`${uid}-subject`}>Subject</Label>
 						<Input
-							id="subject"
+							id={`${uid}-subject`}
 							value={subject}
 							onChange={(e) => setSubject(e.target.value)}
 							placeholder="Test Email Subject"
@@ -199,11 +200,11 @@ This is an automated message from ${actualDomain}`,
 
 					<div className="space-y-2">
 						<div className="flex items-center justify-between">
-							<Label htmlFor="body">Email Body</Label>
+							<Label htmlFor={`${uid}-body`}>Email Body</Label>
 							<span className="text-xs text-gray-500">Plain text or HTML</span>
 						</div>
 						<Textarea
-							id="body"
+							id={`${uid}-body`}
 							value={body}
 							onChange={(e) => setBody(e.target.value)}
 							placeholder="Email content..."

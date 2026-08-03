@@ -1,5 +1,5 @@
 import { AlertCircle, Copy, Info, RefreshCw, Terminal } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import {
 	type AccountInfo,
 	type ECSTaskInfo,
@@ -34,6 +34,7 @@ export function BackendSSHAccess({
 	isService = false,
 	serviceName,
 }: BackendSSHAccessProps) {
+	const uid = useId();
 	const [tasks, setTasks] = useState<ECSTaskInfo[]>([]);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -167,13 +168,15 @@ export function BackendSSHAccess({
 				<CardContent className="space-y-4">
 					<div className="flex items-center justify-between">
 						<div className="flex-1">
-							<Label htmlFor="remote_access">Enable Remote Access</Label>
+							<Label htmlFor={`${uid}-remote_access`}>
+								Enable Remote Access
+							</Label>
 							<p className="text-xs text-gray-500 mt-1">
 								Provisions secure SSH access through ECS Exec
 							</p>
 						</div>
 						<Switch
-							id="remote_access"
+							id={`${uid}-remote_access`}
 							checked={
 								isService
 									? serviceConfig?.remote_access || false

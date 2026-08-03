@@ -1,5 +1,5 @@
 import { Check, Edit2, Lock, Plus, Settings, Trash2, X } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { AccountInfo } from "../api/infrastructure";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import { Button } from "./ui/button";
@@ -24,6 +24,7 @@ export function BackendEnvironmentVariables({
 	accountInfo,
 	onConfigChange,
 }: BackendEnvironmentVariablesProps) {
+	const uid = useId();
 	const [editingPort, setEditingPort] = useState(false);
 	const [portValue, setPortValue] = useState(
 		config.workload?.backend_image_port?.toString() || "8080",
@@ -352,13 +353,13 @@ export function BackendEnvironmentVariables({
 							<div className="grid grid-cols-2 gap-2">
 								<div>
 									<Label
-										htmlFor="new-var-name"
+										htmlFor={`${uid}-new-var-name`}
 										className="text-xs text-gray-400"
 									>
 										Variable Name
 									</Label>
 									<Input
-										id="new-var-name"
+										id={`${uid}-new-var-name`}
 										type="text"
 										placeholder="VARIABLE_NAME"
 										value={newVarName}
@@ -374,13 +375,13 @@ export function BackendEnvironmentVariables({
 								</div>
 								<div>
 									<Label
-										htmlFor="new-var-value"
+										htmlFor={`${uid}-new-var-value`}
 										className="text-xs text-gray-400"
 									>
 										Value
 									</Label>
 									<Input
-										id="new-var-value"
+										id={`${uid}-new-var-value`}
 										type="text"
 										placeholder="value"
 										value={newVarValue}

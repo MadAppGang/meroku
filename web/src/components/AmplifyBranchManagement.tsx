@@ -1,5 +1,5 @@
 import { Check, GitBranch, Plus, Trash2, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { AmplifyBranch, BranchUpdateHandler } from "../types/components";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import { Button } from "./ui/button";
@@ -52,6 +52,7 @@ export function AmplifyBranchManagement({
 	nodeId,
 	onConfigChange,
 }: AmplifyBranchManagementProps) {
+	const uid = useId();
 	const appName = nodeId.replace("amplify-", "");
 	const amplifyAppIndex =
 		config.amplify_apps?.findIndex((app) => app.name === appName) ?? -1;
@@ -224,9 +225,9 @@ export function AmplifyBranchManagement({
 
 						<div className="grid grid-cols-2 gap-3">
 							<div>
-								<Label htmlFor="new-branch-name">Branch Name</Label>
+								<Label htmlFor={`${uid}-new-branch-name`}>Branch Name</Label>
 								<Input
-									id="new-branch-name"
+									id={`${uid}-new-branch-name`}
 									value={newBranch.name}
 									onChange={(e) =>
 										setNewBranch({ ...newBranch, name: e.target.value })
@@ -237,7 +238,7 @@ export function AmplifyBranchManagement({
 							</div>
 
 							<div>
-								<Label htmlFor="new-branch-stage">Stage</Label>
+								<Label htmlFor={`${uid}-new-branch-stage`}>Stage</Label>
 								<Select
 									value={newBranch.stage}
 									onValueChange={(value) =>
@@ -248,7 +249,7 @@ export function AmplifyBranchManagement({
 									}
 								>
 									<SelectTrigger
-										id="new-branch-stage"
+										id={`${uid}-new-branch-stage`}
 										className="mt-1 bg-gray-900 border-gray-600 text-white"
 									>
 										<SelectValue />
@@ -266,7 +267,7 @@ export function AmplifyBranchManagement({
 						<div className="space-y-2">
 							<div className="flex items-center space-x-2">
 								<Checkbox
-									id="new-auto-build"
+									id={`${uid}-new-auto-build`}
 									checked={newBranch.enable_auto_build}
 									onCheckedChange={(checked) =>
 										setNewBranch({
@@ -275,14 +276,17 @@ export function AmplifyBranchManagement({
 										})
 									}
 								/>
-								<Label htmlFor="new-auto-build" className="font-normal">
+								<Label
+									htmlFor={`${uid}-new-auto-build`}
+									className="font-normal"
+								>
 									Enable automatic builds on push
 								</Label>
 							</div>
 
 							<div className="flex items-center space-x-2">
 								<Checkbox
-									id="new-pr-preview"
+									id={`${uid}-new-pr-preview`}
 									checked={newBranch.enable_pull_request_preview}
 									onCheckedChange={(checked) =>
 										setNewBranch({
@@ -291,16 +295,21 @@ export function AmplifyBranchManagement({
 										})
 									}
 								/>
-								<Label htmlFor="new-pr-preview" className="font-normal">
+								<Label
+									htmlFor={`${uid}-new-pr-preview`}
+									className="font-normal"
+								>
 									Enable pull request previews
 								</Label>
 							</div>
 						</div>
 
 						<div>
-							<Label htmlFor="new-env-vars">Environment Variables</Label>
+							<Label htmlFor={`${uid}-new-env-vars`}>
+								Environment Variables
+							</Label>
 							<Textarea
-								id="new-env-vars"
+								id={`${uid}-new-env-vars`}
 								value={newBranch.environment_variables_text}
 								onChange={(e) =>
 									setNewBranch({

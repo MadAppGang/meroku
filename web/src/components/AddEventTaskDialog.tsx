@@ -1,6 +1,6 @@
 import { Plus, X } from "lucide-react";
 import type React from "react";
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import type { EventTask } from "../types/components";
 import type { ECRConfig, YamlInfrastructureConfig } from "../types/yamlConfig";
 import { ECRConfigSection } from "./ECRConfigSection";
@@ -41,6 +41,7 @@ export function AddEventTaskDialog({
 	availableServices,
 	config,
 }: AddEventTaskDialogProps) {
+	const uid = useId();
 	const [formData, setFormData] = useState({
 		name: "",
 		rule_name: "",
@@ -278,9 +279,9 @@ export function AddEventTaskDialog({
 				<form onSubmit={handleSubmit}>
 					<div className="grid gap-4 py-4">
 						<div className="grid gap-2">
-							<Label htmlFor="name">Task Name</Label>
+							<Label htmlFor={`${uid}-name`}>Task Name</Label>
 							<Input
-								id="name"
+								id={`${uid}-name`}
 								value={formData.name}
 								onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
 									setFormData({ ...formData, name: e.target.value })
@@ -293,9 +294,9 @@ export function AddEventTaskDialog({
 						</div>
 
 						<div className="grid gap-2">
-							<Label htmlFor="rule_name">EventBridge Rule Name</Label>
+							<Label htmlFor={`${uid}-rule_name`}>EventBridge Rule Name</Label>
 							<Input
-								id="rule_name"
+								id={`${uid}-rule_name`}
 								value={formData.rule_name}
 								onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
 									setFormData({ ...formData, rule_name: e.target.value })
@@ -404,7 +405,10 @@ export function AddEventTaskDialog({
 
 						<div className="grid gap-2">
 							<div className="flex items-center justify-between">
-								<Label htmlFor="docker_image" className="text-sm font-medium">
+								<Label
+									htmlFor={`${uid}-docker_image`}
+									className="text-sm font-medium"
+								>
 									Image Tag (Optional)
 								</Label>
 								<span className="text-xs text-muted-foreground">
@@ -412,7 +416,7 @@ export function AddEventTaskDialog({
 								</span>
 							</div>
 							<Input
-								id="docker_image"
+								id={`${uid}-docker_image`}
 								value={formData.docker_image}
 								onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
 									setFormData({ ...formData, docker_image: e.target.value })
@@ -433,11 +437,11 @@ export function AddEventTaskDialog({
 						</div>
 
 						<div className="grid gap-2">
-							<Label htmlFor="container_command">
+							<Label htmlFor={`${uid}-container_command`}>
 								Container Command (comma-separated)
 							</Label>
 							<Input
-								id="container_command"
+								id={`${uid}-container_command`}
 								value={formData.container_command}
 								onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
 									setFormData({
@@ -451,14 +455,14 @@ export function AddEventTaskDialog({
 
 						<div className="grid grid-cols-2 gap-4">
 							<div className="grid gap-2">
-								<Label htmlFor="cpu">CPU (units)</Label>
+								<Label htmlFor={`${uid}-cpu`}>CPU (units)</Label>
 								<Select
 									value={formData.cpu.toString()}
 									onValueChange={(value: string) =>
 										setFormData({ ...formData, cpu: parseInt(value, 10) })
 									}
 								>
-									<SelectTrigger id="cpu">
+									<SelectTrigger id={`${uid}-cpu`}>
 										<SelectValue />
 									</SelectTrigger>
 									<SelectContent>
@@ -471,14 +475,14 @@ export function AddEventTaskDialog({
 							</div>
 
 							<div className="grid gap-2">
-								<Label htmlFor="memory">Memory (MB)</Label>
+								<Label htmlFor={`${uid}-memory`}>Memory (MB)</Label>
 								<Select
 									value={formData.memory.toString()}
 									onValueChange={(value: string) =>
 										setFormData({ ...formData, memory: parseInt(value, 10) })
 									}
 								>
-									<SelectTrigger id="memory">
+									<SelectTrigger id={`${uid}-memory`}>
 										<SelectValue />
 									</SelectTrigger>
 									<SelectContent>
@@ -492,11 +496,11 @@ export function AddEventTaskDialog({
 						</div>
 
 						<div className="grid gap-2">
-							<Label htmlFor="environment_variables">
+							<Label htmlFor={`${uid}-environment_variables`}>
 								Environment Variables (KEY=VALUE, one per line)
 							</Label>
 							<Textarea
-								id="environment_variables"
+								id={`${uid}-environment_variables`}
 								value={formData.environment_variables}
 								onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
 									setFormData({

@@ -13,7 +13,7 @@ import {
 	Trash2,
 	X,
 } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { infrastructureApi } from "../api/infrastructure";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import { Alert, AlertDescription } from "./ui/alert";
@@ -47,6 +47,7 @@ export function BackendS3Buckets({
 	config,
 	onConfigChange,
 }: BackendS3BucketsProps) {
+	const uid = useId();
 	const primaryBucketName = `${config.project}-backend-${config.env}${config.workload?.bucket_postfix || ""}`;
 	const isPublic = config.workload?.bucket_public !== false;
 
@@ -262,11 +263,11 @@ export function BackendS3Buckets({
 							<div className="border border-blue-700 bg-blue-900/10 rounded-lg p-3 space-y-3">
 								<div className="grid grid-cols-2 gap-3">
 									<div>
-										<Label htmlFor="new-bucket" className="text-xs">
+										<Label htmlFor={`${uid}-new-bucket`} className="text-xs">
 											Bucket Name
 										</Label>
 										<Input
-											id="new-bucket"
+											id={`${uid}-new-bucket`}
 											placeholder={primaryBucketName}
 											value={newBucket}
 											onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
@@ -279,11 +280,11 @@ export function BackendS3Buckets({
 										</p>
 									</div>
 									<div>
-										<Label htmlFor="new-key" className="text-xs">
+										<Label htmlFor={`${uid}-new-key`} className="text-xs">
 											File Path
 										</Label>
 										<Input
-											id="new-key"
+											id={`${uid}-new-key`}
 											placeholder="backend/.env"
 											value={newKey}
 											onChange={(e: React.ChangeEvent<HTMLInputElement>) =>

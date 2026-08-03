@@ -1,5 +1,5 @@
 import { Cloud, Globe, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import type {
 	CloudFrontAdditionalZone,
 	CloudFrontConfig,
@@ -40,6 +40,7 @@ export const AddCloudFrontDialog: React.FC<AddCloudFrontDialogProps> = ({
 	existingDistributions = [],
 	config,
 }) => {
+	const uid = useId();
 	const [formData, setFormData] = useState<{
 		name: string;
 		enabled: boolean;
@@ -314,9 +315,9 @@ export const AddCloudFrontDialog: React.FC<AddCloudFrontDialogProps> = ({
 				<div className="grid gap-4 py-4">
 					{/* Distribution Name */}
 					<div className="space-y-2">
-						<Label htmlFor="name">Distribution Name *</Label>
+						<Label htmlFor={`${uid}-name`}>Distribution Name *</Label>
 						<Input
-							id="name"
+							id={`${uid}-name`}
 							value={formData.name}
 							onChange={(e) =>
 								setFormData({ ...formData, name: e.target.value })
@@ -355,9 +356,9 @@ export const AddCloudFrontDialog: React.FC<AddCloudFrontDialogProps> = ({
 
 						<div className="grid grid-cols-2 gap-3">
 							<div className="space-y-2">
-								<Label htmlFor="origin_name">Origin Name *</Label>
+								<Label htmlFor={`${uid}-origin_name`}>Origin Name *</Label>
 								<Input
-									id="origin_name"
+									id={`${uid}-origin_name`}
 									value={formData.origin_name}
 									onChange={(e) =>
 										setFormData({ ...formData, origin_name: e.target.value })
@@ -371,14 +372,14 @@ export const AddCloudFrontDialog: React.FC<AddCloudFrontDialogProps> = ({
 							</div>
 
 							<div className="space-y-2">
-								<Label htmlFor="origin_type">Origin Type *</Label>
+								<Label htmlFor={`${uid}-origin_type`}>Origin Type *</Label>
 								<Select
 									value={formData.origin_type}
 									onValueChange={(value: "amplify" | "s3" | "alb" | "custom") =>
 										setFormData({ ...formData, origin_type: value })
 									}
 								>
-									<SelectTrigger id="origin_type">
+									<SelectTrigger id={`${uid}-origin_type`}>
 										<SelectValue />
 									</SelectTrigger>
 									<SelectContent>
@@ -394,7 +395,7 @@ export const AddCloudFrontDialog: React.FC<AddCloudFrontDialogProps> = ({
 						{/* Type-specific fields */}
 						{formData.origin_type === "amplify" && (
 							<div className="space-y-2">
-								<Label htmlFor="amplify_app">Amplify App *</Label>
+								<Label htmlFor={`${uid}-amplify_app`}>Amplify App *</Label>
 								<Select
 									value={formData.amplify_app_name}
 									onValueChange={(value) =>
@@ -402,7 +403,7 @@ export const AddCloudFrontDialog: React.FC<AddCloudFrontDialogProps> = ({
 									}
 								>
 									<SelectTrigger
-										id="amplify_app"
+										id={`${uid}-amplify_app`}
 										className={errors.amplify_app_name ? "border-red-500" : ""}
 									>
 										<SelectValue placeholder="Select Amplify app" />
@@ -458,11 +459,11 @@ export const AddCloudFrontDialog: React.FC<AddCloudFrontDialogProps> = ({
 									</div>
 								) : (
 									<div className="space-y-2">
-										<Label htmlFor="bucket_name">
+										<Label htmlFor={`${uid}-bucket_name`}>
 											Existing S3 Bucket Name *
 										</Label>
 										<Input
-											id="bucket_name"
+											id={`${uid}-bucket_name`}
 											value={formData.bucket_name}
 											onChange={(e) =>
 												setFormData({
@@ -496,9 +497,9 @@ export const AddCloudFrontDialog: React.FC<AddCloudFrontDialogProps> = ({
 
 						{formData.origin_type === "custom" && (
 							<div className="space-y-2">
-								<Label htmlFor="custom_domain">Custom Domain *</Label>
+								<Label htmlFor={`${uid}-custom_domain`}>Custom Domain *</Label>
 								<Input
-									id="custom_domain"
+									id={`${uid}-custom_domain`}
 									value={formData.custom_domain}
 									onChange={(e) =>
 										setFormData({ ...formData, custom_domain: e.target.value })

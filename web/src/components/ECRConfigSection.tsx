@@ -1,5 +1,5 @@
 import type React from "react";
-import { memo, useCallback, useEffect, useRef } from "react";
+import { memo, useCallback, useEffect, useId, useRef } from "react";
 import type { ECRConfig } from "../types/yamlConfig";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -37,6 +37,7 @@ export const ECRConfigSection = memo(function ECRConfigSection({
 	accountId,
 	region,
 }: ECRConfigSectionProps) {
+	const uid = useId();
 	// DEBUG: Render counter
 	const renderCountRef = useRef(0);
 	renderCountRef.current++;
@@ -171,8 +172,11 @@ export const ECRConfigSection = memo(function ECRConfigSection({
 
 			<RadioGroup value={mode} onValueChange={handleModeChange}>
 				<div className="flex items-center space-x-2">
-					<RadioGroupItem value="create_ecr" id="create_ecr" />
-					<Label htmlFor="create_ecr" className="font-normal cursor-pointer">
+					<RadioGroupItem value="create_ecr" id={`${uid}-create_ecr`} />
+					<Label
+						htmlFor={`${uid}-create_ecr`}
+						className="font-normal cursor-pointer"
+					>
 						Create new ECR repository (recommended)
 					</Label>
 				</div>
@@ -189,8 +193,11 @@ export const ECRConfigSection = memo(function ECRConfigSection({
 				)}
 
 				<div className="flex items-center space-x-2 mt-3">
-					<RadioGroupItem value="manual_repo" id="manual_repo" />
-					<Label htmlFor="manual_repo" className="font-normal cursor-pointer">
+					<RadioGroupItem value="manual_repo" id={`${uid}-manual_repo`} />
+					<Label
+						htmlFor={`${uid}-manual_repo`}
+						className="font-normal cursor-pointer"
+					>
 						Use existing Docker image (Docker Hub, ECR, etc.)
 					</Label>
 				</div>
@@ -199,8 +206,11 @@ export const ECRConfigSection = memo(function ECRConfigSection({
 				</p>
 
 				<div className="flex items-center space-x-2 mt-3">
-					<RadioGroupItem value="use_existing" id="use_existing" />
-					<Label htmlFor="use_existing" className="font-normal cursor-pointer">
+					<RadioGroupItem value="use_existing" id={`${uid}-use_existing`} />
+					<Label
+						htmlFor={`${uid}-use_existing`}
+						className="font-normal cursor-pointer"
+					>
 						Use ECR from another service
 					</Label>
 				</div>
@@ -212,9 +222,9 @@ export const ECRConfigSection = memo(function ECRConfigSection({
 
 			{mode === "manual_repo" && (
 				<div className="mt-6 ml-6 grid gap-2">
-					<Label htmlFor="repository_uri">Docker Image URI</Label>
+					<Label htmlFor={`${uid}-repository_uri`}>Docker Image URI</Label>
 					<Input
-						id="repository_uri"
+						id={`${uid}-repository_uri`}
 						placeholder="nginx:latest or 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-repo"
 						value={config.repository_uri || ""}
 						onChange={handleRepositoryURIChange}
@@ -233,10 +243,10 @@ export const ECRConfigSection = memo(function ECRConfigSection({
 
 			{mode === "use_existing" && (
 				<div className="mt-6 ml-6 grid gap-2">
-					<Label htmlFor="source_service">Source Service</Label>
+					<Label htmlFor={`${uid}-source_service`}>Source Service</Label>
 					<Select value={currentSourceValue} onValueChange={handleSourceChange}>
 						<SelectTrigger
-							id="source_service"
+							id={`${uid}-source_service`}
 							className={errors.source_service_name ? "border-red-500" : ""}
 						>
 							<SelectValue placeholder="Select a service to share ECR from" />

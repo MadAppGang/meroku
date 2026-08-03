@@ -28,7 +28,7 @@ import {
 	X,
 	Zap,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { AccountInfo } from "../api/infrastructure";
 import type { ComponentNode } from "../types";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
@@ -115,6 +115,7 @@ export function Sidebar({
 	accountInfo,
 	onDeleteNode,
 }: SidebarProps) {
+	const uid = useId();
 	const [activeTab, setActiveTab] = useState("settings");
 	const [showLeftScroll, setShowLeftScroll] = useState(false);
 	const [showRightScroll, setShowRightScroll] = useState(false);
@@ -590,9 +591,9 @@ export function Sidebar({
 					) : (
 						<div className="space-y-6">
 							<div>
-								<Label htmlFor="service-name">Service Name</Label>
+								<Label htmlFor={`${uid}-service-name`}>Service Name</Label>
 								<Input
-									id="service-name"
+									id={`${uid}-service-name`}
 									value={selectedNode.name}
 									className="mt-1 bg-gray-800 border-gray-600 text-white"
 									readOnly
@@ -600,9 +601,9 @@ export function Sidebar({
 							</div>
 
 							<div>
-								<Label htmlFor="service-url">Service URL</Label>
+								<Label htmlFor={`${uid}-service-url`}>Service URL</Label>
 								<Input
-									id="service-url"
+									id={`${uid}-service-url`}
 									value={selectedNode.url || "Not available"}
 									className="mt-1 bg-gray-800 border-gray-600 text-white"
 									readOnly
@@ -629,20 +630,20 @@ export function Sidebar({
 							</div>
 
 							<div className="flex items-center justify-between">
-								<Label htmlFor="auto-deploy">Auto Deploy</Label>
-								<Switch id="auto-deploy" defaultChecked />
+								<Label htmlFor={`${uid}-auto-deploy`}>Auto Deploy</Label>
+								<Switch id={`${uid}-auto-deploy`} defaultChecked />
 							</div>
 
 							<div className="flex items-center justify-between">
-								<Label htmlFor="health-check">Health Check</Label>
-								<Switch id="health-check" defaultChecked />
+								<Label htmlFor={`${uid}-health-check`}>Health Check</Label>
+								<Switch id={`${uid}-health-check`} defaultChecked />
 							</div>
 
 							{selectedNode.replicas && (
 								<div>
-									<Label htmlFor="replicas">Replicas</Label>
+									<Label htmlFor={`${uid}-replicas`}>Replicas</Label>
 									<Input
-										id="replicas"
+										id={`${uid}-replicas`}
 										type="number"
 										value={selectedNode.replicas}
 										className="mt-1 bg-gray-800 border-gray-600 text-white"

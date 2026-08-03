@@ -5,7 +5,7 @@ import {
 	Globe,
 	Loader2,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { amplifyApi } from "../api";
 import type { AmplifyAppInfo } from "../types/amplify";
 import type { UpdateHandler } from "../types/components";
@@ -49,6 +49,7 @@ export function AmplifyDomainSettings({
 	nodeId,
 	onConfigChange,
 }: AmplifyDomainSettingsProps) {
+	const uid = useId();
 	const appName = nodeId.replace("amplify-", "");
 	const amplifyAppIndex =
 		config.amplify_apps?.findIndex((app) => app.name === appName) ?? -1;
@@ -148,9 +149,9 @@ export function AmplifyDomainSettings({
 
 				<div className="space-y-3">
 					<div>
-						<Label htmlFor="subdomain_prefix">Subdomain Prefix</Label>
+						<Label htmlFor={`${uid}-subdomain_prefix`}>Subdomain Prefix</Label>
 						<Input
-							id="subdomain_prefix"
+							id={`${uid}-subdomain_prefix`}
 							value={amplifyApp.subdomain_prefix || ""}
 							onChange={(e) => handleChange("subdomain_prefix", e.target.value)}
 							placeholder="app"

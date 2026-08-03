@@ -9,7 +9,7 @@ import {
 	Plus,
 	Trash2,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { infrastructureApi } from "../api/infrastructure";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import { Button } from "./ui/button";
@@ -125,6 +125,7 @@ export const AddAmplifyDialog: React.FC<AddAmplifyDialogProps> = ({
 	projectName = "project",
 	config,
 }) => {
+	const uid = useId();
 	// Generate smart defaults based on config
 	const smartDefaults = useMemo(() => generateSmartDefaults(config), [config]);
 
@@ -542,9 +543,9 @@ export const AddAmplifyDialog: React.FC<AddAmplifyDialogProps> = ({
 						<h3 className="text-sm font-semibold">Basic Configuration</h3>
 
 						<div>
-							<Label htmlFor="name">App Name *</Label>
+							<Label htmlFor={`${uid}-name`}>App Name *</Label>
 							<Input
-								id="name"
+								id={`${uid}-name`}
 								value={formData.name}
 								onChange={(e) =>
 									setFormData({ ...formData, name: e.target.value })
@@ -564,9 +565,11 @@ export const AddAmplifyDialog: React.FC<AddAmplifyDialogProps> = ({
 						</div>
 
 						<div>
-							<Label htmlFor="github_repository">GitHub Repository URL *</Label>
+							<Label htmlFor={`${uid}-github_repository`}>
+								GitHub Repository URL *
+							</Label>
 							<Input
-								id="github_repository"
+								id={`${uid}-github_repository`}
 								value={formData.github_repository}
 								onChange={(e) =>
 									setFormData({
@@ -963,9 +966,11 @@ export const AddAmplifyDialog: React.FC<AddAmplifyDialogProps> = ({
 						<h3 className="text-sm font-semibold">Domain Configuration</h3>
 
 						<div>
-							<Label htmlFor="subdomain_prefix">Subdomain Prefix</Label>
+							<Label htmlFor={`${uid}-subdomain_prefix`}>
+								Subdomain Prefix
+							</Label>
 							<Input
-								id="subdomain_prefix"
+								id={`${uid}-subdomain_prefix`}
 								value={formData.subdomain_prefix}
 								onChange={(e) =>
 									setFormData({ ...formData, subdomain_prefix: e.target.value })
@@ -1016,13 +1021,13 @@ export const AddAmplifyDialog: React.FC<AddAmplifyDialogProps> = ({
 					<div className="space-y-2">
 						<div className="flex items-center justify-between">
 							<div>
-								<Label htmlFor="spa_mode">SPA Mode</Label>
+								<Label htmlFor={`${uid}-spa_mode`}>SPA Mode</Label>
 								<p className="text-xs text-gray-500">
 									Enable for React, Vue, Angular SPAs (200 status rewrite)
 								</p>
 							</div>
 							<Checkbox
-								id="spa_mode"
+								id={`${uid}-spa_mode`}
 								checked={formData.spa_mode}
 								onCheckedChange={(checked) =>
 									setFormData({ ...formData, spa_mode: checked === true })

@@ -1,5 +1,5 @@
 import { AlertCircle, CheckCircle2, Info, Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type {
 	AccountInfo,
 	ConfigureCrossAccountECRResponse,
@@ -29,6 +29,7 @@ export function ECRNodeProperties({
 	onConfigChange,
 	accountInfo,
 }: ECRNodePropertiesProps) {
+	const uid = useId();
 	const [ecrMode, setEcrMode] = useState<"create" | "cross-account">(
 		config.ecr_strategy === "cross_account" ? "cross-account" : "create",
 	);
@@ -187,8 +188,11 @@ export function ECRNodeProperties({
 				<CardContent className="space-y-4">
 					<RadioGroup value={ecrMode} onValueChange={handleModeChange}>
 						<div className="flex items-center space-x-2 p-3 rounded-lg border border-gray-700 hover:bg-gray-800">
-							<RadioGroupItem value="create" id="create-ecr" />
-							<Label htmlFor="create-ecr" className="flex-1 cursor-pointer">
+							<RadioGroupItem value="create" id={`${uid}-create-ecr`} />
+							<Label
+								htmlFor={`${uid}-create-ecr`}
+								className="flex-1 cursor-pointer"
+							>
 								<div className="font-medium">Create ECR Repository</div>
 								<div className="text-xs text-gray-400">
 									Create a new ECR repository in this AWS account
@@ -196,9 +200,12 @@ export function ECRNodeProperties({
 							</Label>
 						</div>
 						<div className="flex items-center space-x-2 p-3 rounded-lg border border-gray-700 hover:bg-gray-800">
-							<RadioGroupItem value="cross-account" id="cross-account-ecr" />
+							<RadioGroupItem
+								value="cross-account"
+								id={`${uid}-cross-account-ecr`}
+							/>
 							<Label
-								htmlFor="cross-account-ecr"
+								htmlFor={`${uid}-cross-account-ecr`}
 								className="flex-1 cursor-pointer"
 							>
 								<div className="font-medium">Use Cross-Account ECR</div>
@@ -321,11 +328,11 @@ export function ECRNodeProperties({
 							{/* ECR Source Selector */}
 							{!isLoadingSources && ecrSources.length > 0 && (
 								<div>
-									<Label htmlFor="ecr-source">
+									<Label htmlFor={`${uid}-ecr-source`}>
 										Select ECR Source Environment
 									</Label>
 									<select
-										id="ecr-source"
+										id={`${uid}-ecr-source`}
 										value={selectedSource}
 										onChange={(e) => handleSourceSelection(e.target.value)}
 										disabled={isConfiguring || isLoadingSources}

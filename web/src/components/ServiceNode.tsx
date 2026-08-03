@@ -1,3 +1,4 @@
+// biome-ignore-all lint/correctness/useUniqueElementIds: the static ids in this file are React Flow <Handle> identifiers, not DOM label targets. Saved graphs persist them as sourceHandle/targetHandle on every edge, so generating them with useId() would orphan all existing connections.
 import {
 	Activity,
 	AlertCircle,

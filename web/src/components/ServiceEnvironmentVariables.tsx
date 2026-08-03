@@ -9,7 +9,7 @@ import {
 	Trash2,
 	X,
 } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { AccountInfo } from "../api/infrastructure";
 import type { ComponentNode } from "../types";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
@@ -38,6 +38,7 @@ export function ServiceEnvironmentVariables({
 	node,
 	onConfigChange,
 }: ServiceEnvironmentVariablesProps) {
+	const uid = useId();
 	// Extract service name from node id
 	const serviceName = node.id.replace("service-", "");
 
@@ -328,13 +329,13 @@ export function ServiceEnvironmentVariables({
 							<div className="grid grid-cols-2 gap-2">
 								<div>
 									<Label
-										htmlFor="new-var-name"
+										htmlFor={`${uid}-new-var-name`}
 										className="text-xs text-gray-400"
 									>
 										Variable Name
 									</Label>
 									<Input
-										id="new-var-name"
+										id={`${uid}-new-var-name`}
 										type="text"
 										placeholder="VARIABLE_NAME"
 										value={newVarName}
@@ -350,13 +351,13 @@ export function ServiceEnvironmentVariables({
 								</div>
 								<div>
 									<Label
-										htmlFor="new-var-value"
+										htmlFor={`${uid}-new-var-value`}
 										className="text-xs text-gray-400"
 									>
 										Value
 									</Label>
 									<Input
-										id="new-var-value"
+										id={`${uid}-new-var-value`}
 										type="text"
 										placeholder="value"
 										value={newVarValue}

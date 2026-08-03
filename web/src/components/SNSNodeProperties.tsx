@@ -9,7 +9,7 @@ import {
 	Loader2,
 	RefreshCw,
 } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { infrastructureApi } from "../api/infrastructure";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import { Alert, AlertDescription } from "./ui/alert";
@@ -34,6 +34,7 @@ export function SNSNodeProperties({
 	config,
 	onConfigChange,
 }: SNSNodePropertiesProps) {
+	const uid = useId();
 	const isEnabled = config.workload?.setup_fcnsns === true;
 	const parameterPath = `/${config.env}/${config.project}/backend/gcm-server-key`;
 
@@ -116,14 +117,14 @@ export function SNSNodeProperties({
 			<CardContent className="space-y-4">
 				<div className="flex items-center justify-between">
 					<div className="flex-1">
-						<Label htmlFor="sns-enabled">Enable SNS/FCM</Label>
+						<Label htmlFor={`${uid}-sns-enabled`}>Enable SNS/FCM</Label>
 						<p className="text-xs text-gray-500 mt-1">
 							Enable Firebase Cloud Messaging platform application for push
 							notifications
 						</p>
 					</div>
 					<Switch
-						id="sns-enabled"
+						id={`${uid}-sns-enabled`}
 						checked={isEnabled}
 						onCheckedChange={handleToggle}
 						className="data-[state=checked]:bg-blue-500 data-[state=unchecked]:bg-gray-600"

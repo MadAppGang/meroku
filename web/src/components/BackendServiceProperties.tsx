@@ -1,4 +1,5 @@
 import { Info } from "lucide-react";
+import { useId } from "react";
 import type { AccountInfo } from "../api/infrastructure";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import {
@@ -24,6 +25,7 @@ export function BackendServiceProperties({
 	onConfigChange,
 	accountInfo,
 }: BackendServicePropertiesProps) {
+	const uid = useId();
 	// Generate the ECR repository name based on config
 	const ecrRepoName = `${config.project}_backend`;
 
@@ -100,9 +102,9 @@ export function BackendServiceProperties({
 				<Separator />
 
 				<div className="space-y-2">
-					<Label htmlFor="health_endpoint">Health Endpoint</Label>
+					<Label htmlFor={`${uid}-health_endpoint`}>Health Endpoint</Label>
 					<Input
-						id="health_endpoint"
+						id={`${uid}-health_endpoint`}
 						value={config.workload?.backend_health_endpoint || "/health"}
 						onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
 							handleWorkloadChange({ backend_health_endpoint: e.target.value })
@@ -116,11 +118,11 @@ export function BackendServiceProperties({
 				</div>
 
 				<div className="space-y-2">
-					<Label htmlFor="backend_external_docker_image">
+					<Label htmlFor={`${uid}-backend_external_docker_image`}>
 						External Docker Image
 					</Label>
 					<Input
-						id="backend_external_docker_image"
+						id={`${uid}-backend_external_docker_image`}
 						value={config.workload?.backend_external_docker_image || ""}
 						onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
 							handleWorkloadChange({
@@ -158,9 +160,11 @@ export function BackendServiceProperties({
 				</div>
 
 				<div className="space-y-2">
-					<Label htmlFor="backend_container_command">Container Command</Label>
+					<Label htmlFor={`${uid}-backend_container_command`}>
+						Container Command
+					</Label>
 					<Input
-						id="backend_container_command"
+						id={`${uid}-backend_container_command`}
 						value={
 							Array.isArray(config.workload?.backend_container_command)
 								? config.workload.backend_container_command.join(", ")
@@ -187,9 +191,11 @@ export function BackendServiceProperties({
 				<Separator />
 
 				<div className="space-y-2">
-					<Label htmlFor="bucket_postfix">Backend Bucket Postfix</Label>
+					<Label htmlFor={`${uid}-bucket_postfix`}>
+						Backend Bucket Postfix
+					</Label>
 					<Input
-						id="bucket_postfix"
+						id={`${uid}-bucket_postfix`}
 						value={config.workload?.bucket_postfix || ""}
 						onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
 							handleWorkloadChange({ bucket_postfix: e.target.value })
@@ -208,13 +214,13 @@ export function BackendServiceProperties({
 
 				<div className="flex items-center justify-between">
 					<div className="flex-1">
-						<Label htmlFor="bucket_public">Public Bucket</Label>
+						<Label htmlFor={`${uid}-bucket_public`}>Public Bucket</Label>
 						<p className="text-xs text-gray-500 mt-1">
 							Allow public access to backend bucket
 						</p>
 					</div>
 					<Switch
-						id="bucket_public"
+						id={`${uid}-bucket_public`}
 						checked={config.workload?.bucket_public || false}
 						onCheckedChange={(checked) =>
 							handleWorkloadChange({ bucket_public: checked })
@@ -226,9 +232,9 @@ export function BackendServiceProperties({
 				<Separator />
 
 				<div className="space-y-2">
-					<Label htmlFor="backend_image_port">Container Port</Label>
+					<Label htmlFor={`${uid}-backend_image_port`}>Container Port</Label>
 					<Input
-						id="backend_image_port"
+						id={`${uid}-backend_image_port`}
 						type="number"
 						value={config.workload?.backend_image_port || 8080}
 						onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
@@ -249,7 +255,7 @@ export function BackendServiceProperties({
 				{/* API Gateway Custom Domain */}
 				<div className="flex items-center justify-between">
 					<div className="flex-1">
-						<Label htmlFor="create-api-domain-backend">
+						<Label htmlFor={`${uid}-create-api-domain-backend`}>
 							API Gateway Custom Domain
 						</Label>
 						<p className="text-xs text-gray-500 mt-1">
@@ -258,7 +264,7 @@ export function BackendServiceProperties({
 						</p>
 					</div>
 					<Switch
-						id="create-api-domain-backend"
+						id={`${uid}-create-api-domain-backend`}
 						checked={
 							config.domain?.api_domain_prefix !== undefined &&
 							config.domain?.api_domain_prefix !== null &&
@@ -273,9 +279,11 @@ export function BackendServiceProperties({
 				{config.domain?.api_domain_prefix &&
 					config.domain.api_domain_prefix !== "" && (
 						<div className="space-y-2 ml-4">
-							<Label htmlFor="api_domain_prefix">API Domain Prefix</Label>
+							<Label htmlFor={`${uid}-api_domain_prefix`}>
+								API Domain Prefix
+							</Label>
 							<Input
-								id="api_domain_prefix"
+								id={`${uid}-api_domain_prefix`}
 								value={config.domain.api_domain_prefix}
 								onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
 									onConfigChange({

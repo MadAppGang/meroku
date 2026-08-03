@@ -8,6 +8,7 @@ import {
 	Server,
 	Zap,
 } from "lucide-react";
+import { useId } from "react";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -33,6 +34,7 @@ export function SQSNodeProperties({
 	onConfigChange,
 	accountInfo,
 }: SQSNodePropertiesProps) {
+	const uid = useId();
 	const sqsConfig = config.sqs || { enabled: false };
 
 	const handleToggleSQS = (enabled: boolean) => {
@@ -73,7 +75,7 @@ export function SQSNodeProperties({
 				<CardContent>
 					<div className="flex items-center justify-between">
 						<div className="space-y-1">
-							<Label htmlFor="sqs-enabled" className="text-base">
+							<Label htmlFor={`${uid}-sqs-enabled`} className="text-base">
 								Enable SQS
 							</Label>
 							<p className="text-sm text-gray-500">
@@ -81,7 +83,7 @@ export function SQSNodeProperties({
 							</p>
 						</div>
 						<Switch
-							id="sqs-enabled"
+							id={`${uid}-sqs-enabled`}
 							checked={sqsConfig.enabled}
 							onCheckedChange={handleToggleSQS}
 						/>
@@ -104,9 +106,9 @@ export function SQSNodeProperties({
 						</CardHeader>
 						<CardContent className="space-y-4">
 							<div className="space-y-2">
-								<Label htmlFor="queue-name">Queue Name</Label>
+								<Label htmlFor={`${uid}-queue-name`}>Queue Name</Label>
 								<Input
-									id="queue-name"
+									id={`${uid}-queue-name`}
 									value={sqsConfig.name || ""}
 									onChange={(e) => handleUpdateConfig({ name: e.target.value })}
 									placeholder="default-queue"

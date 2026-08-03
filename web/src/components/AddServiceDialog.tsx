@@ -1,5 +1,5 @@
 import type React from "react";
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import type { Service } from "../types/components";
 import type { ECRConfig, YamlInfrastructureConfig } from "../types/yamlConfig";
 import { ECRConfigSection } from "./ECRConfigSection";
@@ -38,6 +38,7 @@ export function AddServiceDialog({
 	existingServices,
 	config,
 }: AddServiceDialogProps) {
+	const uid = useId();
 	const [formData, setFormData] = useState({
 		name: "",
 		docker_image: "",
@@ -209,9 +210,9 @@ export function AddServiceDialog({
 				<form onSubmit={handleSubmit}>
 					<div className="grid gap-4 py-4">
 						<div className="grid gap-2">
-							<Label htmlFor="name">Service Name</Label>
+							<Label htmlFor={`${uid}-name`}>Service Name</Label>
 							<Input
-								id="name"
+								id={`${uid}-name`}
 								value={formData.name}
 								onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
 									setFormData({ ...formData, name: e.target.value })
@@ -224,11 +225,11 @@ export function AddServiceDialog({
 						</div>
 
 						<div className="grid gap-2">
-							<Label htmlFor="container_command">
+							<Label htmlFor={`${uid}-container_command`}>
 								Container Command (comma-separated)
 							</Label>
 							<Input
-								id="container_command"
+								id={`${uid}-container_command`}
 								value={formData.container_command}
 								onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
 									setFormData({
@@ -242,9 +243,9 @@ export function AddServiceDialog({
 
 						<div className="grid grid-cols-2 gap-4">
 							<div className="grid gap-2">
-								<Label htmlFor="container_port">Container Port</Label>
+								<Label htmlFor={`${uid}-container_port`}>Container Port</Label>
 								<Input
-									id="container_port"
+									id={`${uid}-container_port`}
 									type="number"
 									value={formData.container_port}
 									onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
@@ -258,9 +259,9 @@ export function AddServiceDialog({
 							</div>
 
 							<div className="grid gap-2">
-								<Label htmlFor="desired_count">Desired Count</Label>
+								<Label htmlFor={`${uid}-desired_count`}>Desired Count</Label>
 								<Input
-									id="desired_count"
+									id={`${uid}-desired_count`}
 									type="number"
 									value={formData.desired_count}
 									onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
@@ -277,7 +278,7 @@ export function AddServiceDialog({
 
 						<div className="grid grid-cols-2 gap-4">
 							<div className="grid gap-2">
-								<Label htmlFor="cpu">CPU (units)</Label>
+								<Label htmlFor={`${uid}-cpu`}>CPU (units)</Label>
 								<Select
 									value={formData.cpu.toString()}
 									onValueChange={(value: string) =>
@@ -287,7 +288,7 @@ export function AddServiceDialog({
 										})
 									}
 								>
-									<SelectTrigger id="cpu">
+									<SelectTrigger id={`${uid}-cpu`}>
 										<SelectValue />
 									</SelectTrigger>
 									<SelectContent>
@@ -301,7 +302,7 @@ export function AddServiceDialog({
 							</div>
 
 							<div className="grid gap-2">
-								<Label htmlFor="memory">Memory (MB)</Label>
+								<Label htmlFor={`${uid}-memory`}>Memory (MB)</Label>
 								<Select
 									value={formData.memory.toString()}
 									onValueChange={(value: string) =>
@@ -311,7 +312,7 @@ export function AddServiceDialog({
 										})
 									}
 								>
-									<SelectTrigger id="memory">
+									<SelectTrigger id={`${uid}-memory`}>
 										<SelectValue />
 									</SelectTrigger>
 									<SelectContent>
@@ -326,9 +327,11 @@ export function AddServiceDialog({
 						</div>
 
 						<div className="grid gap-2">
-							<Label htmlFor="health_check_path">Health Check Path</Label>
+							<Label htmlFor={`${uid}-health_check_path`}>
+								Health Check Path
+							</Label>
 							<Input
-								id="health_check_path"
+								id={`${uid}-health_check_path`}
 								value={formData.health_check_path}
 								onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
 									setFormData({
@@ -340,11 +343,11 @@ export function AddServiceDialog({
 						</div>
 
 						<div className="grid gap-2">
-							<Label htmlFor="environment_variables">
+							<Label htmlFor={`${uid}-environment_variables`}>
 								Environment Variables (KEY=VALUE, one per line)
 							</Label>
 							<Textarea
-								id="environment_variables"
+								id={`${uid}-environment_variables`}
 								value={formData.environment_variables}
 								onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
 									setFormData({

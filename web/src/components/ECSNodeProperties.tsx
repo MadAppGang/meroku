@@ -10,7 +10,7 @@ import {
 	Server,
 	XCircle,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import {
 	type ECSClusterInfo as ClusterInfo,
 	infrastructureApi,
@@ -39,6 +39,7 @@ export function ECSNodeProperties({
 	config,
 	onConfigChange,
 }: ECSNodePropertiesProps) {
+	const uid = useId();
 	const handleProjectChange = (value: string) => {
 		// Validate project name: alphanumeric + dash
 		const sanitized = value.toLowerCase().replace(/[^a-z0-9-]/g, "");
@@ -70,9 +71,9 @@ export function ECSNodeProperties({
 				<CardContent className="space-y-4">
 					<div className="grid grid-cols-1 gap-4">
 						<div>
-							<Label htmlFor="project-name">Project Name</Label>
+							<Label htmlFor={`${uid}-project-name`}>Project Name</Label>
 							<Input
-								id="project-name"
+								id={`${uid}-project-name`}
 								value={config.project}
 								onChange={(e) => handleProjectChange(e.target.value)}
 								className="mt-1 bg-gray-800 border-gray-600 text-white font-mono"
@@ -84,9 +85,9 @@ export function ECSNodeProperties({
 						</div>
 
 						<div>
-							<Label htmlFor="environment">Environment</Label>
+							<Label htmlFor={`${uid}-environment`}>Environment</Label>
 							<Input
-								id="environment"
+								id={`${uid}-environment`}
 								value={config.env}
 								className="mt-1 bg-gray-800 border-gray-600 text-white font-mono"
 								disabled
@@ -99,13 +100,13 @@ export function ECSNodeProperties({
 
 						<div className="flex items-center justify-between">
 							<div className="flex-1">
-								<Label htmlFor="is-prod">Production Environment</Label>
+								<Label htmlFor={`${uid}-is-prod`}>Production Environment</Label>
 								<p className="text-xs text-gray-500 mt-1">
 									Affects domain behavior and security settings
 								</p>
 							</div>
 							<Switch
-								id="is-prod"
+								id={`${uid}-is-prod`}
 								checked={config.is_prod || false}
 								onCheckedChange={(checked) =>
 									onConfigChange({ is_prod: checked })
@@ -114,9 +115,11 @@ export function ECSNodeProperties({
 							/>
 						</div>
 						<div>
-							<Label htmlFor="state-bucket">Terraform State Bucket</Label>
+							<Label htmlFor={`${uid}-state-bucket`}>
+								Terraform State Bucket
+							</Label>
 							<Input
-								id="state-bucket"
+								id={`${uid}-state-bucket`}
 								value={config.state_bucket}
 								onChange={(e) => handleStateBucketChange(e.target.value)}
 								className="mt-1 bg-gray-800 border-gray-600 text-white font-mono"
@@ -128,9 +131,9 @@ export function ECSNodeProperties({
 						</div>
 
 						<div>
-							<Label htmlFor="state-file">State File</Label>
+							<Label htmlFor={`${uid}-state-file`}>State File</Label>
 							<Input
-								id="state-file"
+								id={`${uid}-state-file`}
 								value={config.state_file}
 								onChange={(e) => handleStateFileChange(e.target.value)}
 								className="mt-1 bg-gray-800 border-gray-600 text-white font-mono"
@@ -1011,6 +1014,7 @@ export function ECSNotifications({
 	config,
 	onConfigChange,
 }: ECSNodePropertiesProps) {
+	const uid = useId();
 	const [testingWebhook, setTestingWebhook] = useState(false);
 	const [webhookTestResult, setWebhookTestResult] = useState<{
 		success: boolean;
@@ -1082,11 +1086,11 @@ export function ECSNotifications({
 				</CardHeader>
 				<CardContent className="space-y-4">
 					<div>
-						<Label htmlFor="slack-webhook">Slack Webhook URL</Label>
+						<Label htmlFor={`${uid}-slack-webhook`}>Slack Webhook URL</Label>
 						<div className="mt-1 space-y-2">
 							<div className="flex gap-2">
 								<Input
-									id="slack-webhook"
+									id={`${uid}-slack-webhook`}
 									type="url"
 									value={config.workload?.slack_webhook || ""}
 									onChange={(e) => {

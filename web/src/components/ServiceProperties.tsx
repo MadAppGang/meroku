@@ -5,6 +5,7 @@ import {
 	Info,
 	Share2,
 } from "lucide-react";
+import { useId } from "react";
 import type { AccountInfo } from "../api/infrastructure";
 import type { ComponentNode } from "../types";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
@@ -35,6 +36,7 @@ export function ServiceProperties({
 	accountInfo,
 	node,
 }: ServicePropertiesProps) {
+	const uid = useId();
 	// Extract service name from node id
 	const serviceName = node.id.replace("service-", "");
 
@@ -86,14 +88,14 @@ export function ServiceProperties({
 				{/* Enabled Toggle - at the very top */}
 				<div className="flex items-center justify-between">
 					<div className="flex-1">
-						<Label htmlFor="enabled">Enabled</Label>
+						<Label htmlFor={`${uid}-enabled`}>Enabled</Label>
 						<p className="text-xs text-gray-500 mt-1">
 							When disabled, all settings are kept but the service is not
 							deployed
 						</p>
 					</div>
 					<Switch
-						id="enabled"
+						id={`${uid}-enabled`}
 						checked={serviceConfig.enabled !== false}
 						onCheckedChange={(checked) =>
 							handleServiceChange({ enabled: checked })
@@ -154,13 +156,13 @@ export function ServiceProperties({
 				{/* Essential Container Toggle */}
 				<div className="flex items-center justify-between">
 					<div className="flex-1">
-						<Label htmlFor="essential">Essential Container</Label>
+						<Label htmlFor={`${uid}-essential`}>Essential Container</Label>
 						<p className="text-xs text-gray-500 mt-1">
 							If this container stops, stop all other containers
 						</p>
 					</div>
 					<Switch
-						id="essential"
+						id={`${uid}-essential`}
 						checked={serviceConfig.essential !== false} // default true
 						onCheckedChange={(checked) =>
 							handleServiceChange({ essential: checked })
@@ -172,9 +174,9 @@ export function ServiceProperties({
 				<Separator />
 
 				<div className="space-y-2">
-					<Label htmlFor="docker_image">External Docker Image</Label>
+					<Label htmlFor={`${uid}-docker_image`}>External Docker Image</Label>
 					<Input
-						id="docker_image"
+						id={`${uid}-docker_image`}
 						value={serviceConfig.docker_image || ""}
 						onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
 							handleServiceChange({ docker_image: e.target.value })
@@ -293,9 +295,9 @@ export function ServiceProperties({
 				</div>
 
 				<div className="space-y-2">
-					<Label htmlFor="container_command">Container Command</Label>
+					<Label htmlFor={`${uid}-container_command`}>Container Command</Label>
 					<Input
-						id="container_command"
+						id={`${uid}-container_command`}
 						value={
 							Array.isArray(serviceConfig.container_command)
 								? serviceConfig.container_command.join(", ")
@@ -341,9 +343,9 @@ export function ServiceProperties({
 				)}
 
 				<div className="space-y-2">
-					<Label htmlFor="container_port">Container Port</Label>
+					<Label htmlFor={`${uid}-container_port`}>Container Port</Label>
 					<Input
-						id="container_port"
+						id={`${uid}-container_port`}
 						type="number"
 						value={serviceConfig.container_port || 3000}
 						onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
@@ -362,14 +364,14 @@ export function ServiceProperties({
 				</div>
 
 				<div className="space-y-2">
-					<Label htmlFor="host_port">
+					<Label htmlFor={`${uid}-host_port`}>
 						Host Port
 						{!config.use_default_vpc && (
 							<span className="text-xs text-gray-500 ml-2">(auto-synced)</span>
 						)}
 					</Label>
 					<Input
-						id="host_port"
+						id={`${uid}-host_port`}
 						type="number"
 						value={
 							serviceConfig.host_port || serviceConfig.container_port || 3000

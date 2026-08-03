@@ -1,4 +1,5 @@
 import { Plus, X } from "lucide-react";
+import { useId } from "react";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import { Button } from "./ui/button";
 import {
@@ -21,6 +22,7 @@ export function GitHubNodeProperties({
 	config,
 	onConfigChange,
 }: GitHubNodePropertiesProps) {
+	const uid = useId();
 	const isEnabled = config.workload?.enable_github_oidc ?? false;
 	const subjects = config.workload?.github_oidc_subjects || [];
 
@@ -76,13 +78,13 @@ export function GitHubNodeProperties({
 				<CardContent className="space-y-4">
 					<div className="flex items-center justify-between">
 						<div className="space-y-1">
-							<Label htmlFor="github-oidc">Enable GitHub OIDC</Label>
+							<Label htmlFor={`${uid}-github-oidc`}>Enable GitHub OIDC</Label>
 							<p className="text-xs text-gray-400">
 								Allow GitHub Actions to deploy without credentials
 							</p>
 						</div>
 						<Switch
-							id="github-oidc"
+							id={`${uid}-github-oidc`}
 							checked={isEnabled}
 							onCheckedChange={handleToggleOIDC}
 						/>

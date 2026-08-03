@@ -1,5 +1,5 @@
 import type React from "react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useFargateOptions } from "../hooks/use-fargate-options";
 import type { ScheduledTask } from "../types/components";
 import { Button } from "./ui/button";
@@ -35,6 +35,7 @@ export function AddScheduledTaskDialog({
 	onAdd,
 	existingTasks,
 }: AddScheduledTaskDialogProps) {
+	const uid = useId();
 	const {
 		options: fargateOptions,
 		getMemoryOptions,
@@ -156,9 +157,9 @@ export function AddScheduledTaskDialog({
 				<form onSubmit={handleSubmit}>
 					<div className="grid gap-4 py-4">
 						<div className="grid gap-2">
-							<Label htmlFor="name">Task Name</Label>
+							<Label htmlFor={`${uid}-name`}>Task Name</Label>
 							<Input
-								id="name"
+								id={`${uid}-name`}
 								value={formData.name}
 								onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
 									setFormData({ ...formData, name: e.target.value })
@@ -179,12 +180,14 @@ export function AddScheduledTaskDialog({
 								}
 							>
 								<div className="flex items-center space-x-2">
-									<RadioGroupItem value="rate" id="rate" />
-									<Label htmlFor="rate">Rate-based (e.g., every X hours)</Label>
+									<RadioGroupItem value="rate" id={`${uid}-rate`} />
+									<Label htmlFor={`${uid}-rate`}>
+										Rate-based (e.g., every X hours)
+									</Label>
 								</div>
 								<div className="flex items-center space-x-2">
-									<RadioGroupItem value="cron" id="cron" />
-									<Label htmlFor="cron">Cron expression</Label>
+									<RadioGroupItem value="cron" id={`${uid}-cron`} />
+									<Label htmlFor={`${uid}-cron`}>Cron expression</Label>
 								</div>
 							</RadioGroup>
 						</div>
@@ -192,9 +195,9 @@ export function AddScheduledTaskDialog({
 						{formData.schedule_type === "rate" ? (
 							<div className="grid grid-cols-2 gap-4">
 								<div className="grid gap-2">
-									<Label htmlFor="rate_value">Every</Label>
+									<Label htmlFor={`${uid}-rate_value`}>Every</Label>
 									<Input
-										id="rate_value"
+										id={`${uid}-rate_value`}
 										type="number"
 										value={formData.rate_value}
 										onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
@@ -204,14 +207,14 @@ export function AddScheduledTaskDialog({
 									/>
 								</div>
 								<div className="grid gap-2">
-									<Label htmlFor="rate_unit">Unit</Label>
+									<Label htmlFor={`${uid}-rate_unit`}>Unit</Label>
 									<Select
 										value={formData.rate_unit}
 										onValueChange={(value: string) =>
 											setFormData({ ...formData, rate_unit: value })
 										}
 									>
-										<SelectTrigger id="rate_unit">
+										<SelectTrigger id={`${uid}-rate_unit`}>
 											<SelectValue />
 										</SelectTrigger>
 										<SelectContent>
@@ -224,9 +227,11 @@ export function AddScheduledTaskDialog({
 							</div>
 						) : (
 							<div className="grid gap-2">
-								<Label htmlFor="cron_expression">Cron Expression</Label>
+								<Label htmlFor={`${uid}-cron_expression`}>
+									Cron Expression
+								</Label>
 								<Input
-									id="cron_expression"
+									id={`${uid}-cron_expression`}
 									value={formData.cron_expression}
 									onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
 										setFormData({
@@ -248,9 +253,11 @@ export function AddScheduledTaskDialog({
 						)}
 
 						<div className="grid gap-2">
-							<Label htmlFor="docker_image">Docker Image (optional)</Label>
+							<Label htmlFor={`${uid}-docker_image`}>
+								Docker Image (optional)
+							</Label>
 							<Input
-								id="docker_image"
+								id={`${uid}-docker_image`}
 								value={formData.docker_image}
 								onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
 									setFormData({ ...formData, docker_image: e.target.value })
@@ -260,11 +267,11 @@ export function AddScheduledTaskDialog({
 						</div>
 
 						<div className="grid gap-2">
-							<Label htmlFor="container_command">
+							<Label htmlFor={`${uid}-container_command`}>
 								Container Command (comma-separated)
 							</Label>
 							<Input
-								id="container_command"
+								id={`${uid}-container_command`}
 								value={formData.container_command}
 								onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
 									setFormData({
@@ -278,7 +285,7 @@ export function AddScheduledTaskDialog({
 
 						<div className="grid grid-cols-2 gap-4">
 							<div className="grid gap-2">
-								<Label htmlFor="cpu">CPU (units)</Label>
+								<Label htmlFor={`${uid}-cpu`}>CPU (units)</Label>
 								<Select
 									value={formData.cpu.toString()}
 									onValueChange={(value: string) => {
@@ -294,7 +301,7 @@ export function AddScheduledTaskDialog({
 										});
 									}}
 								>
-									<SelectTrigger id="cpu">
+									<SelectTrigger id={`${uid}-cpu`}>
 										<SelectValue />
 									</SelectTrigger>
 									<SelectContent>
@@ -308,7 +315,7 @@ export function AddScheduledTaskDialog({
 							</div>
 
 							<div className="grid gap-2">
-								<Label htmlFor="memory">Memory (MB)</Label>
+								<Label htmlFor={`${uid}-memory`}>Memory (MB)</Label>
 								<Select
 									value={formData.memory.toString()}
 									onValueChange={(value: string) =>
@@ -318,7 +325,7 @@ export function AddScheduledTaskDialog({
 										})
 									}
 								>
-									<SelectTrigger id="memory">
+									<SelectTrigger id={`${uid}-memory`}>
 										<SelectValue />
 									</SelectTrigger>
 									<SelectContent>
@@ -333,11 +340,11 @@ export function AddScheduledTaskDialog({
 						</div>
 
 						<div className="grid gap-2">
-							<Label htmlFor="environment_variables">
+							<Label htmlFor={`${uid}-environment_variables`}>
 								Environment Variables (KEY=VALUE, one per line)
 							</Label>
 							<Textarea
-								id="environment_variables"
+								id={`${uid}-environment_variables`}
 								value={formData.environment_variables}
 								onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
 									setFormData({

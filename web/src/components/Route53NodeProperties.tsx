@@ -1,5 +1,5 @@
 import { Globe, Info, Plus, Shield, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import type {
 	AdditionalDomain,
 	YamlInfrastructureConfig,
@@ -35,6 +35,7 @@ export function Route53NodeProperties({
 	config,
 	onConfigChange,
 }: Route53NodePropertiesProps) {
+	const uid = useId();
 	// State for adding new additional domain
 	const [showAddDomain, setShowAddDomain] = useState(false);
 	const [newDomain, setNewDomain] = useState<{
@@ -182,13 +183,13 @@ export function Route53NodeProperties({
 					{/* Enable Domain */}
 					<div className="flex items-center justify-between">
 						<div className="space-y-0.5">
-							<Label htmlFor="domain-enabled">Enable Domain</Label>
+							<Label htmlFor={`${uid}-domain-enabled`}>Enable Domain</Label>
 							<p className="text-xs text-gray-400">
 								Enable Route 53 domain configuration
 							</p>
 						</div>
 						<Switch
-							id="domain-enabled"
+							id={`${uid}-domain-enabled`}
 							checked={isEnabled}
 							onCheckedChange={handleDomainEnabledChange}
 						/>
@@ -208,9 +209,9 @@ export function Route53NodeProperties({
 						<>
 							{/* Domain Name */}
 							<div>
-								<Label htmlFor="domain-name">Domain Name</Label>
+								<Label htmlFor={`${uid}-domain-name`}>Domain Name</Label>
 								<Input
-									id="domain-name"
+									id={`${uid}-domain-name`}
 									value={domainName}
 									onChange={(e) => handleDomainNameChange(e.target.value)}
 									placeholder="example.com"
@@ -224,13 +225,15 @@ export function Route53NodeProperties({
 							{/* Create Domain Zone */}
 							<div className="flex items-center justify-between">
 								<div className="space-y-0.5">
-									<Label htmlFor="create-zone">Create Domain Zone</Label>
+									<Label htmlFor={`${uid}-create-zone`}>
+										Create Domain Zone
+									</Label>
 									<p className="text-xs text-gray-400">
 										Create a new Route 53 hosted zone
 									</p>
 								</div>
 								<Switch
-									id="create-zone"
+									id={`${uid}-create-zone`}
 									checked={config.domain?.create_domain_zone ?? true}
 									onCheckedChange={handleCreateZoneChange}
 								/>
@@ -239,9 +242,9 @@ export function Route53NodeProperties({
 							{/* Zone ID - Only show when using existing zone */}
 							{!(config.domain?.create_domain_zone ?? true) && (
 								<div>
-									<Label htmlFor="zone-id">Zone ID (Optional)</Label>
+									<Label htmlFor={`${uid}-zone-id`}>Zone ID (Optional)</Label>
 									<Input
-										id="zone-id"
+										id={`${uid}-zone-id`}
 										value={config.domain?.zone_id || ""}
 										onChange={(e) => handleZoneIdChange(e.target.value)}
 										placeholder="Z1234567890ABC"
@@ -257,13 +260,15 @@ export function Route53NodeProperties({
 							{/* Add Environment Prefix */}
 							<div className="flex items-center justify-between">
 								<div className="space-y-0.5">
-									<Label htmlFor="add-prefix">Add Environment Prefix</Label>
+									<Label htmlFor={`${uid}-add-prefix`}>
+										Add Environment Prefix
+									</Label>
 									<p className="text-xs text-gray-400">
 										Add environment prefix to domain (disabled for production)
 									</p>
 								</div>
 								<Switch
-									id="add-prefix"
+									id={`${uid}-add-prefix`}
 									checked={addPrefix}
 									onCheckedChange={handleAddPrefixChange}
 									disabled={config.is_prod}
@@ -273,7 +278,7 @@ export function Route53NodeProperties({
 							{/* Create API Domain Record */}
 							<div className="flex items-center justify-between">
 								<div className="space-y-0.5">
-									<Label htmlFor="create-api-domain">
+									<Label htmlFor={`${uid}-create-api-domain`}>
 										Create API Gateway Custom Domain
 									</Label>
 									<p className="text-xs text-gray-400">
@@ -282,7 +287,7 @@ export function Route53NodeProperties({
 									</p>
 								</div>
 								<Switch
-									id="create-api-domain"
+									id={`${uid}-create-api-domain`}
 									checked={
 										config.domain?.api_domain_prefix !== undefined &&
 										config.domain?.api_domain_prefix !== null &&
@@ -296,9 +301,11 @@ export function Route53NodeProperties({
 							{config.domain?.api_domain_prefix &&
 								config.domain.api_domain_prefix !== "" && (
 									<div className="space-y-2 ml-4">
-										<Label htmlFor="api-prefix">API Domain Prefix</Label>
+										<Label htmlFor={`${uid}-api-prefix`}>
+											API Domain Prefix
+										</Label>
 										<Input
-											id="api-prefix"
+											id={`${uid}-api-prefix`}
 											value={apiPrefix}
 											onChange={(e) => handleApiPrefixChange(e.target.value)}
 											placeholder="api"

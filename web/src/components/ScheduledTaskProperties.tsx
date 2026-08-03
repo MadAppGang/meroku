@@ -1,5 +1,5 @@
 import { AlertTriangle } from "lucide-react";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useId, useRef } from "react";
 import type { AccountInfo } from "../api/infrastructure";
 import { useFargateOptions } from "../hooks/use-fargate-options";
 import { useDeepMemo } from "../hooks/useDeepMemo";
@@ -41,6 +41,7 @@ export function ScheduledTaskProperties({
 	accountInfo,
 	node,
 }: ScheduledTaskPropertiesProps) {
+	const uid = useId();
 	// Extract task name from node id (e.g., "scheduled-daily-report" -> "daily-report")
 	const taskName = node.id.replace("scheduled-", "");
 
@@ -217,14 +218,14 @@ export function ScheduledTaskProperties({
 					{/* Enabled Toggle - at the very top */}
 					<div className="flex items-center justify-between">
 						<div className="flex-1">
-							<Label htmlFor="enabled">Enabled</Label>
+							<Label htmlFor={`${uid}-enabled`}>Enabled</Label>
 							<p className="text-xs text-gray-500 mt-1">
 								When disabled, all settings are kept but the task is not
 								deployed
 							</p>
 						</div>
 						<Switch
-							id="enabled"
+							id={`${uid}-enabled`}
 							checked={task.enabled !== false}
 							onCheckedChange={(checked) =>
 								handleTaskChange({ enabled: checked })
@@ -374,11 +375,11 @@ export function ScheduledTaskProperties({
 					<Separator />
 
 					<div className="space-y-2">
-						<Label htmlFor="container_command">
+						<Label htmlFor={`${uid}-container_command`}>
 							Container Command Override
 						</Label>
 						<Input
-							id="container_command"
+							id={`${uid}-container_command`}
 							value={task.container_command || ""}
 							onChange={(e) =>
 								handleTaskChange({ container_command: e.target.value })
