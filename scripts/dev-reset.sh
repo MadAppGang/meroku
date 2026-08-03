@@ -15,11 +15,32 @@
 # known account-global names.
 #
 # Usage:
-#   scripts/dev-reset.sh <project-dir> <env>            # dry run: scan + plan only
-#   scripts/dev-reset.sh <project-dir> <env> --yes      # actually destroy
+#   scripts/dev-reset.sh <project-dir> <env>              # dry run: scan + plan only
+#   scripts/dev-reset.sh <project-dir> <env> --yes        # destroy the AWS resources
+#   scripts/dev-reset.sh <project-dir> <env> --greenfield # ...and erase every trace,
+#                                                         # so the next run starts at
+#                                                         # the "create environment"
+#                                                         # wizard with nothing on disk
 #
-# Always backs up the state to $HOME/.meroku-dev-backups first. That file
-# contains real infrastructure data and must never be committed anywhere.
+# --yes leaves the environment deployable again: the config, the generated
+# terraform and the state bucket all survive, so the next deploy recreates the
+# same stack. That is the right mode for testing a redeploy.
+#
+# --greenfield additionally removes:
+#   - the NS delegation record from the parent zone (in whichever account holds
+#     it, read from dns.yaml)
+#   - the S3 state bucket
+#   - <env>.yaml, dns.yaml and env/
+#
+# Use --greenfield when the thing being tested is the first-run experience
+# itself. Leaving the NS record behind is the subtle one: the next run creates a
+# zone with *different* nameservers, so the stale record makes the preflight see
+# a mismatched delegation and route to Blocked rather than Bootstrap. The deploy
+# still works, but it is no longer the code path you meant to test.
+#
+# Always backs up the state to $HOME/.meroku-dev-backups first, and in
+# --greenfield mode backs up the YAML configs alongside it. Those files contain
+# real infrastructure data and must never be committed anywhere.
 
 set -euo pipefail
 
@@ -28,9 +49,20 @@ ENVNAME="${2:-}"
 CONFIRM="${3:-}"
 
 if [ -z "$PROJECT" ] || [ -z "$ENVNAME" ]; then
-	echo "usage: $0 <project-dir> <env> [--yes]" >&2
+	echo "usage: $0 <project-dir> <env> [--yes|--greenfield]" >&2
 	exit 1
 fi
+
+case "$CONFIRM" in
+	"" | --yes | --greenfield) ;;
+	*) echo "unknown option: $CONFIRM (expected --yes or --greenfield)" >&2; exit 1 ;;
+esac
+
+# --greenfield implies --yes; everything below that destroys keys off DESTROY.
+DESTROY=no
+GREENFIELD=no
+[ "$CONFIRM" = "--yes" ] && DESTROY=yes
+[ "$CONFIRM" = "--greenfield" ] && { DESTROY=yes; GREENFIELD=yes; }
 
 PROJECT="$(cd "$PROJECT" && pwd)"
 ENVDIR="$PROJECT/env/$ENVNAME"
@@ -139,12 +171,28 @@ if [ -d "$LAMBDA_DIR" ] && [ ! -f "$LAMBDA_DIR/bootstrap" ]; then
 fi
 
 # --- dry run unless --yes ------------------------------------------------------
-if [ "$CONFIRM" != "--yes" ]; then
+if [ "$DESTROY" != "yes" ]; then
 	echo
-	echo "==> DRY RUN (pass --yes to actually destroy)"
+	echo "==> DRY RUN (pass --yes to destroy, --greenfield to also erase config/state/DNS)"
 	terraform plan -destroy -no-color -refresh=false 2>&1 | grep -E "^Plan:|will be destroyed" | head -40
+	if [ "$GREENFIELD" = "no" ] && [ -f "$PROJECT/dns.yaml" ]; then
+		echo
+		echo "    --greenfield would additionally remove:"
+		python3 - "$PROJECT/dns.yaml" 2>/dev/null <<'PY' || true
+import sys, re
+# Deliberately regex rather than a yaml import: this script must run with a bare
+# python3, and the two fields needed are unambiguous single-line scalars.
+text = open(sys.argv[1]).read()
+sub = re.search(r'^\s*-?\s*subdomain:\s*(\S+)', text, re.M)
+prof = re.search(r'^\s*profile:\s*(\S+)', text, re.M)
+if sub and prof:
+    print(f"      NS record {sub.group(1)} from the parent zone (profile {prof.group(1)})")
+PY
+		echo "      the S3 state bucket"
+		echo "      $ENVNAME.yaml, dns.yaml, env/"
+	fi
 	echo
-	echo "Nothing was changed. Re-run with --yes to destroy."
+	echo "Nothing was changed."
 	exit 0
 fi
 
@@ -163,6 +211,86 @@ if [ "$REMAINING" != "0" ]; then
 	exit 1
 fi
 
+if [ "$GREENFIELD" != "yes" ]; then
+	echo
+	echo "Environment is empty. The next deploy recreates the same stack."
+	echo "State backup kept at: $BACKUP"
+	exit 0
+fi
+
+# --- greenfield: erase every remaining trace -----------------------------------
 echo
-echo "Environment is empty. The next deploy is a genuine first run."
-echo "State backup kept at: $BACKUP"
+echo "==> greenfield teardown"
+
+# Keep the configs; they are the only files here that cannot be regenerated.
+cp "$YAML" "$BACKUP_DIR/${PROJECT_NAME}-${ENVNAME}-$(date +%Y%m%d-%H%M%S).yaml"
+[ -f "$PROJECT/dns.yaml" ] &&
+	cp "$PROJECT/dns.yaml" "$BACKUP_DIR/${PROJECT_NAME}-dns-$(date +%Y%m%d-%H%M%S).yaml"
+echo "    configs backed up to $BACKUP_DIR"
+
+# 1. NS delegation record, in whichever account holds the parent zone.
+#
+# This writes to an account other than the one being torn down, so it is fenced
+# hard: the record must be the exact subdomain recorded in dns.yaml, and it is
+# deleted by feeding back the values AWS currently returns. Route53 rejects a
+# DELETE whose values do not match the live record, so a record that has been
+# changed since we wrote it fails rather than being clobbered.
+if [ -f "$PROJECT/dns.yaml" ]; then
+	PARENT_PROFILE="$(grep -A3 '^parent_zones:' "$PROJECT/dns.yaml" | grep 'profile:' | head -1 | sed 's/.*profile:[[:space:]]*//')"
+	PARENT_ZONE="$(grep -A4 '^parent_zones:' "$PROJECT/dns.yaml" | grep 'zone_id:' | head -1 | sed 's/.*zone_id:[[:space:]]*//')"
+	SUBDOMAIN="$(grep -A2 '^delegated_zones:' "$PROJECT/dns.yaml" | grep 'subdomain:' | head -1 | sed 's/.*subdomain:[[:space:]]*//')"
+
+	if [ -n "$PARENT_PROFILE" ] && [ -n "$PARENT_ZONE" ] && [ -n "$SUBDOMAIN" ]; then
+		echo "    removing NS $SUBDOMAIN from $PARENT_ZONE (profile $PARENT_PROFILE)"
+		LIVE="$(AWS_PROFILE="$PARENT_PROFILE" aws route53 list-resource-record-sets \
+			--hosted-zone-id "$PARENT_ZONE" \
+			--query "ResourceRecordSets[?Name=='${SUBDOMAIN}.' && Type=='NS'] | [0]" \
+			--output json 2>/dev/null || echo null)"
+
+		if [ "$LIVE" = "null" ] || [ -z "$LIVE" ]; then
+			echo "    (no such record — nothing to remove)"
+		else
+			BATCH="$(python3 -c '
+import json, sys
+rr = json.load(sys.stdin)
+print(json.dumps({"Changes": [{"Action": "DELETE", "ResourceRecordSet": rr}]}))
+' <<<"$LIVE")"
+			if AWS_PROFILE="$PARENT_PROFILE" aws route53 change-resource-record-sets \
+				--hosted-zone-id "$PARENT_ZONE" --change-batch "$BATCH" >/dev/null 2>&1; then
+				echo "    NS record deleted"
+			else
+				echo "    WARNING: could not delete the NS record — remove it by hand" >&2
+			fi
+		fi
+	else
+		echo "    (dns.yaml has no parent-zone record; skipping NS cleanup)"
+	fi
+fi
+
+# 2. State bucket. meroku generates a fresh random suffix per environment, so
+#    leaving it behind orphans one bucket per test cycle.
+BUCKET="$(grep -E '^state_bucket:' "$YAML" | head -1 | sed 's/^state_bucket:[[:space:]]*//' | tr -d '"'"'"' ')"
+if [ -n "$BUCKET" ]; then
+	# Fence: only ever touch a bucket whose name carries this project's name.
+	if [[ "$BUCKET" != *"$PROJECT_NAME"* ]]; then
+		echo "    REFUSING to delete bucket '$BUCKET' — name does not contain '$PROJECT_NAME'" >&2
+	else
+		echo "    deleting state bucket $BUCKET"
+		aws s3 rm "s3://$BUCKET" --recursive >/dev/null 2>&1 || true
+		aws s3api delete-bucket --bucket "$BUCKET" >/dev/null 2>&1 &&
+			echo "    bucket deleted" ||
+			echo "    (bucket already gone or not empty)"
+	fi
+fi
+
+# 3. Generated + config files. Done last: everything above reads them.
+cd "$PROJECT"
+rm -rf "env/$ENVNAME"
+rmdir env 2>/dev/null || true
+rm -f "$ENVNAME.yaml" dns.yaml
+echo "    removed env/$ENVNAME, $ENVNAME.yaml, dns.yaml"
+
+echo
+echo "Greenfield. Nothing left on disk or in AWS for $PROJECT_NAME/$ENVNAME."
+echo "Next: cd $PROJECT && ./meroku  ->  Create new environment"
+echo "Backups kept in $BACKUP_DIR"
