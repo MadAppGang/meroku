@@ -1009,9 +1009,9 @@ func (m *dnsSetupModel) footerHints() []keyHint {
 		return append(hints,
 			keyHint{"r", "check now"},
 			keyHint{"t", "move to route53"},
-			keyHint{"s", "skip domain"},
+			keyHint{"s", "deploy without domain"},
 			keyHint{"esc", "continue anyway"},
-			keyHint{"^C", "cancel"})
+			keyHint{"^C", "abort deploy"})
 
 	case m.step == stepDone:
 		return []keyHint{{"enter", "continue to phase 2"}}
@@ -1019,18 +1019,18 @@ func (m *dnsSetupModel) footerHints() []keyHint {
 	case m.choosing && m.cachedProfile != "":
 		return []keyHint{
 			{"enter", "delegate"}, {"a", "scan all profiles"},
-			{"m", "do it myself"}, {"^C", "cancel"}}
+			{"m", "do it myself"}, {"^C", "abort deploy"}}
 
 	case m.choosing:
 		return []keyHint{
 			{"↑↓", "select"}, {"enter", "delegate"},
-			{"m", "do it myself"}, {"^C", "cancel"}}
+			{"m", "do it myself"}, {"^C", "abort deploy"}}
 
 	case m.step == stepPropagate:
-		return []keyHint{{"s", "stop waiting"}, {"^C", "cancel"}}
+		return []keyHint{{"s", "stop waiting"}, {"^C", "abort deploy"}}
 
 	default:
-		return []keyHint{{"^C", "cancel"}}
+		return []keyHint{{"^C", "abort deploy"}}
 	}
 }
 
@@ -1074,17 +1074,26 @@ func decodeTerraformLine(line string) (string, bool) {
 func (m *dnsSetupModel) renderManual(width int) string {
 	half, sideBySide := columnWidth(width)
 
-	// Left: the record itself, as data.
+	// --- the record, with its copy keys on the rows themselves ---------------
+	//
+	// The number in front of each nameserver is the key that copies it. Putting
+	// the affordance on the thing it acts on means there is nothing to look up:
+	// the legend at the bottom tells you the keys exist, but here you can see
+	// which row each one belongs to.
 	var rec strings.Builder
 	rec.WriteString(kvRow("NAME", m.zone, 7) + "\n")
 	rec.WriteString(kvRow("TYPE", "NS", 7) +
 		lipgloss.NewStyle().Foreground(mutedColor).Render("    TTL  ") +
 		lipgloss.NewStyle().Foreground(fgColor).Render("300") + "\n\n")
 
-	idx := lipgloss.NewStyle().Foreground(mutedColor)
 	val := lipgloss.NewStyle().Foreground(lipgloss.Color("#60a5fa")).Bold(true)
 	for i, ns := range m.nameservers {
-		rec.WriteString(idx.Render(fmt.Sprintf(" %d ", i+1)) + val.Render(ns) + "\n")
+		rec.WriteString(keycap(fmt.Sprintf("%d", i+1)) + " " + val.Render(ns) + "\n")
+	}
+	if len(m.nameservers) > 1 {
+		rec.WriteString(keycap("c") + " " +
+			lipgloss.NewStyle().Foreground(mutedColor).
+				Render(fmt.Sprintf("copy all %d", len(m.nameservers))) + "\n")
 	}
 
 	rec.WriteString("\n")
@@ -1093,34 +1102,57 @@ func (m *dnsSetupModel) renderManual(width int) string {
 		rec.WriteString(lipgloss.NewStyle().Foreground(successColor).
 			Render("✓ " + truncateToWidth(m.copiedNote, half-8)))
 	case m.checking:
-		rec.WriteString(lipgloss.NewStyle().Foreground(accentColor).Render("⟳ checking public DNS…"))
+		rec.WriteString(lipgloss.NewStyle().Foreground(accentColor).Render("⟳ checking…"))
 	default:
-		rec.WriteString(countdownRow(m.nextCheckIn, secondsBetweenDNSChecks, "recheck", half-8))
+		rec.WriteString(countdownRow(m.nextCheckIn, secondsBetweenDNSChecks, "rechecking in", half-8))
 	}
 
-	left := panel("delegation record · add to "+m.parent, rec.String(), half, accentColor)
+	recordPanel := panel("delegation record · add to "+m.parent, rec.String(), half, accentColor)
 
-	// Right: the diagnosis, then the choices.
+	// --- what is happening, in the reader's terms ---------------------------
+	//
+	// The previous version said "ACM cert stalls 20m, then fails", which is the
+	// mechanism as seen from inside the deploy. It assumes the reader knows what
+	// ACM is, that a certificate needs validating, and why a DNS record is
+	// involved at all. Start from what they asked for — a custom domain — and
+	// walk to the consequence.
 	var why strings.Builder
-	why.WriteString(badge("BLOCKED", warningColor) + " " +
-		lipgloss.NewStyle().Foreground(fgColor).Render("meroku cannot write it") + "\n")
-	why.WriteString(lipgloss.NewStyle().Foreground(mutedColor).
-		Render(truncateToWidth(m.manualReason, half-8)) + "\n\n")
-	why.WriteString(badge("RISK", dangerColor) + " " +
-		lipgloss.NewStyle().Foreground(dimColor).
-			Render("ACM cert stalls 20m, then fails"))
+	why.WriteString(lipgloss.NewStyle().Foreground(fgColor).Render(wordWrap(
+		"You asked for the custom domain "+m.zone+", so the deploy has to get an "+
+			"HTTPS certificate for it. AWS only issues one after checking a DNS "+
+			"record that proves you control the name — and meroku can only add that "+
+			"record once "+m.parent+" answers from AWS.", half-6)) + "\n\n")
 
+	why.WriteString(lipgloss.NewStyle().Foreground(mutedColor).Render(wordWrap(
+		m.manualReason, half-6)) + "\n\n")
+
+	why.WriteString(lipgloss.NewStyle().Foreground(warningColor).Render(wordWrap(
+		"⚠ Until that is fixed the deploy stops at the certificate and finishes "+
+			"nothing — no services, no database, none of it.", half-6)))
+
+	// --- the ways out --------------------------------------------------------
 	acts := renderActions([]action{
-		{key: "t", title: "MOVE DOMAIN TO ROUTE53", tone: successColor,
-			detail: "every registrar can change nameservers"},
-		{key: "s", title: "SKIP CUSTOM DOMAIN", tone: accentColor,
-			detail: "deploy everything else now, add it later"},
-		{key: "esc", title: "CONTINUE ANYWAY", tone: warningColor,
-			detail: "apply runs and stalls on the certificate"},
+		{key: "r", title: "CHECK AGAIN NOW", tone: fgColor,
+			detail: "If you have just added the record, do not wait for the countdown."},
+		{key: "1-4", title: "ADD THE RECORD YOURSELF", tone: successColor,
+			detail: "Copy it into " + m.parent + " wherever that domain is managed. " +
+				"This screen keeps checking and carries on by itself once it resolves."},
+		{key: "t", title: "MOVE " + strings.ToUpper(m.parent) + " TO ROUTE53", tone: accentColor,
+			detail: "For providers that cannot add an NS record for a subdomain at all. " +
+				"meroku copies your existing records over first, so mail and the website keep working."},
+		{key: "s", title: "DEPLOY WITHOUT THE CUSTOM DOMAIN", tone: accentColor,
+			detail: "Everything else goes up now. Turn the domain back on and deploy again whenever you like."},
+		{key: "esc", title: "DEPLOY ANYWAY", tone: warningColor,
+			detail: "It will stop at the certificate about 20 minutes in, having built nothing."},
+		{key: "^C", title: "ABORT", tone: dangerColor,
+			detail: "Stop here and change nothing."},
 	}, half-6)
 
-	right := panel("why", why.String(), half, warningColor) + "\n" +
-		panel("what now", acts, half, successColor)
+	// The record and the explanation together balance the menu, which is always
+	// the longest panel. Stacked, the order is the one you read in: what to add,
+	// why, then the ways out.
+	left := recordPanel + "\n" + panel("what is happening", why.String(), half, warningColor)
+	right := panel("what now", acts, half, successColor)
 
 	if sideBySide {
 		return joinColumns(left, right)

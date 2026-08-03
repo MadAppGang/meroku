@@ -87,8 +87,8 @@ func TestDNSModel_NoCandidatesFallsBackToManual(t *testing.T) {
 	if m.states[stepFindParent] != stepFailed {
 		t.Error("find-parent should be marked failed")
 	}
-	if !strings.Contains(m.View(), "BLOCKED") {
-		t.Error("the blocked badge should be visible in the view")
+	if !strings.Contains(flattenStacked(m), "WHAT IS HAPPENING") {
+		t.Error("the fallback should explain the situation")
 	}
 }
 
@@ -560,14 +560,37 @@ func TestDNSModel_SkipDomainIsItsOwnOutcome(t *testing.T) {
 
 // The consequence of skipping has to be stated where the decision is made.
 func TestDNSModel_ManualPanelWarnsAboutCertificateStall(t *testing.T) {
-	view := flatten(manualModel(t).View())
-	// The consequence and both escape routes must be on screen at the moment of
-	// the decision — as badges and menu rows now, not as a paragraph.
-	for _, want := range []string{"RISK", "ACM cert stalls 20m", "SKIP CUSTOM DOMAIN", "MOVE DOMAIN TO ROUTE53"} {
+	view := flattenStacked(manualModel(t))
+
+	// Assert on meaning, not wording. These check that the screen answers the
+	// three questions the operator has — what is needed, what happens if it is
+	// missing, and what they can do — without pinning the copy, which has
+	// churned once already and broke every one of these when it did.
+	for _, want := range []string{
+		"certificate",      // what the deploy is waiting for
+		"finishes nothing", // what it costs to ignore
+	} {
 		if !strings.Contains(view, want) {
-			t.Errorf("manual panel should surface %q:\n%s", want, view)
+			t.Errorf("the fallback should convey %q:\n%s", want, view)
 		}
 	}
+
+	// Every escape route must be reachable and advertised.
+	for _, k := range []string{"r", "t", "s", "esc", "^C"} {
+		if !hintBound(manualModel(t).footerHints(), k) {
+			t.Errorf("key %q should be offered in the legend", k)
+		}
+	}
+}
+
+// hintBound reports whether a key appears in the legend.
+func hintBound(hints []keyHint, key string) bool {
+	for _, h := range hints {
+		if h.key == key {
+			return true
+		}
+	}
+	return false
 }
 
 // Nameservers are numbered so the number is also the key that copies that line.
@@ -582,7 +605,7 @@ func TestDNSModel_NameserversAreNumbered(t *testing.T) {
 		}
 		_ = i
 	}
-	flat := flatten(view)
+	flat := flattenStacked(manualModel(t))
 	if !strings.Contains(flat, "copy all") || !strings.Contains(flat, "copy one") {
 		t.Errorf("copy hints missing from the legend:\n%s", view)
 	}
@@ -595,7 +618,7 @@ func TestDNSModel_CountdownTriggersAutomaticRecheck(t *testing.T) {
 	if m.nextCheckIn != secondsBetweenDNSChecks {
 		t.Fatalf("countdown should start at %d, got %d", secondsBetweenDNSChecks, m.nextCheckIn)
 	}
-	if !strings.Contains(flatten(m.View()), "recheck") {
+	if !strings.Contains(flattenStacked(m), "recheck") {
 		t.Error("the recheck countdown should be visible")
 	}
 

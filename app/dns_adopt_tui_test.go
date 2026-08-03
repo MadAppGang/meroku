@@ -17,6 +17,20 @@ func lipglossWidth(s string) int { return lipgloss.Width(s) }
 // Box borders have to go too: a wrapped sentence inside a panel comes back as
 // "resolves until you │ │ update the nameservers", which contains neither the
 // original sentence nor anything an assertion can reasonably target.
+// flattenStacked renders a model at a width narrow enough that the layout
+// stacks into one column, then flattens it.
+//
+// Flattening a two-column layout interleaves the columns — "cannot add an NS
+// record for a" from the left lands next to "You asked for the custom domain"
+// from the right — so any assertion on a phrase has to be made against the
+// single-column form.
+func flattenStacked(m *dnsSetupModel) string {
+	orig := m.width
+	m.width = 80
+	defer func() { m.width = orig }()
+	return flatten(m.View())
+}
+
 func flatten(view string) string {
 	cleaned := strings.Map(func(r rune) rune {
 		if strings.ContainsRune("│─╭╮╰╯┃━┏┓┗┛", r) {
@@ -40,15 +54,23 @@ func adoptingModel(t *testing.T) *dnsSetupModel {
 // [t] is only offered where it is the answer: the manual fallback.
 func TestAdopt_OfferedFromManualFallback(t *testing.T) {
 	m := adoptingModel(t)
-	flat := flatten(m.View())
-	if !strings.Contains(flat, "MOVE DOMAIN TO ROUTE53") {
+	flat := flattenStacked(m)
+
+	if !strings.Contains(flat, "ROUTE53") {
 		t.Errorf("the adoption route should be offered as an action:\n%s", m.View())
 	}
-	if !strings.Contains(flat, "move to route53") {
-		t.Error("and bound in the key legend")
+	// The reason it exists at all — a provider that cannot delegate a subdomain —
+	// has to be on screen, or the option looks arbitrary.
+	if !strings.Contains(flat, "cannot add an NS record for a subdomain") {
+		t.Errorf("the action should say who it is for:\n%s", flat)
 	}
-	if !strings.Contains(flat, "every registrar can change nameservers") {
-		t.Error("the action should say why moving the domain is the way out")
+	// And it must reassure that existing records survive, since that is the
+	// question anyone with live mail on the domain will ask first.
+	if !strings.Contains(flat, "copies your existing records") {
+		t.Error("the action should say existing records are carried over")
+	}
+	if !hintBound(m.footerHints(), "t") {
+		t.Error("and be bound in the key legend")
 	}
 }
 

@@ -130,13 +130,28 @@ func statChip(label, value string, tone lipgloss.TerminalColor) string {
 
 // ----------------------------------------------------------------- actions ---
 
+// keycap renders a pressable key.
+//
+// Keys are always neutral gray and status badges are always saturated colour.
+// They used to share one treatment — dark ink on a bright fill — so a BLOCKED
+// chip and a [t] key looked like the same kind of thing, and the screen
+// suggested you could press BLOCKED. One visual, one meaning: gray means press
+// me, colour means this is the state of something.
+func keycap(k string) string {
+	return lipgloss.NewStyle().
+		Background(lipgloss.Color("#374151")).Foreground(fgColor).
+		Bold(true).Padding(0, 1).Render(k)
+}
+
 // action is one choice in a menu: the key that triggers it, a short title, and
 // one line of consequence.
 type action struct {
 	key    string
 	title  string
 	detail string
-	tone   lipgloss.TerminalColor
+	// tone colours the title, not the key — the risk lives in what the option
+	// does, not in the key you press to do it.
+	tone lipgloss.TerminalColor
 }
 
 // renderActions draws a menu of choices as keycap + title + consequence.
@@ -149,31 +164,23 @@ func renderActions(actions []action, width int) string {
 	for i, a := range actions {
 		tone := a.tone
 		if tone == nil {
-			tone = accentColor
+			tone = fgColor
 		}
-		cap := lipgloss.NewStyle().
-			Background(tone).Foreground(lipgloss.Color("#0a0a0a")).
-			Bold(true).Padding(0, 1).Render(a.key)
 
-		title := lipgloss.NewStyle().Foreground(fgColor).Bold(true).Render(a.title)
+		b.WriteString(keycap(a.key) + " " +
+			lipgloss.NewStyle().Foreground(tone).Bold(true).Render(a.title) + "\n")
 
-		b.WriteString(cap + " " + title + "\n")
 		if a.detail != "" {
-			detail := a.detail
-			if lipgloss.Width(detail) > width-6 {
-				detail = truncateToWidth(detail, width-7) + "…"
-			}
-			b.WriteString(lipgloss.NewStyle().Foreground(mutedColor).
-				Render("     " + detail))
-			if i < len(actions)-1 {
-				b.WriteString("\n")
+			for _, line := range strings.Split(wordWrap(a.detail, width-8), "\n") {
+				b.WriteString(lipgloss.NewStyle().Foreground(mutedColor).
+					Render("     "+line) + "\n")
 			}
 		}
-		if i < len(actions)-1 && a.detail == "" {
-			b.WriteString("")
+		if i < len(actions)-1 {
+			b.WriteString("\n")
 		}
 	}
-	return b.String()
+	return strings.TrimRight(b.String(), "\n")
 }
 
 // ------------------------------------------------------------------ legend ---

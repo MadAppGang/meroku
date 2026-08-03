@@ -515,20 +515,20 @@ func (m *dnsSetupModel) adoptFooterHints() []keyHint {
 	case adoptPickProfile:
 		return []keyHint{
 			{"↑↓", "choose account"}, {"enter", "read the zone"},
-			{"esc", "back"}, {"^C", "cancel"}}
+			{"esc", "back"}, {"^C", "abort deploy"}}
 	case adoptReview:
 		if m.adopt.err != nil {
-			return []keyHint{{"esc", "back"}, {"^C", "cancel"}}
+			return []keyHint{{"esc", "back"}, {"^C", "abort deploy"}}
 		}
 		return []keyHint{
-			{"enter", "create zone and copy"}, {"esc", "back"}, {"^C", "cancel"}}
+			{"enter", "create zone and copy"}, {"esc", "back"}, {"^C", "abort deploy"}}
 	case adoptVerify:
 		return []keyHint{
-			{"enter", "show nameservers"}, {"esc", "stop here"}, {"^C", "cancel"}}
+			{"enter", "show nameservers"}, {"esc", "stop here"}, {"^C", "abort deploy"}}
 	case adoptWaitNS:
 		return []keyHint{
 			{"c", "copy all"}, {"1-4", "copy one"},
-			{"esc", "stop waiting"}, {"^C", "cancel"}}
+			{"esc", "stop waiting"}, {"^C", "abort deploy"}}
 	}
-	return []keyHint{{"^C", "cancel"}}
+	return []keyHint{{"^C", "abort deploy"}}
 }
