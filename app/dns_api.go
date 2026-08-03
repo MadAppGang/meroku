@@ -255,12 +255,25 @@ func createDNSDelegationRole(profile string, trustedAccounts []string) (string, 
 	return *roleResp.Role.Arn, nil
 }
 
-// createNSRecordDelegation creates NS records in root zone for subdomain delegation
-func createNSRecordDelegation(rootProfile, childProfile, rootZoneID, subdomain string, nsRecords []string) error {
+// createNSRecordDelegation creates NS records in the parent zone for subdomain
+// delegation, using parentProfile's credentials.
+//
+// parentProfile must be the profile that owns the parent zone — usually NOT the
+// profile being deployed into, since the parent domain typically lives in a
+// different account. It had a second, entirely unused `childProfile` parameter;
+// that made it possible to pass the parent profile in the wrong position and
+// silently authenticate as whatever AWS_PROFILE happened to be set to.
+func createNSRecordDelegation(parentProfile, rootZoneID, subdomain string, nsRecords []string) error {
 	ctx := context.Background()
 
+	if strings.TrimSpace(parentProfile) == "" {
+		// An empty profile makes the SDK fall back to the ambient AWS_PROFILE,
+		// which during a deploy is the target account — never the parent's.
+		return fmt.Errorf("no AWS profile given for the parent zone %s", rootZoneID)
+	}
+
 	cfg, err := config.LoadDefaultConfig(ctx,
-		config.WithSharedConfigProfile(rootProfile),
+		config.WithSharedConfigProfile(parentProfile),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to load AWS config: %w", err)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -200,5 +201,60 @@ func TestScanStreamStopsOnCancel(t *testing.T) {
 	case <-done:
 	case <-time.After(30 * time.Second):
 		t.Fatal("stream did not close after cancel")
+	}
+}
+
+// applyDelegation must authenticate as the profile the operator chose.
+//
+// Regression test for a real failure: createNSRecordDelegation took an unused
+// second `childProfile` parameter, the call passed the chosen profile there,
+// and the credential-bearing first parameter got "". The SDK then fell back to
+// the ambient AWS_PROFILE — the account being deployed into — and tried to
+// write to a hosted zone in a different account. The resulting AccessDenied
+// looked like a permissions problem on the operator's side; it was not.
+func TestApplyDelegationUsesTheChosenProfile(t *testing.T) {
+	var gotProfile, gotZone, gotSubdomain string
+	var gotNS []string
+
+	orig := delegationWriter
+	defer func() { delegationWriter = orig }()
+	delegationWriter = func(profile, zoneID, subdomain string, ns []string) error {
+		gotProfile, gotZone, gotSubdomain, gotNS = profile, zoneID, subdomain, ns
+		return nil
+	}
+
+	err := applyDelegation(delegationRequest{
+		ParentProfile: "mag",
+		ParentZoneID:  "Z03970472IHTTTNCP0DZD",
+		Subdomain:     "dev.coretechx.dev",
+		Nameservers:   []string{"ns-644.awsdns-16.net", "ns-80.awsdns-10.com"},
+	})
+	if err != nil {
+		t.Fatalf("applyDelegation: %v", err)
+	}
+
+	if gotProfile != "mag" {
+		t.Errorf("wrote as profile %q, want mag — the operator's choice was dropped", gotProfile)
+	}
+	if gotZone != "Z03970472IHTTTNCP0DZD" {
+		t.Errorf("zone = %q", gotZone)
+	}
+	if gotSubdomain != "dev.coretechx.dev" {
+		t.Errorf("subdomain = %q", gotSubdomain)
+	}
+	if len(gotNS) != 2 {
+		t.Errorf("nameservers = %v", gotNS)
+	}
+}
+
+// An empty profile must fail loudly rather than silently authenticating as
+// whatever AWS_PROFILE is set to.
+func TestCreateNSRecordDelegationRejectsEmptyProfile(t *testing.T) {
+	err := createNSRecordDelegation("", "Z1", "dev.example.com", []string{"ns-1.example.net"})
+	if err == nil {
+		t.Fatal("expected an error for an empty parent profile")
+	}
+	if !strings.Contains(err.Error(), "no AWS profile") {
+		t.Errorf("error should name the cause, got: %v", err)
 	}
 }

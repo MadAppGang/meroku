@@ -250,12 +250,19 @@ func (r delegationRequest) Validate() error {
 // for ChangeResourceRecordSets, simulate needs its own permission (which is
 // itself often denied), and the change is an idempotent UPSERT of exactly the
 // record we want — so attempting it is the most accurate possible check.
+// delegationWriter performs the actual Route53 write. It is a variable so that
+// tests can assert what applyDelegation forwards without touching AWS — the
+// original bug here was passing the operator's chosen profile in the wrong
+// argument position, which no amount of AWS-free testing could catch while the
+// call was hardcoded.
+var delegationWriter = createNSRecordDelegation
+
 func applyDelegation(req delegationRequest) error {
 	if err := req.Validate(); err != nil {
 		return err
 	}
 
-	err := createNSRecordDelegation("", req.ParentProfile, req.ParentZoneID, req.Subdomain, req.Nameservers)
+	err := delegationWriter(req.ParentProfile, req.ParentZoneID, req.Subdomain, req.Nameservers)
 	if err == nil {
 		return nil
 	}
