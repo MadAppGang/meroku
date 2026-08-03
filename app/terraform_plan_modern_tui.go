@@ -1122,6 +1122,15 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.applyState.isApplying = false
 			m.applyState.applyComplete = true
 
+			// Terraform has exited, so nothing can still be in flight. Clearing
+			// this makes "Currently Updating (2)" under an "Apply Complete"
+			// header structurally impossible, whatever leaked it — a contradiction
+			// on screen is worse than a missing panel, because it leaves the
+			// operator unsure whether the run actually finished.
+			m.applyState.mu.Lock()
+			m.applyState.currentOps = map[string]*currentOperation{}
+			m.applyState.mu.Unlock()
+
 			// Move any remaining pending resources to completed as "no-op"
 			// This happens when terraform decides at apply time that a planned
 			// resource doesn't actually need changing (e.g., no real diff)
@@ -1142,6 +1151,12 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.applyState.isApplying = false
 			m.applyState.applyComplete = true
 			m.applyState.hasErrors = true
+
+			// Same reasoning as applyCompleteMsg: the process is gone, so nothing
+			// is still running. The errors themselves are in the summary panel.
+			m.applyState.mu.Lock()
+			m.applyState.currentOps = map[string]*currentOperation{}
+			m.applyState.mu.Unlock()
 
 			// Cancel all pending operations when deployment fails
 			for _, pending := range m.applyState.pending {

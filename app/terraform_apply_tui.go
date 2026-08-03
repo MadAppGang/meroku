@@ -679,19 +679,30 @@ func (m *modernPlanModel) handleApplyComplete(msg *TerraformJSONMessage) {
 	// Normalize action name (Terraform uses "destroy" in hooks, "delete" in plan)
 	action = normalizeAction(action)
 
-	// Skip read operations - data source reads are not tracked for apply progress
-	if action == "read" {
-		return
-	}
-
 	// Use elapsed seconds from the message
 	duration := time.Duration(msg.Hook.ElapsedSeconds * float64(time.Second))
 
-	// Remove from currentOps map
+	// Clear the operation BEFORE deciding whether it counts toward progress.
+	//
+	// handleApplyStart adds every address it is given, data source reads
+	// included, so every address must be removed here too. Returning early for
+	// reads used to skip this delete, which left entries like
+	// "Reading module.workloads.data.aws_vpc.selected [148s elapsed]" pinned in
+	// the Currently Updating panel with a running timer for the rest of the
+	// session — long after "Apply complete!" had been logged.
 	if m.applyState != nil {
 		m.applyState.mu.Lock()
 		delete(m.applyState.currentOps, addr)
 		m.applyState.mu.Unlock()
+	}
+
+	// Data source reads are genuinely not apply progress: they are not in the
+	// planned resource count, so emitting resourceCompleteMsg for one would push
+	// the counter past its total. Showing them while they run is still useful —
+	// a slow data source is worth seeing — so they are displayed and cleared,
+	// just not counted.
+	if action == "read" {
+		return
 	}
 
 	m.sendMsg(resourceCompleteMsg{
