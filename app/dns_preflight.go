@@ -325,6 +325,22 @@ func checkDNSPreflight(ctx context.Context, e Env) (dnsPreflightResult, error) {
 		res.PublicNameservers = publicNS
 	}
 
+	// A resolver agreeing is not proof. It answers from cache, and a cache can
+	// outlive the record that put it there: a domain that moves DNS provider
+	// leaves resolvers serving its old subdomain delegations for as long as the
+	// TTL allows. Where we know which zone should carry the record, read that
+	// zone instead — the deploy is about to spend twenty minutes on a certificate
+	// that depends on the answer being true rather than merely cached.
+	if profile, ok := cachedParentProfile(res.ParentDomain); ok && res.ParentDomain != "" {
+		if parentZoneID, _, zErr := findHostedZoneByName(ctx, profile, res.ParentDomain); zErr == nil && parentZoneID != "" {
+			if check, cErr := verifyDelegationInParentZone(ctx, profile, parentZoneID, res.ZoneName, zoneNS); cErr == nil && !(check.Present && check.Matches) {
+				res.Plan = dnsPlanBlocked
+				res.Reason = describeDelegationCheck(check, res.ZoneName, res.ParentDomain)
+				return res, nil
+			}
+		}
+	}
+
 	switch {
 	case nameserverSetsMatch(zoneNS, res.PublicNameservers):
 		res.Plan = dnsPlanNormal

@@ -155,12 +155,24 @@ func (m *dnsSetupModel) adoptCheckApexCmd() tea.Cmd {
 	expectedApex := m.adopt.summary.Zone.Nameservers
 	expectedZone := m.nameservers
 
+	profile := m.adopt.profile()
+	parentZoneID := m.adopt.summary.Zone.ZoneID
+
 	return func() tea.Msg {
-		// Ask about the goal first. If the subdomain already resolves to our zone
-		// there is nothing left to wait for, whatever the apex looks like.
-		if len(expectedZone) > 0 {
-			if observed, err := queryNameservers(zone); err == nil &&
-				nameserverSetsMatch(expectedZone, observed) {
+		// Ask about the goal first — but ask the zone, not a resolver.
+		//
+		// A resolver answering with the expected nameservers proves only that
+		// something once delegated this name. sploty.app moved from Hover to
+		// Route53 without its dev.sploty.app NS record; resolvers kept serving the
+		// old delegation from cache, this shortcut believed them, and the flow
+		// declared success without ever writing the record. The certificate then
+		// failed validation, correctly, because the name did not resolve for
+		// anyone whose cache was cold.
+		if len(expectedZone) > 0 && parentZoneID != "" {
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			check, err := verifyDelegationInParentZone(ctx, profile, parentZoneID, zone, expectedZone)
+			cancel()
+			if err == nil && check.Present && check.Matches {
 				return adoptNSLiveMsg{live: true, subdomainLive: true}
 			}
 		}

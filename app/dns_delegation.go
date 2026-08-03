@@ -257,6 +257,12 @@ func (r delegationRequest) Validate() error {
 // call was hardcoded.
 var delegationWriter = createNSRecordDelegation
 
+// delegationVerifier reads the record back out of the parent zone. A variable
+// for the same reason as the writer: applyDelegation's contract is worth testing
+// without credentials, and a verification step that only runs against live AWS
+// is one nobody exercises until it is too late.
+var delegationVerifier = verifyDelegationInParentZone
+
 func applyDelegation(req delegationRequest) error {
 	if err := req.Validate(); err != nil {
 		return err
@@ -264,6 +270,33 @@ func applyDelegation(req delegationRequest) error {
 
 	err := delegationWriter(req.ParentProfile, req.ParentZoneID, req.Subdomain, req.Nameservers)
 	if err == nil {
+		// Read the record back out of the zone. Route53 returning success for a
+		// change batch is not by itself evidence the zone now delegates what we
+		// think it does, and every other check in this flow asks a resolver —
+		// which can answer from a cache left by a previous DNS provider and has
+		// done exactly that. One API call here is the difference between knowing
+		// and assuming.
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+
+		check, verifyErr := delegationVerifier(
+			ctx, req.ParentProfile, req.ParentZoneID, req.Subdomain, req.Nameservers)
+		switch {
+		case verifyErr != nil:
+			// The write succeeded; we simply could not confirm it. Say so rather
+			// than either failing or claiming success.
+			return fmt.Errorf("record written but could not be verified in zone %s: %w",
+				req.ParentZoneID, verifyErr)
+		case !check.Present:
+			return fmt.Errorf(
+				"Route53 accepted the change but zone %s still has no NS record for %s",
+				req.ParentZoneID, req.Subdomain)
+		case !check.Matches:
+			return fmt.Errorf(
+				"zone %s delegates %s to %s, not to the expected nameservers",
+				req.ParentZoneID, req.Subdomain,
+				strings.Join(normalizeNameservers(check.Observed), ", "))
+		}
 		return nil
 	}
 

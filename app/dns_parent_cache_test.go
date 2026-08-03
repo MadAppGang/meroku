@@ -217,10 +217,17 @@ func TestApplyDelegationUsesTheChosenProfile(t *testing.T) {
 	var gotNS []string
 
 	orig := delegationWriter
-	defer func() { delegationWriter = orig }()
+	origVerify := delegationVerifier
+	defer func() { delegationWriter = orig; delegationVerifier = origVerify }()
+
 	delegationWriter = func(profile, zoneID, subdomain string, ns []string) error {
 		gotProfile, gotZone, gotSubdomain, gotNS = profile, zoneID, subdomain, ns
 		return nil
+	}
+	// Stub the read-back too; this test is about what applyDelegation forwards,
+	// and it must not depend on a live zone.
+	delegationVerifier = func(_ context.Context, _, _, _ string, _ []string) (delegationCheck, error) {
+		return delegationCheck{Present: true, Matches: true}, nil
 	}
 
 	err := applyDelegation(delegationRequest{
