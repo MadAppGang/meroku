@@ -117,16 +117,20 @@ function Carousel({
 				canScrollNext,
 			}}
 		>
-			<div
+			<section
 				onKeyDownCapture={handleKeyDown}
 				className={cn("relative", className)}
-				role="region"
+				// A <section> only takes the region role once it has an accessible
+				// name, and aria-roledescription is only valid on that role. The APG
+				// carousel pattern wants a label here regardless; callers can override
+				// it via props.
+				aria-label="Carousel"
 				aria-roledescription="carousel"
 				data-slot="carousel"
 				{...props}
 			>
 				{children}
-			</div>
+			</section>
 		</CarouselContext.Provider>
 	);
 }
@@ -156,6 +160,7 @@ function CarouselItem({ className, ...props }: React.ComponentProps<"div">) {
 	const { orientation } = useCarousel();
 
 	return (
+		// biome-ignore lint/a11y/useSemanticElements: the ARIA Authoring Practices carousel pattern specifies role="group" with aria-roledescription="slide" for each slide; the suggested <fieldset> is a form-control grouping and would misrepresent this content.
 		<div
 			role="group"
 			aria-roledescription="slide"

@@ -68,7 +68,9 @@ function InputOTPSlot({
 
 function InputOTPSeparator({ ...props }: React.ComponentProps<"div">) {
 	return (
-		<div data-slot="input-otp-separator" role="separator" {...props}>
+		// Purely decorative dash between OTP groups. aria-hidden keeps it out of the
+		// accessibility tree; role="separator" implied a focusable, valued widget.
+		<div data-slot="input-otp-separator" aria-hidden="true" {...props}>
 			<MinusIcon />
 		</div>
 	);

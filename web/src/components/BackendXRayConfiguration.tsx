@@ -105,30 +105,28 @@ export function BackendXRayConfiguration({
 						<CardContent className="space-y-4">
 							<div className="grid grid-cols-1 gap-4">
 								<div>
-									<label className="text-xs text-gray-400">
-										Container Name
-									</label>
+									<span className="text-xs text-gray-400">Container Name</span>
 									<p className="text-sm font-mono text-gray-300">
 										adot-collector
 									</p>
 								</div>
 
 								<div>
-									<label className="text-xs text-gray-400">Image</label>
+									<span className="text-xs text-gray-400">Image</span>
 									<p className="text-sm font-mono text-gray-300 break-all">
 										public.ecr.aws/aws-observability/aws-otel-collector:latest
 									</p>
 								</div>
 
 								<div>
-									<label className="text-xs text-gray-400">Configuration</label>
+									<span className="text-xs text-gray-400">Configuration</span>
 									<p className="text-sm font-mono text-gray-300">
 										--config=/etc/ecs/container-insights/otel-task-metrics-config.yaml
 									</p>
 								</div>
 
 								<div>
-									<label className="text-xs text-gray-400">Log Group</label>
+									<span className="text-xs text-gray-400">Log Group</span>
 									<p className="text-sm font-mono text-gray-300">
 										{logGroupName}
 									</p>

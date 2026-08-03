@@ -370,6 +370,7 @@ jobs:
 						Workflow File
 					</h3>
 					<button
+						type="button"
 						onClick={handleCopy}
 						className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 border border-slate-600 rounded-lg text-sm text-slate-200 transition-colors"
 					>

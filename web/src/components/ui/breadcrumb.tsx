@@ -51,10 +51,11 @@ function BreadcrumbLink({
 
 function BreadcrumbPage({ className, ...props }: React.ComponentProps<"span">) {
 	return (
+		// The current page is deliberately not a link, so it carries aria-current
+		// rather than role="link" + aria-disabled, which announced a disabled link
+		// and demanded a tabIndex it should never have.
 		<span
 			data-slot="breadcrumb-page"
-			role="link"
-			aria-disabled="true"
 			aria-current="page"
 			className={cn("text-foreground font-normal", className)}
 			{...props}

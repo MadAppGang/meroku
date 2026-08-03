@@ -64,6 +64,7 @@ export function StatusLine({
 					{/* View Mode Toggle (Miniature) */}
 					<div className="flex items-center bg-gray-800 rounded overflow-hidden">
 						<button
+							type="button"
 							onClick={() => onViewModeChange("visual")}
 							className={`flex items-center gap-1.5 px-3 py-1 hover:text-white transition-colors ${
 								viewMode === "visual"
@@ -76,6 +77,7 @@ export function StatusLine({
 							<span className="hidden sm:inline">Visual</span>
 						</button>
 						<button
+							type="button"
 							onClick={() => onViewModeChange("code")}
 							className={`flex items-center gap-1.5 px-3 py-1 hover:text-white transition-colors ${
 								viewMode === "code"

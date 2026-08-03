@@ -263,6 +263,7 @@ export function SidebarRight({
 			{/* AI Prompt Button */}
 			<div className="p-3 border-b border-gray-800 bg-gray-900/50 flex-shrink-0">
 				<button
+					type="button"
 					onClick={handleCopyAIPrompt}
 					className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white text-sm font-medium rounded-lg transition-all shadow-lg shadow-purple-900/20 hover:shadow-purple-900/40"
 				>
@@ -277,6 +278,7 @@ export function SidebarRight({
 			{/* Tabs */}
 			<div className="flex border-b border-gray-800 bg-gray-900/50 flex-shrink-0">
 				<button
+					type="button"
 					onClick={() => setActiveTab("vars")}
 					className={`flex-1 py-3 text-xs font-medium tracking-wide transition-colors
             ${
@@ -288,6 +290,7 @@ export function SidebarRight({
 					VARIABLES
 				</button>
 				<button
+					type="button"
 					onClick={() => setActiveTab("modules")}
 					className={`flex-1 py-3 text-xs font-medium tracking-wide transition-colors
             ${
@@ -319,6 +322,7 @@ export function SidebarRight({
 								/>
 								{filterText && (
 									<button
+										type="button"
 										onClick={() => setFilterText("")}
 										className="absolute right-2 top-2 text-gray-600 hover:text-gray-300"
 									>
@@ -349,6 +353,7 @@ export function SidebarRight({
 												className="border-b border-gray-800/50"
 											>
 												<button
+													type="button"
 													onClick={() => toggleGroup(groupName)}
 													className="w-full flex items-center px-3 py-2 bg-gray-900/20 hover:bg-gray-800/80 transition-colors text-left"
 												>
@@ -376,13 +381,14 @@ export function SidebarRight({
 															>
 																<div className="flex-1 min-w-0 mr-3">
 																	<div className="flex items-center gap-2 mb-0.5">
-																		<code
-																			className="text-xs font-mono text-blue-300 truncate cursor-pointer hover:underline decoration-blue-500/50"
-																			onClick={() => onInsert(`${v.name}`)}
+																		<button
+																			type="button"
+																			className="text-xs font-mono text-blue-300 truncate cursor-pointer hover:underline decoration-blue-500/50 text-left"
+																			onClick={() => onInsert(v.name)}
 																			title="Click to insert"
 																		>
 																			{v.name}
-																		</code>
+																		</button>
 																	</div>
 																	<div className="flex items-center gap-2">
 																		<span className="text-[10px] text-gray-500 font-mono px-1 rounded bg-gray-900/50 border border-gray-800">
@@ -394,6 +400,7 @@ export function SidebarRight({
 																	</p>
 																</div>
 																<button
+																	type="button"
 																	onClick={() => onInsert(`${v.name}`)}
 																	className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-all flex-shrink-0"
 																	title="Insert Variable"
@@ -436,6 +443,7 @@ export function SidebarRight({
 											</span>
 										</div>
 										<button
+											type="button"
 											onClick={() =>
 												onInsert(
 													`module "${m.name}" {\n  source = "${m.source}"\n${m.inputs

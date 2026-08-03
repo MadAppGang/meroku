@@ -1,5 +1,5 @@
 import { Loader2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { type Environment, infrastructureApi } from "../api/infrastructure";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
@@ -28,6 +28,7 @@ export function EnvironmentSelector({
 	open,
 	onSelect,
 }: EnvironmentSelectorProps) {
+	const uid = useId();
 	const [environments, setEnvironments] = useState<Environment[]>([]);
 	const [selectedEnv, setSelectedEnv] = useState<string>("");
 	const [isLoading, setIsLoading] = useState(true);
@@ -107,11 +108,14 @@ export function EnvironmentSelector({
 						</Alert>
 					) : (
 						<div>
-							<label className="text-sm font-medium mb-2 block">
+							<label
+								htmlFor={`${uid}-environment`}
+								className="text-sm font-medium mb-2 block"
+							>
 								Environment
 							</label>
 							<Select value={selectedEnv} onValueChange={setSelectedEnv}>
-								<SelectTrigger>
+								<SelectTrigger id={`${uid}-environment`}>
 									<SelectValue placeholder="Select an environment" />
 								</SelectTrigger>
 								<SelectContent>

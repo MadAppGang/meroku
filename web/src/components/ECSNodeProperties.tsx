@@ -381,14 +381,14 @@ export function ECSClusterInfo({
 				<CardContent className="space-y-4">
 					<div className="grid grid-cols-1 gap-4">
 						<div>
-							<label className="text-xs text-gray-400">Cluster Name</label>
+							<span className="text-xs text-gray-400">Cluster Name</span>
 							<p className="text-sm font-mono text-gray-300">
 								{clusterInfo.clusterName}
 							</p>
 						</div>
 
 						<div>
-							<label className="text-xs text-gray-400">Status</label>
+							<span className="text-xs text-gray-400">Status</span>
 							<p className="text-sm text-gray-300">
 								<span
 									className={`inline-flex items-center gap-1 ${clusterInfo.status === "ACTIVE" ? "text-green-400" : "text-yellow-400"}`}
@@ -404,27 +404,25 @@ export function ECSClusterInfo({
 						</div>
 
 						<div>
-							<label className="text-xs text-gray-400">Region</label>
+							<span className="text-xs text-gray-400">Region</span>
 							<p className="text-sm text-gray-300">{config.region}</p>
 						</div>
 
 						<div className="grid grid-cols-3 gap-4">
 							<div>
-								<label className="text-xs text-gray-400">Running Tasks</label>
+								<span className="text-xs text-gray-400">Running Tasks</span>
 								<p className="text-2xl font-medium text-gray-300">
 									{clusterInfo.runningTasks}
 								</p>
 							</div>
 							<div>
-								<label className="text-xs text-gray-400">Active Services</label>
+								<span className="text-xs text-gray-400">Active Services</span>
 								<p className="text-2xl font-medium text-gray-300">
 									{clusterInfo.activeServices}
 								</p>
 							</div>
 							<div>
-								<label className="text-xs text-gray-400">
-									Registered Tasks
-								</label>
+								<span className="text-xs text-gray-400">Registered Tasks</span>
 								<p className="text-2xl font-medium text-gray-300">
 									{clusterInfo.registeredTasks}
 								</p>
@@ -432,9 +430,7 @@ export function ECSClusterInfo({
 						</div>
 
 						<div>
-							<label className="text-xs text-gray-400">
-								Container Insights
-							</label>
+							<span className="text-xs text-gray-400">Container Insights</span>
 							<p className="text-sm text-gray-300">
 								<span
 									className={`inline-flex items-center gap-1 ${clusterInfo.containerInsights === "enabled" ? "text-green-400" : "text-gray-400"}`}
@@ -452,9 +448,9 @@ export function ECSClusterInfo({
 						</div>
 
 						<div>
-							<label className="text-xs text-gray-400">
+							<span className="text-xs text-gray-400">
 								Compute Configuration
-							</label>
+							</span>
 							<div className="mt-1 bg-gray-800 rounded p-3">
 								<ul className="text-xs text-gray-400 space-y-1">
 									<li>• Serverless compute with AWS Fargate</li>
@@ -486,7 +482,7 @@ export function ECSClusterInfo({
 
 					{/* Cluster ARN */}
 					<div className="bg-gray-800 rounded-lg p-3">
-						<label className="text-xs text-gray-400">Cluster ARN</label>
+						<span className="text-xs text-gray-400">Cluster ARN</span>
 						<p className="text-xs font-mono text-gray-300 mt-1 break-all">
 							{clusterInfo.clusterArn}
 						</p>
@@ -598,7 +594,7 @@ export function ECSNetworkInfo({
 				<CardContent className="space-y-4">
 					<div className="grid grid-cols-1 gap-4">
 						<div>
-							<label className="text-xs text-gray-400">VPC</label>
+							<span className="text-xs text-gray-400">VPC</span>
 							<p className="text-sm text-gray-300">
 								VPC ID: {networkInfo.vpc.vpcId}
 							</p>
@@ -612,9 +608,7 @@ export function ECSNetworkInfo({
 						</div>
 
 						<div>
-							<label className="text-xs text-gray-400">
-								Availability Zones
-							</label>
+							<span className="text-xs text-gray-400">Availability Zones</span>
 							<div className="flex gap-2 mt-1">
 								{networkInfo.availabilityZones.map((az) => (
 									<span
@@ -628,9 +622,9 @@ export function ECSNetworkInfo({
 						</div>
 
 						<div>
-							<label className="text-xs text-gray-400">
+							<span className="text-xs text-gray-400">
 								Subnet Configuration
-							</label>
+							</span>
 							<div className="mt-1 space-y-2">
 								{privateSubnets.length > 0 && (
 									<div className="bg-gray-800 rounded p-3">
@@ -673,9 +667,9 @@ export function ECSNetworkInfo({
 
 						{networkInfo.serviceDiscovery && (
 							<div>
-								<label className="text-xs text-gray-400">
+								<span className="text-xs text-gray-400">
 									Service Discovery Namespace
-								</label>
+								</span>
 								<p className="text-sm font-mono text-gray-300">
 									{networkInfo.serviceDiscovery.namespaceName}
 								</p>
