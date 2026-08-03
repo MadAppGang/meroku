@@ -35,8 +35,92 @@ provider "aws" {
   }
 }
 
+# us-east-1 is needed for two unrelated reasons, so it is declared here rather
+# than beside either of them: CloudFront requires its certificate there, and IAM
+# and Route53 are global services that AWS hosts in us-east-1 and surfaces only
+# through that endpoint. It used to live inside the CloudFront block, which meant
+# an environment without CloudFront had no way to reach global resources at all.
+#
+# Aliased providers do not inherit default_tags, so they are repeated.
+provider "aws" {
+  alias  = "us_east_1"
+  region = "us-east-1"
+
+  default_tags {
+    tags = {
+      Application = "{{ project }}-{{ env }}"
+      Project     = "{{ project }}"
+      Environment = "{{ env }}"
+      ManagedBy   = "meroku"
+    }
+  }
+}
+
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
+
+# ==============================================================================
+# Resource Groups — one clickable collection per environment
+# ==============================================================================
+#
+# The Application tag above already makes every resource findable, but a tag on
+# its own is only reachable through Tag Editor. A resource group turns the same
+# tag into an entry in the console you can open.
+#
+# This is deliberately NOT myApplications. That service is closed to new
+# applications and receives no further features; AWS's own recommended
+# replacement is exactly this — tag-based resource groups. myApplications also
+# used a different tag (awsApplication, valued with a group ARN), which this
+# project never adopted, so there is nothing to migrate.
+#
+# Two groups are needed, not one. Resource groups are regional, and IAM and
+# Route53 are global services whose ARNs carry no region at all
+# (arn:aws:iam::123456789012:policy/x, arn:aws:route53:::hostedzone/Z1). AWS
+# hosts those in us-east-1 and surfaces them only through that endpoint, so a
+# group in the deploy region silently omits every policy and hosted zone this
+# environment owns. This is documented behaviour, not a workaround: "To create a
+# resource group that contains a global resource, you must configure your AWS
+# Management Console to US East (N. Virginia) us-east-1."
+#
+# Known gap: IAM *roles* are tagged by these modules but never appear in either
+# group. The Resource Groups Tagging API does not return iam:role at all —
+# verified against a live account where six tagged roles yield zero results while
+# six tagged policies yield six. Nothing here can fix that; the roles are still
+# tagged and findable through the IAM console and `aws iam list-role-tags`.
+
+resource "aws_resourcegroups_group" "application" {
+  name        = "{{ project }}-{{ env }}"
+  # The API restricts descriptions to [\sa-zA-Z0-9_.-] — no commas, no dashes
+  # other than hyphen. It rejects the whole request rather than trimming.
+  description = "All {{ project }} {{ env }} resources in this region found by the Application tag"
+
+  resource_query {
+    query = jsonencode({
+      ResourceTypeFilters = ["AWS::AllSupported"]
+      TagFilters = [{
+        Key    = "Application"
+        Values = ["{{ project }}-{{ env }}"]
+      }]
+    })
+  }
+}
+
+resource "aws_resourcegroups_group" "application_global" {
+  provider = aws.us_east_1
+
+  name        = "{{ project }}-{{ env }}-global"
+  description = "IAM and Route53 for {{ project }} {{ env }} - global resources surface via us-east-1"
+
+  resource_query {
+    query = jsonencode({
+      ResourceTypeFilters = ["AWS::AllSupported"]
+      TagFilters = [{
+        Key    = "Application"
+        Values = ["{{ project }}-{{ env }}"]
+      }]
+    })
+  }
+}
 
 {{#if use_default_vpc}}
 # Using default VPC (backward compatibility)
@@ -903,22 +987,6 @@ module "amplify" {
 # CLOUDFRONT CDN DISTRIBUTIONS (Multiple distributions support)
 # Supports wildcard domains and path-based routing
 # ============================================================================
-
-# CloudFront requires certificate in us-east-1
-# Aliased providers do not inherit default_tags, so repeat them here.
-provider "aws" {
-  alias  = "us_east_1"
-  region = "us-east-1"
-
-  default_tags {
-    tags = {
-      Application = "{{ project }}-{{ env }}"
-      Project     = "{{ project }}"
-      Environment = "{{ env }}"
-      ManagedBy   = "meroku"
-    }
-  }
-}
 
 {{#each cloudfront_distributions}}
 {{#if enabled}}
