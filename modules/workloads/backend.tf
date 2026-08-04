@@ -52,6 +52,20 @@ resource "aws_ecs_service" "backend" {
     terraform   = "true"
     Application = "${var.project}-${var.env}"
   }
+
+  # Terraform creates the service pointing at the task definition it knows about,
+  # and from then on CI owns which revision is running: the CI Lambda calls
+  # UpdateService on every ECR push. Without this the two fight — the Lambda
+  # deploys revision :7, the next `terraform apply` sees the service on :7 while
+  # its state says :3, and rolls production back to :3 as a side effect of an
+  # unrelated change. Nothing reports it, because from Terraform's point of view
+  # it just corrected drift.
+  #
+  # Ownership is therefore stated once, here: Terraform owns the service's shape,
+  # CI owns the revision running in it.
+  lifecycle {
+    ignore_changes = [task_definition]
+  }
 }
 
 # Create the Cloud Map service explicitly (instead of letting ECS Service Connect create it)

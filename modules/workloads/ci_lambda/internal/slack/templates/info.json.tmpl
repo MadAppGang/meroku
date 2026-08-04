@@ -1,0 +1,18 @@
+{
+  "blocks": [
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": {{json (printf ":information_source: *Deployment Update*\n*Environment:* %s\n*Service:* %s\n*Status:* %s" .Env .Service .State)}}
+      }
+    }{{if .Reason}},
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": {{json .Reason}}
+      }
+    }{{end}}
+  ]
+}

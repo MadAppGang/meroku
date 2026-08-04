@@ -1,0 +1,12 @@
+# Build artifacts. Terraform produces these at apply time, per environment, so
+# a checkout never carries a stale or placeholder binary.
+.build/
+bootstrap
+*.zip
+
+# Local state from the golden-file regeneration fixture
+# (go test -tags tfgolden ./internal/boundary/ -update).
+**/.terraform/
+**/.terraform.lock.hcl
+**/terraform.tfstate
+**/terraform.tfstate.backup

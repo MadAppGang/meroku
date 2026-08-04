@@ -19,9 +19,17 @@ variable "backend_bucket_public" {
   default = true
 }
 
+# Deprecated and unused. lambda.tf builds the CI Lambda itself at apply time
+# (null_resource.build_ci_lambda -> ci_lambda/.build/${var.env}/ci_lambda.zip),
+# so nothing reads this path. env/main.hbs no longer emits it.
+#
+# It must stay declared: passing an undeclared variable is a hard Terraform
+# error, and every env/*/main.tf generated before this change still sets it.
+# Remove it only once those files have been regenerated.
 variable "lambda_path" {
-  type    = string
-  default = "../../infrastructure/modules/workloads/ci_lambda/bootstrap"
+  description = "Deprecated, unused. The CI Lambda artifact is built by lambda.tf at apply time."
+  type        = string
+  default     = "../../infrastructure/modules/workloads/ci_lambda/bootstrap"
 }
 
 variable "docker_image" {
@@ -310,6 +318,10 @@ variable "services" {
     env_vars          = optional(map(string), { "name" : "SERVICE_TEST", "value" : "PASSED" })
     essential         = optional(bool, true)
     desired_count     = optional(number, 1)
+    # May the CI Lambda redeploy this service on its own? See
+    # var.backend_auto_deploy for what false does and does not do. Absent means
+    # true, which is how every project behaved before this setting existed.
+    auto_deploy = optional(bool, true)
     env_files_s3 = optional(list(object({
       bucket = string
       key    = string
@@ -404,6 +416,39 @@ variable "scheduled_task_names" {
   description = "List of scheduled task names for Lambda CI/CD auto-deployment"
   type        = list(string)
   default     = []
+}
+
+variable "backend_auto_deploy" {
+  description = <<-EOT
+    May the CI/CD Lambda redeploy the backend on its own when a new image or a
+    new configuration lands?
+
+    false does NOT remove the backend from any map and does NOT remove its
+    repository from the ECR event rule. The flag travels to the Lambda as data,
+    the Lambda is still invoked, and it logs "auto_deploy is disabled for
+    backend" instead of doing nothing silently or claiming the repository is
+    unmapped. Manual deploys (detail-type DEPLOY / SERVICE_DEPLOY) are
+    unaffected: this governs automatic triggers only.
+
+    Default true, because that is what every project did before this setting
+    existed. meroku's YAML migration writes the value explicitly, defaulting to
+    true in dev and false everywhere else.
+  EOT
+  type        = bool
+  default     = true
+}
+
+variable "scheduled_task_auto_deploy" {
+  description = <<-EOT
+    Scheduled task name -> auto-deploy policy. An absent entry means true.
+
+    Outside `dev` no automatic trigger reaches a scheduled task at all
+    (modules/ecs_task creates the task's ECR repository only in dev, and an SSM
+    change deliberately never redeploys a task), so `true` there enables only the
+    manual path.
+  EOT
+  type        = map(bool)
+  default     = {}
 }
 
 variable "pgadmin_enabled" {

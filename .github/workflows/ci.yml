@@ -1,0 +1,142 @@
+---
+# Continuous integration for the two Go modules and the Terraform they wire
+# together.
+#
+# This workflow exists because nothing ran any of it. `release.yml` was the only
+# workflow in the repository, and it builds tags. `task test` runs `go test
+# ./...` from `app/`, which is a different Go module and so never reaches
+# `modules/workloads/ci_lambda`. `task lambda:test` exists and nothing invokes
+# it. The entire Terraform <-> Go boundary check — the mechanism built to make
+# the backend-deploy defect un-reintroducible — was therefore opt-in, which is
+# the same property that let that defect survive for months while every unit
+# test passed.
+#
+# No paths filter. A boundary test whose whole purpose is to catch a change on
+# one side of a boundary must not be skipped because the change landed on the
+# other side.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The lower of the two modules' `go` directives (ci_lambda: 1.22,
+  # app: 1.23.0), so both are built with a toolchain each accepts.
+  GO_VERSION: '1.23'
+  TERRAFORM_VERSION: '1.9.8'
+
+jobs:
+  go:
+    name: Go (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - module: app
+            dir: app
+          - module: ci_lambda
+            dir: modules/workloads/ci_lambda
+    defaults:
+      run:
+        working-directory: ${{ matrix.dir }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: ${{ matrix.dir }}/go.sum
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      # `gofmt -l` prints offending files and exits 0, so the exit code has to
+      # be derived from the output.
+      - name: Format
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::gofmt would rewrite these files:"
+            echo "$unformatted"
+            gofmt -d .
+            exit 1
+          fi
+
+      # -count=1 defeats the test result cache; -race because the Lambda's
+      # clients are built once at cold start and shared across invocations.
+      - name: Test
+        run: go test -race ./... -count=1
+
+  terraform:
+    name: Terraform (modules/workloads)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      # Scoped to modules/workloads rather than the whole repository, and the
+      # one pre-existing offender inside it (services.tf) was reformatted rather
+      # than excluded, so there are no exemptions within the scope. The rest of
+      # the repository is not covered here: 18 files across the other modules
+      # are unformatted today, and project/env/dev/main.tf is a committed
+      # generated artifact that terraform fmt cannot even parse. Widening the
+      # scope is a separate change, not a silent carve-out in this one.
+      - name: Format
+        run: terraform fmt -check -recursive -diff modules/workloads
+
+      - name: Init
+        run: terraform init -backend=false -input=false
+        working-directory: modules/workloads
+
+      - name: Validate
+        run: terraform validate
+        working-directory: modules/workloads
+
+  # The drift check between the committed golden capture and the tf_identifiers
+  # module. Separate from the `go` job because it is the one test that needs a
+  # terraform binary; the always-on boundary test does not, which is what stops
+  # it silently skipping on a machine without one.
+  boundary-golden:
+    name: Boundary golden drift
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: modules/workloads/ci_lambda/go.sum
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: Check the golden capture against terraform
+        run: go test -tags tfgolden ./internal/boundary/ -count=1
+        working-directory: modules/workloads/ci_lambda

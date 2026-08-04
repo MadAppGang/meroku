@@ -1,0 +1,86 @@
+{
+  "env": {
+    "AUTO_DEPLOY_MAP": "{\"api\":true,\"backend\":true,\"legacy-api\":true,\"payment-worker\":false,\"reporting\":true,\"task\":true,\"task:archive\":false,\"task:cleanup\":true}",
+    "ECR_REPO_MAP": "{\"acme_backend\":[\"backend\"],\"acme_service_api\":[\"api\",\"reporting\"],\"acme_service_payment-worker\":[\"payment-worker\"],\"acme_service_task\":[\"task\"],\"acme_task_archive\":[\"task:archive\"],\"acme_task_cleanup\":[\"task:cleanup\"],\"team/legacy-api\":[\"legacy-api\"]}",
+    "ECS_CLUSTER_NAME": "acme_cluster_dev",
+    "ECS_SERVICE_MAP": "{\"api\":{\"service_name\":\"acme_service_api_dev\",\"task_family\":\"acme_service_api_dev\"},\"backend\":{\"service_name\":\"acme_service_dev\",\"task_family\":\"acme_service_dev\"},\"legacy-api\":{\"service_name\":\"acme_service_legacy-api_dev\",\"task_family\":\"acme_service_legacy-api_dev\"},\"payment-worker\":{\"service_name\":\"acme_service_payment-worker_dev\",\"task_family\":\"acme_service_payment-worker_dev\"},\"reporting\":{\"service_name\":\"acme_service_reporting_dev\",\"task_family\":\"acme_service_reporting_dev\"},\"task\":{\"service_name\":\"acme_service_task_dev\",\"task_family\":\"acme_service_task_dev\"}}",
+    "PROJECT_ENV": "dev",
+    "PROJECT_NAME": "acme",
+    "S3_SERVICE_MAP": "{\"api\":[{\"bucket\":\"acme-config\",\"key\":\"api.env\"}],\"backend\":[{\"bucket\":\"acme-config\",\"key\":\"backend.env\"}],\"payment-worker\":[{\"bucket\":\"acme-config\",\"key\":\"shared.env\"}],\"reporting\":[{\"bucket\":\"acme-config\",\"key\":\"shared.env\"}]}",
+    "SCHEDULED_TASK_MAP": "{\"task:archive\":{\"task_family\":\"acme_task_archive_dev\",\"type\":\"scheduled_task\"},\"task:cleanup\":{\"task_family\":\"acme_task_cleanup_dev\",\"type\":\"scheduled_task\"}}",
+    "SSM_SERVICE_MAP": "{\"/dev/acme/api\":\"api\",\"/dev/acme/backend\":\"backend\",\"/dev/acme/legacy-api\":\"legacy-api\",\"/dev/acme/payment-worker\":\"payment-worker\",\"/dev/acme/reporting\":\"reporting\",\"/dev/acme/task\":\"task\",\"/dev/acme/task/archive\":\"task:archive\",\"/dev/acme/task/cleanup\":\"task:cleanup\"}"
+  },
+  "identifiers": {
+    "auto_deploy": {
+      "api": true,
+      "backend": true,
+      "legacy-api": true,
+      "payment-worker": false,
+      "reporting": true,
+      "task": true,
+      "task:archive": false,
+      "task:cleanup": true
+    },
+    "backend_id": "backend",
+    "ecr_repo_ids": {
+      "acme_backend": [
+        "backend"
+      ],
+      "acme_service_api": [
+        "api",
+        "reporting"
+      ],
+      "acme_service_payment-worker": [
+        "payment-worker"
+      ],
+      "acme_service_task": [
+        "task"
+      ],
+      "acme_task_archive": [
+        "task:archive"
+      ],
+      "acme_task_cleanup": [
+        "task:cleanup"
+      ],
+      "team/legacy-api": [
+        "legacy-api"
+      ]
+    },
+    "service_ids": {
+      "api": "api",
+      "legacy-api": "legacy-api",
+      "payment-worker": "payment-worker",
+      "reporting": "reporting",
+      "task": "task"
+    },
+    "ssm_prefix_ids": {
+      "/dev/acme/api": "api",
+      "/dev/acme/backend": "backend",
+      "/dev/acme/legacy-api": "legacy-api",
+      "/dev/acme/payment-worker": "payment-worker",
+      "/dev/acme/reporting": "reporting",
+      "/dev/acme/task": "task",
+      "/dev/acme/task/archive": "task:archive",
+      "/dev/acme/task/cleanup": "task:cleanup"
+    },
+    "task_ids": {
+      "archive": "task:archive",
+      "cleanup": "task:cleanup"
+    }
+  },
+  "inputs": {
+    "backend_auto_deploy": true,
+    "project": "acme",
+    "service_auto_deploy": {
+      "api": true,
+      "legacy-api": true,
+      "payment-worker": false,
+      "reporting": true,
+      "task": true
+    },
+    "task_auto_deploy": {
+      "archive": false,
+      "cleanup": true
+    }
+  }
+}

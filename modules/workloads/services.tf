@@ -111,6 +111,13 @@ resource "aws_ecs_service" "services" {
     terraform   = "true"
     Application = "${var.project}-${var.env}"
   }
+
+  # See aws_ecs_service.backend in backend.tf: CI owns the running revision,
+  # Terraform owns the service around it. Without this an apply silently rolls
+  # back whatever the CI Lambda last deployed.
+  lifecycle {
+    ignore_changes = [task_definition]
+  }
 }
 
 # Create Task Definition for each service
@@ -146,7 +153,7 @@ resource "aws_ecs_task_definition" "services" {
           name  = name
           value = value
         }
-      ], [
+        ], [
         { name = "EVENT_SOURCE", value = local.services_event_source[each.key] },
         { name = "SERVICE_INTERNAL_URL", value = local.services_internal_domain[each.key] },
         { name = "SERVICE_NAME", value = each.key }

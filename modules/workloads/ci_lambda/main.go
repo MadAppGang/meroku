@@ -1,149 +1,132 @@
+// Command ci_lambda is the deployment trigger for a meroku project.
+//
+// It reacts to ECR pushes, SSM parameter changes, S3 env-file writes, manual
+// DEPLOY events and ECS deployment state changes, and turns them into an ECS
+// UpdateService or a new task-definition revision. It is fire-and-forget: no
+// deployment waiter, which is why a 60s function timeout is enough.
 package main
 
 import (
 	"context"
-	"fmt"
+	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
-	"madappgang.com/infrastructure/ci_lambda/config"
-	"madappgang.com/infrastructure/ci_lambda/deployer"
-	"madappgang.com/infrastructure/ci_lambda/handlers"
-	"madappgang.com/infrastructure/ci_lambda/services"
-	"madappgang.com/infrastructure/ci_lambda/utils"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"madappgang.com/infrastructure/ci_lambda/contract"
+	"madappgang.com/infrastructure/ci_lambda/internal/awsecs"
+	"madappgang.com/infrastructure/ci_lambda/internal/config"
+	"madappgang.com/infrastructure/ci_lambda/internal/deploy"
+	"madappgang.com/infrastructure/ci_lambda/internal/handler"
+	"madappgang.com/infrastructure/ci_lambda/internal/slack"
 )
 
-// Application holds all initialized components
-type Application struct {
-	config   *config.Config
-	logger   *utils.Logger
-	ecsSvc   *services.ECSServiceV2
-	slackSvc *services.SlackService
-	deployer *deployer.DeployerV2
-	handler  *handlers.EventHandlerV2
-}
-
-// Initialize sets up all application components using V2 architecture
-func Initialize() (*Application, error) {
-	// Load configuration from environment variables (V2 with direct resource names)
-	cfg, err := config.LoadFromEnv()
-	if err != nil {
-		return nil, fmt.Errorf("failed to load configuration: %w", err)
-	}
-
-	// Initialize logger
-	logger := utils.NewLogger(cfg)
-	logger.Info("Lambda function initializing (V2 Architecture)", map[string]interface{}{
-		"project":        cfg.ProjectName,
-		"environment":    cfg.Environment,
-		"region":         cfg.AWSRegion,
-		"cluster":        cfg.GetClusterName(),
-		"log_level":      cfg.LogLevel,
-		"dry_run":        cfg.DryRun,
-		"services_count": len(cfg.ServiceMap),
-		"architecture":   "v2-direct-naming",
-	})
-
-	// Initialize ECS service V2 (uses direct resource names)
-	ecsSvc, err := services.NewECSServiceV2(cfg, logger)
-	if err != nil {
-		logger.Error("Failed to initialize ECS service", map[string]interface{}{
-			"error": err.Error(),
-		})
-		return nil, fmt.Errorf("failed to initialize ECS service: %w", err)
-	}
-	logger.Info("ECS service initialized (V2)", map[string]interface{}{
-		"cluster": cfg.GetClusterName(),
-	})
-
-	// Initialize Slack service
-	slackSvc, err := services.NewSlackService(cfg, logger)
-	if err != nil {
-		logger.Error("Failed to initialize Slack service", map[string]interface{}{
-			"error": err.Error(),
-		})
-		return nil, fmt.Errorf("failed to initialize Slack service: %w", err)
-	}
-	logger.Info("Slack service initialized", map[string]interface{}{
-		"enabled": cfg.SlackWebhookURL != "",
-	})
-
-	// Initialize deployer (wraps ECS and Slack services)
-	dep := deployer.NewDeployerV2(ecsSvc, slackSvc, cfg, logger)
-	logger.Info("Deployer initialized (V2)", map[string]interface{}{
-		"max_retries": cfg.MaxDeploymentRetries,
-		"timeout":     cfg.DeploymentTimeoutSeconds,
-	})
-
-	// Initialize event handler
-	handler := handlers.NewEventHandlerV2(cfg, dep, slackSvc, logger)
-	logger.Info("Event handler initialized (V2)", map[string]interface{}{
-		"ecr_monitoring": cfg.EnableECRMonitoring,
-		"ssm_monitoring": cfg.EnableSSMMonitoring,
-		"s3_monitoring":  cfg.EnableS3Monitoring,
-		"manual_deploy":  cfg.EnableManualDeploy,
-	})
-
-	// Log service configuration summary
-	logger.Info("Service configuration", map[string]interface{}{
-		"services": cfg.ListAllServices(),
-	})
-
-	logger.Info("Lambda function initialization complete (V2 Architecture)", nil)
-
-	return &Application{
-		config:   cfg,
-		logger:   logger,
-		ecsSvc:   ecsSvc,
-		slackSvc: slackSvc,
-		deployer: dep,
-		handler:  handler,
-	}, nil
-}
-
-// HandleEvent processes CloudWatch events
-func (app *Application) HandleEvent(ctx context.Context, event events.CloudWatchEvent) (string, error) {
-	app.logger.Info("Lambda invocation started", map[string]interface{}{
-		"event_id":     event.ID,
-		"event_source": event.Source,
-		"detail_type":  event.DetailType,
-		"region":       event.Region,
-		"architecture": "v2-direct-naming",
-	})
-
-	// Delegate to event handler
-	result, err := app.handler.HandleEvent(ctx, event)
-
-	if err != nil {
-		app.logger.Error("Event processing failed", map[string]interface{}{
-			"event_id": event.ID,
-			"error":    err.Error(),
-		})
-		return "", err
-	}
-
-	app.logger.Info("Event processing completed successfully", map[string]interface{}{
-		"event_id": event.ID,
-		"result":   result,
-	})
-
-	return result, nil
-}
-
-// Global application instance (initialized once per Lambda container)
-var app *Application
-
 func main() {
-	var err error
+	ctx := context.Background()
 
-	// Initialize application (runs once per Lambda container lifecycle)
-	app, err = Initialize()
+	cfg, err := config.Load(os.Getenv)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "FATAL: Failed to initialize application: %v\n", err)
-		os.Exit(1)
+		startInert(newLogger(slog.LevelInfo), "configuration could not be loaded", err)
+		return
 	}
 
-	// Start Lambda runtime
-	lambda.Start(app.HandleEvent)
+	log := newLogger(cfg.LogLevel).With("project", cfg.Project, "env", cfg.Env)
+
+	// The contract check reports, it does not gate. Refusing to start would
+	// turn one bad map entry into "every matching event in the account is
+	// retried by the async invoke path" — the exact failure this Lambda's
+	// error policy exists to avoid. Alarm on event=contract_selfcheck_failed.
+	if problems := cfg.SelfCheck(contract.Load().BackendID()); len(problems) > 0 {
+		log.Error("contract self-check failed; unresolvable events will be ignored",
+			"event", "contract_selfcheck_failed",
+			"problem_count", len(problems),
+			"problems", problems)
+	}
+
+	awsCfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(cfg.Region))
+	if err != nil {
+		startInert(log, "AWS configuration could not be loaded", err)
+		return
+	}
+
+	notifier := slack.New(cfg.SlackWebhookURL, cfg.Env, log)
+	ecsClient := awsecs.NewFromAWSConfig(awsCfg, cfg.Cluster, cfg.DryRun, log)
+	deployer := deploy.New(cfg, ecsClient, notifier, log)
+	h := handler.New(cfg, deployer, notifier, log)
+
+	log.Info("ci lambda ready",
+		"cluster", cfg.Cluster,
+		"region", cfg.Region,
+		"targets", len(cfg.Targets),
+		"ecr_repos", len(cfg.ECRRepos),
+		"ssm_prefixes", len(cfg.SSMPrefixes),
+		"dry_run", cfg.DryRun)
+
+	lambda.Start(h.Handle)
+}
+
+// startInert serves every event as `ignored` and logs the reason, instead of
+// exiting.
+//
+// os.Exit(1) during initialization looks like the loud option and is the
+// opposite. EventBridge invokes this function asynchronously, so a failed
+// invocation is redelivered twice more — and an initialization failure fails
+// *every* invocation, so a permanently bad configuration turns into a permanent
+// retry storm across every rule this project owns, every one of them charged
+// and logged three times. That is precisely the behaviour the comment on
+// SelfCheck refuses to accept for a bad map entry; the two policies now agree.
+//
+// Visibility is not lost: the reason is logged at ERROR once at init and again
+// on every invocation, with a stable `event` key to alarm on. What is lost is
+// EventBridge's reason to retry.
+func startInert(log *slog.Logger, message string, cause error) {
+	log.Error(message+"; every event will be ignored",
+		"event", "configuration_invalid",
+		"error", cause)
+
+	lambda.Start(inertHandler(log, cause))
+}
+
+// inertHandler is what startInert serves. Split out so a test can drive it
+// without starting the Lambda runtime.
+func inertHandler(log *slog.Logger, cause error) func(context.Context, events.CloudWatchEvent) (handler.Response, error) {
+	return func(context.Context, events.CloudWatchEvent) (handler.Response, error) {
+		log.Error("event ignored: this Lambda is not configured to do anything",
+			"event", "configuration_invalid",
+			"error", cause)
+		return handler.Response{
+			Status: handler.StatusIgnored,
+			Detail: "ci lambda is misconfigured: " + cause.Error(),
+		}, nil
+	}
+}
+
+// newLogger returns a JSON slog logger whose output stays parsable by the
+// CloudWatch Logs Insights queries this project uses: a `timestamp` field, a
+// lowercase `level`, and a `message`.
+//
+// Attributes are flat. The old logger nested everything under `fields.*`; any
+// saved query on `fields.x` needs updating to `x`.
+func newLogger(level slog.Level) *slog.Logger {
+	return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: level,
+		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+			if len(groups) > 0 {
+				return a
+			}
+			switch a.Key {
+			case slog.TimeKey:
+				a.Key = "timestamp"
+			case slog.MessageKey:
+				a.Key = "message"
+			case slog.LevelKey:
+				if lvl, ok := a.Value.Any().(slog.Level); ok {
+					a.Value = slog.StringValue(strings.ToLower(lvl.String()))
+				}
+			}
+			return a
+		},
+	}))
 }
