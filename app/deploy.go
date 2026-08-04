@@ -73,7 +73,12 @@ func runCommandToDeploy(env string) error {
 	}
 	//
 	applyTemplate(env)
-	buildDeploymentLambda(env)
+
+	// The CI Lambda is built by terraform itself (modules/workloads/lambda.tf:
+	// null_resource.build_ci_lambda -> .build/<env>/ci_lambda.zip, linux/arm64).
+	// meroku used to build a second, linux/amd64 copy here that nothing ever
+	// read; the build and its pre-flight checks are gone, and the Go toolchain
+	// requirement is stated once, by the provisioner that actually needs it.
 
 	e, err := loadEnv(env)
 	if err != nil {
@@ -225,6 +230,15 @@ func applyTemplate(env string) {
 		fmt.Printf("error loading environment: %v", err)
 		os.Exit(1)
 	}
+
+	// Refuse to generate terraform that would deploy an authorizer trusting a
+	// JWKS endpoint nobody chose. Failing here costs a second; the same mistake
+	// found by terraform costs an apply.
+	if err := validateAppSyncConfigMap(envMap); err != nil {
+		fmt.Printf("\n❌ Invalid configuration in %s.yaml:\n\n%v\n\n", env, err)
+		os.Exit(1)
+	}
+
 	// Filter out disabled services (enabled=false) before rendering
 	filterDisabledItems(envMap, "services")
 	filterDisabledItems(envMap, "scheduled_tasks")
@@ -460,24 +474,4 @@ output "bridge" {
 		return
 	}
 	fmt.Printf("✓ Generated: env/%s/_bridge.tf\n", env)
-}
-
-func buildDeploymentLambda(env string) error {
-	wd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("error getting current working directory: %w", err)
-	}
-	defer os.Chdir(wd)
-
-	os.RemoveAll(filepath.Join("env", env, "ci_lambda.zip"))
-	os.Chdir("infrastructure/modules/workloads/ci_lambda")
-	os.RemoveAll("bootstrap")
-
-	os.Setenv("GOOS", "linux")
-	os.Setenv("GOARCH", "amd64")
-	if _, err := runCommandWithOutput("go", "build", "-o", "bootstrap", "."); err != nil {
-		return fmt.Errorf("error building deployment lambda: %w", err)
-	}
-
-	return nil
 }

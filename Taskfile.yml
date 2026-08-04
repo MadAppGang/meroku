@@ -115,26 +115,71 @@ tasks:
       vars: [env]
 
   # ─── CI Lambda ──────────────────────────────────────────
+  # Nothing here is needed to deploy. modules/workloads/lambda.tf builds and zips
+  # the artifact itself at apply time (null_resource.build_ci_lambda), per
+  # environment, into .build/<env>/. These targets exist to reproduce that build
+  # locally — same GOOS/GOARCH/flags and the same output paths, so what you
+  # inspect is what terraform would ship. Keep them in step with
+  # local.ci_lambda_build_command in lambda.tf.
   lambda:build:
-    desc: Build CI/CD Lambda function
+    desc: "Build the CI Lambda exactly as terraform does (usage: task lambda:build env=dev)"
     dir: '{{.LAMBDA_DIR}}'
-    cmd: GOOS=linux GOARCH=amd64 go build -o bootstrap main.go
+    cmds:
+      - mkdir -p .build/{{.env}}
+      - GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o .build/{{.env}}/bootstrap .
+    requires:
+      vars: [env]
 
   lambda:test:
     desc: Run Lambda unit tests
     dir: '{{.LAMBDA_DIR}}'
     cmd: go test -v ./...
 
+  lambda:test:golden:
+    desc: Drift-check the Terraform→Go boundary golden file (needs terraform; add -- -update to rewrite it)
+    dir: '{{.LAMBDA_DIR}}'
+    cmd: go test -tags tfgolden ./internal/boundary/ -count=1 {{.CLI_ARGS}}
+
   lambda:package:
-    desc: Build and package Lambda for deployment
+    desc: "Zip the built binary as terraform does (usage: task lambda:package env=dev)"
     dir: '{{.LAMBDA_DIR}}'
     deps: [lambda:build]
-    cmd: zip ci_lambda.zip bootstrap
+    cmd: go run ./tools/mkzip -in .build/{{.env}}/bootstrap -out .build/{{.env}}/ci_lambda.zip
+    requires:
+      vars: [env]
 
   lambda:clean:
-    desc: Clean Lambda build artifacts
+    desc: Remove every locally built Lambda artifact
     dir: '{{.LAMBDA_DIR}}'
-    cmd: rm -f bootstrap integration_test ci_lambda.zip
+    cmd: rm -rf .build bootstrap ci_lambda.zip
+
+  # ─── CI ─────────────────────────────────────────────────
+  # Local mirror of .github/workflows/ci.yml. `task test` only covers the app
+  # module; the Lambda is a separate Go module and was reached by nothing.
+  ci:
+    desc: Run everything CI runs (both Go modules + Terraform)
+    cmds:
+      - task: ci:go
+        vars: {DIR: '{{.APP_DIR}}'}
+      - task: ci:go
+        vars: {DIR: '{{.LAMBDA_DIR}}'}
+      - task: ci:terraform
+
+  ci:go:
+    internal: true
+    dir: '{{.DIR}}'
+    cmds:
+      - go build ./...
+      - go vet ./...
+      - test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+      - go test -race ./... -count=1
+
+  ci:terraform:
+    internal: true
+    cmds:
+      - terraform fmt -check -recursive -diff modules/workloads
+      - terraform -chdir=modules/workloads init -backend=false -input=false
+      - terraform -chdir=modules/workloads validate
 
   # ─── Release ────────────────────────────────────────────
   version:

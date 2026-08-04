@@ -6,7 +6,7 @@ on:
 
 env:
   AWS_REGION: ap-southeast-2
-  AWS_ACCOUNT_ID: "026148122259"
+  AWS_ACCOUNT_ID: "000000000000"
   # Role name follows pattern: {project}-{env}-github-actions-role
   PROJECT: your-project
   ENV: prod
@@ -24,5 +24,10 @@ jobs:
           role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.PROJECT }}-${{ env.ENV }}-github-actions-role
           role-session-name: samplerolesession
           aws-region: ${{ env.AWS_REGION }}
-      - name: Checkout code
-        run: aws events put-events --entries 'Source=action.production,DetailType=DEPLOY,Detail="{\"service\":\"backend\"}",EventBusName=default'
+      # `project` and `env` are what scope the deploy. Without them the CI Lambda
+      # can only fall back to the event source, and every project in the account
+      # that accepts "action.production" redeploys its own backend.
+      - name: Trigger deployment via EventBridge
+        run: |
+          aws events put-events --entries \
+            'Source=action.${{ env.ENV }},DetailType=DEPLOY,Detail="{\"service\":\"backend\",\"project\":\"${{ env.PROJECT }}\",\"env\":\"${{ env.ENV }}\"}",EventBusName=default'

@@ -310,11 +310,18 @@ jobs:
           # Deployment happens automatically via CI/CD Lambda
 
       # Deploy to Prod (manual via EventBridge)
+      #
+      # `project` and `env` are required. They are what scopes the event to one
+      # environment of one project: the CI Lambda rejects a deploy whose
+      # `project` or `env` does not match its own, and the environment's
+      # EventBridge rule only accepts sources naming that environment. Omit them
+      # and every meroku project in the account that accepts the source
+      # redeploys its own backend.
       - name: Trigger Prod Deployment
         if: github.event.inputs.deploy_to_prod == 'true'
         run: |
           aws events put-events --entries \
-            'Source=action.production,DetailType=DEPLOY,Detail="{\"service\":\"backend\",\"tag\":\"git-'$COMMIT_SHA'\"}"'
+            'Source=action.prod,DetailType=DEPLOY,Detail="{\"service\":\"backend\",\"project\":\"myproject\",\"env\":\"prod\",\"tag\":\"git-'$COMMIT_SHA'\"}"'
 ```
 
 ## Deployment Workflows
@@ -334,9 +341,24 @@ User Action → GitHub Actions → EventBridge Message → CI/CD Lambda → ECS 
 ```
 
 **Trigger Manual Prod Deploy:**
+
+The `Source` must name the environment (`action.{env}`), and `Detail` must carry
+`project` and `env`. Between them they scope the deploy to exactly one
+environment of one project. `env` in the detail must equal the `env` in the
+source; the Lambda ignores an event whose `project` or `env` is not its own.
+
 ```bash
 aws events put-events --entries \
-  'Source=action.production,DetailType=DEPLOY,Detail="{\"service\":\"backend\",\"tag\":\"git-abc123f\"}"'
+  'Source=action.prod,DetailType=DEPLOY,Detail="{\"service\":\"backend\",\"project\":\"myproject\",\"env\":\"prod\",\"tag\":\"git-abc123f\"}"'
+```
+
+An environment-agnostic source is also accepted, but only when the detail names
+the project and environment — there is no other way to tell which environment
+such an event means:
+
+```bash
+aws events put-events --entries \
+  'Source=action.deploy,DetailType=DEPLOY,Detail="{\"service\":\"backend\",\"project\":\"myproject\",\"env\":\"prod\"}"'
 ```
 
 ## Troubleshooting

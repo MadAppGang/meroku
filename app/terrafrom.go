@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -36,51 +35,7 @@ func terraformInit(flags ...string) (string, error) {
 	return "", nil
 }
 
-// ensureLambdaBootstrapExists checks if the lambda bootstrap file exists
-// and creates a dummy one if it doesn't. The bootstrap file is gitignored,
-// so it won't exist in project copies. This prevents terraform errors during
-// destroy operations when the archive_file data source tries to create an archive.
-func ensureLambdaBootstrapExists() {
-	// This runs both from the project root and from inside env/<env> (via
-	// terraformInitIfNeeded, which is called after the chdir). A single relative
-	// path is therefore wrong half the time — it was resolving to
-	// env/<env>/infrastructure/... and failing with "no such file or directory",
-	// which then surfaced as an archive_file error during plan and destroy.
-	candidates := []string{
-		"infrastructure/modules/workloads/ci_lambda/bootstrap",       // project root
-		"../../infrastructure/modules/workloads/ci_lambda/bootstrap", // env/<env>
-	}
-
-	bootstrapPath := ""
-	for _, candidate := range candidates {
-		if _, err := os.Stat(filepath.Dir(candidate)); err == nil {
-			bootstrapPath = candidate
-			break
-		}
-	}
-	if bootstrapPath == "" {
-		// No ci_lambda directory anywhere we know about; nothing to do.
-		return
-	}
-
-	// Check if file exists
-	if _, err := os.Stat(bootstrapPath); os.IsNotExist(err) {
-		// Create dummy bootstrap file with random content
-		dummyContent := []byte("# Dummy bootstrap file created by meroku\n# This file is created to prevent terraform errors\n")
-
-		// Create the file
-		if err := os.WriteFile(bootstrapPath, dummyContent, 0755); err != nil {
-			fmt.Printf("⚠️  Warning: Failed to create dummy bootstrap file: %v\n", err)
-		} else {
-			fmt.Println("✅ Created dummy lambda bootstrap file")
-		}
-	}
-}
-
 func terraformInitIfNeeded() {
-	// Ensure lambda bootstrap file exists before running terraform
-	ensureLambdaBootstrapExists()
-
 	// Get the environment from selectedEnvironment global variable or current directory
 	envName := selectedEnvironment
 	if envName == "" {
@@ -332,6 +287,11 @@ func stripAnsiEscapeCodes(input string) string {
 	return re.ReplaceAllString(input, "")
 }
 
+// Destroy needs no build artifact. modules/workloads/lambda.tf carries no
+// data.archive_file (asserted by ci_lambda/internal/boundary/lambdatf_guard_test.go)
+// and reads the zip only through aws_lambda_function.filename, which the
+// provider touches on Create/Update and never on a destroy plan. meroku used to
+// write a stand-in binary here for an archive_file that no longer exists.
 func runTerraformDestroy() error {
 	return runTerraformDestroyWithRetry(0)
 }

@@ -74,7 +74,7 @@ func TestCalculateStatistics_ReadsNotCounted(t *testing.T) {
 		updates: []ResourceChange{
 			{Address: "aws_instance.existing", Type: "aws_instance"},
 		},
-		deletes: []ResourceChange{},
+		deletes:  []ResourceChange{},
 		replaces: []ResourceChange{},
 		reads: []ResourceChange{
 			{Address: "data.aws_caller_identity.current", Type: "data.aws_caller_identity"},

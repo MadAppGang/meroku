@@ -69,11 +69,8 @@ tasks:
       - terraform init
       - terraform apply
 
-  buildlambda:
-    desc: Build CI/CD Lambda function
-    dir: infrastructure/modules/workloads/ci_lambda
-    cmds:
-      - rm -f bootstrap
-      - GOOS=linux GOARCH=amd64 go build -o bootstrap
-      - rm -f ../../../../env/dev/ci_lambda.zip
-      - rm -f ../../../../env/prod/ci_lambda.zip
+  # There is deliberately no "buildlambda" target. Terraform builds and zips the
+  # CI/CD Lambda itself during apply (infrastructure/modules/workloads/lambda.tf,
+  # into ci_lambda/.build/<env>/, linux/arm64). The target that used to live here
+  # built a linux/amd64 binary at the module root that nothing ever read, and a
+  # Go toolchain is still required on the machine running `terraform apply`.

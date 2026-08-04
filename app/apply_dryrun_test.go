@@ -551,10 +551,10 @@ func TestDryRun_LargeRealisticPlan(t *testing.T) {
 		{"module.workloads.aws_ecs_service.backend", "update"},
 		{"module.workloads.aws_ecs_task_definition.task_cleanup", "update"},
 		{"module.workloads.aws_security_group_rule.backend_egress", "update"},
-		{"module.workloads.aws_iam_role_policy.backend_task", "delete"},  // replace phase 1
-		{"module.workloads.aws_iam_role_policy.backend_task", "create"},  // replace phase 2
-		{"module.workloads.aws_iam_role_policy.task_cleanup", "delete"},  // replace phase 1
-		{"module.workloads.aws_iam_role_policy.task_cleanup", "create"},  // replace phase 2
+		{"module.workloads.aws_iam_role_policy.backend_task", "delete"}, // replace phase 1
+		{"module.workloads.aws_iam_role_policy.backend_task", "create"}, // replace phase 2
+		{"module.workloads.aws_iam_role_policy.task_cleanup", "delete"}, // replace phase 1
+		{"module.workloads.aws_iam_role_policy.task_cleanup", "create"}, // replace phase 2
 		{"module.workloads.aws_cloudwatch_log_group.new_service", "create"},
 		{"module.workloads.aws_cloudwatch_log_group.old_service", "delete"},
 	}
@@ -924,4 +924,3 @@ func TestDryRun_CirclInfraWithoutActionField(t *testing.T) {
 		t.Log("Race condition didn't reproduce in this test run (action lookup worked by accident)")
 	}
 }
-

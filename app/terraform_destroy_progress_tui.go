@@ -148,9 +148,10 @@ func (m *destroyProgressModel) runTerraformDestroy() tea.Cmd {
 		}
 		defer os.Chdir(wd)
 
-		// Ensure lambda bootstrap file exists before running terraform
-		// This prevents errors when the archive_file data source tries to archive a missing file
-		ensureLambdaBootstrapExists()
+		// No build artifact is needed to plan or run a destroy: lambda.tf has no
+		// data.archive_file, and the zip is reached only through
+		// aws_lambda_function.filename, which the provider reads on Create/Update.
+		// See runTerraformDestroy in terrafrom.go.
 
 		envPath := filepath.Join("env", m.env)
 		if err := os.Chdir(envPath); err != nil {
