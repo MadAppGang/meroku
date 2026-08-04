@@ -609,8 +609,28 @@ func loadEnvFromPath(name string) (Env, error) {
 	return loadEnvWithMigration(name)
 }
 
+// loadEnvToMap reads a config as a raw map for template rendering.
+//
+// The typed Env struct cannot be used here: Handlebars addresses the config
+// generically, and any YAML key Go does not declare would vanish from the
+// rendered Terraform. So this loader exists alongside loadEnv on purpose.
+//
+// What was not on purpose is that only loadEnv migrated. Migration sat on the
+// caller's side of the boundary, so `meroku deploy` -- which calls loadEnv at
+// deploy.go:83 before templating -- migrated and then re-read a current file,
+// while `meroku generate` went straight to applyTemplate and rendered whatever
+// was on disk. A config several schema versions behind parses perfectly well; it
+// is simply missing the keys the template expects, so generation succeeded and
+// quietly substituted defaults for every field the missing versions added.
+//
+// Migrating here makes it structural rather than remembered: there is no way to
+// read this config for templating without it being current, whoever calls.
 func loadEnvToMap(name string) (map[string]interface{}, error) {
 	var e map[string]interface{}
+
+	if err := migrateFileIfNeeded(name); err != nil {
+		return nil, err
+	}
 
 	data, err := os.ReadFile(name)
 	if err != nil {

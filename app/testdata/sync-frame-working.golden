@@ -1,0 +1,15 @@
+ MEROKU  SYNC   dev                                                                  example-dev · 000000000000   00:31 
+
+  DEPLOYED    resources 85   region ap-southeast-2   state s3://state-bucket-example-dev-00000
+
+╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ STEPS                                                                                                              │
+│   DONE   write env/dev  wrote env/dev/ from dev.yaml                                                               │
+│                                                                                                                    │
+│ RUNNING  terraform init                                                                                            │
+│ ░░░░░░░████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  ⣷ terraform init (31s) │
+│                                                                                                                    │
+│ waiting  terraform plan                                                                                            │
+╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+  ctrl+c  cancel

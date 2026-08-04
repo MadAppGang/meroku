@@ -60,8 +60,33 @@ func GetVersion() string {
 	return cachedVersion
 }
 
+// printMerokuUsage lists the subcommands alongside the flags. The flag package
+// only knows about flags, so without this a subcommand is discoverable only by
+// reading the source.
+func printMerokuUsage() {
+	fmt.Println("meroku — infrastructure management for AWS ECS projects")
+	fmt.Println("")
+	fmt.Println("Usage:")
+	fmt.Println("  meroku                       Interactive mode")
+	fmt.Println("  meroku <command> [args]")
+	fmt.Println("")
+	fmt.Println("Commands:")
+	fmt.Println("  generate <env>   Generate Terraform configuration from <env>.yaml")
+	fmt.Println("  sync [env]       Check an environment against the Terraform state in its")
+	fmt.Println("                   S3 backend and reconnect it if it is disconnected")
+	fmt.Println("                   (read-only: never applies, destroys or migrates state)")
+	fmt.Println("  migrate <file>   Migrate YAML configuration to the current schema")
+	fmt.Println("  dns <subcommand> Manage DNS zones and cross-account delegation")
+	fmt.Println("  monitor [env]    Open the infrastructure monitor dashboard")
+	fmt.Println("  help             Show this message")
+	fmt.Println("")
+	fmt.Println("Flags:")
+	flag.PrintDefaults()
+}
+
 func main() {
 	// Parse command line flags
+	flag.Usage = printMerokuUsage
 	flag.Parse()
 
 	// Handle version flag (early, before any initialization)
@@ -146,6 +171,19 @@ func main() {
 	// Handle monitor subcommand (before environment selection prompts)
 	if len(args) > 0 && args[0] == "monitor" {
 		handleMonitorCommand(args[1:])
+		os.Exit(0)
+	}
+
+	// Handle sync subcommand (before environment selection): it resolves and
+	// loads the environment itself, and must not be preceded by a menu.
+	if len(args) > 0 && args[0] == "sync" {
+		handleSyncCommand(args[1:])
+		os.Exit(0)
+	}
+
+	// `meroku help` prints the same summary as -h.
+	if len(args) > 0 && (args[0] == "help" || args[0] == "commands") {
+		printMerokuUsage()
 		os.Exit(0)
 	}
 

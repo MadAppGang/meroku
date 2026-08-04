@@ -1,0 +1,22 @@
+ MEROKU  SYNC   dev                                                                  example-dev · 000000000000   02:22 
+
+  DEPLOYED    resources 85   region ap-southeast-2   state s3://state-bucket-example-dev-00000
+
+╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ STEPS                                                                                                              │
+│   DONE   write env/dev  wrote env/dev/ from dev.yaml                                                               │
+│                                                                                                                    │
+│   DONE   terraform init  linked to s3://state-bucket-example-dev-00000                                             │
+│                                                                                                                    │
+│   DONE   terraform plan  0 to add, 0 to change, 0 to destroy                                                       │
+╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ WHAT A DEPLOY WOULD CHANGE                                                                                         │
+│  MATCHES  the local configuration matches all 85 deployed resources                                                │
+│                                                                                                                    │
+│ ██████████████████████████████████████████████████████████████████████████████████████████████████████████████████ │
+│ no changes                                                                                                         │
+╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+  enter  close

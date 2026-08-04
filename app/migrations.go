@@ -1440,6 +1440,36 @@ func loadEnvWithMigration(name string) (Env, error) {
 	return e, nil
 }
 
+// migrateFileIfNeeded brings a config up to the current schema version, and says
+// nothing when it is already there.
+//
+// This is the form the automatic paths need. MigrateYAMLFile announces "already
+// at current version" because someone typed `meroku migrate` and is owed an
+// answer; printing that on every template render would be noise, and noise is
+// what stops people reading the line that matters.
+//
+// A file that cannot be read is not an error here. The callers -- template
+// rendering, config loading -- produce far better messages about a missing or
+// unreadable config than this function can, and they are about to run anyway.
+// Failing early would replace a good error with a worse one.
+func migrateFileIfNeeded(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+
+	var dataMap map[string]interface{}
+	if err := yaml.Unmarshal(data, &dataMap); err != nil {
+		return nil
+	}
+
+	if detectSchemaVersion(dataMap) >= CurrentSchemaVersion {
+		return nil
+	}
+
+	return MigrateYAMLFile(path)
+}
+
 // MigrateYAMLFile migrates a single YAML file to the current schema version
 func MigrateYAMLFile(filepath string) error {
 	// Read the file

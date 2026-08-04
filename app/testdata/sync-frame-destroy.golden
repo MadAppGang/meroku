@@ -1,0 +1,25 @@
+ MEROKU  SYNC   dev                                                                  example-dev · 000000000000   02:28 
+
+  DEPLOYED    resources 85   region ap-southeast-2   state s3://state-bucket-example-dev-00000
+
+╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ STEPS                                                                                                              │
+│   DONE   write env/dev  wrote env/dev/ from dev.yaml                                                               │
+│                                                                                                                    │
+│   DONE   terraform init  linked to s3://state-bucket-example-dev-00000                                             │
+│                                                                                                                    │
+│   DONE   terraform plan  16 to add, 2 to change, 3 to destroy                                                      │
+╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ WHAT A DEPLOY WOULD CHANGE                                                                                         │
+│  WOULD DESTROY 3  applying this configuration would remove deployed resources                                      │
+│                                                                                                                    │
+│ ██████████████████████████████████████████████████████████████████████████████████████████████████████████████████ │
+│ █ add 16   █ change 2   █ destroy 3                                                                                │
+│    2 of those are replacements — destroyed and recreated                                                           │
+│                                                                                                                    │
+│ NOTHING HAS BEEN APPLIED. Review with: terraform -chdir=env/dev plan                                               │
+╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+  enter  close

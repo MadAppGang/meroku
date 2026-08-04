@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -51,9 +52,12 @@ func terraformInitIfNeeded() {
 	}
 
 	// Run comprehensive AWS pre-flight checks before terraform init
+	var envConfig Env
+	haveEnvConfig := false
 	if envName != "" {
 		env, err := loadEnvFromPath(envName)
 		if err == nil && env.StateBucket != "" && env.Region != "" {
+			envConfig, haveEnvConfig = env, true
 			fmt.Printf("\n🚀 Preparing environment: %s\n", envName)
 
 			// CRITICAL: Run pre-flight checks with auto-recovery
@@ -66,6 +70,13 @@ func terraformInitIfNeeded() {
 	}
 
 	if _, err := os.Stat(".terraform"); os.IsNotExist(err) {
+		// About to initialise. If the backend already holds a deployment, say so
+		// first — this is the moment someone whose env/ directory went missing is
+		// wondering whether their infrastructure went with it. Announce only: the
+		// init below does the reconnecting.
+		if haveEnvConfig {
+			announceStateConnection(context.Background(), envName, envConfig, ".")
+		}
 		_, err = terraformInit()
 		if err != nil {
 			fmt.Printf("\n❌ Terraform initialization failed: %v\n", err)

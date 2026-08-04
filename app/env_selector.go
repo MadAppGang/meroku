@@ -1,36 +1,90 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/huh"
+	"gopkg.in/yaml.v2"
 )
 
 // Global variables to store the selected environment and AWS region
 var selectedEnvironment string
 var selectedAWSRegion string
 
-func selectEnvironment() error {
-	// Find all environment files in current directory
+// listEnvironmentNames returns the environments meroku offers: every YAML file
+// in the project root except the DNS config.
+//
+// Extracted from selectEnvironment so that commands which have to resolve an
+// environment without a menu — `meroku sync` — use the same definition of "an
+// environment exists" as the menu does, rather than inventing a second one.
+func listEnvironmentNames() ([]string, error) {
+	// findFilesWithExts reads the project root only and returns names with the
+	// extension already stripped, so a name can never contain a separator.
 	envFiles, err := findFilesWithExts([]string{".yaml", ".yml"})
 	if err != nil {
-		return fmt.Errorf("failed to find environment files: %w", err)
+		return nil, fmt.Errorf("failed to find environment files: %w", err)
 	}
 
 	var environments []string
-	for _, envFile := range envFiles {
-		// Only include YAML files in the root directory (not in subdirectories)
-		// Exclude DNS config file
-		if !strings.Contains(envFile, "/") && envFile != "dns.yaml" && envFile != "dns.yml" {
-			envName := strings.TrimSuffix(envFile, ".yaml")
-			envName = strings.TrimSuffix(envName, ".yml")
-			// Also exclude "dns" as environment name
-			if envName != "dns" {
-				environments = append(environments, envName)
-			}
+	for _, envName := range envFiles {
+		if strings.Contains(envName, "/") || envName == "dns" {
+			continue
 		}
+		if !looksLikeEnvironmentConfig(envName) {
+			continue
+		}
+		environments = append(environments, envName)
+	}
+	return environments, nil
+}
+
+// looksLikeEnvironmentConfig decides whether a root YAML file is a meroku
+// environment, by reading it rather than by trusting its name.
+//
+// Filtering on filename alone offered every stray YAML in the project root as a
+// deployable environment: `meroku sync` in this repo picked "Taskfile" and then
+// failed trying to read a state backend out of it. docker-compose.yml,
+// .golangci.yml and any CI config would do the same. Worse than the noise, an
+// operator scanning the picker for "prod" should not have to know which entries
+// are real.
+//
+// Every meroku environment declares both `project` and `env` -- they are what the
+// resource names are built from, so a config without them cannot deploy anything.
+// That makes them a reliable signature, and it costs one small read of a handful
+// of root files.
+//
+// Anything unreadable or unparseable is simply not an environment here. This
+// function answers "should this appear in the list", and a file we cannot read is
+// not one the operator can pick.
+func looksLikeEnvironmentConfig(name string) bool {
+	for _, ext := range []string{".yaml", ".yml"} {
+		data, err := os.ReadFile(name + ext)
+		if err != nil {
+			continue
+		}
+
+		var probe struct {
+			Project string `yaml:"project"`
+			Env     string `yaml:"env"`
+		}
+		if err := yaml.Unmarshal(data, &probe); err != nil {
+			continue
+		}
+		if probe.Project != "" && probe.Env != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func selectEnvironment() error {
+	environments, err := listEnvironmentNames()
+	if err != nil {
+		return err
 	}
 
 	// Add environment options
@@ -200,6 +254,20 @@ func selectEnvironment() error {
 		selectedAWSRegion = env.Region
 		os.Setenv("AWS_REGION", env.Region)
 		os.Setenv("AWS_DEFAULT_REGION", env.Region)
+	}
+
+	// Picking an environment is when meroku tells you what is deployed, so a
+	// directory that has just been written (or checked out) but never initialised
+	// reads here as "nothing deployed". Offer to link it now, before the main menu
+	// makes that claim.
+	//
+	// This runs last on purpose: the profile and region above are what the state
+	// lookup needs. Selection has already made AWS calls (STS, profile matching),
+	// so one read of the state object is in keeping with what this path does — and
+	// it only happens for an environment that is written but not initialised.
+	if err := reconnectStateIfNeeded(context.Background(), selected, env, filepath.Join("env", selected)); err != nil {
+		// Selection succeeded; a failed sync is information, not a blocker.
+		fmt.Printf("⚠️  Could not finish syncing with the deployed state: %v\n", err)
 	}
 
 	return nil

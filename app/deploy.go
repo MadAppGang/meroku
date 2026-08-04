@@ -182,6 +182,41 @@ func runCommandToDeploy(env string) error {
 	return runTerraformApply()
 }
 
+// generateEnvironmentFiles writes env/<env>/ from <env>.yaml — the whole of what
+// `meroku generate` does to disk, and nothing else.
+//
+// Extracted so the state-reconnect recovery path can restore a missing directory
+// without calling handleGenerateCommand, which ends by running the reconnect and
+// would therefore re-enter whatever called it. Recovery calls this; only the
+// command calls the command.
+//
+// The inputs are checked here rather than left to applyTemplate, which exits the
+// process on a missing template. Recovery has just told the user their
+// infrastructure is intact; ending that sentence with an abrupt os.Exit would be
+// a poor way to keep the promise.
+func generateEnvironmentFiles(env string) error {
+	registerCustomHelpers()
+
+	envFile := env + ".yaml"
+	if _, err := os.Stat(envFile); err != nil {
+		return fmt.Errorf("environment file '%s' not found", envFile)
+	}
+	templateFile := filepath.Join("infrastructure", "env", "main.hbs")
+	if _, err := os.Stat(templateFile); err != nil {
+		return fmt.Errorf("template '%s' not found — run this from the project root", templateFile)
+	}
+
+	if err := createFolderIfNotExists("env"); err != nil {
+		return fmt.Errorf("creating env directory: %w", err)
+	}
+	if err := createFolderIfNotExists(filepath.Join("env", env)); err != nil {
+		return fmt.Errorf("creating env/%s directory: %w", env, err)
+	}
+
+	applyTemplate(env)
+	return nil
+}
+
 func handleGenerateCommand(args []string) {
 	// Register custom Handlebars helpers
 	registerCustomHelpers()
@@ -197,24 +232,37 @@ func handleGenerateCommand(args []string) {
 	env := args[0]
 	fmt.Printf("Generating Terraform configuration for environment: %s\n", env)
 
-	// Check if environment file exists
-	envFile := env + ".yaml"
-	if _, err := os.Stat(envFile); os.IsNotExist(err) {
-		fmt.Printf("Error: Environment file '%s' not found\n", envFile)
+	if err := generateEnvironmentFiles(env); err != nil {
+		fmt.Printf("Error: %v\n", err)
 		os.Exit(1)
 	}
-
-	// Create env directory structure
-	createFolderIfNotExists("env")
-	if err := createFolderIfNotExists(filepath.Join("env", env)); err != nil {
-		fmt.Printf("Error creating environment directory: %v\n", err)
-		os.Exit(1)
-	}
-
-	// Generate template
-	applyTemplate(env)
 
 	fmt.Printf("✓ Generated: env/%s/main.tf\n", env)
+
+	// A freshly generated env/<env> with no .terraform is the shape this guards
+	// against: the directory is here, but nothing links it to the backend that
+	// holds the deployment. Every terraform command after this point would fail
+	// with "Backend initialization required", which reads like the infrastructure
+	// is gone.
+	//
+	// Generate is otherwise a local operation, and it stays one for everyone whose
+	// directory is already initialised — inspectStateConnection short-circuits on
+	// env/<env>/.terraform and only reaches S3 when the directory is not connected
+	// to a backend. When it does reach out it asks before doing anything, and any
+	// AWS problem degrades to the old behaviour instead of failing the generate.
+	//
+	// The sync it may offer cannot loop back here: it calls
+	// generateEnvironmentFiles, not this command. And by this point env/<env>/
+	// exists anyway, so it has nothing to write.
+	cfg, loadErr := loadEnv(env)
+	if loadErr != nil {
+		return
+	}
+	if err := reconnectStateIfNeeded(context.Background(), env, cfg, filepath.Join("env", env)); err != nil {
+		// Generation itself succeeded and its output is valid, so this is reported
+		// rather than fatal. The user is told exactly what to run by hand.
+		fmt.Printf("⚠️  Could not finish syncing with the deployed state: %v\n", err)
+	}
 }
 
 func applyTemplate(env string) {
