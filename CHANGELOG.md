@@ -4,7 +4,36 @@
 
 The CI/CD Lambda is rewritten. Its main path — redeploy the backend when a new
 image is pushed — had never worked, and two authentication bypasses in the
-AppSync authorizer are closed.
+AppSync authorizer are closed. A fresh checkout of a deployed project now
+connects itself instead of reporting that nothing is deployed.
+
+### Syncing a checkout to what is deployed
+
+`env/` is generated and gitignored, so a fresh clone never has one. meroku used
+to read that absence as "nothing is deployed" — while the resources sat in the
+S3 state, untouched — and every terraform command then failed with `Backend
+initialization required`.
+
+It now asks the only thing that knows. When `env/<env>/.terraform` is missing,
+meroku reads the state backend named in `<env>.yaml`: resources there mean the
+environment is deployed, and it offers to regenerate `env/<env>/`, connect it,
+and run a plan so you can see whether your checkout matches what is running. No
+state means a genuinely new project, and it stays quiet.
+
+    meroku sync [env]
+
+does the same on demand and reports whatever it finds. The automatic path asks
+before writing anything, and a refusal is not remembered — it asks again next
+time. `meroku sync` never asks, since running it is the consent, and neither
+does a non-interactive shell.
+
+Nothing on this path applies, destroys, or migrates state.
+
+Also fixed: `meroku generate` rendered Terraform through a loader that never ran
+migrations, so a config two schema versions behind produced output with defaults
+silently substituted for every missing field. And environment discovery matched
+any root YAML by filename, offering `Taskfile` as a deployable environment; an
+environment is now identified by declaring both `project` and `env`.
 
 ### Upgrade actions
 
