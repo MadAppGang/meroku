@@ -61,6 +61,42 @@ export function BackendServiceProperties({
 				</CardDescription>
 			</CardHeader>
 			<CardContent className="space-y-4">
+				{/* Auto-Deploy Toggle - at the very top, matching the service panel */}
+				<div className="flex items-center justify-between">
+					<div className="flex-1">
+						<Label htmlFor="backend_auto_deploy">Auto-Deploy</Label>
+						<p className="text-xs text-gray-500 mt-1">
+							Redeploy the backend automatically when a new image is pushed, or
+							when its SSM/S3 configuration changes
+						</p>
+					</div>
+					<Switch
+						id="backend_auto_deploy"
+						checked={config.workload?.backend_auto_deploy !== false}
+						onCheckedChange={(checked) =>
+							handleWorkloadChange({ backend_auto_deploy: checked })
+						}
+						className="data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-gray-600"
+					/>
+				</div>
+
+				{config.workload?.backend_auto_deploy === false && (
+					<div className="p-3 bg-blue-900/20 border border-blue-700 rounded-lg">
+						<div className="flex items-start gap-2">
+							<Info className="w-4 h-4 text-blue-400 mt-0.5 flex-shrink-0" />
+							<p className="text-xs text-gray-300">
+								Automatic deploys are <strong>off</strong> for the backend. Pushes
+								and config changes are still delivered to the CI/CD Lambda and
+								logged as
+								<code className="mx-1">auto_deploy is disabled for backend</code>
+								rather than silently doing nothing. Manual deploys still work.
+							</p>
+						</div>
+					</div>
+				)}
+
+				<Separator />
+
 				<div className="space-y-2">
 					<Label htmlFor="health_endpoint">Health Endpoint</Label>
 					<Input

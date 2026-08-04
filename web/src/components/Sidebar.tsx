@@ -766,7 +766,7 @@ jobs:
 
       - name: Trigger deployment via EventBridge
         run: |
-          aws events put-events --entries 'Source=action.${config?.env || "dev"},DetailType=DEPLOY,Detail="{\\"service\\":\\"backend\\"}",EventBusName=default'`
+          aws events put-events --entries 'Source=action.${config?.env || "dev"},DetailType=DEPLOY,Detail="{\\"service\\":\\"backend\\",\\"project\\":\\"${config?.project || "project"}\\"}",EventBusName=default'`
 												: `name: Deploy to AWS (${config?.env || "dev"})
 
 on:
@@ -875,7 +875,7 @@ jobs:
 
       - name: Trigger deployment via EventBridge
         run: |
-          aws events put-events --entries 'Source=action.${config?.env || "dev"},DetailType=DEPLOY,Detail="{\\"service\\":\\"backend\\"}",EventBusName=default'`;
+          aws events put-events --entries 'Source=action.${config?.env || "dev"},DetailType=DEPLOY,Detail="{\\"service\\":\\"backend\\",\\"project\\":\\"${config?.project || "project"}\\"}",EventBusName=default'`;
 									}
 
 									return `name: Deploy to AWS (${config?.env || "dev"})

@@ -206,6 +206,51 @@ export function ScheduledTaskProperties({
 
 				<Separator />
 
+				{/* Auto-Deploy Toggle */}
+				<div className="flex items-center justify-between">
+					<div className="flex-1">
+						<Label htmlFor="auto-deploy">Auto-Deploy</Label>
+						<p className="text-xs text-gray-500 mt-1">
+							Register a new task definition automatically when a new image is
+							pushed to this task's repository
+						</p>
+					</div>
+					<Switch
+						id="auto-deploy"
+						checked={task.auto_deploy !== false}
+						onCheckedChange={(checked) =>
+							handleTaskChange({ auto_deploy: checked })
+						}
+						className="data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-gray-600"
+					/>
+				</div>
+
+				{task.auto_deploy === false && (
+					<Alert className="border-blue-600 bg-blue-900/20">
+						<AlertDescription className="text-xs text-gray-300">
+							Automatic deploys are <strong>off</strong> for this task. A push is
+							still delivered to the CI/CD Lambda and logged as
+							<code className="mx-1">auto_deploy is disabled for task:{taskName}</code>
+							rather than silently doing nothing.
+						</AlertDescription>
+					</Alert>
+				)}
+
+				{task.auto_deploy !== false && config.env !== "dev" && (
+					<Alert className="border-yellow-600 bg-yellow-900/20">
+						<AlertTriangle className="h-4 w-4 text-yellow-400" />
+						<AlertDescription className="text-xs text-gray-300">
+							Auto-deploy is on, but <strong>no automatic trigger reaches a
+							scheduled task outside <code>dev</code></strong>: its ECR repository is
+							only created in the dev environment, and an SSM change never
+							redeploys a task. In <code>{config.env}</code> this setting enables
+							the manual deploy path only.
+						</AlertDescription>
+					</Alert>
+				)}
+
+				<Separator />
+
 				<div className="space-y-2">
 					<Label>Schedule Expression</Label>
 					<ScheduleExpressionBuilder

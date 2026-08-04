@@ -53,6 +53,17 @@ type AppSync struct {
 	Schema     bool `yaml:"schema"`
 	AuthLambda bool `yaml:"auth_lambda"`
 	Resolvers  bool `yaml:"resolvers"`
+
+	// Lambda authorizer configuration (Schema v21).
+	//
+	// The authorizer has no built-in identity provider: JWKSURI is the only key
+	// source it trusts, so whoever controls that endpoint can mint tokens the
+	// API accepts. There is deliberately no default here or in
+	// modules/appsync/variables.tf — an empty value is rejected by
+	// validateAppSyncConfig before any terraform runs.
+	JWKSURI     string `yaml:"jwks_uri"`
+	JWTIssuer   string `yaml:"jwt_issuer"`
+	JWTAudience string `yaml:"jwt_audience"`
 }
 
 type Workload struct {
@@ -85,6 +96,15 @@ type Workload struct {
 	BackendAutoscalingMaxCapacity int32  `yaml:"backend_autoscaling_max_capacity"`
 	BackendCPU                    string `yaml:"backend_cpu"`
 	BackendMemory                 string `yaml:"backend_memory"`
+
+	// BackendAutoDeploy (schema v22) is the backend's half of the per-target
+	// auto-deploy policy.
+	//
+	// The backend is the setting's main consumer, so leaving it out would have
+	// made auto_deploy a policy you can express for every target except the one
+	// that is actually deployed — "do not auto-deploy prod" would have been
+	// unsayable. nil/true keeps today's behaviour; a manual deploy always works.
+	BackendAutoDeploy *bool `yaml:"backend_auto_deploy,omitempty"`
 }
 
 type S3EnvFile struct {
@@ -200,8 +220,17 @@ type ALB struct {
 }
 
 type ScheduledTask struct {
-	Name                string     `yaml:"name"`
-	Enabled             *bool      `yaml:"enabled,omitempty"` // Schema v20: nil/true = deployed, false = config kept but not deployed
+	Name    string `yaml:"name"`
+	Enabled *bool  `yaml:"enabled,omitempty"` // Schema v20: nil/true = deployed, false = config kept but not deployed
+	// AutoDeploy (schema v22) is CI policy, not deployment: nil/true lets the
+	// CI Lambda register a new task-definition revision when a new image lands,
+	// false makes it log "auto_deploy is disabled for task:{name}" instead.
+	//
+	// Note that outside dev nothing can reach a scheduled task automatically at
+	// all — modules/ecs_task creates its ECR repository only in dev, and an SSM
+	// change deliberately never redeploys a task — so true there enables only
+	// the manual path. See modules/workloads/ci_lambda/README.md.
+	AutoDeploy          *bool      `yaml:"auto_deploy,omitempty"`
 	Schedule            string     `yaml:"schedule"`
 	ExternalDockerImage string     `yaml:"docker_image"`
 	ContainerCommand    string     `yaml:"container_command"`
@@ -240,8 +269,13 @@ type EnvVariable struct {
 }
 
 type Service struct {
-	Name             string            `yaml:"name"`
-	Enabled          *bool             `yaml:"enabled,omitempty"` // Schema v19: nil/true = deployed, false = config kept but not deployed
+	Name    string `yaml:"name"`
+	Enabled *bool  `yaml:"enabled,omitempty"` // Schema v19: nil/true = deployed, false = config kept but not deployed
+	// AutoDeploy (schema v22) is CI policy, not deployment. `enabled` decides
+	// whether the service exists in AWS at all; `auto_deploy` decides whether
+	// an ECR push, an SSM change or an S3 env-file write may redeploy it on its
+	// own. nil/true keeps today's behaviour. A manual deploy always works.
+	AutoDeploy       *bool             `yaml:"auto_deploy,omitempty"`
 	DockerImage      string            `yaml:"docker_image"`
 	ContainerCommand []string          `yaml:"container_command"`
 	ContainerPort    int               `yaml:"container_port"`
@@ -547,6 +581,12 @@ func createEnv(name, env string) Env {
 			Schema:     false,
 			AuthLambda: false,
 			Resolvers:  false,
+			// Left empty on purpose: meroku must never pick a JWKS endpoint on
+			// the user's behalf. Enabling auth_lambda without filling this in
+			// fails validation rather than trusting someone else's keys.
+			JWKSURI:     "",
+			JWTIssuer:   "",
+			JWTAudience: "",
 		},
 		Buckets:                 []BucketConfig{},
 		Services:                []Service{},

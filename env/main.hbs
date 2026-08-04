@@ -504,7 +504,11 @@ module "workloads" {
   domain = "{{ domain.domain_name }}"
   vpc_id     = local.vpc_id
   subnet_ids = local.subnet_ids
-  lambda_path = "{{modules}}/workloads/ci_lambda/bootstrap"
+{{!-- lambda_path is deliberately not emitted: the CI Lambda artifact is built by
+      modules/workloads/lambda.tf at apply time into ci_lambda/.build/<env>/, and
+      nothing reads a module-root bootstrap. The variable stays declared in
+      modules/workloads/variables.tf so already generated env/*/main.tf that
+      still pass it keep applying. --}}
   slack_deployment_webhook = "{{workload.slack_webhook}}"
   backend_bucket_postfix = "{{workload.bucket_postfix}}"
   backend_bucket_public = {{workload.bucket_public}}
@@ -567,6 +571,13 @@ module "workloads" {
     [{ name = "{{add_arn_to_backend_env}}", value = aws_sqs_queue.ext_{{name}}.arn }]{{/if}}{{/each}}
   )
 
+  # May the CI/CD Lambda redeploy the backend on its own when a new image or a
+  # new configuration lands? false does not remove anything from the Lambda's
+  # maps: the flag travels to it as data so a push still logs "auto_deploy is
+  # disabled for backend" instead of nothing. Manual deploys are unaffected.
+  # Absent means true — that is what a project from before this setting does.
+  backend_auto_deploy = {{default workload.backend_auto_deploy true}}
+
   # Backend scaling configuration
   backend_cpu = {{default workload.backend_cpu 256}}
   backend_memory = {{default workload.backend_memory 512}}
@@ -628,6 +639,15 @@ module "workloads" {
   ]
   {{#compare (len scheduled_tasks) ">" 0}}
   scheduled_task_names = [{{#each scheduled_tasks}}"{{name}}"{{#unless @last}}, {{/unless}}{{/each}}]
+  # Per-task auto-deploy policy. Outside dev no automatic trigger reaches a
+  # scheduled task at all (modules/ecs_task creates its ECR repository only in
+  # dev, and an SSM change never redeploys a task), so true there enables only
+  # the manual path -- see modules/workloads/ci_lambda/README.md.
+  scheduled_task_auto_deploy = {
+    {{#each scheduled_tasks}}
+    "{{name}}" = {{default auto_deploy true}}
+    {{/each}}
+  }
   {{/compare}}
 }
 {{#if cognito.enabled}} 
@@ -848,11 +868,23 @@ module "appsync" {
   {{#if pubsub_appsync.schema}}
   schema_file = "{{custom_modules}}/appsync/schema.graphql"
   {{/if}}
-  {{#if appsync.resolvers}}
+  {{#if pubsub_appsync.resolvers}}
   vtl_templates_yaml = "{{custom_modules}}/appsync/vtl_templates.yaml"
   {{/if}}
-  {{#if pubsub_appsync.appsync.auth_lambda}}
+  {{#if pubsub_appsync.auth_lambda}}
   auth_lambda_path = "{{custom_modules}}/appsync/auth_lambda"
+  {{/if}}
+
+  # Trust anchor for the Lambda authorizer: the JWKS endpoint whose keys sign the
+  # tokens this API accepts. The module declares it with no default (an unset
+  # value used to mean "trust a hardcoded third party"), so it is passed on every
+  # instantiation and meroku rejects an empty one at generate time.
+  jwks_uri = "{{pubsub_appsync.jwks_uri}}"
+  {{#if pubsub_appsync.jwt_issuer}}
+  jwt_issuer = "{{pubsub_appsync.jwt_issuer}}"
+  {{/if}}
+  {{#if pubsub_appsync.jwt_audience}}
+  jwt_audience = "{{pubsub_appsync.jwt_audience}}"
   {{/if}}
 }
 {{/if}}

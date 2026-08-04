@@ -18,6 +18,7 @@ import { PricingProvider } from "./contexts/PricingContext";
 import { usePricing } from "./hooks/use-pricing";
 import type { ComponentNode } from "./types";
 import type { YamlInfrastructureConfig } from "./types/yamlConfig";
+import { mergeConfigUpdates } from "./utils/configMerge";
 
 export default function App() {
   const [selectedNode, setSelectedNode] = useState<ComponentNode | null>(null);
@@ -184,35 +185,13 @@ export default function App() {
     setConfig((prevConfig) => {
       if (!prevConfig) return prevConfig;
 
-      // Deep merge nested objects to prevent stale closure overwrites.
-      // Components may capture config.workload at render time, which can be stale
-      // if another component just updated a different workload field.
-      // By merging updates into prevConfig (which is always current from setState),
-      // we ensure no fields are accidentally overwritten with stale values.
-      const updatedConfig = { ...prevConfig };
-      const nestedKeys = ['workload', 'domain', 'postgres', 'cognito', 'ses', 'sqs', 'alb', 'pubsub_appsync'] as const;
+      // Deep merge nested objects to prevent stale closure overwrites, and to
+      // preserve fields no editor panel surfaces (e.g. pubsub_appsync.jwks_uri).
+      const updatedConfig = mergeConfigUpdates(prevConfig, updates);
 
-      for (const [key, value] of Object.entries(updates)) {
-        if (
-          value != null &&
-          typeof value === 'object' &&
-          !Array.isArray(value) &&
-          nestedKeys.includes(key as typeof nestedKeys[number])
-        ) {
-          // Deep merge: prevConfig fields as base, updates override only specified fields
-          (updatedConfig as unknown as Record<string, unknown>)[key] = {
-            ...((prevConfig as unknown as Record<string, unknown>)[key] as object || {}),
-            ...value,
-          };
-        } else {
-          (updatedConfig as unknown as Record<string, unknown>)[key] = value;
-        }
-      }
-
-      // Only return new object if something actually changed (deep equality check)
-      // This prevents unnecessary re-renders when the data hasn't actually changed
-      if (JSON.stringify(prevConfig) === JSON.stringify(updatedConfig)) {
-        return prevConfig; // Return same reference to prevent re-render
+      // Same reference means nothing changed - skip re-render and save
+      if (updatedConfig === prevConfig) {
+        return prevConfig;
       }
 
       // Call saveConfigToBackend asynchronously (don't await here to avoid blocking)

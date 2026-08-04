@@ -1016,3 +1016,419 @@ func TestMigrateToV11_NoContainerPort(t *testing.T) {
 		t.Errorf("host_port should not be added when container_port is missing")
 	}
 }
+
+func TestMigrationChain_IncludesV21(t *testing.T) {
+	found := false
+	for _, migration := range AllMigrations {
+		if migration.Version == 21 {
+			found = true
+			if migration.Description != "Add AppSync Lambda authorizer configuration (jwks_uri, jwt_issuer, jwt_audience)" {
+				t.Errorf("Wrong description for v21 migration: %s", migration.Description)
+			}
+			break
+		}
+	}
+
+	if !found {
+		t.Error("v21 migration not found in AllMigrations")
+	}
+}
+
+// The whole point of v21 is that the authorizer's trust anchor must be a
+// deliberate choice. A migration that filled in a working-looking JWKS URL would
+// recreate the authentication bypass it exists to close, so the field is added
+// empty and validation refuses to render until a human sets it.
+func TestMigrateToV21_AddsEmptyJWKSURI(t *testing.T) {
+	data := map[string]interface{}{
+		"pubsub_appsync": map[interface{}]interface{}{
+			"enabled":     true,
+			"schema":      true,
+			"auth_lambda": true,
+			"resolvers":   true,
+		},
+	}
+
+	if err := migrateToV21(data); err != nil {
+		t.Fatalf("migrateToV21: %v", err)
+	}
+
+	appsync := data["pubsub_appsync"].(map[interface{}]interface{})
+	for _, field := range []string{"jwks_uri", "jwt_issuer", "jwt_audience"} {
+		value, exists := appsync[field]
+		if !exists {
+			t.Fatalf("%s should have been added", field)
+		}
+		if value != "" {
+			t.Errorf("%s must be empty — the migration must never invent an identity provider, got %q", field, value)
+		}
+	}
+
+	// Untouched keys must survive.
+	if appsync["auth_lambda"] != true || appsync["schema"] != true {
+		t.Errorf("existing pubsub_appsync values were modified: %v", appsync)
+	}
+}
+
+func TestMigrateToV21_PreservesConfiguredJWKSURI(t *testing.T) {
+	data := map[string]interface{}{
+		"pubsub_appsync": map[interface{}]interface{}{
+			"enabled":     true,
+			"auth_lambda": true,
+			"jwks_uri":    "https://idp.example.com/.well-known/jwks.json",
+			"jwt_issuer":  "https://idp.example.com/",
+		},
+	}
+
+	if err := migrateToV21(data); err != nil {
+		t.Fatalf("migrateToV21: %v", err)
+	}
+
+	appsync := data["pubsub_appsync"].(map[interface{}]interface{})
+	if appsync["jwks_uri"] != "https://idp.example.com/.well-known/jwks.json" {
+		t.Errorf("configured jwks_uri was overwritten: %v", appsync["jwks_uri"])
+	}
+	if appsync["jwt_issuer"] != "https://idp.example.com/" {
+		t.Errorf("configured jwt_issuer was overwritten: %v", appsync["jwt_issuer"])
+	}
+	if appsync["jwt_audience"] != "" {
+		t.Errorf("jwt_audience should have been added empty, got %v", appsync["jwt_audience"])
+	}
+}
+
+func TestMigrateToV21_NoAppSyncSection(t *testing.T) {
+	data := map[string]interface{}{"project": "test"}
+
+	if err := migrateToV21(data); err != nil {
+		t.Fatalf("migration should be a no-op without pubsub_appsync: %v", err)
+	}
+	if _, exists := data["pubsub_appsync"]; exists {
+		t.Error("migration must not create a pubsub_appsync section")
+	}
+}
+
+func TestMigrateToV21_InvalidShape(t *testing.T) {
+	data := map[string]interface{}{"pubsub_appsync": "not a map"}
+
+	if err := migrateToV21(data); err != nil {
+		t.Fatalf("migration should handle a malformed section gracefully: %v", err)
+	}
+}
+
+func TestMigrateToV21_Idempotent(t *testing.T) {
+	data := map[string]interface{}{
+		"pubsub_appsync": map[interface{}]interface{}{
+			"enabled":  true,
+			"jwks_uri": "https://idp.example.com/.well-known/jwks.json",
+		},
+	}
+
+	for i := 0; i < 3; i++ {
+		if err := migrateToV21(data); err != nil {
+			t.Fatalf("run %d: %v", i, err)
+		}
+	}
+
+	appsync := data["pubsub_appsync"].(map[interface{}]interface{})
+	if appsync["jwks_uri"] != "https://idp.example.com/.well-known/jwks.json" {
+		t.Errorf("repeated runs changed jwks_uri: %v", appsync["jwks_uri"])
+	}
+	if len(appsync) != 4 {
+		t.Errorf("expected exactly enabled + 3 authorizer keys, got %v", appsync)
+	}
+}
+
+// ---------------------------------------------------------------- v22
+
+func TestMigrationChain_IncludesV22(t *testing.T) {
+	found := false
+	for _, migration := range AllMigrations {
+		if migration.Version == 22 {
+			found = true
+			if migration.Description != "Add auto_deploy to backend, services and scheduled_tasks (CI/CD auto-deploy policy)" {
+				t.Errorf("Wrong description for v22 migration: %s", migration.Description)
+			}
+			break
+		}
+	}
+
+	if !found {
+		t.Error("v22 migration not found in AllMigrations")
+	}
+
+	if CurrentSchemaVersion != 22 {
+		t.Errorf("CurrentSchemaVersion = %d, want 22", CurrentSchemaVersion)
+	}
+}
+
+// v22Fixture is one config with a backend, two services and two scheduled
+// tasks, none of which declares auto_deploy.
+func v22Fixture(env string) map[string]interface{} {
+	return map[string]interface{}{
+		"env": env,
+		"workload": map[interface{}]interface{}{
+			"backend_health_endpoint": "/health",
+		},
+		"services": []interface{}{
+			map[interface{}]interface{}{"name": "api"},
+			map[interface{}]interface{}{"name": "payment-worker"},
+		},
+		"scheduled_tasks": []interface{}{
+			map[interface{}]interface{}{"name": "cleanup", "schedule": "rate(1 day)"},
+			map[interface{}]interface{}{"name": "archive", "schedule": "rate(7 days)"},
+		},
+	}
+}
+
+func v22AutoDeployOf(t *testing.T, data map[string]interface{}, key, name string) interface{} {
+	t.Helper()
+	for _, raw := range data[key].([]interface{}) {
+		item := raw.(map[interface{}]interface{})
+		if item["name"] == name {
+			return item["auto_deploy"]
+		}
+	}
+	t.Fatalf("%s %q not found", key, name)
+	return nil
+}
+
+// The environment decides the default: pushing an image is a development
+// gesture, redeploying production is not.
+func TestMigrateToV22_DevDefaultsToTrue(t *testing.T) {
+	data := v22Fixture("dev")
+
+	if err := migrateToV22(data); err != nil {
+		t.Fatalf("migrateToV22: %v", err)
+	}
+
+	workload := data["workload"].(map[interface{}]interface{})
+	if workload["backend_auto_deploy"] != true {
+		t.Errorf("backend_auto_deploy = %v, want true in dev", workload["backend_auto_deploy"])
+	}
+	for _, name := range []string{"api", "payment-worker"} {
+		if got := v22AutoDeployOf(t, data, "services", name); got != true {
+			t.Errorf("service %s auto_deploy = %v, want true in dev", name, got)
+		}
+	}
+	for _, name := range []string{"cleanup", "archive"} {
+		if got := v22AutoDeployOf(t, data, "scheduled_tasks", name); got != true {
+			t.Errorf("scheduled task %s auto_deploy = %v, want true in dev", name, got)
+		}
+	}
+}
+
+// Only production opts out. "prod" and "production" are both accepted spellings;
+// matching one and not the other would leave a production environment
+// auto-deploying, which is the single case the policy exists to prevent.
+func TestMigrateToV22_ProductionDefaultsToFalse(t *testing.T) {
+	for _, env := range []string{"prod", "production"} {
+		data := v22Fixture(env)
+
+		if err := migrateToV22(data); err != nil {
+			t.Fatalf("env %s: %v", env, err)
+		}
+
+		workload := data["workload"].(map[interface{}]interface{})
+		if workload["backend_auto_deploy"] != false {
+			t.Errorf("env %s: backend_auto_deploy = %v, want false", env, workload["backend_auto_deploy"])
+		}
+		if got := v22AutoDeployOf(t, data, "services", "api"); got != false {
+			t.Errorf("env %s: service api auto_deploy = %v, want false", env, got)
+		}
+		if got := v22AutoDeployOf(t, data, "scheduled_tasks", "cleanup"); got != false {
+			t.Errorf("env %s: task cleanup auto_deploy = %v, want false", env, got)
+		}
+	}
+}
+
+// Everything that is not production keeps auto-deploying. Staging and qa exist
+// to be deployed to, and an earlier draft of this migration disabled them too —
+// which would have silently removed the fast feedback those environments are
+// for, on nothing more than a schema bump.
+func TestMigrateToV22_NonProductionKeepsAutoDeploy(t *testing.T) {
+	for _, env := range []string{"staging", "qa", "uat", "preview"} {
+		data := v22Fixture(env)
+
+		if err := migrateToV22(data); err != nil {
+			t.Fatalf("env %s: %v", env, err)
+		}
+
+		workload := data["workload"].(map[interface{}]interface{})
+		if workload["backend_auto_deploy"] != true {
+			t.Errorf("env %s: backend_auto_deploy = %v, want true", env, workload["backend_auto_deploy"])
+		}
+		if got := v22AutoDeployOf(t, data, "services", "api"); got != true {
+			t.Errorf("env %s: service api auto_deploy = %v, want true", env, got)
+		}
+		if got := v22AutoDeployOf(t, data, "scheduled_tasks", "cleanup"); got != true {
+			t.Errorf("env %s: task cleanup auto_deploy = %v, want true", env, got)
+		}
+	}
+}
+
+// The value has to be written explicitly, not left implicit: CLAUDE.md's rule
+// for core policy booleans is that the YAML states them, with the migration as
+// the single source of the default. A prod file where the key is simply absent
+// reads as "nobody has decided", and absent means true everywhere downstream.
+func TestMigrateToV22_WritesTheKeyExplicitly(t *testing.T) {
+	data := v22Fixture("prod")
+
+	if err := migrateToV22(data); err != nil {
+		t.Fatalf("migrateToV22: %v", err)
+	}
+
+	workload := data["workload"].(map[interface{}]interface{})
+	if _, ok := workload["backend_auto_deploy"]; !ok {
+		t.Error("backend_auto_deploy key is absent; it must be written, not implied")
+	}
+	for _, raw := range data["services"].([]interface{}) {
+		service := raw.(map[interface{}]interface{})
+		if _, ok := service["auto_deploy"]; !ok {
+			t.Errorf("service %v has no auto_deploy key", service["name"])
+		}
+	}
+	for _, raw := range data["scheduled_tasks"].([]interface{}) {
+		task := raw.(map[interface{}]interface{})
+		if _, ok := task["auto_deploy"]; !ok {
+			t.Errorf("scheduled task %v has no auto_deploy key", task["name"])
+		}
+	}
+}
+
+// A value someone has already chosen is never overwritten, in either direction.
+// This is what makes "opt prod back in" survive the next migration run.
+func TestMigrateToV22_PreservesExistingValues(t *testing.T) {
+	data := v22Fixture("prod")
+	data["workload"].(map[interface{}]interface{})["backend_auto_deploy"] = true
+	data["services"].([]interface{})[0].(map[interface{}]interface{})["auto_deploy"] = true
+	data["scheduled_tasks"].([]interface{})[0].(map[interface{}]interface{})["auto_deploy"] = true
+
+	if err := migrateToV22(data); err != nil {
+		t.Fatalf("migrateToV22: %v", err)
+	}
+
+	if got := data["workload"].(map[interface{}]interface{})["backend_auto_deploy"]; got != true {
+		t.Errorf("backend_auto_deploy = %v, want the configured true to survive", got)
+	}
+	if got := v22AutoDeployOf(t, data, "services", "api"); got != true {
+		t.Errorf("service api auto_deploy = %v, want the configured true to survive", got)
+	}
+	if got := v22AutoDeployOf(t, data, "scheduled_tasks", "cleanup"); got != true {
+		t.Errorf("task cleanup auto_deploy = %v, want the configured true to survive", got)
+	}
+	// And the untouched siblings still got the environment default.
+	if got := v22AutoDeployOf(t, data, "services", "payment-worker"); got != false {
+		t.Errorf("service payment-worker auto_deploy = %v, want false", got)
+	}
+}
+
+// A dev config that was explicitly turned off stays off — the same guarantee,
+// in the direction where getting it wrong deploys something rather than not
+// deploying it.
+func TestMigrateToV22_PreservesExplicitFalseInDev(t *testing.T) {
+	data := v22Fixture("dev")
+	data["services"].([]interface{})[1].(map[interface{}]interface{})["auto_deploy"] = false
+
+	if err := migrateToV22(data); err != nil {
+		t.Fatalf("migrateToV22: %v", err)
+	}
+
+	if got := v22AutoDeployOf(t, data, "services", "payment-worker"); got != false {
+		t.Errorf("payment-worker auto_deploy = %v, want the configured false to survive", got)
+	}
+	if got := v22AutoDeployOf(t, data, "services", "api"); got != true {
+		t.Errorf("api auto_deploy = %v, want the dev default true", got)
+	}
+}
+
+func TestMigrateToV22_Idempotent(t *testing.T) {
+	data := v22Fixture("prod")
+
+	for i := 0; i < 3; i++ {
+		if err := migrateToV22(data); err != nil {
+			t.Fatalf("run %d: %v", i, err)
+		}
+	}
+
+	if got := v22AutoDeployOf(t, data, "services", "api"); got != false {
+		t.Errorf("repeated runs changed api auto_deploy: %v", got)
+	}
+	service := data["services"].([]interface{})[0].(map[interface{}]interface{})
+	if len(service) != 2 {
+		t.Errorf("expected exactly name + auto_deploy, got %v", service)
+	}
+}
+
+// auto_deploy is orthogonal to enabled: one says whether the thing exists in
+// AWS, the other whether CI may redeploy it. Neither may be inferred from the
+// other.
+func TestMigrateToV22_DoesNotTouchEnabled(t *testing.T) {
+	data := v22Fixture("dev")
+	data["services"].([]interface{})[0].(map[interface{}]interface{})["enabled"] = false
+
+	if err := migrateToV22(data); err != nil {
+		t.Fatalf("migrateToV22: %v", err)
+	}
+
+	service := data["services"].([]interface{})[0].(map[interface{}]interface{})
+	if service["enabled"] != false {
+		t.Errorf("enabled = %v, want the configured false untouched", service["enabled"])
+	}
+	if service["auto_deploy"] != true {
+		t.Errorf("auto_deploy = %v: a disabled service still gets the environment default", service["auto_deploy"])
+	}
+}
+
+// event_processor_tasks are deliberately left alone: they appear in none of the
+// CI Lambda's maps, so an auto_deploy there would be configuration nothing reads.
+func TestMigrateToV22_SkipsEventProcessorTasks(t *testing.T) {
+	data := v22Fixture("dev")
+	data["event_processor_tasks"] = []interface{}{
+		map[interface{}]interface{}{"name": "on-upload"},
+	}
+
+	if err := migrateToV22(data); err != nil {
+		t.Fatalf("migrateToV22: %v", err)
+	}
+
+	task := data["event_processor_tasks"].([]interface{})[0].(map[interface{}]interface{})
+	if _, ok := task["auto_deploy"]; ok {
+		t.Error("event_processor_tasks must not gain auto_deploy: nothing reads it")
+	}
+}
+
+func TestMigrateToV22_HandlesMissingSections(t *testing.T) {
+	for name, data := range map[string]map[string]interface{}{
+		"empty":             {"env": "dev"},
+		"no workload":       {"env": "prod", "services": []interface{}{}},
+		"nil services":      {"env": "dev", "services": nil},
+		"services not list": {"env": "dev", "services": "oops"},
+	} {
+		if err := migrateToV22(data); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+// A missing env key is not production, so it follows the same rule as every
+// other non-production environment.
+//
+// This test previously asserted the opposite, back when the rule was
+// "dev is true, everything else false" and an unreadable env therefore landed on
+// the conservative side by accident. Under "only production is false" that
+// accident inverts: treating an unknown env as production would disable a
+// staging pipeline over a missing key. Neither default is safe in the dark,
+// which is why migrateToV22 prints a warning for this case rather than picking
+// silently — the warning is the actual mitigation, not the boolean.
+func TestMigrateToV22_MissingEnvIsNotProduction(t *testing.T) {
+	data := map[string]interface{}{
+		"services": []interface{}{map[interface{}]interface{}{"name": "api"}},
+	}
+
+	if err := migrateToV22(data); err != nil {
+		t.Fatalf("migrateToV22: %v", err)
+	}
+
+	if got := v22AutoDeployOf(t, data, "services", "api"); got != true {
+		t.Errorf("auto_deploy = %v, want true when env is unknown (unknown is not production)", got)
+	}
+}

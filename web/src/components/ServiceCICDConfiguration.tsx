@@ -124,7 +124,7 @@ jobs:
             --entries '[{
               "Source": "github.actions.${env}",
               "DetailType": "SERVICE_DEPLOY",
-              "Detail": "{\\"service\\":\\"${serviceName}\\",\\"env\\":\\"${env}\\",\\"trigger\\":\\"github\\",\\"commit\\":\\"'\${{ github.sha }}'\\",\\"branch\\":\\"'\${{ github.ref_name }}'\\"}",
+              "Detail": "{\\"service\\":\\"${serviceName}\\",\\"project\\":\\"${project}\\",\\"env\\":\\"${env}\\",\\"trigger\\":\\"github\\",\\"commit\\":\\"'\${{ github.sha }}'\\",\\"branch\\":\\"'\${{ github.ref_name }}'\\"}",
               "EventBusName": "default"
             }]'
           echo "✅ Deployment event sent successfully"
@@ -407,6 +407,7 @@ jobs:
                 DetailType: "SERVICE_DEPLOY",
                 Detail: {
                   service: serviceName,
+                  project: project,
                   env: env,
                   trigger: "github",
                   commit: "<github.sha>",

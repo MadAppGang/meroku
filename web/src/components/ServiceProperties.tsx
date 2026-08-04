@@ -107,6 +107,39 @@ export function ServiceProperties({
 
 				<Separator />
 
+				{/* Auto-Deploy Toggle */}
+				<div className="flex items-center justify-between">
+					<div className="flex-1">
+						<Label htmlFor="auto-deploy">Auto-Deploy</Label>
+						<p className="text-xs text-gray-500 mt-1">
+							Redeploy this service automatically when a new image is pushed, or
+							when its SSM/S3 configuration changes
+						</p>
+					</div>
+					<Switch
+						id="auto-deploy"
+						checked={serviceConfig.auto_deploy !== false}
+						onCheckedChange={(checked) =>
+							handleServiceChange({ auto_deploy: checked })
+						}
+						className="data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-gray-600"
+					/>
+				</div>
+
+				{serviceConfig.auto_deploy === false && (
+					<Alert className="border-blue-600 bg-blue-900/20">
+						<Info className="h-4 w-4 text-blue-400" />
+						<AlertDescription className="text-xs text-gray-300">
+							Automatic deploys are <strong>off</strong> for this service. Pushes and
+							config changes are still delivered to the CI/CD Lambda and logged as
+							<code className="mx-1">auto_deploy is disabled for {serviceName}</code>
+							rather than silently doing nothing. Manual deploys still work.
+						</AlertDescription>
+					</Alert>
+				)}
+
+				<Separator />
+
 				{/* Essential Container Toggle */}
 				<div className="flex items-center justify-between">
 					<div className="flex-1">

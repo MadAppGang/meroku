@@ -56,6 +56,11 @@ export interface YamlInfrastructureConfig {
 		backend_autoscaling_enabled?: boolean;
 		backend_autoscaling_min_capacity?: number;
 		backend_autoscaling_max_capacity?: number;
+		/**
+		 * CI/CD auto-deploy policy for the backend (schema v22). Absent means
+		 * true. A manual deploy always works regardless.
+		 */
+		backend_auto_deploy?: boolean;
 
 		// S3 bucket configuration
 		bucket_postfix?: string;
@@ -173,6 +178,16 @@ export interface YamlInfrastructureConfig {
 	scheduled_tasks?: Array<{
 		name: string;
 		enabled?: boolean;
+		/**
+		 * CI/CD auto-deploy policy (schema v22). Absent means true.
+		 *
+		 * Distinct from `enabled`: `enabled` decides whether the task exists in
+		 * AWS at all, `auto_deploy` decides whether a new image may redeploy it
+		 * without anyone asking. Outside `dev` no automatic trigger reaches a
+		 * scheduled task in the first place, so `true` there enables only the
+		 * manual path.
+		 */
+		auto_deploy?: boolean;
 		schedule: string;
 		docker_image?: string;
 		container_command?: string;
@@ -191,12 +206,32 @@ export interface YamlInfrastructureConfig {
 		schema?: boolean;
 		auth_lambda?: boolean;
 		resolvers?: boolean;
+		/**
+		 * JWKS endpoint whose keys sign the JWTs this API accepts (schema v21).
+		 * Required whenever AppSync is enabled — the Terraform module has no
+		 * default, because an unset value used to mean "trust a hardcoded third
+		 * party". Must be an https:// URL.
+		 */
+		jwks_uri?: string;
+		/** Optional expected `iss` claim. Comma-separated list allowed. */
+		jwt_issuer?: string;
+		/** Optional expected `aud` claim. Comma-separated list allowed. */
+		jwt_audience?: string;
 	};
 
 	// Additional Services
 	services?: Array<{
 		name: string;
 		enabled?: boolean;
+		/**
+		 * CI/CD auto-deploy policy (schema v22). Absent means true.
+		 *
+		 * Distinct from `enabled`: `enabled` decides whether the service exists
+		 * in AWS at all, `auto_deploy` decides whether an ECR push, an SSM
+		 * change or an S3 env-file write may redeploy it without anyone asking.
+		 * A manual deploy always works.
+		 */
+		auto_deploy?: boolean;
 		docker_image?: string;
 		container_command?: string[];
 		container_port?: number;

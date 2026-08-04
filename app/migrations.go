@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v2"
 )
@@ -29,7 +30,9 @@ import (
 // 18: Move test_emails to global SES level (account-wide, not per-domain)
 // 19: Add enabled field to services (default true, allows disabling without removing config)
 // 20: Add enabled field to scheduled_tasks and event_processor_tasks (same pattern as services)
-const CurrentSchemaVersion = 20
+// 21: Add AppSync Lambda authorizer configuration (jwks_uri, jwt_issuer, jwt_audience)
+// 22: Add auto_deploy to the backend, services and scheduled_tasks (CI/CD Lambda policy)
+const CurrentSchemaVersion = 22
 
 // EnvWithVersion extends Env with a schema version field
 type EnvWithVersion struct {
@@ -140,6 +143,16 @@ var AllMigrations = []Migration{
 		Version:     20,
 		Description: "Add enabled field to scheduled_tasks and event_processor_tasks",
 		Apply:       migrateToV20,
+	},
+	{
+		Version:     21,
+		Description: "Add AppSync Lambda authorizer configuration (jwks_uri, jwt_issuer, jwt_audience)",
+		Apply:       migrateToV21,
+	},
+	{
+		Version:     22,
+		Description: "Add auto_deploy to backend, services and scheduled_tasks (CI/CD auto-deploy policy)",
+		Apply:       migrateToV22,
 	},
 }
 
@@ -1130,6 +1143,182 @@ func migrateToV20(data map[string]interface{}) error {
 		} else {
 			fmt.Printf("    ✓ Set enabled=true on %d %s\n", updatedCount, key)
 		}
+	}
+
+	return nil
+}
+
+// migrateToV21 adds the AppSync Lambda authorizer keys to pubsub_appsync.
+//
+// The authorizer used to fall back to a hardcoded third-party JWKS endpoint when
+// nothing was configured, which meant anyone able to mint a token there could
+// call the API. modules/appsync now requires jwks_uri with no default, so the
+// value has to come from YAML.
+//
+// This migration deliberately writes an EMPTY jwks_uri: guessing an identity
+// provider would recreate the same silent-trust bug in a new place. An empty
+// value is caught by validateAppSyncConfig before terraform ever runs.
+func migrateToV21(data map[string]interface{}) error {
+	fmt.Println("  → Migrating to v21: Adding AppSync Lambda authorizer configuration")
+
+	appsyncRaw, exists := data["pubsub_appsync"]
+	if !exists || appsyncRaw == nil {
+		fmt.Println("    ℹ️  No pubsub_appsync configuration to migrate")
+		return nil
+	}
+
+	appsync, ok := appsyncRaw.(map[interface{}]interface{})
+	if !ok {
+		fmt.Println("    ⚠️  pubsub_appsync is not a map, skipping migration")
+		return nil
+	}
+
+	fieldsAdded := 0
+	for _, field := range []string{"jwks_uri", "jwt_issuer", "jwt_audience"} {
+		if _, hasField := appsync[field]; !hasField {
+			appsync[field] = ""
+			fieldsAdded++
+			fmt.Printf("    ✓ Added %s = \"\" (must be set by you, never guessed)\n", field)
+		}
+	}
+
+	if fieldsAdded == 0 {
+		fmt.Println("    ℹ️  AppSync authorizer fields already present")
+	} else {
+		fmt.Printf("    ✓ Added %d AppSync authorizer field(s)\n", fieldsAdded)
+	}
+
+	// Tell the user now rather than letting them discover it at deploy time.
+	authLambda, _ := appsync["auth_lambda"].(bool)
+	jwksURI, _ := appsync["jwks_uri"].(string)
+	if authLambda && strings.TrimSpace(jwksURI) == "" {
+		fmt.Println("    ⚠️  pubsub_appsync.auth_lambda is enabled but pubsub_appsync.jwks_uri is empty.")
+		fmt.Println("       Set it to your identity provider's JWKS URL before deploying, e.g.")
+		fmt.Println("       jwks_uri: \"https://<your-idp-host>/.well-known/jwks.json\"")
+	}
+
+	return nil
+}
+
+// migrateToV22 writes an explicit auto_deploy onto the backend, every service
+// and every scheduled task.
+//
+// auto_deploy is CI policy, distinct from `enabled`: `enabled` says whether the
+// thing exists in AWS at all, `auto_deploy` says whether an ECR push, an SSM
+// change or an S3 env-file write may redeploy it without anyone asking. A manual
+// deploy is unaffected either way.
+//
+// The default is computed from the environment — false in production, true
+// everywhere else — because redeploying production the instant an image lands is
+// the one case where nobody asked. Staging and every other pre-production
+// environment keep auto-deploying: they exist to be deployed to, and turning
+// them off would cost the fast feedback they are for. It is written into the
+// YAML rather than left implicit, per CLAUDE.md's rule for core policy booleans:
+// the file states the policy, and this function is the single source of the
+// default.
+//
+// Two consequences worth being loud about:
+//
+//   - In a production environment this TURNS OFF automatic deploys that work
+//     today for the backend and for services. That is the requested policy, not
+//     an accident, and it is reversible by setting the field back to true. The
+//     notice printed below says so at migration time rather than leaving it to
+//     be discovered after a push does nothing.
+//   - For scheduled tasks outside dev it changes nothing observable: no
+//     automatic trigger can reach one there in the first place (modules/ecs_task
+//     creates the task's ECR repository only in dev, and an SSM change
+//     deliberately never redeploys a task). What it does fix is the honesty of
+//     SCHEDULED_TASK_MAP, which used to be populated in every environment with
+//     no way to tell which entries meant anything.
+//
+// An *absent* auto_deploy — a hand-written or not-yet-migrated file — still
+// means true everywhere, in the Terraform variables and in the Lambda. That is
+// deliberately the opposite default from this migration: absent must mean "keep
+// doing what this project does today", while the migration states the policy.
+func migrateToV22(data map[string]interface{}) error {
+	fmt.Println("  → Migrating to v22: Adding auto_deploy (CI/CD auto-deploy policy)")
+
+	// Only production opts out. Both spellings are accepted because meroku has
+	// never constrained the env name and both appear in the wild — matching just
+	// "prod" would leave a "production" environment auto-deploying, which is the
+	// single case this policy exists to prevent.
+	env, _ := data["env"].(string)
+	isProd := env == "prod" || env == "production"
+	defaultAutoDeploy := !isProd
+
+	// A config with no env is malformed — meroku requires it and will not deploy
+	// without it — so this is reached by hand-written or truncated files only.
+	// The policy keys off the name, and an unreadable name cannot be matched
+	// against it, so say that plainly instead of quietly picking a side. Silently
+	// choosing false here would disable a staging pipeline over a typo; silently
+	// choosing true would arm production. The value below is stated, and so is
+	// the fact that it was chosen without being able to read the environment.
+	if env == "" {
+		fmt.Println("    ⚠️  This config has no 'env' key, so the auto-deploy policy could not be")
+		fmt.Printf("        matched against it. Defaulting to auto_deploy=%v. If this is a production\n", defaultAutoDeploy)
+		fmt.Println("        config, set env and re-run, or set auto_deploy: false by hand.")
+	}
+
+	fmt.Printf("    ℹ️  env=%q → default auto_deploy=%v\n", env, defaultAutoDeploy)
+
+	added := 0
+
+	// Backend. workload may be absent in a minimal config; there is nothing to
+	// annotate then, and the Terraform default (true) applies.
+	if workload, ok := data["workload"].(map[interface{}]interface{}); ok {
+		if _, has := workload["backend_auto_deploy"]; !has {
+			workload["backend_auto_deploy"] = defaultAutoDeploy
+			added++
+			fmt.Printf("    ✓ backend: Set auto_deploy=%v\n", defaultAutoDeploy)
+		}
+	} else {
+		fmt.Println("    ℹ️  No workload section; backend auto_deploy left to its default (true)")
+	}
+
+	// Services and scheduled tasks. event_processor_tasks are deliberately not
+	// included: they are not in any of the CI Lambda's maps, so the field would
+	// be configuration that nothing reads.
+	for _, key := range []string{"services", "scheduled_tasks"} {
+		itemsRaw, exists := data[key]
+		if !exists || itemsRaw == nil {
+			fmt.Printf("    ℹ️  No %s to migrate\n", key)
+			continue
+		}
+
+		items, ok := itemsRaw.([]interface{})
+		if !ok {
+			fmt.Printf("    ⚠️  %s is not an array, skipping\n", key)
+			continue
+		}
+
+		for _, itemRaw := range items {
+			itemMap, ok := itemRaw.(map[interface{}]interface{})
+			if !ok {
+				continue
+			}
+			if _, has := itemMap["auto_deploy"]; has {
+				continue
+			}
+			itemMap["auto_deploy"] = defaultAutoDeploy
+			added++
+			if name, _ := itemMap["name"].(string); name != "" {
+				fmt.Printf("    ✓ %s '%s': Set auto_deploy=%v\n", key, name, defaultAutoDeploy)
+			}
+		}
+	}
+
+	switch {
+	case added == 0:
+		fmt.Println("    ℹ️  Every target already has an auto_deploy field")
+	case defaultAutoDeploy:
+		fmt.Printf("    ✓ Set auto_deploy=true on %d target(s)\n", added)
+	default:
+		fmt.Printf("    ✓ Set auto_deploy=false on %d target(s)\n", added)
+		fmt.Printf("    ⚠️  %s is not a dev environment, so automatic deploys are now OFF for these targets.\n", env)
+		fmt.Println("       An image push or an env change will be logged and ignored, with the reason named:")
+		fmt.Println("         \"auto_deploy is disabled for <target>\"")
+		fmt.Println("       Manual deploys (GitHub Actions DEPLOY / SERVICE_DEPLOY) are unaffected.")
+		fmt.Println("       To keep a target deploying automatically, set auto_deploy: true on it and re-apply.")
 	}
 
 	return nil
