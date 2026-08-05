@@ -1,5 +1,86 @@
 # Changelog
 
+## v3.26.0
+
+Two defects that between them made a fresh environment undeployable: one that
+stopped the plan outright, and one that made a recreated hosted zone unusable
+for up to two days without saying so.
+
+### A first deploy with services can be planned again
+
+Any environment with at least one service could not be planned from scratch:
+
+```
+Error: Invalid count argument
+  on modules/workloads/lambda.tf line 511, in resource "aws_cloudwatch_event_rule" "ci_ecr_push":
+  511:   count = length(local.ci_ecr_repos) > 0 ? 1 : 0
+```
+
+The line named is not the problem. `ecr.tf` resolved each service's repository
+from `aws_ecr_repository.services[...].repository_url`, and that attribute is
+Computed — unknown on the plan that first creates the repository. The unknown
+travelled through a `for` expression whose `if` clause filtered on it, which
+makes the resulting list's *length* unknown, and that length is what the ECR
+event rule counts on. Terraform refuses a count it cannot resolve, so the plan
+failed before anything was created. Once the repositories existed the URL was
+known and the error disappeared, which is why it only ever hit new environments.
+
+`ecr.tf` now resolves the bare repository names alongside the URLs, from the
+same per-mode branching, and the CI Lambda's repository set reads those. A name
+is set from configuration, so it is known on the same plan — and a bare name is
+what an ECR event carries anyway. A boundary test fails if either half of that
+path goes back to reading the URL.
+
+### A recreated hosted zone no longer strands resolvers for two days
+
+Route53 assigns a fresh, random nameserver set to every hosted zone it creates,
+and publishes the zone's own apex NS records with a TTL of 172800 — two days. A
+resolver caches that RRset from the child's authoritative answer rather than
+from the parent's referral, so the 300s TTL on the delegation record meroku
+writes into the parent governs only resolvers that have nothing cached.
+
+Destroy an environment and apply it again — which any dev cycle does — and every
+resolver that looked the name up beforehand keeps querying the previous zone's
+nameservers. Those servers no longer host the zone, so they answer REFUSED and
+the name returns SERVFAIL rather than merely resolving to something stale. It
+stays that way for up to two days regardless of how correct the new delegation
+is, and certificate validation asks through exactly such a resolver.
+
+`modules/domain` and `modules/dns-delegation` now republish each zone's apex NS
+records at a 300s TTL, matching the delegation written into the parent, so both
+halves of the referral expire together. The values are unchanged — only the TTL.
+The record is created in phase 1 alongside the zone, because the propagate step
+consults public resolvers minutes before phase 2 exists and would otherwise be
+seeding them with the two-day copy.
+
+### The propagate screen distinguishes a stale delegation from a slow one
+
+The DNS-over-HTTPS check reduced every response to "does this resolver see our
+nameservers", which folded three different situations into one. A resolver with
+a cold cache, one holding a negative answer, and one still serving a previous
+incarnation of the zone all rendered identically as `checking…`. Only the first
+two clear in minutes.
+
+The rcode was already being parsed and then discarded. It is now kept, and a
+resolver reports one of three states: resolved, not yet, or **STALE** — either
+SERVFAIL, or an answer naming nameservers that are not ours. Stale resolvers get
+a red badge that persists through re-checks instead of a spinner implying
+progress, and the panel says what is actually happening rather than describing a
+cache that is about to expire.
+
+Stale resolvers do not count as agreement and do not shorten the settle window;
+the existing three-minute cap still releases the deploy. The done panel now
+names the condition, because a resolver on an older delegation is the likeliest
+explanation if the apply then stalls on certificate validation.
+
+### The settle window shows its deadline
+
+Partial agreement holds for up to three minutes so the certificate request does
+not race a resolver with a stale negative cache. The only timer on screen was
+"next check in 10s", which resets forever, so a bounded wait doing exactly its
+job was indistinguishable from a hang — and was reported as one. The screen now
+shows how long is left before it continues without the remaining resolvers.
+
 ## v3.25.0
 
 Same code as v3.24.0, released from `main`.
