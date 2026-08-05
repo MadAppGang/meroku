@@ -15,6 +15,10 @@
  *     `jwt.verify` with `algorithms: ['RS256']` (pinning the algorithm is what
  *     blocks `alg: none` / HMAC confusion attacks).
  *   - `issuer` / `audience` are enforced whenever they are configured.
+ *   - `REQUIRED_CLAIMS` is enforced after verification, and a configuration that
+ *     cannot be parsed denies everything rather than being ignored. An
+ *     unparseable policy that fell through to "no requirements" would silently
+ *     drop the check the operator asked for.
  *
  * Every failure path denies. Never add a path that returns
  * `isAuthorized: true` without a successful `jwt.verify`.
@@ -57,6 +61,25 @@ class InvalidTokenError extends Error {
   constructor(message) {
     super(message);
     this.name = 'InvalidTokenError';
+  }
+}
+
+/**
+ * A token whose signature, issuer and audience are all fine, but which does not
+ * satisfy the configured claim policy.
+ *
+ * Kept separate from InvalidTokenError so the denial is distinguishable in the
+ * logs: "this token is not for you" is a different operational signal from
+ * "someone is presenting forged tokens", and both differ from "our JWKS endpoint
+ * is down". `claim` and `detail` are safe to log — the claim NAME is
+ * configuration, not user data. The claim's value is never logged.
+ */
+class ClaimDeniedError extends Error {
+  constructor(claim, detail) {
+    super(`Claim "${claim}" ${detail === 'missing' ? 'is missing' : 'does not hold an accepted value'}`);
+    this.name = 'ClaimDeniedError';
+    this.claim = claim;
+    this.detail = detail;
   }
 }
 
@@ -104,7 +127,68 @@ function parseList(value) {
 }
 
 /**
- * @throws {ConfigurationError} when JWKS_URI is missing. Callers must deny.
+ * Parses REQUIRED_CLAIMS, the claim policy.
+ *
+ * Wire format is a JSON object of claim name -> array of accepted values:
+ *
+ *   {"tenant_id": [], "role": ["admin", "ops"]}
+ *
+ * An empty array means "the claim must be present"; a non-empty array means
+ * "the claim must hold one of these values". Terraform builds this with
+ * jsonencode() from a map(list(string)), so the shape is fixed at plan time.
+ *
+ * Anything that does not fit that shape is a ConfigurationError, which denies
+ * every request. That is the point: this module has twice shipped a check that
+ * silently did nothing (a hardcoded fallback issuer, then an API key that
+ * bypassed the authorizer). A typo in a claim policy must not become a third.
+ *
+ * @throws {ConfigurationError}
+ */
+function parseRequiredClaims(raw) {
+  if (raw === undefined || raw === null) return [];
+  if (typeof raw !== 'string' || raw.trim() === '') return [];
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new ConfigurationError(
+      `REQUIRED_CLAIMS is not valid JSON (${error.message}). The authorizer denies every request ` +
+        'until it is fixed, rather than ignoring the claim policy it was given.',
+    );
+  }
+
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new ConfigurationError(
+      'REQUIRED_CLAIMS must be a JSON object of claim name to array of accepted values, ' +
+        'e.g. {"role":["admin"]}.',
+    );
+  }
+
+  return Object.entries(parsed).map(([claim, accepted]) => {
+    if (claim.trim() === '') {
+      throw new ConfigurationError('REQUIRED_CLAIMS contains an empty claim name.');
+    }
+    if (!Array.isArray(accepted)) {
+      throw new ConfigurationError(
+        `REQUIRED_CLAIMS["${claim}"] must be an array of accepted values ` +
+          '(use [] to require only that the claim is present).',
+      );
+    }
+    for (const value of accepted) {
+      if (typeof value !== 'string') {
+        throw new ConfigurationError(
+          `REQUIRED_CLAIMS["${claim}"] must contain only strings; JWT claim values are compared as strings.`,
+        );
+      }
+    }
+    return { claim, accepted };
+  });
+}
+
+/**
+ * @throws {ConfigurationError} when JWKS_URI is missing or the claim policy is
+ * malformed. Callers must deny.
  */
 function readConfig(env) {
   const jwksUri = typeof env.JWKS_URI === 'string' ? env.JWKS_URI.trim() : '';
@@ -119,7 +203,54 @@ function readConfig(env) {
     jwksUri,
     issuer: parseList(env.JWT_ISSUER),
     audience: parseList(env.JWT_AUDIENCE),
+    requiredClaims: parseRequiredClaims(env.REQUIRED_CLAIMS),
   };
+}
+
+// --- Claim policy -----------------------------------------------------------
+
+/**
+ * Values a claim can be compared by. A claim holding an array (`cognito:groups`,
+ * a multi-valued `aud`) satisfies the policy if ANY of its entries is accepted,
+ * which is the useful reading of "the user is in one of these roles".
+ *
+ * Objects are not comparable and yield no values, so a claim holding one is
+ * treated as unsatisfied rather than as a match.
+ */
+function comparableValues(value) {
+  const scalar = (v) => (v === null || v === undefined || typeof v === 'object' ? null : String(v));
+
+  if (Array.isArray(value)) {
+    return value.map(scalar).filter((v) => v !== null && v !== '');
+  }
+  const single = scalar(value);
+  return single === null || single === '' ? [] : [single];
+}
+
+/**
+ * Enforces the claim policy against an already-verified payload.
+ *
+ * Runs only after jwt.verify has succeeded, so it can never be the thing that
+ * makes an unverified token acceptable — it only ever removes acceptance.
+ *
+ * @throws {ClaimDeniedError}
+ */
+function assertClaims(payload, requiredClaims) {
+  for (const { claim, accepted } of requiredClaims) {
+    const values = comparableValues(payload[claim]);
+
+    // Absent, null, empty string, empty array, or an object: nothing to match
+    // against, so the requirement is not met. Fail closed.
+    if (values.length === 0) {
+      throw new ClaimDeniedError(claim, 'missing');
+    }
+    if (accepted.length === 0) {
+      continue; // presence was the whole requirement
+    }
+    if (!values.some((value) => accepted.includes(value))) {
+      throw new ClaimDeniedError(claim, 'not_allowed');
+    }
+  }
 }
 
 // --- JWKS -------------------------------------------------------------------
@@ -209,8 +340,15 @@ function deny(ttlOverride) {
 /**
  * AppSync rejects a resolverContext containing anything other than strings, so
  * everything is coerced and non-scalars are dropped.
+ *
+ * Claims named in REQUIRED_CLAIMS are included: a resolver that is only reachable
+ * with `tenant_id` present almost always needs to read it, and making the caller
+ * re-decode the token to get a value the authorizer already verified would be
+ * silly. Array-valued claims are joined with "," so the string-only invariant
+ * holds. The fixed keys keep their existing behaviour so the documented contract
+ * does not move.
  */
-function buildResolverContext(payload) {
+function buildResolverContext(payload, requiredClaims = []) {
   const context = {};
 
   const put = (key, value) => {
@@ -228,6 +366,12 @@ function buildResolverContext(payload) {
   put('aud', payload.aud);
   put('email', payload.email);
   put('exp', payload.exp);
+
+  for (const { claim } of requiredClaims) {
+    if (claim in context) continue; // never overwrite a fixed key
+    const values = comparableValues(payload[claim]);
+    if (values.length > 0) context[claim] = values.join(',');
+  }
 
   return context;
 }
@@ -276,9 +420,24 @@ export const handler = async (event) => {
     return deny(ERROR_TTL_SECONDS);
   }
 
+  // Signature, issuer and audience are settled; the remaining question is
+  // whether this verified identity is allowed here.
+  try {
+    assertClaims(payload, config.requiredClaims);
+  } catch (error) {
+    log('WARN', {
+      reason: 'claim_denied',
+      errorName: error.name,
+      claim: error.claim,
+      detail: error.detail,
+      message: error.message,
+    });
+    return deny(DENY_TTL_SECONDS);
+  }
+
   return {
     isAuthorized: true,
-    resolverContext: buildResolverContext(payload),
+    resolverContext: buildResolverContext(payload, config.requiredClaims),
     ttlOverride: successTtlSeconds(payload),
   };
 };

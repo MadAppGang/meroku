@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -47,18 +48,39 @@ func registerCustomHelpers() {
 	helpersOnce.Do(registerCustomHelpersOnce)
 }
 
+// arrayHelperErr prefixes every error the array helper raises, so that
+// describeArrayHelperError can recognise one coming back out of raymond.
+const arrayHelperErr = "array helper"
+
 func registerCustomHelpersOnce() {
-	// Register custom helper for array to JSON string conversion
+	// array renders a YAML list as a JSON array, which is valid HCL for a
+	// list(...) variable.
+	//
+	// An absent key is an empty list. All twenty {{array ...}} sites in
+	// env/main.hbs read an optional field, so a config that simply omits one is
+	// well-formed and must still generate. Panicking on nil meant every
+	// hand-written or partial YAML crashed generation instead of producing
+	// output.
+	//
+	// A wrong *type* is a genuine configuration error and still fails — but as an
+	// error, not a panic. raymond's errRecover only converts a panic carrying an
+	// `error` into a returned error and re-panics anything else, so a panic
+	// carrying a string unwinds through raymond and prints a Go stack trace at
+	// the user. That is never the right way to report a bad YAML value.
 	raymond.RegisterHelper("array", func(items interface{}) raymond.SafeString {
-		// Handle different input types more gracefully
 		if items == nil {
-			panic("array helper: received nil value")
+			return "[]"
 		}
 
-		// Use reflection to check if it's actually a slice
 		v := reflect.ValueOf(items)
 		if v.Kind() != reflect.Slice && v.Kind() != reflect.Array {
-			panic(fmt.Sprintf("array helper: expected slice or array, got %T", items))
+			panic(fmt.Errorf("%s: expected a list, got %T (%s)", arrayHelperErr, items, formatYAMLValue(items)))
+		}
+
+		// A typed nil slice ([]string(nil)) marshals to `null`, which is not a
+		// valid HCL list. It means what an absent key means: nothing was set.
+		if v.Kind() == reflect.Slice && v.IsNil() {
+			return "[]"
 		}
 
 		// Convert map[interface{}]interface{} to map[string]interface{} for JSON compatibility
@@ -66,7 +88,7 @@ func registerCustomHelpersOnce() {
 
 		jsonBytes, err := json.Marshal(converted)
 		if err != nil {
-			panic(fmt.Sprintf("array helper: failed to marshal to JSON: %v", err))
+			panic(fmt.Errorf("%s: cannot render %s as a list: %w", arrayHelperErr, formatYAMLValue(items), err))
 		}
 		return raymond.SafeString(jsonBytes)
 	})
@@ -379,6 +401,60 @@ func registerCustomHelpersOnce() {
 		return "{}"
 	})
 
+	// stringListMap renders a YAML mapping of name -> list of strings as an HCL
+	// map(list(string)), for inputs such as pubsub_appsync.required_claims:
+	//
+	//   {
+	//     "role"      = ["admin", "ops"]
+	//     "tenant_id" = []
+	//   }
+	//
+	// A scalar value is promoted to a one-element list so `role: admin` renders
+	// as ["admin"] rather than as invalid HCL. Keys are sorted: Go map iteration
+	// order is randomised, and generating a different file each run would make
+	// every `generate` produce a spurious diff.
+	raymond.RegisterHelper("stringListMap", func(value interface{}) raymond.SafeString {
+		entries := map[string]interface{}{}
+		switch m := value.(type) {
+		case nil:
+			return "{}"
+		case map[string]interface{}:
+			entries = m
+		case map[interface{}]interface{}:
+			for k, v := range m {
+				entries[fmt.Sprintf("%v", k)] = v
+			}
+		default:
+			return "{}"
+		}
+
+		if len(entries) == 0 {
+			return "{}"
+		}
+
+		var builder strings.Builder
+		builder.WriteString("{\n")
+		for _, key := range sortedKeys(entries) {
+			var values []string
+			switch v := entries[key].(type) {
+			case nil:
+			case []interface{}:
+				for _, item := range v {
+					values = append(values, fmt.Sprintf("%q", fmt.Sprintf("%v", item)))
+				}
+			case []string:
+				for _, item := range v {
+					values = append(values, fmt.Sprintf("%q", item))
+				}
+			default:
+				values = append(values, fmt.Sprintf("%q", fmt.Sprintf("%v", v)))
+			}
+			builder.WriteString(fmt.Sprintf("    %q = [%s]\n", key, strings.Join(values, ", ")))
+		}
+		builder.WriteString("  }")
+		return raymond.SafeString(builder.String())
+	})
+
 	raymond.RegisterHelper("envArray", func(value interface{}) raymond.SafeString {
 		if value == nil {
 			return "[]"
@@ -449,6 +525,119 @@ func registerCustomHelpersOnce() {
 		}
 		return pairs
 	})
+}
+
+// formatYAMLValue renders a config value the way a user would recognise it in
+// their YAML, so an error message can quote the thing they actually typed.
+func formatYAMLValue(value interface{}) string {
+	if value == nil {
+		return "nothing"
+	}
+	s := fmt.Sprintf("%v", value)
+	if _, isString := value.(string); isString {
+		s = fmt.Sprintf("%q", value)
+	}
+	const max = 60
+	if len(s) > max {
+		s = s[:max] + "…"
+	}
+	return s
+}
+
+// arrayHelperCall matches an {{array x.y}} or {{{array x.y}}} call site.
+var arrayHelperCall = regexp.MustCompile(`\{\{\{?\s*array\s+([A-Za-z0-9_.@]+)`)
+
+// describeArrayHelperError re-writes the array helper's type error so that it
+// names the offending key, not just the value.
+//
+// raymond gives a helper no access to the expression it was called with, and
+// env/main.hbs has twenty {{array ...}} sites, so the helper alone can only
+// report "expected a list, got string". This fills in the rest.
+//
+// It runs only once a render has already failed, which is what makes it safe to
+// search rather than resolve: it can add detail to a failure but can never cause
+// one. Matching on leaf key name rather than the dotted path is what reaches the
+// call sites inside {{#each}} blocks, whose paths are relative to the loop and
+// cannot be resolved against the root config at all.
+//
+// A candidate must also hold the value the helper actually choked on. Plenty of
+// {{array ...}} sites sit inside an {{#if}} that a scalar never gets past —
+// backend_container_command: "" is one — so name-matching alone would point at
+// keys that are working exactly as intended.
+func describeArrayHelperError(err error, template string, envMap map[string]interface{}) error {
+	if err == nil || !strings.Contains(err.Error(), arrayHelperErr) {
+		return err
+	}
+
+	keys := map[string]bool{}
+	for _, match := range arrayHelperCall.FindAllStringSubmatch(template, -1) {
+		path := match[1]
+		keys[path[strings.LastIndex(path, ".")+1:]] = true
+	}
+
+	var offenders []string
+	walkConfigValues(envMap, "", func(path, key string, value interface{}) {
+		if !keys[key] || value == nil {
+			return
+		}
+		switch reflect.ValueOf(value).Kind() {
+		case reflect.Slice, reflect.Array:
+			return
+		}
+		formatted := formatYAMLValue(value)
+		if !strings.Contains(err.Error(), formatted) {
+			return
+		}
+		offenders = append(offenders, fmt.Sprintf("  %s: %s", path, formatted))
+	})
+	if len(offenders) == 0 {
+		return err
+	}
+	sort.Strings(offenders)
+
+	return fmt.Errorf("%w\n\nSet here:\n\n%s\n\nWrite the value as a YAML list instead:\n\n  %s:\n    - <value>",
+		err, strings.Join(offenders, "\n"), lastPathSegment(offenders[0]))
+}
+
+// lastPathSegment turns "  cognito.dashboard_callback_urls: ..." into
+// "dashboard_callback_urls", so the worked example uses the user's own key.
+func lastPathSegment(offender string) string {
+	path := strings.TrimSpace(offender)
+	if colon := strings.Index(path, ":"); colon >= 0 {
+		path = path[:colon]
+	}
+	return path[strings.LastIndex(path, ".")+1:]
+}
+
+// walkConfigValues visits every key in a decoded YAML tree, passing the dotted
+// path to it, its own name, and its value. Sequence entries are indexed so the
+// path points at exactly one place in the file.
+func walkConfigValues(node interface{}, path string, visit func(path, key string, value interface{})) {
+	child := func(key string) string {
+		if path == "" {
+			return key
+		}
+		return path + "." + key
+	}
+
+	switch n := node.(type) {
+	case map[string]interface{}:
+		for key, value := range n {
+			visit(child(key), key, value)
+			walkConfigValues(value, child(key), visit)
+		}
+	case map[interface{}]interface{}:
+		// The shape gopkg.in/yaml.v2 produces for a nested mapping.
+		for rawKey, value := range n {
+			key := fmt.Sprintf("%v", rawKey)
+			visit(child(key), key, value)
+			walkConfigValues(value, child(key), visit)
+		}
+	case []interface{}:
+		for i, item := range n {
+			walkConfigValues(item, fmt.Sprintf("%s[%d]", path, i), visit)
+		}
+	}
 }
 
 // convertToJSONCompatible converts map[interface{}]interface{} to map[string]interface{}

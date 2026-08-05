@@ -48,8 +48,14 @@ locals {
   EOT
 }
 
+# Everything below exists only for auth_mode = "lambda". In cognito and oidc mode
+# AWS verifies the token itself, so there is no function to build, package, pay
+# for or cold-start — and no yarn install during terraform apply.
+
 # Install dependencies and stage the deployment package
 resource "null_resource" "auth_lambda_build" {
+  count = local.use_lambda_auth ? 1 : 0
+
   triggers = merge(
     local.auth_lambda_source_hashes,
     {
@@ -69,6 +75,8 @@ resource "null_resource" "auth_lambda_build" {
 
 # Archive the staged Lambda function code
 data "archive_file" "lambda_zip" {
+  count = local.use_lambda_auth ? 1 : 0
+
   type        = "zip"
   source_dir  = local.auth_lambda_stage_dir
   output_path = local.auth_lambda_zip
@@ -79,6 +87,8 @@ data "archive_file" "lambda_zip" {
 
 # Create an IAM role for the Lambda function
 resource "aws_iam_role" "lambda_role" {
+  count = local.use_lambda_auth ? 1 : 0
+
   name = "${var.project}-${var.env}-appsync-lambda-exec"
 
   assume_role_policy = jsonencode({
@@ -105,18 +115,22 @@ resource "aws_iam_role" "lambda_role" {
 
 # Attach basic Lambda execution policy to the IAM role
 resource "aws_iam_role_policy_attachment" "lambda_policy" {
+  count = local.use_lambda_auth ? 1 : 0
+
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-  role       = aws_iam_role.lambda_role.name
+  role       = aws_iam_role.lambda_role[0].name
 }
 
 # Create the Lambda function
 resource "aws_lambda_function" "function" {
-  filename         = data.archive_file.lambda_zip.output_path
+  count = local.use_lambda_auth ? 1 : 0
+
+  filename         = data.archive_file.lambda_zip[0].output_path
   function_name    = "${var.project}-${var.env}-appsync-auth"
   description      = "AppSync Lambda authorizer: verifies RS256 JWTs against ${var.jwks_uri}"
-  role             = aws_iam_role.lambda_role.arn
+  role             = aws_iam_role.lambda_role[0].arn
   handler          = "index.handler"
-  source_code_hash = data.archive_file.lambda_zip.output_base64sha256
+  source_code_hash = data.archive_file.lambda_zip[0].output_base64sha256
   runtime          = "nodejs20.x"
 
   # AppSync gives a Lambda authorizer 10 seconds. The authorizer gives up on the
@@ -132,6 +146,11 @@ resource "aws_lambda_function" "function" {
       },
       var.jwt_issuer == "" ? {} : { JWT_ISSUER = var.jwt_issuer },
       var.jwt_audience == "" ? {} : { JWT_AUDIENCE = var.jwt_audience },
+      # The claim policy. Omitted entirely when empty so the function's
+      # environment shows at a glance whether one is in force. The handler denies
+      # every request if this is present but unparseable, rather than treating a
+      # broken policy as no policy.
+      length(var.required_claims) == 0 ? {} : { REQUIRED_CLAIMS = jsonencode(var.required_claims) },
     )
   }
 
@@ -146,9 +165,11 @@ resource "aws_lambda_function" "function" {
 
 # AppSync cannot invoke the authorizer without an explicit invoke permission
 resource "aws_lambda_permission" "appsync_invoke" {
+  count = local.use_lambda_auth ? 1 : 0
+
   statement_id  = "AllowAppSyncInvokeAuthorizer"
   action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.function.function_name
+  function_name = aws_lambda_function.function[0].function_name
   principal     = "appsync.amazonaws.com"
   source_arn    = aws_appsync_graphql_api.pubsub.arn
 }

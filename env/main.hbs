@@ -871,6 +871,44 @@ module "appsync" {
   {{#if pubsub_appsync.resolvers}}
   vtl_templates_yaml = "{{custom_modules}}/appsync/vtl_templates.yaml"
   {{/if}}
+
+  # How callers are authenticated. cognito and oidc are verified by AppSync
+  # itself, with no Lambda on the request path; lambda deploys the bundled
+  # authorizer and exists for providers those two cannot express. An absent
+  # auth_mode means "lambda", which is what this module hardcoded before the
+  # setting existed.
+  auth_mode = "{{default pubsub_appsync.auth_mode "lambda"}}"
+
+  # An API key bypasses auth_mode entirely: whoever holds it reaches every
+  # resolver without presenting a token. It used to be attached unconditionally.
+  api_key_enabled = {{default pubsub_appsync.api_key_enabled false}}
+  {{#if (eq (default pubsub_appsync.auth_mode "lambda") "cognito")}}
+
+  # AWS validates the token against the user pool this environment creates.
+  # meroku refuses to generate this block unless cognito.enabled is true, so the
+  # module reference below always resolves.
+  cognito_user_pool_id = module.cognito.user_pool_id
+  {{#if pubsub_appsync.cognito_app_id_client_regex}}
+  # Which app clients of that pool are accepted. Without this, a token minted for
+  # any client on the pool (web, mobile, dashboard) is accepted - user pool mode
+  # has no other audience check.
+  cognito_app_id_client_regex = "{{pubsub_appsync.cognito_app_id_client_regex}}"
+  {{/if}}
+  {{/if}}
+  {{#if (eq (default pubsub_appsync.auth_mode "lambda") "oidc")}}
+
+  # AWS fetches this issuer's OIDC discovery document and signing keys and
+  # verifies every token against them. No default: whoever controls this URL can
+  # mint tokens the API accepts.
+  oidc_issuer = "{{pubsub_appsync.oidc_issuer}}"
+  {{#if pubsub_appsync.oidc_client_id}}
+  # AppSync's audience check - it has no separate audience field. Matched against
+  # the token's `aud` claim, falling back to `azp`. Pipe-separate to accept
+  # several clients: "1F4G9H|1J6L4B".
+  oidc_client_id = "{{pubsub_appsync.oidc_client_id}}"
+  {{/if}}
+  {{/if}}
+  {{#if (eq (default pubsub_appsync.auth_mode "lambda") "lambda")}}
   {{#if pubsub_appsync.auth_lambda}}
   auth_lambda_path = "{{custom_modules}}/appsync/auth_lambda"
   {{/if}}
@@ -878,13 +916,20 @@ module "appsync" {
   # Trust anchor for the Lambda authorizer: the JWKS endpoint whose keys sign the
   # tokens this API accepts. The module declares it with no default (an unset
   # value used to mean "trust a hardcoded third party"), so it is passed on every
-  # instantiation and meroku rejects an empty one at generate time.
+  # lambda-mode instantiation and meroku rejects an empty one at generate time.
   jwks_uri = "{{pubsub_appsync.jwks_uri}}"
   {{#if pubsub_appsync.jwt_issuer}}
   jwt_issuer = "{{pubsub_appsync.jwt_issuer}}"
   {{/if}}
   {{#if pubsub_appsync.jwt_audience}}
   jwt_audience = "{{pubsub_appsync.jwt_audience}}"
+  {{/if}}
+  {{#if pubsub_appsync.required_claims}}
+  # Claims a verified token must carry, checked after signature/issuer/audience.
+  # The reason to be in lambda mode at all: neither native mode can check a claim
+  # beyond iss and aud. An empty list means "must be present".
+  required_claims = {{stringListMap pubsub_appsync.required_claims}}
+  {{/if}}
   {{/if}}
 }
 {{/if}}

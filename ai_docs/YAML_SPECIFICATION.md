@@ -218,8 +218,46 @@ event_processor_tasks: <list>
 pubsub_appsync:
   enabled: <boolean>                         # Enable AWS AppSync GraphQL API
   schema: <boolean>                          # Use custom schema file
-  auth_lambda: <boolean>                     # Use Lambda authorizer
+  auth_lambda: <boolean>                     # Package custom/appsync/auth_lambda instead of the
+                                             #   bundled authorizer. Only meaningful in lambda mode;
+                                             #   it never selected WHETHER a Lambda was used.
   resolvers: <boolean>                       # Use custom VTL resolvers
+
+  # --- Authorization (schema v23) ---
+  # cognito and oidc are verified by AWS itself: no Lambda, no cold start, no
+  # per-request invocation cost. lambda runs the bundled authorizer and is the
+  # only mode that can check a claim beyond iss/aud. Absent means "lambda",
+  # which is what the module hardcoded before this field existed.
+  auth_mode: <cognito|oidc|lambda>           # Default: lambda
+  api_key_enabled: <boolean>                 # Default: false. An API key BYPASSES auth_mode:
+                                             #   whoever holds it skips token verification entirely.
+                                             #   Existing environments were migrated to true to
+                                             #   preserve a key their clients may already hold.
+
+  # cognito mode (requires cognito.enabled: true in the same environment)
+  cognito_app_id_client_regex: <string>      # Which app clients are accepted, e.g. "1F4G9H|1J6L4B".
+                                             #   UNSET ACCEPTS EVERY APP CLIENT IN THE POOL, and this
+                                             #   repo's cognito module creates web + mobile +
+                                             #   dashboard clients on one pool. Matched against `aud`
+                                             #   in an ID token, `client_id` in an access token.
+
+  # oidc mode
+  oidc_issuer: <string>                      # Required. https:// issuer URL. NOTE: on an API whose
+                                             #   only authorization type is OPENID_CONNECT, AppSync
+                                             #   skips comparing the token's `iss` against this; the
+                                             #   signature is still checked against this issuer's
+                                             #   JWKS. Use lambda mode if `iss` must be asserted.
+  oidc_client_id: <string>                   # Audience check, matched against `aud` then `azp`.
+                                             #   Pipe-separated for several clients.
+
+  # lambda mode (schema v21 + v23)
+  jwks_uri: <string>                         # Required. https:// JWKS endpoint. No default.
+  jwt_issuer: <string>                       # Optional expected `iss`. Comma-separated list allowed.
+  jwt_audience: <string>                     # Optional expected `aud`. Comma-separated list allowed.
+  required_claims: <map>                     # Claims a verified token must carry. Empty list means
+                                             #   "must be present". Rejected at generate time in any
+    <claim>: [<value>, ...]                  #   other mode. For POLICY claims (role, tenant_id,
+                                             #   scope) - pinning `sub` to fixed values is refused.
 
 # ===================================
 # ADDITIONAL SERVICES

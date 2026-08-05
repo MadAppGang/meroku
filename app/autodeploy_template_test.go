@@ -27,9 +27,8 @@ import (
 // applyTemplate uses.
 //
 // The base is a real committed config rather than a minimal hand-written one:
-// main.hbs reads several dozen keys and its helpers panic on a missing slice, so
-// a hand-rolled fixture would mostly be a transcription of that file's
-// requirements, kept up to date by nobody.
+// main.hbs reads several dozen keys, so a hand-rolled fixture would mostly be a
+// transcription of that file's requirements, kept up to date by nobody.
 func renderMainHBS(t *testing.T, overlay map[string]interface{}) string {
 	t.Helper()
 

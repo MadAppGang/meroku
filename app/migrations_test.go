@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v2"
@@ -1154,10 +1155,6 @@ func TestMigrationChain_IncludesV22(t *testing.T) {
 	if !found {
 		t.Error("v22 migration not found in AllMigrations")
 	}
-
-	if CurrentSchemaVersion != 22 {
-		t.Errorf("CurrentSchemaVersion = %d, want 22", CurrentSchemaVersion)
-	}
 }
 
 // v22Fixture is one config with a backend, two services and two scheduled
@@ -1430,5 +1427,439 @@ func TestMigrateToV22_MissingEnvIsNotProduction(t *testing.T) {
 
 	if got := v22AutoDeployOf(t, data, "services", "api"); got != true {
 		t.Errorf("auto_deploy = %v, want true when env is unknown (unknown is not production)", got)
+	}
+}
+
+// ---------------------------------------------------------------- v23
+
+func TestMigrationChain_IncludesV23(t *testing.T) {
+	found := false
+	for _, migration := range AllMigrations {
+		if migration.Version == 23 {
+			found = true
+			if migration.Description != "Add AppSync auth_mode and explicit api_key_enabled" {
+				t.Errorf("Wrong description for v23 migration: %s", migration.Description)
+			}
+			break
+		}
+	}
+
+	if !found {
+		t.Error("v23 migration not found in AllMigrations")
+	}
+}
+
+func v23AppSync(t *testing.T, data map[string]interface{}) map[interface{}]interface{} {
+	t.Helper()
+	appsync, ok := data["pubsub_appsync"].(map[interface{}]interface{})
+	if !ok {
+		t.Fatalf("pubsub_appsync missing or wrong shape: %#v", data["pubsub_appsync"])
+	}
+	return appsync
+}
+
+// The headline decision of this migration. An environment with AppSync enabled
+// has an API key deployed right now, because the module created one for every
+// deployment. Setting api_key_enabled to false here would destroy that key on
+// the next apply and take down whatever is using it, so the existing credential
+// is preserved and the migration says loudly what it is.
+func TestMigrateToV23_EnabledAppSyncKeepsItsAPIKey(t *testing.T) {
+	data := map[string]interface{}{
+		"env": "prod",
+		"pubsub_appsync": map[interface{}]interface{}{
+			"enabled":     true,
+			"schema":      true,
+			"auth_lambda": true,
+			"resolvers":   true,
+			"jwks_uri":    "https://idp.example.com/.well-known/jwks.json",
+		},
+	}
+
+	if err := migrateToV23(data); err != nil {
+		t.Fatalf("migrateToV23: %v", err)
+	}
+
+	appsync := v23AppSync(t, data)
+	if appsync["api_key_enabled"] != true {
+		t.Errorf("api_key_enabled = %v: an enabled environment must keep the key it already has, or the next apply breaks its clients", appsync["api_key_enabled"])
+	}
+	if appsync["auth_mode"] != AppSyncAuthLambda {
+		t.Errorf("auth_mode = %v, want %q: that is what the module deploys today", appsync["auth_mode"], AppSyncAuthLambda)
+	}
+
+	// Nothing else may move.
+	if appsync["jwks_uri"] != "https://idp.example.com/.well-known/jwks.json" {
+		t.Errorf("jwks_uri was modified: %v", appsync["jwks_uri"])
+	}
+	if appsync["auth_lambda"] != true || appsync["schema"] != true || appsync["resolvers"] != true {
+		t.Errorf("existing pubsub_appsync values were modified: %v", appsync)
+	}
+}
+
+// Where AppSync is off there is no key in AWS and nothing to preserve, so the
+// safe default applies with no caveat.
+func TestMigrateToV23_DisabledAppSyncGetsNoAPIKey(t *testing.T) {
+	data := map[string]interface{}{
+		"env": "dev",
+		"pubsub_appsync": map[interface{}]interface{}{
+			"enabled": false,
+		},
+	}
+
+	if err := migrateToV23(data); err != nil {
+		t.Fatalf("migrateToV23: %v", err)
+	}
+
+	appsync := v23AppSync(t, data)
+	if appsync["api_key_enabled"] != false {
+		t.Errorf("api_key_enabled = %v, want false: nothing exists to preserve", appsync["api_key_enabled"])
+	}
+	if appsync["auth_mode"] != AppSyncAuthLambda {
+		t.Errorf("auth_mode = %v, want %q", appsync["auth_mode"], AppSyncAuthLambda)
+	}
+}
+
+// auth_lambda only ever chose whose authorizer source was packaged, never
+// whether a Lambda authorizer was used — authentication_type was hardcoded to
+// AWS_LAMBDA either way. So both settings infer the same mode, and asserting it
+// for auth_lambda: false is the part that would silently break if someone later
+// "fixed" the inference to key off that flag.
+func TestMigrateToV23_InfersLambdaModeRegardlessOfAuthLambdaFlag(t *testing.T) {
+	for _, authLambda := range []bool{true, false} {
+		data := map[string]interface{}{
+			"pubsub_appsync": map[interface{}]interface{}{
+				"enabled":     true,
+				"auth_lambda": authLambda,
+			},
+		}
+
+		if err := migrateToV23(data); err != nil {
+			t.Fatalf("auth_lambda=%v: %v", authLambda, err)
+		}
+
+		appsync := v23AppSync(t, data)
+		if appsync["auth_mode"] != AppSyncAuthLambda {
+			t.Errorf("auth_lambda=%v: auth_mode = %v, want %q — anything else changes what the next apply deploys",
+				authLambda, appsync["auth_mode"], AppSyncAuthLambda)
+		}
+	}
+}
+
+// A project that has already chosen a mode, or already turned the key off, must
+// not have that choice reverted by re-running migrations.
+func TestMigrateToV23_NeverOverwritesExistingValues(t *testing.T) {
+	data := map[string]interface{}{
+		"pubsub_appsync": map[interface{}]interface{}{
+			"enabled":         true,
+			"auth_mode":       AppSyncAuthCognito,
+			"api_key_enabled": false,
+		},
+	}
+
+	if err := migrateToV23(data); err != nil {
+		t.Fatalf("migrateToV23: %v", err)
+	}
+
+	appsync := v23AppSync(t, data)
+	if appsync["auth_mode"] != AppSyncAuthCognito {
+		t.Errorf("auth_mode = %v, want the configured %q untouched", appsync["auth_mode"], AppSyncAuthCognito)
+	}
+	if appsync["api_key_enabled"] != false {
+		t.Errorf("api_key_enabled = %v: a project that already turned the key off must not have it turned back on", appsync["api_key_enabled"])
+	}
+}
+
+func TestMigrateToV23_Idempotent(t *testing.T) {
+	data := map[string]interface{}{
+		"pubsub_appsync": map[interface{}]interface{}{
+			"enabled": true,
+		},
+	}
+
+	for i := 0; i < 3; i++ {
+		if err := migrateToV23(data); err != nil {
+			t.Fatalf("run %d: %v", i, err)
+		}
+	}
+
+	appsync := v23AppSync(t, data)
+	if appsync["auth_mode"] != AppSyncAuthLambda || appsync["api_key_enabled"] != true {
+		t.Errorf("repeated runs changed the result: %v", appsync)
+	}
+	if len(appsync) != 3 {
+		t.Errorf("expected exactly enabled + auth_mode + api_key_enabled, got %v", appsync)
+	}
+}
+
+// Mode-specific optional settings are the `default` helper's job, not a
+// migration's (CLAUDE.md). Writing oidc_issuer into every lambda-mode config
+// would be noise nothing reads.
+func TestMigrateToV23_DoesNotAddOIDCFields(t *testing.T) {
+	data := map[string]interface{}{
+		"pubsub_appsync": map[interface{}]interface{}{"enabled": true},
+	}
+
+	if err := migrateToV23(data); err != nil {
+		t.Fatalf("migrateToV23: %v", err)
+	}
+
+	appsync := v23AppSync(t, data)
+	for _, field := range []string{"oidc_issuer", "oidc_client_id"} {
+		if _, exists := appsync[field]; exists {
+			t.Errorf("%s should not be written by the migration; it is only meaningful in oidc mode", field)
+		}
+	}
+}
+
+func TestMigrateToV23_HandlesMissingAndMalformedSections(t *testing.T) {
+	for name, data := range map[string]map[string]interface{}{
+		"no appsync section": {"project": "test"},
+		"nil appsync":        {"pubsub_appsync": nil},
+		"appsync not a map":  {"pubsub_appsync": "oops"},
+	} {
+		if err := migrateToV23(data); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+
+	// And it must not invent a section that was not there.
+	data := map[string]interface{}{"project": "test"}
+	if err := migrateToV23(data); err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := data["pubsub_appsync"]; exists {
+		t.Error("migration must not create a pubsub_appsync section")
+	}
+}
+
+// A brand new project is the case where "default off" applies without
+// qualification: there is no deployed key to preserve.
+func TestNewEnvironmentDefaultsAPIKeyOff(t *testing.T) {
+	env := createEnv("testproject", "dev")
+
+	if env.AppSyncPubSub.APIKeyEnabled {
+		t.Error("a new environment must not be given an API key: it bypasses auth_mode entirely")
+	}
+	if env.AppSyncPubSub.AuthMode != AppSyncAuthLambda {
+		t.Errorf("AuthMode = %q, want %q so a new project and an un-migrated one behave identically",
+			env.AppSyncPubSub.AuthMode, AppSyncAuthLambda)
+	}
+}
+
+// The serialized form is what the next `meroku` run reads back, so assert on the
+// YAML rather than only on the struct.
+func TestNewEnvironmentSerializesAPIKeyOff(t *testing.T) {
+	env := createEnv("testproject", "dev")
+
+	out, err := yaml.Marshal(env)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	if !strings.Contains(string(out), "api_key_enabled: false") {
+		t.Errorf("new env YAML must state api_key_enabled: false explicitly, got:\n%s", out)
+	}
+	if !strings.Contains(string(out), "auth_mode: lambda") {
+		t.Errorf("new env YAML must state auth_mode, got:\n%s", out)
+	}
+}
+
+// ---------------------------------------------------------------- v24
+
+func TestMigrationChain_IncludesV24(t *testing.T) {
+	found := false
+	for _, migration := range AllMigrations {
+		if migration.Version == 24 {
+			found = true
+			if migration.Description != "Repair the misspelt cognito.dashboard_callback_ur_ls key" {
+				t.Errorf("Wrong description for v24 migration: %s", migration.Description)
+			}
+			break
+		}
+	}
+
+	if !found {
+		t.Error("v24 migration not found in AllMigrations")
+	}
+
+	if CurrentSchemaVersion != 24 {
+		t.Errorf("CurrentSchemaVersion = %d, want 24", CurrentSchemaVersion)
+	}
+}
+
+func v24Cognito(t *testing.T, data map[string]interface{}) map[interface{}]interface{} {
+	t.Helper()
+	cognito, ok := data["cognito"].(map[interface{}]interface{})
+	if !ok {
+		t.Fatalf("cognito missing or wrong shape: %#v", data["cognito"])
+	}
+	return cognito
+}
+
+// The headline case. A config written by any earlier meroku carries the misspelt
+// key, and env/main.hbs reads the correct one — so the configured URLs were
+// invisible to generation. The migration has to move the value across, not just
+// add the right key.
+func TestMigrateToV24_MovesValueOntoCorrectKey(t *testing.T) {
+	data := map[string]interface{}{
+		"cognito": map[interface{}]interface{}{
+			"enabled":                  true,
+			"dashboard_callback_ur_ls": []interface{}{"https://admin.example.com/callback"},
+		},
+	}
+
+	if err := migrateToV24(data); err != nil {
+		t.Fatalf("migrateToV24: %v", err)
+	}
+
+	cognito := v24Cognito(t, data)
+	if _, stillThere := cognito["dashboard_callback_ur_ls"]; stillThere {
+		t.Error("the misspelt key must be removed, or the file keeps teaching it to the next reader")
+	}
+
+	urls, ok := cognito["dashboard_callback_urls"].([]interface{})
+	if !ok {
+		t.Fatalf("dashboard_callback_urls missing or wrong shape: %#v", cognito["dashboard_callback_urls"])
+	}
+	if len(urls) != 1 || urls[0] != "https://admin.example.com/callback" {
+		t.Errorf("dashboard_callback_urls = %#v, want the value carried over from the misspelt key", urls)
+	}
+}
+
+// Migrations run on every load, and a repair that only works once is a repair
+// that corrupts on the second pass.
+func TestMigrateToV24_IsIdempotent(t *testing.T) {
+	data := map[string]interface{}{
+		"cognito": map[interface{}]interface{}{
+			"dashboard_callback_ur_ls": []interface{}{"https://jwt.io"},
+		},
+	}
+
+	for i := 0; i < 3; i++ {
+		if err := migrateToV24(data); err != nil {
+			t.Fatalf("migrateToV24 run %d: %v", i, err)
+		}
+	}
+
+	cognito := v24Cognito(t, data)
+	if _, stillThere := cognito["dashboard_callback_ur_ls"]; stillThere {
+		t.Error("misspelt key reappeared")
+	}
+	urls, ok := cognito["dashboard_callback_urls"].([]interface{})
+	if !ok || len(urls) != 1 || urls[0] != "https://jwt.io" {
+		t.Errorf("dashboard_callback_urls = %#v, want the value unchanged across repeated runs", cognito["dashboard_callback_urls"])
+	}
+}
+
+// The shape actually found on disk: the round-trip through the mistagged struct
+// wrote an empty list, so most real configs carry the misspelt key holding [].
+// Nothing is lost, but the key must still go.
+func TestMigrateToV24_DropsEmptyMisspeltKey(t *testing.T) {
+	data := map[string]interface{}{
+		"cognito": map[interface{}]interface{}{
+			"enabled":                  false,
+			"dashboard_callback_ur_ls": []interface{}{},
+		},
+	}
+
+	if err := migrateToV24(data); err != nil {
+		t.Fatalf("migrateToV24: %v", err)
+	}
+
+	cognito := v24Cognito(t, data)
+	if _, stillThere := cognito["dashboard_callback_ur_ls"]; stillThere {
+		t.Error("the misspelt key must be removed even when it holds nothing")
+	}
+	if urls, ok := cognito["dashboard_callback_urls"].([]interface{}); !ok || len(urls) != 0 {
+		t.Errorf("dashboard_callback_urls = %#v, want an empty list", cognito["dashboard_callback_urls"])
+	}
+}
+
+// A hand-edited file can hold both keys. The correctly spelled one is what the
+// template reads and therefore what is deployed today, so changing it would
+// change live behaviour — the migration must not.
+func TestMigrateToV24_PrefersTheDeployedValueWhenBothExist(t *testing.T) {
+	data := map[string]interface{}{
+		"cognito": map[interface{}]interface{}{
+			"dashboard_callback_urls":  []interface{}{"https://live.example.com/cb"},
+			"dashboard_callback_ur_ls": []interface{}{"https://stale.example.com/cb"},
+		},
+	}
+
+	if err := migrateToV24(data); err != nil {
+		t.Fatalf("migrateToV24: %v", err)
+	}
+
+	cognito := v24Cognito(t, data)
+	if _, stillThere := cognito["dashboard_callback_ur_ls"]; stillThere {
+		t.Error("the misspelt key must be removed")
+	}
+	urls, _ := cognito["dashboard_callback_urls"].([]interface{})
+	if len(urls) != 1 || urls[0] != "https://live.example.com/cb" {
+		t.Errorf("dashboard_callback_urls = %#v, want the value that is deployed today left alone", urls)
+	}
+}
+
+// An empty correct key alongside a populated misspelt one is the shape produced
+// by loading a hand-written config and saving it back: the load dropped the
+// URLs, the save wrote [] under the right name and the originals under the
+// wrong one. The real URLs must win.
+func TestMigrateToV24_FillsAnEmptyCorrectKey(t *testing.T) {
+	data := map[string]interface{}{
+		"cognito": map[interface{}]interface{}{
+			"dashboard_callback_urls":  []interface{}{},
+			"dashboard_callback_ur_ls": []interface{}{"https://jwt.io"},
+		},
+	}
+
+	if err := migrateToV24(data); err != nil {
+		t.Fatalf("migrateToV24: %v", err)
+	}
+
+	urls, _ := v24Cognito(t, data)["dashboard_callback_urls"].([]interface{})
+	if len(urls) != 1 || urls[0] != "https://jwt.io" {
+		t.Errorf("dashboard_callback_urls = %#v, want the populated value", urls)
+	}
+}
+
+// Migrations run against every config, most of which have nothing to repair.
+func TestMigrateToV24_ToleratesMissingOrOddCognito(t *testing.T) {
+	for name, data := range map[string]map[string]interface{}{
+		"no cognito key":    {"env": "dev"},
+		"nil cognito":       {"cognito": nil},
+		"cognito not a map": {"cognito": "oops"},
+		"already correct": {"cognito": map[interface{}]interface{}{
+			"dashboard_callback_urls": []interface{}{"https://jwt.io"},
+		}},
+	} {
+		if err := migrateToV24(data); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+// The tag on Cognito.DashboardCallbackURLs is the source of the whole defect: it
+// is what read the wrong key and what wrote it back. A repair migration is no
+// use if the next save re-introduces the misspelling.
+func TestCognitoStructRoundTripsTheCorrectKey(t *testing.T) {
+	var env Env
+	const in = "cognito:\n  enabled: true\n  dashboard_callback_urls:\n    - https://jwt.io\n"
+
+	if err := yaml.Unmarshal([]byte(in), &env); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(env.Cognito.DashboardCallbackURLs) != 1 || env.Cognito.DashboardCallbackURLs[0] != "https://jwt.io" {
+		t.Fatalf("loading dropped the configured URLs: %#v", env.Cognito.DashboardCallbackURLs)
+	}
+
+	out, err := yaml.Marshal(env)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(out), "dashboard_callback_ur_ls") {
+		t.Errorf("saving re-introduced the misspelt key:\n%s", out)
+	}
+	if !strings.Contains(string(out), "dashboard_callback_urls") {
+		t.Errorf("saving must write dashboard_callback_urls, got:\n%s", out)
 	}
 }

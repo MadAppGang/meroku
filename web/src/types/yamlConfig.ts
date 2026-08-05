@@ -204,19 +204,85 @@ export interface YamlInfrastructureConfig {
 	pubsub_appsync?: {
 		enabled: boolean;
 		schema?: boolean;
+		/**
+		 * Package a project-supplied authorizer from custom/appsync/auth_lambda
+		 * instead of the one bundled with the module. Only has an effect when
+		 * auth_mode is "lambda".
+		 */
 		auth_lambda?: boolean;
 		resolvers?: boolean;
+
+		/**
+		 * How AppSync authenticates callers (schema v23). Absent means "lambda",
+		 * which is what the module hardcoded before this field existed.
+		 *
+		 * - "cognito": AWS validates the token against this environment's Cognito
+		 *   user pool. Requires cognito.enabled. No Lambda runs.
+		 * - "oidc": AWS validates the token against oidc_issuer's discovery
+		 *   document and JWKS. No Lambda runs.
+		 * - "lambda": the bundled authorizer verifies RS256 JWTs against
+		 *   jwks_uri. The only mode that can check claims beyond iss/aud, and it
+		 *   puts a Lambda invocation on the request path.
+		 */
+		auth_mode?: "cognito" | "oidc" | "lambda";
+
+		/**
+		 * Attach an API_KEY provider alongside auth_mode (schema v23).
+		 *
+		 * Defaults to false. An API key BYPASSES auth_mode entirely: whoever
+		 * holds it reaches every resolver without presenting a token. Existing
+		 * environments were migrated to true to preserve a key they already had.
+		 */
+		api_key_enabled?: boolean;
+
+		/**
+		 * cognito mode: which app clients of the pool are accepted, as a
+		 * pipe-separated list ("1F4G9H|1J6L4B").
+		 *
+		 * Unset accepts EVERY app client in the pool, and meroku's cognito module
+		 * creates web, mobile and dashboard clients on one pool. User pool mode
+		 * has no separate audience field, so this is it. Matched against `aud` in
+		 * an ID token and `client_id` in an access token.
+		 */
+		cognito_app_id_client_regex?: string;
+
+		/**
+		 * oidc mode: issuer URL of the identity provider. Required in that mode.
+		 *
+		 * Note that on an API whose only authorization type is OPENID_CONNECT,
+		 * AppSync skips comparing the token's `iss` against this value; the
+		 * signature is still verified against this issuer's JWKS. Use auth_mode
+		 * "lambda" with jwt_issuer if `iss` must be asserted.
+		 */
+		oidc_issuer?: string;
+		/**
+		 * oidc mode: the client identifier registered with the provider. This is
+		 * AppSync's audience check — matched against `aud`, falling back to
+		 * `azp`. Pipe-separated for several clients ("1F4G9H|1J6L4B").
+		 */
+		oidc_client_id?: string;
+
 		/**
 		 * JWKS endpoint whose keys sign the JWTs this API accepts (schema v21).
-		 * Required whenever AppSync is enabled — the Terraform module has no
-		 * default, because an unset value used to mean "trust a hardcoded third
-		 * party". Must be an https:// URL.
+		 * Required in "lambda" mode — the Terraform module has no default,
+		 * because an unset value used to mean "trust a hardcoded third party".
+		 * Must be an https:// URL.
 		 */
 		jwks_uri?: string;
-		/** Optional expected `iss` claim. Comma-separated list allowed. */
+		/** lambda mode: expected `iss` claim. Comma-separated list allowed. */
 		jwt_issuer?: string;
-		/** Optional expected `aud` claim. Comma-separated list allowed. */
+		/** lambda mode: expected `aud` claim. Comma-separated list allowed. */
 		jwt_audience?: string;
+		/**
+		 * lambda mode: claims a verified token must carry, checked after
+		 * signature, issuer and audience (schema v23).
+		 *
+		 * Claim name to accepted values; an empty list means "must be present".
+		 * Rejected at generate time in any other mode, because neither native
+		 * mode can enforce it. For policy claims (role, scope, tenant_id), not
+		 * for identity — `sub` belongs in resolver logic, not here.
+		 */
+		required_claims?: Record<string, string[]>;
 	};
 
 	// Additional Services

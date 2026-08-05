@@ -34,7 +34,7 @@ cognito:
   enabled: false
   enable_web_client: false
   enable_dashboard_client: false
-  dashboard_callback_ur_ls: []
+  dashboard_callback_urls: []
   enable_user_pool_domain: false
   user_pool_domain_prefix: ""
   backend_confirm_signup: false

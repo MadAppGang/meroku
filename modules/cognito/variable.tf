@@ -58,7 +58,7 @@ variable "allow_backend_task_to_confirm_signup" {
 }
 
 variable "backend_task_role_name" {
-  type    = string
+  type = string
 }
 
 variable "env" {

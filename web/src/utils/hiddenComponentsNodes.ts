@@ -72,6 +72,14 @@ export function generateHiddenComponentNodes(
 				status: "running",
 				configProperties: {
 					schema: config.pubsub_appsync.schema,
+					// Absent means "lambda": that is what the module deployed
+					// before auth_mode existed, so an un-migrated config is
+					// showing a Lambda authorizer whether or not it says so.
+					authMode: config.pubsub_appsync.auth_mode ?? "lambda",
+					// Surfaced because an API key bypasses authMode entirely.
+					// This node is read-only, so the canvas is the only place a
+					// reviewer would notice one is attached.
+					apiKeyEnabled: config.pubsub_appsync.api_key_enabled ?? false,
 					authLambda: config.pubsub_appsync.auth_lambda,
 					resolvers: config.pubsub_appsync.resolvers,
 				},

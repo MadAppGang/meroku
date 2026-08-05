@@ -308,7 +308,7 @@ func applyTemplate(env string) {
 	// Execute the template with the environment data
 	result, err := tmpl.Exec(envMap)
 	if err != nil {
-		fmt.Printf("Error executing template: %+v\n", err)
+		fmt.Printf("Error executing template: %v\n", describeArrayHelperError(err, string(templateContent), envMap))
 		os.Exit(1)
 	}
 

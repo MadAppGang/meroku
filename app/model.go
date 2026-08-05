@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v2"
 )
@@ -48,13 +49,89 @@ type Env struct {
 	Extensions Extensions `yaml:"extensions,omitempty"`
 }
 
+// AppSync auth modes (schema v23). These are the values accepted by
+// pubsub_appsync.auth_mode and by modules/appsync's own auth_mode variable; the
+// two must stay in step.
+const (
+	// AppSyncAuthCognito verifies tokens against the Cognito user pool this
+	// environment already creates. AWS does the verification; no Lambda runs.
+	AppSyncAuthCognito = "cognito"
+	// AppSyncAuthOIDC verifies tokens against an OIDC issuer's discovery
+	// document and JWKS. AWS does the verification; no Lambda runs.
+	AppSyncAuthOIDC = "oidc"
+	// AppSyncAuthLambda runs the bundled Lambda authorizer. For identity
+	// providers the two native modes cannot express.
+	AppSyncAuthLambda = "lambda"
+)
+
+// appSyncAuthModes is the set of valid modes, in the order they should be
+// suggested: the two that cost nothing to run come first.
+var appSyncAuthModes = []string{AppSyncAuthCognito, AppSyncAuthOIDC, AppSyncAuthLambda}
+
+// normalizeAppSyncAuthMode maps a raw YAML value to a mode.
+//
+// Absent/empty means "lambda" everywhere — in this function, in
+// modules/appsync/variables.tf's default, and in the template's `default`
+// helper. That is not a preference for lambda: it is what the module did before
+// auth_mode existed (authentication_type was hardcoded to AWS_LAMBDA), so an
+// un-migrated file keeps deploying exactly what it deploys today.
+func normalizeAppSyncAuthMode(raw string) string {
+	mode := strings.ToLower(strings.TrimSpace(raw))
+	if mode == "" {
+		return AppSyncAuthLambda
+	}
+	return mode
+}
+
 type AppSync struct {
-	Enabled    bool `yaml:"enabled"`
-	Schema     bool `yaml:"schema"`
+	Enabled bool `yaml:"enabled"`
+	Schema  bool `yaml:"schema"`
+	// AuthLambda selects a project-supplied authorizer source tree
+	// (custom/appsync/auth_lambda) instead of the one bundled with the module.
+	// It only has an effect when AuthMode is "lambda".
 	AuthLambda bool `yaml:"auth_lambda"`
 	Resolvers  bool `yaml:"resolvers"`
 
-	// Lambda authorizer configuration (Schema v21).
+	// AuthMode (schema v23) picks how AppSync authenticates callers:
+	// "cognito", "oidc" or "lambda". Empty means "lambda", which is what the
+	// module hardcoded before this field existed.
+	AuthMode string `yaml:"auth_mode"`
+
+	// APIKeyEnabled (schema v23) attaches an API_KEY provider alongside
+	// AuthMode.
+	//
+	// It defaults to false and should stay there. An API key BYPASSES AuthMode
+	// entirely: whoever holds it reaches every resolver without presenting a
+	// token, so none of the checks below apply to them. The module used to
+	// create one unconditionally, which made the authorizer decorative.
+	APIKeyEnabled bool `yaml:"api_key_enabled"`
+
+	// CognitoAppIDClientRegex (schema v23) restricts which app clients of the
+	// user pool this API accepts, used when AuthMode is "cognito".
+	//
+	// Unset means every app client in the pool is accepted, and meroku's cognito
+	// module creates web, mobile and dashboard clients on one pool — so an API
+	// meant for one of them accepts tokens minted for the others. User pool mode
+	// has no separate audience field; this is it. Matched against `aud` in an ID
+	// token and `client_id` in an access token. Several clients are written as a
+	// pipe-separated list ("1F4G9H|1J6L4B").
+	CognitoAppIDClientRegex string `yaml:"cognito_app_id_client_regex,omitempty"`
+
+	// OIDC configuration, used when AuthMode is "oidc".
+	//
+	// Deliberately configuration and not a built-in: meroku must not ship an
+	// issuer URL for anybody's identity platform. Whoever controls the issuer
+	// can mint tokens the API accepts, so the value has to be stated by the
+	// project.
+	//
+	// OIDCClientID is AppSync's audience check — AppSync has no separate
+	// audience field. It is matched against `aud`, falling back to `azp`, and
+	// accepts a pipe-separated list so one API can serve several clients.
+	OIDCIssuer   string `yaml:"oidc_issuer,omitempty"`
+	OIDCClientID string `yaml:"oidc_client_id,omitempty"`
+
+	// Lambda authorizer configuration (Schema v21), used when AuthMode is
+	// "lambda".
 	//
 	// The authorizer has no built-in identity provider: JWKSURI is the only key
 	// source it trusts, so whoever controls that endpoint can mint tokens the
@@ -64,6 +141,21 @@ type AppSync struct {
 	JWKSURI     string `yaml:"jwks_uri"`
 	JWTIssuer   string `yaml:"jwt_issuer"`
 	JWTAudience string `yaml:"jwt_audience"`
+
+	// RequiredClaims (schema v23) is the claim policy the authorizer enforces
+	// after signature, issuer and audience: claim name -> accepted values, where
+	// an empty list means "must be present".
+	//
+	// This is what selects lambda mode. Neither native mode can check a claim
+	// beyond iss/aud, so `role` or `tenant_id` policies cannot be expressed with
+	// them — whereas accepting several audiences can be, and is not a reason to
+	// take on a Lambda. Only read in lambda mode; validation refuses any other
+	// mode rather than letting a policy be silently ignored.
+	//
+	// For POLICY claims, not identity: `sub` names one caller, so there is no
+	// fixed value to list. Per-user decisions belong in resolvers, which read
+	// `sub` from the authorizer's resolverContext.
+	RequiredClaims map[string][]string `yaml:"required_claims,omitempty"`
 }
 
 type Workload struct {
@@ -173,10 +265,15 @@ type Postgres struct {
 }
 
 type Cognito struct {
-	Enabled                bool     `yaml:"enabled"`
-	EnableWebClient        bool     `yaml:"enable_web_client"`
-	EnableDashboardClient  bool     `yaml:"enable_dashboard_client"`
-	DashboardCallbackURLs  []string `yaml:"dashboard_callback_ur_ls"`
+	Enabled               bool `yaml:"enabled"`
+	EnableWebClient       bool `yaml:"enable_web_client"`
+	EnableDashboardClient bool `yaml:"enable_dashboard_client"`
+	// The tag here read "dashboard_callback_ur_ls" — an acronym-splitting
+	// snake_case conversion of DashboardCallbackURLs. env/main.hbs, the cognito
+	// module and the web UI all use dashboard_callback_urls, so every load
+	// silently dropped the configured URLs and every save wrote them back under
+	// the misspelt key. Schema v24 repairs configs already carrying it.
+	DashboardCallbackURLs  []string `yaml:"dashboard_callback_urls"`
 	EnableUserPoolDomain   bool     `yaml:"enable_user_pool_domain"`
 	UserPoolDomainPrefix   string   `yaml:"user_pool_domain_prefix"`
 	BackendConfirmSignup   bool     `yaml:"backend_confirm_signup"`
@@ -581,12 +678,30 @@ func createEnv(name, env string) Env {
 			Schema:     false,
 			AuthLambda: false,
 			Resolvers:  false,
-			// Left empty on purpose: meroku must never pick a JWKS endpoint on
-			// the user's behalf. Enabling auth_lambda without filling this in
-			// fails validation rather than trusting someone else's keys.
-			JWKSURI:     "",
-			JWTIssuer:   "",
-			JWTAudience: "",
+			// "lambda" matches what an absent auth_mode means, so a new project
+			// and an un-migrated one behave identically. It is not a
+			// recommendation: cognito is the mode to reach for when the project
+			// has a user pool, and oidc when an external provider publishes a
+			// discovery document. Both are verified by AWS with no Lambda on the
+			// request path. AppSync is disabled here anyway, so this value only
+			// takes effect once someone turns it on — and validation then names
+			// whichever field their chosen mode is missing.
+			AuthMode: AppSyncAuthLambda,
+			// No environment gets an API key it did not ask for. An API key
+			// skips auth_mode entirely, so a silent one would undo every check
+			// configured below it.
+			APIKeyEnabled: false,
+			// Left empty on purpose: meroku must never pick an identity provider
+			// on the user's behalf, for either mode. Enabling AppSync without
+			// filling in the field its mode needs fails validation rather than
+			// trusting someone else's keys.
+			OIDCIssuer:              "",
+			OIDCClientID:            "",
+			CognitoAppIDClientRegex: "",
+			JWKSURI:                 "",
+			JWTIssuer:               "",
+			JWTAudience:             "",
+			RequiredClaims:          nil,
 		},
 		Buckets:                 []BucketConfig{},
 		Services:                []Service{},

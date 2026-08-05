@@ -24,8 +24,72 @@ The meroku application includes a comprehensive YAML schema migration system tha
 | 6 | Custom VPC | Added `use_default_vpc` and `vpc_cidr`; Removed deprecated VPC fields |
 | 7 | ECR Strategy | Added `ecr_strategy`, `ecr_account_id`, `ecr_account_region` for flexible ECR configuration |
 | 8 | ECR Trusted Accounts | Added `ecr_trusted_accounts` array for cross-account ECR pull access |
+| 9 | Amplify Domains | `subdomain_prefix` replaces `custom_domain` + `enable_root_domain` |
+| 10 | Per-service ECR | Added `ecr_config` to services, event_processor_tasks and scheduled_tasks |
+| 11 | awsvpc Ports | `host_port` forced to match `container_port` |
+| 12 | Postgres Booleans | All postgres boolean fields written explicitly |
+| 13 | Multi-rule EventBridge | `rules[]` array in event_processor_tasks |
+| 14 | CloudFront | CloudFront CDN configuration |
+| 15 | Multiple CloudFront | `cloudfront_distributions[]` array |
+| 16 | State Locking | `state_lock_table` for DynamoDB state locking |
+| 17 | Multi-domain SES | `domains[]` array with optional per-domain `zone_id` |
+| 18 | Global test_emails | `test_emails` moved to global SES level |
+| 19 | Service enable/disable | `enabled` on services |
+| 20 | Task enable/disable | `enabled` on scheduled_tasks and event_processor_tasks |
+| 21 | AppSync authorizer | `jwks_uri`, `jwt_issuer`, `jwt_audience` — written **empty**, never guessed |
+| 22 | CI/CD auto-deploy | `backend_auto_deploy` and per-target `auto_deploy` |
+| 23 | AppSync auth modes | `auth_mode` and `api_key_enabled` on `pubsub_appsync` |
+| 24 | Cognito key repair | `cognito.dashboard_callback_ur_ls` → `dashboard_callback_urls` |
 
-Current version: **v8**
+Current version: **v24**
+
+### A note on v23's two defaults
+
+v23 is the one migration that does **not** write the safer of two values
+everywhere, and the reasoning is worth knowing before you copy the pattern.
+
+- `auth_mode` is inferred as `lambda` for every existing config. Not because
+  `lambda` is preferred — the two native modes are cheaper and run no Lambda —
+  but because `authentication_type` was hardcoded to `AWS_LAMBDA` before the
+  setting existed. Writing anything else would change what the next apply
+  deploys. Note this holds even where `auth_lambda: false`: that flag only ever
+  chose whose authorizer *source* was packaged.
+- `api_key_enabled` is written `false` where AppSync is disabled and **`true`
+  where it is enabled**. An enabled environment has a live API key in AWS right
+  now, because the module created one unconditionally. Writing `false` would
+  delete that key on the next apply and break any client holding it. Breaking a
+  working API to close a weakness nobody reported that day is the worse failure,
+  so the migration preserves the credential and prints a loud notice explaining
+  what it is and how to remove it. "Default off" holds for every **new**
+  environment and for every environment with nothing to lose.
+
+### A note on v24 — repairing a key rather than adding one
+
+v24 is the only migration so far that **renames** an existing key instead of
+adding a new one, so it is worth saying why that is a migration at all.
+
+`Cognito.DashboardCallbackURLs` was tagged `yaml:"dashboard_callback_ur_ls"` — an
+acronym-splitting snake_case conversion of the Go field name. Everything else in
+the system used `dashboard_callback_urls`: `env/main.hbs`, `modules/cognito`, the
+web UI's TypeScript types, and the documentation. The struct was the only thing
+that disagreed, and it is the thing that reads and writes the file.
+
+So every load silently dropped whatever URLs the user had configured, and every
+save wrote the empty result back under the misspelt name. Fixing the tag alone
+would not help anyone: their file still holds the wrong key, and the template
+would keep reading a key that is not there. The repair has to happen on disk.
+
+Where both keys exist, the correctly spelled one wins — it is the one the
+template reads, so it is what is deployed today, and a migration must not change
+what the next apply produces. The discarded value is printed rather than dropped
+in silence.
+
+Mode-specific optional fields (`oidc_issuer`, `oidc_client_id`,
+`cognito_app_id_client_regex`, `required_claims`) are deliberately **not**
+written by the migration. Per CLAUDE.md, optional fields with sensible fallbacks
+belong to the `default` helper in the template; a migration writes the core
+policy fields that should always be explicit. Writing an empty `oidc_issuer` into
+every lambda-mode config would be noise nothing reads.
 
 ## How It Works
 

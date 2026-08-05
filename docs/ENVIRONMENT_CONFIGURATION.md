@@ -458,7 +458,7 @@ The `cognito` section configures AWS Cognito user pools for authentication.
 - **Example**: `true`
 - **Notes**: Useful for separating user and admin authentication flows.
 
-### `dashboard_callback_ur_ls`
+### `dashboard_callback_urls`
 - **Type**: Array of strings
 - **Description**: OAuth callback URLs for the dashboard client
 - **Example**:
@@ -1025,10 +1025,11 @@ The `pubsub_appsync` section configures AWS AppSync for GraphQL APIs.
 
 ### `auth_lambda`
 - **Type**: Boolean
-- **Description**: Use Lambda for AppSync authorization
+- **Description**: Package a **project-supplied** authorizer from `custom/appsync/auth_lambda` instead of the one bundled with the module
 - **Default**: `false`
 - **Example**: `true`
-- **Notes**: Lambda function should be at `modules/appsync/auth_lambda/`.
+- **Notes**: Only has an effect when `auth_mode` is `lambda`. This flag has never
+  selected *whether* a Lambda authorizer is used — only whose source is packaged.
 
 ### `resolvers`
 - **Type**: Boolean
@@ -1037,14 +1038,124 @@ The `pubsub_appsync` section configures AWS AppSync for GraphQL APIs.
 - **Example**: `true`
 - **Notes**: Resolvers defined in `modules/appsync/vtl_templates.yaml`.
 
-### Example
+### `auth_mode` (schema v23)
+- **Type**: String — `cognito` | `oidc` | `lambda`
+- **Description**: How AppSync authenticates callers
+- **Default**: `lambda` (what the module hardcoded before this field existed, so
+  an un-migrated config keeps deploying exactly what it deploys today)
+
+| | `cognito` | `oidc` | `lambda` |
+|---|---|---|---|
+| AppSync type | `AMAZON_COGNITO_USER_POOLS` | `OPENID_CONNECT` | `AWS_LAMBDA` |
+| Signature | Verified by AWS | Verified by AWS | Verified in the authorizer, `RS256` only |
+| Issuer (`iss`) | Implicit — the pool is named directly | **Not compared when OIDC is the only mode** | Yes, via `jwt_issuer` |
+| Audience | `cognito_app_id_client_regex` | `oidc_client_id` | `jwt_audience` |
+| Several audiences | Yes, `1F4G9H\|1J6L4B` | Yes, `1F4G9H\|1J6L4B` | Yes, comma-separated |
+| Any other claim | No | No | **Yes, `required_claims`** |
+| Runs a Lambda | No | No | Yes, per uncached request |
+
+Needing several audiences does **not** require `lambda`. Needing to check a claim
+beyond issuer and audience does.
+
+`cognito` requires `cognito.enabled: true` in the same environment; meroku
+refuses to generate otherwise.
+
+### `api_key_enabled` (schema v23)
+- **Type**: Boolean
+- **Description**: Attach an `API_KEY` provider alongside `auth_mode`
+- **Default**: `false`
+- **Notes**: An API key **bypasses `auth_mode` entirely** — whoever holds it
+  reaches every resolver without presenting a token. The module used to create
+  one for every deployment and export it. Existing environments were migrated to
+  `true` so their next apply would not delete a key clients may hold; turn it off
+  deliberately after checking `aws appsync list-api-keys --api-id <id>`.
+
+### `cognito_app_id_client_regex` (schema v23)
+- **Type**: String
+- **Description**: Which app clients of the user pool are accepted (cognito mode)
+- **Default**: unset — **every app client in the pool is accepted**
+- **Example**: `"1F4G9H|1J6L4B"`
+- **Notes**: meroku's Cognito module creates web, mobile and dashboard clients on
+  one pool, so leaving this unset lets a token minted for any of them reach the
+  API. User pool mode has no separate audience field. Matched against `aud` in an
+  ID token and `client_id` in an access token — that difference decides which
+  token type your clients should send.
+
+### `oidc_issuer` (schema v23)
+- **Type**: String (https:// URL)
+- **Description**: Issuer URL of the OIDC provider. **Required** in `oidc` mode
+- **Example**: `"https://your-tenant.example.com"`
+- **Notes**: AppSync fetches this issuer's discovery document and JWKS. On an API
+  whose only authorization type is `OPENID_CONNECT`, AppSync skips comparing the
+  token's `iss` against this value; the signature is still verified against this
+  issuer's keys. If `iss` must be asserted, use `lambda` mode with `jwt_issuer`.
+  Do not add a second authorization type to force the stricter path.
+
+### `oidc_client_id` (schema v23)
+- **Type**: String
+- **Description**: Client identifier registered with the provider — AppSync's
+  audience check, matched against `aud` falling back to `azp`
+- **Default**: unset — any audience from that issuer is accepted
+- **Example**: `"1F4G9H|1J6L4B"` (pipe-separated for several clients)
+
+### `jwks_uri` / `jwt_issuer` / `jwt_audience` (schema v21)
+- **Description**: Lambda-mode only. `jwks_uri` is **required** in that mode and
+  has no default — an unset value used to mean "trust a hardcoded third party"
+
+### `required_claims` (schema v23)
+- **Type**: Map of claim name to list of accepted values
+- **Description**: Claims a verified token must carry, checked after signature,
+  issuer and audience
+- **Notes**: Lambda mode only, and meroku rejects it in any other mode rather
+  than letting it be silently ignored. An empty list means "must be present". For
+  **policy** claims (`role`, `scope`, `tenant_id`) — not for identity: pinning
+  `sub` to fixed values is refused, because that is a user allowlist in
+  Terraform, not authorization.
+
+### Examples
+
+Cognito — no Lambda, restricted to two app clients:
+
+```yaml
+cognito:
+  enabled: true
+
+pubsub_appsync:
+  enabled: true
+  schema: true
+  resolvers: true
+  auth_mode: cognito
+  cognito_app_id_client_regex: "1F4G9H|1J6L4B"
+  api_key_enabled: false
+```
+
+OIDC — no Lambda, for an external provider:
+
+```yaml
+pubsub_appsync:
+  enabled: true
+  auth_mode: oidc
+  oidc_issuer: "https://your-tenant.example.com"
+  oidc_client_id: "1F4G9H|1J6L4B"
+  api_key_enabled: false
+```
+
+Lambda authorizer — the case the native modes cannot express:
 
 ```yaml
 pubsub_appsync:
   enabled: true
   schema: true
-  auth_lambda: true
+  auth_lambda: true       # use custom/appsync/auth_lambda, not the bundled one
   resolvers: true
+  auth_mode: lambda
+  jwks_uri: "https://your-tenant.example.com/.well-known/jwks.json"
+  jwt_issuer: "https://your-tenant.example.com"
+  jwt_audience: "https://api.example.com/"
+  api_key_enabled: false
+  required_claims:
+    tenant_id: []
+    role: ["admin", "ops"]
 ```
 
 ---

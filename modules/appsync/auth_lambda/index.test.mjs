@@ -62,7 +62,7 @@ async function startJwksServer({ status = 200, body = JSON.stringify({ keys: [jw
   };
 }
 
-const ENV_KEYS = ['JWKS_URI', 'JWT_ISSUER', 'JWT_AUDIENCE'];
+const ENV_KEYS = ['JWKS_URI', 'JWT_ISSUER', 'JWT_AUDIENCE', 'REQUIRED_CLAIMS'];
 
 function setEnv(vars = {}) {
   for (const key of ENV_KEYS) {
@@ -393,6 +393,192 @@ test('denies with an internal error when the JWKS document is malformed', async 
 
     assertDenied(result);
     assert.deepEqual(reasonsOf(logs), ['authorizer_internal_error']);
+  } finally {
+    await jwks.close();
+  }
+});
+
+// --- Claim policy (REQUIRED_CLAIMS) -----------------------------------------
+//
+// Neither AMAZON_COGNITO_USER_POOLS nor OPENID_CONNECT can check a claim beyond
+// issuer and audience, so this is the capability that selects the Lambda mode.
+// It must therefore be worth selecting: fail closed, and be legible in the logs.
+
+test('authorizes when every required claim is satisfied', async () => {
+  const jwks = await startJwksServer();
+  try {
+    setEnv({
+      JWKS_URI: jwks.uri,
+      REQUIRED_CLAIMS: JSON.stringify({ tenant_id: [], role: ['admin', 'ops'] }),
+    });
+
+    const token = signToken({ claims: { tenant_id: 'tenant-42', role: 'ops' } });
+    const { result, logs } = await captureLogs(() => handler(createEvent(token)));
+
+    assert.equal(result.isAuthorized, true);
+    assert.deepEqual(logs, []);
+
+    // Verified claims are handed to resolvers rather than being re-decoded there.
+    assert.equal(result.resolverContext.tenant_id, 'tenant-42');
+    assert.equal(result.resolverContext.role, 'ops');
+    for (const [key, value] of Object.entries(result.resolverContext)) {
+      assert.equal(typeof value, 'string', `resolverContext.${key} must be a string`);
+    }
+  } finally {
+    await jwks.close();
+  }
+});
+
+test('denies when a required claim is absent, with a reason of its own', async () => {
+  const jwks = await startJwksServer();
+  try {
+    setEnv({ JWKS_URI: jwks.uri, REQUIRED_CLAIMS: JSON.stringify({ tenant_id: [] }) });
+
+    const token = signToken(); // perfectly valid signature, no tenant_id
+    const { result, logs } = await captureLogs(() => handler(createEvent(token)));
+
+    assertDenied(result);
+    // Distinguishable from a forged token and from a JWKS outage: this one is
+    // "valid identity, not allowed here", which is an access-control signal.
+    assert.deepEqual(reasonsOf(logs), ['claim_denied']);
+    assert.equal(logs[0].level, 'WARN');
+    assert.equal(logs[0].claim, 'tenant_id');
+    assert.equal(logs[0].detail, 'missing');
+    assertNoTokenInLogs(logs, token);
+  } finally {
+    await jwks.close();
+  }
+});
+
+test('denies when a required claim holds a value that is not accepted', async () => {
+  const jwks = await startJwksServer();
+  try {
+    setEnv({ JWKS_URI: jwks.uri, REQUIRED_CLAIMS: JSON.stringify({ role: ['admin'] }) });
+
+    const token = signToken({ claims: { role: 'intern' } });
+    const { result, logs } = await captureLogs(() => handler(createEvent(token)));
+
+    assertDenied(result);
+    assert.deepEqual(reasonsOf(logs), ['claim_denied']);
+    assert.equal(logs[0].claim, 'role');
+    assert.equal(logs[0].detail, 'not_allowed');
+    // The claim NAME is configuration and is logged; the VALUE is user data.
+    assert.ok(!JSON.stringify(logs).includes('intern'), 'claim values must not be logged');
+  } finally {
+    await jwks.close();
+  }
+});
+
+test('matches any entry of an array-valued claim, e.g. group membership', async () => {
+  const jwks = await startJwksServer();
+  try {
+    setEnv({ JWKS_URI: jwks.uri, REQUIRED_CLAIMS: JSON.stringify({ groups: ['ops'] }) });
+
+    const allowed = signToken({ claims: { groups: ['viewer', 'ops'] } });
+    const { result: allowedResult } = await captureLogs(() => handler(createEvent(allowed)));
+    assert.equal(allowedResult.isAuthorized, true);
+    assert.equal(allowedResult.resolverContext.groups, 'viewer,ops');
+
+    const denied = signToken({ claims: { groups: ['viewer'] } });
+    const { result: deniedResult, logs } = await captureLogs(() => handler(createEvent(denied)));
+    assertDenied(deniedResult);
+    assert.deepEqual(reasonsOf(logs), ['claim_denied']);
+  } finally {
+    await jwks.close();
+  }
+});
+
+test('treats an empty or object-valued claim as missing rather than as a match', async () => {
+  const jwks = await startJwksServer();
+  try {
+    setEnv({ JWKS_URI: jwks.uri, REQUIRED_CLAIMS: JSON.stringify({ tenant_id: [] }) });
+
+    for (const value of ['', [], {}, null]) {
+      const token = signToken({ claims: { tenant_id: value } });
+      const { result, logs } = await captureLogs(() => handler(createEvent(token)));
+      assertDenied(result);
+      assert.deepEqual(reasonsOf(logs), ['claim_denied'], `value ${JSON.stringify(value)} must not satisfy presence`);
+      assert.equal(logs[0].detail, 'missing');
+    }
+  } finally {
+    await jwks.close();
+  }
+});
+
+test('compares non-string claim values as strings', async () => {
+  const jwks = await startJwksServer();
+  try {
+    setEnv({ JWKS_URI: jwks.uri, REQUIRED_CLAIMS: JSON.stringify({ tier: ['2'], active: ['true'] }) });
+
+    const token = signToken({ claims: { tier: 2, active: true } });
+    const { result } = await captureLogs(() => handler(createEvent(token)));
+
+    assert.equal(result.isAuthorized, true);
+  } finally {
+    await jwks.close();
+  }
+});
+
+test('denies everything when REQUIRED_CLAIMS is malformed, instead of ignoring it', async () => {
+  const jwks = await startJwksServer();
+  try {
+    // Each of these is a plausible hand-edit. None may fall through to "no
+    // claim requirements" — that would silently drop the check the operator
+    // asked for, which is the exact class of bug this module has shipped twice.
+    const malformed = [
+      'not json at all',
+      '["role"]', // array, not an object
+      '"role"', // string, not an object
+      'null',
+      JSON.stringify({ role: 'admin' }), // value must be an array
+      JSON.stringify({ role: [1, 2] }), // values must be strings
+      JSON.stringify({ '': ['admin'] }), // empty claim name
+    ];
+
+    for (const value of malformed) {
+      setEnv({ JWKS_URI: jwks.uri, REQUIRED_CLAIMS: value });
+      const { result, logs } = await captureLogs(() => handler(createEvent(signToken())));
+
+      assertDenied(result);
+      assert.deepEqual(reasonsOf(logs), ['configuration_error'], `REQUIRED_CLAIMS=${value} must deny`);
+      assert.equal(logs[0].level, 'ERROR');
+      // Our fault, not the caller's: recover fast once it is fixed.
+      assert.equal(result.ttlOverride, 10);
+    }
+
+    assert.equal(jwks.requests.length, 0, 'a broken configuration must not even fetch the JWKS');
+  } finally {
+    await jwks.close();
+  }
+});
+
+test('an unset or empty REQUIRED_CLAIMS imposes no claim requirements', async () => {
+  const jwks = await startJwksServer();
+  try {
+    for (const value of [undefined, '', '   ', '{}']) {
+      setEnv({ JWKS_URI: jwks.uri, ...(value === undefined ? {} : { REQUIRED_CLAIMS: value }) });
+
+      const { result, logs } = await captureLogs(() => handler(createEvent(signToken())));
+
+      assert.equal(result.isAuthorized, true, `REQUIRED_CLAIMS=${JSON.stringify(value)} should be a no-op`);
+      assert.deepEqual(logs, []);
+    }
+  } finally {
+    await jwks.close();
+  }
+});
+
+// The claim policy runs after verification and can only ever subtract, never add.
+test('a claim policy cannot rescue a token that fails verification', async () => {
+  const jwks = await startJwksServer();
+  try {
+    setEnv({ JWKS_URI: jwks.uri, REQUIRED_CLAIMS: JSON.stringify({ role: ['admin'] }) });
+
+    const forged = signToken({ claims: { role: 'admin' }, key: foreignPrivatePem });
+    const { result, logs } = await captureLogs(() => handler(createEvent(forged)));
+
+    assertDenied(result);
+    assert.deepEqual(reasonsOf(logs), ['invalid_token'], 'signature failure must win over the claim check');
   } finally {
     await jwks.close();
   }

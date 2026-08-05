@@ -32,7 +32,9 @@ import (
 // 20: Add enabled field to scheduled_tasks and event_processor_tasks (same pattern as services)
 // 21: Add AppSync Lambda authorizer configuration (jwks_uri, jwt_issuer, jwt_audience)
 // 22: Add auto_deploy to the backend, services and scheduled_tasks (CI/CD Lambda policy)
-const CurrentSchemaVersion = 22
+// 23: Add AppSync auth_mode (cognito/oidc/lambda) and explicit api_key_enabled
+// 24: Repair the misspelt cognito.dashboard_callback_ur_ls key
+const CurrentSchemaVersion = 24
 
 // EnvWithVersion extends Env with a schema version field
 type EnvWithVersion struct {
@@ -153,6 +155,16 @@ var AllMigrations = []Migration{
 		Version:     22,
 		Description: "Add auto_deploy to backend, services and scheduled_tasks (CI/CD auto-deploy policy)",
 		Apply:       migrateToV22,
+	},
+	{
+		Version:     23,
+		Description: "Add AppSync auth_mode and explicit api_key_enabled",
+		Apply:       migrateToV23,
+	},
+	{
+		Version:     24,
+		Description: "Repair the misspelt cognito.dashboard_callback_ur_ls key",
+		Apply:       migrateToV24,
 	},
 }
 
@@ -1322,6 +1334,168 @@ func migrateToV22(data map[string]interface{}) error {
 	}
 
 	return nil
+}
+
+// migrateToV23 writes AppSync's authorization mode and API-key policy into the
+// YAML.
+//
+// modules/appsync used to hardcode `authentication_type = "AWS_LAMBDA"` and
+// attach an unconditional API_KEY provider. Both are now choices, so both have
+// to be stated somewhere. Two fields, two different calls:
+//
+// auth_mode -> "lambda", always.
+//
+//	The mode is inferred from what the environment deploys today, and today
+//	every enabled AppSync API is AWS_LAMBDA — the hardcoded value. Note this is
+//	true even where auth_lambda is false: that flag only ever chose whose
+//	authorizer *source* was packaged (the project's tree or the module's), never
+//	whether a Lambda authorizer was used. So "auth_lambda: true implies lambda"
+//	is right, and so is "auth_lambda: false also implies lambda". Writing
+//	anything else here would change what the next apply deploys.
+//
+// api_key_enabled -> true where AppSync is enabled, false where it is not.
+//
+//	This is the one place this migration does NOT write the new safe default,
+//	and it is deliberate. An enabled environment has a live API key in AWS right
+//	now; clients may be holding it. Writing false would delete that key on the
+//	next apply and take those clients down — breaking a working API to fix a
+//	weakness nobody asked us to fix today is a worse failure than the weakness.
+//	So the migration preserves the credential and says loudly what it is and how
+//	to remove it. "Default off" holds for every *new* environment (createEnv
+//	sets false) and for every environment that has no key to lose.
+//
+// oidc_issuer / oidc_client_id are deliberately not added. They are mode-specific
+// optional settings with no meaning outside oidc mode, and per CLAUDE.md that is
+// the `default` helper's job, not a migration's — the migration writes the core
+// policy fields that should always be explicit.
+func migrateToV23(data map[string]interface{}) error {
+	fmt.Println("  → Migrating to v23: Adding AppSync auth_mode and api_key_enabled")
+
+	appsyncRaw, exists := data["pubsub_appsync"]
+	if !exists || appsyncRaw == nil {
+		fmt.Println("    ℹ️  No pubsub_appsync configuration to migrate")
+		return nil
+	}
+
+	appsync, ok := appsyncRaw.(map[interface{}]interface{})
+	if !ok {
+		fmt.Println("    ⚠️  pubsub_appsync is not a map, skipping migration")
+		return nil
+	}
+
+	enabled, _ := appsync["enabled"].(bool)
+
+	if existing, has := appsync["auth_mode"]; has {
+		fmt.Printf("    ℹ️  auth_mode already set to %v, left alone\n", existing)
+	} else {
+		appsync["auth_mode"] = AppSyncAuthLambda
+		fmt.Printf("    ✓ Added auth_mode = %q (what this module deploys today; nothing changes)\n", AppSyncAuthLambda)
+		if enabled {
+			fmt.Println("       AppSync now also supports:")
+			fmt.Println("         auth_mode: \"cognito\"  — AWS validates tokens against this environment's user pool")
+			fmt.Println("         auth_mode: \"oidc\"     — AWS validates tokens against your OIDC issuer")
+			fmt.Println("       Both drop the authorizer Lambda entirely: no cold start, no invocation cost.")
+		}
+	}
+
+	if existing, has := appsync["api_key_enabled"]; has {
+		fmt.Printf("    ℹ️  api_key_enabled already set to %v, left alone\n", existing)
+		return nil
+	}
+
+	appsync["api_key_enabled"] = enabled
+
+	if !enabled {
+		fmt.Println("    ✓ Added api_key_enabled = false (AppSync is disabled here, so there is no key to keep)")
+		return nil
+	}
+
+	// Loud on purpose. This is the one value the migration sets to the less safe
+	// of the two options, and the reader deserves to know that and to know the
+	// one-line fix.
+	fmt.Println("    ✓ Added api_key_enabled = true")
+	fmt.Println()
+	fmt.Println("    ⚠️  IMPORTANT — this environment has a live AppSync API key, and this")
+	fmt.Println("        migration keeps it.")
+	fmt.Println()
+	fmt.Println("        Until now modules/appsync created an API key for every deployment and")
+	fmt.Println("        exported it. That key is a bearer credential that BYPASSES token")
+	fmt.Println("        verification completely: whoever holds it reaches every resolver without")
+	fmt.Println("        presenting a JWT, so none of your issuer/audience/signature checks apply")
+	fmt.Println("        to them.")
+	fmt.Println()
+	fmt.Println("        It is preserved rather than removed because setting it to false here")
+	fmt.Println("        would delete the key on your next apply and break any client using it.")
+	fmt.Println("        New environments default to false.")
+	fmt.Println()
+	fmt.Println("        To turn it off once you have confirmed nothing depends on it:")
+	fmt.Println()
+	fmt.Println("          pubsub_appsync:")
+	fmt.Println("            api_key_enabled: false")
+	fmt.Println()
+	fmt.Println("        then re-generate and apply. Check first with:")
+	fmt.Println("          aws appsync list-api-keys --api-id <your-api-id>")
+
+	return nil
+}
+
+// legacyDashboardCallbackURLsKey is the misspelt key earlier versions of meroku
+// wrote. app/model.go tagged Cognito.DashboardCallbackURLs with it — an
+// acronym-splitting snake_case conversion — while env/main.hbs, modules/cognito
+// and the web UI all use dashboard_callback_urls. Any config saved by those
+// versions carries it, so it has to be repaired on disk rather than only fixed
+// at the source.
+const legacyDashboardCallbackURLsKey = "dashboard_callback_ur_ls"
+
+const dashboardCallbackURLsKey = "dashboard_callback_urls"
+
+func migrateToV24(data map[string]interface{}) error {
+	fmt.Println("  → Migrating to v24: Repairing the cognito.dashboard_callback_ur_ls key")
+
+	cognito, ok := data["cognito"].(map[interface{}]interface{})
+	if !ok {
+		fmt.Println("    ℹ️  No cognito configuration to repair")
+		return nil
+	}
+
+	legacy, hasLegacy := cognito[legacyDashboardCallbackURLsKey]
+	if !hasLegacy {
+		fmt.Println("    ✓ Already using dashboard_callback_urls, nothing to repair")
+		return nil
+	}
+
+	// The misspelt key always goes, whatever happens to its value.
+	delete(cognito, legacyDashboardCallbackURLsKey)
+
+	current, hasCurrent := cognito[dashboardCallbackURLsKey]
+	switch {
+	case !hasCurrent || isEmptyList(current):
+		// The normal case. The correct key is absent because nothing ever wrote
+		// it, or empty because a hand edit added it without values.
+		cognito[dashboardCallbackURLsKey] = legacy
+		fmt.Printf("    ✓ Moved %v onto dashboard_callback_urls\n", legacy)
+	case isEmptyList(legacy):
+		fmt.Println("    ✓ Dropped the empty dashboard_callback_ur_ls key")
+	default:
+		// Both hold values. The correctly spelled one is what the template reads
+		// and therefore what is deployed today, so it wins; the other is reported
+		// rather than silently discarded.
+		fmt.Printf("    ⚠️  Both keys held values. Kept dashboard_callback_urls = %v\n", current)
+		fmt.Printf("        and discarded dashboard_callback_ur_ls = %v, which was never\n", legacy)
+		fmt.Println("        read by the template and so was never deployed.")
+	}
+
+	return nil
+}
+
+// isEmptyList reports whether a decoded YAML value is an absent or empty
+// sequence — the two ways "no URLs are configured" shows up in a file.
+func isEmptyList(value interface{}) bool {
+	if value == nil {
+		return true
+	}
+	list, ok := value.([]interface{})
+	return ok && len(list) == 0
 }
 
 // applyMigrations applies all necessary migrations to bring data to current version
