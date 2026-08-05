@@ -120,14 +120,14 @@ export function ServiceProperties({
 				{/* Auto-Deploy Toggle */}
 				<div className="flex items-center justify-between">
 					<div className="flex-1">
-						<Label htmlFor="auto-deploy">Auto-Deploy</Label>
+						<Label htmlFor={`${uid}-auto-deploy`}>Auto-Deploy</Label>
 						<p className="text-xs text-gray-500 mt-1">
 							Redeploy this service automatically when a new image is pushed, or
 							when its SSM/S3 configuration changes
 						</p>
 					</div>
 					<Switch
-						id="auto-deploy"
+						id={`${uid}-auto-deploy`}
 						checked={serviceConfig.auto_deploy !== false}
 						onCheckedChange={(checked) =>
 							handleServiceChange({ auto_deploy: checked })

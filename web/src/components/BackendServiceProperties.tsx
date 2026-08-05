@@ -66,14 +66,14 @@ export function BackendServiceProperties({
 				{/* Auto-Deploy Toggle - at the very top, matching the service panel */}
 				<div className="flex items-center justify-between">
 					<div className="flex-1">
-						<Label htmlFor="backend_auto_deploy">Auto-Deploy</Label>
+						<Label htmlFor={`${uid}-backend_auto_deploy`}>Auto-Deploy</Label>
 						<p className="text-xs text-gray-500 mt-1">
 							Redeploy the backend automatically when a new image is pushed, or
 							when its SSM/S3 configuration changes
 						</p>
 					</div>
 					<Switch
-						id="backend_auto_deploy"
+						id={`${uid}-backend_auto_deploy`}
 						checked={config.workload?.backend_auto_deploy !== false}
 						onCheckedChange={(checked) =>
 							handleWorkloadChange({ backend_auto_deploy: checked })

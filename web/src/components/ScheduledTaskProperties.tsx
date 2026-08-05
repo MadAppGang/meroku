@@ -250,14 +250,14 @@ export function ScheduledTaskProperties({
 					{/* Auto-Deploy Toggle */}
 					<div className="flex items-center justify-between">
 						<div className="flex-1">
-							<Label htmlFor="auto-deploy">Auto-Deploy</Label>
+							<Label htmlFor={`${uid}-auto-deploy`}>Auto-Deploy</Label>
 							<p className="text-xs text-gray-500 mt-1">
 								Register a new task definition automatically when a new image is
 								pushed to this task's repository
 							</p>
 						</div>
 						<Switch
-							id="auto-deploy"
+							id={`${uid}-auto-deploy`}
 							checked={task.auto_deploy !== false}
 							onCheckedChange={(checked) =>
 								handleTaskChange({ auto_deploy: checked })
@@ -315,7 +315,7 @@ export function ScheduledTaskProperties({
 							<Select
 								value={(task.cpu || 256).toString()}
 								onValueChange={(value: string) => {
-									const newCpu = Number.parseInt(value);
+									const newCpu = Number.parseInt(value, 10);
 									const option = fargateOptions.find((o) => o.cpu === newCpu);
 									const validMemory = option?.memoryOptions || [];
 									const currentMemory = task.memory || 512;
@@ -343,7 +343,7 @@ export function ScheduledTaskProperties({
 							<Select
 								value={(task.memory || 512).toString()}
 								onValueChange={(value: string) =>
-									handleTaskChange({ memory: Number.parseInt(value) })
+									handleTaskChange({ memory: Number.parseInt(value, 10) })
 								}
 							>
 								<SelectTrigger>
