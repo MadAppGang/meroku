@@ -1,5 +1,57 @@
 # Changelog
 
+## v3.27.0
+
+Two things the UI told you that were not true: a delete on the map that deleted
+nothing, and an apply progress bar that counted past its own total.
+
+### Deleting a node on the map deletes the resource
+
+Selecting a service, scheduled task, event task, Amplify app or CloudFront
+distribution on the canvas and pressing Delete removed it from the map and left
+the YAML untouched, so the resource came back on the next reload. Deleting the
+same resource from the properties panel's trash button always worked, which is
+what made this hard to see: two delete affordances, one of them a no-op.
+
+There were two delete paths and only one of them reached the config. The trash
+button called `handleDeleteNode`, which rewrites the config and saves it.
+React Flow's own delete key produced a `remove` node change that
+`handleNodesChange` forwarded straight to `applyNodeChanges`; that handler only
+ever inspected changes for position updates, so the node left React Flow's
+internal list and nothing was written.
+
+The nodes on this canvas are a projection of the config — `allNodes` is a memo
+over it — so applying a removal to local node state makes the canvas disagree
+with its own source of truth. Removals now go to the same handler the trash
+button uses and are *not* applied locally: the node leaves the map when the save
+lands and the memo re-derives it, and it stays put if you cancel. The
+confirmation moved into `handleDeleteNode`, so both entry points ask the same
+question exactly once.
+
+### Apply progress no longer overruns its total
+
+A deploy of 68 planned resources finished reporting `100% 102/68`. Terraform's
+own summary for the same run was `52 added, 13 changed, 37 destroyed` — 102
+operations, of which 34 were replacements counted once in the denominator and
+twice in the numerator.
+
+`calculateStatistics` already counted a replacement as two operations. Nothing
+ever reached that code: `groupResourceChanges` classified changes with
+`switch Actions[0]` and looked for a literal `"replace"` action, which terraform
+never emits. A replacement arrives as a two-action pair — `["delete","create"]`,
+or `["create","delete"]` under `create_before_destroy` — so every one of them
+was filed as a plain delete or create and counted once, while the apply reported
+a completion hook for each half.
+
+Classification now matches on the pair, both orders. The plan header folds
+replacements into both columns the way terraform's summary does, so what it
+predicts before the run matches the `Apply complete!` line after it, and the
+three columns sum to the progress denominator.
+
+The existing tests hand-built the grouped structs, which is how the dead branch
+survived — they exercised the counting and never the classification that fills
+it. The new ones start from raw plan actions.
+
 ## v3.26.0
 
 Two defects that between them made a fresh environment undeployable: one that
