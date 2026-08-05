@@ -1,5 +1,15 @@
 # Changelog
 
+## v3.25.0
+
+Same code as v3.24.0, released from `main`.
+
+v3.24.0 was tagged on the feature branch before it merged. The binaries it
+published are correct and identical to these; this release exists so the
+published version is one anybody can reach from `main`.
+
+Everything below applies to both.
+
 ## v3.24.0
 
 The CI/CD Lambda is rewritten. Its main path — redeploy the backend when a new
