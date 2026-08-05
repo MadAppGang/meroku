@@ -98,7 +98,7 @@ func TestRenderDNSScreens(t *testing.T) {
 				stepFindParent: stepOK, stepWriteRecord: stepOK,
 			}
 			resolvers := []string{"8.8.8.8", "1.1.1.1", "9.9.9.9", "208.67.222.222"}
-			results := map[string]bool{"8.8.8.8": true, "1.1.1.1": true, "9.9.9.9": false}
+			results := map[string]dohVerdict{"8.8.8.8": dohResolved, "1.1.1.1": dohResolved, "9.9.9.9": dohNotYet}
 
 			var b strings.Builder
 			b.WriteString(renderDNSHeader(zone, 95*time.Second, w) + "\n\n")

@@ -295,7 +295,12 @@ func profileCandidateLine(c parentZoneCandidate, selected bool, width int) strin
 // It is not being re-asked in any meaningful sense — the delegation does not
 // un-resolve — and blinking it back to "checking" would suggest doubt about
 // something already settled.
-func renderResolverList(results map[string]bool, order []string, checking bool, anim, width int) string {
+//
+// A stale resolver keeps its badge for the same reason, in the other direction.
+// It is not lagging, it is looking at a delegation that is not ours, and that
+// does not resolve itself between two polls ten seconds apart. Animating it as
+// "checking" would imply progress that is not being made.
+func renderResolverList(results map[string]dohVerdict, order []string, checking bool, anim, width int) string {
 	nameW := 0
 	for _, r := range order {
 		if n := lipgloss.Width(r); n > nameW {
@@ -308,13 +313,14 @@ func renderResolverList(results map[string]bool, order []string, checking bool, 
 
 	var b strings.Builder
 	for i, r := range order {
-		resolved := results[r]
-
 		var icon, badgeCell string
 		switch {
-		case resolved:
+		case results[r] == dohResolved:
 			icon = lipgloss.NewStyle().Foreground(successColor).Render("✓")
 			badgeCell = badge("RESOLVED", successColor)
+		case results[r] == dohStale:
+			icon = lipgloss.NewStyle().Foreground(dangerColor).Render("✗")
+			badgeCell = badge("STALE", dangerColor)
 		case checking:
 			icon = lipgloss.NewStyle().Foreground(accentColor).Render(spinnerFrame(anim + i*2))
 			badgeCell = lipgloss.NewStyle().Foreground(accentColor).Render("checking…")
@@ -332,6 +338,26 @@ func renderResolverList(results map[string]bool, order []string, checking bool, 
 		}
 	}
 	return b.String()
+}
+
+// staleDelegationNote explains the red badges.
+//
+// The settle window exists to keep the certificate request away from resolvers
+// holding a stale *negative* answer, which clears in minutes. This is not that.
+// A stale resolver is answering from a previous incarnation of the zone, and
+// since Route53 issues a fresh nameserver set to every hosted zone it created,
+// the old set no longer answers for the name at all. That cache lives as long as
+// the child zone's own NS TTL — two days by default — so the honest thing to say
+// is that it will not clear inside this deploy, not that we are waiting for it.
+func staleDelegationNote(stale int) string {
+	subject := fmt.Sprintf("%d resolvers are", stale)
+	if stale == 1 {
+		subject = "One resolver is"
+	}
+	return subject + " answering from an earlier version of this zone rather " +
+		"than the record just written. That clears when their cached copy of the " +
+		"old nameservers expires, which can take up to two days — waiting here " +
+		"will not change it."
 }
 
 // renderDNSHeader is the title bar: what we are doing and to which zone.

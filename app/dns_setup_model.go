@@ -64,7 +64,7 @@ type dnsScanDoneMsg struct{}
 type dnsDelegatedMsg struct{ err error }
 
 type dnsPropagationMsg struct {
-	results map[string]bool
+	results map[string]dohVerdict
 	ok      bool
 }
 
@@ -160,7 +160,7 @@ type dnsSetupModel struct {
 
 	// propagate
 	resolvers       []string
-	resolverResults map[string]bool
+	resolverResults map[string]dohVerdict
 	// firstAgreementAt is when the delegation first resolved anywhere. The gap
 	// between that and every resolver agreeing is what the certificate request
 	// must not run inside.
@@ -250,7 +250,7 @@ func newDNSSetupModel(e Env, res dnsPreflightResult) *dnsSetupModel {
 		states:          map[dnsStep]stepState{},
 		startTime:       time.Now(),
 		resolvers:       dohResolverNames(),
-		resolverResults: map[string]bool{},
+		resolverResults: map[string]dohVerdict{},
 		keys:            dnsKeys,
 		width:           100,
 		height:          30,
@@ -292,8 +292,8 @@ func (m *dnsSetupModel) animTick() tea.Cmd {
 func (m *dnsSetupModel) createZoneCmd() tea.Cmd {
 	env := m.env
 	return func() tea.Msg {
-		cmd := exec.Command("terraform", "apply",
-			"-no-color", "-auto-approve", "-target="+zoneTargetAddress)
+		cmd := exec.Command("terraform", append([]string{
+			"apply", "-no-color", "-auto-approve"}, phaseOneTargets()...)...)
 
 		stdout, err := cmd.StdoutPipe()
 		if err != nil {
@@ -517,12 +517,7 @@ func (m *dnsSetupModel) pollPropagationCmd() tea.Cmd {
 	return func() tea.Msg {
 		results := checkPropagationDoH(zone, expected)
 
-		matched := 0
-		for _, ok := range results {
-			if ok {
-				matched++
-			}
-		}
+		matched, _ := countVerdicts(results)
 		// Two independent resolvers agreeing is enough to proceed. That is half,
 		// not a majority: resolvers cache negative answers for minutes after a
 		// zone is created, so waiting for all of them routinely stalls long after
@@ -699,12 +694,7 @@ func (m *dnsSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.resolverResults = msg.results
 		m.propagateChecking = false
 		m.propagateIn = secondsBetweenPropagationChecks
-		agreed := 0
-		for _, ok := range msg.results {
-			if ok {
-				agreed++
-			}
-		}
+		agreed, _ := countVerdicts(msg.results)
 
 		if msg.ok {
 			if m.firstAgreementAt.IsZero() {
@@ -725,7 +715,8 @@ func (m *dnsSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// So hold until every resolver we can see agrees. They are not ACM's
 			// resolvers, but unanimity across four independent ones is the best
 			// available evidence that the negative caches have expired.
-			if agreed < len(m.resolvers) && time.Since(m.firstAgreementAt) < dnsSettleCap {
+			if left, running := m.settleRemaining(); running && left > 0 &&
+				agreed < len(m.resolvers) {
 				m.states[stepPropagate] = stepActive
 				return m, nil
 			}
@@ -1010,12 +1001,7 @@ func (m *dnsSetupModel) renderBody(width int) string {
 				indeterminateRow(inner-4, m.anim, "writing the record"))
 
 	case m.step == stepPropagate:
-		matched := 0
-		for _, ok := range m.resolverResults {
-			if ok {
-				matched++
-			}
-		}
+		matched, stale := countVerdicts(m.resolverResults)
 		ratio := float64(matched) / float64(len(m.resolvers))
 		half, sideBySide := columnWidth(width)
 
@@ -1046,6 +1032,13 @@ func (m *dnsSetupModel) renderBody(width int) string {
 			note = "It resolves already. Waiting for the rest so the certificate " +
 				"request does not race a resolver that still has the old answer cached."
 		}
+		// A stale resolver is not the thing the settle window is waiting out, and
+		// saying "still has the old answer cached" about it would be a promise the
+		// next ten seconds cannot keep.
+		if stale > 0 {
+			title = "Some resolvers hold an older delegation"
+			note = staleDelegationNote(stale)
+		}
 
 		// Something has to move. At 0/4 the agreement bar is empty and the resolver
 		// dots are static, so without this the screen is indistinguishable from a
@@ -1066,6 +1059,25 @@ func (m *dnsSetupModel) renderBody(width int) string {
 		status.WriteString(meterRow(half-8, ratio, "#f59e0b", "#10b981",
 			fmt.Sprintf("%d/%d resolvers", matched, len(m.resolvers))) + "\n")
 		status.WriteString(activity)
+		// Once something agrees, the wait is bounded — say by how much. The only
+		// timer on screen was "next check in 10s", which resets forever, so a
+		// settle window doing exactly its job was indistinguishable from a hang.
+		// That is sharper with a stale resolver on screen: it will never agree, so
+		// the deadline is the whole answer to "what am I waiting for".
+		if left, ok := m.settleRemaining(); ok && matched < len(m.resolvers) {
+			// The window closes between polls, and the flow moves on when the next
+			// one lands rather than on the tick that empties it. Counting to 0:00
+			// and then sitting there for another ten seconds would reintroduce in
+			// miniature exactly the "why is this not proceeding" this line exists
+			// to answer, so say what is actually being waited on.
+			settle := "continuing without the rest at the next check"
+			if left > 0 {
+				settle = fmt.Sprintf("continuing without the rest in %d:%02d",
+					int(left.Minutes()), int(left.Seconds())%60)
+			}
+			status.WriteString("\n" + lipgloss.NewStyle().Foreground(dimColor).
+				Render(wordWrap(settle, half-8)))
+		}
 		if m.copiedNote != "" {
 			status.WriteString("\n" + lipgloss.NewStyle().Foreground(successColor).
 				Render("✓ "+truncateToWidth(m.copiedNote, half-8)))
@@ -1085,14 +1097,20 @@ func (m *dnsSetupModel) renderBody(width int) string {
 		// Say how many resolvers actually confirmed. We continue at two of four,
 		// so an unqualified "resolves" would overstate what was observed —
 		// typically two of them are still serving a cached negative answer.
-		matched := 0
-		for _, ok := range m.resolverResults {
-			if ok {
-				matched++
-			}
-		}
+		matched, stale := countVerdicts(m.resolverResults)
 		detail := "Certificate validation can now succeed. Continuing with the full deploy."
-		if matched < len(m.resolvers) {
+		switch {
+		case stale > 0:
+			// Worth naming here rather than only on the screen that has scrolled
+			// past: if the apply does stall on certificate validation, a resolver
+			// stuck on a previous incarnation of this zone is the likeliest reason,
+			// and the operator should not have to rediscover it from scratch.
+			detail = fmt.Sprintf(
+				"%d of %d resolvers see it; %d still answer from an earlier version of\n"+
+					"this zone. Continuing with the full deploy — but if certificate\n"+
+					"validation stalls, that cache is why.",
+				matched, len(m.resolvers), stale)
+		case matched < len(m.resolvers):
 			detail = fmt.Sprintf(
 				"%d of %d resolvers see it so far; the rest are still serving cached answers.\n"+
 					"That is enough for certificate validation. Continuing with the full deploy.",
@@ -1106,6 +1124,21 @@ func (m *dnsSetupModel) renderBody(width int) string {
 				renderResolverList(m.resolverResults, m.resolvers, false, m.anim, inner-6))
 	}
 	return ""
+}
+
+// settleRemaining reports how much of the settle window is left, and whether it
+// is running at all.
+//
+// Both the countdown and the decision to proceed read this, so a screen showing
+// 0:00 and a flow that has not moved on cannot disagree.
+func (m *dnsSetupModel) settleRemaining() (time.Duration, bool) {
+	if m.firstAgreementAt.IsZero() {
+		return 0, false
+	}
+	if left := dnsSettleCap - time.Since(m.firstAgreementAt); left > 0 {
+		return left, true
+	}
+	return 0, true
 }
 
 // renderRecheckLine shows the auto re-check countdown, or the copy confirmation

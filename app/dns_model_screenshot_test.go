@@ -73,8 +73,28 @@ func TestRenderDNSModel(t *testing.T) {
 			for _, s := range []dnsStep{stepCreateZone, stepShowNameservers, stepFindParent, stepWriteRecord} {
 				m.states[s] = stepOK
 			}
-			m.resolverResults = map[string]bool{"8.8.8.8": true, "1.1.1.1": true, "9.9.9.9": false}
+			m.resolverResults = map[string]dohVerdict{"8.8.8.8": dohResolved, "1.1.1.1": dohResolved, "9.9.9.9": dohNotYet}
 			m.elapsed = 96 * time.Second
+			return m
+		},
+		// Two resolvers on the delegation we wrote, two still answering from a
+		// previous incarnation of the zone. This is the state that looked like a
+		// hang: it will never reach 4/4, and before the countdown and the badges
+		// the screen gave no way to know that.
+		"model-4b-propagate-stale": func() *dnsSetupModel {
+			m := base()
+			m.step = stepPropagate
+			for _, s := range []dnsStep{stepCreateZone, stepShowNameservers, stepFindParent, stepWriteRecord} {
+				m.states[s] = stepOK
+			}
+			m.resolvers = dohResolverNames()
+			m.resolverResults = map[string]dohVerdict{
+				"Google": dohStale, "Cloudflare": dohStale,
+				"AdGuard": dohResolved, "NextDNS": dohResolved,
+			}
+			m.firstAgreementAt = time.Now().Add(-19 * time.Second)
+			m.propagateIn = 6
+			m.elapsed = 702 * time.Second
 			return m
 		},
 		"model-5-done": func() *dnsSetupModel {

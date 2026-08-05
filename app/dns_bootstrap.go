@@ -13,12 +13,34 @@ import (
 // zoneTargetAddress is the terraform address of the hosted zone created by
 // modules/domain.
 //
-// It is deliberately the only thing phase 1 targets. The zone is a dependency
+// It is deliberately the only zone phase 1 targets. The zone is a dependency
 // free leaf — modules/domain/main.tf creates it with no references to anything
 // else — so `-target` on it creates exactly one resource. Targeting the whole
 // module would drag in the ACM certificates and their validation, which is the
 // very thing that cannot succeed before delegation exists.
 const zoneTargetAddress = "module.domain.aws_route53_zone.domain[0]"
+
+// apexNSTargetAddress is the record that republishes the new zone's own NS set
+// at a 300s TTL instead of the 172800s Route53 creates it with.
+//
+// It has to run in phase 1, not phase 2. Every resolver that answers the
+// propagate step's queries caches the child's NS RRset at whatever TTL it is
+// served with, and those queries happen minutes before phase 2 exists. Lowering
+// the TTL afterwards would leave exactly the resolvers we just consulted holding
+// the two-day copy — see modules/domain/main.tf for what that costs on the next
+// recreate.
+//
+// Its only dependency is the zone itself, so it stays a leaf and adds no ACM
+// resources to the targeted plan.
+const apexNSTargetAddress = "module.domain.aws_route53_record.apex_ns[0]"
+
+// phaseOneTargets is what a bootstrap apply is allowed to create.
+func phaseOneTargets() []string {
+	return []string{
+		"-target=" + zoneTargetAddress,
+		"-target=" + apexNSTargetAddress,
+	}
+}
 
 // bootstrapDNSZone runs phase 1 of a two-phase deploy: create just the hosted
 // zone, so that its nameservers exist and delegation can be set up.
@@ -29,12 +51,11 @@ func bootstrapDNSZone() error {
 	fmt.Println("\n🌐 Phase 1 of 2: creating the DNS hosted zone only")
 	fmt.Printf("   terraform apply -target=%s\n\n", zoneTargetAddress)
 
-	args := []string{
+	args := append([]string{
 		"apply",
 		"-no-color",
 		"-auto-approve",
-		"-target=" + zoneTargetAddress,
-	}
+	}, phaseOneTargets()...)
 
 	cmd := exec.Command("terraform", args...)
 	cmd.Stdin = os.Stdin

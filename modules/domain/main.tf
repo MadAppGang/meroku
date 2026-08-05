@@ -16,6 +16,44 @@ data "aws_route53_zone" "domain" {
   name  = local.domain_name
 }
 
+# Republish the zone's own apex NS records at a short TTL.
+#
+# Route53 creates every hosted zone with these records at a TTL of 172800 — two
+# days. A resolver caches the NS set from the child's authoritative answer, not
+# from the parent's referral, so that TTL and not the 300s on the delegation
+# record in the parent is what governs how long a resolver keeps using a given
+# nameserver set.
+#
+# That matters because Route53 assigns a fresh random nameserver set to each new
+# hosted zone. Delete this zone and create it again — which any destroy/apply
+# cycle in a dev environment does — and every resolver that looked the name up
+# beforehand keeps querying the old set for up to two days. Those servers no
+# longer host the zone, so they answer REFUSED and the name goes SERVFAIL rather
+# than merely resolving to something stale. Certificate validation asks through
+# exactly such a resolver.
+#
+# Observed on a recreated dev zone: two public resolvers were still querying an
+# entirely different nameserver set hours later, while resolvers with a cold
+# cache saw the new delegation within seconds.
+#
+# The values must stay exactly as Route53 assigned them; only the TTL changes,
+# which is why this reads name_servers straight back out of the zone. 300 matches
+# the delegation record written into the parent, so both halves of the referral
+# now expire together.
+resource "aws_route53_record" "apex_ns" {
+  count = var.create_domain_zone ? 1 : 0
+
+  # The RRset already exists — it was created with the zone — so this is an
+  # overwrite rather than an addition.
+  allow_overwrite = true
+
+  zone_id = aws_route53_zone.domain[0].zone_id
+  name    = local.domain_name
+  type    = "NS"
+  ttl     = 300
+  records = aws_route53_zone.domain[0].name_servers
+}
+
 locals {
   zone_id         = var.create_domain_zone ? aws_route53_zone.domain[0].zone_id : data.aws_route53_zone.domain[0].zone_id
   domain_name     = var.add_env_domain_prefix ? "${var.env}.${var.domain_zone}" : var.domain_zone

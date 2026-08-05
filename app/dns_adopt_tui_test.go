@@ -319,9 +319,9 @@ func TestAdopt_CompletedFlowIsNotMaskedByAdoptScreen(t *testing.T) {
 	// The delegation resolves by some other route while adoption waits. All four
 	// resolvers agree, so it is settled and the flow can finish.
 	updated, _ := m.Update(dnsPropagationMsg{
-		results: map[string]bool{
-			"8.8.8.8": true, "1.1.1.1": true,
-			"9.9.9.9": true, "208.67.222.222": true,
+		results: map[string]dohVerdict{
+			"8.8.8.8": dohResolved, "1.1.1.1": dohResolved,
+			"9.9.9.9": dohResolved, "208.67.222.222": dohResolved,
 		}, ok: true})
 	m = updated.(*dnsSetupModel)
 

@@ -149,16 +149,16 @@ func TestDNSModel_DelegatedOnlyAfterPropagation(t *testing.T) {
 	m := testDNSModel(t)
 	m.step = stepPropagate
 
-	updated, _ := m.Update(dnsPropagationMsg{results: map[string]bool{"8.8.8.8": false}, ok: false})
+	updated, _ := m.Update(dnsPropagationMsg{results: map[string]dohVerdict{"8.8.8.8": dohNotYet}, ok: false})
 	m = updated.(*dnsSetupModel)
 	if m.Delegated {
 		t.Error("must not report delegated while resolvers still disagree")
 	}
 
 	updated, _ = m.Update(dnsPropagationMsg{
-		results: map[string]bool{
-			"8.8.8.8": true, "1.1.1.1": true,
-			"9.9.9.9": true, "208.67.222.222": true,
+		results: map[string]dohVerdict{
+			"8.8.8.8": dohResolved, "1.1.1.1": dohResolved,
+			"9.9.9.9": dohResolved, "208.67.222.222": dohResolved,
 		}, ok: true})
 	m = updated.(*dnsSetupModel)
 	if !m.Delegated {
@@ -422,7 +422,17 @@ func TestDNSModel_NoLineExceedsWidth(t *testing.T) {
 			}),
 			mk(func(m *dnsSetupModel) {
 				m.step = stepPropagate
-				m.resolverResults = map[string]bool{"8.8.8.8": true, "1.1.1.1": false}
+				m.resolverResults = map[string]dohVerdict{"8.8.8.8": dohResolved, "1.1.1.1": dohNotYet}
+			}),
+			// Settling with a stale resolver: the longest wording this screen has,
+			// plus the countdown line, in the narrowest column it can be given.
+			mk(func(m *dnsSetupModel) {
+				m.step = stepPropagate
+				m.firstAgreementAt = time.Now()
+				m.resolverResults = map[string]dohVerdict{
+					"AdGuard": dohResolved, "NextDNS": dohResolved,
+					"Google": dohStale, "Cloudflare": dohStale,
+				}
 			}),
 			mk(func(m *dnsSetupModel) { m.step = stepDone }),
 			mk(func(m *dnsSetupModel) {
@@ -455,9 +465,9 @@ func TestDNSModel_DoneStateReportsPartialPropagation(t *testing.T) {
 	m.firstAgreementAt = time.Now().Add(-dnsSettleCap - time.Second)
 
 	updated, _ := m.Update(dnsPropagationMsg{
-		results: map[string]bool{
-			"8.8.8.8": false, "1.1.1.1": true,
-			"9.9.9.9": false, "208.67.222.222": true,
+		results: map[string]dohVerdict{
+			"8.8.8.8": dohNotYet, "1.1.1.1": dohResolved,
+			"9.9.9.9": dohNotYet, "208.67.222.222": dohResolved,
 		},
 		ok: true,
 	})
@@ -480,9 +490,9 @@ func TestDNSModel_DoneStateIsUnqualifiedWhenFullyPropagated(t *testing.T) {
 	m := testDNSModel(t)
 	m.step = stepPropagate
 
-	all := map[string]bool{}
+	all := map[string]dohVerdict{}
 	for _, r := range m.resolvers {
-		all[r] = true
+		all[r] = dohResolved
 	}
 	updated, _ := m.Update(dnsPropagationMsg{results: all, ok: true})
 	m = updated.(*dnsSetupModel)
@@ -630,9 +640,9 @@ func TestDNSModel_ManualRecheckSucceedingCompletesTheFlow(t *testing.T) {
 	m.checking = true
 
 	updated, _ := m.Update(dnsPropagationMsg{
-		results: map[string]bool{
-			"8.8.8.8": true, "1.1.1.1": true,
-			"9.9.9.9": true, "208.67.222.222": true,
+		results: map[string]dohVerdict{
+			"8.8.8.8": dohResolved, "1.1.1.1": dohResolved,
+			"9.9.9.9": dohResolved, "208.67.222.222": dohResolved,
 		}, ok: true})
 	m = updated.(*dnsSetupModel)
 
@@ -653,7 +663,7 @@ func TestDNSModel_ManualRecheckFailingRearmsCountdown(t *testing.T) {
 	m.checking = true
 	m.nextCheckIn = 0
 
-	updated, _ := m.Update(dnsPropagationMsg{results: map[string]bool{"8.8.8.8": false}, ok: false})
+	updated, _ := m.Update(dnsPropagationMsg{results: map[string]dohVerdict{"8.8.8.8": dohNotYet}, ok: false})
 	m = updated.(*dnsSetupModel)
 
 	if m.checking {
@@ -767,9 +777,9 @@ func TestDNSModel_HoldsForFullAgreementBeforeFinishing(t *testing.T) {
 
 	// Two of four: live, but not settled.
 	updated, _ := m.Update(dnsPropagationMsg{
-		results: map[string]bool{
-			"8.8.8.8": true, "1.1.1.1": true,
-			"9.9.9.9": false, "208.67.222.222": false,
+		results: map[string]dohVerdict{
+			"8.8.8.8": dohResolved, "1.1.1.1": dohResolved,
+			"9.9.9.9": dohNotYet, "208.67.222.222": dohNotYet,
 		},
 		ok: true,
 	})
@@ -789,9 +799,9 @@ func TestDNSModel_HoldsForFullAgreementBeforeFinishing(t *testing.T) {
 
 	// All four: safe to proceed.
 	updated, _ = m.Update(dnsPropagationMsg{
-		results: map[string]bool{
-			"8.8.8.8": true, "1.1.1.1": true,
-			"9.9.9.9": true, "208.67.222.222": true,
+		results: map[string]dohVerdict{
+			"8.8.8.8": dohResolved, "1.1.1.1": dohResolved,
+			"9.9.9.9": dohResolved, "208.67.222.222": dohResolved,
 		},
 		ok: true,
 	})
@@ -807,9 +817,9 @@ func TestDNSModel_SettleGivesUpAfterTheCap(t *testing.T) {
 	m := testDNSModel(t)
 	m.step = stepPropagate
 	partial := dnsPropagationMsg{
-		results: map[string]bool{
-			"8.8.8.8": true, "1.1.1.1": true,
-			"9.9.9.9": false, "208.67.222.222": false,
+		results: map[string]dohVerdict{
+			"8.8.8.8": dohResolved, "1.1.1.1": dohResolved,
+			"9.9.9.9": dohNotYet, "208.67.222.222": dohNotYet,
 		},
 		ok: true,
 	}
@@ -827,6 +837,114 @@ func TestDNSModel_SettleGivesUpAfterTheCap(t *testing.T) {
 
 	if !m.Delegated {
 		t.Error("past the cap it should proceed on a partial answer rather than block")
+	}
+}
+
+// A stale resolver does not shorten the settle window, and does not extend it
+// either. It is shown for what it is and the existing bound still governs.
+func TestDNSModel_StaleResolverStillSettlesThenProceeds(t *testing.T) {
+	m := testDNSModel(t)
+	m.step = stepPropagate
+	// The state measured in the field: two resolvers on the delegation we wrote,
+	// two still answering from a previous incarnation of the zone.
+	partial := dnsPropagationMsg{
+		results: map[string]dohVerdict{
+			"AdGuard": dohResolved, "NextDNS": dohResolved,
+			"Google": dohStale, "Cloudflare": dohStale,
+		},
+		ok: true,
+	}
+
+	updated, _ := m.Update(partial)
+	m = updated.(*dnsSetupModel)
+	if m.Delegated {
+		t.Fatal("a stale resolver must not be treated as agreement")
+	}
+
+	m.firstAgreementAt = time.Now().Add(-dnsSettleCap - time.Second)
+	updated, _ = m.Update(partial)
+	m = updated.(*dnsSetupModel)
+	if !m.Delegated {
+		t.Error("the cap must still release a deploy that two resolvers will never join")
+	}
+
+	// The done panel is the last thing the operator sees before an apply that may
+	// stall on certificate validation. If a resolver is on an older delegation,
+	// that is the likeliest cause and it must not be left off the screen.
+	view := flattenStacked(m)
+	if !strings.Contains(view, "earlier version") {
+		t.Errorf("the done panel should name the stale delegation:\n%s", view)
+	}
+}
+
+// The wait has to explain itself. A red badge with no deadline is still a screen
+// that looks hung — which is how the original report arrived.
+func TestDNSModel_StaleScreenExplainsAndBoundsTheWait(t *testing.T) {
+	m := testDNSModel(t)
+	m.step = stepPropagate
+	m.zoneID = "Z0000000000000000000"
+	updated, _ := m.Update(dnsPropagationMsg{
+		results: map[string]dohVerdict{
+			"AdGuard": dohResolved, "NextDNS": dohResolved,
+			"Google": dohStale, "Cloudflare": dohStale,
+		},
+		ok: true,
+	})
+	m = updated.(*dnsSetupModel)
+
+	view := flattenStacked(m)
+	if !strings.Contains(view, "STALE") {
+		t.Errorf("the stale resolvers should be badged:\n%s", view)
+	}
+	// The settle window's own wording — "still has the old answer cached" —
+	// promises something the next poll can deliver. It cannot, here.
+	if strings.Contains(view, "does not race") {
+		t.Errorf("the settle wording is wrong for a stale delegation:\n%s", view)
+	}
+	if !strings.Contains(view, "two days") {
+		t.Errorf("it should say how long a stale delegation actually lasts:\n%s", view)
+	}
+	if !strings.Contains(view, "continuing without the rest") {
+		t.Errorf("a bounded wait must show its bound:\n%s", view)
+	}
+}
+
+// The countdown and the decision must read the same clock, or the screen shows
+// 0:00 while the flow sits there.
+func TestDNSModel_SettleRemainingMatchesTheCap(t *testing.T) {
+	m := testDNSModel(t)
+	if _, running := m.settleRemaining(); running {
+		t.Error("nothing has agreed yet, so no settle window is running")
+	}
+
+	m.firstAgreementAt = time.Now()
+	left, running := m.settleRemaining()
+	if !running || left <= 0 || left > dnsSettleCap {
+		t.Errorf("expected a window inside the cap, got %v (running=%v)", left, running)
+	}
+
+	m.firstAgreementAt = time.Now().Add(-dnsSettleCap - time.Second)
+	left, running = m.settleRemaining()
+	if !running || left != 0 {
+		t.Errorf("past the cap the window is running but empty, got %v (running=%v)", left, running)
+	}
+
+	// The flow advances when the next poll lands, not on the tick that empties
+	// the window, so an emptied countdown must not read 0:00 for another ten
+	// seconds — that is the original complaint in miniature.
+	m.step = stepPropagate
+	m.resolverResults = map[string]dohVerdict{
+		"AdGuard": dohResolved, "NextDNS": dohResolved,
+		"Google": dohStale, "Cloudflare": dohStale,
+	}
+	// Matched on the countdown's own phrasing: the header carries an elapsed
+	// clock that legitimately reads 00:00 in a freshly built test model.
+	view := flattenStacked(m)
+	if strings.Contains(view, "the rest in 0:00") {
+		t.Errorf("an emptied settle window should not show a dead countdown:\n%s", view)
+	}
+	if !strings.Contains(view, "at the next check") {
+		t.Errorf("it should say what it is now waiting on:\n%s", view)
 	}
 }
 
@@ -888,7 +1006,7 @@ func TestDNSModel_PropagateResultRearmsCountdown(t *testing.T) {
 	m.propagateIn = 0
 
 	updated, _ := m.Update(dnsPropagationMsg{
-		results: map[string]bool{"8.8.8.8": false}, ok: false})
+		results: map[string]dohVerdict{"8.8.8.8": dohNotYet}, ok: false})
 	m = updated.(*dnsSetupModel)
 
 	if m.propagateChecking {
@@ -952,7 +1070,7 @@ func TestDNSModel_PropagateShowsTheRecordItWrote(t *testing.T) {
 // Each resolver gets its own line, with a badge once it has answered.
 func TestRenderResolverList_StatesAreDistinct(t *testing.T) {
 	order := []string{"8.8.8.8", "1.1.1.1", "9.9.9.9"}
-	results := map[string]bool{"8.8.8.8": true, "1.1.1.1": false}
+	results := map[string]dohVerdict{"8.8.8.8": dohResolved, "1.1.1.1": dohNotYet}
 
 	idle := renderResolverList(results, order, false, 0, 40)
 	if n := len(strings.Split(idle, "\n")); n != 3 {
@@ -979,10 +1097,36 @@ func TestRenderResolverList_StatesAreDistinct(t *testing.T) {
 	}
 }
 
+// A stale resolver is a third state, and it must not read as either of the
+// other two. "not yet" invites waiting for something that will not happen
+// within a deploy, and "checking" animates progress that is not being made.
+func TestRenderResolverList_StaleIsItsOwnState(t *testing.T) {
+	order := []string{"Google", "AdGuard"}
+	results := map[string]dohVerdict{"Google": dohStale, "AdGuard": dohResolved}
+
+	idle := renderResolverList(results, order, false, 0, 40)
+	if !strings.Contains(idle, "STALE") {
+		t.Errorf("a resolver on an older delegation should say so:\n%s", idle)
+	}
+	if strings.Contains(idle, "not yet") {
+		t.Errorf("stale is not the same as unanswered:\n%s", idle)
+	}
+
+	// Re-asking a stale resolver ten seconds later cannot change its answer, so
+	// its badge must survive the check rather than blink to a spinner.
+	busy := renderResolverList(results, order, true, 3, 40)
+	if !strings.Contains(busy, "STALE") {
+		t.Errorf("a stale resolver should keep its badge through a re-check:\n%s", busy)
+	}
+	if strings.Contains(busy, "checking") {
+		t.Errorf("both resolvers have answered; nothing should claim to be checking:\n%s", busy)
+	}
+}
+
 // The spinner has to actually turn, and rows must not overflow their panel.
 func TestRenderResolverList_AnimatesAndFits(t *testing.T) {
 	order := []string{"8.8.8.8", "208.67.222.222"}
-	results := map[string]bool{}
+	results := map[string]dohVerdict{}
 
 	seen := map[string]bool{}
 	for anim := 0; anim < 8; anim++ {
