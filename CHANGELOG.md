@@ -7,6 +7,56 @@ image is pushed — had never worked, and two authentication bypasses in the
 AppSync authorizer are closed. A fresh checkout of a deployed project now
 connects itself instead of reporting that nothing is deployed.
 
+### Choosing how AppSync authenticates
+
+The API hardcoded a Lambda authorizer and attached an API key beside it,
+unconditionally. Anyone with that key skipped JWT verification altogether, which
+made the authorizer decorative. Authorization is now chosen per environment:
+
+```yaml
+pubsub_appsync:
+  enabled: true
+  auth_mode: cognito        # or: oidc, lambda
+  api_key_enabled: false
+```
+
+- **`cognito`** — validated by AppSync against the user pool meroku already
+  creates. `modules/cognito` gained the `outputs.tf` it never had, which is why
+  the pool could not be wired before.
+- **`oidc`** — validated by AppSync against a configured issuer. `oidc_client_id`
+  is matched against the token's `aud` (or `azp`) claim, and accepts several
+  client ids separated by `|`.
+- **`lambda`** — the bundled authorizer. Needed only when you must check claims
+  beyond issuer and audience; it now supports required-claim policies, failing
+  closed with a denial reason distinct from a bad signature or a JWKS outage.
+
+The first two are verified by AWS, so no Lambda is built, deployed or invoked.
+
+Cognito mode previously had **no audience check at all** — it accepted a token
+minted for any app client in the pool, and meroku creates three.
+`cognito_app_id_client_regex` now filters them; leaving it unset still accepts
+all of them, and the docs say so.
+
+The API key defaults off. Existing AppSync environments keep theirs — the
+migration writes `api_key_enabled: true` where AppSync is already enabled, since
+withdrawing a live credential on upgrade would break its clients.
+
+Note for single-mode OIDC APIs: AppSync skips comparing the `iss` claim against
+the configured issuer unless a second authorization mode is present. Signature
+verification against that issuer's JWKS still applies. Use `lambda` mode if you
+need `iss` asserted.
+
+### Two defects found by rendering a config with Cognito enabled
+
+- `dashboard_callback_urls` was tagged `dashboard_callback_ur_ls` in the Go
+  struct — an acronym split by a camelCase conversion. Because the struct both
+  reads and writes the file, every load dropped configured URLs and every save
+  wrote them back misspelt. Fixed at the tag, with a migration repairing configs
+  on disk.
+- The `array` template helper panicked on a missing key. All twenty of its call
+  sites read optional fields, so any config omitting one crashed generation with
+  a Go stack trace. An absent list now renders `[]`.
+
 ### Syncing a checkout to what is deployed
 
 `env/` is generated and gitignored, so a fresh clone never has one. meroku used
@@ -43,21 +93,37 @@ Do these before deploying.
    now built at apply time instead of shipping a prebuilt binary. The apply fails
    with an actionable message if `go` is missing; nothing is substituted for it.
 
-2. **Set `jwks_uri` on every environment with AppSync enabled.** It is required
-   and has no default. See "AppSync authorizer" below for why the previous
-   behaviour was not safe to keep.
+2. **State how AppSync authenticates, on every environment with it enabled.**
+   There is no default, and generation refuses to proceed without it. Pick the
+   mode that matches your identity provider:
 
    ```yaml
+   # Cognito issues the tokens — AWS verifies them, no Lambda runs
    pubsub_appsync:
      enabled: true
+     auth_mode: cognito
+     cognito_app_id_client_regex: "1F4G9H|1J6L4B"   # which app clients; unset accepts all
+
+   # An OIDC provider issues them — AWS verifies them, no Lambda runs
+   pubsub_appsync:
+     enabled: true
+     auth_mode: oidc
+     oidc_issuer: https://your-idp.example.com
+     oidc_client_id: "your-client-id"               # matched against aud / azp
+
+   # Anything else, or you need to check custom claims
+   pubsub_appsync:
+     enabled: true
+     auth_mode: lambda
      jwks_uri: https://your-idp.example.com/.well-known/jwks.json
      jwt_issuer: https://your-idp.example.com/      # optional, enforced when set
      jwt_audience: your-api                          # optional, enforced when set
    ```
 
-3. **Run `meroku migrate all`.** Schema v22 adds `auto_deploy`. Production
-   environments get `auto_deploy: false`; every other environment keeps
-   auto-deploying. Set it back to `true` in prod if you want push-to-deploy there.
+3. **Run `meroku migrate all`.** Schema v24. v22 adds `auto_deploy` (production
+   environments get `false`; everything else keeps auto-deploying). v23 adds the
+   AppSync `auth_mode` and `api_key_enabled`. v24 repairs the misspelt
+   `dashboard_callback_urls` key.
 
 4. **Expect one apply to replace the EventBridge rules.** The single CI rule
    becomes four. There is a brief window during the apply where no rule is
