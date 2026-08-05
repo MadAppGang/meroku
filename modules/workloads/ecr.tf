@@ -170,6 +170,61 @@ locals {
       )
     )
   }
+
+  # The same resolution again, in bare repository names rather than URLs.
+  #
+  # repository_url is Computed, so on the apply that creates a repository it is
+  # unknown at plan time. lambda.tf needs this set to decide whether to create
+  # the ECR event rule at all — `count = length(local.ci_ecr_repos) > 0 ? 1 : 0`
+  # — and a count derived from an unknown fails the whole plan before anything
+  # is created:
+  #
+  #   Error: Invalid count argument
+  #   The "count" value depends on resource attributes that cannot be determined
+  #   until apply, so Terraform cannot predict how many instances will be created.
+  #
+  # That made every first deploy of an environment with services unplannable.
+  # name is set from configuration, so it is known on the same plan; only the URL
+  # is not. An ECR event carries a bare repository name, so this is what that
+  # consumer wanted in the first place.
+  #
+  # The branching is duplicated rather than the names: resolving a service's
+  # repository a second time from "${var.project}_service_${name}" is exactly the
+  # drift that defect D1 was, so each mode still reads the same authority as the
+  # URL above, one attribute across.
+  ecr_repository_name_map = {
+    for svc in local.services_needing_ecr :
+    "services-${svc.name}" => aws_ecr_repository.services[svc.name].name
+  }
+
+  # A configured URI carries a registry host and may carry a :tag or @digest;
+  # an ECR event carries neither.
+  #   123456789012.dkr.ecr.us-east-1.amazonaws.com/acme_service_api -> acme_service_api
+  #   registry.example.com/team/legacy-api:v1                       -> team/legacy-api
+  manual_ecr_repo_names = {
+    for svc in var.services :
+    svc.name => replace(
+      replace(try(svc.ecr_config.repository_uri, ""), "/^[^/]+\\//", ""),
+      "/[:@][^/]*$/", ""
+    )
+  }
+
+  service_ecr_repo_names = {
+    for svc in var.services :
+    svc.name => (
+      try(svc.ecr_config.mode, "create_ecr") == "create_ecr" ?
+      aws_ecr_repository.services[svc.name].name :
+
+      try(svc.ecr_config.mode, "create_ecr") == "manual_repo" ?
+      local.manual_ecr_repo_names[svc.name] :
+
+      lookup(
+        local.ecr_repository_name_map,
+        "${svc.ecr_config.source_service_type}-${svc.ecr_config.source_service_name}",
+        ""
+      )
+    )
+  }
 }
 
 # Create ECR repositories for services with mode=create_ecr

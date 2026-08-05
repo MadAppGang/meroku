@@ -124,16 +124,15 @@ locals {
   # unmapped forever. That is defect D1's shape - one name, two derivations - so
   # it gets D1's fix: derive it once, from the authority.
   #
-  # service_ecr_urls holds full URIs; an ECR event carries the bare repository
-  # name, so strip the registry host and any :tag / @digest suffix:
-  #   123456789012.dkr.ecr.us-east-1.amazonaws.com/acme_service_api -> acme_service_api
-  #   registry.example.com/team/legacy-api:v1                       -> team/legacy-api
-  ci_service_repos = {
-    for name, uri in local.service_ecr_urls : name => replace(
-      replace(uri, "/^[^/]+\\//", ""),
-      "/[:@][^/]*$/", ""
-    )
-  }
+  # ecr.tf resolves the bare repository names alongside the URLs, from the same
+  # per-mode branching, so this is still one derivation and not a second guess.
+  #
+  # It reads the names rather than stripping the URLs, because repository_url is
+  # Computed: on the apply that creates a repository it is unknown, and the
+  # unknown reaches `count` on aws_cloudwatch_event_rule.ci_ecr_push below
+  # through the length() of this map. That failed the plan of every first deploy
+  # with services in it. See modules/workloads/ecr.tf for the full account.
+  ci_service_repos = local.service_ecr_repo_names
 
   # modules/ecs_task creates {project}_task_{name} only when env == "dev";
   # every other environment pulls from a cross-account URL.

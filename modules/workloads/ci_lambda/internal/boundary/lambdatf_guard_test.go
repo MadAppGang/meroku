@@ -264,6 +264,84 @@ func TestLambdaTFAutoDeployIsAFlagNotAFilter(t *testing.T) {
 	}
 }
 
+// ecrTF returns modules/workloads/ecr.tf with comment lines blanked out, for
+// the same reason lambdaTF strips them.
+func ecrTF(t *testing.T) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("..", "..", "..", "ecr.tf"))
+	require.NoError(t, err)
+	return commentLine.ReplaceAllString(string(b), "")
+}
+
+// TestLambdaTFEcrRepoSetIsKnownAtPlanTime guards the count on the ECR event rule.
+//
+// aws_ecr_repository.repository_url is Computed, so on the apply that creates a
+// repository it is unknown at plan time. That unknown reaches
+// aws_cloudwatch_event_rule.ci_ecr_push through:
+//
+//	service_ecr_urls -> ci_service_repos -> ci_identifiers.ecr_repo_ids
+//	  -> ci_ecr_repos -> count = length(...) > 0 ? 1 : 0
+//
+// and a count Terraform cannot resolve fails the entire plan before anything is
+// created — so every first deploy of an environment with services was
+// unplannable, with an error naming a line that is not the problem.
+//
+// The repository *name* is set from configuration and is therefore known on the
+// same plan, and a bare name is what an ECR event carries anyway. Nothing on
+// this path may go back to reading the URL.
+func TestLambdaTFEcrRepoSetIsKnownAtPlanTime(t *testing.T) {
+	src := lambdaTF(t)
+
+	requirePresent(t, src, "ci_service_repos = local.service_ecr_repo_names",
+		"the ECR event rule's count depends on this map, so it must come from the "+
+			"names ecr.tf resolves at plan time, not from anything Computed")
+
+	repos, ok := balancedBraces(src, "ci_ecr_repos")
+	if ok {
+		require.NotContains(t, repos, "service_ecr_urls",
+			"the repository set feeding count must not trace back to a URL")
+	}
+
+	// The other half of the contract lives in ecr.tf: the names map must resolve
+	// each mode from a config-set attribute.
+	ecr := ecrTF(t)
+	names, ok := balancedBraces(ecr, "service_ecr_repo_names")
+	require.True(t, ok, "local.service_ecr_repo_names not found in ecr.tf")
+	require.NotContains(t, names, "repository_url",
+		"service_ecr_repo_names exists precisely to avoid the Computed URL; "+
+			"reading it here reintroduces the unplannable count")
+	require.Contains(t, names, ".name",
+		"each mode must resolve to the repository name set in configuration")
+}
+
+// balancedBraces returns the text of the first brace-delimited body that follows
+// `after`, or false when there is none on that assignment.
+func balancedBraces(src, after string) (string, bool) {
+	i := strings.Index(src, after)
+	if i < 0 {
+		return "", false
+	}
+	open := strings.Index(src[i:], "{")
+	if open < 0 {
+		return "", false
+	}
+	open += i
+
+	depth := 0
+	for j := open; j < len(src); j++ {
+		switch src[j] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return src[open : j+1], true
+			}
+		}
+	}
+	return "", false
+}
+
 // balancedParens returns the text between the parenthesis that opens at the end
 // of `after` and its match. jsonencode(...) takes a call, not always an object
 // literal, so brace balancing cannot find the end of one.
