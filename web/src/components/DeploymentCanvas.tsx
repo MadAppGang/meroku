@@ -14,6 +14,7 @@ import ReactFlow, {
 	MiniMap,
 	type Node,
 	type NodeChange,
+	type NodeRemoveChange,
 	useEdgesState,
 	useNodesState,
 } from "reactflow";
@@ -57,6 +58,7 @@ interface DeploymentCanvasProps {
 	onAddAmplify?: () => void;
 	onAddCloudFront?: () => void;
 	onManageCustomTerraform?: () => void;
+	onDeleteNode?: (nodeId: string, nodeType: string, name?: string) => void;
 	pricing?: PricingResponse | null;
 }
 
@@ -545,6 +547,7 @@ export function DeploymentCanvas({
 	onAddAmplify,
 	onAddCloudFront,
 	onManageCustomTerraform,
+	onDeleteNode,
 	pricing,
 }: DeploymentCanvasProps) {
 	const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -1044,10 +1047,34 @@ export function DeploymentCanvas({
 	// Handle node position changes with debouncing
 	const handleNodesChange = useCallback(
 		(changes: NodeChange[]) => {
-			onNodesChange(changes);
+			// Every node on this canvas is a projection of the YAML config, so
+			// react-flow's own delete (Backspace/Delete on a selected node) must not
+			// be applied to local node state: it would drop the node from the map
+			// while the config -- and the file -- still had it, and the change would
+			// be silently lost on the next reload. Hand removals to the same handler
+			// the sidebar's trash button uses and let the config -> nodes memo take
+			// the node off the canvas once the save actually lands.
+			const removals = changes.filter(
+				(change): change is NodeRemoveChange => change.type === "remove",
+			);
+			for (const removal of removals) {
+				const node = nodes.find((n) => n.id === removal.id);
+				const data = node?.data as ComponentNode | undefined;
+				if (data?.type && onDeleteNode) {
+					onDeleteNode(data.id ?? removal.id, data.type, data.name);
+				}
+			}
+
+			const applicable =
+				removals.length > 0
+					? changes.filter((change) => change.type !== "remove")
+					: changes;
+			if (applicable.length === 0) return;
+
+			onNodesChange(applicable);
 
 			// Check if any changes are position changes
-			const hasPositionChange = changes.some(
+			const hasPositionChange = applicable.some(
 				(change) => change.type === "position" && change.dragging === false,
 			);
 
@@ -1063,7 +1090,7 @@ export function DeploymentCanvas({
 				}, 500);
 			}
 		},
-		[onNodesChange, savePositions, environmentName],
+		[onNodesChange, savePositions, environmentName, nodes, onDeleteNode],
 	);
 
 	// Handle Custom Terraform button click

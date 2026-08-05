@@ -274,8 +274,24 @@ export default function App() {
 		await saveConfigToBackend(updatedConfig);
 	};
 
-	const handleDeleteNode = async (nodeId: string, nodeType: string) => {
+	// The single delete path. Both entry points -- the sidebar's trash button and
+	// deleting a node on the canvas -- land here, so the confirmation and the save
+	// live in one place. Canvas deletion used to stop at react-flow's own node
+	// state: the node vanished from the map and the YAML was never touched.
+	const handleDeleteNode = async (
+		nodeId: string,
+		nodeType: string,
+		name?: string,
+	) => {
 		if (!config) return;
+
+		if (
+			!window.confirm(
+				`Are you sure you want to delete ${name || nodeId}? This action cannot be undone.`,
+			)
+		) {
+			return;
+		}
 
 		const updatedConfig = { ...config };
 
@@ -546,6 +562,7 @@ export default function App() {
 										onAddAmplify={() => setShowAddAmplifyDialog(true)}
 										onAddCloudFront={() => setShowAddCloudFrontDialog(true)}
 										onManageCustomTerraform={() => setViewMode("code")}
+										onDeleteNode={handleDeleteNode}
 										pricing={pricing}
 									/>
 

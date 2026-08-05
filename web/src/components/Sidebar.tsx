@@ -103,7 +103,7 @@ interface SidebarProps {
 	config?: YamlInfrastructureConfig;
 	onConfigChange?: (config: Partial<YamlInfrastructureConfig>) => void;
 	accountInfo?: AccountInfo;
-	onDeleteNode?: (nodeId: string, nodeType: string) => void;
+	onDeleteNode?: (nodeId: string, nodeType: string, name?: string) => void;
 }
 
 export function Sidebar({
@@ -391,14 +391,14 @@ export function Sidebar({
 								variant="ghost"
 								size="icon"
 								onClick={() => {
-									if (
-										window.confirm(
-											`Are you sure you want to delete ${selectedNode.name}? This action cannot be undone.`,
-										)
-									) {
-										onDeleteNode(selectedNode.id, selectedNode.type);
-										onClose();
-									}
+									// Confirmation lives in App.handleDeleteNode so the canvas
+									// and this button ask exactly the same question.
+									onDeleteNode(
+										selectedNode.id,
+										selectedNode.type,
+										selectedNode.name,
+									);
+									onClose();
 								}}
 								className="text-red-400 hover:text-red-300 hover:bg-red-900/20 flex-shrink-0"
 								title="Delete"
