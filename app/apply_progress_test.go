@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -162,6 +163,79 @@ func TestPendingListForReplace(t *testing.T) {
 	}
 	if !createFound {
 		t.Error("Expected create entry for replace resource")
+	}
+}
+
+// change builds a ResourceChange with the given plan actions.
+func change(address string, actions ...string) ResourceChange {
+	c := ResourceChange{Address: address, Type: "aws_iam_role"}
+	c.Change.Actions = actions
+	return c
+}
+
+// The counting tests above hand-build changeGroups, so they never exercised the
+// classifier that fills those groups -- and the classifier switched on
+// Actions[0] looking for a literal "replace" action terraform never emits. Every
+// replacement was filed as a delete (or a create, under create_before_destroy)
+// and counted once, while apply reported a completion for each half. Start from
+// raw plan actions so the two halves of the fix stay connected.
+func TestGroupResourceChanges_ClassifiesReplacementsFromActionPairs(t *testing.T) {
+	groups := groupResourceChanges([]ResourceChange{
+		change("aws_iam_role.destroy_then_create", "delete", "create"),
+		change("aws_iam_role.create_before_destroy", "create", "delete"),
+		change("aws_instance.new", "create"),
+		change("aws_instance.gone", "delete"),
+		change("aws_s3_bucket.tweaked", "update"),
+		change("data.aws_region.current", "read"),
+		change("aws_instance.untouched", "no-op"),
+	})
+
+	if len(groups.replaces) != 2 {
+		t.Errorf("expected both replacement forms grouped as replaces, got %d", len(groups.replaces))
+	}
+	if len(groups.creates) != 1 {
+		t.Errorf("expected 1 create, got %d", len(groups.creates))
+	}
+	if len(groups.deletes) != 1 {
+		t.Errorf("expected 1 delete, got %d", len(groups.deletes))
+	}
+	if len(groups.updates) != 1 {
+		t.Errorf("expected 1 update, got %d", len(groups.updates))
+	}
+}
+
+// The apply progress bar counts one completion per operation, so the denominator
+// has to be operations too. This is the "102/68" case: a plan whose resource
+// count is smaller than the number of hooks the apply will emit.
+func TestPlanTotalsCountReplacementsAsTwoOperations(t *testing.T) {
+	var changes []ResourceChange
+	for i := 0; i < 34; i++ {
+		changes = append(changes, change(fmt.Sprintf("aws_iam_role.replaced_%d", i), "delete", "create"))
+	}
+	for i := 0; i < 18; i++ {
+		changes = append(changes, change(fmt.Sprintf("aws_instance.created_%d", i), "create"))
+	}
+	for i := 0; i < 13; i++ {
+		changes = append(changes, change(fmt.Sprintf("aws_s3_bucket.updated_%d", i), "update"))
+	}
+	for i := 0; i < 3; i++ {
+		changes = append(changes, change(fmt.Sprintf("aws_instance.destroyed_%d", i), "delete"))
+	}
+
+	stats := calculateStatistics(groupResourceChanges(changes))
+
+	if stats.totalChanges != 102 {
+		t.Errorf("expected 102 operations for 68 planned resources, got %d", stats.totalChanges)
+	}
+
+	// Matches terraform's own "Apply complete! Resources: 52 added, 13 changed,
+	// 37 destroyed." for the same plan.
+	adds, updates, destroys := stats.plannedOperations()
+	if adds != 52 || updates != 13 || destroys != 37 {
+		t.Errorf("expected 52/13/37 add/change/destroy, got %d/%d/%d", adds, updates, destroys)
+	}
+	if adds+updates+destroys != stats.totalChanges {
+		t.Errorf("summary columns (%d) must sum to totalChanges (%d)", adds+updates+destroys, stats.totalChanges)
 	}
 }
 

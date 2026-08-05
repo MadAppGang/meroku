@@ -304,22 +304,25 @@ func (m *modernPlanModel) initApplyState() {
 				if len(resource.Change.Actions) == 1 && resource.Change.Actions[0] == "read" {
 					continue
 				}
-				// For replace operations (delete + create), add both actions to pending
-				if len(resource.Change.Actions) == 2 &&
-					resource.Change.Actions[0] == "delete" &&
-					resource.Change.Actions[1] == "create" {
-					// Add delete operation
-					m.applyState.pending = append(m.applyState.pending, pendingResource{
+				// A replacement is two apply operations, so it needs two pending
+				// entries -- terraform reports a completion hook for each half.
+				if isReplaceActions(resource.Change.Actions) {
+					deleteOp := pendingResource{
 						Address: resource.Address,
 						Action:  "delete",
 						Type:    resource.Type,
-					})
-					// Add create operation
-					m.applyState.pending = append(m.applyState.pending, pendingResource{
+					}
+					createOp := pendingResource{
 						Address: resource.Address,
 						Action:  "create",
 						Type:    resource.Type,
-					})
+					}
+					// create_before_destroy runs the create first
+					if resource.Change.Actions[0] == "create" {
+						m.applyState.pending = append(m.applyState.pending, createOp, deleteOp)
+					} else {
+						m.applyState.pending = append(m.applyState.pending, deleteOp, createOp)
+					}
 				} else {
 					// Single action (create, update, delete, etc.)
 					m.applyState.pending = append(m.applyState.pending, pendingResource{

@@ -587,9 +587,7 @@ func initModernTerraformPlanTUI(planJSON string) (tea.Model, error) {
 		}
 
 		// Handle replace operations specially - split into delete and create
-		if len(change.Change.Actions) == 2 &&
-			change.Change.Actions[0] == "delete" &&
-			change.Change.Actions[1] == "create" {
+		if isReplaceActions(change.Change.Actions) {
 			// Create a delete entry
 			deleteChange := change
 			deleteChange.Change.Actions = []string{"delete"}
@@ -604,8 +602,13 @@ func initModernTerraformPlanTUI(planJSON string) (tea.Model, error) {
 			deleteChange.Address = change.Address + " (destroy)"
 			createChange.Address = change.Address + " (create)"
 
-			providerMap[provider][service] = append(providerMap[provider][service], deleteChange)
-			providerMap[provider][service] = append(providerMap[provider][service], createChange)
+			// Show the halves in the order terraform will run them:
+			// create_before_destroy replacements create first.
+			if change.Change.Actions[0] == "create" {
+				providerMap[provider][service] = append(providerMap[provider][service], createChange, deleteChange)
+			} else {
+				providerMap[provider][service] = append(providerMap[provider][service], deleteChange, createChange)
+			}
 		} else {
 			// Regular change - just append as-is
 			providerMap[provider][service] = append(providerMap[provider][service], change)
@@ -1463,10 +1466,12 @@ func (m *modernPlanModel) renderHeader() string {
 }
 
 func (m *modernPlanModel) renderPlanSummary() string {
+	// A replacement is one resource but two operations, and terraform's own
+	// summary counts it in both columns. Fold it in the same way so this line
+	// matches the "Apply complete! Resources: ..." line at the end of the run.
+	adds, changes, destroys := m.stats.plannedOperations()
 	summary := fmt.Sprintf("Plan: %d to add, %d to change, %d to destroy",
-		m.stats.byAction["create"],
-		m.stats.byAction["update"],
-		m.stats.byAction["delete"],
+		adds, changes, destroys,
 	)
 
 	return lipgloss.NewStyle().
@@ -1520,14 +1525,16 @@ func (m *modernPlanModel) renderChangeSummary() string {
 		total = 1
 	}
 
-	createPct := float64(m.stats.byAction["create"]) / total
-	updatePct := float64(m.stats.byAction["update"]) / total
-	deletePct := float64(m.stats.byAction["delete"]) / total
+	adds, changes, destroys := m.stats.plannedOperations()
+
+	createPct := float64(adds) / total
+	updatePct := float64(changes) / total
+	deletePct := float64(destroys) / total
 
 	// Create progress bars
-	createBar := m.renderProgressBar("additions", createPct, successColor, m.stats.byAction["create"])
-	updateBar := m.renderProgressBar("changes", updatePct, warningColor, m.stats.byAction["update"])
-	deleteBar := m.renderProgressBar("deletions", deletePct, dangerColor, m.stats.byAction["delete"])
+	createBar := m.renderProgressBar("additions", createPct, successColor, adds)
+	updateBar := m.renderProgressBar("changes", updatePct, warningColor, changes)
+	deleteBar := m.renderProgressBar("deletions", deletePct, dangerColor, destroys)
 
 	content := lipgloss.JoinVertical(
 		lipgloss.Left,
@@ -5340,6 +5347,22 @@ func (m *modernPlanModel) renderApplyDetailsView(header, elapsed string) string 
 	)
 }
 
+// isReplaceActions reports whether a plan change is a replacement.
+//
+// Terraform never emits a literal "replace" action. A replacement arrives as a
+// two-action pair: ["delete","create"] for the default destroy-then-create, and
+// ["create","delete"] when the resource sets create_before_destroy. Classifying
+// on Actions[0] therefore filed every replacement under delete or create and
+// counted it once, while apply emits a completion hook for each half -- which is
+// how a plan of 68 resources finished at "102/68" on the progress bar.
+func isReplaceActions(actions []string) bool {
+	if len(actions) != 2 {
+		return false
+	}
+	return (actions[0] == "delete" && actions[1] == "create") ||
+		(actions[0] == "create" && actions[1] == "delete")
+}
+
 func groupResourceChanges(changes []ResourceChange) changeGroups {
 	groups := changeGroups{}
 
@@ -5353,6 +5376,11 @@ func groupResourceChanges(changes []ResourceChange) changeGroups {
 			continue
 		}
 
+		if isReplaceActions(change.Change.Actions) {
+			groups.replaces = append(groups.replaces, change)
+			continue
+		}
+
 		switch change.Change.Actions[0] {
 		case "create":
 			groups.creates = append(groups.creates, change)
@@ -5360,8 +5388,6 @@ func groupResourceChanges(changes []ResourceChange) changeGroups {
 			groups.updates = append(groups.updates, change)
 		case "delete":
 			groups.deletes = append(groups.deletes, change)
-		case "replace":
-			groups.replaces = append(groups.replaces, change)
 		case "read":
 			// Skip read-only operations
 			continue
@@ -5382,6 +5408,17 @@ func groupResourceChanges(changes []ResourceChange) changeGroups {
 	sortChanges(groups.reads)
 
 	return groups
+}
+
+// plannedOperations splits the plan the way terraform's own summary does: each
+// replacement is one destroy and one create, so it lands in both columns. The
+// three returned numbers sum to totalChanges, which is the denominator the
+// apply progress bar counts completions against.
+func (s changeStats) plannedOperations() (adds, changes, destroys int) {
+	replaces := s.byAction["replace"]
+	return s.byAction["create"] + replaces,
+		s.byAction["update"],
+		s.byAction["delete"] + replaces
 }
 
 func calculateStatistics(groups changeGroups) changeStats {
