@@ -3,39 +3,32 @@ import "../src/index.css";
 
 const preview: Preview = {
 	parameters: {
+		a11y: {
+			test: "error",
+		},
+		backgrounds: {
+			options: {
+				dark: { name: "dark", value: "#09090b" },
+				light: { name: "light", value: "#ffffff" },
+			},
+		},
 		controls: {
 			matchers: {
 				color: /(background|color)$/i,
 				date: /Date$/i,
 			},
 		},
-		backgrounds: {
-			default: "dark",
-			values: [
-				{
-					name: "dark",
-					value: "#111827",
-				},
-				{
-					name: "light",
-					value: "#ffffff",
-				},
-			],
+		docs: {
+			toc: true,
 		},
 		layout: "padded",
 	},
-	globalTypes: {
-		theme: {
-			description: "Global theme for components",
-			defaultValue: "dark",
-			toolbar: {
-				title: "Theme",
-				icon: "circlehollow",
-				items: ["light", "dark"],
-				dynamicTitle: true,
-			},
+	initialGlobals: {
+		backgrounds: {
+			value: "dark",
 		},
 	},
+	tags: ["autodocs", "test"],
 };
 
 export default preview;

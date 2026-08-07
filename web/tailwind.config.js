@@ -17,7 +17,17 @@ export default {
 			},
 		},
 		extend: {
+			fontFamily: {
+				sans: ["Inter", "sans-serif"],
+				mono: ["JetBrains Mono", "monospace"],
+			},
 			colors: {
+				"tech-bg": "#09090b",
+				"tech-surface": "#18181b",
+				"tech-border": "#27272a",
+				"tech-accent": "#3b82f6",
+				"tech-success": "#10b981",
+				"tech-warning": "#f59e0b",
 				border: "hsl(var(--border))",
 				input: "hsl(var(--input))",
 				ring: "hsl(var(--ring))",
