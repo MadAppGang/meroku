@@ -870,7 +870,7 @@ module "event_bus_task_{{name}}" {
   docker_image = "{{docker_image}}"
   {{/if}}
   {{#if container_command}}
-  container_command = {{{ container_command }}}
+  container_command = {{{array container_command}}}
   {{/if}}
   subnet_ids       = local.task_subnet_ids
   assign_public_ip = local.assign_public_ip
