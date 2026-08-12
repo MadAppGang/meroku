@@ -2,6 +2,7 @@ import type React from "react";
 import { useId, useState } from "react";
 import { useFargateOptions } from "../hooks/use-fargate-options";
 import type { ScheduledTask } from "../types/components";
+import { parseContainerCommand } from "../utils/taskSettings";
 import { Button } from "./ui/button";
 import {
 	Dialog,
@@ -97,8 +98,13 @@ export function AddScheduledTaskDialog({
 			task.docker_image = formData.docker_image;
 		}
 
-		if (formData.container_command) {
-			task.container_command = formData.container_command;
+		// container_command is list(string) as of schema v25. The editor takes a
+		// comma-separated line, so it has to be parsed into an array here — a
+		// bare string reaches the Go loader as a scalar and is only rescued by
+		// the migration on the next load.
+		const containerCommand = parseContainerCommand(formData.container_command);
+		if (containerCommand) {
+			task.container_command = containerCommand;
 		}
 
 		if (formData.environment_variables) {

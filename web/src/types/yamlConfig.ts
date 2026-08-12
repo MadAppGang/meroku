@@ -190,11 +190,26 @@ export interface YamlInfrastructureConfig {
 		auto_deploy?: boolean;
 		schedule: string;
 		docker_image?: string;
-		container_command?: string;
+		/**
+		 * A list of arguments, matching Terraform's list(string). This was a
+		 * scalar string until schema v25; writing a string here produces a
+		 * config the Go loader rejects until the migration rewrites it, so the
+		 * UI must always emit an array.
+		 */
+		container_command?: string[];
 		cpu?: number;
 		memory?: number;
 		environment_variables?: Record<string, string>;
 		ecr_config?: ECRConfig;
+		/** IANA timezone the schedule is evaluated in. Absent means UTC. */
+		timezone?: string;
+		/**
+		 * Absent leaves AWS's own default of 185; 0 means never retry. The two
+		 * are different, so this must never be written as a default.
+		 */
+		max_retry_attempts?: number;
+		/** SQS queue ARN for failed invocations. Absent disables the DLQ. */
+		dlq_arn?: string;
 	}>;
 
 	// Event-driven Tasks
