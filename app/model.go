@@ -47,6 +47,13 @@ type Env struct {
 	CloudFrontDistributions []CloudFront `yaml:"cloudfront_distributions,omitempty"`
 	// Custom Extensions (for SNS, SQS, Lambda, etc.)
 	Extensions Extensions `yaml:"extensions,omitempty"`
+	// ManageDNSRecords decides whether Terraform writes the Route53 records for
+	// Amplify domains. Amplify creates them itself when the zone is in the same
+	// account, so this is only turned on for a cross-account or externally
+	// managed zone. A pointer because absent must reach the template as absent:
+	// the module's default is false, and an explicit false means the same thing
+	// while a missing key means "let the module decide".
+	ManageDNSRecords *bool `yaml:"manage_dns_records,omitempty"`
 }
 
 // AppSync auth modes (schema v23). These are the values accepted by

@@ -1023,6 +1023,14 @@ module "amplify" {
   zone_id = module.domain.zone_id
   {{/if}}
 
+  {{!-- Amplify writes its own Route53 records when the zone is in the same
+        account, so this is only set for a cross-account or externally managed
+        zone. `exists` rather than `if`: false is a real value here and means
+        the same as the module default, but an absent key must stay absent. --}}
+  {{#if (exists manage_dns_records)}}
+  manage_dns_records = {{manage_dns_records}}
+  {{/if}}
+
   amplify_apps = [
     {{#each amplify_apps}}
     {
