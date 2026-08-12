@@ -337,7 +337,9 @@ type ScheduledTask struct {
 	AutoDeploy          *bool      `yaml:"auto_deploy,omitempty"`
 	Schedule            string     `yaml:"schedule"`
 	ExternalDockerImage string     `yaml:"docker_image"`
-	ContainerCommand    string     `yaml:"container_command"`
+	// A list of arguments, matching Terraform's list(string). Was a scalar
+	// string until schema v25, which converts existing values on load.
+	ContainerCommand []string `yaml:"container_command"`
 	CPU                 int        `yaml:"cpu,omitempty"`
 	Memory              int        `yaml:"memory,omitempty"`
 	ECRConfig           *ECRConfig `yaml:"ecr_config,omitempty"` // Schema v9

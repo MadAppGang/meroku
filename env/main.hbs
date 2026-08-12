@@ -687,7 +687,7 @@ module "schedule_task_{{name}}" {
   docker_image = "{{docker_image}}"
   {{/if}}
   {{#if container_command}}
-  container_command = {{{ container_command }}}
+  container_command = {{{array container_command}}}
   {{/if}}
   {{#if cpu}}
   cpu = {{cpu}}
