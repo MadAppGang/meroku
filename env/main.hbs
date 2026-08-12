@@ -19,12 +19,20 @@ terraform {
 # application can be found in one query (Resource Groups / Tag Editor:
 # Application = "{{ project }}-{{ env }}").
 #
-# Deliberately no `region` here: today the default provider takes its region
-# from AWS_REGION / the profile, and pinning it would silently relocate the
-# stack for anyone whose shell region differs from their YAML.
+# `region` is pinned from the YAML because the backend already is. Leaving it
+# unset gave one value two sources: the S3 backend took the region from this
+# config while every resource took it from AWS_REGION / the profile, so a shell
+# pointed elsewhere put the state in one region and the infrastructure in
+# another, and nothing said so.
+#
+# Pinning does not create that split, it reveals it: a stack already running
+# mismatched will plan a move to the YAML region. checkRegionDrift (app/) warns
+# at generation time so it is never discovered from the plan alone.
 #
 # Resource-level tags win over these, so existing tag blocks keep working.
 provider "aws" {
+  region = "{{region}}"
+
   default_tags {
     tags = {
       Application = "{{ project }}-{{ env }}"

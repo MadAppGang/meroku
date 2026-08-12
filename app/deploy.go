@@ -287,6 +287,12 @@ func applyTemplate(env string) {
 		os.Exit(1)
 	}
 
+	// The template pins the provider region from this config. Say so now if the
+	// shell disagrees, so an existing stack's relocation is not first seen as a
+	// destroy in the plan. A warning, not an error: on a stack that does not
+	// exist yet there is nothing to relocate.
+	warnOnRegionDrift(stringFromMap(envMap, "region"), stringFromMap(envMap, "aws_profile"))
+
 	// Filter out disabled services (enabled=false) before rendering
 	filterDisabledItems(envMap, "services")
 	filterDisabledItems(envMap, "scheduled_tasks")
