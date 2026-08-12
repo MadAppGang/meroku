@@ -26,6 +26,7 @@ import "./property-panel.css";
 
 type CompactView = "setup" | "details";
 type ImageMode = "default" | "custom" | "shared";
+type CompactTheme = "dark" | "light";
 
 const cpuOptions = [
 	["256", "256 (0.25 vCPU)"],
@@ -85,11 +86,13 @@ function ResourceSelect({
 	value,
 	options,
 	onDirty,
+	theme,
 }: {
 	label: string;
 	value: string;
 	options: string[][];
 	onDirty: () => void;
+	theme: CompactTheme;
 }) {
 	return (
 		<Field label={label}>
@@ -97,7 +100,7 @@ function ResourceSelect({
 				<SelectTrigger aria-label={label} className="mp-control">
 					<SelectValue />
 				</SelectTrigger>
-				<SelectContent className="mp-select-content">
+				<SelectContent className="mp-select-content" data-theme={theme}>
 					{options.map(([optionValue, optionLabel]) => (
 						<SelectItem key={optionValue} value={optionValue}>
 							{optionLabel}
@@ -122,10 +125,12 @@ function ReadonlyRows({ rows }: { rows: string[][] }) {
 	);
 }
 
-export function ServiceCompactGrouped({
+export function ServiceProperties({
 	mode = "manage",
+	theme = "dark",
 }: {
 	mode?: "manage" | "create";
+	theme?: CompactTheme;
 }) {
 	const [activeView, setActiveView] = useState<CompactView>("setup");
 	const [imageMode, setImageMode] = useState<ImageMode>("default");
@@ -191,10 +196,9 @@ export function ServiceCompactGrouped({
 		<aside
 			className="meroku-properties mp-compact-panel"
 			data-mode={mode}
+			data-theme={theme}
 			aria-label={
-				isCreate
-					? "create service compact grouped"
-					: "terminator properties compact grouped"
+				isCreate ? "create service properties" : "terminator service properties"
 			}
 		>
 			<header className="mp-compact-header">
@@ -284,12 +288,14 @@ export function ServiceCompactGrouped({
 									value="512"
 									options={cpuOptions}
 									onDirty={markDirty}
+									theme={theme}
 								/>
 								<ResourceSelect
 									label="Memory"
 									value="1024"
 									options={memoryOptions}
 									onDirty={markDirty}
+									theme={theme}
 								/>
 							</div>
 							<div className="mp-compact-scaling-row">
@@ -542,3 +548,6 @@ export function ServiceCompactGrouped({
 		</aside>
 	);
 }
+
+// Backwards-compatible alias for stories that are no longer loaded by Storybook.
+export const ServiceCompactGrouped = ServiceProperties;

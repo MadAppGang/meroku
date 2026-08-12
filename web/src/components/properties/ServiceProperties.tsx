@@ -1,0 +1,1 @@
+export { ServiceProperties } from "./ServiceCompactGrouped";
