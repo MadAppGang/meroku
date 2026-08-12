@@ -321,6 +321,11 @@ type Sqs struct {
 
 type ALB struct {
 	Enabled bool `yaml:"enabled"`
+	// Seconds the ALB holds an idle connection open. This is the one knob SSE
+	// and other long-lived streams need, and the reason to choose the ALB over
+	// API Gateway at all: API Gateway's 30s integration timeout is fixed and
+	// cannot stream. 0/absent uses the module default of 60.
+	IdleTimeout int `yaml:"idle_timeout,omitempty"`
 }
 
 type ScheduledTask struct {

@@ -69,7 +69,12 @@ resource "aws_apigatewayv2_route" "services" {
   target    = "integrations/${aws_apigatewayv2_integration.services[each.key].id}"
 }
 
+# The backend integration routes through Cloud Map, which backend.tf only creates when the
+# ALB is off (count = enable_alb ? 0 : 1). Both must be gated on the same condition or the
+# ALB path fails to plan with "Invalid index" on aws_service_discovery_service.backend[0].
 resource "aws_apigatewayv2_integration" "backend" {
+  count = var.enable_alb ? 0 : 1
+
   api_id             = aws_apigatewayv2_api.api_gateway.id
   integration_type   = "HTTP_PROXY"
   integration_method = "ANY"
@@ -84,7 +89,9 @@ resource "aws_apigatewayv2_integration" "backend" {
 }
 
 resource "aws_apigatewayv2_route" "backend" {
+  count = var.enable_alb ? 0 : 1
+
   api_id    = aws_apigatewayv2_api.api_gateway.id
   route_key = "ANY /{proxy+}"
-  target    = "integrations/${aws_apigatewayv2_integration.backend.id}"
+  target    = "integrations/${aws_apigatewayv2_integration.backend[0].id}"
 }

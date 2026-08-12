@@ -380,6 +380,8 @@ module "alb" {
   env = "{{env}}"
   vpc_id = local.vpc_id
   private_subnets = local.subnet_ids
+  # Raise above the app's heartbeat interval to hold SSE / streaming connections open.
+  idle_timeout = {{default alb.idle_timeout 60}}
 }
 {{/if}}
 
@@ -535,6 +537,10 @@ module "workloads" {
   subdomains_certificate_arn = module.domain.subdomains_certificate_arn
   api_certificate_arn = module.domain.api_certificate_arn
   domain_zone_id = module.domain.zone_id
+  # Env-resolved domain ("<env>.<zone>" or "<zone>"). Consumers must not re-derive the
+  # prefix: it is controlled by add_env_domain_prefix, and hand-rolling
+  # "${var.env}.${var.domain}" puts records outside the zone and the wildcard certificate.
+  env_domain = module.domain.domain_name
   {{/if}}
   ecr_strategy = "{{ecr_strategy}}"
   {{#if ecr_account_id}}
@@ -629,11 +635,17 @@ module "workloads" {
   {{#compare (len workload.env_files_s3) ">" 0}}
   env_files_s3 = {{{array workload.env_files_s3}}} 
   {{/compare}}
-  {{#if alb.enabled}}{{#if workload.backend_alb_domain_name}}
-  backend_alb_domain_name = "{{workload.backend_alb_domain_name}}"
+  {{#if alb.enabled}}
+  # The ALB serves api_domain — the same hostname API Gateway serves — so enabling it does
+  # not change the public API URL. backend_alb_domain_name is an optional EXTRA hostname,
+  # not the switch that turns the ALB on; requiring it was what made alb.enabled inert.
   alb_arn = module.alb.alb_arn
+  alb_security_group_id = module.alb.alb_security_group_id
   enable_alb = true
-  {{/if}}{{/if}}
+  {{#if workload.backend_alb_domain_name}}
+  backend_alb_domain_name = "{{workload.backend_alb_domain_name}}"
+  {{/if}}
+  {{/if}}
   {{#compare (len services) ">" 0}}
   services = {{{array services}}} 
   {{/compare}}
