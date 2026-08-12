@@ -697,6 +697,18 @@ module "schedule_task_{{name}}" {
   {{/if}}
   # https://docs.aws.amazon.com/scheduler/latest/UserGuide/schedule-types.html?icmpid=docs_console_unmapped#rate-based
   schedule = "{{schedule}}"
+  {{#if timezone}}
+  schedule_expression_timezone = "{{timezone}}"
+  {{/if}}
+  {{!-- `exists`, not `if`: 0 is a real value here meaning "never retry", and
+        an absent key must stay absent so the module omits the retry_policy
+        block and AWS keeps its own default of 185. --}}
+  {{#if (exists max_retry_attempts)}}
+  max_retry_attempts = {{max_retry_attempts}}
+  {{/if}}
+  {{#if dlq_arn}}
+  dlq_arn = "{{dlq_arn}}"
+  {{/if}}
   subnet_ids = local.subnet_ids
   vpc_id     = local.vpc_id
   cluster = module.workloads.ecr_cluster.arn

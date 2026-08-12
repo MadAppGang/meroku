@@ -38,6 +38,29 @@ variable "schedule" {
   default = "rate(1 days)"
 }
 
+variable "schedule_expression_timezone" {
+  description = "IANA timezone the schedule expression is evaluated in. DST-aware, so a cron set for 09:00 stays at 09:00 local across the change."
+  type        = string
+  default     = "UTC"
+}
+
+variable "max_retry_attempts" {
+  description = "Maximum retry attempts for the schedule target. null (the default) omits the retry_policy block entirely so AWS keeps its own default of 185; setting a bare default here would silently cut every existing task's retry budget to that number on the next apply."
+  type        = number
+  default     = null
+
+  validation {
+    condition     = var.max_retry_attempts == null || (var.max_retry_attempts >= 0 && var.max_retry_attempts <= 185 && floor(var.max_retry_attempts) == var.max_retry_attempts)
+    error_message = "max_retry_attempts must be a whole number from 0 to 185."
+  }
+}
+
+variable "dlq_arn" {
+  description = "SQS queue ARN used as the schedule target's dead-letter destination. Empty (the default) disables the DLQ and the IAM grant that goes with it."
+  type        = string
+  default     = ""
+}
+
 variable "subnet_ids" {
   type = list(string)
 }
@@ -55,7 +78,7 @@ variable "sqs_policy_arn" {
 }
 
 variable "sqs_queue_url" {
-  default =  ""
+  default = ""
 }
 
 variable "sqs_enable" {

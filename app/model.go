@@ -334,15 +334,26 @@ type ScheduledTask struct {
 	// all — modules/ecs_task creates its ECR repository only in dev, and an SSM
 	// change deliberately never redeploys a task — so true there enables only
 	// the manual path. See modules/workloads/ci_lambda/README.md.
-	AutoDeploy          *bool      `yaml:"auto_deploy,omitempty"`
-	Schedule            string     `yaml:"schedule"`
-	ExternalDockerImage string     `yaml:"docker_image"`
+	AutoDeploy          *bool  `yaml:"auto_deploy,omitempty"`
+	Schedule            string `yaml:"schedule"`
+	ExternalDockerImage string `yaml:"docker_image"`
 	// A list of arguments, matching Terraform's list(string). Was a scalar
 	// string until schema v25, which converts existing values on load.
-	ContainerCommand []string `yaml:"container_command"`
-	CPU                 int        `yaml:"cpu,omitempty"`
-	Memory              int        `yaml:"memory,omitempty"`
-	ECRConfig           *ECRConfig `yaml:"ecr_config,omitempty"` // Schema v9
+	ContainerCommand []string   `yaml:"container_command"`
+	CPU              int        `yaml:"cpu,omitempty"`
+	Memory           int        `yaml:"memory,omitempty"`
+	ECRConfig        *ECRConfig `yaml:"ecr_config,omitempty"` // Schema v9
+	// IANA timezone the schedule is evaluated in. DST-aware, so a job set for
+	// 09:00 stays at 09:00 local across the change. Empty uses the module
+	// default of UTC.
+	Timezone string `yaml:"timezone,omitempty"`
+	// Retry attempts for the schedule target. A pointer because absent and 0
+	// differ: absent leaves AWS's own default of 185 in place, while 0 means
+	// do not retry at all.
+	MaxRetryAttempts *int `yaml:"max_retry_attempts,omitempty"`
+	// SQS queue ARN for failed invocations. Empty disables the DLQ and the
+	// scoped sqs:SendMessage grant that comes with it.
+	DLQArn string `yaml:"dlq_arn,omitempty"`
 }
 
 // EventBridgeRule defines a single EventBridge rule pattern (Schema v13)
