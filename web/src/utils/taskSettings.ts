@@ -1,36 +1,28 @@
-export const DEFAULT_SCHEDULE_TIMEZONE = "UTC";
-export const DEFAULT_MAX_RETRY_ATTEMPTS = 3;
-export const MAX_RETRY_ATTEMPTS = 185;
-
-export type ContainerCommand = string[] | string | undefined;
-
-export function formatContainerCommand(command: ContainerCommand): string {
-	if (Array.isArray(command)) {
-		return JSON.stringify(command);
-	}
-
-	if (!command) {
-		return "";
-	}
-
-	const trimmed = command.trim();
-	if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
-		try {
-			const parsed = JSON.parse(trimmed);
-			if (
-				Array.isArray(parsed) &&
-				parsed.every((argument) => typeof argument === "string")
-			) {
-				return JSON.stringify(parsed);
-			}
-		} catch {
-			// Preserve legacy scalar values that only resemble JSON.
-		}
-	}
-
-	return command;
-}
-
+/**
+ * Turns the scheduled-task command editor's text into the `list(string)` the
+ * config and Terraform expect.
+ *
+ * Two accepted inputs, in this order:
+ *
+ *   1. A JSON array — `["npm","run","cron"]` — which round-trips exactly. This
+ *      is what a config written by any other tool looks like, and what earlier
+ *      meroku users typed by hand to make the old raw template render valid HCL.
+ *   2. Otherwise a comma-separated line — `npm, run, cron`.
+ *
+ * COMMA IS A SEPARATOR HERE, and deliberately is NOT in migration v25
+ * (app/migrations.go). That is not an oversight, but it is a real difference
+ * worth stating: the migration converts values already on disk, where it cannot
+ * know whether a comma was a separator or part of an argument, so it keeps the
+ * whole string as one argument. This function converts what a person just typed
+ * into a field documented as comma-separated, so the comma is intentional.
+ *
+ * The consequence: a single argument that itself contains a comma cannot be
+ * typed as bare text — write it as a JSON array instead, which is why the JSON
+ * form is tried first.
+ *
+ * Empty input returns undefined rather than [], so the key is omitted from the
+ * config and the container's own ENTRYPOINT still applies.
+ */
 export function parseContainerCommand(value: string): string[] | undefined {
 	const trimmed = value.trim();
 	if (!trimmed) {
@@ -47,7 +39,8 @@ export function parseContainerCommand(value: string): string[] | undefined {
 				return parsed;
 			}
 		} catch {
-			// Fall through to the comma-separated editor format.
+			// Bracketed but not decodable JSON. Fall through and treat it as the
+			// comma-separated editor format rather than guessing.
 		}
 	}
 
@@ -55,46 +48,4 @@ export function parseContainerCommand(value: string): string[] | undefined {
 		.split(",")
 		.map((argument) => argument.trim())
 		.filter(Boolean);
-}
-
-export function isValidScheduleTimezone(timezone: string): boolean {
-	if (!timezone.trim()) {
-		return false;
-	}
-
-	try {
-		new Intl.DateTimeFormat("en-US", { timeZone: timezone.trim() }).format();
-		return true;
-	} catch {
-		return false;
-	}
-}
-
-export function parseMaxRetryAttempts(
-	value: string,
-): { value: number } | { error: string } {
-	const trimmed = value.trim();
-	const parsed = Number(trimmed);
-	if (
-		!trimmed ||
-		!Number.isInteger(parsed) ||
-		parsed < 0 ||
-		parsed > MAX_RETRY_ATTEMPTS
-	) {
-		return {
-			error: `Retry attempts must be a whole number from 0 to ${MAX_RETRY_ATTEMPTS}`,
-		};
-	}
-
-	return { value: parsed };
-}
-
-export function isValidSqsQueueArn(arn: string): boolean {
-	if (!arn.trim()) {
-		return true;
-	}
-
-	return /^arn:(aws|aws-cn|aws-us-gov|aws-iso|aws-iso-b):sqs:[a-z0-9-]+:\d{12}:[A-Za-z0-9_-]{1,80}$/.test(
-		arn.trim(),
-	);
 }

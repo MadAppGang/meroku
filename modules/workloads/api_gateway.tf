@@ -69,9 +69,12 @@ resource "aws_apigatewayv2_route" "services" {
   target    = "integrations/${aws_apigatewayv2_integration.services[each.key].id}"
 }
 
-# The backend integration routes through Cloud Map, which backend.tf only creates when the
-# ALB is off (count = enable_alb ? 0 : 1). Both must be gated on the same condition or the
-# ALB path fails to plan with "Invalid index" on aws_service_discovery_service.backend[0].
+# The backend integration routes through Cloud Map. Cloud Map itself is now created in BOTH
+# ingress modes (backend.tf keeps count = 1 unconditionally, because AWS will not let
+# service_registries be removed from a running service). Only the API Gateway wiring is
+# conditional, which is what these counts express: with the ALB on, nothing here is created,
+# so nothing indexes aws_service_discovery_service.backend[0] — the "Invalid index" this
+# gating originally fixed.
 resource "aws_apigatewayv2_integration" "backend" {
   count = var.enable_alb ? 0 : 1
 
