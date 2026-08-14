@@ -373,17 +373,25 @@ module "s3" {
   buckets = {{{array buckets}}}
 }
 {{/compare}}
-{{#if alb.enabled}}
+{{!-- Emitted in BOTH ingress modes and switched off with `enabled`, rather than
+      being wrapped in {{#if alb.enabled}}.
+
+      Dropping the module on disable also dropped module.workloads' reference to
+      its security group, and with the reference went the only thing telling
+      Terraform the backend rule depends on that group. It then destroyed the
+      group first, AWS refused with DependencyViolation, and the apply retried
+      for ~14 minutes before failing. Keeping the module in the graph keeps the
+      edge, so the rule is revoked first. --}}
 module "alb" {
   source = "{{modules}}/alb"
   project = "{{project}}"
   env = "{{env}}"
+  enabled = {{#if alb.enabled}}true{{else}}false{{/if}}
   vpc_id = local.vpc_id
   private_subnets = local.subnet_ids
   # Raise above the app's heartbeat interval to hold SSE / streaming connections open.
   idle_timeout = {{default alb.idle_timeout 60}}
 }
-{{/if}}
 
 {{#if has_custom_pre}}
 # ============================================================================
@@ -635,13 +643,18 @@ module "workloads" {
   {{#compare (len workload.env_files_s3) ">" 0}}
   env_files_s3 = {{{array workload.env_files_s3}}} 
   {{/compare}}
-  {{#if alb.enabled}}
   # The ALB serves api_domain — the same hostname API Gateway serves — so enabling it does
   # not change the public API URL. backend_alb_domain_name is an optional EXTRA hostname,
   # not the switch that turns the ALB on; requiring it was what made alb.enabled inert.
+  #
+  # These two are passed in BOTH modes (they resolve to "" when the ALB is off) so the
+  # dependency on module.alb survives being disabled. Only enable_alb decides behaviour.
+  # Gating the references themselves is what let Terraform destroy the ALB security group
+  # while the backend rule still pointed at it.
   alb_arn = module.alb.alb_arn
   alb_security_group_id = module.alb.alb_security_group_id
-  enable_alb = true
+  enable_alb = {{#if alb.enabled}}true{{else}}false{{/if}}
+  {{#if alb.enabled}}
   {{#if workload.backend_alb_domain_name}}
   backend_alb_domain_name = "{{workload.backend_alb_domain_name}}"
   {{/if}}

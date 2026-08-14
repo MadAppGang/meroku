@@ -119,14 +119,52 @@ func TestBackendALBDomainNameIsAnOptionalExtra(t *testing.T) {
 	}
 }
 
-func TestALBDisabledEmitsNoIngressWiring(t *testing.T) {
+// Disabling the ALB must switch it off, not delete it from the graph.
+//
+// The module used to be wrapped in {{#if alb.enabled}} and its outputs passed to
+// workloads only when on. Disabling therefore removed module.workloads' reference
+// to the ALB security group — and that reference was the only thing telling
+// Terraform that the backend's ingress rule depends on that group. With no edge,
+// Terraform destroyed the group while the rule still pointed at it, AWS refused
+// with DependencyViolation, and the apply retried for ~14 minutes before failing.
+//
+// So the assertions below are deliberately the opposite of what "disabled" would
+// suggest: the wiring must still be emitted, carrying false and "".
+func TestALBDisabledKeepsTheWiringSoTeardownOrders(t *testing.T) {
 	overlay := albOverlay(t, map[string]interface{}{"enabled": false}, noExtraHostname)
-	block := workloadsModuleBlock(t, renderMainHBS(t, overlay))
+	rendered := renderMainHBS(t, overlay)
+	block := workloadsModuleBlock(t, rendered)
 
-	for _, unwanted := range []string{"enable_alb", "alb_arn", "alb_security_group_id"} {
-		if strings.Contains(block, unwanted) {
-			t.Errorf("%s should be absent when the ALB is off:\n%s", unwanted, block)
+	// The references must survive, or the dependency edge dies with them.
+	for _, want := range []string{
+		"enable_alb = false",
+		"alb_arn = module.alb.alb_arn",
+		"alb_security_group_id = module.alb.alb_security_group_id",
+	} {
+		if !strings.Contains(block, want) {
+			t.Errorf("want %q — dropping it removes the edge that orders teardown:\n%s", want, block)
 		}
+	}
+
+	// The extra hostname is genuinely conditional and must not appear.
+	if strings.Contains(block, "backend_alb_domain_name =") {
+		t.Errorf("backend_alb_domain_name should not be assigned when the ALB is off:\n%s", block)
+	}
+
+	// And the module itself has to still be emitted, switched off internally.
+	albBlock := albModuleBlock(t, rendered)
+	if !strings.Contains(albBlock, "enabled = false") {
+		t.Errorf("module \"alb\" should be emitted with enabled = false, got:\n%s", albBlock)
+	}
+}
+
+// The same wiring with the ALB on.
+func TestALBEnabledPassesEnabledTrue(t *testing.T) {
+	overlay := albOverlay(t, map[string]interface{}{"enabled": true}, noExtraHostname)
+	albBlock := albModuleBlock(t, renderMainHBS(t, overlay))
+
+	if !strings.Contains(albBlock, "enabled = true") {
+		t.Errorf("module \"alb\" should be emitted with enabled = true, got:\n%s", albBlock)
 	}
 }
 

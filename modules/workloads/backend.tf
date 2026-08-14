@@ -65,6 +65,24 @@ resource "aws_ecs_service" "backend" {
   lifecycle {
     ignore_changes = [task_definition]
   }
+
+  # ECS rejects a service whose target group has no load balancer attached, and a
+  # target group only counts as attached once a listener forwards to it:
+  #
+  #   InvalidParameterException: The target group with targetGroupArn ... does not
+  #   have an associated load balancer.
+  #
+  # The load_balancer block above references the target group, so Terraform orders
+  # this after the target group — but not after the listener, which nothing here
+  # mentions. On a first apply the listener waits on ACM certificate validation
+  # (minutes), while this service starts immediately, so it reliably lost the race
+  # and the apply failed. A second apply then succeeded, because by then the
+  # listener existed, which is the signature of a missing edge rather than a
+  # broken config.
+  #
+  # Stated unconditionally: with the ALB off the listener has count = 0 and
+  # depending on an empty set is a no-op.
+  depends_on = [aws_lb_listener.https]
 }
 
 # Create the Cloud Map service explicitly (instead of letting ECS Service Connect create it).
