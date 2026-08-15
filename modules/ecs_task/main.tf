@@ -20,11 +20,29 @@ resource "aws_scheduler_schedule" "scheduler" {
     mode = "OFF"
   }
 
-  schedule_expression = var.schedule
+  schedule_expression          = var.schedule
+  schedule_expression_timezone = var.schedule_expression_timezone
 
   target {
     arn      = var.cluster
     role_arn = aws_iam_role.scheduler_role.arn
+
+    # Opt-in only. Omitted when unset so AWS keeps its own default of 185;
+    # emitting a bare default here would cut every existing task's retry budget
+    # on the next apply, silently and without anyone asking for it.
+    dynamic "retry_policy" {
+      for_each = var.max_retry_attempts != null ? [var.max_retry_attempts] : []
+      content {
+        maximum_retry_attempts = retry_policy.value
+      }
+    }
+
+    dynamic "dead_letter_config" {
+      for_each = var.dlq_arn != "" ? [var.dlq_arn] : []
+      content {
+        arn = dead_letter_config.value
+      }
+    }
 
     ecs_parameters {
       task_definition_arn    = aws_ecs_task_definition.task.arn_without_revision
@@ -74,20 +92,20 @@ resource "aws_ecs_task_definition" "task" {
   # "${var.project}_task_${name}_${var.env}" — with a bare var.task those
   # families never existed, so ECR-push auto-deploy for scheduled tasks
   # could not work.
-  family                   = "${var.project}_task_${var.task}_${var.env}"
-  cpu                      = var.cpu
-  memory                   = var.memory
-  execution_role_arn       = aws_iam_role.task_execution.arn
-  task_role_arn            = aws_iam_role.task.arn
+  family             = "${var.project}_task_${var.task}_${var.env}"
+  cpu                = var.cpu
+  memory             = var.memory
+  execution_role_arn = aws_iam_role.task_execution.arn
+  task_role_arn      = aws_iam_role.task.arn
 
   container_definitions = jsonencode([merge(
     {
-      name      = "${var.project}_container_${var.task}_${var.env}"
-      cpu       = var.cpu
-      memory    = var.memory
-      image     = local.docker_image
-      secrets   = local.task_env_ssm
-      essential = true
+      name        = "${var.project}_container_${var.task}_${var.env}"
+      cpu         = var.cpu
+      memory      = var.memory
+      image       = local.docker_image
+      secrets     = local.task_env_ssm
+      essential   = true
       Environment = local.environment_variables
 
       logConfiguration = {

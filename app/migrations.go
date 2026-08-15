@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -34,7 +35,8 @@ import (
 // 22: Add auto_deploy to the backend, services and scheduled_tasks (CI/CD Lambda policy)
 // 23: Add AppSync auth_mode (cognito/oidc/lambda) and explicit api_key_enabled
 // 24: Repair the misspelt cognito.dashboard_callback_ur_ls key
-const CurrentSchemaVersion = 24
+// 25: Normalize scheduled_tasks[].container_command from a scalar to list(string)
+const CurrentSchemaVersion = 25
 
 // EnvWithVersion extends Env with a schema version field
 type EnvWithVersion struct {
@@ -165,6 +167,11 @@ var AllMigrations = []Migration{
 		Version:     24,
 		Description: "Repair the misspelt cognito.dashboard_callback_ur_ls key",
 		Apply:       migrateToV24,
+	},
+	{
+		Version:     25,
+		Description: "Normalize scheduled_tasks container_command from a scalar to list(string)",
+		Apply:       migrateToV25,
 	},
 }
 
@@ -1725,4 +1732,97 @@ func MigrateAllYAMLFiles() error {
 	}
 
 	return nil
+}
+
+// migrateToV25 normalizes scheduled_tasks[].container_command from a scalar
+// string into a real list of arguments.
+//
+// The field is a list(string) in Terraform and is now a []string in the model,
+// but it was a plain string for most of its life and the template rendered it
+// raw. That let a scalar reach main.tf unquoted, so the values people wrote to
+// work around it vary: a bare command, a shell-ish string, or a hand-written
+// JSON array typed so the raw render would produce valid HCL. All three have to
+// survive the change.
+//
+// A JSON-looking array is decoded, so `["npm","run","cron"]` becomes three
+// arguments rather than one argument that happens to contain brackets. Anything
+// else is kept verbatim as a single argument: splitting on whitespace would
+// look right for `npm run cron` and quietly corrupt any command with a quoted
+// argument containing a space.
+func migrateToV25(data map[string]interface{}) error {
+	fmt.Println("  → Migrating to v25: Normalizing scheduled_tasks container_command to list(string)")
+
+	tasksRaw, exists := data["scheduled_tasks"]
+	if !exists || tasksRaw == nil {
+		fmt.Println("    ℹ️  No scheduled_tasks to migrate")
+		return nil
+	}
+
+	tasks, ok := tasksRaw.([]interface{})
+	if !ok {
+		fmt.Println("    ⚠️  scheduled_tasks is not an array, skipping migration")
+		return nil
+	}
+
+	updatedCount := 0
+	for _, taskRaw := range tasks {
+		taskMap, ok := taskRaw.(map[interface{}]interface{})
+		if !ok {
+			continue
+		}
+
+		cmdRaw, hasCommand := taskMap["container_command"]
+		if !hasCommand || cmdRaw == nil {
+			continue
+		}
+		// Already a list. Keeps the migration idempotent, so a re-run and an
+		// already-converted file are both no-ops.
+		if _, isList := cmdRaw.([]interface{}); isList {
+			continue
+		}
+
+		command, ok := cmdRaw.(string)
+		if !ok {
+			// Leave unexpected types for the Env decoder to reject with a
+			// message naming the field, rather than mangling them here.
+			continue
+		}
+
+		taskMap["container_command"] = scalarCommandToList(command)
+		updatedCount++
+		if name, _ := taskMap["name"].(string); name != "" {
+			fmt.Printf("    ✓ scheduled_task '%s': converted container_command to a list\n", name)
+		}
+	}
+
+	if updatedCount == 0 {
+		fmt.Println("    ℹ️  All scheduled_tasks container_command values are already lists")
+	} else {
+		fmt.Printf("    ✓ Converted container_command on %d scheduled task(s)\n", updatedCount)
+	}
+
+	return nil
+}
+
+// scalarCommandToList turns one scalar container_command into its list form.
+func scalarCommandToList(command string) []interface{} {
+	trimmed := strings.TrimSpace(command)
+	if trimmed == "" {
+		return []interface{}{}
+	}
+
+	if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
+		var parsed []string
+		if err := json.Unmarshal([]byte(trimmed), &parsed); err == nil {
+			arguments := make([]interface{}, 0, len(parsed))
+			for _, argument := range parsed {
+				arguments = append(arguments, argument)
+			}
+			return arguments
+		}
+		// Bracketed but not decodable as JSON. Falls through and is kept whole
+		// rather than guessed at.
+	}
+
+	return []interface{}{command}
 }

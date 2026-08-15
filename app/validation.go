@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -471,6 +472,50 @@ func yamlSubMap(envMap map[string]interface{}, key string) (map[string]interface
 	default:
 		return nil, false
 	}
+}
+
+// validateALBConfigMap refuses an ALB that has no certificate to serve.
+//
+// modules/alb is HTTPS-only by construction: its :80 listener is a 301 to :443,
+// and modules/workloads then creates the :443 listener with the wildcard
+// certificate the domain module issues. With domain.enabled false there is no
+// certificate, and AWS rejects CreateListener with "A certificate must be
+// specified for HTTPS listeners".
+//
+// Nothing caught that before this check. It plans clean — certificate_arn is
+// just an empty string, which is valid HCL — so the failure arrived from AWS
+// part-way through an apply, after the VPC, the cluster, the ALB and a hundred
+// other resources already existed. The stack was left half-built, with the ECS
+// service failing behind it because its target group had no listener.
+//
+// An HTTP-only fallback is deliberately not offered: the redirect above says
+// this path terminates TLS, and quietly serving plaintext instead would be a
+// worse answer than refusing.
+func validateALBConfigMap(envMap map[string]interface{}) error {
+	alb, ok := yamlSubMap(envMap, "alb")
+	if !ok {
+		return nil
+	}
+	if enabled, _ := alb["enabled"].(bool); !enabled {
+		return nil
+	}
+
+	domainEnabled := false
+	if domain, ok := yamlSubMap(envMap, "domain"); ok {
+		domainEnabled, _ = domain["enabled"].(bool)
+	}
+	if domainEnabled {
+		return nil
+	}
+
+	return errors.New(
+		"alb.enabled is true but domain.enabled is false.\n\n" +
+			"The ALB terminates TLS: port 80 redirects to 443, and the 443 listener needs the\n" +
+			"wildcard certificate the domain module issues. Without a domain there is no\n" +
+			"certificate, and AWS rejects the listener with \"A certificate must be specified\n" +
+			"for HTTPS listeners\" — part-way through the apply, once the ALB already exists.\n\n" +
+			"Either set domain.enabled: true and configure a domain, or set alb.enabled: false\n" +
+			"to serve this environment through API Gateway.")
 }
 
 // validateAppSyncConfigMap validates the AppSync block of the raw map that is

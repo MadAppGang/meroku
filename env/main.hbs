@@ -19,12 +19,20 @@ terraform {
 # application can be found in one query (Resource Groups / Tag Editor:
 # Application = "{{ project }}-{{ env }}").
 #
-# Deliberately no `region` here: today the default provider takes its region
-# from AWS_REGION / the profile, and pinning it would silently relocate the
-# stack for anyone whose shell region differs from their YAML.
+# `region` is pinned from the YAML because the backend already is. Leaving it
+# unset gave one value two sources: the S3 backend took the region from this
+# config while every resource took it from AWS_REGION / the profile, so a shell
+# pointed elsewhere put the state in one region and the infrastructure in
+# another, and nothing said so.
+#
+# Pinning does not create that split, it reveals it: a stack already running
+# mismatched will plan a move to the YAML region. checkRegionDrift (app/) warns
+# at generation time so it is never discovered from the plan alone.
 #
 # Resource-level tags win over these, so existing tag blocks keep working.
 provider "aws" {
+  region = "{{region}}"
+
   default_tags {
     tags = {
       Application = "{{ project }}-{{ env }}"
@@ -365,15 +373,25 @@ module "s3" {
   buckets = {{{array buckets}}}
 }
 {{/compare}}
-{{#if alb.enabled}}
+{{!-- Emitted in BOTH ingress modes and switched off with `enabled`, rather than
+      being wrapped in {{#if alb.enabled}}.
+
+      Dropping the module on disable also dropped module.workloads' reference to
+      its security group, and with the reference went the only thing telling
+      Terraform the backend rule depends on that group. It then destroyed the
+      group first, AWS refused with DependencyViolation, and the apply retried
+      for ~14 minutes before failing. Keeping the module in the graph keeps the
+      edge, so the rule is revoked first. --}}
 module "alb" {
   source = "{{modules}}/alb"
   project = "{{project}}"
   env = "{{env}}"
+  enabled = {{#if alb.enabled}}true{{else}}false{{/if}}
   vpc_id = local.vpc_id
   private_subnets = local.subnet_ids
+  # Raise above the app's heartbeat interval to hold SSE / streaming connections open.
+  idle_timeout = {{default alb.idle_timeout 60}}
 }
-{{/if}}
 
 {{#if has_custom_pre}}
 # ============================================================================
@@ -527,6 +545,10 @@ module "workloads" {
   subdomains_certificate_arn = module.domain.subdomains_certificate_arn
   api_certificate_arn = module.domain.api_certificate_arn
   domain_zone_id = module.domain.zone_id
+  # Env-resolved domain ("<env>.<zone>" or "<zone>"). Consumers must not re-derive the
+  # prefix: it is controlled by add_env_domain_prefix, and hand-rolling
+  # "${var.env}.${var.domain}" puts records outside the zone and the wildcard certificate.
+  env_domain = module.domain.domain_name
   {{/if}}
   ecr_strategy = "{{ecr_strategy}}"
   {{#if ecr_account_id}}
@@ -621,11 +643,22 @@ module "workloads" {
   {{#compare (len workload.env_files_s3) ">" 0}}
   env_files_s3 = {{{array workload.env_files_s3}}} 
   {{/compare}}
-  {{#if alb.enabled}}{{#if workload.backend_alb_domain_name}}
-  backend_alb_domain_name = "{{workload.backend_alb_domain_name}}"
+  # The ALB serves api_domain — the same hostname API Gateway serves — so enabling it does
+  # not change the public API URL. backend_alb_domain_name is an optional EXTRA hostname,
+  # not the switch that turns the ALB on; requiring it was what made alb.enabled inert.
+  #
+  # These two are passed in BOTH modes (they resolve to "" when the ALB is off) so the
+  # dependency on module.alb survives being disabled. Only enable_alb decides behaviour.
+  # Gating the references themselves is what let Terraform destroy the ALB security group
+  # while the backend rule still pointed at it.
   alb_arn = module.alb.alb_arn
-  enable_alb = true
-  {{/if}}{{/if}}
+  alb_security_group_id = module.alb.alb_security_group_id
+  enable_alb = {{#if alb.enabled}}true{{else}}false{{/if}}
+  {{#if alb.enabled}}
+  {{#if workload.backend_alb_domain_name}}
+  backend_alb_domain_name = "{{workload.backend_alb_domain_name}}"
+  {{/if}}
+  {{/if}}
   {{#compare (len services) ">" 0}}
   services = {{{array services}}} 
   {{/compare}}
@@ -679,7 +712,7 @@ module "schedule_task_{{name}}" {
   docker_image = "{{docker_image}}"
   {{/if}}
   {{#if container_command}}
-  container_command = {{{ container_command }}}
+  container_command = {{{array container_command}}}
   {{/if}}
   {{#if cpu}}
   cpu = {{cpu}}
@@ -689,6 +722,18 @@ module "schedule_task_{{name}}" {
   {{/if}}
   # https://docs.aws.amazon.com/scheduler/latest/UserGuide/schedule-types.html?icmpid=docs_console_unmapped#rate-based
   schedule = "{{schedule}}"
+  {{#if timezone}}
+  schedule_expression_timezone = "{{timezone}}"
+  {{/if}}
+  {{!-- `exists`, not `if`: 0 is a real value here meaning "never retry", and
+        an absent key must stay absent so the module omits the retry_policy
+        block and AWS keeps its own default of 185. --}}
+  {{#if (exists max_retry_attempts)}}
+  max_retry_attempts = {{max_retry_attempts}}
+  {{/if}}
+  {{#if dlq_arn}}
+  dlq_arn = "{{dlq_arn}}"
+  {{/if}}
   subnet_ids = local.subnet_ids
   vpc_id     = local.vpc_id
   cluster = module.workloads.ecr_cluster.arn
@@ -1013,6 +1058,14 @@ module "amplify" {
   # Route53 zone ID for creating DNS records (ACM validation + subdomain CNAME)
   {{#if domain.enabled}}
   zone_id = module.domain.zone_id
+  {{/if}}
+
+  {{!-- Amplify writes its own Route53 records when the zone is in the same
+        account, so this is only set for a cross-account or externally managed
+        zone. `exists` rather than `if`: false is a real value here and means
+        the same as the module default, but an absent key must stay absent. --}}
+  {{#if (exists manage_dns_records)}}
+  manage_dns_records = {{manage_dns_records}}
   {{/if}}
 
   amplify_apps = [

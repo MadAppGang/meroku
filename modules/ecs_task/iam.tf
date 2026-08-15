@@ -200,3 +200,24 @@ resource "aws_iam_role_policy_attachment" "task_eventbridge" {
   role       = aws_iam_role.task.name
   policy_arn = aws_iam_policy.eventbridge_access.arn
 }
+
+# EventBridge Scheduler writes to the dead-letter queue as the scheduler role,
+# so the grant lives here rather than on the task role. Scoped to the one queue
+# and created only when a DLQ is configured, so a task without one carries no
+# sqs:SendMessage at all.
+resource "aws_iam_role_policy" "scheduler_dlq_send" {
+  count = var.dlq_arn != "" ? 1 : 0
+  name  = "SchedulerDLQSend_${var.project}_task_${var.task}_${var.env}"
+  role  = aws_iam_role.scheduler_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["sqs:SendMessage"]
+        Resource = [var.dlq_arn]
+      }
+    ]
+  })
+}

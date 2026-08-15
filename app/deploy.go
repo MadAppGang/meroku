@@ -287,6 +287,19 @@ func applyTemplate(env string) {
 		os.Exit(1)
 	}
 
+	// An ALB with no certificate plans clean and fails from AWS part-way through
+	// the apply, leaving a half-built stack. Cheaper to refuse here.
+	if err := validateALBConfigMap(envMap); err != nil {
+		fmt.Printf("\n❌ Invalid configuration in %s.yaml:\n\n%v\n\n", env, err)
+		os.Exit(1)
+	}
+
+	// The template pins the provider region from this config. Say so now if the
+	// shell disagrees, so an existing stack's relocation is not first seen as a
+	// destroy in the plan. A warning, not an error: on a stack that does not
+	// exist yet there is nothing to relocate.
+	warnOnRegionDrift(stringFromMap(envMap, "region"), stringFromMap(envMap, "aws_profile"))
+
 	// Filter out disabled services (enabled=false) before rendering
 	filterDisabledItems(envMap, "services")
 	filterDisabledItems(envMap, "scheduled_tasks")

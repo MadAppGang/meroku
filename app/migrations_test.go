@@ -1681,10 +1681,6 @@ func TestMigrationChain_IncludesV24(t *testing.T) {
 	if !found {
 		t.Error("v24 migration not found in AllMigrations")
 	}
-
-	if CurrentSchemaVersion != 24 {
-		t.Errorf("CurrentSchemaVersion = %d, want 24", CurrentSchemaVersion)
-	}
 }
 
 func v24Cognito(t *testing.T, data map[string]interface{}) map[interface{}]interface{} {

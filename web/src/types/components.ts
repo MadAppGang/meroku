@@ -20,11 +20,22 @@ export interface ScheduledTask {
 	name: string;
 	schedule: string;
 	docker_image?: string;
-	container_command?: string;
+	/** list(string) as of schema v25; was a scalar string before it. */
+	container_command?: string[];
 	cpu?: number;
 	memory?: number;
 	environment_variables?: Record<string, string>;
 	ecr_config?: ECRConfig;
+	/** IANA timezone the schedule is evaluated in. Absent means UTC. */
+	timezone?: string;
+	/**
+	 * Absent leaves AWS's own default of 185 in place; 0 means never retry.
+	 * The three states are distinct, so this must not be defaulted to a number
+	 * when writing the config.
+	 */
+	max_retry_attempts?: number;
+	/** SQS queue ARN for failed invocations. Absent disables the DLQ. */
+	dlq_arn?: string;
 }
 
 // Service related types

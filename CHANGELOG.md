@@ -1,5 +1,135 @@
 # Changelog
 
+## v4.0.0
+
+The ALB was a setting that did nothing. Turning it on created a load balancer,
+never told the workloads module about it, and left every request going to API
+Gateway — which cannot stream, so anything long-lived was cut off mid-response
+and the one documented way out was the toggle that did not work.
+
+This release makes that toggle real, and pins the region while it is in there.
+All of it was verified against a live AWS account rather than a plan: an ALB
+serving HTTPS on a real hostname, a stream held open past API Gateway's ceiling,
+two projects deployed side by side in one account, and each environment torn
+down afterwards.
+
+### The ALB is an ingress toggle that works in both directions
+
+`alb.enabled: true` was only honoured when `workload.backend_alb_domain_name`
+was also set, because the template emitted `enable_alb` inside a nested
+conditional on both. The extra hostname is optional and always was; requiring it
+as the switch is what made the flag inert. The ALB now serves `api_domain` — the
+same hostname API Gateway serves — so switching ingress does not change the
+public URL, and `backend_alb_domain_name` is what it claims to be, an extra host.
+
+`alb.idle_timeout` (default 60) is the reason to switch at all. API Gateway's
+30-second integration timeout is fixed and cannot be raised, so server-sent
+events and other long-lived responses are truncated. Verified end to end: a
+90-second stream is cut at 30.3s with a 503 on API Gateway and completes on the
+ALB with the timeout raised.
+
+Three defects stopped the ALB path from applying at all, each hidden behind the
+one before it. The API Gateway integration indexed a Cloud Map service that was
+only created when the ALB was off, so the ALB path died at plan time on `Invalid
+index`. `modules/workloads` referenced an `aws_security_group.alb` that does not
+exist in it — the ALB's group lives in `modules/alb` — and it is now passed in.
+Hostnames were hand-derived as `"${env}.${domain}"`, which ignores
+`add_env_domain_prefix` and puts records outside the zone and its wildcard
+certificate; `modules/domain` now exports the resolved name.
+
+Cloud Map registration is no longer conditional, and that one is subtle. AWS
+silently ignores removal of `serviceRegistries` in `UpdateService`: the call
+succeeds, the task stays registered, and deleting the Cloud Map service then
+fails with `ResourceInUse`. Gating it on `enable_alb` therefore made the switch a
+dead end in the direction people would actually take it. A task can sit in Cloud
+Map and an ALB target group at once — confirmed on a live service holding both —
+so the registration stays and `enable_alb` decides only who routes.
+
+### Two ordering bugs the plan could not see
+
+Both surfaced only once the path could reach AWS, and both were measured rather
+than reasoned about.
+
+The first apply of an ALB environment always failed. ECS rejects a service whose
+target group has no listener attached, and the listener waits on certificate
+validation for minutes while the service starts immediately. The service
+referenced the target group but nothing referenced the listener, so it lost the
+race every time and a second apply always succeeded — the signature of a missing
+edge rather than a broken config.
+
+Disabling the ALB hung for around fourteen minutes and then failed. The backend's
+security group carries a rule referencing the ALB's, so disabling it is an update
+of one resource and a destroy of another, and Terraform does not reliably order
+an update of a dependent before the destroy of its dependency. It destroyed the
+group first and AWS refused with `DependencyViolation` while the rule still
+pointed at it. Measured at 13m45s and 9m49s, each unstuck only by revoking the
+rule by hand. The ALB's security group is now kept in both modes so nothing is
+destroyed on a toggle and there is no ordering to get wrong; an empty group is
+free and admits nothing. The same toggle now completes in 1m01s.
+
+### An ALB with no certificate is refused before anything is built
+
+`alb.enabled: true` with `domain.enabled: false` planned perfectly and then
+failed part-way through the apply with "A certificate must be specified for HTTPS
+listeners", after the VPC, the cluster, the load balancer and roughly 130 other
+resources already existed. It plans because `certificate_arn` is an empty string,
+which is valid HCL; only AWS knows it is not a valid listener. Generation now
+refuses, naming both keys and both ways out. An HTTP-only fallback is
+deliberately not offered — the module's port 80 listener is a redirect to 443, so
+that path terminates TLS by design.
+
+### The region in the config is the region you get
+
+`region` was authoritative for the S3 backend and nothing else. The default
+provider pinned no region, so resources took theirs from `AWS_REGION` or the
+active profile: one value with two sources, and a shell pointed elsewhere put the
+state in one region and the infrastructure in another with nothing to say so.
+
+The provider is now pinned from the config. That does not create the split, it
+reveals it — a stack already running mismatched will plan a move — so generation
+warns when the shell disagrees, naming both regions and stating that the move is
+a destroy and recreate rather than a migration. A warning and not an error,
+because on a stack that does not exist yet there is nothing to relocate.
+
+### Scheduled tasks
+
+`container_command` is a `list(string)` in Terraform and was a scalar string in
+the model, rendered raw into HCL. A scalar therefore reached `main.tf` unquoted,
+so the only way to get a valid list was to type the HCL yourself, and real
+configs hold a mix of bare commands and hand-written JSON arrays. Migration v25
+converts both. The same defect on event-processor tasks rendered a `[]string` as
+`npmruncron` — Terraform's own concatenation of a slice, silently unparseable.
+
+Also adds `timezone`, so a cron set for 09:00 stays at 09:00 local across
+daylight saving; an optional `dlq_arn` with the `sqs:SendMessage` grant scoped to
+that one queue; and `max_retry_attempts`. Retries are opt-in through a `dynamic`
+block rather than a variable with a default, because AWS's own default is 185 and
+any default of ours would rewrite that number for every existing task on the next
+apply. Absent leaves 185, `0` means never retry, and both survive to the live
+schedule.
+
+### Amplify cross-account DNS
+
+`modules/amplify` already had `manage_dns_records` and the Route53 records it
+gates; nothing set it. Amplify writes its own records when the zone is in the
+same account, so this is for the cross-account and externally-managed case only.
+
+### Breaking
+
+`alb.enabled` now takes effect on its own. An environment that set it while
+relying on `backend_alb_domain_name` being absent to keep API Gateway will move
+to the ALB on the next apply. The public URL does not change, and the switch is a
+normal ECS rolling deployment.
+
+`scheduled_tasks[].container_command` becomes a list. Migration v25 rewrites
+existing configs on load; a config written by hand after this release must use
+list syntax.
+
+Adding `count` to the ALB module moves two resources to `[0]`. Terraform
+migrates that itself — the plan reports "has moved to" with nothing to add,
+change or destroy — so no `state mv` is needed. Confirmed live in both
+directions.
+
 ## v3.27.0
 
 Two things the UI told you that were not true: a delete on the map that deleted

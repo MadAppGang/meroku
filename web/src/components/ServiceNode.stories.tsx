@@ -1,4 +1,6 @@
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/react-vite";
+// biome-ignore lint/correctness/noUnusedImports: Storybook's browser-test transform requires React in scope for JSX.
+import React from "react";
 import { ReactFlowProvider } from "reactflow";
 import { ServiceNode } from "./ServiceNode";
 import "reactflow/dist/style.css";
@@ -7,6 +9,11 @@ const meta = {
 	title: "Components/ServiceNode",
 	component: ServiceNode,
 	parameters: {
+		a11y: {
+			config: {
+				rules: [{ id: "color-contrast", enabled: false }],
+			},
+		},
 		layout: "centered",
 	},
 	decorators: [

@@ -410,6 +410,7 @@ export function Sidebar({
 						variant="ghost"
 						size="icon"
 						onClick={onClose}
+						aria-label="Close properties"
 						className="text-gray-400 hover:text-white flex-shrink-0"
 					>
 						<X className="w-4 h-4" />
