@@ -34,6 +34,9 @@ env:
   # app: 1.23.0), so both are built with a toolchain each accepts.
   GO_VERSION: '1.23'
   TERRAFORM_VERSION: '1.9.8'
+  # Matches release.yml. The pnpm version is deliberately not pinned here — the
+  # web job reads it from web/package.json's `packageManager` instead.
+  NODE_VERSION: '20'
 
 jobs:
   go:
@@ -140,3 +143,55 @@ jobs:
       - name: Check the golden capture against terraform
         run: go test -tags tfgolden ./internal/boundary/ -count=1
         working-directory: modules/workloads/ci_lambda
+
+  # The web app was not compiled anywhere until a tag was pushed: release.yml ran
+  # `pnpm build` and this workflow covered only Go and Terraform. So the first
+  # signal that the frontend no longer compiled was a failed release, which is
+  # exactly what happened to v4.0.0 — a type error in a component broke the
+  # release build after the PR had already merged green.
+  #
+  # It runs `pnpm build`, the same script release.yml runs, rather than a
+  # hand-rolled equivalent. That matters: `pnpm build` is `tsc -b && vite build`,
+  # and `tsc -b` is stricter than the `tsc --noEmit -p tsconfig.json` you would
+  # reach for by hand — the error that broke v4.0.0 passes the latter and fails
+  # the former. Anything less than the real command reproduces the same gap in a
+  # smaller form.
+  web:
+    name: Web
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # No version here on purpose. pnpm/action-setup reads `packageManager`
+      # from web/package.json when none is given, so this does not become a
+      # third place the pnpm version has to be kept in sync.
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      # --frozen-lockfile, matching release.yml: a lockfile that does not satisfy
+      # package.json should fail here rather than resolve to something the
+      # release will not reproduce.
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # Build only. `biome ci src` reports 40 errors on the tree as it stands —
+      # 21 useButtonType, 12 noLabelWithoutControl, the rest a11y and unused
+      # imports — none of them from this change. Gating on it would make every
+      # PR red for reasons unrelated to itself, and the obvious sweep is not
+      # safe: a <button> inside a form defaults to type="submit", so adding
+      # type="button" to all 21 changes behaviour in whichever ones were
+      # submitting. Clearing those is its own change with its own review, and
+      # this step turns into `pnpm exec biome ci src` when it lands.
+      - name: Build
+        run: pnpm build
