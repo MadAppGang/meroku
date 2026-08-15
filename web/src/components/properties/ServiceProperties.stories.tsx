@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 // biome-ignore lint/correctness/noUnusedImports: Storybook's browser-test transform requires React in scope for JSX.
 import React from "react";
-import { expect, userEvent, within } from "storybook/test";
+import { expect, userEvent, waitFor, within } from "storybook/test";
 import { ServiceProperties } from "./ServiceProperties";
 
 const meta = {
@@ -30,6 +30,8 @@ const verifyDefaultLayout = async (
 	const panel = canvas.getByRole("complementary", {
 		name: "terminator service properties",
 	});
+	const port = canvas.getByLabelText("Port grouped").getBoundingClientRect();
+	const health = canvas.getByLabelText("Health path").getBoundingClientRect();
 	const cpu = canvas.getByLabelText("CPU").getBoundingClientRect();
 	const memory = canvas.getByLabelText("Memory").getBoundingClientRect();
 	const autoscaling = canvas.getByLabelText("Autoscaling grouped");
@@ -40,6 +42,8 @@ const verifyDefaultLayout = async (
 	await expect(panel.getBoundingClientRect().width).toBe(540);
 	await expect(cpu.height).toBe(34);
 	await expect(Math.abs(cpu.top - memory.top)).toBeLessThan(2);
+	await expect(Math.abs(port.left - cpu.left)).toBeLessThan(2);
+	await expect(Math.abs(health.left - memory.left)).toBeLessThan(2);
 	await expect(autoscaling).toBeChecked();
 	await expect(minimum).toHaveValue(1);
 	await expect(maximum).toHaveValue(5);
@@ -49,7 +53,33 @@ const verifyDefaultLayout = async (
 	);
 	await expect(Math.abs(centerY(minimum) - centerY(maximum))).toBeLessThan(2);
 	await expect(canvas.getByText("Environment")).toBeVisible();
+	await expect(canvas.getAllByText("System")).toHaveLength(2);
+	await expect(canvas.getByText("Manual")).toBeVisible();
+	await expect(canvas.getByText("postgres")).toBeVisible();
+	await expect(canvas.getByText("shared/prod")).toBeVisible();
 	await expect(canvas.queryByText("Container & Process")).toBeNull();
+
+	const targetTrigger = canvas.getByRole("button", {
+		name: "Edit autoscaling target",
+	});
+	await userEvent.click(targetTrigger);
+	const page = within(canvasElement.ownerDocument.body);
+	const targetDialog = page.getByRole("dialog", {
+		name: "Autoscaling target",
+	});
+	await waitFor(() => expect(targetDialog).toBeVisible());
+	const targetSlider = page.getByRole("slider", {
+		name: "Autoscaling CPU target",
+	});
+	await expect(targetSlider).toHaveAttribute("aria-valuenow", "70");
+	targetSlider.focus();
+	await userEvent.keyboard("{ArrowRight}");
+	await expect(targetSlider).toHaveAttribute("aria-valuenow", "75");
+	await expect(targetTrigger).toHaveTextContent("Target 75%");
+	await userEvent.keyboard("{ArrowLeft}");
+	await expect(targetSlider).toHaveAttribute("aria-valuenow", "70");
+	await userEvent.keyboard("{Escape}");
+	await waitFor(() => expect(targetDialog).not.toBeVisible());
 
 	await userEvent.click(autoscaling);
 	await expect(autoscaling).not.toBeChecked();
@@ -85,7 +115,7 @@ export const DefaultLight: Story = {
 		backgrounds: { disable: true },
 	},
 	render: () => (
-		<div className="mp-story-stage" data-theme="light">
+		<div className="mp-story-stage" data-surface="light" data-theme="light">
 			<ServiceProperties theme="light" />
 		</div>
 	),
@@ -98,5 +128,8 @@ export const DefaultLight: Story = {
 		await expect(getComputedStyle(panel).backgroundColor).toBe(
 			"rgb(255, 255, 255)",
 		);
+		await expect(
+			getComputedStyle(panel).getPropertyValue("--mp-accent").trim(),
+		).toBe("#b7f500");
 	},
 };

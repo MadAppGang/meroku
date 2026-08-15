@@ -5,6 +5,7 @@ import {
 	Container,
 	Eye,
 	EyeOff,
+	Link2,
 	Lock,
 	ShieldCheck,
 	Terminal,
@@ -15,6 +16,7 @@ import { type ReactNode, useState } from "react";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import {
 	Select,
 	SelectContent,
@@ -22,6 +24,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "../ui/select";
+import { Slider } from "../ui/slider";
 import "./property-panel.css";
 
 type CompactView = "setup" | "details";
@@ -94,13 +97,19 @@ function ResourceSelect({
 	onDirty: () => void;
 	theme: CompactTheme;
 }) {
+	const surfaceTheme = theme === "dark" ? "dark" : "light";
+
 	return (
 		<Field label={label}>
 			<Select defaultValue={value} onValueChange={onDirty}>
 				<SelectTrigger aria-label={label} className="mp-control">
 					<SelectValue />
 				</SelectTrigger>
-				<SelectContent className="mp-select-content" data-theme={theme}>
+				<SelectContent
+					className="mp-select-content"
+					data-surface={surfaceTheme}
+					data-theme={theme}
+				>
 					{options.map(([optionValue, optionLabel]) => (
 						<SelectItem key={optionValue} value={optionValue}>
 							{optionLabel}
@@ -135,6 +144,8 @@ export function ServiceProperties({
 	const [activeView, setActiveView] = useState<CompactView>("setup");
 	const [imageMode, setImageMode] = useState<ImageMode>("default");
 	const [autoscaling, setAutoscaling] = useState(true);
+	const [targetOpen, setTargetOpen] = useState(false);
+	const [targetUtilization, setTargetUtilization] = useState(70);
 	const [tracing, setTracing] = useState(true);
 	const [remoteAccess, setRemoteAccess] = useState(false);
 	const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -142,6 +153,7 @@ export function ServiceProperties({
 	const [dirty, setDirty] = useState(false);
 	const markDirty = () => setDirty(true);
 	const isCreate = mode === "create";
+	const surfaceTheme = theme === "dark" ? "dark" : "light";
 	const containerSection = (
 		<Group
 			title="Container & Process"
@@ -196,6 +208,7 @@ export function ServiceProperties({
 		<aside
 			className="meroku-properties mp-compact-panel"
 			data-mode={mode}
+			data-surface={surfaceTheme}
 			data-theme={theme}
 			aria-label={
 				isCreate ? "create service properties" : "terminator service properties"
@@ -263,7 +276,7 @@ export function ServiceProperties({
 							description="Network, resources, and task count"
 							icon={<Activity />}
 						>
-							<div className="mp-compact-fields">
+							<div className="mp-compact-fields mp-compact-fields--runtime">
 								<Field label="Port">
 									<Input
 										aria-label="Port grouped"
@@ -282,7 +295,7 @@ export function ServiceProperties({
 									/>
 								</Field>
 							</div>
-							<div className="mp-compact-fields">
+							<div className="mp-compact-fields mp-compact-fields--runtime">
 								<ResourceSelect
 									label="CPU"
 									value="512"
@@ -298,8 +311,8 @@ export function ServiceProperties({
 									theme={theme}
 								/>
 							</div>
-							<div className="mp-compact-scaling-row">
-								<div className="mp-compact-scaling-toggle">
+							<div className="mp-autoscaling-group" data-enabled={autoscaling}>
+								<div className="mp-autoscaling-group__toggle">
 									<Checkbox
 										aria-label="Autoscaling grouped"
 										checked={autoscaling}
@@ -310,12 +323,55 @@ export function ServiceProperties({
 										}}
 									/>
 									<span>Autoscaling</span>
-									{autoscaling && <small>target 70%</small>}
 								</div>
-								<div
-									className="mp-compact-scaling-fields"
-									data-autoscaling={autoscaling}
-								>
+								{autoscaling && (
+									<Popover open={targetOpen} onOpenChange={setTargetOpen}>
+										<PopoverTrigger asChild>
+											<button
+												type="button"
+												className="mp-compact-target"
+												aria-label="Edit autoscaling target"
+											>
+												Target {targetUtilization}%
+											</button>
+										</PopoverTrigger>
+										<PopoverContent
+											align="center"
+											className="mp-target-popover"
+											data-surface={surfaceTheme}
+											data-theme={theme}
+											role="dialog"
+											aria-label="Autoscaling target"
+										>
+											<div className="mp-target-popover__heading">
+												<div className="mp-target-popover__title">
+													Target utilization
+												</div>
+												<output>{targetUtilization}%</output>
+											</div>
+											<p>Average CPU before scaling · 5% steps</p>
+											<div className="mp-target-popover__editor">
+												<Slider
+													aria-label="Autoscaling CPU target"
+													className="mp-target-slider"
+													max={100}
+													min={5}
+													step={5}
+													value={[targetUtilization]}
+													onValueChange={([value]) => {
+														setTargetUtilization(value);
+														markDirty();
+													}}
+												/>
+												<div className="mp-target-popover__scale">
+													<span>5%</span>
+													<span>100%</span>
+												</div>
+											</div>
+										</PopoverContent>
+									</Popover>
+								)}
+								<div className="mp-autoscaling-group__fields">
 									{autoscaling ? (
 										<>
 											<Field key="autoscaling-min" label="Min">
@@ -392,31 +448,72 @@ export function ServiceProperties({
 										<th scope="col">Key</th>
 										<th scope="col">Value</th>
 										<th scope="col">
-											<span className="sr-only">Actions</span>
+											<span className="mp-sr-only">Actions</span>
 										</th>
 									</tr>
 								</thead>
 								<tbody>
 									{[
-										["NODE_ENV", "production", "system"],
-										["DB_HOST", "postgres.internal", "system"],
-										[
-											"API_KEY",
-											secretVisible ? "sk_live_example" : "••••••••••••••",
-											"secret",
-										],
-									].map(([key, value, kind]) => (
-										<tr className="mp-compact-env__row" key={key}>
+										{
+											key: "PORT",
+											value: "8080",
+											origin: "system",
+											badge: "System",
+											title: "Assigned automatically by Meroku",
+										},
+										{
+											key: "ENVIRONMENT",
+											value: "production",
+											origin: "system",
+											badge: "System",
+											title: "Assigned automatically by Meroku",
+										},
+										{
+											key: "LOG_LEVEL",
+											value: "info",
+											origin: "custom",
+											badge: "Manual",
+											title: "Configured manually for this service",
+										},
+										{
+											key: "DB_HOST",
+											value: "postgres.internal",
+											origin: "service",
+											badge: "postgres",
+											title: "Assigned automatically by the postgres service",
+										},
+										{
+											key: "API_KEY",
+											value: secretVisible
+												? "sk_live_example"
+												: "••••••••••••••",
+											origin: "secret",
+											badge: "shared/prod",
+											title: "Inherited from the shared/prod secret group",
+										},
+									].map(({ key, value, origin, badge, title }) => (
+										<tr
+											className="mp-compact-env__row"
+											data-origin={origin}
+											key={key}
+										>
 											<td>
-												<code>{key}</code>
+												<div className="mp-env-item">
+													<code>{key}</code>
+													<span className="mp-env-item-badge" title={title}>
+														{origin === "service" && (
+															<Link2 aria-hidden="true" />
+														)}
+														{origin === "secret" && <Lock aria-hidden="true" />}
+														{badge}
+													</span>
+												</div>
 											</td>
 											<td>
 												<code>{value}</code>
 											</td>
 											<td>
-												{kind === "system" ? (
-													<Lock aria-label="System variable" />
-												) : (
+												{origin === "secret" && (
 													<button
 														type="button"
 														className="mp-icon-button"

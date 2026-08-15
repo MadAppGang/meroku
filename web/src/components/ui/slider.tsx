@@ -11,6 +11,7 @@ function Slider({
 	value,
 	min = 0,
 	max = 100,
+	"aria-label": ariaLabel,
 	...props
 }: React.ComponentProps<typeof SliderPrimitive.Root>) {
 	const _values = React.useMemo(
@@ -25,6 +26,7 @@ function Slider({
 
 	return (
 		<SliderPrimitive.Root
+			aria-label={ariaLabel}
 			data-slot="slider"
 			defaultValue={defaultValue}
 			value={value}
@@ -51,6 +53,7 @@ function Slider({
 			</SliderPrimitive.Track>
 			{Array.from({ length: _values.length }, (_, index) => (
 				<SliderPrimitive.Thumb
+					aria-label={ariaLabel}
 					data-slot="slider-thumb"
 					// biome-ignore lint/suspicious/noArrayIndexKey: thumbs are generated from a length, so a thumb's position in the track IS its identity; there is no per-item datum to key on
 					key={index}
