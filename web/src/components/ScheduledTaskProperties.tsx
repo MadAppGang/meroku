@@ -5,6 +5,7 @@ import { useFargateOptions } from "../hooks/use-fargate-options";
 import { useDeepMemo } from "../hooks/useDeepMemo";
 import type { ComponentNode } from "../types";
 import type { ECRConfig, YamlInfrastructureConfig } from "../types/yamlConfig";
+import { parseContainerCommand } from "../utils/taskSettings";
 import { ECRConfigEditor } from "./ECRConfigEditor";
 import { ScheduledTaskEnvironmentVariables } from "./ScheduledTaskEnvironmentVariables";
 import { ScheduleExpressionBuilder } from "./ScheduleExpressionBuilder";
@@ -197,13 +198,21 @@ export function ScheduledTaskProperties({
 	} = useFargateOptions();
 	const memoryOptions = getMemoryOptions(currentTask?.cpu || 256);
 
-	// Use currentTask if it exists, otherwise use defaults
-	const task = currentTask || {
-		name: taskName,
-		schedule: "rate(1 day)",
-		docker_image: "",
-		container_command: "",
-	};
+	// Use currentTask if it exists, otherwise use defaults.
+	//
+	// Typed as the config's own element rather than left to inference: an untyped
+	// literal that does not exactly match makes `task` a union of the two shapes,
+	// and every field present on only one side stops type-checking. That is what
+	// happened when container_command became string[] and this default still said
+	// "" — `task.enabled` and `task.auto_deploy` broke, several lines away from
+	// the change that caused it.
+	const task: NonNullable<YamlInfrastructureConfig["scheduled_tasks"]>[number] =
+		currentTask || {
+			name: taskName,
+			schedule: "rate(1 day)",
+			docker_image: "",
+			container_command: [],
+		};
 
 	return (
 		<>
@@ -380,15 +389,22 @@ export function ScheduledTaskProperties({
 						</Label>
 						<Input
 							id={`${uid}-container_command`}
-							value={task.container_command || ""}
-							onChange={(e) =>
-								handleTaskChange({ container_command: e.target.value })
+							value={
+								Array.isArray(task.container_command)
+									? task.container_command.join(", ")
+									: task.container_command || ""
 							}
-							placeholder='["npm", "run", "report"]'
+							onChange={(e) =>
+								handleTaskChange({
+									container_command: parseContainerCommand(e.target.value),
+								})
+							}
+							placeholder="npm, run, report"
 							className="bg-gray-800 border-gray-600 text-white font-mono"
 						/>
 						<p className="text-xs text-gray-500">
-							Override container startup command (JSON array as string)
+							Override container startup command. Comma-separated, or a JSON
+							array if an argument itself contains a comma.
 						</p>
 					</div>
 				</CardContent>
