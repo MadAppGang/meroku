@@ -166,11 +166,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # No version here on purpose. pnpm/action-setup reads `packageManager`
-      # from web/package.json when none is given, so this does not become a
-      # third place the pnpm version has to be kept in sync.
+      # No version here on purpose: the action reads `packageManager` from the
+      # package.json it is pointed at, so the pnpm version does not become a
+      # third place to keep in sync.
+      #
+      # package_json_file is required. `defaults.run.working-directory` above
+      # applies to `run` steps only, not to action inputs, so without this the
+      # action looks in the repository root — which has no package.json — and
+      # fails with "No pnpm version is specified".
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/package.json
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
