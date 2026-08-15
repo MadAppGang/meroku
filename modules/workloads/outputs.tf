@@ -59,3 +59,20 @@ output "api_gateway_custom_domain_enabled" {
   value       = var.enable_custom_domain
 }
 
+# env/main.hbs has always emitted `domain_name = module.workloads.alb_dns_name`
+# for a CloudFront distribution with an origin of type "alb", and this module has
+# never had that output. Any config combining CloudFront with an ALB origin
+# therefore failed to plan on "Unsupported attribute" — invisible until someone
+# wrote that exact combination, which is why it survived.
+#
+# Empty when the ALB is off, since the data source it reads is not created then.
+output "alb_dns_name" {
+  description = "DNS name of the ALB, for use as a CloudFront origin. Empty when the ALB is disabled."
+  value       = length(data.aws_lb.alb) > 0 ? data.aws_lb.alb[0].dns_name : ""
+}
+
+output "alb_zone_id" {
+  description = "Route53 hosted zone ID of the ALB, for alias records. Empty when the ALB is disabled."
+  value       = length(data.aws_lb.alb) > 0 ? data.aws_lb.alb[0].zone_id : ""
+}
+
