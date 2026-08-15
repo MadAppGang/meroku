@@ -1,5 +1,38 @@
 # Changelog
 
+## v4.0.1
+
+Two things that were only discoverable by hitting them, and the release that
+hit one of them.
+
+### A CloudFront distribution in front of the ALB now plans
+
+`env/main.hbs` has always emitted `domain_name = module.workloads.alb_dns_name`
+for a CloudFront origin of type `"alb"`, and `modules/workloads` has never had
+that output. Any config combining the two failed at plan time on "Unsupported
+attribute" — invisible until someone wrote that exact pairing, which is why it
+survived this long. `alb_dns_name` and `alb_zone_id` are now exported, empty when
+the ALB is off since the data source they read is not created then.
+
+### The web app is compiled in CI
+
+Until now it was compiled nowhere until a tag was pushed: CI covered the two Go
+modules and Terraform, and the release workflow ran `pnpm build`. The first
+signal that the frontend no longer compiled was therefore a failed release, which
+is what happened to v4.0.0 — a type error merged green and broke the release
+build, so the tag had to be moved after the fix.
+
+The check runs `pnpm build` itself rather than an equivalent, because the
+equivalent is what missed it: `pnpm build` is `tsc -b && vite build`, and the
+error passes `tsc --noEmit -p tsconfig.json` while failing `tsc -b`.
+
+That type error is also fixed. A component's fallback object literal still
+described `container_command` as a string after the config type became a list, so
+TypeScript widened the value to a union of the two shapes and every field present
+on only one side stopped resolving — reported hundreds of lines from the change
+that caused it. The literal now carries the config's own element type, so a
+mismatch fails on the literal rather than at each use.
+
 ## v4.0.0
 
 The ALB was a setting that did nothing. Turning it on created a load balancer,
