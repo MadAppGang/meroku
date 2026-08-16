@@ -1,5 +1,96 @@
 # Changelog
 
+## v4.1.0
+
+Generation used to report success and write the wrong Terraform. Five separate
+sites did it, and they are one defect: raymond resolves an unknown name to the
+empty string, so a typo, a helper that was never registered and a path read from
+the wrong scope are all indistinguishable from a field the user chose to leave
+unset. Every one of them rendered without an error.
+
+### The generated file is parsed before it is written
+
+`env/main.hbs` has around seventy assignments of the bare form
+`setup_FCM_SNS = {{workload.setup_fcnsns}}`, and generation reads the YAML into a
+plain map, so it never picks up the zero values the `Env` struct would supply. A
+config missing any one of those keys rendered the right-hand side as nothing,
+leaving `setup_FCM_SNS =` with no expression after it. The first thing to notice
+was `terraform init`, several steps later, blaming a file users are told never to
+edit by hand.
+
+The rendered output is now parsed with HCL's own parser before anything is
+written, and a syntax error is reported against the line that caused it, with the
+source quoted back. Nothing is written when it fails, so a bad render can no
+longer replace a working `main.tf`. The custom Terraform appended from `custom/`
+is checked along with it, since it lands in the same file.
+
+The `os.WriteFile` error was also being discarded. A full disk or a missing
+`env/<env>/` directory produced the same success message and no file.
+
+### Certificates now cover every domain alias
+
+`{{#if (gt (len domain_aliases) 1)}}` called a helper that was never registered.
+The subexpression rendered nothing, the `{{#if}}` saw a falsy value, and
+`subject_alternative_names` was never emitted at all. The Terraform was valid and
+applied cleanly; the certificate simply covered the first alias, and every other
+alias failed TLS at request time.
+
+`gt` is now registered, and is numeric rather than lexicographic — the `compare`
+helper beside it takes its operands as strings, where `"10" < "9"`.
+
+### `backend_container_command` works at all
+
+It never has. Terraform declares it `list(string)`, the model declared it a
+string, and the template guarded on `workload.backend_container_command` while
+reading the bare name — which, with no `{{#with}}` anywhere in the file, resolved
+against the config root and found nothing. Whatever was written rendered as
+`backend_container_command = []`, which Terraform accepted, so the container ran
+its image's own `CMD` and nothing reported a problem.
+
+Schema **v26** converts the scalar form on load, the same conversion v25 applied
+to scheduled tasks. A bare command becomes one argument, a hand-written JSON
+array is decoded into several, and an empty value is dropped. The web editor now
+shares the scheduled-task parser, so it accepts the JSON array form too, and the
+config type is `string[]` rather than a union that admits both.
+
+### Two more silent renders
+
+An event processor's `container_command` was a raw stache over a list, which
+raymond renders by running the elements together: `["npm","run","cron"]` became
+`npmruncron`. That is a valid HCL identifier, so the file parsed and Terraform
+reported a reference to an undeclared resource. The sibling site on scheduled
+tasks was fixed when the field became a list; this one was missed.
+
+SNS subscription filter policies called `{{{json filter_policy}}}`, and no `json`
+helper existed, so the call site produced `jsonencode()` — well-formed HCL that
+fails on argument count, and only for configs that set a filter policy. The
+helper now exists and preserves nesting, which `mmap` does not.
+
+CloudFront logging prefixes called a `concat` helper that was never registered
+and never could have been: raymond has no variadic helper support, and that call
+passed six arguments. Distributions wrote their logs to the bucket root instead
+of under `project/env/name/`. The template now expresses the fallback directly.
+
+### The class is now checked, not just the instances
+
+`TestMainHBSLint` reads `env/main.hbs` and holds three properties: every
+triple-stache is a helper call, every helper invoked is registered, and every
+bare path outside an `{{#each}}` is a top-level config key. The helper list is
+read out of `raymond.go`, so registering one is all it takes to allow it.
+
+Each rule was verified by reintroducing the defect it was written for and
+watching it fail. The scope rule reports the fix in the message: *reads
+"backend_container_command", which is not a top-level config key. Did you mean
+workload.backend_container_command?*
+
+`TestV25IsRegisteredAtTheCurrentVersion` asserted `CurrentSchemaVersion == 25`
+outright, which is a pin rather than an invariant — it fails on the next
+migration anyone writes and the only fix is to edit the number. The same
+assertion had already been removed from the v24 test and came back with v25. It
+now checks the properties worth holding: v25 is still reachable, the constant
+names the head of the chain, versions ascend without gaps or repeats, and every
+migration has a description and an implementation.
+
 ## v4.0.1
 
 Two things that were only discoverable by hitting them, and the release that

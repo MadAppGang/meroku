@@ -334,7 +334,25 @@ func applyTemplate(env string) {
 	// Generate bridge file for custom terraform reference
 	generateBridgeFile(env, envMap)
 
-	os.WriteFile(filepath.Join("env", env, "main.tf"), []byte(result), 0o644)
+	mainTf := filepath.Join("env", env, "main.tf")
+
+	// Checked before writing, so a bad render cannot replace a working main.tf
+	// with one that no longer parses. The custom terraform appended above is part
+	// of what gets checked, which is deliberate: it lands in this file and breaks
+	// it in exactly the same way.
+	if err := validateGeneratedHCL(mainTf, result); err != nil {
+		fmt.Printf("\n❌ %v\n\n", err)
+		os.Exit(1)
+	}
+
+	// The error here was dropped. A full disk, a read-only checkout or a missing
+	// env/<env>/ directory all produced the same cheerful success message and no
+	// file, which then read as "terraform is broken" rather than "nothing was
+	// written".
+	if err := os.WriteFile(mainTf, []byte(result), 0o644); err != nil {
+		fmt.Printf("\n❌ Could not write %s: %v\n\n", mainTf, err)
+		os.Exit(1)
+	}
 }
 
 // filterDisabledItems removes items with enabled=false from the given key in env map

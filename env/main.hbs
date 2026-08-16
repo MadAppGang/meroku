@@ -576,7 +576,7 @@ module "workloads" {
   github_oidc_enabled = {{workload.enable_github_oidc}}
   github_subjects = {{{array workload.github_oidc_subjects}}}
   {{#if workload.backend_container_command}}
-  backend_container_command = {{array backend_container_command}}
+  backend_container_command = {{{array workload.backend_container_command}}}
   {{/if}}
   xray_enabled = {{workload.xray_enabled}}
   pgadmin_enabled = {{workload.install_pg_admin}}
@@ -785,7 +785,7 @@ module "event_bus_task_{{name}}" {
   docker_image = "{{docker_image}}"
   {{/if}}
   {{#if container_command}}
-  container_command = {{{ container_command }}}
+  container_command = {{{array container_command}}}
   {{/if}}
   subnet_ids = local.subnet_ids
   vpc_id     = local.vpc_id
@@ -1468,7 +1468,11 @@ module "cloudfront_{{name}}" {
   {{#if logging}}
   {{#if logging.enabled}}
   logging_bucket          = "{{logging.bucket_name}}.s3.amazonaws.com"
-  logging_prefix          = "{{default logging.prefix (concat @root.project "/" @root.env "/" name "/")}}"
+  {{#if logging.prefix}}
+  logging_prefix          = "{{logging.prefix}}"
+  {{else}}
+  logging_prefix          = "{{@root.project}}/{{@root.env}}/{{name}}/"
+  {{/if}}
   logging_include_cookies = {{default logging.include_cookies false}}
   {{/if}}
   {{/if}}

@@ -2,6 +2,7 @@ import { Info } from "lucide-react";
 import { useId } from "react";
 import type { AccountInfo } from "../api/infrastructure";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
+import { parseContainerCommand } from "../utils/taskSettings";
 import {
 	Card,
 	CardContent,
@@ -165,19 +166,12 @@ export function BackendServiceProperties({
 					</Label>
 					<Input
 						id={`${uid}-backend_container_command`}
-						value={
-							Array.isArray(config.workload?.backend_container_command)
-								? config.workload.backend_container_command.join(", ")
-								: config.workload?.backend_container_command || ""
-						}
+						value={(config.workload?.backend_container_command ?? []).join(", ")}
 						onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-							const commands = e.target.value
-								.split(",")
-								.map((cmd: string) => cmd.trim())
-								.filter((cmd: string) => cmd);
 							handleWorkloadChange({
-								backend_container_command:
-									commands.length > 0 ? commands : undefined,
+								backend_container_command: parseContainerCommand(
+									e.target.value,
+								),
 							});
 						}}
 						placeholder="npm, start"

@@ -166,18 +166,20 @@ type AppSync struct {
 }
 
 type Workload struct {
-	BackendHealthEndpoint      string            `yaml:"backend_health_endpoint"`
-	BackendExternalDockerImage string            `yaml:"backend_external_docker_image"`
-	BackendContainerCommand    string            `yaml:"backend_container_command"`
-	BucketPostfix              string            `yaml:"bucket_postfix"`
-	BucketPublic               bool              `yaml:"bucket_public"`
-	BackendImagePort           int               `yaml:"backend_image_port"`
-	SetupFCNSNS                bool              `yaml:"setup_fcnsns"`
-	XrayEnabled                bool              `yaml:"xray_enabled"`
-	BackendEnvVariables        map[string]string `yaml:"backend_env_variables"`
-	Policies                   []string          `yaml:"policies"`
-	BackendPolicies            []Policy          `yaml:"backend_policies"`
-	EnvFilesS3                 []S3EnvFile       `yaml:"env_files_s3"`
+	BackendHealthEndpoint      string `yaml:"backend_health_endpoint"`
+	BackendExternalDockerImage string `yaml:"backend_external_docker_image"`
+	// list(string) in modules/workloads/variables.tf, and a scalar here for most
+	// of its life. Schema v26 converts the scalar form. See ScheduledTask.
+	BackendContainerCommand []string          `yaml:"backend_container_command,omitempty"`
+	BucketPostfix           string            `yaml:"bucket_postfix"`
+	BucketPublic            bool              `yaml:"bucket_public"`
+	BackendImagePort        int               `yaml:"backend_image_port"`
+	SetupFCNSNS             bool              `yaml:"setup_fcnsns"`
+	XrayEnabled             bool              `yaml:"xray_enabled"`
+	BackendEnvVariables     map[string]string `yaml:"backend_env_variables"`
+	Policies                []string          `yaml:"policies"`
+	BackendPolicies         []Policy          `yaml:"backend_policies"`
+	EnvFilesS3              []S3EnvFile       `yaml:"env_files_s3"`
 
 	SlackWebhook       string   `yaml:"slack_webhook"`
 	EnableGithubOIDC   bool     `yaml:"enable_github_oidc"`
@@ -645,7 +647,7 @@ func createEnv(name, env string) Env {
 			BackendImagePort:           8080,
 			EnableGithubOIDC:           false,
 			GithubOIDCSubjects:         []string{"repo:MadAppGang/*", "repo:MadAppGang/project_backend:ref:refs/heads/main"},
-			BackendContainerCommand:    "",
+			BackendContainerCommand:    nil,
 			InstallPgAdmin:             false,
 			PgAdminEmail:               "",
 			XrayEnabled:                false,

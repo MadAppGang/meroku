@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -52,6 +53,9 @@ func registerCustomHelpers() {
 // describeArrayHelperError can recognise one coming back out of raymond.
 const arrayHelperErr = "array helper"
 
+// jsonHelperErr does the same for the json helper.
+const jsonHelperErr = "json helper"
+
 func registerCustomHelpersOnce() {
 	// array renders a YAML list as a JSON array, which is valid HCL for a
 	// list(...) variable.
@@ -91,6 +95,34 @@ func registerCustomHelpersOnce() {
 			panic(fmt.Errorf("%s: cannot render %s as a list: %w", arrayHelperErr, formatYAMLValue(items), err))
 		}
 		return raymond.SafeString(jsonBytes)
+	})
+
+	// json renders any value as JSON, which doubles as valid HCL: an object
+	// constructor accepts `"key": value` as well as `key = value`, so a decoded
+	// YAML mapping round-trips through json.Marshal into something Terraform
+	// parses.
+	//
+	// env/main.hbs has called {{{json filter_policy}}} for SNS subscription
+	// filters since that block was written, and no such helper was ever
+	// registered. raymond resolves an unknown helper name as a path, finds
+	// nothing and renders empty, so the call site produced `jsonencode()` —
+	// syntactically valid HCL that fails at terraform validate on arity. It only
+	// reached anyone who set filter_policy, which is why it survived.
+	//
+	// Unlike mmap this preserves nesting: a filter policy is arbitrary JSON and
+	// mmap flattens every value through %v, turning a list into "[a b]".
+	raymond.RegisterHelper("json", func(value interface{}) raymond.SafeString {
+		// Guarded by {{#if filter_policy}} at the only call site, but a helper
+		// that renders nothing for nil is how this bug looked in the first place.
+		if value == nil {
+			return "null"
+		}
+
+		encoded, err := json.Marshal(convertToJSONCompatible(value))
+		if err != nil {
+			panic(fmt.Errorf("%s: cannot render %s as JSON: %w", jsonHelperErr, formatYAMLValue(value), err))
+		}
+		return raymond.SafeString(encoded)
 	})
 
 	//   [{ "name" : "PG_DATABASE_HOST", "value" : var.db_endpoint }, ...]
@@ -187,6 +219,28 @@ func registerCustomHelpersOnce() {
 	// Returns false for:
 	//   - "otherexample.com" is NOT subdomain of "example.com"
 	//   - "mail.other.com" is NOT subdomain of "example.com"
+	// gt is a numeric greater-than, for {{#if (gt (len xs) 1)}}.
+	//
+	// env/main.hbs has called this since ACM subject alternative names were
+	// added, and it was never registered, so the subexpression rendered nothing,
+	// the {{#if}} saw a falsy value, and subject_alternative_names was never
+	// emitted at all. A certificate for a distribution with several aliases
+	// covered only the first one, and the generated Terraform was valid, so
+	// nothing reported a problem until a browser did.
+	//
+	// Deliberately not routed through the existing compare helper: that one takes
+	// its operands as strings and compares them lexicographically, which is right
+	// for the `> 0` emptiness tests it is used for and wrong the moment a length
+	// reaches double digits ("10" < "9").
+	raymond.RegisterHelper("gt", func(a, b interface{}) bool {
+		left, leftOK := numericValue(a)
+		right, rightOK := numericValue(b)
+		if !leftOK || !rightOK {
+			return false
+		}
+		return left > right
+	})
+
 	raymond.RegisterHelper("isSubdomainOf", func(domain, parentDomain interface{}) bool {
 		domainStr, ok1 := domain.(string)
 		parentStr, ok2 := parentDomain.(string)
@@ -525,6 +579,33 @@ func registerCustomHelpersOnce() {
 		}
 		return pairs
 	})
+}
+
+// numericValue coerces a decoded YAML scalar to a float64.
+//
+// YAML gives back int, float64 or — for a value that was quoted — a string, and
+// a helper argument may also be a template literal, which raymond passes through
+// as whatever the parser produced. Reporting failure rather than guessing keeps
+// a comparison against a non-number from silently reading as "less than".
+func numericValue(value interface{}) (float64, bool) {
+	switch typed := value.(type) {
+	case nil:
+		return 0, false
+	case string:
+		parsed, err := strconv.ParseFloat(strings.TrimSpace(typed), 64)
+		return parsed, err == nil
+	}
+
+	v := reflect.ValueOf(value)
+	switch v.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return float64(v.Int()), true
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return float64(v.Uint()), true
+	case reflect.Float32, reflect.Float64:
+		return v.Float(), true
+	}
+	return 0, false
 }
 
 // formatYAMLValue renders a config value the way a user would recognise it in
