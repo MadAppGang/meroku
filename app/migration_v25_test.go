@@ -161,16 +161,59 @@ func TestMigrateToV25LeavesOtherShapesAlone(t *testing.T) {
 	})
 }
 
-// The version constant, the history comment and the registered migration list
-// have to agree, or a file migrates to a version whose migration never ran.
-func TestV25IsRegisteredAtTheCurrentVersion(t *testing.T) {
-	if CurrentSchemaVersion != 25 {
-		t.Fatalf("CurrentSchemaVersion = %d, want 25", CurrentSchemaVersion)
+// The version constant and the registered migration list have to agree, or a
+// file is stamped with a version whose migration never ran.
+//
+// This asserted CurrentSchemaVersion == 25 outright. That is a pin, not an
+// invariant: it fails on the next migration anyone writes, and the only possible
+// fix is to edit the number, so it can never catch a real defect — it just costs
+// whoever adds v26 a confusing red test. The same assertion was removed from the
+// v24 test for the same reason and came back with v25, so it is spelt out here.
+//
+// The properties actually worth holding are below.
+func TestMigrationChainIsWellFormed(t *testing.T) {
+	if len(AllMigrations) == 0 {
+		t.Fatal("no migrations are registered")
 	}
 
-	last := AllMigrations[len(AllMigrations)-1]
-	if last.Version != CurrentSchemaVersion {
-		t.Errorf("last registered migration is v%d, but CurrentSchemaVersion is %d",
-			last.Version, CurrentSchemaVersion)
-	}
+	t.Run("v25 is still reachable", func(t *testing.T) {
+		for _, migration := range AllMigrations {
+			if migration.Version == 25 {
+				return
+			}
+		}
+		t.Error("migration v25 is no longer registered, so configs written before it can never be brought forward")
+	})
+
+	t.Run("the constant names the head of the chain", func(t *testing.T) {
+		last := AllMigrations[len(AllMigrations)-1]
+		if last.Version != CurrentSchemaVersion {
+			t.Errorf("last registered migration is v%d, but CurrentSchemaVersion is %d",
+				last.Version, CurrentSchemaVersion)
+		}
+	})
+
+	// A duplicate version silently shadows one of the two migrations: the runner
+	// compares against the file's stored version, so whichever is reached second
+	// looks like it has already been applied. This repository has had that
+	// collision before, when v21 was claimed twice.
+	t.Run("versions ascend without gaps or repeats", func(t *testing.T) {
+		for i := 1; i < len(AllMigrations); i++ {
+			previous, current := AllMigrations[i-1].Version, AllMigrations[i].Version
+			if current != previous+1 {
+				t.Errorf("migration %d follows %d; versions must ascend by one", current, previous)
+			}
+		}
+	})
+
+	t.Run("every migration has a description and an implementation", func(t *testing.T) {
+		for _, migration := range AllMigrations {
+			if migration.Description == "" {
+				t.Errorf("migration v%d has no description; it is printed to the user as it runs", migration.Version)
+			}
+			if migration.Apply == nil {
+				t.Errorf("migration v%d has no Apply function", migration.Version)
+			}
+		}
+	})
 }

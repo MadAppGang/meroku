@@ -16,7 +16,11 @@ export interface InfrastructureConfig {
 	backend_external_docker_image?: string;
 	image_bucket_postfix?: string;
 	bucket_public?: boolean;
-	backend_container_command?: string | string[];
+	// list(string), matching yamlConfig.ts and modules/workloads/variables.tf.
+	// It was `string | string[]` here, and a union that admits the scalar keeps
+	// every reader carrying an Array.isArray branch for a shape schema v26
+	// converts on load.
+	backend_container_command?: string[];
 	backend_image_port?: number;
 	xray_enabled?: boolean;
 	setup_FCM_SNS?: boolean;
