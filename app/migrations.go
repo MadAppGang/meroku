@@ -39,7 +39,8 @@ import (
 // 26: Add runtime (fargate|ec2) and compute_pool to the backend and services, for EC2 capacity pools
 // 27: Add egress_strategy (public_ip|nat_gateway|nat_gateway_ha) for how tasks reach the internet
 // 28: Add workload.github_oidc_create_provider, for sharing one account's GitHub OIDC provider
-const CurrentSchemaVersion = 28
+// 29: Normalize workload.backend_container_command from a scalar to list(string)
+const CurrentSchemaVersion = 29
 
 // EnvWithVersion extends Env with a schema version field
 type EnvWithVersion struct {
@@ -190,6 +191,11 @@ var AllMigrations = []Migration{
 		Version:     28,
 		Description: "Add github_oidc_create_provider, defaulting to true (existing behaviour)",
 		Apply:       migrateToV28,
+	},
+	{
+		Version:     29,
+		Description: "Normalize workload.backend_container_command from a scalar to list(string)",
+		Apply:       migrateToV29,
 	},
 }
 
@@ -1819,6 +1825,81 @@ func migrateToV25(data map[string]interface{}) error {
 		fmt.Printf("    ✓ Converted container_command on %d scheduled task(s)\n", updatedCount)
 	}
 
+	return nil
+}
+
+// migrateToV29 normalizes workload.backend_container_command from a scalar
+// string into a real list of arguments, the same conversion v25 applied to
+// scheduled tasks.
+//
+// It was missed there because the two fields fail differently. The scheduled
+// task's scalar rendered through a raw stache and reached main.tf unquoted;
+// this one was read from the wrong scope by the template, so whatever the user
+// wrote rendered as `backend_container_command = []` and the container ran its
+// image's own CMD. Nothing errored, in either the tooling or Terraform, so the
+// only symptom was a command that silently did not take effect.
+//
+// The template fix alone would turn that silence into a type error, because the
+// array helper rejects a scalar. This makes the value the helper now actually
+// receives the right shape.
+func migrateToV29(data map[string]interface{}) error {
+	fmt.Println("  → Migrating to v29: Normalizing workload.backend_container_command to list(string)")
+
+	workloadRaw, exists := data["workload"]
+	if !exists || workloadRaw == nil {
+		fmt.Println("    ℹ️  No workload section to migrate")
+		return nil
+	}
+
+	// gopkg.in/yaml.v2 decodes a nested mapping as map[interface{}]interface{},
+	// but a file that has already been through convertToJSONCompatible (or was
+	// built in memory) is a map[string]interface{}. Both reach this function.
+	var get func(string) (interface{}, bool)
+	var set func(string, interface{})
+	switch workload := workloadRaw.(type) {
+	case map[interface{}]interface{}:
+		get = func(k string) (interface{}, bool) { v, ok := workload[k]; return v, ok }
+		set = func(k string, v interface{}) { workload[k] = v }
+	case map[string]interface{}:
+		get = func(k string) (interface{}, bool) { v, ok := workload[k]; return v, ok }
+		set = func(k string, v interface{}) { workload[k] = v }
+	default:
+		fmt.Println("    ⚠️  workload is not a mapping, skipping migration")
+		return nil
+	}
+
+	cmdRaw, hasCommand := get("backend_container_command")
+	if !hasCommand || cmdRaw == nil {
+		fmt.Println("    ℹ️  No backend_container_command to migrate")
+		return nil
+	}
+	// Already a list. Keeps the migration idempotent.
+	if _, isList := cmdRaw.([]interface{}); isList {
+		fmt.Println("    ℹ️  backend_container_command is already a list")
+		return nil
+	}
+
+	command, ok := cmdRaw.(string)
+	if !ok {
+		// Left for the Env decoder to reject with a message naming the field,
+		// rather than mangled here.
+		fmt.Println("    ⚠️  backend_container_command is not a string, leaving it alone")
+		return nil
+	}
+
+	// An empty scalar is what the shipped default was, and it means "unset". A
+	// list is what the template guard now tests, and [] is falsy there, so
+	// dropping the key and writing [] behave identically — but dropping it keeps
+	// the YAML free of a line that says nothing.
+	converted := scalarCommandToList(command)
+	if len(converted) == 0 {
+		set("backend_container_command", nil)
+		fmt.Println("    ✓ Dropped an empty backend_container_command")
+		return nil
+	}
+
+	set("backend_container_command", converted)
+	fmt.Printf("    ✓ Converted backend_container_command to a list of %d argument(s)\n", len(converted))
 	return nil
 }
 
