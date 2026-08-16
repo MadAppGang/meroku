@@ -12,7 +12,7 @@ import {
 	Trash2,
 	X,
 } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useId, useState } from "react";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
@@ -150,10 +150,74 @@ export function ServiceProperties({
 	const [remoteAccess, setRemoteAccess] = useState(false);
 	const [advancedOpen, setAdvancedOpen] = useState(false);
 	const [secretVisible, setSecretVisible] = useState(false);
+	const [environmentExpanded, setEnvironmentExpanded] = useState(false);
 	const [dirty, setDirty] = useState(false);
+	const environmentVariablesId = useId();
 	const markDirty = () => setDirty(true);
 	const isCreate = mode === "create";
 	const surfaceTheme = theme === "dark" ? "dark" : "light";
+	const environmentVariables = [
+		{
+			key: "PORT",
+			value: "8080",
+			origin: "system",
+			badge: "System",
+			title: "Assigned automatically by Meroku",
+		},
+		{
+			key: "ENVIRONMENT",
+			value: "production",
+			origin: "system",
+			badge: "System",
+			title: "Assigned automatically by Meroku",
+		},
+		{
+			key: "LOG_LEVEL",
+			value: "info",
+			origin: "custom",
+			badge: "Manual",
+			title: "Configured manually for this service",
+		},
+		{
+			key: "DB_HOST",
+			value: "postgres.internal",
+			origin: "service",
+			badge: "postgres",
+			title: "Assigned automatically by the postgres service",
+		},
+		{
+			key: "API_KEY",
+			value: secretVisible ? "sk_live_example" : "••••••••••••••",
+			origin: "secret",
+			badge: "shared/prod",
+			title: "Inherited from the shared/prod secret group",
+		},
+		{
+			key: "CACHE_URL",
+			value: "redis://redis.internal:6379",
+			origin: "service",
+			badge: "redis",
+			title: "Assigned automatically by the redis service",
+		},
+		{
+			key: "FEATURE_FLAG_BETA",
+			value: "false",
+			origin: "custom",
+			badge: "Manual",
+			title: "Configured manually for this service",
+		},
+		{
+			key: "AWS_REGION",
+			value: "ap-southeast-2",
+			origin: "system",
+			badge: "System",
+			title: "Assigned automatically by Meroku",
+		},
+	];
+	const visibleEnvironmentVariables = environmentExpanded
+		? environmentVariables
+		: environmentVariables.slice(0, 5);
+	const hiddenEnvironmentCount = environmentVariables.length - 5;
 	const containerSection = (
 		<Group
 			title="Container & Process"
@@ -452,86 +516,70 @@ export function ServiceProperties({
 										</th>
 									</tr>
 								</thead>
-								<tbody>
-									{[
-										{
-											key: "PORT",
-											value: "8080",
-											origin: "system",
-											badge: "System",
-											title: "Assigned automatically by Meroku",
-										},
-										{
-											key: "ENVIRONMENT",
-											value: "production",
-											origin: "system",
-											badge: "System",
-											title: "Assigned automatically by Meroku",
-										},
-										{
-											key: "LOG_LEVEL",
-											value: "info",
-											origin: "custom",
-											badge: "Manual",
-											title: "Configured manually for this service",
-										},
-										{
-											key: "DB_HOST",
-											value: "postgres.internal",
-											origin: "service",
-											badge: "postgres",
-											title: "Assigned automatically by the postgres service",
-										},
-										{
-											key: "API_KEY",
-											value: secretVisible
-												? "sk_live_example"
-												: "••••••••••••••",
-											origin: "secret",
-											badge: "shared/prod",
-											title: "Inherited from the shared/prod secret group",
-										},
-									].map(({ key, value, origin, badge, title }) => (
-										<tr
-											className="mp-compact-env__row"
-											data-origin={origin}
-											key={key}
-										>
-											<td>
-												<div className="mp-env-item">
-													<code>{key}</code>
-													<span className="mp-env-item-badge" title={title}>
-														{origin === "service" && (
-															<Link2 aria-hidden="true" />
-														)}
-														{origin === "secret" && <Lock aria-hidden="true" />}
-														{badge}
-													</span>
-												</div>
-											</td>
-											<td>
-												<code>{value}</code>
-											</td>
-											<td>
-												{origin === "secret" && (
-													<button
-														type="button"
-														className="mp-icon-button"
-														aria-label={
-															secretVisible ? "Hide API key" : "Reveal API key"
-														}
-														onClick={() =>
-															setSecretVisible((current) => !current)
-														}
-													>
-														{secretVisible ? <EyeOff /> : <Eye />}
-													</button>
-												)}
-											</td>
-										</tr>
-									))}
+								<tbody id={environmentVariablesId}>
+									{visibleEnvironmentVariables.map(
+										({ key, value, origin, badge, title }) => (
+											<tr
+												className="mp-compact-env__row"
+												data-origin={origin}
+												key={key}
+											>
+												<td>
+													<div className="mp-env-item">
+														<code>{key}</code>
+														<span className="mp-env-item-badge" title={title}>
+															{origin === "service" && (
+																<Link2 aria-hidden="true" />
+															)}
+															{origin === "secret" && (
+																<Lock aria-hidden="true" />
+															)}
+															{badge}
+														</span>
+													</div>
+												</td>
+												<td>
+													<code>{value}</code>
+												</td>
+												<td>
+													{origin === "secret" && (
+														<button
+															type="button"
+															className="mp-icon-button"
+															aria-label={
+																secretVisible
+																	? "Hide API key"
+																	: "Reveal API key"
+															}
+															onClick={() =>
+																setSecretVisible((current) => !current)
+															}
+														>
+															{secretVisible ? <EyeOff /> : <Eye />}
+														</button>
+													)}
+												</td>
+											</tr>
+										),
+									)}
 								</tbody>
 							</table>
+							{hiddenEnvironmentCount > 0 && (
+								<button
+									type="button"
+									className="mp-compact-env-toggle"
+									aria-controls={environmentVariablesId}
+									aria-expanded={environmentExpanded}
+									onClick={() => setEnvironmentExpanded((current) => !current)}
+								>
+									<span>
+										{environmentExpanded
+											? "Show fewer variables"
+											: `Show ${hiddenEnvironmentCount} more variables`}
+									</span>
+									<ChevronDown aria-hidden="true" />
+								</button>
+							)}
 						</Group>
 
 						<div className="mp-compact-advanced">

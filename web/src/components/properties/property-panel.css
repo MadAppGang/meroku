@@ -1469,6 +1469,46 @@ textarea.mp-control,
 	outline-offset: 1px;
 }
 
+.mp-compact-env-toggle {
+	width: 100%;
+	height: 28px;
+	margin-top: 4px;
+	padding: 0 8px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 5px;
+	color: var(--mp-text-muted);
+	background: transparent;
+	border: 0;
+	border-radius: 5px;
+	cursor: pointer;
+	font: 500 10px / 1 var(--mp-font-sans);
+	transition:
+		color 140ms ease,
+		background-color 140ms ease;
+}
+
+.mp-compact-env-toggle:hover {
+	color: var(--mp-accent-ink);
+	background: var(--mp-accent-soft);
+}
+
+.mp-compact-env-toggle:focus-visible {
+	outline: 2px solid var(--mp-accent-outline);
+	outline-offset: 1px;
+}
+
+.mp-compact-env-toggle svg {
+	width: 13px;
+	height: 13px;
+	transition: transform 140ms ease;
+}
+
+.mp-compact-env-toggle[aria-expanded="true"] svg {
+	transform: rotate(180deg);
+}
+
 .mp-target-popover {
 	z-index: 110;
 	width: 228px;

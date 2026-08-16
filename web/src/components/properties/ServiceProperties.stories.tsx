@@ -57,6 +57,22 @@ const verifyDefaultLayout = async (
 	await expect(canvas.getByText("Manual")).toBeVisible();
 	await expect(canvas.getByText("postgres")).toBeVisible();
 	await expect(canvas.getByText("shared/prod")).toBeVisible();
+	await expect(canvas.queryByText("CACHE_URL")).toBeNull();
+	const environmentToggle = canvas.getByRole("button", {
+		name: "Show 3 more variables",
+	});
+	await expect(environmentToggle).toHaveAttribute("aria-expanded", "false");
+	await userEvent.click(environmentToggle);
+	await expect(canvas.getByText("CACHE_URL")).toBeVisible();
+	await expect(canvas.getByText("FEATURE_FLAG_BETA")).toBeVisible();
+	await expect(canvas.getByText("AWS_REGION")).toBeVisible();
+	await expect(
+		canvas.getByRole("button", { name: "Show fewer variables" }),
+	).toHaveAttribute("aria-expanded", "true");
+	await userEvent.click(
+		canvas.getByRole("button", { name: "Show fewer variables" }),
+	);
+	await expect(canvas.queryByText("CACHE_URL")).toBeNull();
 	await expect(canvas.queryByText("Container & Process")).toBeNull();
 
 	const targetTrigger = canvas.getByRole("button", {
