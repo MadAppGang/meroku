@@ -5,7 +5,7 @@ import { expect, userEvent, waitFor, within } from "storybook/test";
 import { ServiceProperties } from "./ServiceProperties";
 
 const meta = {
-	title: "Properties/Service",
+	title: "Nodes/Service",
 	component: ServiceProperties,
 	tags: ["!autodocs"],
 	parameters: {
@@ -30,13 +30,13 @@ const verifyDefaultLayout = async (
 	const panel = canvas.getByRole("complementary", {
 		name: "terminator service properties",
 	});
-	const port = canvas.getByLabelText("Port grouped").getBoundingClientRect();
+	const port = canvas.getByLabelText("Port").getBoundingClientRect();
 	const health = canvas.getByLabelText("Health path").getBoundingClientRect();
 	const cpu = canvas.getByLabelText("CPU").getBoundingClientRect();
 	const memory = canvas.getByLabelText("Memory").getBoundingClientRect();
 	const autoscaling = canvas.getByLabelText("Autoscaling grouped");
-	const minimum = canvas.getByLabelText("Minimum grouped");
-	const maximum = canvas.getByLabelText("Maximum grouped");
+	const minimum = canvas.getByLabelText("Min");
+	const maximum = canvas.getByLabelText("Max");
 
 	await expect(panel).toHaveAttribute("data-theme", theme);
 	await expect(panel.getBoundingClientRect().width).toBe(540);
@@ -47,7 +47,7 @@ const verifyDefaultLayout = async (
 	await expect(autoscaling).toBeChecked();
 	await expect(minimum).toHaveValue(1);
 	await expect(maximum).toHaveValue(5);
-	await expect(canvas.queryByLabelText("Desired grouped")).toBeNull();
+	await expect(canvas.queryByLabelText("Desired")).toBeNull();
 	await expect(Math.abs(centerY(autoscaling) - centerY(minimum))).toBeLessThan(
 		2,
 	);
@@ -99,9 +99,9 @@ const verifyDefaultLayout = async (
 
 	await userEvent.click(autoscaling);
 	await expect(autoscaling).not.toBeChecked();
-	await expect(canvas.getByLabelText("Desired grouped")).toHaveValue(2);
-	await expect(canvas.queryByLabelText("Minimum grouped")).toBeNull();
-	await expect(canvas.queryByLabelText("Maximum grouped")).toBeNull();
+	await expect(canvas.getByLabelText("Desired")).toHaveValue(2);
+	await expect(canvas.queryByLabelText("Min")).toBeNull();
+	await expect(canvas.queryByLabelText("Max")).toBeNull();
 	await userEvent.click(autoscaling);
 	await expect(autoscaling).toBeChecked();
 	await userEvent.click(canvas.getByRole("button", { name: "Details" }));

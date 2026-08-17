@@ -22,6 +22,11 @@ const preview: Preview = {
 			toc: true,
 		},
 		layout: "padded",
+		options: {
+			storySort: {
+				order: ["Components", "Layouts", "Panels"],
+			},
+		},
 	},
 	initialGlobals: {
 		backgrounds: {

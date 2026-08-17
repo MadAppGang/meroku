@@ -26,6 +26,8 @@ export type PropertyFieldKind =
 	| "key-value"
 	| "status";
 
+export type PropertySectionLayout = "auto" | "two-column" | "vertical";
+
 export interface PropertyOption {
 	label: string;
 	value: string;
@@ -37,6 +39,9 @@ export interface PropertyKeyValue {
 	value: string;
 	secret?: boolean;
 	readOnly?: boolean;
+	origin?: "system" | "custom" | "service" | "secret";
+	badge?: string;
+	title?: string;
 }
 
 export interface PropertyFieldDefinition {
@@ -66,6 +71,7 @@ export interface PropertySectionDefinition {
 	icon?: LucideIcon;
 	iconTone?: PropertyStatusTone;
 	fields: PropertyFieldDefinition[];
+	layout?: PropertySectionLayout;
 	advanced?: boolean;
 	defaultOpen?: boolean;
 }

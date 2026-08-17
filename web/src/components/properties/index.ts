@@ -3,16 +3,9 @@ export {
 	PROPERTY_NODE_CATALOG,
 	PROPERTY_NODE_ORDER,
 } from "./nodeCatalog";
-export {
-	PropertyAdvancedDisclosure,
-	PropertyEmptyState,
-	PropertyField,
-	PropertyKeyValueEditor,
-	PropertyPanel,
-	PropertySaveBar,
-	PropertySection,
-	PropertyStatus,
-} from "./PropertyPanel";
+export * from "./PropertyLayouts";
+export { PropertyPanel } from "./PropertyPanel";
+export * from "./PropertyPrimitives";
 export type {
 	PropertyFieldDefinition,
 	PropertyFieldKind,
