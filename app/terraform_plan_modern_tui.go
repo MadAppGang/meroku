@@ -255,16 +255,16 @@ var modernKeys = modernKeyMap{
 
 // Modern color palette
 var (
-	bgColor      = lipgloss.Color("#0a0a0a")
-	fgColor      = lipgloss.Color("#ffffff")
-	borderColor  = lipgloss.Color("#333333")
-	primaryColor = lipgloss.Color("#7c3aed")
-	successColor = lipgloss.Color("#10b981")
-	warningColor = lipgloss.Color("#f59e0b")
-	dangerColor  = lipgloss.Color("#ef4444")
-	mutedColor   = lipgloss.Color("#6b7280")
-	accentColor  = lipgloss.Color("#3b82f6")
-	dimColor     = lipgloss.Color("#9ca3af")
+	bgColor      = adapt("#fafafa", "#0a0a0a")
+	fgColor      = theme.TextStrong
+	borderColor  = adapt("#e0e0e0", "#333333")
+	primaryColor = adapt("#6d28d9", "#7c3aed")
+	successColor = adapt("#059669", "#10b981")
+	warningColor = adapt("#b45309", "#f59e0b")
+	dangerColor  = adapt("#dc2626", "#ef4444")
+	mutedColor   = adapt("#6b7280", "#6b7280")
+	accentColor  = adapt("#2563eb", "#3b82f6")
+	dimColor     = adapt("#6b7280", "#9ca3af")
 
 	// Styles
 	baseStyle = lipgloss.NewStyle().
@@ -272,7 +272,7 @@ var (
 			Foreground(fgColor)
 
 	headerStyle = lipgloss.NewStyle().
-			Background(lipgloss.Color("#1a1a1a")).
+			Background(adapt("#f0f0f0", "#1a1a1a")).
 			Foreground(fgColor).
 			Bold(true).
 			Padding(0, 2)
@@ -295,8 +295,8 @@ var (
 			PaddingLeft(2)
 
 	selectedItemStyle = lipgloss.NewStyle().
-				Background(lipgloss.Color("#374151")).
-				Foreground(lipgloss.Color("#ffffff")).
+				Background(adapt("#e5e7eb", "#374151")).
+				Foreground(theme.TextStrong).
 				Bold(true)
 
 	createIconStyle = lipgloss.NewStyle().Foreground(successColor)
@@ -1546,7 +1546,7 @@ func (m *modernPlanModel) renderChangeSummary() string {
 	return boxStyle.Width(width).Render(content)
 }
 
-func (m *modernPlanModel) renderProgressBar(label string, percent float64, color lipgloss.Color, count int) string {
+func (m *modernPlanModel) renderProgressBar(label string, percent float64, color lipgloss.TerminalColor, count int) string {
 	barWidth := 40
 	filled := int(percent * float64(barWidth))
 
@@ -1796,8 +1796,8 @@ func (m *modernPlanModel) renderFullScreenDiff() string {
 
 	// Create header with resource info
 	headerStyle := lipgloss.NewStyle().
-		Background(lipgloss.Color("#1a1a2e")).
-		Foreground(lipgloss.Color("#ffffff")).
+		Background(adapt("#eef0fa", "#1a1a2e")).
+		Foreground(theme.TextStrong).
 		Padding(1, 2).
 		Width(m.width)
 
@@ -3177,8 +3177,8 @@ func (m *modernPlanModel) renderReplaceDetails(resource *ResourceChange) string 
 
 	// Explain what replacement means
 	warningBox := lipgloss.NewStyle().
-		Background(lipgloss.Color("#2a1a2a")).
-		Foreground(lipgloss.Color("#ff9999")).
+		Background(adapt("#f5eef5", "#2a1a2a")).
+		Foreground(adapt("#be123c", "#ff9999")).
 		Padding(0, 1).
 		Width(60)
 
@@ -4793,7 +4793,7 @@ func (m *modernPlanModel) renderApplyCompleted(width int) string {
 				content += actionStyle.Render(line) + "\n"
 			} else if !res.Success {
 				// For failed resources, show with error background
-				errorStyle := actionStyle.Background(lipgloss.Color("#3D0000"))
+				errorStyle := actionStyle.Background(adapt("#ffe4e4", "#3D0000"))
 				content += errorStyle.Render(line) + "\n"
 			} else {
 				content += actionStyle.Render(line) + "\n"
@@ -5170,7 +5170,7 @@ func (m *modernPlanModel) updateApplyLogViewport() {
 			levelStr = "[INFO] "
 		} else if strings.Contains(log.Message, "Completed") || strings.Contains(log.Message, "completed") || strings.Contains(log.Message, "succeeded") {
 			icon = "✅"
-			style = lipgloss.NewStyle().Foreground(lipgloss.Color("#10b981")) // green
+			style = lipgloss.NewStyle().Foreground(adapt("#059669", "#10b981")) // green
 			levelStr = "[INFO] "
 		} else if strings.Contains(log.Message, "Failed") || strings.Contains(log.Message, "failed") {
 			icon = "❌"
@@ -5236,11 +5236,11 @@ func (m *modernPlanModel) updateApplyLogViewport() {
 			// Now apply styling to the complete line
 			if log.IsDiagnostic && log.Level == "error" {
 				// Diagnostic errors: BRIGHT RED background to stand out
-				diagnosticStyle := lipgloss.NewStyle().Background(lipgloss.Color("#8B0000")).Bold(true)
+				diagnosticStyle := lipgloss.NewStyle().Background(adapt("#fecaca", "#8B0000")).Bold(true)
 				content.WriteString(diagnosticStyle.Render(fullLine) + "\n")
 			} else if log.Level == "error" {
 				// Regular errors: dark red background
-				errorStyle := lipgloss.NewStyle().Background(lipgloss.Color("#3D0000"))
+				errorStyle := lipgloss.NewStyle().Background(adapt("#ffe4e4", "#3D0000"))
 				content.WriteString(errorStyle.Render(fullLine) + "\n")
 			} else {
 				content.WriteString(style.Render(fullLine) + "\n")
@@ -5766,7 +5766,7 @@ func (m *modernPlanModel) renderApplyErrorDetailsView(header, elapsed string) st
 		if resDetail != "" {
 			content.WriteString("\n" + lipgloss.NewStyle().Bold(true).Foreground(dangerColor).Render("Detailed Error Information:") + "\n")
 			detailStyle := lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#FF6B6B")).
+				Foreground(adapt("#dc2626", "#FF6B6B")).
 				PaddingLeft(2)
 			maxWidth := m.width - 10
 			wrapped := wordWrap(resDetail, maxWidth)
@@ -5887,7 +5887,7 @@ func (m *modernPlanModel) tickCmd() tea.Cmd {
 func (m *modernPlanModel) renderAILoading() string {
 	loadingStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("39")).
+		Foreground(theme.Info).
 		Padding(2, 4)
 
 	content := "🤖 Asking AI to explain your infrastructure changes...\n\n"
@@ -5907,28 +5907,28 @@ func (m *modernPlanModel) renderAILoading() string {
 func (m *modernPlanModel) renderAIError() string {
 	// Create a full-screen background overlay
 	backgroundStyle := lipgloss.NewStyle().
-		Background(lipgloss.Color("0")).
+		Background(adapt("15", "0")).
 		Width(m.width).
 		Height(m.height)
 
 	errorBoxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("196")).
-		Background(lipgloss.Color("235")).
+		BorderForeground(theme.Error).
+		Background(theme.Panel).
 		Padding(1, 2).
 		Width(m.width - 10)
 
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("196")).
+		Foreground(theme.Error).
 		Padding(0, 0, 1, 0)
 
 	errorStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("251")).
+		Foreground(theme.Text).
 		Padding(0, 0, 1, 0)
 
 	helpStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("241")).
+		Foreground(theme.Faint).
 		Italic(true)
 
 	content := titleStyle.Render("❌ AI Visualization Error") + "\n\n"
@@ -6099,7 +6099,7 @@ func (m *modernPlanModel) buildAIHelpErrorsContent() string {
 
 	// Original Error Section
 	content.WriteString(lipgloss.NewStyle().
-		Foreground(lipgloss.Color("196")).
+		Foreground(theme.Error).
 		Bold(true).
 		Render("❌ Original Error"))
 	content.WriteString("\n")
@@ -6107,7 +6107,7 @@ func (m *modernPlanModel) buildAIHelpErrorsContent() string {
 	content.WriteString("\n\n")
 
 	errorStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("196"))
+		Foreground(theme.Error)
 
 	for _, err := range m.aiHelpErrors {
 		// Split error into lines and render each line with the style
@@ -6126,7 +6126,7 @@ func (m *modernPlanModel) buildAIHelpErrorsContent() string {
 
 	// AI Analysis Section
 	content.WriteString(lipgloss.NewStyle().
-		Foreground(lipgloss.Color("226")).
+		Foreground(theme.Yellow).
 		Bold(true).
 		Render("💡 AI Analysis"))
 	content.WriteString("\n")
@@ -6134,7 +6134,7 @@ func (m *modernPlanModel) buildAIHelpErrorsContent() string {
 	content.WriteString("\n\n")
 
 	problemStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("252"))
+		Foreground(theme.Text)
 	content.WriteString(problemStyle.Render(m.aiHelpProblem))
 	content.WriteString("\n\n")
 
@@ -6148,7 +6148,7 @@ func (m *modernPlanModel) buildAIHelpCommandsContent() string {
 
 	// Suggested Fix Section
 	content.WriteString(lipgloss.NewStyle().
-		Foreground(lipgloss.Color("82")).
+		Foreground(theme.Success).
 		Bold(true).
 		Render("📋 Suggested Fix"))
 	content.WriteString("\n")
@@ -6159,7 +6159,7 @@ func (m *modernPlanModel) buildAIHelpCommandsContent() string {
 		content.WriteString("Run these commands:\n\n")
 
 		commandStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("39")).
+			Foreground(theme.Info).
 			Bold(true)
 
 		for i, cmd := range m.aiHelpCommands {
@@ -6173,7 +6173,7 @@ func (m *modernPlanModel) buildAIHelpCommandsContent() string {
 
 	content.WriteString("\n")
 	disclaimerStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("243")).
+		Foreground(theme.Dim).
 		Italic(true)
 	content.WriteString(disclaimerStyle.Render("⚠️  AI-generated suggestions - please review before running"))
 
@@ -6192,7 +6192,7 @@ func (m *modernPlanModel) renderAIHelpView() string {
 
 		loadingStyle := lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("39")).
+			Foreground(theme.Info).
 			Align(lipgloss.Center, lipgloss.Center)
 
 		loadingContent := fmt.Sprintf("%s Analyzing errors with AI...\n\nPlease wait while Claude analyzes the error and suggests fixes.", frame)
@@ -6235,14 +6235,14 @@ func (m *modernPlanModel) renderAIHelpView() string {
 	errorsViewportBox := boxStyle.
 		Width(m.width - 2).
 		Height(errorsHeight).
-		BorderForeground(lipgloss.Color("196")).
+		BorderForeground(theme.Error).
 		Render(m.aiHelpViewport.View())
 
 	// Bottom viewport with suggested fix (scrollable)
 	commandsViewportBox := boxStyle.
 		Width(m.width - 2).
 		Height(commandsHeight).
-		BorderForeground(lipgloss.Color("82")).
+		BorderForeground(theme.Success).
 		Render(m.aiHelpCommandsViewport.View())
 
 	// Footer with help text

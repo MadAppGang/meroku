@@ -348,14 +348,14 @@ func displayAWSResourcesTable() {
 	// Define styles
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("220")).
+		Foreground(theme.Gold).
 		Align(lipgloss.Center).
 		MarginTop(1).
 		MarginBottom(1)
 
 	headerStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("86"))
+		Foreground(theme.Teal)
 
 	// Create the main content sections
 	fmt.Println(titleStyle.Render("📚 AWS SSO Resources 📚"))
@@ -363,19 +363,19 @@ func displayAWSResourcesTable() {
 	// Define URL style for links to pop
 	urlStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("39")).  // Bright blue
-		Background(lipgloss.Color("235")). // Dark background
+		Foreground(theme.Info).  // Bright blue
+		Background(theme.Panel). // Dark background
 		Padding(0, 1).
 		Underline(true)
 
 	resourceLabelStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("220"))
+		Foreground(theme.Gold)
 
 	// Resources section
 	resourcesTable := table.New().
 		Border(lipgloss.ThickBorder()).
-		BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("220"))). // Yellow border to pop
+		BorderStyle(lipgloss.NewStyle().Foreground(theme.Gold)). // Yellow border to pop
 		StyleFunc(func(row, col int) lipgloss.Style {
 			if row == 0 {
 				return headerStyle.Align(lipgloss.Center)
@@ -407,16 +407,16 @@ func displayAWSResourcesTable() {
 	// Define styles for syntax highlighting
 	sectionStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("220")) // Yellow for [sections]
+		Foreground(theme.Gold) // Yellow for [sections]
 
 	keyStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("39")) // Blue for keys
+		Foreground(theme.Info) // Blue for keys
 
 	equalStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("245")) // Gray for =
+		Foreground(theme.Muted) // Gray for =
 
 	valueStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("82")) // Green for values
+		Foreground(theme.Success) // Green for values
 
 	// Helper function to format configuration lines
 	formatConfigLine := func(line string) string {
@@ -437,7 +437,7 @@ func displayAWSResourcesTable() {
 	// Create single column example table showing the complete config file
 	exampleTable := table.New().
 		Border(lipgloss.NormalBorder()).
-		BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("86"))).
+		BorderStyle(lipgloss.NewStyle().Foreground(theme.Teal)).
 		Width(100).
 		Headers(headerStyle.Render("~/.aws/config")).
 		Row(formatConfigLine("[sso-session my-company]")).
@@ -461,17 +461,17 @@ func displaySSOHelpTable() {
 	// Define styles
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("220")).
+		Foreground(theme.Gold).
 		Align(lipgloss.Center).
 		MarginTop(1).
 		MarginBottom(1)
 
 	headerStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("86"))
+		Foreground(theme.Teal)
 
 	tipStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("82")).
+		Foreground(theme.Success).
 		Bold(true)
 
 	fmt.Println(titleStyle.Render("📚 AWS SSO Configuration Help 📚"))
@@ -479,19 +479,19 @@ func displaySSOHelpTable() {
 	// Define URL style for links to pop
 	urlStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("39")).  // Bright blue
-		Background(lipgloss.Color("235")). // Dark background
+		Foreground(theme.Info).  // Bright blue
+		Background(theme.Panel). // Dark background
 		Padding(0, 1).
 		Underline(true)
 
 	resourceLabelStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("220"))
+		Foreground(theme.Gold)
 
 	// Help resources table
 	helpTable := table.New().
 		Border(lipgloss.ThickBorder()).
-		BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("220"))). // Yellow border to pop
+		BorderStyle(lipgloss.NewStyle().Foreground(theme.Gold)). // Yellow border to pop
 		StyleFunc(func(row, col int) lipgloss.Style {
 			if row == 0 {
 				return headerStyle.Align(lipgloss.Center)
@@ -522,16 +522,16 @@ func displaySSOHelpTable() {
 	// Define styles for syntax highlighting
 	sectionStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("220")) // Yellow for [sections]
+		Foreground(theme.Gold) // Yellow for [sections]
 
 	keyStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("39")) // Blue for keys
+		Foreground(theme.Info) // Blue for keys
 
 	equalStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("245")) // Gray for =
+		Foreground(theme.Muted) // Gray for =
 
 	valueStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("82")) // Green for values
+		Foreground(theme.Success) // Green for values
 
 	// Helper function to format configuration lines
 	formatConfigLine := func(line string) string {
@@ -552,7 +552,7 @@ func displaySSOHelpTable() {
 	// Combined example table showing complete config file with syntax highlighting
 	configTable := table.New().
 		Border(lipgloss.NormalBorder()).
-		BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("86"))).
+		BorderStyle(lipgloss.NewStyle().Foreground(theme.Teal)).
 		Width(100).
 		Headers(headerStyle.Render("~/.aws/config")).
 		Row(formatConfigLine("[sso-session company-sso]")).

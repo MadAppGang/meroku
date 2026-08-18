@@ -1019,7 +1019,7 @@ func (m *dnsSetupModel) renderBody(width int) string {
 		// for anyone to paste anywhere. They belong on the manual screen, where a
 		// human has to carry the values to a registrar.
 		idx := lipgloss.NewStyle().Foreground(mutedColor)
-		val := lipgloss.NewStyle().Foreground(lipgloss.Color("#60a5fa")).Bold(true)
+		val := lipgloss.NewStyle().Foreground(adapt("#2563eb", "#60a5fa")).Bold(true)
 		for i, ns := range m.nameservers {
 			rec.WriteString(idx.Render(fmt.Sprintf(" %d ", i+1)) + val.Render(ns) + "\n")
 		}
@@ -1280,7 +1280,7 @@ func (m *dnsSetupModel) renderManual(width int) string {
 		lipgloss.NewStyle().Foreground(mutedColor).Render("    TTL  ") +
 		lipgloss.NewStyle().Foreground(fgColor).Render("300") + "\n\n")
 
-	val := lipgloss.NewStyle().Foreground(lipgloss.Color("#60a5fa")).Bold(true)
+	val := lipgloss.NewStyle().Foreground(adapt("#2563eb", "#60a5fa")).Bold(true)
 	for i, ns := range m.nameservers {
 		rec.WriteString(keycap(fmt.Sprintf("%d", i+1)) + " " + val.Render(ns) + "\n")
 	}

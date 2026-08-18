@@ -311,14 +311,14 @@ func (m AWSProfileCreationModel) viewSelectSSO() string {
 
 	headerStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("214"))
+		Foreground(theme.Warning)
 	descStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("245"))
+		Foreground(theme.Muted)
 	selectedStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("226"))
+		Foreground(theme.Yellow)
 	normalStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("252"))
+		Foreground(theme.Text)
 
 	b.WriteString(headerStyle.Render("Select SSO Session") + "\n")
 	b.WriteString(descStyle.Render(fmt.Sprintf("For AWS Account %s", m.accountID)) + "\n\n")
@@ -400,23 +400,23 @@ func (m AWSProfileCreationModel) renderInputView(title, desc, label, input strin
 
 	headerStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("214"))
+		Foreground(theme.Warning)
 	descStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("245"))
+		Foreground(theme.Muted)
 	labelStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("87"))
+		Foreground(theme.Cyan)
 	inputStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("#FFF")).
-		Background(lipgloss.Color("235")).
+		Foreground(theme.TextStrong).
+		Background(theme.Panel).
 		Padding(0, 1)
 	exampleStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("240")).
+		Foreground(theme.Faint).
 		Italic(true)
 	errorStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("196"))
+		Foreground(theme.Error)
 	linkStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("39")).
+		Foreground(theme.Info).
 		Underline(true)
 
 	// Header section with icon and title
@@ -458,9 +458,9 @@ func (m AWSProfileCreationModel) viewCreatingProfile() string {
 
 	headerStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("214"))
+		Foreground(theme.Warning)
 	statusStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("245"))
+		Foreground(theme.Muted)
 
 	b.WriteString(headerStyle.Render("🔄 Creating AWS Profile...") + "\n\n")
 	b.WriteString(statusStyle.Render("Setting up profile: ") + m.profileNameInput + "\n")
@@ -474,9 +474,9 @@ func (m AWSProfileCreationModel) viewProfileCreated() string {
 
 	successStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("82"))
+		Foreground(theme.Success)
 	descStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("245"))
+		Foreground(theme.Muted)
 
 	b.WriteString(successStyle.Render("✅ AWS Profile Created Successfully!") + "\n\n")
 	b.WriteString(descStyle.Render("Profile name: ") + m.createdProfile + "\n")
@@ -491,9 +491,9 @@ func (m AWSProfileCreationModel) viewProfileError() string {
 
 	errorStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("196"))
+		Foreground(theme.Error)
 	descStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("245"))
+		Foreground(theme.Muted)
 
 	b.WriteString(errorStyle.Render("❌ Failed to Create Profile") + "\n\n")
 	b.WriteString(descStyle.Render("Error: ") + m.errorMsg + "\n\n")

@@ -158,20 +158,20 @@ func defaultMonitorKeyMap() monitorKeyMap {
 // ---------------------------------------------------------------------------
 
 var (
-	monBgColor      = lipgloss.Color("#0a0a0a")
-	monFgColor      = lipgloss.Color("#ffffff")
-	monBorderColor  = lipgloss.Color("#333333")
-	monPrimaryColor = lipgloss.Color("#7c3aed")
-	monSuccessColor = lipgloss.Color("#10b981")
-	monWarningColor = lipgloss.Color("#f59e0b")
-	monDangerColor  = lipgloss.Color("#ef4444")
+	monBgColor      = adapt("#fafafa", "#0a0a0a")
+	monFgColor      = theme.TextStrong
+	monBorderColor  = adapt("#d1d5db", "#333333")
+	monPrimaryColor = adapt("#6d28d9", "#7c3aed")
+	monSuccessColor = adapt("#059669", "#10b981")
+	monWarningColor = adapt("#b45309", "#f59e0b")
+	monDangerColor  = adapt("#dc2626", "#ef4444")
 	monMutedColor   = lipgloss.Color("#6b7280")
-	monAccentColor  = lipgloss.Color("#3b82f6")
-	monDimColor     = lipgloss.Color("#9ca3af")
+	monAccentColor  = adapt("#2563eb", "#3b82f6")
+	monDimColor     = adapt("#6b7280", "#9ca3af")
 
 	// Monitor-specific
-	monActivePanel = lipgloss.Color("#7c3aed")
-	monHeaderBg    = lipgloss.Color("#1a1a1a")
+	monActivePanel = adapt("#6d28d9", "#7c3aed")
+	monHeaderBg    = adapt("#f0f0f0", "#1a1a1a")
 
 	// Status colors
 	monStatusOK    = monSuccessColor
@@ -197,7 +197,7 @@ var (
 			Padding(0, 2)
 
 	monStatusBarStyle = lipgloss.NewStyle().
-				Background(lipgloss.Color("#111111")).
+				Background(adapt("#f5f5f5", "#111111")).
 				Foreground(monMutedColor).
 				Padding(0, 1)
 
@@ -209,8 +209,8 @@ var (
 
 	monLabelStyle    = lipgloss.NewStyle().Foreground(monMutedColor)
 	monSelectedStyle = lipgloss.NewStyle().
-				Background(lipgloss.Color("#374151")).
-				Foreground(lipgloss.Color("#ffffff")).
+				Background(adapt("#e5e7eb", "#374151")).
+				Foreground(theme.TextStrong).
 				Bold(true)
 	monTitleStyle = lipgloss.NewStyle().
 			Foreground(monPrimaryColor).

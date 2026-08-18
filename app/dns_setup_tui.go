@@ -128,7 +128,7 @@ func dnsPropagationTickCmd() tea.Cmd {
 func NewDNSSetupModel() DNSSetupModel {
 	s := spinner.New()
 	s.Spinner = spinner.Globe
-	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+	s.Style = lipgloss.NewStyle().Foreground(theme.Pink)
 
 	p := progress.New(progress.WithDefaultGradient())
 
@@ -447,7 +447,7 @@ func (m DNSSetupModel) View() string {
 func (m DNSSetupModel) renderBox(title, content string) string {
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("99")).
+		BorderForeground(theme.Purple).
 		Padding(1, 2).
 		Width(m.width - 2)
 
@@ -471,10 +471,10 @@ func (m DNSSetupModel) renderKeyHelp(keys ...string) string {
 	keyStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("#000")).
-		Background(lipgloss.Color("226")).
+		Background(theme.Yellow).
 		Padding(0, 1)
-	textStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("251"))
-	dividerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	textStyle := lipgloss.NewStyle().Foreground(theme.Text)
+	dividerStyle := lipgloss.NewStyle().Foreground(theme.Border)
 
 	var result string
 	for i := 0; i < len(keys); i += 2 {
@@ -491,18 +491,18 @@ func (m DNSSetupModel) renderKeyHelp(keys ...string) string {
 func (m DNSSetupModel) viewCheckExisting() string {
 	welcomeStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("87"))
+		Foreground(theme.Cyan)
 	featureStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("156"))
+		Foreground(adapt("28", "156"))
 	bulletStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("214"))
+		Foreground(theme.Warning)
 
 	// Create animated loading box with gradient border
-	borderColors := []string{"205", "206", "207", "171", "135", "99", "63"}
+	borderColors := []lipgloss.AdaptiveColor{adapt("161", "205"), adapt("162", "206"), adapt("163", "207"), adapt("128", "171"), adapt("92", "135"), theme.Purple, adapt("57", "63")}
 	borderColorIndex := (m.animationFrame / 2) % len(borderColors)
 	loadingBoxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color(borderColors[borderColorIndex])).
+		BorderForeground(borderColors[borderColorIndex]).
 		Padding(1, 2).
 		Width(50).
 		Align(lipgloss.Center)
@@ -554,7 +554,7 @@ func (m DNSSetupModel) viewCheckExisting() string {
 	dnsFrameIndex := m.animationFrame % len(dnsFrames)
 
 	statusStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("245")).
+		Foreground(theme.Muted).
 		Italic(true)
 
 	var b strings.Builder
@@ -566,10 +566,10 @@ func (m DNSSetupModel) viewCheckExisting() string {
 
 	// Create compact loading content
 	progressBarStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("87"))
+		Foreground(theme.Cyan)
 
 	titleStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("226")).
+		Foreground(theme.Yellow).
 		Bold(true)
 
 	// Simplified content that fits properly
@@ -596,20 +596,20 @@ func (m DNSSetupModel) viewInputDomain() string {
 
 	headerStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("86"))
+		Foreground(theme.Teal)
 	descStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("245"))
+		Foreground(theme.Muted)
 	tipStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("214"))
+		Foreground(theme.Warning)
 	bulletStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("99"))
+		Foreground(theme.Purple)
 	inputStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("#FFF")).
-		Background(lipgloss.Color("235")).
+		Foreground(theme.TextStrong).
+		Background(theme.Panel).
 		Padding(0, 1)
 	labelStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("87"))
+		Foreground(theme.Cyan)
 
 	b.WriteString(headerStyle.Render("🌎 Enter your domain name:") + "\n\n")
 	b.WriteString(descStyle.Render("This should be your root domain (e.g., example.com)") + "\n")
@@ -640,26 +640,26 @@ func (m DNSSetupModel) viewSelectRootAccount() string {
 	domainStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("#FFF")).
-		Background(lipgloss.Color("33")).
+		Background(theme.Blue).
 		Padding(0, 1)
 	questionStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("87"))
+		Foreground(theme.Cyan)
 	selectedStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("#000")).
-		Background(lipgloss.Color("87")).
+		Background(theme.Cyan).
 		Padding(0, 1)
 	recommendedStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("82")).
+		Foreground(theme.Success).
 		Italic(true)
 	infoStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("214")).
+		Foreground(theme.Warning).
 		Bold(true)
 	detailStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("246"))
+		Foreground(theme.Muted)
 	bulletStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("99"))
+		Foreground(theme.Purple)
 
 	b.WriteString("Domain: " + domainStyle.Render(" "+m.rootDomain+" ") + "\n\n")
 	b.WriteString(questionStyle.Render("🔐 Configuring Production Account for Root DNS Zone") + "\n\n")
@@ -674,14 +674,14 @@ func (m DNSSetupModel) viewSelectRootAccount() string {
 		} else {
 			// This shouldn't happen, but show error if it does
 			errorStyle := lipgloss.NewStyle().
-				Foreground(lipgloss.Color("196")).
+				Foreground(theme.Error).
 				Bold(true)
 			b.WriteString(errorStyle.Render("⚠️  Error: Only production environment can host root zone"))
 			b.WriteString("\n")
 		}
 	} else {
 		errorStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("196")).
+			Foreground(theme.Error).
 			Bold(true)
 		b.WriteString(errorStyle.Render("⚠️  Production environment not configured"))
 		b.WriteString("\n")
@@ -693,7 +693,7 @@ func (m DNSSetupModel) viewSelectRootAccount() string {
 	b.WriteString(bulletStyle.Render("▸") + detailStyle.Render(" Control subdomain NS records") + "\n\n")
 
 	requiredStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("226")).
+		Foreground(theme.Yellow).
 		Bold(true)
 	b.WriteString(requiredStyle.Render("⚠️  Note: Root zone MUST be in production for security") + "\n\n")
 	b.WriteString(m.renderKeyHelp("Enter", "to continue", "B", "to go back", "Q", "to quit"))
@@ -704,13 +704,13 @@ func (m DNSSetupModel) viewSelectRootAccount() string {
 func (m DNSSetupModel) viewCreateRootZone() string {
 	var b strings.Builder
 	headerStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("87")).
+		Foreground(theme.Cyan).
 		Bold(true)
 	domainStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("213")).
+		Foreground(theme.Pink).
 		Bold(true)
 	accountStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("214"))
+		Foreground(theme.Warning)
 
 	b.WriteString(headerStyle.Render("🚀 Creating DNS zone in AWS Route53:") + "\n\n")
 	b.WriteString("Domain: " + domainStyle.Render(m.rootDomain) + "\n")
@@ -763,28 +763,28 @@ func (m DNSSetupModel) viewDNSDebugFullscreen() string {
 	// Styles for fullscreen debug view
 	headerStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("87")).
-		Background(lipgloss.Color("235")).
+		Foreground(theme.Cyan).
+		Background(theme.Panel).
 		Width(m.width).
 		Padding(0, 2)
 
 	contentStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("252"))
+		Foreground(theme.Text)
 
 	lineNumberStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("240"))
+		Foreground(theme.Border)
 
 	highlightStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("226"))
+		Foreground(theme.Yellow)
 
 	errorStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("196"))
+		Foreground(theme.Error)
 
 	successStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("82"))
+		Foreground(theme.Success)
 
 	infoStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("33"))
+		Foreground(theme.Blue)
 
 	// Use a safe width that accounts for terminal size
 	safeWidth := m.width
@@ -860,7 +860,7 @@ func (m DNSSetupModel) viewDNSDebugFullscreen() string {
 	b.WriteString(strings.Repeat("─", safeWidth) + "\n")
 
 	footerStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("245"))
+		Foreground(theme.Muted)
 
 	scrollInfo := fmt.Sprintf("Lines %d-%d of %d", startIdx+1, endIdx, len(m.dnsDebugLogs))
 	scrollPercent := 0
@@ -894,44 +894,44 @@ func (m DNSSetupModel) viewDisplayNameservers() string {
 
 	warningStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("226")).
-		Background(lipgloss.Color("52")).
+		Foreground(theme.Yellow).
+		Background(adapt("224", "52")).
 		Padding(0, 1)
 	headerStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("87")).
+		Foreground(theme.Cyan).
 		Bold(true)
 	nsBoxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("33")).
+		BorderForeground(theme.Blue).
 		Padding(1).
 		Width(50)
 	nsStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("123")).
+		Foreground(theme.Cyan).
 		Bold(true)
 	nsHighlightStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#000")).
-		Background(lipgloss.Color("82")).
+		Background(theme.Success).
 		Bold(true)
 	numberStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("214")).
+		Foreground(theme.Warning).
 		Bold(true)
 	copyStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("#000")).
-		Background(lipgloss.Color("226")).
+		Background(theme.Yellow).
 		Padding(0, 1)
 	successStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("82")).
-		Background(lipgloss.Color("22")).
+		Foreground(theme.Success).
+		Background(adapt("194", "22")).
 		Padding(0, 1)
 	registrarTitleStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("214")).
+		Foreground(theme.Warning).
 		Bold(true)
 	registrarStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("245"))
+		Foreground(theme.Muted)
 	bulletStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("99"))
+		Foreground(theme.Purple)
 
 	b.WriteString(warningStyle.Render("⚠️  Action Required!") + "\n\n")
 	b.WriteString(headerStyle.Render("Update your domain registrar with these nameservers:") + "\n\n")
@@ -974,16 +974,16 @@ func (m DNSSetupModel) viewDisplayNameservers() string {
 
 	// Show DNS propagation status
 	statusStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("245")).
+		Foreground(theme.Muted).
 		Italic(true)
 	propagatedStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("82")).
+		Foreground(theme.Success).
 		Bold(true)
 	notPropagatedStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("214")).
+		Foreground(theme.Warning).
 		Bold(true)
 	wrongNSStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("196"))
+		Foreground(theme.Error)
 
 	if m.dnsPropagated {
 		b.WriteString(propagatedStyle.Render("✅ DNS has propagated! Proceeding...") + "\n\n")
@@ -1004,7 +1004,7 @@ func (m DNSSetupModel) viewDisplayNameservers() string {
 			// Show TTL warning if present (only for standard DNS)
 			if m.dnsCacheTTL > 0 {
 				ttlWarningStyle := lipgloss.NewStyle().
-					Foreground(lipgloss.Color("226")).
+					Foreground(theme.Yellow).
 					Bold(true)
 				hours := m.dnsCacheTTL / 3600
 				minutes := (m.dnsCacheTTL % 3600) / 60
@@ -1018,7 +1018,7 @@ func (m DNSSetupModel) viewDisplayNameservers() string {
 			} else {
 				// TTL is 0, meaning we got DoH results
 				dohSuccessStyle := lipgloss.NewStyle().
-					Foreground(lipgloss.Color("82")).
+					Foreground(theme.Success).
 					Italic(true)
 				b.WriteString(dohSuccessStyle.Render("✓ Using DNS-over-HTTPS (real-time results)") + "\n\n")
 			}
@@ -1052,7 +1052,7 @@ func (m DNSSetupModel) viewDisplayNameservers() string {
 	if !m.showDNSDebugLog && len(m.dnsDebugLogs) > 0 {
 		b.WriteString("\n\n")
 		infoStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("240")).
+			Foreground(theme.Border).
 			Italic(true)
 		b.WriteString(infoStyle.Render(fmt.Sprintf("💡 %d debug log entries available. Press D to view.", len(m.dnsDebugLogs))))
 	}
@@ -1101,27 +1101,27 @@ func (m DNSSetupModel) viewCheckIAMPermissions() string {
 	successBadgeStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("#000")).
-		Background(lipgloss.Color("82")).
+		Background(theme.Success).
 		Padding(0, 1)
 	warningBadgeStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("#000")).
-		Background(lipgloss.Color("214")).
+		Background(theme.Warning).
 		Padding(0, 1)
 	domainStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("226"))
+		Foreground(theme.Yellow)
 	sectionStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("245")).
+		Foreground(theme.Muted).
 		Bold(true)
 	successStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("82"))
+		Foreground(theme.Success)
 	errorStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("196"))
+		Foreground(theme.Error)
 	infoStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("245"))
+		Foreground(theme.Muted)
 	fixStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("220")).
+		Foreground(theme.Gold).
 		Bold(true)
 
 	// Show root zone status (more compact)
@@ -1217,21 +1217,21 @@ func (m DNSSetupModel) viewDNSDetails() string {
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("#000")).
-		Background(lipgloss.Color("39")).
+		Background(theme.Info).
 		Padding(0, 1)
 	sectionTitleStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("213")).
+		Foreground(theme.Pink).
 		MarginTop(1)
 	labelStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("245"))
+		Foreground(theme.Muted)
 	valueStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("226")).
+		Foreground(theme.Yellow).
 		Bold(true)
 	successStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("82"))
+		Foreground(theme.Success)
 	infoStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("245"))
+		Foreground(theme.Muted)
 
 	// Header
 	b.WriteString(titleStyle.Render("📋 DNS Configuration Details") + "\n\n")
@@ -1307,7 +1307,7 @@ func (m DNSSetupModel) viewComplete() string {
 	successBannerStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("#000")).
-		Background(lipgloss.Color("82")).
+		Background(theme.Success).
 		Padding(0, 2).
 		Align(lipgloss.Center).
 		Width(60)
@@ -1315,41 +1315,41 @@ func (m DNSSetupModel) viewComplete() string {
 	sectionTitleStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("213")).
-		Background(lipgloss.Color("57")).
+		Background(adapt("56", "57")).
 		Padding(0, 1).
 		MarginTop(1)
 
 	domainStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("226"))
+		Foreground(theme.Yellow)
 
 	zoneIDStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("87"))
+		Foreground(theme.Cyan)
 
 	nsBoxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("82")).
+		BorderForeground(theme.Success).
 		Padding(0, 1).
 		Width(60)
 
 	nsStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("159"))
+		Foreground(adapt("25", "159"))
 
 	successStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("82"))
+		Foreground(theme.Success)
 
 	infoStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("245"))
+		Foreground(theme.Muted)
 
 	stepStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("252"))
+		Foreground(theme.Text)
 
 	commandStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("220")).
+		Foreground(theme.Gold).
 		Bold(true)
 
 	acccessStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("99"))
+		Foreground(theme.Purple)
 
 	// Success Banner
 	b.WriteString(successBannerStyle.Render("🎉 DNS SETUP COMPLETE! 🎉") + "\n\n")
@@ -1442,12 +1442,12 @@ func (m DNSSetupModel) viewValidateConfig() string {
 
 	headerStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("87"))
+		Foreground(theme.Cyan)
 	domainStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("213")).
+		Foreground(theme.Pink).
 		Bold(true)
 	spinnerStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("205"))
+		Foreground(theme.Pink)
 
 	b.WriteString(headerStyle.Render("🔍 Validating existing DNS configuration...") + "\n\n")
 	b.WriteString("Domain: " + domainStyle.Render(m.rootDomain) + "\n")
@@ -1463,20 +1463,20 @@ func (m DNSSetupModel) viewError() string {
 
 	errorBoxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("196")).
+		BorderForeground(theme.Error).
 		Padding(1, 2).
 		Width(70)
 
 	errorTitleStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("196")).
+		Foreground(theme.Error).
 		MarginBottom(1)
 
 	errorMsgStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("252"))
+		Foreground(theme.Text)
 
 	helpStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("245")).
+		Foreground(theme.Muted).
 		MarginTop(1)
 
 	content := errorTitleStyle.Render("❌ Configuration Error") + "\n\n" +
@@ -1493,27 +1493,27 @@ func (m DNSSetupModel) viewSetupProduction() string {
 
 	headerStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("214"))
+		Foreground(theme.Warning)
 	sectionStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("87"))
+		Foreground(theme.Cyan)
 	explanationStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("245"))
+		Foreground(theme.Muted)
 	exampleStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("123")).
+		Foreground(theme.Cyan).
 		Italic(true)
 	importantStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("226"))
+		Foreground(theme.Yellow)
 	bulletStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("99"))
+		Foreground(theme.Purple)
 	dimStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("240")).
+		Foreground(theme.Border).
 		Italic(true)
 	domainStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("#FFF")).
-		Background(lipgloss.Color("33")).
+		Background(theme.Blue).
 		Padding(0, 1)
 
 	b.WriteString(headerStyle.Render("🏗️  Production Environment Setup Required") + "\n\n")
@@ -1553,20 +1553,20 @@ func (m DNSSetupModel) viewSetupAWSProfile() string {
 
 	headerStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("214"))
+		Foreground(theme.Warning)
 	sectionStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("87"))
+		Foreground(theme.Cyan)
 	descStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("245"))
+		Foreground(theme.Muted)
 	highlightStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("226"))
+		Foreground(theme.Yellow)
 	exampleStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("123")).
+		Foreground(theme.Cyan).
 		Italic(true)
 	bulletStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("99"))
+		Foreground(theme.Purple)
 
 	b.WriteString(headerStyle.Render("🔧 AWS Profile Setup Required") + "\n\n")
 	b.WriteString(descStyle.Render("No AWS profile found for account ID: ") + highlightStyle.Render(m.selectedAccountID) + "\n\n")
@@ -1594,22 +1594,22 @@ func (m DNSSetupModel) viewInputAccountID() string {
 
 	headerStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("86"))
+		Foreground(theme.Teal)
 	descStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("245"))
+		Foreground(theme.Muted)
 	tipStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("214"))
+		Foreground(theme.Warning)
 	bulletStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("99"))
+		Foreground(theme.Purple)
 	inputStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("#FFF")).
-		Background(lipgloss.Color("235")).
+		Foreground(theme.TextStrong).
+		Background(theme.Panel).
 		Padding(0, 1)
 	labelStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("87"))
+		Foreground(theme.Cyan)
 	exampleStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("123")).
+		Foreground(theme.Cyan).
 		Italic(true)
 
 	b.WriteString(headerStyle.Render("🔐 Enter Production AWS Account ID:") + "\n\n")
@@ -1641,14 +1641,14 @@ func (m DNSSetupModel) viewProcessingSetup() string {
 
 	accountStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("214"))
+		Foreground(theme.Warning)
 	doneStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("82"))
+		Foreground(theme.Success)
 	currentStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("226")).
+		Foreground(theme.Yellow).
 		Bold(true)
 	pendingStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("240"))
+		Foreground(theme.Border)
 
 	// Clean, simple header without duplication
 	if m.rootDomain != "" {

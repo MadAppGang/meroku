@@ -305,7 +305,7 @@ func (m *planProgressModel) View() string {
 	// ═══════════════════════════════════════
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("220")).
+		Foreground(theme.Gold).
 		Align(lipgloss.Center).
 		Width(contentWidth)
 
@@ -319,7 +319,7 @@ func (m *planProgressModel) View() string {
 
 	statusStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("86")).
+		Foreground(theme.Teal).
 		Align(lipgloss.Center).
 		Width(contentWidth)
 
@@ -329,7 +329,7 @@ func (m *planProgressModel) View() string {
 	// Current resource being processed
 	if m.currentResource != "" {
 		resourceStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("39")).
+			Foreground(theme.Info).
 			Align(lipgloss.Center).
 			Width(contentWidth)
 
@@ -342,7 +342,7 @@ func (m *planProgressModel) View() string {
 	// ═══════════════════════════════════════
 	labelStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("86")).
+		Foreground(theme.Teal).
 		Width(contentWidth)
 
 	content.WriteString(labelStyle.Render("Terraform Output:"))
@@ -359,7 +359,7 @@ func (m *planProgressModel) View() string {
 	// Create bordered output box
 	outputBoxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("240")).
+		BorderForeground(theme.Border).
 		Padding(1, 2).
 		Width(contentWidth).
 		Height(outputHeight)
@@ -369,7 +369,7 @@ func (m *planProgressModel) View() string {
 	if len(outputCopy) == 0 {
 		// Show waiting message when no output yet
 		waitingStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241")).
+			Foreground(theme.Faint).
 			Italic(true).
 			Align(lipgloss.Center).
 			Width(contentWidth - 6)
@@ -394,11 +394,11 @@ func (m *planProgressModel) View() string {
 
 			// Color-code important lines
 			if strings.Contains(line, "Plan:") {
-				line = lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Bold(true).Render(line)
+				line = lipgloss.NewStyle().Foreground(theme.Gold).Bold(true).Render(line)
 			} else if strings.Contains(line, "No changes") {
-				line = lipgloss.NewStyle().Foreground(lipgloss.Color("82")).Render(line)
+				line = lipgloss.NewStyle().Foreground(theme.Success).Render(line)
 			} else if strings.Contains(line, "ERROR") || strings.Contains(line, "Error") {
-				line = lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(line)
+				line = lipgloss.NewStyle().Foreground(theme.Error).Render(line)
 			}
 
 			outputContent.WriteString(line + "\n")
@@ -445,7 +445,7 @@ func (m *planProgressModel) View() string {
 	}
 
 	footerStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("241")).
+		Foreground(theme.Faint).
 		Align(lipgloss.Center).
 		Width(contentWidth)
 
@@ -467,7 +467,7 @@ func (m *planProgressModel) View() string {
 func (m *planProgressModel) renderRecovering() string {
 	recoveringStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("214")). // Orange color
+		Foreground(theme.Warning). // Orange color
 		Padding(1, 2)
 
 	spinner := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
@@ -490,31 +490,31 @@ func (m *planProgressModel) renderError() string {
 	// Error styles
 	errorTitleStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("196")).
-		Background(lipgloss.Color("52")).
+		Foreground(theme.Error).
+		Background(adapt("224", "52")).
 		Padding(1, 2).
 		MarginBottom(1)
 
 	errorBoxStyle := lipgloss.NewStyle().
 		Border(lipgloss.ThickBorder()).
-		BorderForeground(lipgloss.Color("196")).
+		BorderForeground(theme.Error).
 		Padding(1).
 		Width(100)
 
 	// Create error table
 	errorTable := table.New().
 		Border(lipgloss.NormalBorder()).
-		BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("196"))).
+		BorderStyle(lipgloss.NewStyle().Foreground(theme.Error)).
 		Width(96).
 		StyleFunc(func(row, col int) lipgloss.Style {
 			if row == 0 {
 				return lipgloss.NewStyle().
 					Bold(true).
-					Foreground(lipgloss.Color("196")).
+					Foreground(theme.Error).
 					Align(lipgloss.Center)
 			}
 			return lipgloss.NewStyle().
-				Foreground(lipgloss.Color("251")).
+				Foreground(theme.Text).
 				PaddingLeft(1).
 				PaddingRight(1)
 		}).
@@ -544,7 +544,7 @@ func (m *planProgressModel) renderError() string {
 	suggestions := m.getErrorSuggestions()
 	if suggestions != "" {
 		suggestionStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("220")).
+			Foreground(theme.Gold).
 			Bold(true)
 
 		content.WriteString(suggestionStyle.Render("💡 Suggestions:"))
@@ -561,7 +561,7 @@ func (m *planProgressModel) renderError() string {
 	footerOptions += " • Enter - return to menu"
 
 	content.WriteString(lipgloss.NewStyle().
-		Foreground(lipgloss.Color("245")).
+		Foreground(theme.Muted).
 		Render(footerOptions))
 
 	// Wrap in error box
@@ -600,11 +600,11 @@ func (m *planProgressModel) renderProgressBar() string {
 	frame := spinnerFrames[m.spinnerFrame%len(spinnerFrames)]
 
 	spinnerStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("82")).
+		Foreground(theme.Success).
 		Bold(true)
 
 	countStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("220"))
+		Foreground(theme.Gold)
 
 	// Show spinner with processed items count
 	processedCount := len(m.processedItems)
