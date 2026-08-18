@@ -32,7 +32,7 @@ func renderAppHeader(section, subject, context, right string, width int) string 
 		Bold(true).Padding(0, 1).Render("MEROKU")
 
 	sec := lipgloss.NewStyle().
-		Background(lipgloss.Color("#1f2937")).Foreground(fgColor).
+		Background(adapt("#f3f4f6", "#1f2937")).Foreground(fgColor).
 		Bold(true).Padding(0, 1).Render(section)
 
 	subj := lipgloss.NewStyle().Foreground(fgColor).Bold(true).Render("  " + subject)
@@ -45,7 +45,7 @@ func renderAppHeader(section, subject, context, right string, width int) string 
 	}
 	if right != "" {
 		rightParts = append(rightParts, lipgloss.NewStyle().
-			Background(lipgloss.Color("#1f2937")).Foreground(dimColor).
+			Background(adapt("#f3f4f6", "#1f2937")).Foreground(dimColor).
 			Padding(0, 1).Render(right))
 	}
 	rightSide := strings.Join(rightParts, "  ")
@@ -101,16 +101,16 @@ func kvRow(label, value string, labelWidth int) string {
 // The groupings are semantic: address records blue, mail amber (the ones whose
 // loss hurts most), delegation green, text purple.
 var recordTypeColors = map[string]lipgloss.TerminalColor{
-	"A":     lipgloss.Color("#3b82f6"),
-	"AAAA":  lipgloss.Color("#6366f1"),
-	"CNAME": lipgloss.Color("#06b6d4"),
-	"MX":    lipgloss.Color("#f59e0b"),
-	"TXT":   lipgloss.Color("#a855f7"),
-	"SPF":   lipgloss.Color("#a855f7"),
-	"NS":    lipgloss.Color("#10b981"),
+	"A":     adapt("#2563eb", "#3b82f6"),
+	"AAAA":  adapt("#4f46e5", "#6366f1"),
+	"CNAME": adapt("#0891b2", "#06b6d4"),
+	"MX":    adapt("#b45309", "#f59e0b"),
+	"TXT":   adapt("#7e22ce", "#a855f7"),
+	"SPF":   adapt("#7e22ce", "#a855f7"),
+	"NS":    adapt("#059669", "#10b981"),
 	"SOA":   lipgloss.Color("#6b7280"),
-	"SRV":   lipgloss.Color("#ec4899"),
-	"CAA":   lipgloss.Color("#14b8a6"),
+	"SRV":   adapt("#db2777", "#ec4899"),
+	"CAA":   adapt("#0f766e", "#14b8a6"),
 }
 
 func recordTypeBadge(t string) string {
@@ -139,7 +139,7 @@ func statChip(label, value string, tone lipgloss.TerminalColor) string {
 // me, colour means this is the state of something.
 func keycap(k string) string {
 	return lipgloss.NewStyle().
-		Background(lipgloss.Color("#374151")).Foreground(fgColor).
+		Background(adapt("#e5e7eb", "#374151")).Foreground(fgColor).
 		Bold(true).Padding(0, 1).Render(k)
 }
 
@@ -199,7 +199,7 @@ type keyHint struct {
 // because it teaches that the list is complete when it is not.
 func renderKeyLegend(hints []keyHint, width int) string {
 	capStyle := lipgloss.NewStyle().
-		Background(lipgloss.Color("#374151")).Foreground(fgColor).
+		Background(adapt("#e5e7eb", "#374151")).Foreground(fgColor).
 		Bold(true).Padding(0, 1)
 	labelStyle := lipgloss.NewStyle().Foreground(mutedColor)
 

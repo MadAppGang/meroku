@@ -34,6 +34,7 @@ var (
 	debugFlag      = flag.String("debug", "", "Debug mode to test screens (e.g., api_missing_key)")
 	awsConfigFlag  = flag.String("aws-config", "", "Custom AWS config file path (for testing different scenarios)")
 	monitorFlag    = flag.Bool("monitor", false, "Open infrastructure monitor dashboard")
+	themeFlag      = flag.String("theme", "auto", "Color theme: auto | light | dark (auto reads the terminal background)")
 )
 
 // GetVersion returns the actual version, reading from infrastructure/version.txt
@@ -88,6 +89,10 @@ func main() {
 	// Parse command line flags
 	flag.Usage = printMerokuUsage
 	flag.Parse()
+
+	// Resolve light/dark theme before anything renders and before any Bubble
+	// Tea program owns stdin — the probe does a raw-mode read on stdin.
+	applyTheme()
 
 	// Handle version flag (early, before any initialization)
 	if *versionFlag {

@@ -488,7 +488,7 @@ func (m *destroyProgressModel) View() string {
 	// ═══════════════════════════════════════
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("196")).
+		Foreground(theme.Error).
 		Align(lipgloss.Center).
 		Width(contentWidth)
 
@@ -512,15 +512,15 @@ func (m *destroyProgressModel) View() string {
 	statusHeight := 3 // Reserve fixed space for status to prevent layout shifts
 
 	var statusText string
-	var statusColor string
+	var statusColor lipgloss.TerminalColor
 
 	switch m.phase {
 	case destroyInitializing:
 		statusText = fmt.Sprintf("%s Initializing Terraform", spinner)
-		statusColor = "220"
+		statusColor = theme.Gold
 	case destroyPlanning:
 		statusText = fmt.Sprintf("%s Planning destruction", spinner)
-		statusColor = "214"
+		statusColor = theme.Warning
 	case destroyDestroying:
 		resourceName := m.currentResource
 		if resourceName == "" {
@@ -532,17 +532,17 @@ func (m *destroyProgressModel) View() string {
 			resourceName = resourceName[:maxResourceNameLen-3] + "..."
 		}
 		statusText = fmt.Sprintf("%s Destroying: %s", spinner, resourceName)
-		statusColor = "196"
+		statusColor = theme.Error
 	case destroyComplete:
 		statusText = "✅ Destruction complete!"
-		statusColor = "82"
+		statusColor = theme.Success
 	case destroyError:
 		if m.interrupted {
 			statusText = "⚠️  Operation cancelled by user"
-			statusColor = "214"
+			statusColor = theme.Warning
 		} else {
 			statusText = "❌ Destruction failed!"
-			statusColor = "196"
+			statusColor = theme.Error
 		}
 	}
 
@@ -552,7 +552,7 @@ func (m *destroyProgressModel) View() string {
 		Width(contentWidth).
 		Align(lipgloss.Center, lipgloss.Top).
 		Bold(true).
-		Foreground(lipgloss.Color(statusColor))
+		Foreground(statusColor)
 
 	content.WriteString(statusContainer.Render(statusText))
 	content.WriteString("\n")
@@ -562,7 +562,7 @@ func (m *destroyProgressModel) View() string {
 	// ═══════════════════════════════════════
 	labelStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("86")).
+		Foreground(theme.Teal).
 		Width(contentWidth)
 
 	content.WriteString(labelStyle.Render("Terraform Output:"))
@@ -583,7 +583,7 @@ func (m *destroyProgressModel) View() string {
 	// Create bordered output box
 	outputBoxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("240")).
+		BorderForeground(theme.Border).
 		Padding(1, 2).
 		Width(contentWidth).
 		Height(outputHeight)
@@ -593,7 +593,7 @@ func (m *destroyProgressModel) View() string {
 	if len(outputCopy) == 0 {
 		// Show waiting message when no output yet
 		waitingStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241")).
+			Foreground(theme.Faint).
 			Italic(true).
 			Align(lipgloss.Center).
 			Width(contentWidth - 6)
@@ -645,7 +645,7 @@ func (m *destroyProgressModel) View() string {
 					wrapped := wrapText(line, maxLineWidth)
 					// Show ALL wrapped lines for errors (we pre-calculated space)
 					for _, wrappedLine := range wrapped {
-						styledLine := lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(wrappedLine)
+						styledLine := lipgloss.NewStyle().Foreground(theme.Error).Render(wrappedLine)
 						outputContent.WriteString(styledLine + "\n")
 						linesRendered++
 					}
@@ -658,11 +658,11 @@ func (m *destroyProgressModel) View() string {
 
 			// Color-code important lines
 			if strings.Contains(line, "Destroying...") || strings.Contains(line, "Destruction complete") {
-				line = lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Render(line)
+				line = lipgloss.NewStyle().Foreground(theme.Warning).Render(line)
 			} else if isError {
-				line = lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(line)
+				line = lipgloss.NewStyle().Foreground(theme.Error).Render(line)
 			} else if strings.Contains(line, "Success") || strings.Contains(line, "complete!") {
-				line = lipgloss.NewStyle().Foreground(lipgloss.Color("82")).Render(line)
+				line = lipgloss.NewStyle().Foreground(theme.Success).Render(line)
 			}
 
 			outputContent.WriteString(line + "\n")
@@ -709,7 +709,7 @@ func (m *destroyProgressModel) View() string {
 	}
 
 	footerStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("241")).
+		Foreground(theme.Faint).
 		Align(lipgloss.Center).
 		Width(contentWidth)
 
@@ -734,7 +734,7 @@ func (m *destroyProgressModel) renderFullErrorView() string {
 	// Title
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("196")).
+		Foreground(theme.Error).
 		Align(lipgloss.Center).
 		Width(m.width)
 
@@ -744,7 +744,7 @@ func (m *destroyProgressModel) renderFullErrorView() string {
 	// Viewport with error content
 	viewportStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("240")).
+		BorderForeground(theme.Border).
 		Padding(1, 2).
 		Width(m.width - 4).
 		Height(m.height - 8)
@@ -766,7 +766,7 @@ func (m *destroyProgressModel) renderFullErrorView() string {
 	}
 
 	footerStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("241")).
+		Foreground(theme.Faint).
 		Align(lipgloss.Center).
 		Width(m.width)
 

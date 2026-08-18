@@ -535,7 +535,7 @@ func (m *dnsSetupModel) renderAdoptWaitNS(width int) string {
 	rec.WriteString(kvRow("DOMAIN", m.parent, 9) + "\n")
 	rec.WriteString(kvRow("REPLACE", "all existing nameservers", 9) + "\n\n")
 
-	val := lipgloss.NewStyle().Foreground(lipgloss.Color("#60a5fa")).Bold(true)
+	val := lipgloss.NewStyle().Foreground(adapt("#2563eb", "#60a5fa")).Bold(true)
 	for i, n := range ns {
 		rec.WriteString(keycap(fmt.Sprintf("%d", i+1)) + " " + val.Render(n) + "\n")
 	}

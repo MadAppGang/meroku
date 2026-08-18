@@ -24,16 +24,16 @@ func runDNSStatus(cmd interface{}, args []string) error {
 	// Create styles
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("211"))
+		Foreground(adapt("161", "211"))
 
 	successStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("42"))
+		Foreground(theme.SuccessAlt)
 
 	warningStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("214"))
+		Foreground(theme.Warning)
 
 	errorStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("196"))
+		Foreground(theme.Error)
 
 	fmt.Println(titleStyle.Render("DNS Configuration Status"))
 	fmt.Println(strings.Repeat("─", 50))

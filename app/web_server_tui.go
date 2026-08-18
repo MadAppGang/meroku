@@ -31,12 +31,12 @@ var keys = keyMap{
 var (
 	webTitleStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("#7D56F4")).
+			Foreground(adapt("#6d28d9", "#7D56F4")).
 			MarginTop(1).
 			MarginBottom(1)
 
 	webUrlStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#04B575")).
+			Foreground(adapt("#038256", "#04B575")).
 			Bold(true)
 
 	webInfoStyle = lipgloss.NewStyle().
@@ -44,10 +44,10 @@ var (
 			MarginBottom(1)
 
 	webSuccessStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#04B575"))
+			Foreground(adapt("#038256", "#04B575"))
 
 	webErrorStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#FF6B6B"))
+			Foreground(adapt("#dc2626", "#FF6B6B"))
 
 	webHelpStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#626262")).
@@ -55,7 +55,7 @@ var (
 
 	webBoxStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#874BFD")).
+			BorderForeground(adapt("#6d28d9", "#874BFD")).
 			Padding(1, 2).
 			MarginTop(1).
 			MarginBottom(1)
@@ -80,7 +80,7 @@ type webServerModel struct {
 func initialWebServerModel(url string) webServerModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+	s.Style = lipgloss.NewStyle().Foreground(theme.Pink)
 
 	return webServerModel{
 		serverURL: url,

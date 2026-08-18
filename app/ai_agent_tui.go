@@ -192,12 +192,12 @@ func (m aiAgentModel) View() string {
 	// Styles
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("39")).
-		Background(lipgloss.Color("235")).
+		Foreground(theme.Info).
+		Background(theme.Panel).
 		Padding(0, 1)
 
 	statusStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("243")).
+		Foreground(theme.Dim).
 		Italic(true)
 
 	// Header
@@ -246,7 +246,7 @@ func (m aiAgentModel) renderSummary() string {
 	}
 
 	summaryStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("252")).
+		Foreground(theme.Text).
 		Padding(0, 1)
 
 	return summaryStyle.Render(fmt.Sprintf(
@@ -259,7 +259,7 @@ func (m aiAgentModel) renderSummary() string {
 func (m aiAgentModel) renderIterations() string {
 	if len(m.iterations) == 0 {
 		emptyStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("243")).
+			Foreground(theme.Dim).
 			Italic(true)
 		return emptyStyle.Render("Waiting for agent to start...")
 	}
@@ -284,26 +284,26 @@ func (m aiAgentModel) renderIterations() string {
 func (m aiAgentModel) renderIteration(iter AgentIteration, selected bool) string {
 	// Status icon
 	var statusIcon string
-	var statusColor lipgloss.Color
+	var statusColor lipgloss.AdaptiveColor
 	switch iter.Status {
 	case "running":
 		statusIcon = "→"
-		statusColor = lipgloss.Color("226")
+		statusColor = theme.Yellow
 	case "success":
 		statusIcon = "✓"
-		statusColor = lipgloss.Color("82")
+		statusColor = theme.Success
 	case "failed":
 		statusIcon = "✗"
-		statusColor = lipgloss.Color("196")
+		statusColor = theme.Error
 	default:
 		statusIcon = "•"
-		statusColor = lipgloss.Color("243")
+		statusColor = theme.Dim
 	}
 
 	// Base style
 	baseStyle := lipgloss.NewStyle()
 	if selected {
-		baseStyle = baseStyle.Background(lipgloss.Color("237"))
+		baseStyle = baseStyle.Background(theme.PanelAlt)
 	}
 
 	// Render iteration header
@@ -342,22 +342,22 @@ func (m aiAgentModel) renderIteration(iter AgentIteration, selected bool) string
 // renderCommandBlock renders a bordered block for shell/AWS CLI commands
 func (m aiAgentModel) renderCommandBlock(iter AgentIteration, selected bool) string {
 	// Determine border color based on action type
-	var borderColor lipgloss.Color
+	var borderColor lipgloss.AdaptiveColor
 	var title string
 	if iter.Action == "aws_cli" {
-		borderColor = lipgloss.Color("214") // Orange for AWS
+		borderColor = theme.Warning // Orange for AWS
 		title = "AWS CLI"
 	} else {
-		borderColor = lipgloss.Color("51") // Cyan for shell
+		borderColor = theme.Cyan // Cyan for shell
 		title = "Shell"
 	}
 
 	// Status color
-	statusColor := lipgloss.Color("82") // Green
+	statusColor := theme.Success // Green
 	if iter.Status == "running" {
-		statusColor = lipgloss.Color("226") // Yellow
+		statusColor = theme.Yellow // Yellow
 	} else if iter.Status == "failed" {
-		statusColor = lipgloss.Color("196") // Red
+		statusColor = theme.Error // Red
 	}
 
 	// Create bordered box style
@@ -373,22 +373,22 @@ func (m aiAgentModel) renderCommandBlock(iter AgentIteration, selected bool) str
 	content.WriteString(lipgloss.NewStyle().Foreground(borderColor).Bold(true).Render(title+" details") + "\n\n")
 
 	// Status
-	content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("243")).Render("Status: "))
+	content.WriteString(lipgloss.NewStyle().Foreground(theme.Dim).Render("Status: "))
 	content.WriteString(lipgloss.NewStyle().Foreground(statusColor).Render(iter.Status) + "\n")
 
 	// Runtime/Duration
 	if iter.Duration > 0 {
-		content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("243")).Render("Runtime: "))
+		content.WriteString(lipgloss.NewStyle().Foreground(theme.Dim).Render("Runtime: "))
 		content.WriteString(fmt.Sprintf("%v\n", iter.Duration.Round(time.Millisecond)))
 	}
 
 	// Command
-	content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("243")).Render("Command: "))
+	content.WriteString(lipgloss.NewStyle().Foreground(theme.Dim).Render("Command: "))
 	content.WriteString(iter.Command + "\n")
 
 	// Output
 	if iter.Output != "" {
-		content.WriteString("\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("243")).Render("Stdout:") + "\n\n")
+		content.WriteString("\n" + lipgloss.NewStyle().Foreground(theme.Dim).Render("Stdout:") + "\n\n")
 
 		// Show output in a code block style
 		outputLines := strings.Split(iter.Output, "\n")
@@ -398,8 +398,8 @@ func (m aiAgentModel) renderCommandBlock(iter AgentIteration, selected bool) str
 		}
 
 		outputStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("252")).
-			Background(lipgloss.Color("235")).
+			Foreground(theme.Text).
+			Background(theme.Panel).
 			Padding(0, 1)
 
 		for _, line := range displayLines {
@@ -408,7 +408,7 @@ func (m aiAgentModel) renderCommandBlock(iter AgentIteration, selected bool) str
 
 		if len(outputLines) > 10 {
 			content.WriteString("\n" + lipgloss.NewStyle().
-				Foreground(lipgloss.Color("243")).
+				Foreground(theme.Dim).
 				Italic(true).
 				Render(fmt.Sprintf("Showing 10 lines")))
 		}
@@ -416,8 +416,8 @@ func (m aiAgentModel) renderCommandBlock(iter AgentIteration, selected bool) str
 
 	// Error
 	if iter.Status == "failed" && iter.ErrorDetail != "" {
-		content.WriteString("\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true).Render("Error:") + "\n")
-		content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(iter.ErrorDetail))
+		content.WriteString("\n" + lipgloss.NewStyle().Foreground(theme.Error).Bold(true).Render("Error:") + "\n")
+		content.WriteString(lipgloss.NewStyle().Foreground(theme.Error).Render(iter.ErrorDetail))
 	}
 
 	return boxStyle.Render(content.String())
@@ -425,7 +425,7 @@ func (m aiAgentModel) renderCommandBlock(iter AgentIteration, selected bool) str
 
 // renderFileEditBlock renders a block for file edit operations
 func (m aiAgentModel) renderFileEditBlock(iter AgentIteration, selected bool) string {
-	borderColor := lipgloss.Color("141") // Purple for file edits
+	borderColor := adapt("97", "141") // Purple for file edits
 
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -437,14 +437,14 @@ func (m aiAgentModel) renderFileEditBlock(iter AgentIteration, selected bool) st
 	var content strings.Builder
 	content.WriteString(lipgloss.NewStyle().Foreground(borderColor).Bold(true).Render("File Edit") + "\n\n")
 
-	content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("243")).Render("Status: "))
-	statusColor := lipgloss.Color("82")
+	content.WriteString(lipgloss.NewStyle().Foreground(theme.Dim).Render("Status: "))
+	statusColor := theme.Success
 	if iter.Status == "failed" {
-		statusColor = lipgloss.Color("196")
+		statusColor = theme.Error
 	}
 	content.WriteString(lipgloss.NewStyle().Foreground(statusColor).Render(iter.Status) + "\n")
 
-	content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("243")).Render("Operation: "))
+	content.WriteString(lipgloss.NewStyle().Foreground(theme.Dim).Render("Operation: "))
 	content.WriteString(iter.Command + "\n")
 
 	if iter.Output != "" {
@@ -452,7 +452,7 @@ func (m aiAgentModel) renderFileEditBlock(iter AgentIteration, selected bool) st
 	}
 
 	if iter.Status == "failed" && iter.ErrorDetail != "" {
-		content.WriteString("\n\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("Error: "+iter.ErrorDetail))
+		content.WriteString("\n\n" + lipgloss.NewStyle().Foreground(theme.Error).Render("Error: "+iter.ErrorDetail))
 	}
 
 	return boxStyle.Render(content.String())
@@ -460,7 +460,7 @@ func (m aiAgentModel) renderFileEditBlock(iter AgentIteration, selected bool) st
 
 // renderTerraformBlock renders a block for terraform operations
 func (m aiAgentModel) renderTerraformBlock(iter AgentIteration, selected bool) string {
-	borderColor := lipgloss.Color("105") // Purple/blue for terraform
+	borderColor := adapt("61", "105") // Purple/blue for terraform
 
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -477,22 +477,22 @@ func (m aiAgentModel) renderTerraformBlock(iter AgentIteration, selected bool) s
 	var content strings.Builder
 	content.WriteString(lipgloss.NewStyle().Foreground(borderColor).Bold(true).Render(title) + "\n\n")
 
-	content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("243")).Render("Status: "))
-	statusColor := lipgloss.Color("82")
+	content.WriteString(lipgloss.NewStyle().Foreground(theme.Dim).Render("Status: "))
+	statusColor := theme.Success
 	if iter.Status == "running" {
-		statusColor = lipgloss.Color("226")
+		statusColor = theme.Yellow
 	} else if iter.Status == "failed" {
-		statusColor = lipgloss.Color("196")
+		statusColor = theme.Error
 	}
 	content.WriteString(lipgloss.NewStyle().Foreground(statusColor).Render(iter.Status) + "\n")
 
 	if iter.Duration > 0 {
-		content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("243")).Render("Duration: "))
+		content.WriteString(lipgloss.NewStyle().Foreground(theme.Dim).Render("Duration: "))
 		content.WriteString(fmt.Sprintf("%v\n", iter.Duration.Round(time.Millisecond)))
 	}
 
 	if iter.Output != "" {
-		content.WriteString("\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("243")).Render("Output:") + "\n\n")
+		content.WriteString("\n" + lipgloss.NewStyle().Foreground(theme.Dim).Render("Output:") + "\n\n")
 		outputPreview := truncateString(iter.Output, 200)
 		content.WriteString(outputPreview)
 	}
@@ -502,7 +502,7 @@ func (m aiAgentModel) renderTerraformBlock(iter AgentIteration, selected bool) s
 
 // renderWebSearchBlock renders a block for web search operations
 func (m aiAgentModel) renderWebSearchBlock(iter AgentIteration, selected bool) string {
-	borderColor := lipgloss.Color("39") // Blue for web search
+	borderColor := theme.Info // Blue for web search
 
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -514,11 +514,11 @@ func (m aiAgentModel) renderWebSearchBlock(iter AgentIteration, selected bool) s
 	var content strings.Builder
 	content.WriteString(lipgloss.NewStyle().Foreground(borderColor).Bold(true).Render("Web Search") + "\n\n")
 
-	content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("243")).Render("Query: "))
+	content.WriteString(lipgloss.NewStyle().Foreground(theme.Dim).Render("Query: "))
 	content.WriteString(iter.Command + "\n")
 
 	if iter.Output != "" {
-		content.WriteString("\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("243")).Render("Results:") + "\n\n")
+		content.WriteString("\n" + lipgloss.NewStyle().Foreground(theme.Dim).Render("Results:") + "\n\n")
 		outputPreview := truncateString(iter.Output, 300)
 		content.WriteString(outputPreview)
 	}
@@ -528,7 +528,7 @@ func (m aiAgentModel) renderWebSearchBlock(iter AgentIteration, selected bool) s
 
 // renderCompleteBlock renders a block for completion
 func (m aiAgentModel) renderCompleteBlock(iter AgentIteration, selected bool) string {
-	borderColor := lipgloss.Color("82") // Green for completion
+	borderColor := theme.Success // Green for completion
 
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.DoubleBorder()).
@@ -547,7 +547,7 @@ func (m aiAgentModel) renderCompleteBlock(iter AgentIteration, selected bool) st
 // renderSimpleBlock renders a simple block for unknown action types
 func (m aiAgentModel) renderSimpleBlock(iter AgentIteration, selected bool) string {
 	detailStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("243")).
+		Foreground(theme.Dim).
 		PaddingLeft(4)
 
 	var content strings.Builder
@@ -559,7 +559,7 @@ func (m aiAgentModel) renderSimpleBlock(iter AgentIteration, selected bool) stri
 
 	if iter.Status == "failed" && iter.ErrorDetail != "" {
 		errorStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("196")).
+			Foreground(theme.Error).
 			PaddingLeft(4)
 		content.WriteString("\n" + errorStyle.Render(fmt.Sprintf("Error: %s", truncateString(iter.ErrorDetail, 100))))
 	}
@@ -592,12 +592,12 @@ func (m aiAgentModel) renderCompletionSummary() string {
 	var outcomeText string
 	if m.success {
 		outcomeStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("82")).
+			Foreground(theme.Success).
 			Bold(true)
 		outcomeText = "✓ Problem Solved Successfully"
 	} else {
 		outcomeStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("196")).
+			Foreground(theme.Error).
 			Bold(true)
 		outcomeText = "✗ Agent Unable to Resolve Issue"
 	}
@@ -605,21 +605,21 @@ func (m aiAgentModel) renderCompletionSummary() string {
 	// Create summary box
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.DoubleBorder()).
-		BorderForeground(lipgloss.Color("39")).
+		BorderForeground(theme.Info).
 		Padding(1, 2).
 		MarginTop(1).
 		MarginBottom(1)
 
 	var summary strings.Builder
 	summary.WriteString(outcomeStyle.Render(outcomeText) + "\n\n")
-	summary.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("243")).Render("Summary:") + "\n")
+	summary.WriteString(lipgloss.NewStyle().Foreground(theme.Dim).Render("Summary:") + "\n")
 	summary.WriteString(fmt.Sprintf("  • Total Iterations: %d\n", totalIterations))
 	summary.WriteString(fmt.Sprintf("  • Successful Actions: %d\n", successCount))
 	summary.WriteString(fmt.Sprintf("  • Failed Actions: %d\n", failedCount))
 	summary.WriteString(fmt.Sprintf("  • Total Duration: %v\n", totalDuration.Round(time.Second)))
 
 	if m.currentStatus != "" {
-		summary.WriteString("\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Render(m.currentStatus))
+		summary.WriteString("\n" + lipgloss.NewStyle().Foreground(theme.Text).Render(m.currentStatus))
 	}
 
 	return boxStyle.Render(summary.String())
@@ -628,8 +628,8 @@ func (m aiAgentModel) renderCompletionSummary() string {
 // renderFooter shows help text
 func (m aiAgentModel) renderFooter() string {
 	footerStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("243")).
-		Background(lipgloss.Color("235")).
+		Foreground(theme.Dim).
+		Background(theme.Panel).
 		Padding(0, 1)
 
 	var scrollIndicator string

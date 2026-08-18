@@ -18,26 +18,26 @@ func ShowAPIKeyRequiredScreen() {
 	// Define colors and styles
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("#FF6B9D")).
+		Foreground(adapt("#db2777", "#FF6B9D")).
 		MarginTop(1).
 		MarginBottom(1)
 
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("#874BFD")).
+		BorderForeground(adapt("#6d28d9", "#874BFD")).
 		Padding(1, 2).
 		Width(70)
 
 	highlightStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("#7D56F4"))
+		Foreground(adapt("#6d28d9", "#7D56F4"))
 
 	linkStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#04B575")).
+		Foreground(adapt("#038256", "#04B575")).
 		Underline(true)
 
 	warningStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#FFAA00")).
+		Foreground(adapt("#b45309", "#FFAA00")).
 		Bold(true)
 
 	// ASCII Art

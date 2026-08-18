@@ -486,7 +486,7 @@ func (m SSOWizardModel) View() string {
 	// Title
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("39")).
+		Foreground(theme.Info).
 		MarginBottom(1)
 
 	b.WriteString(titleStyle.Render("🔐 AWS SSO Setup Wizard"))
@@ -513,7 +513,7 @@ func (m SSOWizardModel) View() string {
 		b.WriteString("(Example: https://mycompany.awsapps.com/start)\n\n")
 		b.WriteString("> " + m.startURLInput + "█\n\n")
 		if m.errorMsg != "" {
-			b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("❌ " + m.errorMsg + "\n"))
+			b.WriteString(lipgloss.NewStyle().Foreground(theme.Error).Render("❌ " + m.errorMsg + "\n"))
 		}
 		b.WriteString("\nPress Enter to continue, Esc to go back\n")
 
@@ -527,7 +527,7 @@ func (m SSOWizardModel) View() string {
 		b.WriteString("Common: us-east-1, us-west-2, eu-west-1, ap-southeast-1\n\n")
 		b.WriteString("> " + m.ssoRegionInput + "█\n\n")
 		if m.errorMsg != "" {
-			b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("❌ " + m.errorMsg + "\n"))
+			b.WriteString(lipgloss.NewStyle().Foreground(theme.Error).Render("❌ " + m.errorMsg + "\n"))
 		}
 		b.WriteString("\nPress Enter to continue, Esc to go back\n")
 
@@ -540,7 +540,7 @@ func (m SSOWizardModel) View() string {
 		b.WriteString("(12-digit AWS account number)\n\n")
 		b.WriteString("> " + m.accountIDInput + "█\n\n")
 		if m.errorMsg != "" {
-			b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("❌ " + m.errorMsg + "\n"))
+			b.WriteString(lipgloss.NewStyle().Foreground(theme.Error).Render("❌ " + m.errorMsg + "\n"))
 		}
 		b.WriteString("\nPress Enter to continue, Esc to go back\n")
 
@@ -549,7 +549,7 @@ func (m SSOWizardModel) View() string {
 		b.WriteString("(Common: AdministratorAccess, PowerUserAccess, ReadOnlyAccess)\n\n")
 		b.WriteString("> " + m.roleInput + "█\n\n")
 		if m.errorMsg != "" {
-			b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("❌ " + m.errorMsg + "\n"))
+			b.WriteString(lipgloss.NewStyle().Foreground(theme.Error).Render("❌ " + m.errorMsg + "\n"))
 		}
 		b.WriteString("\nPress Enter to continue, Esc to go back\n")
 
@@ -563,7 +563,7 @@ func (m SSOWizardModel) View() string {
 		b.WriteString("Common: us-east-1, us-west-2, eu-west-1, ap-southeast-1\n\n")
 		b.WriteString("> " + m.regionInput + "█\n\n")
 		if m.errorMsg != "" {
-			b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("❌ " + m.errorMsg + "\n"))
+			b.WriteString(lipgloss.NewStyle().Foreground(theme.Error).Render("❌ " + m.errorMsg + "\n"))
 		}
 		b.WriteString("\nPress Enter to continue, Esc to go back\n")
 
@@ -572,7 +572,7 @@ func (m SSOWizardModel) View() string {
 		b.WriteString("(Options: json, yaml, text, table)\n\n")
 		b.WriteString("> " + m.outputInput + "█\n\n")
 		if m.errorMsg != "" {
-			b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("❌ " + m.errorMsg + "\n"))
+			b.WriteString(lipgloss.NewStyle().Foreground(theme.Error).Render("❌ " + m.errorMsg + "\n"))
 		}
 		b.WriteString("\nPress Enter to continue, Esc to go back\n")
 
@@ -607,7 +607,7 @@ func (m SSOWizardModel) View() string {
 
 	case WizardStateSuccess:
 		successStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("42")).
+			Foreground(theme.SuccessAlt).
 			Bold(true)
 		b.WriteString(successStyle.Render("✅ SUCCESS!") + "\n\n")
 		b.WriteString(fmt.Sprintf("AWS SSO profile '%s' is ready to use!\n\n", m.profileName))
@@ -619,7 +619,7 @@ func (m SSOWizardModel) View() string {
 
 	case WizardStateError:
 		errorStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("196")).
+			Foreground(theme.Error).
 			Bold(true)
 		b.WriteString(errorStyle.Render("❌ ERROR") + "\n\n")
 		b.WriteString(m.errorMsg + "\n\n")

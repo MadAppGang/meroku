@@ -218,7 +218,7 @@ func renderNameserverPanel(zone, parent string, nameservers []string, width int)
 	// number is the key that copies that line. Brightest thing on the panel:
 	// these are the values being copied out.
 	idxStyle := lipgloss.NewStyle().Foreground(mutedColor).PaddingLeft(6)
-	nsStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#60a5fa")).Bold(true)
+	nsStyle := lipgloss.NewStyle().Foreground(adapt("#2563eb", "#60a5fa")).Bold(true)
 	for i, ns := range nameservers {
 		b.WriteString(idxStyle.Render(fmt.Sprintf("%d ", i+1)) + nsStyle.Render(ns) + "\n")
 	}

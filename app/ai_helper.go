@@ -32,7 +32,7 @@ func isAIHelperAvailable() bool {
 func promptForAIHelp() bool {
 	fmt.Println()
 	fmt.Println(lipgloss.NewStyle().
-		Foreground(lipgloss.Color("39")).
+		Foreground(theme.Info).
 		Bold(true).
 		Render("🤖 AI-powered error recovery available!"))
 	fmt.Print("   Would you like help fixing these errors? (y/n): ")
@@ -100,7 +100,7 @@ Important:
 
 	fmt.Println()
 	fmt.Println(lipgloss.NewStyle().
-		Foreground(lipgloss.Color("39")).
+		Foreground(theme.Info).
 		Render("🔍 Analyzing errors with AI..."))
 
 	// Call the API
@@ -184,14 +184,14 @@ func displayAISuggestionsWithContext(problem string, commands []string, original
 		fmt.Println()
 		fmt.Println(divider)
 		fmt.Println(lipgloss.NewStyle().
-			Foreground(lipgloss.Color("196")).
+			Foreground(theme.Error).
 			Bold(true).
 			Render("❌ Original Error"))
 		fmt.Println(divider)
 		fmt.Println()
 
 		errorStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("196")).
+			Foreground(theme.Error).
 			Width(100)
 
 		for _, err := range originalErrors {
@@ -203,7 +203,7 @@ func displayAISuggestionsWithContext(problem string, commands []string, original
 	fmt.Println()
 	fmt.Println(divider)
 	fmt.Println(lipgloss.NewStyle().
-		Foreground(lipgloss.Color("226")).
+		Foreground(theme.Yellow).
 		Bold(true).
 		Render("💡 AI Analysis"))
 	fmt.Println(divider)
@@ -211,14 +211,14 @@ func displayAISuggestionsWithContext(problem string, commands []string, original
 
 	// Word wrap the problem description
 	problemStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("252")).
+		Foreground(theme.Text).
 		Width(70)
 	fmt.Println(problemStyle.Render(problem))
 
 	fmt.Println()
 	fmt.Println(divider)
 	fmt.Println(lipgloss.NewStyle().
-		Foreground(lipgloss.Color("82")).
+		Foreground(theme.Success).
 		Bold(true).
 		Render("📋 Suggested Fix"))
 	fmt.Println(divider)
@@ -228,7 +228,7 @@ func displayAISuggestionsWithContext(problem string, commands []string, original
 
 	// Display commands with syntax highlighting
 	commandStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("39")).
+		Foreground(theme.Info).
 		PaddingLeft(2)
 
 	for _, cmd := range commands {
@@ -241,7 +241,7 @@ func displayAISuggestionsWithContext(problem string, commands []string, original
 
 	// Disclaimer
 	disclaimerStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("243")).
+		Foreground(theme.Dim).
 		Italic(true)
 	fmt.Println(disclaimerStyle.Render("⚠️  AI-generated suggestions - please review before running"))
 	fmt.Println()

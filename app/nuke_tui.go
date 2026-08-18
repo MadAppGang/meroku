@@ -214,21 +214,21 @@ func (m *nukeModel) viewSelectEnv() string {
 
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("9")).
+		Foreground(theme.ErrorDeep).
 		MarginBottom(1)
 
 	subtitle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("241")).
+		Foreground(theme.Faint).
 		Italic(true).
 		MarginBottom(2)
 
 	itemStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("250")).
+		Foreground(theme.Text).
 		MarginLeft(2)
 
 	selectedStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("15")).
-		Background(lipgloss.Color("9")).
+		Background(theme.ErrorDeep).
 		Bold(true).
 		MarginLeft(0).
 		PaddingLeft(2).
@@ -250,7 +250,7 @@ func (m *nukeModel) viewSelectEnv() string {
 	}
 
 	content.WriteString("\n")
-	content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("↑/↓: Navigate • Enter: Select • Esc/Q: Cancel"))
+	content.WriteString(lipgloss.NewStyle().Foreground(theme.Faint).Render("↑/↓: Navigate • Enter: Select • Esc/Q: Cancel"))
 
 	return style.Render(content.String())
 }
@@ -258,27 +258,27 @@ func (m *nukeModel) viewSelectEnv() string {
 func (m *nukeModel) viewShowDetails() string {
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("9")).
+		BorderForeground(theme.ErrorDeep).
 		Padding(1, 2).
 		Width(60)
 
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("9"))
+		Foreground(theme.ErrorDeep)
 
 	labelStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("241"))
+		Foreground(theme.Faint)
 
 	valueStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("15")).
+		Foreground(theme.TextStrong).
 		Bold(true)
 
 	versionValueStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("196")).
+		Foreground(theme.Error).
 		Bold(true)
 
 	warningStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("11")).
+		Foreground(theme.Yellow).
 		Bold(true).
 		MarginTop(2).
 		MarginBottom(2)
@@ -300,7 +300,7 @@ func (m *nukeModel) viewShowDetails() string {
 	content.WriteString(warningStyle.Render("⚠️  ALL RESOURCES WILL BE PERMANENTLY DELETED"))
 
 	content.WriteString("\n\n")
-	content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("Press Enter to continue • Esc to cancel"))
+	content.WriteString(lipgloss.NewStyle().Foreground(theme.Faint).Render("Press Enter to continue • Esc to cancel"))
 
 	centerStyle := lipgloss.NewStyle().
 		Width(m.width).
@@ -314,18 +314,18 @@ func (m *nukeModel) viewShowDetails() string {
 func (m *nukeModel) viewFirstConfirm() string {
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.ThickBorder()).
-		BorderForeground(lipgloss.Color("9")).
+		BorderForeground(theme.ErrorDeep).
 		Padding(2, 4).
 		Width(70)
 
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("9")).
+		Foreground(theme.ErrorDeep).
 		Align(lipgloss.Center).
 		MarginBottom(2)
 
 	questionStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("15")).
+		Foreground(theme.TextStrong).
 		Align(lipgloss.Center).
 		MarginBottom(3)
 
@@ -335,12 +335,12 @@ func (m *nukeModel) viewFirstConfirm() string {
 
 	selectedButtonStyle := buttonStyle.Copy().
 		Foreground(lipgloss.Color("0")).
-		Background(lipgloss.Color("9")).
+		Background(adapt("196", "9")).
 		Bold(true)
 
 	unselectedButtonStyle := buttonStyle.Copy().
-		Foreground(lipgloss.Color("250")).
-		Background(lipgloss.Color("236"))
+		Foreground(theme.Text).
+		Background(theme.PanelAlt)
 
 	var content strings.Builder
 	content.WriteString(titleStyle.Render("⚠️  CONFIRMATION REQUIRED"))
@@ -358,7 +358,7 @@ func (m *nukeModel) viewFirstConfirm() string {
 	content.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Render(buttons))
 
 	content.WriteString("\n\n")
-	content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Align(lipgloss.Center).Render("← →: Navigate • Enter: Confirm • Esc: Cancel"))
+	content.WriteString(lipgloss.NewStyle().Foreground(theme.Faint).Align(lipgloss.Center).Render("← →: Navigate • Enter: Confirm • Esc: Cancel"))
 
 	centerStyle := lipgloss.NewStyle().
 		Width(m.width).
@@ -372,30 +372,30 @@ func (m *nukeModel) viewFirstConfirm() string {
 func (m *nukeModel) viewProjectName() string {
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("11")).
+		BorderForeground(theme.Yellow).
 		Padding(2, 3).
 		Width(65)
 
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("11")).
+		Foreground(theme.Yellow).
 		Align(lipgloss.Center).
 		MarginBottom(2)
 
 	instructionStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("250")).
+		Foreground(theme.Text).
 		Align(lipgloss.Center).
 		MarginBottom(2)
 
 	inputBoxStyle := lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder()).
-		BorderForeground(lipgloss.Color("11")).
+		BorderForeground(theme.Yellow).
 		Padding(0, 1).
 		Width(50).
 		Align(lipgloss.Center)
 
 	errorStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("9")).
+		Foreground(theme.ErrorDeep).
 		Align(lipgloss.Center).
 		MarginTop(1)
 
@@ -415,7 +415,7 @@ func (m *nukeModel) viewProjectName() string {
 	}
 
 	content.WriteString("\n\n")
-	content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Align(lipgloss.Center).Render("Enter: DESTROY • Esc: Cancel"))
+	content.WriteString(lipgloss.NewStyle().Foreground(theme.Faint).Align(lipgloss.Center).Render("Enter: DESTROY • Esc: Cancel"))
 
 	centerStyle := lipgloss.NewStyle().
 		Width(m.width).
@@ -429,18 +429,18 @@ func (m *nukeModel) viewProjectName() string {
 func (m *nukeModel) viewCancelled() string {
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("10")).
+		BorderForeground(theme.SuccessAlt).
 		Padding(2, 4).
 		Width(50)
 
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("10")).
+		Foreground(theme.SuccessAlt).
 		Align(lipgloss.Center).
 		MarginBottom(2)
 
 	messageStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("250")).
+		Foreground(theme.Text).
 		Align(lipgloss.Center)
 
 	var content strings.Builder
@@ -448,7 +448,7 @@ func (m *nukeModel) viewCancelled() string {
 	content.WriteString("\n\n")
 	content.WriteString(messageStyle.Render("No resources were destroyed.\nYour infrastructure is safe."))
 	content.WriteString("\n\n")
-	content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Align(lipgloss.Center).Render("Press any key to exit"))
+	content.WriteString(lipgloss.NewStyle().Foreground(theme.Faint).Align(lipgloss.Center).Render("Press any key to exit"))
 
 	centerStyle := lipgloss.NewStyle().
 		Width(m.width).
