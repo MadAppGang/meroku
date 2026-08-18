@@ -3,7 +3,6 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import React, { useId, useState } from "react";
 import { fn } from "storybook/test";
 import { PropertySelectField } from "../../PropertyPrimitives";
-import "../../property-panel.css";
 import { fullscreenParameters, primitiveDecorator } from "../storyConfig";
 
 const options = [

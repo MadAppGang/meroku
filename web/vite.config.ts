@@ -53,7 +53,7 @@ export default defineConfig({
 		},
 	},
 	optimizeDeps: {
-		include: ["react", "react-dom"],
+		include: ["react", "react-dom", "@monaco-editor/react", "monaco-editor"],
 		esbuildOptions: {
 			target: "es2020",
 		},

@@ -1,29 +1,30 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 // biome-ignore lint/correctness/noUnusedImports: Storybook's browser-test transform requires React in scope for JSX.
 import React from "react";
-import { PropertyEmptyState } from "../../PropertyPrimitives";
+import { fn } from "storybook/test";
+import { PropertyGroup, PropertyReadonlyRows } from "../../PropertyLayouts";
+import { PropertyActionButton } from "../../PropertyPrimitives";
 import { fullscreenParameters, primitiveDecorator } from "../storyConfig";
 
 const meta = {
-	title: "Components/Empty State",
-	component: PropertyEmptyState,
+	title: "Components/Action Button",
+	component: PropertyActionButton,
 	tags: ["!autodocs"],
 	args: {
-		title: "Nothing to configure",
-		description: "This node is generated from the environment.",
+		children: "+ Add variable",
+		onClick: fn(),
 	},
 	parameters: fullscreenParameters,
 	decorators: [primitiveDecorator],
 	render: (args) => (
-		<div
-			className="mp-primitive-demo mp-compact-panel"
-			data-surface="light"
-			data-theme="light"
+		<PropertyGroup
+			title="Environment"
+			action={<PropertyActionButton {...args} />}
 		>
-			<PropertyEmptyState {...args} />
-		</div>
+			<PropertyReadonlyRows rows={[["Variables", "5 configured"]]} />
+		</PropertyGroup>
 	),
-} satisfies Meta<typeof PropertyEmptyState>;
+} satisfies Meta<typeof PropertyActionButton>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;

@@ -6,7 +6,6 @@ import {
 	PropertyEditableField,
 	PropertySelectField,
 } from "../../PropertyPrimitives";
-import "../../property-panel.css";
 import { fullscreenParameters, primitiveDecorator } from "../storyConfig";
 
 const cpuOptions = [{ value: "512", label: "512 (0.5 vCPU)" }];

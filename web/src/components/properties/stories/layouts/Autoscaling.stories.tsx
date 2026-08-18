@@ -6,7 +6,6 @@ import {
 	PropertyAutoscalingTarget,
 	PropertyEditableField,
 } from "../../PropertyPrimitives";
-import "../../property-panel.css";
 import { fullscreenParameters, primitiveDecorator } from "../storyConfig";
 
 function AutoscalingExample() {

@@ -17,6 +17,7 @@ export {
 	PropertyGroup,
 	PropertyImageSource,
 	PropertyPanelHeader,
+	PropertyPanelMeta,
 	PropertyPanelShell,
 	PropertyPanelTabs,
 	PropertyReadonlyRows,

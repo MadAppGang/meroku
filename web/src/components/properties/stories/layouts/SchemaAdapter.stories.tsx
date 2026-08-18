@@ -5,7 +5,6 @@ import {
 	PropertyFieldLayout,
 	PropertySchemaField,
 } from "../../PropertyLayouts";
-import "../../property-panel.css";
 import type { PropertyFieldDefinition } from "../../types";
 import { fullscreenParameters, primitiveDecorator } from "../storyConfig";
 

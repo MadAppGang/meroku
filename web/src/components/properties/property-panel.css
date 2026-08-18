@@ -43,8 +43,6 @@
 	--mp-type-control: 13px;
 	--mp-type-status: 12px;
 	--mp-type-action: 13px;
-	--mp-field-label-width-primary: 72px;
-	--mp-field-label-width-secondary: 94px;
 	--mp-font-sans:
 		Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 	--mp-font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
@@ -473,6 +471,22 @@
 .mp-control[aria-invalid="true"] {
 	border-color: var(--mp-danger);
 	box-shadow: 0 0 0 2px rgb(239 68 68 / 12%);
+}
+
+[data-slot="select-trigger"].mp-control {
+	padding-right: 30px;
+	overflow: hidden;
+}
+
+[data-slot="select-trigger"].mp-control [data-slot="select-value"] {
+	min-width: 0;
+	max-width: 100%;
+	display: block;
+	flex: 1 1 auto;
+	overflow: hidden;
+	text-align: left;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .mp-select-content {
@@ -1296,6 +1310,19 @@ textarea.mp-control,
 	gap: 9px 10px;
 }
 
+.mp-property-layout[data-layout="two-column"] {
+	--mp-layout-label-primary: max-content;
+	--mp-layout-label-secondary: max-content;
+	grid-template-columns:
+		var(--mp-layout-label-primary) minmax(0, 1fr)
+		var(--mp-layout-label-secondary) minmax(0, 1fr);
+}
+
+.mp-property-layout[data-layout="two-column"].mp-compact-fields--runtime {
+	--mp-layout-label-primary: 36px;
+	--mp-layout-label-secondary: 72px;
+}
+
 .mp-property-layout[data-layout="vertical"] {
 	grid-template-columns: minmax(0, 1fr);
 }
@@ -1323,24 +1350,22 @@ textarea.mp-control,
 	gap: 6px;
 }
 
-.mp-property-layout > .mp-compact-field[data-label-placement="inline"] {
+.mp-property-layout[data-layout="two-column"]
+	> .mp-compact-field[data-label-placement="inline"] {
 	display: grid;
-	grid-template-columns: var(--mp-field-label-width) minmax(0, 1fr);
+	grid-column: span 2;
+	grid-template-columns: subgrid;
 }
 
 .mp-property-layout[data-layout="two-column"]
-	> .mp-compact-field[data-label-placement="inline"]:nth-child(odd) {
-	--mp-field-label-width: var(--mp-field-label-width-primary);
-}
-
-.mp-property-layout[data-layout="two-column"]
-	> .mp-compact-field[data-label-placement="inline"]:nth-child(even) {
-	--mp-field-label-width: var(--mp-field-label-width-secondary);
+	> .mp-compact-field[data-label-placement="stacked"] {
+	grid-column: span 2;
 }
 
 .mp-property-layout[data-layout="vertical"]
 	> .mp-compact-field[data-label-placement="inline"] {
-	--mp-field-label-width: 116px;
+	display: grid;
+	grid-template-columns: 116px minmax(0, 1fr);
 }
 
 .mp-property-layout > .mp-compact-field[data-label-placement="stacked"] {
@@ -1356,11 +1381,71 @@ textarea.mp-control,
 	grid-column: 1 / -1;
 }
 
+.mp-property-layout[data-layout="two-column"]
+	> .mp-compact-field[data-span="full"] {
+	grid-column: 1 / -1;
+}
+
+.mp-property-layout[data-layout="two-column"]
+	> .mp-compact-field[data-span="full"][data-label-placement="inline"] {
+	grid-template-columns: 116px minmax(0, 1fr);
+}
+
 .mp-compact-field[data-kind="textarea"],
+.mp-compact-field[data-kind="code"],
 .mp-compact-field[data-kind="key-value"] {
 	display: grid;
 	grid-template-columns: 86px minmax(0, 1fr);
 	align-items: start;
+}
+
+.mp-code-editor {
+	min-width: 0;
+	overflow: visible;
+	background: #1e1e1e;
+	border: 1px solid var(--mp-border);
+	border-radius: 7px;
+	box-shadow: 0 1px 2px rgb(0 0 0 / 10%);
+	transition:
+		border-color 140ms ease,
+		box-shadow 140ms ease;
+}
+
+.mp-code-editor:focus-within {
+	border-color: var(--mp-accent);
+	box-shadow: 0 0 0 2px var(--mp-accent-focus);
+}
+
+.mp-code-editor[data-disabled="true"] {
+	opacity: 0.58;
+}
+
+.mp-code-editor .terraform-editor {
+	border: 0;
+	border-radius: 6px 6px 0 0;
+}
+
+/* Monaco keeps an off-screen IME textarea in the DOM. Give that internal
+ * surface an explicit high-contrast pair so automated and OS-level assistive
+ * technology do not inherit a mismatched colour from the surrounding panel. */
+.mp-code-editor textarea.ime-text-area {
+	color: #ffffff !important;
+	background: #1f2937 !important;
+}
+
+.mp-code-editor__status {
+	height: 24px;
+	padding: 0 8px 0 42px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	color: #a1a1aa;
+	background: #18181b;
+	border-top: 1px solid #27272a;
+	border-radius: 0 0 6px 6px;
+	font: 500 9px / 1 var(--mp-font-mono);
+	letter-spacing: 0.02em;
 }
 
 .mp-compact-field[data-kind="tags"] {
@@ -1375,10 +1460,13 @@ textarea.mp-control,
 
 .mp-compact-field__label {
 	flex: 0 0 auto;
+	max-width: 128px;
+	overflow: hidden;
 	color: var(--mp-text-muted);
 	font-size: var(--mp-type-label);
 	font-weight: 500;
 	line-height: 12px;
+	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 
@@ -1394,19 +1482,6 @@ textarea.mp-control,
 	min-width: 0;
 	flex: 1 1 auto;
 	font-size: var(--mp-type-control);
-}
-
-.mp-compact-fields--runtime > .mp-compact-field {
-	display: grid;
-	grid-template-columns: var(--mp-runtime-label-width) minmax(0, 1fr);
-}
-
-.mp-compact-fields--runtime > .mp-compact-field:first-child {
-	--mp-runtime-label-width: 36px;
-}
-
-.mp-compact-fields--runtime > .mp-compact-field:last-child {
-	--mp-runtime-label-width: 72px;
 }
 
 .mp-autoscaling-group {
@@ -1669,6 +1744,52 @@ textarea.mp-control,
 
 .mp-env-item code {
 	min-width: 0;
+}
+
+.mp-overflow-text {
+	min-width: 0;
+	max-width: 100%;
+	display: block;
+	overflow: hidden;
+	border-radius: 3px;
+	outline: none;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.mp-env-item > .mp-overflow-text {
+	flex: 1 1 auto;
+}
+
+.mp-overflow-text[data-overflow="true"] {
+	cursor: help;
+}
+
+.mp-overflow-text[data-overflow="true"]:focus-visible {
+	box-shadow: 0 0 0 2px var(--mp-accent-focus);
+}
+
+.mp-overflow-tooltip[data-slot="tooltip-content"] {
+	z-index: 130;
+	max-width: min(360px, calc(100vw - 24px));
+	padding: 7px 9px;
+	color: #f9fafb;
+	background: #111827;
+	border: 1px solid #374151;
+	border-radius: 6px;
+	box-shadow: 0 8px 24px rgb(0 0 0 / 24%);
+	text-align: left;
+}
+
+.mp-overflow-tooltip code {
+	color: inherit;
+	font: 11px / 1.45 var(--mp-font-mono);
+	overflow-wrap: anywhere;
+}
+
+.mp-overflow-tooltip > svg {
+	background: #111827;
+	fill: #111827;
 }
 
 .mp-env-item-badge {
@@ -2590,10 +2711,25 @@ input.mp-ledger-control {
 
 .mp-compact-panel[data-surface="light"] .mp-control,
 .mp-compact-panel[data-surface="light"] .mp-input-frame,
+.mp-compact-panel[data-surface="light"] .mp-readonly,
 .mp-compact-panel[data-surface="light"] .mp-compact-image-row,
 .mp-compact-panel[data-surface="light"] .mp-compact-tag-list,
 .mp-compact-panel[data-surface="light"] .mp-compact-env {
 	background: #ffffff;
+}
+
+.mp-compact-panel[data-surface="light"] .mp-code-editor,
+.mp-primitive-demo[data-surface="light"] .mp-code-editor {
+	background: #fbfcf8;
+	border-color: var(--mp-border-strong);
+	box-shadow: 0 1px 2px rgb(17 24 39 / 5%);
+}
+
+.mp-compact-panel[data-surface="light"] .mp-code-editor__status,
+.mp-primitive-demo[data-surface="light"] .mp-code-editor__status {
+	color: var(--mp-text-muted);
+	background: #f4f6ef;
+	border-top-color: var(--mp-border);
 }
 
 .mp-compact-panel[data-surface="light"] .mp-readonly__value {
@@ -2755,7 +2891,9 @@ input.mp-ledger-control {
 	background: var(--mp-accent-soft-strong);
 }
 
-@media (max-width: 520px) {
+/* The inspector is designed around dense paired rows. Keep that composition at
+ * normal sidebar widths and stack only when the panel is genuinely narrow. */
+@media (max-width: 440px) {
 	.meroku-properties {
 		--mp-panel-width: 100%;
 		border-left: 0;
@@ -2783,6 +2921,18 @@ input.mp-ledger-control {
 	.mp-compact-runtime-row,
 	.mp-compact-advanced__body {
 		grid-template-columns: 1fr;
+	}
+	.mp-property-layout[data-layout="two-column"] {
+		grid-template-columns: 1fr;
+	}
+	.mp-property-layout[data-layout="two-column"]
+		> .mp-compact-field[data-label-placement="inline"] {
+		grid-column: 1;
+		grid-template-columns: 96px minmax(0, 1fr);
+	}
+	.mp-property-layout[data-layout="two-column"]
+		> .mp-compact-field[data-label-placement="stacked"] {
+		grid-column: 1;
 	}
 	.mp-compact-group__header {
 		align-items: flex-start;
@@ -2876,6 +3026,10 @@ input.mp-ledger-control {
 .mp-primitive-demo--field {
 	width: min(360px, 100%);
 	padding: 16px;
+}
+
+.mp-primitive-demo--editor {
+	width: min(680px, 100%);
 }
 
 .mp-primitive-demo--field .mp-primitive-demo__title {

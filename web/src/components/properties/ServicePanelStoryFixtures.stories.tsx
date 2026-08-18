@@ -3,15 +3,17 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import React from "react";
 import { expect, userEvent, waitFor, within } from "storybook/test";
 import { ServiceProperties } from "./ServiceProperties";
+import {
+	darkPanelDecorator,
+	fullscreenParameters,
+	lightPanelDecorator,
+} from "./stories/storyConfig";
 
 const meta = {
 	title: "Nodes/Service",
 	component: ServiceProperties,
 	tags: ["!autodocs"],
-	parameters: {
-		controls: { disable: true },
-		layout: "fullscreen",
-	},
+	parameters: fullscreenParameters,
 } satisfies Meta<typeof ServiceProperties>;
 
 export default meta;
@@ -115,11 +117,8 @@ const verifyDefaultLayout = async (
 
 export const DefaultDark: Story = {
 	name: "Default · Dark",
-	render: () => (
-		<div className="mp-story-stage" data-theme="dark">
-			<ServiceProperties theme="dark" />
-		</div>
-	),
+	decorators: [darkPanelDecorator],
+	render: () => <ServiceProperties theme="dark" />,
 	play: async ({ canvasElement }) => {
 		await verifyDefaultLayout(canvasElement, "dark");
 	},
@@ -130,11 +129,8 @@ export const DefaultLight: Story = {
 	parameters: {
 		backgrounds: { disable: true },
 	},
-	render: () => (
-		<div className="mp-story-stage" data-surface="light" data-theme="light">
-			<ServiceProperties theme="light" />
-		</div>
-	),
+	decorators: [lightPanelDecorator],
+	render: () => <ServiceProperties theme="light" />,
 	play: async ({ canvasElement }) => {
 		await verifyDefaultLayout(canvasElement, "light");
 		const canvas = within(canvasElement);

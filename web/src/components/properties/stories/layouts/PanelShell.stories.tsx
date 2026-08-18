@@ -3,11 +3,11 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import React, { useState } from "react";
 import {
 	PropertyGroup,
+	PropertyPanelMeta,
 	PropertyPanelShell,
 	PropertyReadonlyRows,
 } from "../../PropertyLayouts";
 import { PropertySaveBar } from "../../PropertyPrimitives";
-import "../../property-panel.css";
 import { fullscreenParameters, lightPanelDecorator } from "../storyConfig";
 
 function PanelShellExample({ long = false }: { long?: boolean }) {
@@ -20,11 +20,11 @@ function PanelShellExample({ long = false }: { long?: boolean }) {
 		<PropertyPanelShell
 			name="terminator"
 			meta={
-				<>
-					<span className="mp-compact-header__running">● Running</span>
-					<span aria-hidden="true">|</span>
-					<span>ap-southeast-2</span>
-				</>
+				<PropertyPanelMeta
+					status="Running"
+					context="ap-southeast-2"
+					tone="success"
+				/>
 			}
 			ariaLabel="Panel shell example"
 			theme="light"

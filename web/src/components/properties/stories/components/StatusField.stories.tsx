@@ -2,7 +2,6 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 // biome-ignore lint/correctness/noUnusedImports: Storybook's browser-test transform requires React in scope for JSX.
 import React from "react";
 import { PropertyStatusField } from "../../PropertyPrimitives";
-import "../../property-panel.css";
 import { fullscreenParameters, primitiveDecorator } from "../storyConfig";
 
 const meta = {

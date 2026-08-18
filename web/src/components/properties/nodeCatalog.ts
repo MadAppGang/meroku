@@ -2052,11 +2052,12 @@ export const PROPERTY_NODE_CATALOG: Record<string, PropertyPanelDefinition> = {
 						{
 							id: "terraform-code",
 							label: "HCL",
-							kind: "textarea",
+							kind: "code",
 							value:
 								'resource "aws_cloudwatch_log_group" "custom" {\n  name = "/custom/circl"\n}',
 							mono: true,
 							rows: 8,
+							language: "hcl",
 						},
 					],
 					{ icon: FileCode2, iconTone: "info" },

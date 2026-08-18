@@ -1,37 +1,23 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 // biome-ignore lint/correctness/noUnusedImports: Storybook's browser-test transform requires React in scope for JSX.
 import React from "react";
-import { expect, userEvent, within } from "storybook/test";
+import { expect, userEvent, waitFor, within } from "storybook/test";
 import { PROPERTY_NODE_CATALOG } from "./nodeCatalog";
 import { PropertyPanel } from "./PropertyPanel";
+import {
+	fullscreenParameters,
+	lightPanelDecorator,
+	panelArgTypes,
+} from "./stories/storyConfig";
 import type { PropertyPanelDefinition } from "./types";
 
 const meta = {
 	title: "Nodes/Properties",
 	component: PropertyPanel,
 	tags: ["!autodocs"],
-	parameters: {
-		backgrounds: { disable: true },
-		layout: "fullscreen",
-	},
-	decorators: [
-		(Story) => (
-			<div className="mp-story-stage" data-surface="light" data-theme="light">
-				<Story />
-			</div>
-		),
-	],
-	argTypes: {
-		definition: { control: false },
-		surface: { control: false },
-		compact: { control: false },
-		initialView: { control: "text" },
-		openAdvanced: { control: "boolean" },
-		saveState: {
-			control: "select",
-			options: ["clean", "dirty", "saving", "saved", "error"],
-		},
-	},
+	parameters: fullscreenParameters,
+	decorators: [lightPanelDecorator],
+	argTypes: panelArgTypes,
 } satisfies Meta<typeof PropertyPanel>;
 
 export default meta;
@@ -244,6 +230,33 @@ export const PostgreSQL: Story = {
 export const Aurora: Story = {
 	...draftStory(PROPERTY_NODE_CATALOG.aurora),
 	name: "Draft · Aurora",
+	play: async ({ canvasElement }) => {
+		const { canvas } = await assertDraftPanel(
+			canvasElement,
+			PROPERTY_NODE_CATALOG.aurora,
+		);
+		const deployment = canvas
+			.getByLabelText("Deployment")
+			.getBoundingClientRect();
+		const username = canvas.getByLabelText("Username").getBoundingClientRect();
+		const maximum = canvas
+			.getByLabelText("Maximum capacity")
+			.getBoundingClientRect();
+		const database = canvas
+			.getByLabelText("Database name")
+			.getBoundingClientRect();
+		const minimum = canvas
+			.getByLabelText("Minimum capacity")
+			.getBoundingClientRect();
+
+		await expect(Math.abs(deployment.left - username.left)).toBeLessThan(2);
+		await expect(Math.abs(deployment.left - maximum.left)).toBeLessThan(2);
+		await expect(Math.abs(database.left - minimum.left)).toBeLessThan(2);
+		const maximumLabel = canvas.getByText("Maximum capacity");
+		await expect(maximumLabel.scrollWidth).toBeLessThanOrEqual(
+			maximumLabel.clientWidth,
+		);
+	},
 };
 export const S3: Story = {
 	...draftStory(PROPERTY_NODE_CATALOG.s3),
@@ -304,6 +317,40 @@ export const CloudFront: Story = {
 export const CustomTerraform: Story = {
 	...draftStory(PROPERTY_NODE_CATALOG["custom-terraform"]),
 	name: "Draft · Custom Terraform",
+	play: async ({ canvasElement }) => {
+		const { canvas } = await assertDraftPanel(
+			canvasElement,
+			PROPERTY_NODE_CATALOG["custom-terraform"],
+		);
+		const scope = canvas.getByLabelText("Scope").getBoundingClientRect();
+		const path = canvas.getByLabelText("Path").getBoundingClientRect();
+		await expect(Math.abs(scope.top - path.top)).toBeLessThan(2);
+
+		await expect(
+			await canvas.findByRole(
+				"textbox",
+				{ name: "HCL code editor" },
+				{ timeout: 10_000 },
+			),
+		).toBeVisible();
+		await waitFor(
+			() => {
+				expect(
+					canvasElement.querySelectorAll(".line-numbers").length,
+				).toBeGreaterThan(2);
+			},
+			{ timeout: 10_000 },
+		);
+		await expect(canvasElement.querySelector("textarea.mp-control")).toBeNull();
+		const editor = canvasElement.querySelector<HTMLElement>(".mp-code-editor");
+		const status = canvasElement.querySelector<HTMLElement>(
+			".mp-code-editor__status",
+		);
+		await expect(
+			(status?.getBoundingClientRect().bottom ?? Number.POSITIVE_INFINITY) <=
+				(editor?.getBoundingClientRect().bottom ?? 0) + 1,
+		).toBe(true);
+	},
 };
 export const Alarms: Story = {
 	...draftStory(PROPERTY_NODE_CATALOG.alarms),

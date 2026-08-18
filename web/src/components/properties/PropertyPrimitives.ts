@@ -5,12 +5,15 @@ export type {
 	PropertySelectOption,
 } from "./PropertyPanelPrimitives";
 export {
+	PropertyActionButton,
 	PropertyAutoscalingTarget,
 	PropertyCapabilityToggle,
 	PropertyCheckboxField,
+	PropertyCodeEditorField,
 	PropertyEditableField,
 	PropertyEmptyState,
 	PropertyFieldFrame,
+	PropertyOverflowText,
 	PropertyReadonlyField,
 	PropertySaveBar,
 	PropertySecretField,

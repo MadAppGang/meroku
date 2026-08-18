@@ -5,7 +5,6 @@ import {
 	PropertyContainerProcess,
 	PropertyImageSource,
 } from "../../PropertyLayouts";
-import "../../property-panel.css";
 import { fullscreenParameters, primitiveDecorator } from "../storyConfig";
 
 const sources = [

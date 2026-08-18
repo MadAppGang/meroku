@@ -15,7 +15,8 @@ import {
 	Trash2,
 	X,
 } from "lucide-react";
-import { type ReactNode, useId, useState } from "react";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { TerraformEditor } from "../TerraformEditor";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
@@ -29,6 +30,7 @@ import {
 } from "../ui/select";
 import { Slider } from "../ui/slider";
 import { Textarea } from "../ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { PropertyFieldRow } from "./PropertyFieldLayouts";
 import type {
 	PropertyFieldDefinition,
@@ -180,6 +182,36 @@ export function PropertyPanelHeader({
 	);
 }
 
+export function PropertyPanelMeta({
+	status,
+	context,
+	tone = "neutral",
+	showMarker = true,
+}: {
+	status: string;
+	context?: string;
+	tone?: PropertyStatusTone;
+	showMarker?: boolean;
+}) {
+	return (
+		<>
+			<span
+				className={
+					tone === "success" ? "mp-compact-header__running" : undefined
+				}
+			>
+				{showMarker ? `● ${status}` : status}
+			</span>
+			{context && (
+				<>
+					<span aria-hidden="true">|</span>
+					<span>{context}</span>
+				</>
+			)}
+		</>
+	);
+}
+
 export function PropertyPanelTabs({
 	views,
 	activeView,
@@ -310,6 +342,27 @@ export function PropertyGroup({
 	);
 }
 
+export function PropertyActionButton({
+	children,
+	disabled = false,
+	onClick,
+}: {
+	children: ReactNode;
+	disabled?: boolean;
+	onClick?: () => void;
+}) {
+	return (
+		<button
+			type="button"
+			className="mp-compact-link"
+			disabled={disabled}
+			onClick={onClick}
+		>
+			{children}
+		</button>
+	);
+}
+
 export function PropertyFieldFrame({
 	label,
 	span = "half",
@@ -325,7 +378,7 @@ export function PropertyFieldFrame({
 }) {
 	const resolvedLabelPlacement =
 		labelPlacement === "auto"
-			? kind === "tags" || kind === "textarea"
+			? kind === "tags" || kind === "textarea" || kind === "code"
 				? "stacked"
 				: "inline"
 			: labelPlacement;
@@ -503,6 +556,59 @@ export function PropertyTextareaField({
 				className={`mp-control ${mono ? "mp-mono" : ""}`}
 				onChange={(event) => onChange(event.target.value)}
 			/>
+			{error && <span className="mp-compact-field__error">{error}</span>}
+		</PropertyFieldFrame>
+	);
+}
+
+export function PropertyCodeEditorField({
+	id,
+	label,
+	value,
+	theme,
+	disabled = false,
+	readOnly = false,
+	error,
+	rows = 8,
+	span = "full",
+	onChange,
+}: {
+	id: string;
+	label: string;
+	value: string;
+	theme: "dark" | "light";
+	disabled?: boolean;
+	readOnly?: boolean;
+	error?: string;
+	rows?: number;
+	span?: "full" | "half";
+	onChange: (value: string) => void;
+}) {
+	const editorHeight = Math.max(176, rows * 20 + 20);
+
+	return (
+		<PropertyFieldFrame label={label} span={span} kind="code">
+			<div
+				id={id}
+				className="mp-code-editor"
+				data-disabled={disabled || readOnly}
+				data-theme={theme}
+			>
+				<TerraformEditor
+					value={value}
+					onChange={onChange}
+					bridgeVariables={[]}
+					readOnly={disabled || readOnly}
+					theme={theme}
+					height={editorHeight}
+					compact
+					ariaLabel={`${label} code editor`}
+				/>
+				<div className="mp-code-editor__status" aria-hidden="true">
+					<span>HCL</span>
+					<span>Ctrl/⌘ Space for suggestions</span>
+				</div>
+			</div>
 			{error && <span className="mp-compact-field__error">{error}</span>}
 		</PropertyFieldFrame>
 	);
@@ -687,6 +793,21 @@ export function PropertySchemaField({
 					value={String(value ?? "")}
 					placeholder={field.placeholder}
 					mono={field.mono}
+					disabled={field.disabled}
+					readOnly={field.readOnly}
+					error={field.error}
+					rows={field.rows}
+					span={span}
+					onChange={onChange}
+				/>
+			);
+		case "code":
+			return (
+				<PropertyCodeEditorField
+					id={fieldId}
+					label={field.label}
+					value={String(value ?? "")}
+					theme={theme}
 					disabled={field.disabled}
 					readOnly={field.readOnly}
 					error={field.error}
@@ -1205,6 +1326,61 @@ export function PropertySaveBar({
 	);
 }
 
+export function PropertyOverflowText({
+	value,
+	tooltip = value,
+	ariaLabel,
+}: {
+	value: string;
+	tooltip?: string;
+	ariaLabel?: string;
+}) {
+	const textRef = useRef<HTMLElement>(null);
+	const [overflowing, setOverflowing] = useState(false);
+
+	useEffect(() => {
+		const element = textRef.current;
+		if (!element) return;
+
+		const measure = () =>
+			setOverflowing(element.scrollWidth > element.clientWidth + 1);
+		measure();
+
+		if (typeof ResizeObserver === "undefined") return;
+		const observer = new ResizeObserver(measure);
+		observer.observe(element);
+		return () => observer.disconnect();
+	}, [value]);
+
+	const text = (
+		<code
+			ref={textRef}
+			className="mp-overflow-text"
+			data-overflow={overflowing || undefined}
+			tabIndex={overflowing ? 0 : undefined}
+			aria-label={ariaLabel}
+		>
+			{value}
+		</code>
+	);
+
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>{text}</TooltipTrigger>
+			{overflowing && (
+				<TooltipContent
+					className="mp-overflow-tooltip"
+					side="top"
+					align="start"
+					sideOffset={6}
+				>
+					<code>{tooltip}</code>
+				</TooltipContent>
+			)}
+		</Tooltip>
+	);
+}
+
 export function PropertyEnvironmentVariables({
 	variables,
 	visibleLimit = 5,
@@ -1241,7 +1417,10 @@ export function PropertyEnvironmentVariables({
 						>
 							<td>
 								<div className="mp-env-item">
-									<code>{variable.key}</code>
+									<PropertyOverflowText
+										value={variable.key}
+										ariaLabel={`Environment variable ${variable.key}`}
+									/>
 									<span className="mp-env-item-badge" title={variable.title}>
 										{variable.origin === "service" && (
 											<Link2 aria-hidden="true" />
@@ -1254,11 +1433,23 @@ export function PropertyEnvironmentVariables({
 								</div>
 							</td>
 							<td>
-								<code>
-									{variable.origin === "secret" && !revealed[variable.id]
-										? "••••••••••••••"
-										: variable.value}
-								</code>
+								<PropertyOverflowText
+									value={
+										variable.origin === "secret" && !revealed[variable.id]
+											? "••••••••••••••"
+											: variable.value
+									}
+									tooltip={
+										variable.origin === "secret" && !revealed[variable.id]
+											? "Secret value hidden — use Reveal to view it"
+											: variable.value
+									}
+									ariaLabel={
+										variable.origin === "secret" && !revealed[variable.id]
+											? `${variable.key} secret value hidden`
+											: `${variable.key} value ${variable.value}`
+									}
+								/>
 							</td>
 							<td>
 								{variable.origin === "secret" && (

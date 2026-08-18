@@ -9,17 +9,18 @@ import {
 	type PropertyEnvironmentVariable,
 	PropertyEnvironmentVariables,
 	PropertyFieldRow,
+	PropertyPanelMeta,
 	PropertyPanelShell,
 	PropertyReadonlyRows as ReadonlyRows,
 } from "./PropertyLayouts";
 import {
+	PropertyActionButton,
 	PropertyAutoscalingTarget,
 	PropertyEditableField,
 	type PropertyImageMode,
 	PropertySaveBar,
 	PropertySelectField,
 } from "./PropertyPrimitives";
-import "./property-panel.css";
 
 type CompactView = "setup" | "details";
 type CompactTheme = "dark" | "light";
@@ -185,13 +186,17 @@ export function ServiceProperties({
 			footer={saveFooter}
 			meta={
 				isCreate ? (
-					<span>New ECS service · ap-southeast-2</span>
+					<PropertyPanelMeta
+						status="New ECS service"
+						context="ap-southeast-2"
+						showMarker={false}
+					/>
 				) : (
-					<>
-						<span className="mp-compact-header__running">● Running</span>
-						<span aria-hidden="true">|</span>
-						<span>ap-southeast-2</span>
-					</>
+					<PropertyPanelMeta
+						status="Running"
+						context="ap-southeast-2"
+						tone="success"
+					/>
 				)
 			}
 		>
@@ -339,11 +344,7 @@ export function ServiceProperties({
 						title="Environment"
 						description="Injected values and overrides"
 						icon={<Braces />}
-						action={
-							<button type="button" className="mp-compact-link">
-								+ Add variable
-							</button>
-						}
+						action={<PropertyActionButton>+ Add variable</PropertyActionButton>}
 					>
 						<PropertyEnvironmentVariables variables={environmentVariables} />
 					</Group>

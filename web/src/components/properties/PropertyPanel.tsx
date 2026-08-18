@@ -15,19 +15,20 @@ import {
 	PropertyFieldLayout,
 	PropertyGroup,
 	PropertyImageSource,
+	PropertyPanelMeta,
 	PropertyPanelShell,
 	PropertyReadonlyRows,
 	PropertySchemaField,
 	toPropertyEnvironmentVariable,
 } from "./PropertyLayouts";
 import {
+	PropertyActionButton,
 	PropertyAutoscalingTarget,
 	PropertyCheckboxField,
 	PropertyEmptyState,
 	type PropertyImageMode,
 	PropertySaveBar,
 } from "./PropertyPrimitives";
-import "./property-panel.css";
 import type {
 	PropertyFieldDefinition,
 	PropertyKeyValue,
@@ -204,19 +205,11 @@ export function PropertyPanel({
 				activeView={compactView?.id ?? "setup"}
 				onViewChange={setActiveView}
 				meta={
-					<>
-						<span
-							className={
-								definition.statusTone === "success"
-									? "mp-compact-header__running"
-									: undefined
-							}
-						>
-							● {definition.status}
-						</span>
-						<span aria-hidden="true">|</span>
-						<span>{definition.context}</span>
-					</>
+					<PropertyPanelMeta
+						status={definition.status}
+						context={definition.context}
+						tone={definition.statusTone}
+					/>
 				}
 				footer={
 					<PropertySaveBar
@@ -252,7 +245,9 @@ const normalizeCompactField = (
 	...field,
 	span:
 		field.span ??
-		(["textarea", "key-value", "tags"].includes(field.kind) ? "full" : "half"),
+		(["textarea", "code", "key-value", "tags"].includes(field.kind)
+			? "full"
+			: "half"),
 });
 
 function CompactPropertyView({
@@ -332,9 +327,7 @@ function CompactPropertyView({
 						icon={SectionIcon ? <SectionIcon /> : fallbackIcon}
 						action={
 							isEnvironment ? (
-								<button type="button" className="mp-compact-link">
-									+ Add variable
-								</button>
+								<PropertyActionButton>+ Add variable</PropertyActionButton>
 							) : headerToggle ? (
 								<PropertyCheckboxField
 									item={{

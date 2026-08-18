@@ -20,6 +20,7 @@ export type PropertyFieldKind =
 	| "select"
 	| "toggle"
 	| "textarea"
+	| "code"
 	| "readonly"
 	| "secret"
 	| "tags"
@@ -62,6 +63,7 @@ export interface PropertyFieldDefinition {
 	loading?: boolean;
 	span?: "full" | "half";
 	rows?: number;
+	language?: "hcl";
 }
 
 export interface PropertySectionDefinition {

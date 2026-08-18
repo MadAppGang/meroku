@@ -11,6 +11,12 @@ export const lightPanelDecorator: Decorator = (Story) => (
 	</div>
 );
 
+export const darkPanelDecorator: Decorator = (Story) => (
+	<div className="mp-story-stage" data-theme="dark">
+		<Story />
+	</div>
+);
+
 export const primitiveDecorator: Decorator = (Story) => (
 	<div
 		className="mp-story-stage mp-primitive-stage"

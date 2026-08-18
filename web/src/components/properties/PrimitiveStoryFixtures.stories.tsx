@@ -9,7 +9,6 @@ import {
 	PropertySaveBar,
 	PropertyTagList,
 } from "./PropertyPrimitives";
-import "./property-panel.css";
 
 function PrimitiveStage({
 	title,

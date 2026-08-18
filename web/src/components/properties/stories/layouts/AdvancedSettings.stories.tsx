@@ -6,7 +6,6 @@ import {
 	PropertyFieldLayout,
 } from "../../PropertyLayouts";
 import { PropertyEditableField } from "../../PropertyPrimitives";
-import "../../property-panel.css";
 import { fullscreenParameters, primitiveDecorator } from "../storyConfig";
 
 function AdvancedSettingsExample({ initialOpen }: { initialOpen: boolean }) {
