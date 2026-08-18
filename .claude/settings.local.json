@@ -64,7 +64,7 @@
     ],
     "deny": []
   },
-  "enableAllProjectMcpServers": true,
+  "enableAllProjectMcpServers": false,
   "enabledMcpjsonServers": [
     "chrome-devtools"
   ]
