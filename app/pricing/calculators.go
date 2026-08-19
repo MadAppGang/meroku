@@ -104,6 +104,13 @@ func calculateAverageACU(config AuroraConfig) float64 {
 // CalculateECSPrice calculates monthly cost for ECS Fargate tasks
 // This calculation MUST match the frontend calculator exactly
 //
+// FARGATE ONLY. The per-task shape below is correct for Fargate, where every
+// task is billed for its own vCPU and memory reservation, and wrong for EC2,
+// where the money is spent on instances that are billed whether tasks run on
+// them or not. Calling this for an EC2-runtime service bills the same instance
+// once per task. Use CalculateEC2PoolPrice on the pool instead, and report the
+// service itself as $0 marginal.
+//
 // @param config - ECS configuration (CPU, memory, desired count)
 // @param rates - Current pricing rates from cache
 // @return Monthly cost in USD
@@ -127,6 +134,139 @@ func CalculateECSPrice(config ECSConfig, rates *PriceRates) float64 {
 		config.CPU, config.Memory, config.DesiredCount, monthlyPrice)
 
 	return monthlyPrice
+}
+
+// EC2PoolBasis picks the instance type a pool's cost is quoted against: the
+// first entry of InstanceTypes that has a known on-demand price.
+//
+// A pool lists several types and its ASG may launch any of them, so one figure
+// is an estimate by construction. Taking the first PRICED entry -- rather than
+// the first entry, or the cheapest -- keeps the estimate deterministic and
+// keeps it tied to the priority order the operator wrote down, while still
+// producing an answer when a newly-added type is missing from the table.
+//
+// ok is false when no listed type has a price. That means "price unknown", and
+// the caller must render it as unknown. It never means free.
+//
+// This function MUST match the frontend calculator exactly
+// (web/src/utils/awsPricing.ts:ec2PoolBasis).
+func EC2PoolBasis(config EC2PoolConfig, rates *PriceRates) (string, float64, bool) {
+	for _, instanceType := range config.InstanceTypes {
+		if hourly, exists := rates.EC2.OnDemandHourly[instanceType]; exists && hourly > 0 {
+			return instanceType, hourly, true
+		}
+	}
+	return "", 0, false
+}
+
+// EC2PoolHourly calculates the hourly cost of a whole EC2 capacity pool, in
+// $/hour, blending on-demand and spot instances the way the ASG's
+// instances_distribution actually bills them.
+//
+//	N     = InstanceCount                       instances the pool runs
+//	p_od  = on-demand $/instance-hour           (EC2PoolBasis)
+//	p_sp  = p_od * SpotRatio                    spot $/instance-hour
+//	b     = on-demand base, in INSTANCES:       on_demand      -> N   (all on-demand)
+//	                                            spot           -> 0   (all spot)
+//	                                            spot_with_base -> OnDemandBase
+//	n_od  = min(N, b)                           instances billed on demand
+//	n_sp  = N - n_od                            instances billed spot
+//
+//	hourly = n_od * p_od + n_sp * p_sp
+//
+// The weights are instances over instances, so the per-instance blend always
+// lands inside [p_sp, p_od] -- a price that can exist. Mirrors
+// modules/workloads/ec2_capacity.tf's local.pool_on_demand_base and
+// local.pool_on_demand_percentage, which are the resources being priced.
+//
+// ok is false when the pool's price is unknown; hourly is then 0 and must be
+// rendered as unknown rather than free. A pool with InstanceCount 0 is a
+// different case entirely: it is priced, at $0, because it is scaled to
+// nothing.
+//
+// This function MUST match the frontend calculator exactly
+// (web/src/utils/awsPricing.ts:ec2PoolHourly).
+func EC2PoolHourly(config EC2PoolConfig, rates *PriceRates) (float64, bool) {
+	instances := config.InstanceCount
+	if instances < 0 {
+		instances = 0
+	}
+
+	instanceType, onDemandHourly, priced := EC2PoolBasis(config, rates)
+	if !priced {
+		log.Printf("[Pricing] EC2 pool cost: no price for any of %v, reporting unknown",
+			config.InstanceTypes)
+		return 0, false
+	}
+
+	// A ratio outside (0,1] is not a discount and is refused. Treating it as
+	// 1.0 prices spot as on-demand, which over-reports rather than inventing
+	// free capacity.
+	spotRatio := rates.EC2.SpotRatio
+	if spotRatio <= 0 || spotRatio > 1 {
+		spotRatio = 1.0
+	}
+	spotHourly := onDemandHourly * spotRatio
+
+	// On-demand base, in instances, by capacity type. An unrecognised value
+	// falls through to on_demand: the most expensive reading, so a typo in the
+	// YAML never under-reports the bill.
+	var base int
+	switch config.CapacityType {
+	case "spot":
+		base = 0
+	case "spot_with_base":
+		base = config.OnDemandBase
+		if base < 0 {
+			base = 0
+		}
+	default:
+		base = instances
+	}
+
+	onDemandInstances := instances
+	if base < onDemandInstances {
+		onDemandInstances = base
+	}
+	spotInstances := instances - onDemandInstances
+
+	hourly := float64(onDemandInstances)*onDemandHourly + float64(spotInstances)*spotHourly
+
+	log.Printf("[Pricing] EC2 pool cost: type=%s instances=%d (od=%d spot=%d) capacity=%s hourly=%.4f",
+		instanceType, instances, onDemandInstances, spotInstances, config.CapacityType, hourly)
+
+	return hourly, true
+}
+
+// CalculateEC2PoolPrice calculates monthly cost for one EC2 capacity pool:
+// instances x instance-hourly x HoursPerMonth, blended for spot.
+//
+// This is where an EC2-runtime service's money lives. The instances are billed
+// for existing, not for running tasks, so the cost belongs to the pool and the
+// services placed on it report $0 marginal. Summing a per-task figure across
+// those services instead would bill one instance once per task.
+//
+// The second return is EC2PoolHourly's `priced` flag, carried forward: false
+// means the pool's price is UNKNOWN and the monthly figure is meaningless. It
+// is a second return and not a 0 because a pool at min_size: 0 also costs
+// $0/month, and the two must not render alike — $0 next to an instance type is
+// a claim that the instance is free, which is never true. This is the same
+// contract as the TypeScript twin, which returns `number | null`, and the same
+// reason the rest of this file's Calculate* functions cannot simply be copied:
+// none of the others has a value it does not know.
+//
+// This calculation MUST match the frontend calculator exactly
+// (web/src/utils/awsPricing.ts:calculateEC2PoolPrice).
+//
+// @param config - Pool configuration (instance types, count, capacity type)
+// @param rates - Current pricing rates from cache
+// @return Monthly cost in USD, and whether it is known at all
+func CalculateEC2PoolPrice(config EC2PoolConfig, rates *PriceRates) (float64, bool) {
+	hourly, priced := EC2PoolHourly(config, rates)
+	if !priced {
+		return 0, false
+	}
+	return hourly * HoursPerMonth, true
 }
 
 // CalculateS3Price calculates monthly cost for S3 storage and requests

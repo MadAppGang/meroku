@@ -11,6 +11,18 @@ import (
 // Update this date when refreshing prices (see docs/PRICING_MAINTENANCE.md)
 const FALLBACK_PRICING_DATE = "2025-01-15"
 
+// FALLBACK_EC2_SPOT_RATIO is the spot price as a fraction of the on-demand
+// price for the same instance type -- 0.35 means "spot typically costs 35% of
+// on-demand", a 65% discount.
+//
+// It is one number for every family on purpose. The real discount varies by
+// type, AZ and minute, and where that matters (the recommender, the instance
+// picker) the live median comes from DescribeSpotPriceHistory. This constant
+// exists so that the cost view does not show a 100% spot pool at the on-demand
+// price, which would be wrong in the direction that makes spot look pointless.
+// It sits beside FALLBACK_PRICING_DATE because that date describes it too.
+const FALLBACK_EC2_SPOT_RATIO = 0.35
+
 // AWSPricingClient wraps AWS Pricing API with fallback to hardcoded prices
 // Ensures pricing data is always available
 //
@@ -142,6 +154,19 @@ func getHardcodedFallbackRates() *PriceRates {
 		Fargate: FargatePricing{
 			VCPUHourly:     0.04048,  // $/vCPU/hour
 			MemoryGBHourly: 0.004445, // $/GB/hour
+		},
+
+		// EC2 Pricing (ECS capacity pools) -- $/INSTANCE/hour, not per task.
+		//
+		// The hourly table is not re-typed here: it is the one in
+		// compute_fallback.go, which the compute catalog endpoints already
+		// serve, dated by the same FALLBACK_PRICING_DATE. Two copies of the
+		// same twelve prices would drift, and the drift would show as the
+		// pool node and the instance picker disagreeing about the same
+		// instance in the same UI.
+		EC2: EC2Pricing{
+			OnDemandHourly: GetFallbackEC2Hourly(),
+			SpotRatio:      FALLBACK_EC2_SPOT_RATIO,
 		},
 
 		// Storage Pricing
