@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/pricing"
+	pricingpkg "madappgang.com/meroku/pricing"
 )
 
 // PricingResponse represents the pricing data for all services
@@ -23,6 +25,28 @@ type NodePricing struct {
 	ServiceName string                `json:"serviceName"`
 	ServiceType string                `json:"serviceType"`
 	Levels      map[string]LevelPrice `json:"levels"`
+
+	// Runtime is "fargate" or "ec2" on compute nodes, and empty on every
+	// other kind of node. It exists because the two are billed in different
+	// units -- Fargate per task, EC2 per instance-hour -- and a client that
+	// cannot tell them apart cannot render either one honestly.
+	Runtime string `json:"runtime,omitempty"`
+
+	// CostAttributedTo names the node key that carries this node's cost, and
+	// is non-empty exactly when every level here is $0 because the money is
+	// billed on that other node. Today that means one thing: an EC2-runtime
+	// service, whose instances are billed by its capacity pool.
+	//
+	// Clients MUST treat a node with this set as "billed via <that node>",
+	// never as free, and MUST NOT add it into a total -- the pool it points at
+	// already contains the whole cost. Adding both would bill one instance
+	// once per task placed on it.
+	CostAttributedTo string `json:"costAttributedTo,omitempty"`
+
+	// AttributedFrom is the reverse edge: on a capacity-pool node, the node
+	// keys whose cost this node carries. It lets the UI show what is paying
+	// for a pool without re-deriving the placement from the YAML.
+	AttributedFrom []string `json:"attributedFrom,omitempty"`
 }
 
 // LevelPrice represents the price for a specific workload level
@@ -61,6 +85,90 @@ var WorkloadSpecs = map[string]map[string]interface{}{
 		"nat_gateway_gb":    1000,     // 1 TB/month
 		"cognito_mau":       50000,    // 50k monthly active users
 	},
+}
+
+// Runtime values as they appear on NodePricing.Runtime and in the YAML's
+// backend_runtime / runtime fields. Absent means Fargate.
+const (
+	runtimeFargate = "fargate"
+	runtimeEC2     = "ec2"
+)
+
+// normalizeRuntime maps a YAML runtime field onto one of the two constants
+// above. Absent, unset and any unrecognised value read as Fargate, which is
+// what every environment before schema v26 was.
+func normalizeRuntime(runtime string) string {
+	if strings.EqualFold(strings.TrimSpace(runtime), runtimeEC2) {
+		return runtimeEC2
+	}
+	return runtimeFargate
+}
+
+// computePoolNodeKey is the key a capacity pool takes in PricingResponse.Nodes,
+// and therefore the value services placed on it carry in CostAttributedTo.
+func computePoolNodeKey(poolName string) string {
+	return "compute_pool_" + effectiveComputePoolName(poolName)
+}
+
+// defaultComputePoolName is the pool synthesizeDefaultComputePool injects when
+// a unit asks for EC2 and the environment declares no pools (FR-58). Pricing
+// has to agree with it: the endpoint reads the YAML directly, so it never sees
+// the generate pipeline's synthesis, and a `runtime: ec2` one-liner would
+// otherwise price against a pool named "".
+const defaultComputePoolName = "default"
+
+// effectiveComputePoolName resolves the pool a unit is placed on. An empty name
+// means the synthesized default -- the one case where generation supplies the
+// name rather than the operator.
+func effectiveComputePoolName(poolName string) string {
+	if poolName == "" {
+		return defaultComputePoolName
+	}
+	return poolName
+}
+
+// ec2PoolRates returns the rate table used to cost capacity pools.
+//
+// It prefers the shared pricing service, which caches, and falls back to the
+// dated hardcoded table when that service has not been started -- the pricing
+// endpoint must answer with the best figures it has rather than fail, and
+// AWSPricingClient.FetchRates never touches the AWS client it is given, so a
+// nil one is safe here.
+func ec2PoolRates(region string) *pricingpkg.PriceRates {
+	if globalPricingService != nil {
+		if rates, err := globalPricingService.GetRates(region); err == nil && rates != nil {
+			return rates
+		}
+	}
+	rates, err := pricingpkg.NewAWSPricingClient(nil).FetchRates(region)
+	if err != nil {
+		return nil
+	}
+	return rates
+}
+
+// zeroMarginalLevels builds the three levels of a node whose cost is billed
+// somewhere else: $0 at every level, with details that say where the money went
+// and why it is not free.
+func zeroMarginalLevels(poolName string, extra map[string]string) map[string]LevelPrice {
+	levels := make(map[string]LevelPrice, len(WorkloadSpecs))
+	for level := range WorkloadSpecs {
+		details := map[string]string{
+			"runtime":      "EC2",
+			"compute_pool": poolName,
+			"billing":      "instance-hours, billed on the capacity pool",
+			"note":         "$0 marginal: tasks share instances the pool already pays for",
+		}
+		for k, v := range extra {
+			details[k] = v
+		}
+		levels[level] = LevelPrice{
+			HourlyPrice:  0,
+			MonthlyPrice: 0,
+			Details:      details,
+		}
+	}
+	return levels
 }
 
 func getPricing(w http.ResponseWriter, r *http.Request) {
@@ -138,10 +246,16 @@ func getPricing(w http.ResponseWriter, r *http.Request) {
 		if service.DesiredCount > 0 {
 			desiredCount = int32(service.DesiredCount)
 		}
-		servicePricing := calculateServicePricing(ctx, pricingClient, region, service.Name, desiredCount)
+		servicePricing := calculateServicePricing(ctx, pricingClient, region, service, desiredCount)
 		if servicePricing != nil {
 			response.Nodes[service.Name] = *servicePricing
 		}
+	}
+
+	// 2a. EC2 capacity pools. Every EC2-runtime node above reports $0 marginal
+	//     and points here with costAttributedTo; this is where its money is.
+	for poolKey, poolNode := range computePoolNodes(env, region) {
+		response.Nodes[poolKey] = poolNode
 	}
 
 	// 3. RDS pricing if postgres is enabled
@@ -258,6 +372,20 @@ func calculateBackendPricing(ctx context.Context, client *pricing.Client, region
 		ServiceName: "Backend Service",
 		ServiceType: "compute",
 		Levels:      make(map[string]LevelPrice),
+		Runtime:     normalizeRuntime(workload.BackendRuntime),
+	}
+
+	// On EC2 the backend is billed nothing of its own: it places tasks onto
+	// instances its capacity pool already pays for by the hour. Pricing it per
+	// task here, on top of the pool, would bill the same instance once per
+	// task.
+	if nodePricing.Runtime == runtimeEC2 {
+		poolName := effectiveComputePoolName(workload.BackendComputePool)
+		nodePricing.CostAttributedTo = computePoolNodeKey(poolName)
+		nodePricing.Levels = zeroMarginalLevels(poolName, map[string]string{
+			"tasks": fmt.Sprintf("%d", instanceCount),
+		})
+		return nodePricing
 	}
 
 	// Get Fargate pricing
@@ -320,11 +448,23 @@ func calculateBackendPricing(ctx context.Context, client *pricing.Client, region
 	return nodePricing
 }
 
-func calculateServicePricing(ctx context.Context, client *pricing.Client, region string, serviceName string, configuredDesiredCount int32) *NodePricing {
+func calculateServicePricing(ctx context.Context, client *pricing.Client, region string, service Service, configuredDesiredCount int32) *NodePricing {
 	nodePricing := &NodePricing{
-		ServiceName: fmt.Sprintf("Service: %s", serviceName),
+		ServiceName: fmt.Sprintf("Service: %s", service.Name),
 		ServiceType: "compute",
 		Levels:      make(map[string]LevelPrice),
+		Runtime:     normalizeRuntime(service.Runtime),
+	}
+
+	// EC2-runtime services report $0 marginal; their instances are billed on
+	// the pool node. See NodePricing.CostAttributedTo.
+	if nodePricing.Runtime == runtimeEC2 {
+		poolName := effectiveComputePoolName(service.ComputePool)
+		nodePricing.CostAttributedTo = computePoolNodeKey(poolName)
+		nodePricing.Levels = zeroMarginalLevels(poolName, map[string]string{
+			"tasks": fmt.Sprintf("%d", configuredDesiredCount),
+		})
+		return nodePricing
 	}
 
 	// Get Fargate pricing
@@ -355,6 +495,215 @@ func calculateServicePricing(ctx context.Context, client *pricing.Client, region
 				"tasks":   fmt.Sprintf("%d", desiredCount),
 				"runtime": "Fargate",
 			},
+		}
+	}
+
+	return nodePricing
+}
+
+// computePoolNodes builds one pricing node per EC2 capacity pool the
+// environment actually uses, keyed by computePoolNodeKey.
+//
+// It exists because EC2-runtime services report $0 (their instances are billed
+// by the hour, not by the task), so without these nodes the cost of running on
+// EC2 would not appear anywhere in the response at all. Every pool a unit
+// references gets a node, including:
+//
+//   - the pool synthesizeDefaultComputePool would inject for a bare
+//     `runtime: ec2` -- this endpoint reads YAML, not the generate pipeline, so
+//     it has to mirror that rule or a one-line switch to EC2 prices at $0
+//   - a pool named by a unit but declared nowhere -- an invalid config that
+//     generation refuses, but the cost view must say "unknown", not omit it
+//
+// A declared pool nothing is placed on is still priced: an idle pool is the
+// exact case this whole shape exists to make visible.
+func computePoolNodes(env Env, region string) map[string]NodePricing {
+	// 1. Which units run on EC2, and on which pool.
+	attributedFrom := map[string][]string{}
+	addUnit := func(nodeKey, poolName string) {
+		pool := effectiveComputePoolName(poolName)
+		attributedFrom[pool] = append(attributedFrom[pool], nodeKey)
+	}
+	if normalizeRuntime(env.Workload.BackendRuntime) == runtimeEC2 {
+		addUnit("backend", env.Workload.BackendComputePool)
+	}
+	for _, service := range env.Services {
+		if normalizeRuntime(service.Runtime) == runtimeEC2 {
+			addUnit(service.Name, service.ComputePool)
+		}
+	}
+
+	// 2. Declared pools, minus any explicitly disabled -- filterDisabledItems
+	//    drops those before generation, so they cost nothing.
+	declared := make([]ComputePool, 0, len(env.Compute.Pools))
+	for _, pool := range env.Compute.Pools {
+		if pool.Enabled != nil && !*pool.Enabled {
+			continue
+		}
+		declared = append(declared, pool)
+	}
+
+	if len(attributedFrom) == 0 && len(declared) == 0 {
+		return nil
+	}
+
+	// 3. No pools declared but something asks for EC2: mirror FR-58's
+	//    synthesized pool, values included, so the price shown is the price of
+	//    what generation would create.
+	if len(declared) == 0 {
+		minSize, maxSize := 1, 6
+		declared = append(declared, ComputePool{
+			Name:          defaultComputePoolName,
+			InstanceTypes: pricingpkg.FallbackDefaultPoolInstanceTypes(),
+			CapacityType:  "on_demand",
+			MinSize:       &minSize,
+			MaxSize:       &maxSize,
+		})
+	}
+
+	rates := ec2PoolRates(region)
+	nodes := make(map[string]NodePricing, len(declared))
+	priced := map[string]bool{}
+	for _, pool := range declared {
+		from := attributedFrom[pool.Name]
+		sort.Strings(from)
+		nodes[computePoolNodeKey(pool.Name)] = *calculateComputePoolPricing(pool, rates, from)
+		priced[pool.Name] = true
+	}
+
+	// 4. A unit placed on a pool that is declared nowhere. Generation refuses
+	//    this config, but the cost must not silently vanish from a view whose
+	//    whole job is to add up.
+	for poolName, from := range attributedFrom {
+		if priced[poolName] {
+			continue
+		}
+		sort.Strings(from)
+		node := NodePricing{
+			ServiceName:    fmt.Sprintf("Compute Pool: %s", poolName),
+			ServiceType:    "compute",
+			Runtime:        runtimeEC2,
+			AttributedFrom: from,
+			Levels:         make(map[string]LevelPrice),
+		}
+		for level := range WorkloadSpecs {
+			node.Levels[level] = LevelPrice{Details: map[string]string{
+				"runtime": "EC2",
+				"pool":    poolName,
+				"price":   "unknown",
+				"error":   fmt.Sprintf("no compute pool named %q is defined in this environment", poolName),
+			}}
+		}
+		nodes[computePoolNodeKey(poolName)] = node
+	}
+
+	return nodes
+}
+
+// calculateComputePoolPricing prices one EC2 capacity pool -- the node that
+// carries the money for every EC2-runtime service placed on it.
+//
+// Unlike every Fargate node in this response, this figure does not depend on
+// how many tasks run. Instances are billed for existing: a pool at min_size: 1
+// with nothing deployed on it still costs a full instance-hour every hour, and
+// that is exactly what the startup level shows.
+//
+// The three levels therefore vary the INSTANCE count, not a task size:
+//
+//   - startup  -> min_size, the floor the ASG never drops below
+//   - scaleup  -> the median of min_size..max_size, the same estimate the
+//     backend node uses for an autoscaled Fargate service
+//   - highload -> max_size, the ceiling the ASG may reach
+//
+// attributedFrom lists the node keys whose cost this pool absorbs, so the UI
+// can say what is paying for it without re-deriving placement from the YAML.
+func calculateComputePoolPricing(pool ComputePool, rates *pricingpkg.PriceRates, attributedFrom []string) *NodePricing {
+	nodePricing := &NodePricing{
+		ServiceName:    fmt.Sprintf("Compute Pool: %s", pool.Name),
+		ServiceType:    "compute",
+		Levels:         make(map[string]LevelPrice),
+		Runtime:        runtimeEC2,
+		AttributedFrom: attributedFrom,
+	}
+
+	// Defaults mirror modules/workloads/variables.tf's compute_pools object,
+	// because an omitted key is rendered by that default and the price has to
+	// describe what Terraform will actually create.
+	minSize := 1
+	if pool.MinSize != nil && *pool.MinSize >= 0 {
+		minSize = *pool.MinSize
+	}
+	maxSize := 6
+	if pool.MaxSize != nil && *pool.MaxSize >= 0 {
+		maxSize = *pool.MaxSize
+	}
+	if maxSize < minSize {
+		maxSize = minSize
+	}
+	capacityType := pool.CapacityType
+	if capacityType == "" {
+		capacityType = "on_demand"
+	}
+	onDemandBase := 0
+	if pool.OnDemandBase != nil && *pool.OnDemandBase > 0 {
+		onDemandBase = *pool.OnDemandBase
+	}
+
+	instancesByLevel := map[string]struct {
+		count int
+		basis string
+	}{
+		"startup":  {minSize, "min_size"},
+		"scaleup":  {(minSize + maxSize) / 2, "median of min_size..max_size"},
+		"highload": {maxSize, "max_size"},
+	}
+
+	for level, spec := range instancesByLevel {
+		details := map[string]string{
+			"runtime":        "EC2",
+			"pool":           pool.Name,
+			"instance_types": strings.Join(pool.InstanceTypes, ", "),
+			"capacity_type":  capacityType,
+			"instances":      fmt.Sprintf("%d", spec.count),
+			"basis":          spec.basis,
+			"billing":        "instance-hours (billed whether or not tasks are placed)",
+			"min_size":       fmt.Sprintf("%d", minSize),
+			"max_size":       fmt.Sprintf("%d", maxSize),
+		}
+		if capacityType == "spot_with_base" {
+			details["on_demand_base"] = fmt.Sprintf("%d instances", onDemandBase)
+		}
+
+		// No rate table at all is the same class of answer as no price for the
+		// instance type: unknown, never free.
+		if rates == nil {
+			details["price"] = "unknown"
+			nodePricing.Levels[level] = LevelPrice{Details: details}
+			continue
+		}
+
+		cfg := pricingpkg.EC2PoolConfig{
+			InstanceTypes: pool.InstanceTypes,
+			InstanceCount: spec.count,
+			CapacityType:  capacityType,
+			OnDemandBase:  onDemandBase,
+		}
+		if basisType, basisHourly, ok := pricingpkg.EC2PoolBasis(cfg, rates); ok {
+			details["instance_type"] = basisType
+			details["hourly_per_instance"] = fmt.Sprintf("$%.4f", basisHourly)
+		}
+
+		hourly, priced := pricingpkg.EC2PoolHourly(cfg, rates)
+		if !priced {
+			details["price"] = "unknown"
+			nodePricing.Levels[level] = LevelPrice{Details: details}
+			continue
+		}
+
+		nodePricing.Levels[level] = LevelPrice{
+			HourlyPrice:  hourly,
+			MonthlyPrice: hourly * pricingpkg.HoursPerMonth,
+			Details:      details,
 		}
 	}
 
@@ -724,6 +1073,11 @@ func calculateScheduledTaskPricing(ctx context.Context, client *pricing.Client, 
 		ServiceName: fmt.Sprintf("Scheduled Task: %s", task.Name),
 		ServiceType: "compute",
 		Levels:      make(map[string]LevelPrice),
+		// Scheduled tasks have no runtime field in the schema: they are always
+		// Fargate, and per-run billing is the reason -- an EC2 pool sized to
+		// hold a task that runs for five minutes a day would be paid for the
+		// other 23h55m.
+		Runtime: runtimeFargate,
 	}
 
 	// Get Fargate pricing
@@ -753,7 +1107,11 @@ func calculateScheduledTaskPricing(ctx context.Context, client *pricing.Client, 
 				"memory":       fmt.Sprintf("%d MB", memory),
 				"schedule":     task.Schedule,
 				"runsPerMonth": fmt.Sprintf("%d", runsPerMonth),
-				"runtime":      "5 min/run",
+				// "runtime" is the launch type everywhere in this response;
+				// the per-run duration is "duration". They were the same key
+				// until EC2 gave "runtime" a second meaning.
+				"runtime":  "Fargate",
+				"duration": "5 min/run",
 			},
 		}
 	}
@@ -793,6 +1151,9 @@ func calculateEventTaskPricing(ctx context.Context, client *pricing.Client, regi
 		ServiceName: fmt.Sprintf("Event Task: %s", task.Name),
 		ServiceType: "compute",
 		Levels:      make(map[string]LevelPrice),
+		// Event tasks, like scheduled tasks, have no runtime field: always
+		// Fargate, billed per run.
+		Runtime: runtimeFargate,
 	}
 
 	// Get Fargate pricing
@@ -828,9 +1189,12 @@ func calculateEventTaskPricing(ctx context.Context, client *pricing.Client, regi
 				"memory":       fmt.Sprintf("%d MB", memory),
 				"ruleName":     task.RuleName,
 				"runsPerMonth": fmt.Sprintf("%d", runsPerMonth),
-				"runtime":      "2 min/run",
-				"sources":      fmt.Sprintf("%v", task.Sources),
-				"detailTypes":  fmt.Sprintf("%v", task.DetailTypes),
+				// See calculateScheduledTaskPricing: "runtime" is the launch
+				// type, "duration" is the per-run time.
+				"runtime":     "Fargate",
+				"duration":    "2 min/run",
+				"sources":     fmt.Sprintf("%v", task.Sources),
+				"detailTypes": fmt.Sprintf("%v", task.DetailTypes),
 			},
 		}
 	}

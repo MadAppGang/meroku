@@ -30,6 +30,26 @@ export interface AWSPriceRates {
 		memoryGbHourly: number; // $/GB/hour
 	};
 
+	// ECS on EC2 capacity pools.
+	//
+	// The unit is the point, and it differs from every other compute price
+	// here: Fargate is billed per TASK, EC2 per INSTANCE-hour, whether or not a
+	// task is running on the instance. A pool at min_size: 1 with zero tasks
+	// costs a full instance-hour every hour. Pricing an EC2-runtime service the
+	// way Fargate is priced bills one instance once per task -- see
+	// calculateEC2PoolPrice in utils/awsPricing.ts.
+	//
+	// Mirrors app/pricing/types.go:EC2Pricing.
+	ec2: {
+		// Instance type -> $/instance-hour, Linux, shared tenancy, on-demand.
+		// An absent key means "price unknown" and must never be read as free.
+		onDemandHourly: Record<string, number>;
+		// Spot price as a FRACTION OF on-demand for the same type, e.g. 0.35
+		// means "spot typically costs 35% of on-demand". Indicative planning
+		// figure, not a quote. A value outside (0,1] is treated as 1.
+		spotRatio: number;
+	};
+
 	// Storage pricing
 	storage: {
 		gp3PerGbMonth: number; // $/GB/month
@@ -77,7 +97,13 @@ export interface AWSPriceRates {
 	};
 }
 
-const STORAGE_KEY = "aws_pricing_rates";
+// The key carries a version because the cached value is a whole rate table and
+// this module is the only thing that can tell a stale shape from a fresh one. A
+// v1 entry written before `ec2` existed would otherwise survive in
+// sessionStorage for an hour and reach the calculators as an AWSPriceRates with
+// a field the type system promises is there. Bump this whenever a field is
+// added to AWSPriceRates.
+const STORAGE_KEY = "aws_pricing_rates_v2";
 const CACHE_DURATION = 60 * 60 * 1000; // 1 hour
 
 /**

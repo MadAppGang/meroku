@@ -14,6 +14,7 @@ type PriceRates struct {
 	RDS     map[string]float64 `json:"rds"`     // Instance type -> hourly price
 	Aurora  AuroraPricing      `json:"aurora"`  // Aurora Serverless v2
 	Fargate FargatePricing     `json:"fargate"` // ECS Fargate
+	EC2     EC2Pricing         `json:"ec2"`     // ECS on EC2 capacity pools
 
 	// Storage pricing
 	Storage StoragePricing `json:"storage"` // EBS, gp3
@@ -44,6 +45,40 @@ type AuroraPricing struct {
 type FargatePricing struct {
 	VCPUHourly     float64 `json:"vcpuHourly"`     // $/vCPU/hour (e.g., 0.04048)
 	MemoryGBHourly float64 `json:"memoryGbHourly"` // $/GB/hour (e.g., 0.004445)
+}
+
+// EC2Pricing holds the pricing for the container instances that back an ECS
+// capacity pool.
+//
+// The unit is the whole point of this type, and it is different from every
+// other compute price in this file: Fargate is billed per TASK (vCPU-hour plus
+// GB-hour of the task's own reservation), EC2 is billed per INSTANCE-hour
+// whether or not a task is running on it. A pool at min_size: 1 with zero tasks
+// costs a full instance-hour every hour. Pricing an EC2-runtime service the way
+// Fargate is priced bills one instance once per task and shows a number several
+// times too high, which is why CalculateEC2PoolPrice takes a pool and not a
+// task.
+type EC2Pricing struct {
+	// OnDemandHourly maps instance type -> $/instance-hour, Linux, shared
+	// tenancy, on-demand list price.
+	//
+	// An absent key means "price unknown" and MUST NOT be read as free: a
+	// missing entry returns ok=false from EC2PoolHourly so the caller can
+	// render "price unknown" rather than $0. A zero value would instead say
+	// the instance is free, which is never true.
+	OnDemandHourly map[string]float64 `json:"onDemandHourly"`
+
+	// SpotRatio is the spot price expressed as a FRACTION OF the on-demand
+	// price for the same instance type, e.g. 0.35 means "spot typically costs
+	// 35% of on-demand" (a 65% discount). It is an indicative planning figure
+	// for the cost view, not a quote: real spot prices vary per type, per AZ
+	// and by the minute, and the compute endpoints read them live from
+	// DescribeSpotPriceHistory.
+	//
+	// A value <= 0 or > 1 is not usable and is treated as 1.0 (spot priced as
+	// on-demand) rather than as a discount, so a malformed rate set can never
+	// make capacity look free.
+	SpotRatio float64 `json:"spotRatio"`
 }
 
 // StoragePricing holds EBS storage pricing
@@ -130,6 +165,35 @@ type ECSConfig struct {
 	CPU          int `json:"cpu"`          // CPU units (e.g., 256, 512, 1024)
 	Memory       int `json:"memory"`       // Memory in MB (e.g., 512, 1024, 2048)
 	DesiredCount int `json:"desiredCount"` // Number of tasks
+}
+
+// EC2PoolConfig holds the cost-relevant shape of one EC2 capacity pool.
+//
+// It is deliberately a projection of the pool's YAML rather than the pool
+// struct itself: this package is imported by the API layer and by the
+// frontend's mirror, and neither should have to know about AMI families, user
+// data or volumes to ask what a pool costs.
+type EC2PoolConfig struct {
+	// InstanceTypes is the pool's type list in priority order. The first entry
+	// with a known price is the costing basis -- an ASG with a mixed-instances
+	// policy may launch any of them, so a single figure is an estimate by
+	// construction, and taking the first priced entry keeps it deterministic.
+	InstanceTypes []string `json:"instanceTypes"`
+
+	// InstanceCount is the number of INSTANCES the pool runs. 0 is valid and
+	// costs nothing: a pool scaled to zero is off.
+	InstanceCount int `json:"instanceCount"`
+
+	// CapacityType is on_demand | spot | spot_with_base. An unknown value is
+	// treated as on_demand, the most expensive reading, so a typo never
+	// under-reports cost.
+	CapacityType string `json:"capacityType"`
+
+	// OnDemandBase counts INSTANCES, not tasks: the on-demand base capacity
+	// held before the spot allocation applies to anything above it. It is read
+	// only when CapacityType is spot_with_base, matching
+	// modules/workloads/ec2_capacity.tf's local.pool_on_demand_base.
+	OnDemandBase int `json:"onDemandBase"`
 }
 
 // S3Config holds S3 configuration

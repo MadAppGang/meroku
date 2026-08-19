@@ -18,6 +18,7 @@ import {
 	type ECSServicesInfo as ServicesInfo,
 } from "../api/infrastructure";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
+import { deriveLaunchType } from "../utils/nodeStateMapping";
 import { Button } from "./ui/button";
 import {
 	Card,
@@ -343,6 +344,19 @@ export function ECSClusterInfo({
 
 	if (!clusterInfo) return null;
 
+	// getECSClusterInfo discards the AWS error and answers with a hardcoded
+	// ["FARGATE","FARGATE_SPOT"] and an empty ARN (app/api.go:364-369). The ARN
+	// is therefore the only honest signal that this payload came from AWS, and
+	// every reconciliation below is gated on it.
+	const clusterDataIsLive = clusterInfo.clusterArn !== "";
+	const configuredPools = config.compute?.pools ?? [];
+	const launchType = deriveLaunchType(config);
+	const undeployedPools = configuredPools.filter(
+		(pool) =>
+			pool.enabled !== false &&
+			!clusterInfo.capacityProviders.includes(pool.name),
+	);
+
 	return (
 		<div className="space-y-6">
 			<Card>
@@ -452,12 +466,18 @@ export function ECSClusterInfo({
 								Compute Configuration
 							</span>
 							<div className="mt-1 bg-gray-800 rounded p-3">
-								<ul className="text-xs text-gray-400 space-y-1">
-									<li>• Serverless compute with AWS Fargate</li>
-									<li>• No EC2 instances to manage</li>
-									<li>• Pay only for resources used by containers</li>
-									<li>• Automatic OS and runtime patching</li>
-								</ul>
+								<p className="text-sm text-gray-300">
+									{launchType === "Fargate"
+										? "Fargate only"
+										: launchType === "EC2"
+											? "EC2 capacity pools"
+											: "Fargate and EC2 capacity pools"}
+								</p>
+								<p className="text-xs text-gray-400 mt-1">
+									{configuredPools.length === 0
+										? "No compute pool is defined, so this cluster creates no EC2 capacity and no Auto Scaling group. Add one on the Compute tab to choose your own hardware."
+										: `${configuredPools.length} pool${configuredPools.length === 1 ? "" : "s"} defined: ${configuredPools.map((pool) => pool.name).join(", ")}. Edit them on the Compute tab.`}
+								</p>
 							</div>
 						</div>
 					</div>
@@ -473,11 +493,48 @@ export function ECSClusterInfo({
 									key={provider}
 									className="flex items-center justify-between text-xs"
 								>
-									<span className="text-gray-300">{provider}</span>
+									<span className="text-gray-300">
+										{provider}
+										{clusterDataIsLive &&
+											configuredPools.some(
+												(pool) => pool.name === provider,
+											) && (
+												<span className="ml-2 text-blue-300">
+													configured pool
+												</span>
+											)}
+									</span>
 									<span className="text-green-400">Active</span>
 								</div>
 							))}
 						</div>
+
+						{/* Reconciliation only when the cluster read actually reached AWS.
+						    getECSClusterInfo drops its error and returns a hardcoded
+						    ["FARGATE","FARGATE_SPOT"], so an unreachable account would
+						    otherwise report every configured pool as missing (FR-31). */}
+						{clusterDataIsLive && undeployedPools.length > 0 && (
+							<p className="text-xs text-yellow-300 mt-3">
+								{undeployedPools.map((pool) => pool.name).join(", ")}{" "}
+								{undeployedPools.length === 1 ? "is" : "are"} defined in{" "}
+								{config.env}.yaml but not attached to this cluster yet — run{" "}
+								<span className="font-mono">
+									task infra-apply env={config.env}
+								</span>{" "}
+								to create {undeployedPools.length === 1 ? "its" : "their"}{" "}
+								capacity provider.
+							</p>
+						)}
+						{!clusterDataIsLive && configuredPools.length > 0 && (
+							<p className="text-xs text-gray-400 mt-3">
+								This cluster could not be read from AWS, so the list above is a
+								default rather than a reading. Whether{" "}
+								{configuredPools.length === 1
+									? "your pool is"
+									: "your pools are"}{" "}
+								attached is unknown.
+							</p>
+						)}
 					</div>
 
 					{/* Cluster ARN */}

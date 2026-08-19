@@ -1,5 +1,8 @@
 import type { NodeProperties } from "../types/components";
-import type { YamlInfrastructureConfig } from "../types/yamlConfig";
+import type {
+	ComputeRuntime,
+	YamlInfrastructureConfig,
+} from "../types/yamlConfig";
 
 export interface NodeStateConfig {
 	id: string;
@@ -8,6 +11,36 @@ export interface NodeStateConfig {
 	enabled: (config: YamlInfrastructureConfig) => boolean;
 	properties?: (config: YamlInfrastructureConfig) => NodeProperties;
 	description?: string | ((config: YamlInfrastructureConfig) => string);
+}
+
+/**
+ * The cluster's launch type, derived from the configured runtimes and pools
+ * (schema v26) rather than hardcoded to Fargate.
+ *
+ * An absent `runtime`/`backend_runtime` means Fargate, so a pre-v26 config
+ * still reads "Fargate" and nothing about the diagram changes. An enabled pool
+ * counts as EC2 capacity even when nothing is placed on it yet, because the
+ * capacity provider is attached to the cluster either way.
+ */
+export function deriveLaunchType(
+	config: YamlInfrastructureConfig,
+): "Fargate" | "EC2" | "Mixed" {
+	const runtimes: ComputeRuntime[] = [
+		config.workload?.backend_runtime ?? "fargate",
+		...(config.services ?? [])
+			.filter((service) => service.enabled !== false)
+			.map((service) => service.runtime ?? "fargate"),
+	];
+	const hasEnabledPool = (config.compute?.pools ?? []).some(
+		(pool) => pool.enabled !== false,
+	);
+
+	const usesEC2 = hasEnabledPool || runtimes.includes("ec2");
+	const usesFargate = runtimes.some((runtime) => runtime !== "ec2");
+
+	if (usesEC2 && usesFargate) return "Mixed";
+	if (usesEC2) return "EC2";
+	return "Fargate";
 }
 
 /**
@@ -74,7 +107,7 @@ export const nodeStateMapping: NodeStateConfig[] = [
 		enabled: () => true, // Always enabled (core component)
 		properties: (config) => ({
 			clusterName: `${config.project}_cluster_${config.env}`,
-			launchType: "Fargate",
+			launchType: deriveLaunchType(config),
 			containerInsights: true,
 		}),
 	},
@@ -111,6 +144,10 @@ export const nodeStateMapping: NodeStateConfig[] = [
 				autoscalingMaxCapacity:
 					config.workload?.backend_autoscaling_max_capacity || 10,
 				domain: domain,
+				// Placement (schema v26). The pricing badge reads these to decide
+				// whether a per-task Fargate figure is even the right unit.
+				runtime: config.workload?.backend_runtime ?? "fargate",
+				computePool: config.workload?.backend_compute_pool,
 			};
 		},
 	},
@@ -267,6 +304,9 @@ export function getDynamicNodeStateMapping(
 					containerPort: service.container_port || 3000,
 					xrayEnabled: service.xray_enabled || false,
 					remoteAccess: service.remote_access || false,
+					// Placement (schema v26). See the backend node above.
+					runtime: service.runtime ?? "fargate",
+					computePool: service.compute_pool,
 				}),
 				description:
 					service.enabled === false

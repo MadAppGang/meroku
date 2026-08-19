@@ -339,6 +339,16 @@ variable "services" {
     # var.backend_auto_deploy for what false does and does not do. Absent means
     # true, which is how every project behaved before this setting existed.
     auto_deploy = optional(bool, true)
+    # Where this service runs. "fargate" keeps the literal launch_type it has
+    # today, byte-identical; "ec2" places it on compute_pool via a capacity
+    # provider strategy.
+    #
+    # These two lines are load-bearing rather than decorative: without them the
+    # per-service fields travel inside {{{array services}}} (env/main.hbs) and
+    # are dropped without a word by Terraform's object-type conversion — the
+    # exact failure mode app/autodeploy_template_test.go was written to catch.
+    runtime      = optional(string, "fargate")
+    compute_pool = optional(string, "")
     env_files_s3 = optional(list(object({
       bucket = string
       key    = string
@@ -423,6 +433,11 @@ variable "backend_autoscaling_target_cpu" {
   default     = 70
 }
 
+# NOTE for existing deployments: until these two were wired into
+# backend_autoscaling.tf, the memory policy hardcoded 75.0 while this variable
+# documented 80. The first apply after that fix moves the memory target
+# 75 -> 80 on any environment with backend autoscaling enabled and no explicit
+# value set. That is the documented default taking effect, not a new default.
 variable "backend_autoscaling_target_memory" {
   description = "Target memory utilization percentage for autoscaling"
   type        = number
@@ -478,4 +493,84 @@ variable "pgadmin_email" {
   description = "Default email for pgAdmin login"
   type        = string
   default     = "admin@example.com"
+}
+
+# ---------------------------------------------------------------------------
+# EC2 compute pools. See ec2_capacity.tf.
+# ---------------------------------------------------------------------------
+
+variable "backend_runtime" {
+  description = "Where the backend service runs: \"fargate\" (default) or \"ec2\" on a compute pool."
+  type        = string
+  default     = "fargate"
+
+  validation {
+    condition     = contains(["fargate", "ec2"], var.backend_runtime)
+    error_message = "backend_runtime must be \"fargate\" or \"ec2\"."
+  }
+}
+
+variable "backend_compute_pool" {
+  description = "Name of the compute pool the backend runs on. Required when backend_runtime is \"ec2\", ignored otherwise."
+  type        = string
+  default     = ""
+}
+
+variable "compute_pools" {
+  description = <<-EOT
+    ASG-backed ECS capacity providers. Absent (the default) means no EC2
+    capacity and no diff — every resource in ec2_capacity.tf is guarded on this
+    list being non-empty after the `enabled` filter.
+
+    network_mode defaults to "bridge": the task shares the container instance's
+    primary ENI, which already has a public IP, so egress works with no NAT
+    gateway. "awsvpc" is a per-pool override that generate-time validation
+    refuses unless the pool asserts an egress path.
+
+    on_demand_base counts INSTANCES, not tasks — it renders as
+    on_demand_base_capacity inside instances_distribution.
+
+    `assume_egress` is a generate-time assertion only and is deliberately NOT
+    declared here: nothing under modules/ reads it.
+  EOT
+
+  type = list(object({
+    name            = string
+    enabled         = optional(bool, true)
+    instance_types  = list(string)
+    capacity_type   = optional(string, "on_demand")
+    on_demand_base  = optional(number, 0)
+    min_size        = optional(number, 1)
+    max_size        = optional(number, 6)
+    target_capacity = optional(number, 100)
+    # bridge is the default here, in the template, and in the Go structs —
+    # three defaults that must agree, because a pool that omits the key must
+    # render and plan identically whichever layer supplied the value.
+    network_mode    = optional(string, "bridge")
+    ami_family      = optional(string, "al2023")
+    ami_id          = optional(string, "")
+    root_volume_gb  = optional(number, 30)
+    user_data_extra = optional(string, "")
+    extra_volumes = optional(list(object({
+      device_name = string
+      size_gb     = number
+      type        = optional(string, "gp3")
+    })), [])
+    instance_policies = optional(list(object({
+      actions   = list(string)
+      resources = list(string)
+    })), [])
+  }))
+
+  default = []
+
+  # optional(..., default) is what lets local.pools read p.enabled and
+  # p.network_mode directly: Terraform substitutes the default during type
+  # conversion, so the attribute is present and non-null on every element,
+  # whatever the YAML omitted. With a bare optional(bool) the `if p.enabled`
+  # filter would fail on a null condition.
+  validation {
+    condition     = alltrue([for p in var.compute_pools : contains(["bridge", "awsvpc"], p.network_mode)])
+    error_message = "compute_pools[*].network_mode must be \"bridge\" or \"awsvpc\"."
+  }
 }

@@ -75,6 +75,18 @@ func mainRouter() http.Handler {
 	// Fargate
 	mux.HandleFunc("/api/fargate/options", corsMiddleware(getFargateOptions))
 
+	// Compute pools (EC2 capacity) — read-only. Pool CRUD is a YAML write and
+	// goes through /api/environment/update like every other config change, so
+	// nothing here mutates anything.
+	//
+	// Every variable travels as a query parameter, never as a path segment: this
+	// is a plain http.ServeMux with a catch-all at "/" below, so
+	// /api/compute/pools/{name} would match the SPA handler and return HTML
+	// with a 200 (CON-3).
+	mux.HandleFunc("/api/compute/instance-types", corsMiddleware(getComputeInstanceTypes))
+	mux.HandleFunc("/api/compute/spot-prices", corsMiddleware(getComputeSpotPrices))
+	mux.HandleFunc("/api/compute/recommendation", corsMiddleware(getComputeRecommendation))
+
 	// API Gateway
 	mux.HandleFunc("/api/apigateway/info", corsMiddleware(getAPIGatewayInfo))
 

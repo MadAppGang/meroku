@@ -7,6 +7,7 @@ import {
 	ChevronRight,
 	Cloud,
 	Code,
+	Cpu,
 	Database,
 	FileText,
 	Gauge,
@@ -53,6 +54,7 @@ import { BackendSNS } from "./BackendSNS";
 import { BackendSSHAccess } from "./BackendSSHAccess";
 import { BackendXRayConfiguration } from "./BackendXRayConfiguration";
 import { CloudFrontNodeProperties } from "./CloudFrontNodeProperties";
+import { ComputePoolProperties } from "./ComputePoolProperties";
 import { ECRNodeProperties } from "./ECRNodeProperties";
 import { ECRPushInstructions } from "./ECRPushInstructions";
 import { ECRRepositoryList } from "./ECRRepositoryList";
@@ -181,6 +183,7 @@ export function Sidebar({
 					{ id: "settings", label: "Settings", icon: Settings },
 					{ id: "notifications", label: "Notifications", icon: Bell },
 					{ id: "cluster", label: "Cluster", icon: Server },
+					{ id: "compute", label: "Compute", icon: Cpu },
 					{ id: "network", label: "Network", icon: Network },
 					{ id: "services", label: "Services", icon: Activity },
 				];
@@ -1576,6 +1579,20 @@ jobs:
 					config &&
 					onConfigChange && (
 						<ECSNotifications config={config} onConfigChange={onConfigChange} />
+					)}
+
+				{/* Compute pools. Its own tab rather than a panel inside
+				    ECSClusterInfo, whose loading/error/null early returns would
+				    otherwise take the whole surface away in exactly the
+				    no-credentials case it has to survive (FR-45). */}
+				{activeTab === "compute" &&
+					selectedNode.type === "ecs" &&
+					config &&
+					onConfigChange && (
+						<ComputePoolProperties
+							config={config}
+							onConfigChange={onConfigChange}
+						/>
 					)}
 
 				{/* Amplify tabs */}

@@ -2,9 +2,15 @@ locals {
   service_names = { for service in var.services : service.name => service }
 }
 
-# Create ALB target group for each service
+# Create ALB target group for each service.
+#
+# target_type stays "ip" here forever — it is ForceNew, and a target group a
+# listener rule still references cannot be deleted. A bridge-mode service gets
+# the separate "instance" resource below instead; the two for_each expressions
+# are complementary, so exactly one exists per service. For every Fargate service
+# local.service_bridge[k] is false and this renders today's set.
 resource "aws_lb_target_group" "services" {
-  for_each = { for k, v in local.service_names : k => v if var.enable_alb }
+  for_each = { for k, v in local.service_names : k => v if var.enable_alb && !local.service_bridge[k] }
 
   name        = "${var.project}-service-${each.key}-tg-${var.env}"
   port        = each.value.container_port
@@ -34,6 +40,47 @@ resource "aws_lb_target_group" "services" {
   }
 }
 
+# The bridge-mode twin. Identical except for target_type and name.
+#
+# `port` is required but is a placeholder: with hostPort = 0 in the task
+# definition, ECS registers the instance on the ephemeral port Docker assigned
+# and that overrides it. health_check already probes "traffic-port", so it
+# follows the registration with no further change, and ec2_capacity.tf's instance
+# security group opens 32768-65535 from the ALB for exactly this.
+resource "aws_lb_target_group" "services_instance" {
+  for_each = { for k, v in local.service_names : k => v if var.enable_alb && local.service_bridge[k] }
+
+  # 32 characters is the AWS limit for a target-group name, and both groups exist
+  # at once while a service is being flipped between runtimes, so the names must
+  # differ: "-svc-<name>-i-" rather than "-service-<name>-tg-".
+  name        = "${var.project}-svc-${each.key}-i-${var.env}"
+  port        = each.value.container_port
+  protocol    = "HTTP"
+  vpc_id      = var.vpc_id
+  target_type = "instance"
+
+  health_check {
+    enabled             = true
+    healthy_threshold   = 2
+    interval            = 30
+    matcher             = "200"
+    path                = "/health/live"
+    port                = "traffic-port"
+    protocol            = "HTTP"
+    timeout             = 5
+    unhealthy_threshold = 10
+  }
+
+  tags = {
+    Name        = "${var.project}-svc-${each.key}-i-${var.env}"
+    Environment = var.env
+    Project     = var.project
+    ManagedBy   = "meroku"
+    terraform   = "true"
+    Application = "${var.project}-${var.env}"
+  }
+}
+
 # NOTE: ECR repository creation moved to ecr.tf for per-service configuration (Schema v10)
 # ECR repositories are now managed in ecr.tf with support for:
 # - create_ecr: Create dedicated ECR repository
@@ -49,11 +96,23 @@ resource "aws_service_discovery_service" "services" {
   dns_config {
     namespace_id = aws_service_discovery_private_dns_namespace.local.id
 
-    dns_records {
-      ttl  = 10
-      type = "A"
+    # See aws_service_discovery_service.backend in backend.tf: an A record cannot
+    # describe a bridge task, whose host port is chosen at placement time, so the
+    # bridge branch is SRV-only. One Cloud Map service either way, so the name
+    # SERVICE_INTERNAL_URL and the API Gateway private integration resolve does
+    # not change, and service_registries is never removed from a live service.
+    #
+    # ORDER IS LOAD-BEARING: dns_records is a LIST compared positionally. A before
+    # SRV. Swapping them replaces every Cloud Map service in the environment.
+    dynamic "dns_records" {
+      for_each = local.service_bridge[each.key] ? [] : [1]
+      content {
+        ttl  = 10
+        type = "A"
+      }
     }
 
+    # Always, in both network modes.
     dns_records {
       ttl  = 10
       type = "SRV"
@@ -76,24 +135,61 @@ resource "aws_ecs_service" "services" {
   task_definition                    = aws_ecs_task_definition.services[each.key].arn
   desired_count                      = each.value.desired_count
   deployment_minimum_healthy_percent = 50
-  launch_type                        = "FARGATE"
   scheduling_strategy                = "REPLICA"
   enable_ecs_managed_tags            = true
   enable_execute_command             = each.value.remote_access
 
+  # See aws_ecs_service.backend in backend.tf for why these three are shaped the
+  # way they are. In short: launch_type and capacity_provider_strategy are
+  # strictly either/or with no ConflictsWith to enforce it, the strategy appears
+  # only on the EC2 branch because under the pinned provider a service gaining
+  # its first strategy is ForceNew, and force_new_deployment is EC2-only because
+  # writing true into an existing Fargate service is a diff in every environment
+  # that has ever applied.
+  launch_type          = local.service_pools[each.key] == null ? "FARGATE" : null
+  force_new_deployment = local.service_pools[each.key] != null
 
-  network_configuration {
-    security_groups  = [aws_security_group.services[each.key].id]
-    subnets          = var.subnet_ids
-    assign_public_ip = true
+  dynamic "capacity_provider_strategy" {
+    for_each = local.service_pools[each.key] == null ? [] : [local.service_pools[each.key]]
+    content {
+      capacity_provider = aws_ecs_capacity_provider.pool[capacity_provider_strategy.value].name
+
+      # An omitted weight defaults to 0 via the API, and a strategy where every
+      # weight is 0 fails every CreateService and RunTask.
+      weight = 1
+      base   = 0
+    }
+  }
+
+  # awsvpc only — AWS rejects networkConfiguration on a task whose network mode
+  # is not awsvpc. assign_public_ip is an expression rather than an omission
+  # because a dynamic block has one content and an argument in it cannot be
+  # conditionally absent: true for Fargate exactly as today, false (-> DISABLED)
+  # for an awsvpc EC2 pool, which the API accepts — only ENABLED is rejected.
+  dynamic "network_configuration" {
+    for_each = local.service_network_modes[each.key] == "awsvpc" ? [1] : []
+    content {
+      security_groups  = [aws_security_group.services[each.key].id]
+      subnets          = var.subnet_ids
+      assign_public_ip = local.service_pools[each.key] == null
+    }
   }
 
   dynamic "load_balancer" {
     for_each = var.enable_alb ? [1] : []
     content {
-      target_group_arn = aws_lb_target_group.services[each.key].arn
+      target_group_arn = local.service_target_group_arns[each.key]
       container_name   = "${var.project}_service_${each.key}_${var.env}"
       container_port   = each.value.container_port
+    }
+  }
+
+  # EC2 only, so the Fargate plan is unchanged.
+  dynamic "ordered_placement_strategy" {
+    for_each = local.service_pools[each.key] == null ? [] : [1]
+    content {
+      type  = "binpack"
+      field = "memory"
     }
   }
 
@@ -115,22 +211,53 @@ resource "aws_ecs_service" "services" {
   # See aws_ecs_service.backend in backend.tf: CI owns the running revision,
   # Terraform owns the service around it. Without this an apply silently rolls
   # back whatever the CI Lambda last deployed.
+  #
+  # The precondition shares the block because a resource may carry only one
+  # lifecycle block. Every other pool read is total, so this is the single site
+  # that can fail on a compute_pool naming a pool that is missing or disabled.
   lifecycle {
     ignore_changes = [task_definition]
+
+    precondition {
+      condition     = local.service_pools[each.key] == null || contains(keys(local.pools), local.service_pools[each.key])
+      error_message = "Service \"${each.key}\" sets runtime \"ec2\" with compute pool \"${local.service_pools[each.key]}\", which is not an enabled compute pool. Add a pool with that name under compute.pools, set enabled: true on it if it is disabled, or point the service at one of these: ${join(", ", keys(local.pools))}."
+    }
   }
+
+  # The service must never be created before the cluster knows the capacity
+  # provider its strategy names. With no pools this resource has count = 0 and
+  # the dependency contributes no edge.
+  depends_on = [aws_ecs_cluster_capacity_providers.main]
 }
 
 # Create Task Definition for each service
 resource "aws_ecs_task_definition" "services" {
   for_each = local.service_names
 
-  network_mode             = "awsvpc"
-  requires_compatibilities = ["FARGATE"]
+  # "awsvpc" for Fargate and for a pool that overrode its network mode, "bridge"
+  # otherwise. Every existing environment renders the identical string.
+  #
+  # No cpu/memory floors here, unlike backend.tf: these already pass through
+  # untouched, because the 256/512 minimums are a Fargate task-size rule that was
+  # only ever applied to the backend.
+  network_mode             = local.service_network_modes[each.key]
+  requires_compatibilities = local.service_pools[each.key] == null ? ["FARGATE"] : ["EC2"]
   family                   = "${var.project}_service_${each.key}_${var.env}"
   cpu                      = each.value.cpu
   memory                   = each.value.memory
   execution_role_arn       = aws_iam_role.services_task_execution[each.key].arn
   task_role_arn            = aws_iam_role.services_task[each.key].arn
+
+  # local.service_arm64 is the total per-service local from ec2_capacity.tf. This
+  # site is outside the reach of the ECS service's precondition, so a bad pool
+  # name must render false rather than raise `Error: Invalid index`.
+  dynamic "runtime_platform" {
+    for_each = local.service_arm64[each.key] ? [1] : []
+    content {
+      cpu_architecture        = "ARM64"
+      operating_system_family = "LINUX"
+    }
+  }
 
   container_definitions = jsonencode(concat(
     each.value.xray_enabled ? local.xray_service_container : [],
@@ -139,7 +266,14 @@ resource "aws_ecs_task_definition" "services" {
       cpu    = each.value.cpu
       memory = each.value.memory
       # Use resolved ECR URL from ecr.tf (supports create_ecr, manual_repo, use_existing modes)
-      image   = "${each.value.docker_image != "" ? each.value.docker_image : local.service_ecr_urls[each.key]}:latest"
+      #
+      # `:latest` belongs INSIDE the ECR branch, and the parentheses are load
+      # bearing. A user-supplied docker_image usually carries its own tag, so
+      # appending here would render "public.ecr.aws/nginx/nginx:stable:latest" and
+      # kill the task with CannotPullImageManifestError: invalid reference format.
+      # Only the URL meroku resolved itself is untagged. Same shape as
+      # modules/ecs_task/main.tf and modules/event_bridge_task/ecs.tf.
+      image   = each.value.docker_image != "" ? each.value.docker_image : "${local.service_ecr_urls[each.key]}:latest"
       command = each.value.container_command
 
 
@@ -175,10 +309,19 @@ resource "aws_ecs_task_definition" "services" {
         }
       }
 
+      # host_port keeps its meaning on the awsvpc branch and is IGNORED on the
+      # bridge branch, where the host port is chosen at placement time. A fixed
+      # hostPort under bridge binds that port on the instance, so a second task
+      # of the same service cannot place there and the ALB cannot tell two tasks
+      # on one host apart; hostPort = 0 asks Docker for an ephemeral port, which
+      # is what target_type = "instance" registration and Cloud Map SRV read.
+      # The validator does not refuse a set host_port on a bridge service — a
+      # service can move between pools, and refusing a now-meaningless value
+      # would block the move.
       portMappings = [{
         protocol      = "tcp"
         containerPort = each.value.container_port
-        hostPort      = each.value.host_port
+        hostPort      = local.service_bridge[each.key] ? 0 : each.value.host_port
         name          = "${var.project}_service_${each.key}_${var.env}"
       }]
     }]

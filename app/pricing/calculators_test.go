@@ -306,3 +306,260 @@ func floatEquals(a, b, tolerance float64) bool {
 	}
 	return diff < tolerance
 }
+
+// getTestEC2Rates returns rates carrying an EC2 table with round numbers, so a
+// wrong formula shows up as a wrong digit rather than a rounding argument.
+//
+// It is separate from getTestRates rather than an addition to it: every
+// existing calculator test asserts against that fixture's exact values, and the
+// EC2 shape has no business appearing in their failure output.
+func getTestEC2Rates() *PriceRates {
+	rates := getTestRates()
+	rates.EC2 = EC2Pricing{
+		OnDemandHourly: map[string]float64{
+			"m6i.large":  0.10,
+			"m6i.xlarge": 0.20,
+		},
+		SpotRatio: 0.40,
+	}
+	return rates
+}
+
+// TestCalculateEC2PoolPrice covers the claim the whole EC2 pricing shape rests
+// on: a pool costs instances x instance-hourly x 730, and that figure does not
+// move when tasks are placed on it (AC-53).
+func TestCalculateEC2PoolPrice(t *testing.T) {
+	rates := getTestEC2Rates()
+
+	tests := []struct {
+		name        string
+		config      EC2PoolConfig
+		want        float64
+		wantUnknown bool // the pool has no price at all, which is not $0
+	}{
+		{
+			name: "on-demand pool: instances x hourly x 730",
+			config: EC2PoolConfig{
+				InstanceTypes: []string{"m6i.large"},
+				InstanceCount: 2,
+				CapacityType:  "on_demand",
+			},
+			want: 2 * 0.10 * HoursPerMonth,
+		},
+		{
+			name: "capacity type absent reads as on-demand",
+			config: EC2PoolConfig{
+				InstanceTypes: []string{"m6i.large"},
+				InstanceCount: 1,
+			},
+			want: 0.10 * HoursPerMonth,
+		},
+		{
+			name: "an unrecognised capacity type is priced as on-demand, never cheaper",
+			config: EC2PoolConfig{
+				InstanceTypes: []string{"m6i.large"},
+				InstanceCount: 3,
+				CapacityType:  "sport",
+			},
+			want: 3 * 0.10 * HoursPerMonth,
+		},
+		{
+			name: "all-spot pool pays SpotRatio of on-demand",
+			config: EC2PoolConfig{
+				InstanceTypes: []string{"m6i.large"},
+				InstanceCount: 4,
+				CapacityType:  "spot",
+			},
+			want: 4 * 0.10 * 0.40 * HoursPerMonth,
+		},
+		{
+			name: "spot_with_base bills the base on demand and the rest spot",
+			config: EC2PoolConfig{
+				InstanceTypes: []string{"m6i.large"},
+				InstanceCount: 5,
+				CapacityType:  "spot_with_base",
+				OnDemandBase:  2,
+			},
+			want: (2*0.10 + 3*0.10*0.40) * HoursPerMonth,
+		},
+		{
+			name: "a base above the instance count never bills more than the fleet",
+			config: EC2PoolConfig{
+				InstanceTypes: []string{"m6i.large"},
+				InstanceCount: 2,
+				CapacityType:  "spot_with_base",
+				OnDemandBase:  9,
+			},
+			want: 2 * 0.10 * HoursPerMonth,
+		},
+		{
+			name: "the basis is the first PRICED type, not the first type",
+			config: EC2PoolConfig{
+				InstanceTypes: []string{"m9z.nonexistent", "m6i.xlarge", "m6i.large"},
+				InstanceCount: 1,
+				CapacityType:  "on_demand",
+			},
+			want: 0.20 * HoursPerMonth,
+		},
+		{
+			name: "a pool scaled to zero costs nothing",
+			config: EC2PoolConfig{
+				InstanceTypes: []string{"m6i.large"},
+				InstanceCount: 0,
+				CapacityType:  "on_demand",
+			},
+			want: 0,
+		},
+		{
+			// The case the single float return could not express, and the
+			// reason for the second one: this pool costs $0 in exactly the
+			// same way the row above does, and it must not. Nobody has a
+			// price for the instance, so the answer is "unknown" -- the C-4
+			// rule, and what the TypeScript twin says with `null`.
+			name: "a pool of unpriced instances is unknown, not free",
+			config: EC2PoolConfig{
+				InstanceTypes: []string{"m9z.nonexistent"},
+				InstanceCount: 3,
+				CapacityType:  "on_demand",
+			},
+			want:        0,
+			wantUnknown: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, priced := CalculateEC2PoolPrice(tt.config, rates)
+			if priced == tt.wantUnknown {
+				t.Fatalf("CalculateEC2PoolPrice() priced = %v, want %v", priced, !tt.wantUnknown)
+			}
+			if !floatEquals(got, tt.want, 0.01) {
+				t.Errorf("CalculateEC2PoolPrice() = %.4f, want %.4f", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestEC2PoolHourly_UnpricedIsUnknownNotFree is the C-4 rule at the cost view's
+// boundary: an instance type nobody has a price for is reported as unknown.
+// Returning 0 as a price would render as "free", and a pool of instances is
+// never free.
+func TestEC2PoolHourly_UnpricedIsUnknownNotFree(t *testing.T) {
+	rates := getTestEC2Rates()
+
+	hourly, priced := EC2PoolHourly(EC2PoolConfig{
+		InstanceTypes: []string{"m9z.nonexistent"},
+		InstanceCount: 3,
+		CapacityType:  "on_demand",
+	}, rates)
+	if priced {
+		t.Fatalf("EC2PoolHourly() priced an instance type with no price (got %v)", hourly)
+	}
+	if hourly != 0 {
+		t.Errorf("unpriced pool returned hourly = %v, want 0 alongside priced=false", hourly)
+	}
+
+	// The same pool scaled to zero is a different answer: priced, at zero,
+	// because it is off rather than unknown.
+	hourly, priced = EC2PoolHourly(EC2PoolConfig{
+		InstanceTypes: []string{"m6i.large"},
+		InstanceCount: 0,
+		CapacityType:  "on_demand",
+	}, rates)
+	if !priced || hourly != 0 {
+		t.Errorf("pool scaled to zero: got hourly=%v priced=%v, want 0/true", hourly, priced)
+	}
+}
+
+// TestEC2PoolHourly_UnusableSpotRatioNeverDiscounts guards the direction of the
+// failure: a rate table with a missing or nonsensical SpotRatio prices spot as
+// on-demand, which over-reports, rather than as free.
+func TestEC2PoolHourly_UnusableSpotRatioNeverDiscounts(t *testing.T) {
+	for _, ratio := range []float64{0, -0.5, 1.5} {
+		rates := getTestEC2Rates()
+		rates.EC2.SpotRatio = ratio
+
+		hourly, priced := EC2PoolHourly(EC2PoolConfig{
+			InstanceTypes: []string{"m6i.large"},
+			InstanceCount: 2,
+			CapacityType:  "spot",
+		}, rates)
+		if !priced {
+			t.Fatalf("SpotRatio=%v: pool went unpriced", ratio)
+		}
+		if want := 2 * 0.10; !floatEquals(hourly, want, 1e-9) {
+			t.Errorf("SpotRatio=%v: hourly = %v, want %v (on-demand)", ratio, hourly, want)
+		}
+	}
+}
+
+// TestEC2PoolPrice_DoesNotVaryWithTasks is AC-53 stated as an invariant:
+// EC2PoolConfig has no task field at all, so no number of tasks can change the
+// bill. The Fargate calculator appears alongside it to show the contrast --
+// there, tasks are exactly what moves the number, which is why an EC2 service
+// must not be priced through it.
+func TestEC2PoolPrice_DoesNotVaryWithTasks(t *testing.T) {
+	rates := getTestEC2Rates()
+	pool := EC2PoolConfig{
+		InstanceTypes: []string{"m6i.large"},
+		InstanceCount: 1,
+		CapacityType:  "on_demand",
+	}
+
+	poolCost, priced := CalculateEC2PoolPrice(pool, rates)
+	if !priced {
+		t.Fatalf("pool of m6i.large priced as unknown against rates that carry it")
+	}
+	if want := 0.10 * HoursPerMonth; !floatEquals(poolCost, want, 0.01) {
+		t.Fatalf("pool cost = %v, want %v", poolCost, want)
+	}
+
+	for _, tasks := range []int{1, 5, 50} {
+		if got, _ := CalculateEC2PoolPrice(pool, rates); got != poolCost {
+			t.Errorf("pool cost changed to %v at %d tasks; instances are billed, not tasks", got, tasks)
+		}
+
+		// Priced as Fargate instead, the same tasks cost more with every one
+		// added -- which is the number an EC2 service must NOT report.
+		fargateEquivalent := CalculateECSPrice(ECSConfig{CPU: 256, Memory: 512, DesiredCount: tasks}, rates)
+		if fargateEquivalent <= 0 {
+			t.Fatalf("Fargate control case priced %d tasks at %v", tasks, fargateEquivalent)
+		}
+	}
+}
+
+// TestFallbackRatesCarryEC2Prices pins the wiring between the fallback rate
+// table and the compute fallback data: a degraded response prices a pool, and
+// prices it from the same table the instance picker shows, not a second copy.
+func TestFallbackRatesCarryEC2Prices(t *testing.T) {
+	rates := getHardcodedFallbackRates()
+
+	if rates.EC2.SpotRatio <= 0 || rates.EC2.SpotRatio > 1 {
+		t.Errorf("fallback SpotRatio = %v, want a usable fraction in (0,1]", rates.EC2.SpotRatio)
+	}
+
+	for _, instanceType := range FallbackDefaultPoolInstanceTypes() {
+		hourly, exists := rates.EC2.OnDemandHourly[instanceType]
+		if !exists {
+			t.Errorf("fallback rates have no price for %q, a default-pool type", instanceType)
+			continue
+		}
+		if hourly <= 0 {
+			t.Errorf("fallback price for %q is %v; absent means unknown, 0 would mean free", instanceType, hourly)
+		}
+	}
+
+	// The synthesized default pool (FR-58) must produce a real number under
+	// fallback rates, since that is exactly the no-credentials path.
+	cost, priced := CalculateEC2PoolPrice(EC2PoolConfig{
+		InstanceTypes: FallbackDefaultPoolInstanceTypes(),
+		InstanceCount: 1,
+		CapacityType:  "on_demand",
+	}, rates)
+	if !priced {
+		t.Fatal("the synthesized default pool priced as unknown under fallback rates")
+	}
+	if cost <= 0 {
+		t.Errorf("synthesized default pool priced at %v under fallback rates", cost)
+	}
+}

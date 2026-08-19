@@ -13,23 +13,92 @@ resource "aws_ecs_service" "backend" {
   task_definition                    = aws_ecs_task_definition.backend.arn
   desired_count                      = var.backend_desired_count
   deployment_minimum_healthy_percent = 50
-  launch_type                        = "FARGATE"
   scheduling_strategy                = "REPLICA"
   enable_ecs_managed_tags            = true
   enable_execute_command             = var.backend_remote_access
 
-  network_configuration {
-    security_groups  = [aws_security_group.backend.id]
-    subnets          = var.subnet_ids
-    assign_public_ip = true
+  # launch_type and capacity_provider_strategy are STRICTLY either/or, and the
+  # conditional below is what enforces it: there is no ConflictsWith on either
+  # attribute, so emitting both passes `terraform validate` and then fails or
+  # misbehaves at apply. launch_type is ForceNew + Computed, which is why the
+  # Fargate branch keeps the literal string it has today rather than becoming a
+  # dynamic block of its own.
+  #
+  # Emitting the strategy ONLY on the EC2 branch is the whole zero-diff
+  # property. Under the pinned provider (>= 5.34.0, < 6.0.0 — see versions.tf)
+  # capacityProviderStrategyCustomizeDiff takes the `ol == 0 && nl > 0` branch —
+  # a service with no strategy gaining one — and sets ForceNew. Emitting it
+  # universally would therefore turn every already-deployed Fargate service in
+  # every environment into a forced replacement on the first apply after
+  # upgrade.
+  launch_type = local.backend_pool == null ? "FARGATE" : null
+
+  # EC2 branch ONLY, and that is deliberate rather than an oversight.
+  #
+  # What it prevents: the same diff function returns at its FIRST branch when
+  # force_new_deployment is false, so with the flag off, ANY change to
+  # capacity_provider_strategy — renaming a pool, editing a weight or a base —
+  # replaces the service, and the destroy of the old capacity provider then
+  # deadlocks against the still-referencing service. With it on, a
+  # strategy -> strategy edit is `ol > 0 && nl > 0`, the in-place branch, so
+  # those edits become UpdateService calls with a rolling deployment.
+  #
+  # Why not unconditionally true: the attribute is Optional with Default false
+  # in the provider schema, so it is stored in state. Writing true into every
+  # existing Fargate service is an in-place change on first plan
+  # (~ force_new_deployment = false -> true) in every environment that has ever
+  # applied, plus one unrequested rolling redeployment per service. Gating it on
+  # the EC2 branch keeps the Fargate plan byte-identical and gives a new EC2
+  # service the flag from creation, so there is no transition to diff.
+  force_new_deployment = local.backend_pool != null
+
+  dynamic "capacity_provider_strategy" {
+    for_each = local.backend_pool == null ? [] : [local.backend_pool]
+    content {
+      capacity_provider = aws_ecs_capacity_provider.pool[capacity_provider_strategy.value].name
+
+      # weight is NOT optional decoration. Via the API an omitted weight
+      # defaults to 0, and a strategy in which every weight is 0 makes every
+      # CreateService and RunTask fail.
+      weight = 1
+      base   = 0
+    }
+  }
+
+  # awsvpc only. AWS rejects networkConfiguration on a task whose network mode is
+  # not awsvpc, so under bridge the block must not render at all — which is why
+  # this is a dynamic block rather than a conditional argument.
+  #
+  # assign_public_ip is an EXPRESSION rather than an omission because HCL cannot
+  # conditionally drop an argument from a dynamic block's single `content`. It is
+  # true for Fargate, exactly as today, and false (-> DISABLED) for an awsvpc EC2
+  # pool, which the ECS API accepts; only ENABLED is rejected for EC2.
+  dynamic "network_configuration" {
+    for_each = local.backend_network_mode == "awsvpc" ? [1] : []
+    content {
+      security_groups  = [aws_security_group.backend.id]
+      subnets          = var.subnet_ids
+      assign_public_ip = local.backend_pool == null
+    }
   }
 
   dynamic "load_balancer" {
     for_each = var.enable_alb ? [1] : []
     content {
-      target_group_arn = aws_lb_target_group.backend[0].arn
+      target_group_arn = local.backend_target_group_arn
       container_name   = local.backend_name
       container_port   = var.backend_image_port
+    }
+  }
+
+  # EC2 only, so the Fargate plan is unchanged. AWS: "the binpack strategy is the
+  # most efficient strategy in terms of capacity" — which is the entire point of
+  # paying for instances by the hour instead of by the task.
+  dynamic "ordered_placement_strategy" {
+    for_each = local.backend_pool == null ? [] : [1]
+    content {
+      type  = "binpack"
+      field = "memory"
     }
   }
 
@@ -62,8 +131,21 @@ resource "aws_ecs_service" "backend" {
   #
   # Ownership is therefore stated once, here: Terraform owns the service's shape,
   # CI owns the revision running in it.
+  #
+  # The precondition lives inside this block because a resource may carry only
+  # one lifecycle block. Every pool read in ec2_capacity.tf is total (lookup/try)
+  # precisely so that a compute_pool naming a pool that does not exist, or one
+  # that exists but is disabled, renders the Fargate value everywhere else and
+  # fails HERE — one sentence naming the pool and the fixes, instead of
+  # `Error: Invalid index` pointing at a port mapping. Meta-argument: no state,
+  # no diff. Needs Terraform >= 1.2, which versions.tf requires.
   lifecycle {
     ignore_changes = [task_definition]
+
+    precondition {
+      condition     = local.backend_pool == null || contains(keys(local.pools), local.backend_pool)
+      error_message = "The backend sets runtime \"ec2\" with compute pool \"${var.backend_compute_pool}\", which is not an enabled compute pool. Add a pool with that name under compute.pools, set enabled: true on it if it is disabled, or point the backend at one of these: ${join(", ", keys(local.pools))}."
+    }
   }
 
   # ECS rejects a service whose target group has no load balancer attached, and a
@@ -81,8 +163,14 @@ resource "aws_ecs_service" "backend" {
   # broken config.
   #
   # Stated unconditionally: with the ALB off the listener has count = 0 and
-  # depending on an empty set is a no-op.
-  depends_on = [aws_lb_listener.https]
+  # depending on an empty set is a no-op. The capacity-provider association is
+  # here for the same reason in the other direction — the service must never be
+  # created before the cluster knows the provider its strategy names — and with
+  # no pools it has count = 0 and contributes no edge.
+  depends_on = [
+    aws_lb_listener.https,
+    aws_ecs_cluster_capacity_providers.main,
+  ]
 }
 
 # Create the Cloud Map service explicitly (instead of letting ECS Service Connect create it).
@@ -108,11 +196,30 @@ resource "aws_service_discovery_service" "backend" {
   dns_config {
     namespace_id = aws_service_discovery_private_dns_namespace.local.id
 
-    dns_records {
-      ttl  = 10
-      type = "A"
+    # An A record is an address and nothing else, so it cannot describe a bridge
+    # task: that task has no ENI of its own and sits behind the Docker bridge on
+    # a host port chosen at placement time. AWS documents SRV as the supported
+    # record type for bridge and host network mode, and ECS registers the host's
+    # IPv4 plus the assigned host port.
+    #
+    # Deliberately NOT a second Cloud Map service. This one keeps its name and
+    # its DNS name, so SERVICE_INTERNAL_URL (env_services.tf) and the API Gateway
+    # private integration (api_gateway.tf) keep resolving the same thing, and
+    # service_registries is never removed from a live ECS service — the
+    # constraint recorded on aws_ecs_service.backend above. Only the record set
+    # behind the registration differs.
+    #
+    # ORDER IS LOAD-BEARING: dns_records is a LIST compared positionally. A before
+    # SRV. Swapping them replaces every Cloud Map service in the environment.
+    dynamic "dns_records" {
+      for_each = local.backend_bridge ? [] : [1]
+      content {
+        ttl  = 10
+        type = "A"
+      }
     }
 
+    # Always, in both network modes.
     dns_records {
       ttl  = 10
       type = "SRV"
@@ -136,13 +243,32 @@ resource "aws_service_discovery_service" "backend" {
 
 
 resource "aws_ecs_task_definition" "backend" {
-  network_mode             = "awsvpc"
-  requires_compatibilities = ["FARGATE"]
+  # "awsvpc" for Fargate and for a pool that overrode its network mode,
+  # "bridge" otherwise. For every existing environment this renders the
+  # identical string.
+  network_mode             = local.backend_network_mode
+  requires_compatibilities = local.backend_pool == null ? ["FARGATE"] : ["EC2"]
   family                   = local.backend_name
-  cpu                      = max(var.backend_cpu, 256)    # Fargate minimum is 256
-  memory                   = max(var.backend_memory, 512) # Fargate minimum is 512
-  execution_role_arn       = aws_iam_role.backend_task_execution.arn
-  task_role_arn            = aws_iam_role.backend_task.arn
+
+  # The 256/512 floors are Fargate task-size rules. On EC2 they have no meaning
+  # and are actively harmful: they silently inflate a small task's reservation,
+  # which is what bin-packing density is computed from.
+  cpu                = local.backend_pool == null ? max(var.backend_cpu, 256) : var.backend_cpu
+  memory             = local.backend_pool == null ? max(var.backend_memory, 512) : var.backend_memory
+  execution_role_arn = aws_iam_role.backend_task_execution.arn
+  task_role_arn      = aws_iam_role.backend_task.arn
+
+  # local.backend_arm64 is the total local from ec2_capacity.tf, never a direct
+  # index into local.pools: this expression is evaluated outside the reach of the
+  # ECS service's precondition, so a bad pool name must render false here rather
+  # than raise `Error: Invalid index`.
+  dynamic "runtime_platform" {
+    for_each = local.backend_arm64 ? [1] : []
+    content {
+      cpu_architecture        = "ARM64"
+      operating_system_family = "LINUX"
+    }
+  }
 
   dynamic "volume" {
     for_each = var.backend_efs_mounts
@@ -165,8 +291,8 @@ resource "aws_ecs_task_definition" "backend" {
     [{
       name        = local.backend_name
       command     = var.backend_container_command
-      cpu         = max(var.backend_cpu, 256)
-      memory      = max(var.backend_memory, 512)
+      cpu         = local.backend_pool == null ? max(var.backend_cpu, 256) : var.backend_cpu
+      memory      = local.backend_pool == null ? max(var.backend_memory, 512) : var.backend_memory
       image       = local.docker_image
       secrets     = local.backend_env_ssm
       environment = concat(local.backend_env, var.backend_env)
@@ -194,10 +320,16 @@ resource "aws_ecs_task_definition" "backend" {
         }
       }
 
+      # hostPort == containerPort is an awsvpc construct: under awsvpc the two
+      # MUST match, because there is no host-side remapping. Under bridge a fixed
+      # hostPort binds that port on the instance, so a second task of the same
+      # service cannot place there and the ALB cannot tell two tasks on one host
+      # apart. hostPort = 0 asks Docker for an ephemeral port, which is what both
+      # target_type = "instance" registration and Cloud Map SRV read.
       portMappings = [{
         protocol      = "tcp"
         containerPort = var.backend_image_port
-        hostPort      = var.backend_image_port
+        hostPort      = local.backend_bridge ? 0 : var.backend_image_port
         name          = local.backend_name
       }]
   }]))

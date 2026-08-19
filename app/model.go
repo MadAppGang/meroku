@@ -29,6 +29,11 @@ type Env struct {
 	ECRAccountRegion string `yaml:"ecr_account_region,omitempty"` // For cross-account ECR access
 	// ECR Trusted Accounts (Schema v8)
 	ECRTrustedAccounts []ECRTrustedAccount `yaml:"ecr_trusted_accounts,omitempty"`
+	// Compute (schema v26) declares the EC2 capacity pools ECS may place tasks
+	// on. Absent on every environment written before v26, and that absence is
+	// the point: no pools means no EC2 resources and no plan diff. The v26
+	// migration deliberately does not create this block.
+	Compute Compute `yaml:"compute,omitempty"`
 	// Services
 	Workload            Workload             `yaml:"workload"`
 	Domain              Domain               `yaml:"domain"`
@@ -196,6 +201,14 @@ type Workload struct {
 	BackendCPU                    string `yaml:"backend_cpu"`
 	BackendMemory                 string `yaml:"backend_memory"`
 
+	// BackendRuntime (schema v26) is fargate | ec2. The v26 migration stamps
+	// "fargate" on every existing environment so a runtime choice is visible in
+	// the YAML before anyone has to make one, and so the rendered Terraform is
+	// unchanged. BackendComputePool names the pool to place on and is required
+	// when BackendRuntime is "ec2".
+	BackendRuntime     string `yaml:"backend_runtime,omitempty"`
+	BackendComputePool string `yaml:"backend_compute_pool,omitempty"`
+
 	// BackendAutoDeploy (schema v22) is the backend's half of the per-target
 	// auto-deploy policy.
 	//
@@ -214,6 +227,80 @@ type S3EnvFile struct {
 type Policy struct {
 	Actions   []string `yaml:"actions"`
 	Resources []string `yaml:"resources"`
+}
+
+// Compute (schema v26) is the EC2 capacity side of the environment: the pools
+// of container instances ECS services may be placed on when their runtime is
+// "ec2". An environment with no pools is the normal state and renders nothing.
+type Compute struct {
+	Pools []ComputePool `yaml:"pools,omitempty"`
+}
+
+// ComputePool is one Auto Scaling group fronted by an ECS capacity provider.
+//
+// The numeric fields are pointers for the same reason Service.Enabled is a
+// *bool: min_size: 0 and on_demand_base: 0 are meaningful values that have to
+// survive a load/save round-trip as something other than "absent". A plain int
+// would make "scale this pool to nothing when idle" indistinguishable from
+// "this key was never written", and saving would then invent a 0 for every pool
+// that omitted the key.
+//
+// Scope of that claim, because it is easy to over-read: these tags govern the
+// TUI's load/save path (loadEnvWithMigration -> Env -> saveEnvToFile). They do
+// not execute on the generate path. Generation renders from loadEnvToMap, which
+// unmarshals into map[string]interface{} — ComputePool is never instantiated
+// there. An absent YAML key is an absent map key and renders as absent; 0 is
+// present and renders as 0. Both behaviours are correct, but they come from the
+// map, not from these struct tags.
+type ComputePool struct {
+	Name          string   `yaml:"name"`
+	Enabled       *bool    `yaml:"enabled,omitempty"`
+	InstanceTypes []string `yaml:"instance_types"`
+	// CapacityType is on_demand | spot | spot_with_base.
+	CapacityType string `yaml:"capacity_type,omitempty"`
+	// OnDemandBase counts INSTANCES, not tasks: it is the ASG's on-demand base
+	// capacity, held before the spot percentage applies to anything above it.
+	OnDemandBase   *int `yaml:"on_demand_base,omitempty"`
+	MinSize        *int `yaml:"min_size,omitempty"`
+	MaxSize        *int `yaml:"max_size,omitempty"`
+	TargetCapacity *int `yaml:"target_capacity,omitempty"`
+	// NetworkMode is a plain string rather than a pointer: "" and "bridge" mean
+	// the same thing in Go, in the template and in the module's optional()
+	// default, so absence needs no separate representation. bridge is the
+	// default because a task on a bridge-mode instance egresses through the
+	// instance's own public ENI, which is the one thing an awsvpc task ENI in a
+	// public subnet does not get.
+	NetworkMode string `yaml:"network_mode,omitempty"`
+	// AssumeEgress is the operator's assertion that this pool's subnets have an
+	// outbound path, and it is the sole unlock for a pool that sets
+	// network_mode: awsvpc. Default absent, which means false.
+	//
+	// It lives on the pool rather than on a top-level vpc: map because this
+	// schema has no vpc: map — Env carries flat use_default_vpc and vpc_cidr —
+	// so a new one would be a second convention for the same subject. Keeping
+	// it here also puts the assertion next to the only thing it unlocks, and
+	// round-trips it through the pool struct the TUI already saves. A key with
+	// no struct field would be dropped by the next unrelated save, and the
+	// operator's next generate would fail with no edit to blame.
+	//
+	// Pointer for the same reason as the numeric fields: an explicit false and
+	// an absent key must stay distinguishable.
+	AssumeEgress *bool `yaml:"assume_egress,omitempty"`
+	// AMIFamily is al2023 | al2023_arm64 | al2023_gpu. AMIID overrides it.
+	AMIFamily        string          `yaml:"ami_family,omitempty"`
+	AMIID            string          `yaml:"ami_id,omitempty"`
+	RootVolumeGB     *int            `yaml:"root_volume_gb,omitempty"`
+	UserDataExtra    string          `yaml:"user_data_extra,omitempty"`
+	ExtraVolumes     []ComputeVolume `yaml:"extra_volumes,omitempty"`
+	InstancePolicies []Policy        `yaml:"instance_policies,omitempty"`
+}
+
+// ComputeVolume is an extra EBS volume attached to every instance in a pool.
+type ComputeVolume struct {
+	DeviceName string `yaml:"device_name"`
+	SizeGB     int    `yaml:"size_gb"`
+	// Type defaults to gp3 in the module when this is empty.
+	Type string `yaml:"type,omitempty"`
 }
 
 type SetupDomainType string
@@ -412,6 +499,12 @@ type Service struct {
 	EnvVariables     []EnvVariable     `yaml:"env_variables"`
 	EnvFilesS3       []S3EnvFile       `yaml:"env_files_s3"`
 	ECRConfig        *ECRConfig        `yaml:"ecr_config,omitempty"` // Schema v9
+
+	// Runtime (schema v26) is fargate | ec2; ComputePool names the pool and is
+	// required when Runtime is "ec2". An empty Runtime and "fargate" render
+	// identically, which is what keeps a pre-v26 config at a zero plan diff.
+	Runtime     string `yaml:"runtime,omitempty"`
+	ComputePool string `yaml:"compute_pool,omitempty"`
 }
 
 type DNSConfig struct {
@@ -659,6 +752,11 @@ func createEnv(name, env string) Env {
 			BackendCPU:                    "256",
 			BackendMemory:                 "512",
 			BackendALBDomainName:          "",
+			// Compute defaults (schema v26). Fargate, and no compute block at
+			// all: a new project has no capacity pools, which is the correct
+			// empty state rather than a placeholder someone has to delete.
+			BackendRuntime:     "fargate",
+			BackendComputePool: "",
 		},
 		Domain: Domain{
 			Enabled:          false,

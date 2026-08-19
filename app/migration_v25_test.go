@@ -161,16 +161,21 @@ func TestMigrateToV25LeavesOtherShapesAlone(t *testing.T) {
 	})
 }
 
-// The version constant, the history comment and the registered migration list
-// have to agree, or a file migrates to a version whose migration never ran.
-func TestV25IsRegisteredAtTheCurrentVersion(t *testing.T) {
-	if CurrentSchemaVersion != 25 {
-		t.Fatalf("CurrentSchemaVersion = %d, want 25", CurrentSchemaVersion)
+// v25 has to stay in the registry, or a file that is behind migrates past it
+// without it ever running.
+//
+// This used to also assert CurrentSchemaVersion == 25. That assertion belongs
+// to whichever version is current, not to v25, so schema v26 moved it into
+// TestV26IsRegisteredAtTheCurrentVersion and it moves again with the next bump.
+// Pinning it here made every future schema version fail a test about the past.
+func TestV25IsRegistered(t *testing.T) {
+	for _, migration := range AllMigrations {
+		if migration.Version == 25 {
+			if migration.Apply == nil {
+				t.Fatal("the v25 entry has no Apply function")
+			}
+			return
+		}
 	}
-
-	last := AllMigrations[len(AllMigrations)-1]
-	if last.Version != CurrentSchemaVersion {
-		t.Errorf("last registered migration is v%d, but CurrentSchemaVersion is %d",
-			last.Version, CurrentSchemaVersion)
-	}
+	t.Fatal("AllMigrations has no entry for version 25")
 }

@@ -611,6 +611,73 @@ module "workloads" {
   backend_autoscaling_max_capacity = {{default workload.backend_autoscaling_max_capacity 10}}
   backend_autoscaling_target_cpu = {{default workload.backend_autoscaling_target_cpu 70}}
   backend_autoscaling_target_memory = {{default workload.backend_autoscaling_target_memory 80}}
+
+  # ---------------------------------------------------------------------------
+  # EC2 compute pools (schema v26).
+  #
+  # Absent by default: an environment with no `compute:` block renders only
+  # backend_runtime = "fargate" here, which is the variable's own default, and
+  # plans identically to v25.
+  #
+  # Every user-controlled string below goes through an escaping helper, because
+  # HCL2 opens an interpolation on `${` and a directive on `%{` inside quoted
+  # strings AND heredocs alike -- so an unescaped value out of YAML is Terraform
+  # syntax rather than data. hclString quotes and escapes a scalar, hclArray
+  # does the same for every string inside a list, and hclEscape handles the
+  # heredoc body, where backslash escapes do not apply and only the two openers
+  # may be doubled.
+  #
+  # network_mode is rendered unconditionally -- it is the one field where
+  # silence would be dangerous, because a reader of this file must be able to
+  # see which mode a pool is in without knowing what the default is. Three
+  # layers hold the same default (the Go structs, the template helper, and
+  # optional(string, "bridge") in variables.tf) and a template test pins that
+  # they agree.
+  #
+  # min_size and on_demand_base are gated on `exists`, not on `default` and not
+  # on a bare `if`: 0 is meaningful for both -- min_size: 0 is a pool that
+  # scales to nothing -- and a truthiness test would silently drop the argument
+  # and let the variable default take over instead.
+  # ---------------------------------------------------------------------------
+  backend_runtime = {{{hclString (default workload.backend_runtime "fargate")}}}
+  {{#notEmpty workload.backend_compute_pool}}
+  backend_compute_pool = {{{hclString workload.backend_compute_pool}}}
+  {{/notEmpty}}
+  {{#compare (len compute.pools) ">" 0}}
+  compute_pools = [
+    {{#each compute.pools}}
+    {
+      name            = {{{hclString name}}}
+      enabled         = {{default enabled true}}
+      instance_types  = {{{hclArray instance_types}}}
+      capacity_type   = {{{hclString (default capacity_type "on_demand")}}}
+      network_mode    = {{{hclString (default network_mode "bridge")}}}
+      {{#if (exists on_demand_base)}}
+      on_demand_base  = {{on_demand_base}}
+      {{/if}}
+      {{#if (exists min_size)}}
+      min_size        = {{min_size}}
+      {{/if}}
+      max_size        = {{default max_size 6}}
+      target_capacity = {{default target_capacity 100}}
+      ami_family      = {{{hclString (default ami_family "al2023")}}}
+      {{#notEmpty ami_id}}
+      ami_id          = {{{hclString ami_id}}}
+      {{/notEmpty}}
+      root_volume_gb  = {{default root_volume_gb 30}}
+      {{#notEmpty user_data_extra}}
+      user_data_extra = {{{hclHeredoc user_data_extra}}}
+      {{/notEmpty}}
+      {{#compare (len extra_volumes) ">" 0}}
+      extra_volumes     = {{{hclArray extra_volumes}}}
+      {{/compare}}
+      {{#compare (len instance_policies) ">" 0}}
+      instance_policies = {{{hclArray instance_policies}}}
+      {{/compare}}
+    }{{#unless @last}},{{/unless}}
+    {{/each}}
+  ]
+  {{/compare}}
   {{#if sqs.enabled}}
   sqs_queue_url = module.sqs.queue_url
   sqs_policy_arn = module.sqs.sqs_access_policy_arn

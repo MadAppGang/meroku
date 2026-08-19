@@ -1,5 +1,152 @@
 # Changelog
 
+## v4.2.0
+
+ECS can now run on EC2 as well as Fargate, chosen per service. Everything that
+already exists keeps running on Fargate and plans byte-identically — the schema
+migration stamps `runtime: fargate` everywhere, and the property was verified by
+diffing planned values across 68 attributes rather than argued for.
+
+### Compute pools
+
+A pool is a launch template, an Auto Scaling group and an ECS capacity provider
+under one name. Set `runtime: ec2` on a service and, with no other configuration,
+meroku synthesizes a pool for you; define `compute.pools` when you need specific
+instance types, a spot mix, a floor and a ceiling, an AMI family, or your own
+user data.
+
+```yaml
+compute:
+  pools:
+    - name: general
+      instance_types: [m7i-flex.large]
+      capacity_type: spot_with_base
+      on_demand_base: 1
+      min_size: 1
+      max_size: 6
+
+workload:
+  backend_runtime: ec2
+  backend_compute_pool: general
+```
+
+### Why pools use `bridge` networking, not `awsvpc`
+
+This is the decision the rest of the feature is shaped around, and it is not the
+obvious one.
+
+Under `awsvpc` on EC2, ECS attaches a *secondary* ENI for each task. AWS
+auto-assign-public-IP applies only to a *primary* interface at launch, so that
+task ENI has a private address and nothing else — and this VPC has no NAT
+gateway and no VPC endpoints, both removed deliberately for cost.
+
+The failure that produces is asymmetric, which is what makes it dangerous. Image
+pulls, `awslogs` shipping and secret injection all travel over the *instance's*
+ENI and keep working. The ALB reaches the task, the task reaches RDS, service
+discovery resolves. The task starts, registers healthy and serves traffic. Only
+the application's own outbound calls — S3, SES, EventBridge, SSM at runtime, any
+third-party API — time out. A deploy broken in the way that matters most reports
+green in every signal an operator watches.
+
+`bridge` egresses through the instance's existing public IP, costs nothing, and
+removes the ENI density ceiling that is the economic reason to run EC2 at all: an
+`m7i-flex.large` reports `maxEni: 3`, so `awsvpc` caps it at two tasks while
+`bridge` fills it by CPU and memory. `awsvpc` remains available per pool, gated
+on an explicit `assume_egress: true`.
+
+The cost is stated rather than hidden: bridge-mode tasks share the instance's
+security group, their target groups are `target_type = "instance"`, and Cloud Map
+registers SRV records because a dynamic host port cannot live in an A record.
+
+### Instance recommendations
+
+The compute node reads the live instance catalog, on-demand and spot prices, and
+CloudWatch utilisation for the environment's running services, then suggests
+instance types for a pool under one of three postures.
+
+It is presented as a suggested starting point, not an answer, and the UI shows
+what it is based on — including saying plainly when there is no CloudWatch
+history, which is the case where the advice is weakest and used to look identical
+to the case where it is strongest.
+
+Two things were wrong in the first cut and are worth recording. Suitability was
+never filtered, only capability: on the real 903-type catalog, `cost-first`
+returned `inf1.24xlarge` — an Inferentia ML instance — for a web workload,
+because AWS reports Inferentia in neither `GpuInfo` nor `AcceleratorInfo`, so no
+attribute filter can see it. Eligible families are now allowlisted, so a family
+AWS ships tomorrow is excluded until someone opts in rather than silently
+recommended. And two of the five sub-scores turned out to be near-inverses of one
+axis weighted in opposite directions — with `headroom` identically 1.0 for every
+candidate when there is no CloudWatch history, meaning the single largest weight
+in the default posture ranked nothing at all. They are now one term.
+
+The weights still have not been calibrated against a production workload. What
+changed is that their consequences are pinned by a behaviour matrix, so altering
+one shows up as a reviewable diff instead of a silent shift.
+
+### Tearing a pool down
+
+`managed_draining` makes ECS install an ASG lifecycle hook with a **3600-second**
+timeout. On teardown the instance parks in `Terminating:Wait` for up to an hour
+while Terraform's ECS service deletion gives up at twenty minutes, and you get:
+
+```
+Error: waiting for ECS Service delete: timeout waiting for 'INACTIVE' (last state: 'DRAINING')
+Error: deleting Internet Gateway: DependencyViolation: ... has some mapped public address(es)
+```
+
+Neither message names the cause. `ai_docs/EC2_COMPUTE_POOLS.md` carries the
+procedure, which was executed rather than designed — scaling to zero and removing
+scale-in protection are **not** sufficient on their own; completing the lifecycle
+action is what releases the instance.
+
+### Fixed along the way
+
+- **Postgres was reachable from the internet.** The sample config shipped
+  `public_access: true` against a security group allowing 5432 from `0.0.0.0/0`,
+  so every environment generated from it had a database whose credentials were
+  the only control. The ingress is now VPC-scoped unless public access is an
+  explicit choice.
+
+- **`.gitignore` covered `app/dev.yaml` but not the repository root.** meroku
+  writes `<env>.yaml` into whatever directory it runs from, and that file carries
+  an account ID, a profile name, state bucket names and notification emails — so
+  running the binary from the root dropped all of it into an unignored path in a
+  public repository.
+
+- **A named service could not use a tagged image.** `services.tf` appended
+  `:latest` outside the ternary, so `docker_image: nginx:stable` became
+  `nginx:stable:latest` and the task died on `CannotPullImageManifestError`. The
+  three sibling modules already did it correctly; only this one did not, which is
+  why it survived — it fires only when a service pins a tag, and the common case
+  of leaving `docker_image` empty is unaffected.
+
+- **`backend_autoscaling_target_cpu` and `_target_memory` did nothing.** Both
+  were declared, passed through the template, and never referenced; the policies
+  hardcoded 70 and 75.
+
+- **CI validated a provider nobody runs.** `modules/workloads` had no
+  `versions.tf`, so `terraform init` resolved the newest `hashicorp/aws` — 6.x —
+  while every generated environment pins `~> 5.0`.
+
+- **`meroku generate` could not find `project/dev.yaml`.** The generate path
+  checked only the working-directory root while the loader searched four
+  locations, so the layout this repository itself uses worked in the UI and
+  failed on the command line.
+
+### Not exercised
+
+Two behaviours are implemented and unproven: ECS managed scale-in removing an
+instance as demand falls, and renaming a pool behaving as an in-place update
+rather than a service replacement. Everything else described here was observed on
+a live deploy and teardown against a real AWS account.
+
+## v4.1.0
+
+An adaptive light/dark theme across every CLI and TUI screen (#16). Released
+without a changelog entry at the time; recorded here so the history does not
+appear to skip a version.
+
 ## v4.0.1
 
 Two things that were only discoverable by hitting them, and the release that
