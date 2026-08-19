@@ -43,6 +43,27 @@ export interface ECSConfig {
 	desiredCount: number; // Number of tasks
 }
 
+/**
+ * Cost-relevant shape of one EC2 capacity pool.
+ *
+ * Mirrors app/pricing/types.go:EC2PoolConfig. Note what is NOT here: any task
+ * count, CPU or memory. An EC2 pool's bill does not depend on what runs on it.
+ */
+export interface EC2PoolConfig {
+	/**
+	 * The pool's instance types in priority order. The first entry with a known
+	 * price is the costing basis -- the ASG may launch any of them, so one
+	 * figure is an estimate by construction.
+	 */
+	instanceTypes: string[];
+	/** Number of INSTANCES the pool runs. 0 is valid and costs nothing. */
+	instanceCount: number;
+	/** on_demand | spot | spot_with_base. Anything else reads as on_demand. */
+	capacityType?: string;
+	/** On-demand base in INSTANCES, read only for spot_with_base. */
+	onDemandBase?: number;
+}
+
 export interface S3Config {
 	storageGb: number;
 	requestsPerDay: number;
@@ -174,6 +195,13 @@ function calculateAverageACU(config: AuroraConfig): number {
  *
  * MUST match backend: app/pricing/calculators.go:CalculateECSPrice()
  *
+ * FARGATE ONLY. The per-task shape below is correct for Fargate, where every
+ * task is billed for its own vCPU and memory reservation, and wrong for EC2,
+ * where the money is spent on instances billed whether or not tasks run on
+ * them. Calling this for an EC2-runtime service bills the same instance once
+ * per task. Use calculateEC2PoolPrice on the pool instead, and show the service
+ * itself as $0 marginal.
+ *
  * @param config - ECS configuration
  * @param rates - Current pricing rates from service
  * @returns Monthly cost in USD
@@ -196,6 +224,124 @@ export function calculateECSPrice(
 
 	// Calculate monthly cost
 	return totalHourlyCost * HOURS_PER_MONTH;
+}
+
+/**
+ * Pick the instance type a pool's cost is quoted against: the first entry of
+ * instanceTypes with a known on-demand price.
+ *
+ * Taking the first PRICED entry -- rather than the first entry, or the cheapest
+ * -- keeps the estimate deterministic and tied to the priority order the
+ * operator wrote down, while still producing an answer when a newly-added type
+ * is missing from the rate table.
+ *
+ * Returns null when no listed type has a price. That means "price unknown", and
+ * callers must render it as unknown. It never means free.
+ *
+ * MUST match backend: app/pricing/calculators.go:EC2PoolBasis()
+ */
+export function ec2PoolBasis(
+	config: EC2PoolConfig,
+	rates: AWSPriceRates,
+): { instanceType: string; onDemandHourly: number } | null {
+	// Optional chaining, despite the type: these rates may have been restored
+	// from a cache written by an older build, and a missing table has to read
+	// as "no prices" rather than throw inside a cost badge.
+	const table = rates.ec2?.onDemandHourly ?? {};
+
+	for (const instanceType of config.instanceTypes ?? []) {
+		const hourly = table[instanceType];
+		if (typeof hourly === "number" && hourly > 0) {
+			return { instanceType, onDemandHourly: hourly };
+		}
+	}
+	return null;
+}
+
+/**
+ * Calculate the hourly cost of a whole EC2 capacity pool, in $/hour, blending
+ * on-demand and spot the way the ASG's instances_distribution bills them.
+ *
+ *   N     = instanceCount                       instances the pool runs
+ *   p_od  = on-demand $/instance-hour           (ec2PoolBasis)
+ *   p_sp  = p_od * spotRatio                    spot $/instance-hour
+ *   b     = on-demand base, in INSTANCES:       on_demand      -> N
+ *                                               spot           -> 0
+ *                                               spot_with_base -> onDemandBase
+ *   n_od  = min(N, b)                           instances billed on demand
+ *   n_sp  = N - n_od                            instances billed spot
+ *
+ *   hourly = n_od * p_od + n_sp * p_sp
+ *
+ * The weights are instances over instances, so the per-instance blend always
+ * lands inside [p_sp, p_od] -- a price that can exist.
+ *
+ * Returns null when the pool's price is unknown. A pool with instanceCount 0 is
+ * a different answer: 0, because it is scaled to nothing rather than unknown.
+ *
+ * MUST match backend: app/pricing/calculators.go:EC2PoolHourly()
+ */
+export function ec2PoolHourly(
+	config: EC2PoolConfig,
+	rates: AWSPriceRates,
+): number | null {
+	const instances = Math.max(0, config.instanceCount);
+
+	const basis = ec2PoolBasis(config, rates);
+	if (!basis) return null;
+
+	// A ratio outside (0,1] is not a discount and is refused. Treating it as 1
+	// prices spot as on-demand, which over-reports rather than inventing free
+	// capacity.
+	const rawRatio = rates.ec2?.spotRatio;
+	const spotRatio =
+		typeof rawRatio === "number" && rawRatio > 0 && rawRatio <= 1
+			? rawRatio
+			: 1.0;
+	const spotHourly = basis.onDemandHourly * spotRatio;
+
+	// On-demand base, in instances, by capacity type. An unrecognised value
+	// falls through to on_demand -- the most expensive reading, so a typo in the
+	// YAML never under-reports the bill.
+	let base: number;
+	switch (config.capacityType) {
+		case "spot":
+			base = 0;
+			break;
+		case "spot_with_base":
+			base = Math.max(0, config.onDemandBase ?? 0);
+			break;
+		default:
+			base = instances;
+	}
+
+	const onDemandInstances = Math.min(instances, base);
+	const spotInstances = instances - onDemandInstances;
+
+	return onDemandInstances * basis.onDemandHourly + spotInstances * spotHourly;
+}
+
+/**
+ * Calculate monthly cost for one EC2 capacity pool:
+ * instances x instance-hourly x 730, blended for spot.
+ *
+ * This is where an EC2-runtime service's money lives. The instances are billed
+ * for existing, not for running tasks, so the cost belongs to the pool and the
+ * services placed on it show $0 marginal. Summing a per-task figure across
+ * those services instead would bill one instance once per task.
+ *
+ * Returns null when the pool's price is unknown -- render that as "price
+ * unknown", never as $0.
+ *
+ * MUST match backend: app/pricing/calculators.go:CalculateEC2PoolPrice()
+ */
+export function calculateEC2PoolPrice(
+	config: EC2PoolConfig,
+	rates: AWSPriceRates,
+): number | null {
+	const hourly = ec2PoolHourly(config, rates);
+	if (hourly === null) return null;
+	return hourly * HOURS_PER_MONTH;
 }
 
 /**

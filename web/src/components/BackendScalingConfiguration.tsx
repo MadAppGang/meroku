@@ -1,7 +1,19 @@
-import { Activity, AlertCircle, Cpu, Info, Users } from "lucide-react";
-import { useCallback, useEffect, useId, useState } from "react";
+import {
+	Activity,
+	AlertCircle,
+	AlertTriangle,
+	Cpu,
+	Info,
+	Server,
+	Users,
+} from "lucide-react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useFargateOptions } from "../hooks/use-fargate-options";
-import type { YamlInfrastructureConfig } from "../types/yamlConfig";
+import type {
+	ComputeRuntime,
+	YamlInfrastructureConfig,
+} from "../types/yamlConfig";
+import { Alert, AlertDescription } from "./ui/alert";
 import {
 	Card,
 	CardContent,
@@ -112,8 +124,57 @@ export function BackendScalingConfiguration({
 		[isService, serviceName, config.services, onConfigChange],
 	);
 
-	// Adjust memory when CPU changes - also persist to YAML config
+	// Where this workload runs (schema v26). Absent means Fargate, which is what
+	// keeps a pre-v26 config rendering exactly as it did.
+	const runtime: ComputeRuntime =
+		isService && serviceConfig
+			? (serviceConfig.runtime ?? "fargate")
+			: (config.workload?.backend_runtime ?? "fargate");
+	const computePool =
+		isService && serviceConfig
+			? (serviceConfig.compute_pool ?? "")
+			: (config.workload?.backend_compute_pool ?? "");
+	const pools = config.compute?.pools ?? [];
+
+	// The values as they stand in {env}.yaml. Every keystroke rewrites `config`,
+	// so "changed away from the saved value" cannot be read back out of it.
+	const savedRuntime = useRef(runtime);
+	const savedPool = useRef(computePool);
+
+	const handlePlacementChange = useCallback(
+		(patch: { runtime?: ComputeRuntime; compute_pool?: string }) => {
+			if (isService && serviceName) {
+				onConfigChange({
+					services: (config.services ?? []).map((service) =>
+						service.name === serviceName ? { ...service, ...patch } : service,
+					),
+				});
+				return;
+			}
+			onConfigChange({
+				workload: {
+					...(patch.runtime !== undefined
+						? { backend_runtime: patch.runtime }
+						: {}),
+					...("compute_pool" in patch
+						? { backend_compute_pool: patch.compute_pool }
+						: {}),
+				},
+			});
+		},
+		[isService, serviceName, config.services, onConfigChange],
+	);
+
+	// Adjust memory when CPU changes - also persist to YAML config.
+	//
+	// Fargate ONLY. The table this snaps to is the Fargate cpu/memory matrix,
+	// and on EC2 it does not apply: a task on an instance may request any
+	// combination the instance can hold. Left ungated, this effect silently
+	// rewrites a valid EC2 memory value the moment the Fargate table finishes
+	// loading, on a save the user never triggered.
 	useEffect(() => {
+		if (runtime === "ec2") return;
+
 		const availableMemory = getMemoryOptions(Number.parseInt(cpu, 10));
 		if (
 			availableMemory.length > 0 &&
@@ -123,12 +184,151 @@ export function BackendScalingConfiguration({
 			setMemory(newMemory);
 			handleWorkloadChange({ backend_memory: newMemory });
 		}
-	}, [cpu, memory, getMemoryOptions, handleWorkloadChange]);
+	}, [runtime, cpu, memory, getMemoryOptions, handleWorkloadChange]);
 
 	// X-Ray no longer affects resource allocation
 
 	return (
 		<div className="space-y-6">
+			{/* Compute Placement — where this workload runs (schema v26). */}
+			<Card>
+				<CardHeader>
+					<CardTitle className="flex items-center gap-2">
+						<Server className="w-5 h-5 text-blue-400" />
+						Compute Placement
+					</CardTitle>
+					<CardDescription>
+						Fargate runs this workload on capacity AWS manages. EC2 runs it on
+						instances from a compute pool you define, which is how you choose
+						the hardware.
+					</CardDescription>
+				</CardHeader>
+				<CardContent className="space-y-4">
+					<div>
+						<Label htmlFor={`${uid}-runtime`}>Runtime</Label>
+						<Select
+							value={runtime}
+							onValueChange={(value: string) => {
+								const next = value as ComputeRuntime;
+								// Moving to EC2 with exactly one pool defined picks it: a
+								// runtime of ec2 that names no pool fails the plan with
+								// "Error: Invalid index", and there is only one answer.
+								const onlyPool =
+									next === "ec2" && !computePool && pools.length === 1
+										? pools[0].name
+										: undefined;
+								handlePlacementChange({
+									runtime: next,
+									...(next === "fargate"
+										? { compute_pool: undefined }
+										: onlyPool
+											? { compute_pool: onlyPool }
+											: {}),
+								});
+							}}
+						>
+							<SelectTrigger
+								id={`${uid}-runtime`}
+								className="mt-1 bg-gray-800 border-gray-600"
+							>
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="fargate">Fargate (serverless)</SelectItem>
+								<SelectItem value="ec2">EC2 (compute pool)</SelectItem>
+							</SelectContent>
+						</Select>
+					</div>
+
+					{runtime === "ec2" && (
+						<div className="p-3 bg-gray-800 rounded-lg space-y-2">
+							<Label htmlFor={`${uid}-compute-pool`}>Compute Pool</Label>
+							{pools.length === 0 ? (
+								<p className="text-xs text-gray-400">
+									No pool is defined yet. Generation will synthesize one named{" "}
+									<span className="font-mono">default</span> and point this
+									workload at it — or define your own on the ECS node's Compute
+									tab.
+								</p>
+							) : (
+								<>
+									<Select
+										value={computePool}
+										onValueChange={(value: string) =>
+											handlePlacementChange({ compute_pool: value })
+										}
+									>
+										<SelectTrigger
+											id={`${uid}-compute-pool`}
+											className="bg-gray-900 border-gray-600"
+										>
+											<SelectValue placeholder="Choose a pool" />
+										</SelectTrigger>
+										<SelectContent>
+											{pools.map((pool) => (
+												<SelectItem key={pool.name} value={pool.name}>
+													{pool.name}
+													{pool.enabled === false ? " (disabled)" : ""}
+												</SelectItem>
+											))}
+										</SelectContent>
+									</Select>
+									<p className="text-xs text-gray-500">
+										Edit the pool's instance types, sizing and networking on the
+										ECS node's Compute tab.
+									</p>
+								</>
+							)}
+
+							{pools.length > 0 &&
+								computePool &&
+								!pools.some((pool) => pool.name === computePool) && (
+									<Alert className="border-red-600 bg-red-900/20">
+										<AlertCircle className="h-4 w-4 text-red-400" />
+										<AlertDescription className="text-red-200 text-xs">
+											No pool named{" "}
+											<span className="font-mono">{computePool}</span> exists.
+											Terraform indexes its pool map with this value and the
+											plan fails with{" "}
+											<span className="font-mono">Error: Invalid index</span>.
+										</AlertDescription>
+									</Alert>
+								)}
+						</div>
+					)}
+
+					{/* D-2 / §0.1, verbatim. Not "may be recreated": under the pinned
+					    hashicorp/aws ~> 5.0 the capacity-provider diff function takes
+					    its ForceNew branch and it will. */}
+					{runtime !== savedRuntime.current && (
+						<Alert className="border-yellow-600 bg-yellow-900/20">
+							<AlertTriangle className="h-4 w-4 text-yellow-400" />
+							<AlertDescription className="text-yellow-200 text-xs">
+								Changing the runtime of a service that is already deployed will
+								recreate the ECS service, with downtime. Terraform destroys the
+								old service and creates a new one; the service name is unique
+								per cluster, so there is no create-before-destroy path. Plan
+								this for a maintenance window.
+							</AlertDescription>
+						</Alert>
+					)}
+
+					{runtime === savedRuntime.current &&
+						computePool !== savedPool.current && (
+							<Alert className="border-yellow-600 bg-yellow-900/20">
+								<AlertTriangle className="h-4 w-4 text-yellow-400" />
+								<AlertDescription className="text-yellow-200 text-xs">
+									Reassigning a deployed workload to another pool changes its
+									capacity provider strategy. Terraform moves the service with a
+									rolling deployment and every task is replaced; a service that
+									predates this feature is recreated instead, with downtime.
+									Plan this for a maintenance window.
+								</AlertDescription>
+							</Alert>
+						)}
+				</CardContent>
+			</Card>
+
 			{/* Resource Configuration */}
 			<Card>
 				<CardHeader>
@@ -141,74 +341,123 @@ export function BackendScalingConfiguration({
 					</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-4">
-					<div className="grid grid-cols-2 gap-4">
-						<div>
-							<Label htmlFor={`${uid}-cpu-units`}>CPU Units</Label>
-							<Select
-								value={cpu}
-								onValueChange={(value: string) => {
-									setCpu(value);
-									// Auto-adjust memory if current value is invalid for new CPU
-									const availableMemory = getMemoryOptions(
-										Number.parseInt(value, 10),
-									);
-									const currentMem = Number.parseInt(memory, 10);
-									if (
-										availableMemory.length > 0 &&
-										!availableMemory.includes(currentMem)
-									) {
-										const newMemory = availableMemory[0].toString();
-										setMemory(newMemory);
-										handleWorkloadChange({
-											backend_cpu: value,
-											backend_memory: newMemory,
-										});
-									} else {
-										handleWorkloadChange({ backend_cpu: value });
-									}
-								}}
-							>
-								<SelectTrigger
+					{/* On EC2 the Fargate cpu/memory matrix does not apply: a task may
+					    request any combination the instance can hold, so these are free
+					    numbers rather than a menu of eleven legal pairs. */}
+					{runtime === "ec2" ? (
+						<div className="grid grid-cols-2 gap-4">
+							<div>
+								<Label htmlFor={`${uid}-cpu-units`}>CPU Units</Label>
+								<Input
 									id={`${uid}-cpu-units`}
-									className="mt-1 bg-gray-800 border-gray-600"
-								>
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									{fargateOptions.map((opt) => (
-										<SelectItem key={opt.cpu} value={opt.cpu.toString()}>
-											{opt.cpu} ({opt.vcpu} vCPU)
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-						</div>
+									type="number"
+									min="0"
+									step="128"
+									value={cpu}
+									onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+										const value = e.target.value;
+										setCpu(value);
+										handleWorkloadChange({ backend_cpu: value });
+									}}
+									className="mt-1 bg-gray-800 border-gray-600 text-white"
+								/>
+								<p className="text-xs text-gray-500 mt-1">
+									1024 units is one vCPU. 0 leaves the task unbounded on the
+									instance's CPU.
+								</p>
+							</div>
 
-						<div>
-							<Label htmlFor={`${uid}-memory`}>Memory (MB)</Label>
-							<Select
-								value={memory}
-								onValueChange={(value: string) => {
-									setMemory(value);
-									handleWorkloadChange({ backend_memory: value });
-								}}
-							>
-								<SelectTrigger
+							<div>
+								<Label htmlFor={`${uid}-memory`}>Memory (MB)</Label>
+								<Input
 									id={`${uid}-memory`}
-									className="mt-1 bg-gray-800 border-gray-600"
-								>
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									{getMemoryOptions(Number.parseInt(cpu, 10)).map((mem) => (
-										<SelectItem key={mem} value={mem.toString()}>
-											{formatMemory(mem)}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
+									type="number"
+									min="0"
+									step="128"
+									value={memory}
+									onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+										const value = e.target.value;
+										setMemory(value);
+										handleWorkloadChange({ backend_memory: value });
+									}}
+									className="mt-1 bg-gray-800 border-gray-600 text-white"
+								/>
+								<p className="text-xs text-gray-500 mt-1">
+									A hard limit. No instance in the pool may be smaller than this
+									or the task never places.
+								</p>
+							</div>
 						</div>
-					</div>
+					) : (
+						<div className="grid grid-cols-2 gap-4">
+							<div>
+								<Label htmlFor={`${uid}-cpu-units`}>CPU Units</Label>
+								<Select
+									value={cpu}
+									onValueChange={(value: string) => {
+										setCpu(value);
+										// Auto-adjust memory if current value is invalid for new CPU
+										const availableMemory = getMemoryOptions(
+											Number.parseInt(value, 10),
+										);
+										const currentMem = Number.parseInt(memory, 10);
+										if (
+											availableMemory.length > 0 &&
+											!availableMemory.includes(currentMem)
+										) {
+											const newMemory = availableMemory[0].toString();
+											setMemory(newMemory);
+											handleWorkloadChange({
+												backend_cpu: value,
+												backend_memory: newMemory,
+											});
+										} else {
+											handleWorkloadChange({ backend_cpu: value });
+										}
+									}}
+								>
+									<SelectTrigger
+										id={`${uid}-cpu-units`}
+										className="mt-1 bg-gray-800 border-gray-600"
+									>
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										{fargateOptions.map((opt) => (
+											<SelectItem key={opt.cpu} value={opt.cpu.toString()}>
+												{opt.cpu} ({opt.vcpu} vCPU)
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							</div>
+
+							<div>
+								<Label htmlFor={`${uid}-memory`}>Memory (MB)</Label>
+								<Select
+									value={memory}
+									onValueChange={(value: string) => {
+										setMemory(value);
+										handleWorkloadChange({ backend_memory: value });
+									}}
+								>
+									<SelectTrigger
+										id={`${uid}-memory`}
+										className="mt-1 bg-gray-800 border-gray-600"
+									>
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										{getMemoryOptions(Number.parseInt(cpu, 10)).map((mem) => (
+											<SelectItem key={mem} value={mem.toString()}>
+												{formatMemory(mem)}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							</div>
+						</div>
+					)}
 
 					<div>
 						<Label htmlFor={`${uid}-base-count`}>Base Instance Count</Label>

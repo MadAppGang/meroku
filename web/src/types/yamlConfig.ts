@@ -13,6 +13,91 @@ export interface ECRConfig {
 }
 
 /**
+ * Where an ECS workload is placed (schema v26).
+ *
+ * Absent and `"fargate"` render identically, which is what keeps a pre-v26
+ * config at a zero plan diff.
+ */
+export type ComputeRuntime = "fargate" | "ec2";
+
+/**
+ * A pool's task networking mode (schema v26).
+ *
+ * A union rather than `string` so the editor's control and the type cannot
+ * drift. Absent means `"bridge"`: a task on a bridge-mode instance egresses
+ * through the instance's own public ENI, which is the one thing an `awsvpc`
+ * task ENI in a public subnet does not get.
+ */
+export type ComputeNetworkMode = "bridge" | "awsvpc";
+
+export type ComputeCapacityType = "on_demand" | "spot" | "spot_with_base";
+
+export type ComputeAMIFamily = "al2023" | "al2023_arm64" | "al2023_gpu";
+
+/** An extra EBS volume attached to every instance in a pool (schema v26). */
+export interface ComputeVolume {
+	device_name: string;
+	size_gb: number;
+	/** Defaults to gp3 in the module when absent. */
+	type?: string;
+}
+
+/**
+ * One Auto Scaling group fronted by an ECS capacity provider (schema v26).
+ *
+ * Mirrors `ComputePool` in `app/model.go`. Every optional numeric field is
+ * genuinely optional rather than defaulted here: `min_size: 0` and
+ * `on_demand_base: 0` are meaningful values that must stay distinguishable from
+ * an absent key, exactly as the Go side keeps them as pointers.
+ */
+export interface ComputePool {
+	/** `^[a-z][a-z0-9-]{0,31}$`, unique within the environment. */
+	name: string;
+	enabled?: boolean;
+	instance_types?: string[];
+	capacity_type?: ComputeCapacityType;
+	/**
+	 * Counts INSTANCES, not tasks: the ASG's on-demand base capacity, held
+	 * before the spot percentage applies to anything above it.
+	 */
+	on_demand_base?: number;
+	min_size?: number;
+	max_size?: number;
+	/** Managed scaling target, 1..100. */
+	target_capacity?: number;
+	network_mode?: ComputeNetworkMode;
+	/**
+	 * The operator's assertion that this pool's subnets have an outbound path,
+	 * and the sole unlock for a pool that sets `network_mode: awsvpc` (D-7).
+	 * Absent means false. meroku creates no NAT gateway; this only says the
+	 * operator has provided egress outside this tool.
+	 */
+	assume_egress?: boolean;
+	ami_family?: ComputeAMIFamily;
+	/** Explicit AMI override; wins over `ami_family`. */
+	ami_id?: string;
+	root_volume_gb?: number;
+	user_data_extra?: string;
+	/** Rendered, but has no UI editor in this phase (AS-5). */
+	extra_volumes?: ComputeVolume[];
+	/** Rendered, but has no UI editor in this phase (AS-5). */
+	instance_policies?: Array<{
+		actions: string[];
+		resources: string[];
+	}>;
+}
+
+/**
+ * The EC2 capacity side of an environment (schema v26).
+ *
+ * Absent on every environment written before v26, and that absence is the
+ * point: no pools means no EC2 resources and no plan diff.
+ */
+export interface ComputeConfig {
+	pools?: ComputePool[];
+}
+
+/**
  * Complete YAML configuration interface based on YAML_SPECIFICATION.md
  */
 export interface YamlInfrastructureConfig {
@@ -42,6 +127,9 @@ export interface YamlInfrastructureConfig {
 		region: string;
 	}>;
 
+	// EC2 Compute Pools (Schema v26)
+	compute?: ComputeConfig;
+
 	// Workload Configuration
 	workload?: {
 		// Basic backend configuration
@@ -61,6 +149,14 @@ export interface YamlInfrastructureConfig {
 		 * true. A manual deploy always works regardless.
 		 */
 		backend_auto_deploy?: boolean;
+
+		/**
+		 * Where the backend is placed (schema v26). Absent means `"fargate"`.
+		 * `backend_compute_pool` names a pool in `compute.pools` and is
+		 * required when `backend_runtime` is `"ec2"`.
+		 */
+		backend_runtime?: ComputeRuntime;
+		backend_compute_pool?: string;
 
 		// S3 bucket configuration
 		bucket_postfix?: string;
@@ -337,6 +433,13 @@ export interface YamlInfrastructureConfig {
 			key: string;
 		}>;
 		ecr_config?: ECRConfig;
+		/**
+		 * Where this service is placed (schema v26). Absent means `"fargate"`.
+		 * `compute_pool` names a pool in `compute.pools` and is required when
+		 * `runtime` is `"ec2"`.
+		 */
+		runtime?: ComputeRuntime;
+		compute_pool?: string;
 	}>;
 
 	// S3 Buckets

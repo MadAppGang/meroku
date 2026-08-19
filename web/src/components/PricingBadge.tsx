@@ -1,5 +1,12 @@
+import { Server } from "lucide-react";
 import { usePricingRates } from "../contexts/PricingContext";
-import type { PricingResponse } from "../hooks/use-pricing";
+import {
+	COMPUTE_POOL_NODE_PREFIX,
+	computePoolNameFromKey,
+	DEFAULT_COMPUTE_POOL,
+	type NodePricing,
+	type PricingResponse,
+} from "../hooks/use-pricing";
 import type { NodeConfigValues } from "../types";
 import {
 	type AuroraConfig,
@@ -15,10 +22,102 @@ import {
 } from "../utils/awsPricing";
 import { Badge } from "./ui/badge";
 
+type PriceLevel = "startup" | "scaleup" | "highload";
+
+/**
+ * The badge's three appearances, named once so a caller never restyles one.
+ *
+ * Position lives here because the badge is a corner ornament of the canvas node
+ * that renders it and nothing else ever places it.
+ */
+const BADGE_BASE = "absolute -top-2 -right-2 text-xs px-1 py-0.5";
+/** A figure we stand behind. */
+const BADGE_PRICE = `${BADGE_BASE} bg-green-600/90 text-white border-green-700`;
+/** No figure available. Never rendered as $0 — unknown is not free. */
+const BADGE_UNKNOWN = `${BADGE_BASE} bg-gray-600/90 text-gray-300 border-gray-700`;
+/** Costs money, but the money is billed on another node. */
+const BADGE_ATTRIBUTED = `${BADGE_BASE} bg-sky-600/90 text-white border-sky-700`;
+
+/**
+ * The capacity pool an EC2-placed workload is billed through, or null when the
+ * workload is not on EC2 at all.
+ *
+ * The live config outranks the pricing response deliberately: /api/pricing is
+ * refetched on environment change, so straight after a save its `runtime` can
+ * still read "fargate" for a workload the YAML has already moved to EC2 — and a
+ * per-task Fargate figure on an instance-hour workload is the one answer worse
+ * than no figure.
+ */
+function ec2PoolFor(
+	configProperties: NodeConfigValues | undefined,
+	node: NodePricing | undefined,
+): string | null {
+	const placedOnEC2 =
+		configProperties?.runtime === "ec2" ||
+		node?.runtime === "ec2" ||
+		Boolean(node?.costAttributedTo);
+	if (!placedOnEC2) return null;
+
+	if (configProperties?.runtime === "ec2" && configProperties.computePool) {
+		return configProperties.computePool;
+	}
+	if (node?.costAttributedTo) {
+		return computePoolNameFromKey(node.costAttributedTo);
+	}
+	// An EC2 workload naming no pool runs on the one generation synthesizes.
+	return configProperties?.computePool || DEFAULT_COMPUTE_POOL;
+}
+
+interface ComputePoolTotal {
+	monthly: number;
+	/** Pools with a real figure in the sum. */
+	priced: number;
+	/** Pools the server could not price, and which are therefore NOT in it. */
+	unpriced: number;
+}
+
+/**
+ * What this environment's EC2 capacity pools cost at the given level.
+ *
+ * Reads the `compute_pool_*` nodes rather than summing the tasks placed on
+ * them, because EC2 is billed per instance-hour: a pool at min_size 1 costs a
+ * full instance-hour every hour with nothing deployed on it, and adding up
+ * per-task prices would bill one instance once per task (FR-56).
+ */
+function totalComputePoolCost(
+	nodes: Record<string, NodePricing>,
+	level: PriceLevel,
+): ComputePoolTotal | null {
+	let monthly = 0;
+	let priced = 0;
+	let unpriced = 0;
+
+	for (const [key, node] of Object.entries(nodes)) {
+		if (!key.startsWith(COMPUTE_POOL_NODE_PREFIX)) continue;
+		const price = node.levels?.[level];
+		// The server sends $0 with details.price === "unknown" when it holds no
+		// rate for the pool's instance types. That is not free, so it is counted
+		// apart from the sum rather than folded into it as a zero.
+		if (!price || price.details?.price === "unknown") {
+			unpriced += 1;
+			continue;
+		}
+		monthly += price.monthlyPrice;
+		priced += 1;
+	}
+
+	if (priced === 0 && unpriced === 0) return null;
+	return { monthly, priced, unpriced };
+}
+
+function poolCountLabel(count: number): string {
+	return count === 1 ? "1 pool" : `${count} pools`;
+}
+
 interface PricingBadgeProps {
 	nodeType: string;
 	pricing: PricingResponse | null;
-	level?: "startup" | "scaleup" | "highload";
+	level?: PriceLevel;
 	serviceName?: string;
 	configProperties?: NodeConfigValues;
 }
@@ -36,7 +135,8 @@ export function PricingBadge({
 	if (!pricing) return null;
 
 	// Handle both pricing.nodes and direct pricing object structures
-	const pricingData = pricing.nodes || pricing;
+	const pricingData: Record<string, NodePricing> =
+		pricing.nodes ?? (pricing as unknown as Record<string, NodePricing>);
 
 	// Special handling for PostgreSQL/Aurora database pricing
 	if (nodeType === "postgres" && configProperties) {
@@ -45,10 +145,7 @@ export function PricingBadge({
 			if (!rates) {
 				// Show loading state while fetching rates
 				return (
-					<Badge
-						variant="secondary"
-						className="absolute -top-2 -right-2 bg-gray-600/90 text-gray-300 border-gray-700 text-xs px-1 py-0.5"
-					>
+					<Badge variant="secondary" className={BADGE_UNKNOWN}>
 						...
 					</Badge>
 				);
@@ -67,10 +164,7 @@ export function PricingBadge({
 			// If min and max are the same, show single price
 			if (config.minCapacity === config.maxCapacity) {
 				return (
-					<Badge
-						variant="secondary"
-						className="absolute -top-2 -right-2 bg-green-600/90 text-white border-green-700 text-xs px-1 py-0.5"
-					>
+					<Badge variant="secondary" className={BADGE_PRICE}>
 						{formatPrice(minPrice)}/mo
 					</Badge>
 				);
@@ -78,10 +172,7 @@ export function PricingBadge({
 
 			// Show price range (min-max)
 			return (
-				<Badge
-					variant="secondary"
-					className="absolute -top-2 -right-2 bg-green-600/90 text-white border-green-700 text-xs px-1 py-0.5"
-				>
+				<Badge variant="secondary" className={BADGE_PRICE}>
 					{formatPrice(minPrice)}-{formatPrice(maxPrice)}/mo
 				</Badge>
 			);
@@ -91,10 +182,7 @@ export function PricingBadge({
 		if (configProperties.instanceClass) {
 			if (!rates) {
 				return (
-					<Badge
-						variant="secondary"
-						className="absolute -top-2 -right-2 bg-gray-600/90 text-gray-300 border-gray-700 text-xs px-1 py-0.5"
-					>
+					<Badge variant="secondary" className={BADGE_UNKNOWN}>
 						...
 					</Badge>
 				);
@@ -110,10 +198,7 @@ export function PricingBadge({
 			const monthlyPrice = calculateRDSPrice(rdsConfig, rates);
 
 			return (
-				<Badge
-					variant="secondary"
-					className="absolute -top-2 -right-2 bg-green-600/90 text-white border-green-700 text-xs px-1 py-0.5"
-				>
+				<Badge variant="secondary" className={BADGE_PRICE}>
 					{formatPrice(monthlyPrice)}/mo
 				</Badge>
 			);
@@ -150,6 +235,69 @@ export function PricingBadge({
 		"secrets-manager": "secrets",
 	};
 
+	// ---------------------------------------------------------------------
+	// EC2 placement, decided BEFORE any Fargate arithmetic runs.
+	//
+	// An EC2-placed workload is billed nothing per task: its instances are paid
+	// for by the hour on its capacity pool, which is why the server reports it
+	// at $0 marginal with costAttributedTo pointing at that pool. Every
+	// calculator below is Fargate-only, so letting one of them run here would
+	// print a confident per-task price for exactly the workloads that are not
+	// billed per task — and adding that price to the pool's own would bill one
+	// instance once per task placed on it.
+	// ---------------------------------------------------------------------
+	if (nodeType === "backend" || nodeType === "service") {
+		const nodeKey = nodeType === "backend" ? "backend" : (serviceName ?? "");
+		const pool = ec2PoolFor(configProperties, pricingData[nodeKey]);
+		if (pool) {
+			return (
+				<Badge
+					variant="secondary"
+					className={BADGE_ATTRIBUTED}
+					title={`Billed as instance-hours on compute pool "${pool}", not per task. This workload adds no cost of its own — the pool is charged whether or not tasks are placed on it.`}
+				>
+					<Server aria-hidden="true" />
+					via {pool}
+				</Badge>
+			);
+		}
+	}
+
+	// The ECS cluster node carries the EC2 capacity behind it: the pools are
+	// where the instance-hours of every EC2 workload above are actually billed,
+	// and without this they would appear nowhere on the canvas at all.
+	if (nodeType === "ecs") {
+		const pools = totalComputePoolCost(pricingData, level);
+		if (pools && pools.priced === 0) {
+			return (
+				<Badge
+					variant="secondary"
+					className={BADGE_UNKNOWN}
+					title={`EC2 capacity: ${poolCountLabel(pools.unpriced)} with no price for the configured instance types in this region.`}
+				>
+					--.--/mo
+				</Badge>
+			);
+		}
+		if (pools) {
+			const unpricedNote =
+				pools.unpriced > 0
+					? ` ${poolCountLabel(pools.unpriced)} could not be priced and is not in this total, so the real figure is higher.`
+					: "";
+			return (
+				<Badge
+					variant="secondary"
+					className={BADGE_PRICE}
+					title={`EC2 capacity: ${poolCountLabel(pools.priced)} billed by instance-hour at the ${level} level, charged whether or not tasks are placed on them. Tasks add nothing further.${unpricedNote}`}
+				>
+					${pools.monthly.toFixed(0)}
+					{pools.unpriced > 0 ? "+" : ""}/mo
+				</Badge>
+			);
+		}
+		// No pools at all: fall through to the VPC mapping, which is $0 and true.
+	}
+
 	// Special handling for backend service - calculate dynamically
 	if (
 		nodeType === "backend" &&
@@ -158,10 +306,7 @@ export function PricingBadge({
 	) {
 		if (!rates) {
 			return (
-				<Badge
-					variant="secondary"
-					className="absolute -top-2 -right-2 bg-gray-600/90 text-gray-300 border-gray-700 text-xs px-1 py-0.5"
-				>
+				<Badge variant="secondary" className={BADGE_UNKNOWN}>
 					...
 				</Badge>
 			);
@@ -189,10 +334,7 @@ export function PricingBadge({
 			const maxPrice = calculateECSPrice(maxConfig, rates);
 
 			return (
-				<Badge
-					variant="secondary"
-					className="absolute -top-2 -right-2 bg-green-600/90 text-white border-green-700 text-xs px-1 py-0.5"
-				>
+				<Badge variant="secondary" className={BADGE_PRICE}>
 					{formatPrice(minPrice)}-{formatPrice(maxPrice)}/mo
 				</Badge>
 			);
@@ -204,10 +346,7 @@ export function PricingBadge({
 		const monthlyPrice = calculateECSPrice(ecsConfig, rates);
 
 		return (
-			<Badge
-				variant="secondary"
-				className="absolute -top-2 -right-2 bg-green-600/90 text-white border-green-700 text-xs px-1 py-0.5"
-			>
+			<Badge variant="secondary" className={BADGE_PRICE}>
 				{formatPrice(monthlyPrice)}/mo
 			</Badge>
 		);
@@ -217,10 +356,7 @@ export function PricingBadge({
 	if (nodeType === "scheduled-task" && configProperties) {
 		if (!rates) {
 			return (
-				<Badge
-					variant="secondary"
-					className="absolute -top-2 -right-2 bg-gray-600/90 text-gray-300 border-gray-700 text-xs px-1 py-0.5"
-				>
+				<Badge variant="secondary" className={BADGE_UNKNOWN}>
 					...
 				</Badge>
 			);
@@ -244,10 +380,7 @@ export function PricingBadge({
 				: `${formatPrice(monthlyPrice)}/mo`;
 
 		return (
-			<Badge
-				variant="secondary"
-				className="absolute -top-2 -right-2 bg-green-600/90 text-white border-green-700 text-xs px-1 py-0.5"
-			>
+			<Badge variant="secondary" className={BADGE_PRICE}>
 				{displayPrice}
 			</Badge>
 		);
@@ -267,10 +400,7 @@ export function PricingBadge({
 						: `$${monthlyPrice.toFixed(0)}/mo`;
 
 				return (
-					<Badge
-						variant="secondary"
-						className="absolute -top-2 -right-2 bg-green-600/90 text-white border-green-700 text-xs px-1 py-0.5"
-					>
+					<Badge variant="secondary" className={BADGE_PRICE}>
 						{displayPrice}
 					</Badge>
 				);
@@ -282,10 +412,7 @@ export function PricingBadge({
 	if (nodeType === "service" && serviceName && configProperties) {
 		if (!rates) {
 			return (
-				<Badge
-					variant="secondary"
-					className="absolute -top-2 -right-2 bg-gray-600/90 text-gray-300 border-gray-700 text-xs px-1 py-0.5"
-				>
+				<Badge variant="secondary" className={BADGE_UNKNOWN}>
 					...
 				</Badge>
 			);
@@ -312,10 +439,7 @@ export function PricingBadge({
 		const monthlyPrice = calculateECSPrice(ecsConfig, rates);
 
 		return (
-			<Badge
-				variant="secondary"
-				className="absolute -top-2 -right-2 bg-green-600/90 text-white border-green-700 text-xs px-1 py-0.5"
-			>
+			<Badge variant="secondary" className={BADGE_PRICE}>
 				{formatPrice(monthlyPrice)}/mo
 			</Badge>
 		);
@@ -328,10 +452,7 @@ export function PricingBadge({
 	if (pricingKey && !pricingData[pricingKey]) {
 		// Show placeholder for mapped services without pricing
 		return (
-			<Badge
-				variant="secondary"
-				className="absolute -top-2 -right-2 bg-gray-600/90 text-gray-300 border-gray-700 text-xs px-1 py-0.5"
-			>
+			<Badge variant="secondary" className={BADGE_UNKNOWN}>
 				--.--/mo
 			</Badge>
 		);
@@ -343,20 +464,14 @@ export function PricingBadge({
 	if (!price) {
 		// Show placeholder if pricing key exists but no price for this level
 		return (
-			<Badge
-				variant="secondary"
-				className="absolute -top-2 -right-2 bg-gray-600/90 text-gray-300 border-gray-700 text-xs px-1 py-0.5"
-			>
+			<Badge variant="secondary" className={BADGE_UNKNOWN}>
 				--.--/mo
 			</Badge>
 		);
 	}
 
 	return (
-		<Badge
-			variant="secondary"
-			className="absolute -top-2 -right-2 bg-green-600/90 text-white border-green-700 text-xs px-1 py-0.5"
-		>
+		<Badge variant="secondary" className={BADGE_PRICE}>
 			${price.monthlyPrice.toFixed(0)}/mo
 		</Badge>
 	);

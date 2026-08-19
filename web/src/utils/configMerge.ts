@@ -10,6 +10,17 @@ import type { YamlInfrastructureConfig } from "../types/yamlConfig";
  * fields (`jwks_uri`, `jwt_issuer`, `jwt_audience`, schema v21) are not surfaced
  * by any editor panel, so a wholesale replace would silently erase the JWKS
  * trust anchor on an unrelated toggle.
+ *
+ * Listing a section here is necessary but NOT sufficient. The merge below is
+ * one level deep, so with `compute` listed a `{ compute: { pools } }` update
+ * merges `pools` over the previous `compute` and `pools` itself is still
+ * replaced wholesale. An editor emitting a single pool object would therefore
+ * still delete every sibling pool. The guard against that is a type signature,
+ * not this list: `ComputePoolEditor` takes `onChange(index, patch)` and never
+ * sees the array, and `ComputePoolProperties` is the single owner that maps
+ * over the full current array. See architecture.md §8.4 (C-3).
+ *
+ * `web/` has no test runner, so there is no unit test asserting any of this.
  */
 export const NESTED_CONFIG_KEYS = [
 	"workload",
@@ -20,6 +31,7 @@ export const NESTED_CONFIG_KEYS = [
 	"sqs",
 	"alb",
 	"pubsub_appsync",
+	"compute",
 ] as const;
 
 export type NestedConfigKey = (typeof NESTED_CONFIG_KEYS)[number];

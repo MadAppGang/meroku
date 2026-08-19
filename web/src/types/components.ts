@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import type { ECRConfig } from "./yamlConfig";
+import type { ComputeRuntime, ECRConfig } from "./yamlConfig";
 
 // Event Task related types - matching YAML config
 export interface EventTask {
@@ -52,6 +52,18 @@ export interface Service {
 	container_command?: string[];
 	environment_variables?: Record<string, string>;
 	ecr_config?: ECRConfig;
+	/**
+	 * Where this service is placed (schema v26). Absent means `"fargate"`.
+	 * `compute_pool` names a pool in `compute.pools` and is required when
+	 * `runtime` is `"ec2"`.
+	 *
+	 * Kept in sync with the inline `services[]` element type in
+	 * `yamlConfig.ts` by review, not by the compiler: the two declarations have
+	 * already diverged (no `auto_deploy` here, `docker_image` required here and
+	 * optional there), so nothing assigns one to the other.
+	 */
+	runtime?: ComputeRuntime;
+	compute_pool?: string;
 }
 
 // Amplify related types - matching YAML config structure

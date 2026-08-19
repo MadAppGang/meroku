@@ -1,4 +1,5 @@
 import type { PricingResponse } from "./hooks/use-pricing";
+import type { ComputeRuntime } from "./types/yamlConfig";
 
 export interface ComponentNode {
 	id: string;
@@ -87,6 +88,22 @@ export interface NodeConfigValues {
 	autoscalingEnabled?: boolean;
 	autoscalingMinCapacity?: number;
 	autoscalingMaxCapacity?: number;
+
+	/**
+	 * Placement (schema v26). Absent means Fargate, so a pre-v26 config prices
+	 * exactly as it did before.
+	 *
+	 * These come from the live YAML rather than from the pricing response so
+	 * that flipping a workload to EC2 stops it showing a per-task Fargate
+	 * figure at once: /api/pricing is refetched on environment change, not on
+	 * every save, and a stale "fargate" there would otherwise keep a confidently
+	 * wrong number on the canvas.
+	 *
+	 * `computePool` absent while `runtime` is `"ec2"` means the synthesized
+	 * `default` pool (FR-58).
+	 */
+	runtime?: ComputeRuntime;
+	computePool?: string;
 
 	// Database
 	aurora?: boolean;

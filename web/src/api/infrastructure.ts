@@ -366,6 +366,259 @@ export interface FargateOptionsResponse {
 	options: FargateCPUOption[];
 }
 
+// ---------------------------------------------------------------------------
+// Compute pools (EC2 capacity) — the three READ-ONLY endpoints of
+// architecture.md §3. Pool writes are YAML writes and go through
+// /api/environment/update like every other config change (FR-43).
+//
+// One rule governs every one of these calls: an AWS failure never produces a
+// non-200. A degraded answer arrives inside a 200 body and says so in `source`,
+// `credentialsState` and `notice` (AC-2), so the UI must read those fields
+// rather than assume a successful fetch means live data.
+// ---------------------------------------------------------------------------
+
+/** Envelope-level data provenance (FR-12). */
+export type ComputeSource = "aws_api" | "fallback" | "partial";
+
+export type ComputeCredentialsState = "ok" | "missing" | "expired" | "denied";
+
+/** Per-type price provenance (FR-5). */
+export type ComputePriceSource = "aws_api" | "fallback" | "unavailable";
+
+export type ComputePosture = "performance-first" | "balanced" | "cost-first";
+
+export const COMPUTE_POSTURES: ComputePosture[] = [
+	"performance-first",
+	"balanced",
+	"cost-first",
+];
+
+export interface ComputeInstanceTypeInfo {
+	instanceType: string;
+	vcpu: number;
+	memoryMiB: number;
+	architectures: string[];
+	currentGeneration: boolean;
+	networkPerformance: string;
+	baselineBandwidthMbps: number | null;
+	/**
+	 * The raw un-trunked ENI limit exactly as DescribeInstanceTypes reports it.
+	 * NOT the task density: density is computed server-side and reported as
+	 * `signals.densityBasis` on the recommendation.
+	 */
+	maximumNetworkInterfaces: number;
+	gpuCount: number;
+	gpuMemoryMiB: number | null;
+	gpuName: string | null;
+	burstable: boolean;
+	bareMetal: boolean;
+	supportedUsageClasses: string[];
+	onDemandHourly: number | null;
+	priceSource: ComputePriceSource;
+}
+
+export interface ComputeInstanceTypesResponse {
+	region: string;
+	source: ComputeSource;
+	credentialsState: ComputeCredentialsState;
+	filtered: boolean;
+	totalAvailable: number;
+	cachedAt: string | null;
+	pricingDate: string | null;
+	/**
+	 * Non-null whenever ANY price in this payload is a fallback value, in which
+	 * case the figures are indicative us-east-1 list prices and must never be
+	 * rendered as the environment's own (C-18, DEV-22).
+	 */
+	pricingRegion: string | null;
+	instanceDataDate: string | null;
+	/** False under fallback: the region's availability was not verified (NFR-7). */
+	availabilityVerified: boolean;
+	notice: string | null;
+	instanceTypes: ComputeInstanceTypeInfo[];
+}
+
+export interface ComputeSpotAZPrice {
+	az: string;
+	hourly: number;
+	asOf: string;
+}
+
+export interface ComputeSpotQuote {
+	instanceType: string;
+	byAz: ComputeSpotAZPrice[];
+	/** Null rather than zero when there is no spot market for this type (EC-5). */
+	min: number | null;
+	max: number | null;
+	median: number | null;
+	spotAvailable: boolean;
+}
+
+export interface ComputeSpotPricesResponse {
+	region: string;
+	source: ComputeSource;
+	credentialsState: ComputeCredentialsState;
+	asOf: string;
+	notice: string | null;
+	prices: ComputeSpotQuote[];
+}
+
+/**
+ * The scoring dimensions, each in [0,1]. Mirrors `computeScores` in
+ * `app/api_compute.go`.
+ *
+ * There are FOUR, not five. `waste` and `headroom` were near-inverses of one
+ * axis — one measuring fill, the other slack — so every posture expressed its
+ * real preference as the difference between two partly-cancelling terms, and on
+ * a fleet with no CloudWatch history `headroom` was identical for every
+ * candidate, which ranked nothing at all. They are replaced by one
+ * `utilisation` term; `app/recommend/score.go` carries the analysis.
+ */
+export interface ComputeCandidateScores {
+	/** Shape: how closely the instance's memory-per-vCPU matches the workload's. */
+	fit: number;
+	/** Fill: how close the instance's ACHIEVED occupancy lands to the posture's target. */
+	utilisation: number;
+	/** Money: the pool this candidate implies, per hour per task, against the cheapest survivor. */
+	cost: number;
+	/** Generation: newest of its family in this region's catalog scores 1. */
+	modernity: number;
+}
+
+export interface ComputeCandidate {
+	instanceType: string;
+	vcpu: number;
+	memoryMiB: number;
+	architecture: string;
+	scores: ComputeCandidateScores;
+	total: number;
+	effectiveHourly: number;
+	tasksPerInstance: number;
+	instancesAtFloor: number;
+	/**
+	 * What this candidate's pool costs per hour, per task it runs:
+	 * effectiveHourly × instances ÷ tasks. It replaces `costPerTaskSlot`, which
+	 * priced slots no task occupies and so rated an 8 vCPU box the better buy
+	 * for a fleet that occupies 4% of it.
+	 */
+	costPerTask: number;
+	spotMedianHourly: number | null;
+	reason: string;
+}
+
+export interface ComputeMiss {
+	instanceType: string;
+	failedRule: string;
+	needed: number;
+	available: number;
+	unit: string;
+}
+
+export interface ComputeShape {
+	vcpu: number;
+	memGiB: number;
+	ratio: number;
+	taskCount?: number;
+}
+
+export interface ComputeWeights {
+	configured: number;
+	actual: number;
+}
+
+/** C-10 — the memory-per-vCPU clamp is reported, never applied silently. */
+export interface ComputeRatioSignal {
+	raw: number;
+	effective: number;
+	catalogMin: number;
+	catalogMax: number;
+	clampedTo: "none" | "min" | "max";
+}
+
+export interface ComputeServiceSignal {
+	name: string;
+	datapoints: number;
+	cpuAvg: number;
+	cpuPeak: number;
+	memAvg: number;
+	memPeak: number;
+	status: string;
+	reason?: string;
+}
+
+export interface ComputeSignals {
+	configured: ComputeShape;
+	actual: ComputeShape | null;
+	coverage: number;
+	weights: ComputeWeights;
+	ratio: ComputeRatioSignal;
+	cloudwatch: "ok" | "partial" | "no_data" | "unavailable" | "timeout";
+	networkMode: "bridge" | "awsvpc";
+	trunking: "enabled" | "disabled" | "unknown" | "not_applicable";
+	densityBasis: "cpu_memory_only" | "max_enis_minus_one" | "trunked_table";
+	/** Candidates removed by the non-finite gate (C-4). Non-empty here is a bug. */
+	dropped: ComputeMiss[];
+	services: ComputeServiceSignal[];
+}
+
+/**
+ * A YAML-ready pool. snake_case on purpose: the UI writes it straight into
+ * `compute.pools` without translating a single key.
+ */
+export interface ComputeSuggestedPool {
+	name: string;
+	enabled: boolean;
+	instance_types: string[];
+	capacity_type: string;
+	on_demand_base: number;
+	min_size: number;
+	max_size: number;
+	target_capacity: number;
+	network_mode: string;
+	ami_family: string;
+	root_volume_gb: number;
+	/** EC-6: spot was asked for, spot was unavailable, the pool fell back. */
+	downgraded: boolean;
+}
+
+export interface ComputeRecommendationResponse {
+	region: string;
+	source: ComputeSource;
+	credentialsState: ComputeCredentialsState;
+	posture: ComputePosture;
+	classification: string;
+	/**
+	 * Present only when it differs from `classification`: the class read off
+	 * measured utilisation, which the region carries no type able to serve, so
+	 * sizing fell back to the ratio class in `classification`. Without it the
+	 * fallback is silent and a fleet idling at 9 % CPU is sized memory-heavy with
+	 * no hint that the utilisation was read at all.
+	 */
+	classificationSuppressed?: string;
+	basis: "measured" | "configured" | "default";
+	unsatisfiable: boolean;
+	constraint: string | null;
+	primary: ComputeCandidate | null;
+	ranked: ComputeCandidate[];
+	nearestMisses?: ComputeMiss[];
+	signals: ComputeSignals;
+	suggestedPool: ComputeSuggestedPool;
+	pricingRegion: string | null;
+	notice: string | null;
+}
+
+export interface ComputeRecommendationQuery {
+	env: string;
+	posture?: ComputePosture;
+	pool?: string;
+	services?: string[];
+	window?: number;
+	limit?: number;
+	gpu?: boolean;
+	amiFamily?: string;
+	networkMode?: string;
+}
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || "";
 
 export const infrastructureApi = {
@@ -1129,6 +1382,85 @@ export const infrastructureApi = {
 		const response = await fetch(`${API_BASE_URL}/api/fargate/options`);
 		if (!response.ok) {
 			throw new Error("Failed to fetch Fargate options");
+		}
+		return response.json();
+	},
+
+	/**
+	 * The region's EC2 instance catalog with on-demand prices.
+	 *
+	 * A rejection here means the caller's own mistake (missing env, unreadable
+	 * {env}.yaml) or the server being down — never "AWS was unreachable". That
+	 * case arrives as a 200 whose `source` is `fallback` or `partial`.
+	 */
+	async getComputeInstanceTypes(
+		env: string,
+		options?: { refresh?: boolean; all?: boolean },
+	): Promise<ComputeInstanceTypesResponse> {
+		const params = new URLSearchParams({ env });
+		if (options?.refresh) params.set("refresh", "true");
+		if (options?.all) params.set("all", "true");
+
+		const response = await fetch(
+			`${API_BASE_URL}/api/compute/instance-types?${params.toString()}`,
+		);
+		if (!response.ok) {
+			const error: ErrorResponse = await response.json().catch(() => ({
+				error: "Failed to fetch instance types",
+			}));
+			throw new Error(error.error || "Failed to fetch instance types");
+		}
+		return response.json();
+	},
+
+	/** Current spot prices per AZ. At most 20 types per request (AC-8). */
+	async getComputeSpotPrices(
+		env: string,
+		types: string[],
+	): Promise<ComputeSpotPricesResponse> {
+		const params = new URLSearchParams({ env, types: types.join(",") });
+
+		const response = await fetch(
+			`${API_BASE_URL}/api/compute/spot-prices?${params.toString()}`,
+		);
+		if (!response.ok) {
+			const error: ErrorResponse = await response.json().catch(() => ({
+				error: "Failed to fetch spot prices",
+			}));
+			throw new Error(error.error || "Failed to fetch spot prices");
+		}
+		return response.json();
+	},
+
+	/**
+	 * The sizing recommendation for a pool — existing or not yet created.
+	 *
+	 * `amiFamily` and `networkMode` are sent for a pool that does not exist yet
+	 * so the architecture filter and the density rule match what the pool will
+	 * actually render with (DEV-23, DEV-24).
+	 */
+	async getComputeRecommendation(
+		query: ComputeRecommendationQuery,
+	): Promise<ComputeRecommendationResponse> {
+		const params = new URLSearchParams({ env: query.env });
+		if (query.posture) params.set("posture", query.posture);
+		if (query.pool) params.set("pool", query.pool);
+		if (query.services?.length)
+			params.set("services", query.services.join(","));
+		if (query.window !== undefined) params.set("window", String(query.window));
+		if (query.limit !== undefined) params.set("limit", String(query.limit));
+		if (query.gpu) params.set("gpu", "true");
+		if (query.amiFamily) params.set("ami_family", query.amiFamily);
+		if (query.networkMode) params.set("network_mode", query.networkMode);
+
+		const response = await fetch(
+			`${API_BASE_URL}/api/compute/recommendation?${params.toString()}`,
+		);
+		if (!response.ok) {
+			const error: ErrorResponse = await response.json().catch(() => ({
+				error: "Failed to fetch compute recommendation",
+			}));
+			throw new Error(error.error || "Failed to fetch compute recommendation");
 		}
 		return response.json();
 	},
