@@ -411,6 +411,9 @@ func TestAllHelpers_SurviveAMissingKey(t *testing.T) {
 		`{{stringListMap missing}}`,
 		`{{envArray missing}}`,
 		`{{#each (sortedPairs missing)}}x{{/each}}`,
+		`{{{hclArray missing}}}`,
+		`{{{hclString missing}}}`,
+		`{{{hclEscape missing}}}`,
 	} {
 		func() {
 			defer func() {
@@ -422,5 +425,299 @@ func TestAllHelpers_SurviveAMissingKey(t *testing.T) {
 				t.Errorf("%s errored on a missing key: %v", tpl, err)
 			}
 		}()
+	}
+}
+
+// The interpolation hole, at the helper level.
+//
+// Every helper here writes into generated HCL. json.Marshal escapes <, > and &
+// but not $ or %, and raymond's HTML escaper handles neither — so before these
+// helpers existed, any YAML value containing `${` reached main.tf as an HCL
+// interpolation and any value containing `"` reached a quoted argument as a
+// string terminator. That is not a rendering nit: it is config content being
+// parsed as Terraform code, from a textarea.
+func TestHCLEscapeString(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"empty", "", ""},
+		{"nothing to escape", "echo hello", "echo hello"},
+		{"an interpolation opener is doubled", "${HOSTNAME}", "$${HOSTNAME}"},
+		{"a directive opener is doubled", "%{ if x }", "%%{ if x }"},
+		{"both, several times", "${a}${b}%{c}", "$${a}$${b}%%{c}"},
+		{"inside a longer string", `echo "${HOSTNAME} up" >> /log`, `echo "$${HOSTNAME} up" >> /log`},
+		// The reason only the two-character sequence is doubled. HCL's escape
+		// is $${; a $$ not followed by { is two literal dollar signs, so
+		// doubling every $ would rewrite a correct script into a broken one.
+		{"a lone dollar is left alone", "echo $HOME", "echo $HOME"},
+		{"a dollar before a digit is left alone", "cost=$5", "cost=$5"},
+		{"a lone percent is left alone", "printf '100% done'", "printf '100% done'"},
+		{"a percent before a paren is left alone", "awk '%(x)'", "awk '%(x)'"},
+		// An IAM policy resource, which is where this bites outside user data.
+		{"an IAM principal tag", "arn:aws:s3:::b/${aws:PrincipalTag/team}/*", "arn:aws:s3:::b/$${aws:PrincipalTag/team}/*"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := hclEscapeString(tc.in); got != tc.want {
+				t.Errorf("hclEscapeString(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+// hclEscape is for a heredoc body, so it must leave quotes and newlines exactly
+// as they were: HCL processes backslash escapes only inside quoted templates,
+// and a `\"` emitted into a heredoc stays a literal backslash in the user's
+// boot script. It must also survive a double-stache call site without HTML
+// escaping, or `echo "hi"` lands in main.tf as `echo &quot;hi&quot;`.
+func TestHCLEscapeHelper(t *testing.T) {
+	registerCustomHelpers()
+
+	ctx := map[string]interface{}{
+		"script": "echo \"${HOSTNAME}\"\nexit 0\n",
+	}
+	want := "echo \"$${HOSTNAME}\"\nexit 0\n"
+
+	for _, tpl := range []string{`{{hclEscape script}}`, `{{{hclEscape script}}}`} {
+		out, err := raymond.Render(tpl, ctx)
+		if err != nil {
+			t.Fatalf("render %s: %v", tpl, err)
+		}
+		if out != want {
+			t.Errorf("%s = %q, want %q", tpl, out, want)
+		}
+	}
+}
+
+// hclHeredoc owns the delimiter as well as the body, because a template that
+// writes its own `<<-EOT` fences cannot react to a body that contains one — and
+// a user-data script that does closes the heredoc early, after which every
+// remaining line is parsed as HCL. Same defect class as an unescaped `${`, and
+// the escaper cannot see it: the terminator is not an opener.
+func TestHCLHeredocHelper(t *testing.T) {
+	registerCustomHelpers()
+
+	tests := []struct {
+		name string
+		in   interface{}
+		want string
+	}{
+		{
+			// The shape every existing config has, pinned so the generated
+			// main.tf is byte-identical to what the fixed `<<-EOT` produced.
+			name: "an ordinary script keeps the familiar delimiter",
+			in:   "echo hello\nexit 0\n",
+			want: "<<-EOT\necho hello\nexit 0\n\nEOT",
+		},
+		{
+			name: "openers are still doubled",
+			in:   "echo \"${HOSTNAME}\"",
+			want: "<<-EOT\necho \"$${HOSTNAME}\"\nEOT",
+		},
+		{
+			// The bug. With a fixed delimiter the heredoc ends at line 2 and
+			// `rm -rf /` is handed to the HCL parser as configuration.
+			name: "a bare EOT line moves the delimiter",
+			in:   "cat <<EOT\nplanted\nEOT\nrm -rf /",
+			want: "<<-EOT_1\ncat <<EOT\nplanted\nEOT\nrm -rf /\nEOT_1",
+		},
+		{
+			name: "an indented EOT is a terminator too, so it also moves",
+			in:   "  EOT",
+			want: "<<-EOT_1\n  EOT\nEOT_1",
+		},
+		{
+			name: "the search keeps going past a taken suffix",
+			in:   "EOT\nEOT_1\nEOT_2",
+			want: "<<-EOT_3\nEOT\nEOT_1\nEOT_2\nEOT_3",
+		},
+		{
+			// EOT inside a line is not a terminator: HCL ends the heredoc only
+			// on a line that is nothing else.
+			name: "EOT inside a line is left alone",
+			in:   "echo EOT done",
+			want: "<<-EOT\necho EOT done\nEOT",
+		},
+		{
+			name: "nil renders a valid literal rather than a dangling opener",
+			in:   nil,
+			want: `""`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := raymond.Render(`{{{hclHeredoc v}}}`, map[string]interface{}{"v": tc.in})
+			if err != nil {
+				t.Fatalf("render: %v", err)
+			}
+			if out != tc.want {
+				t.Errorf("hclHeredoc(%v) =\n%s\nwant:\n%s", tc.in, out, tc.want)
+			}
+			if strings.Contains(out, "&quot;") {
+				t.Errorf("hclHeredoc HTML-escaped the script: %s", out)
+			}
+
+			// Whatever marker was chosen, the body between the fences must not
+			// contain a line equal to it — that is the entire contract.
+			lines := strings.Split(out, "\n")
+			if len(lines) > 1 && strings.HasPrefix(lines[0], "<<-") {
+				marker := strings.TrimPrefix(lines[0], "<<-")
+				for _, line := range lines[1 : len(lines)-1] {
+					if strings.TrimSpace(line) == marker {
+						t.Errorf("body line %q terminates the heredoc early:\n%s", line, out)
+					}
+				}
+				if lines[len(lines)-1] != marker {
+					t.Errorf("heredoc is not closed by %q:\n%s", marker, out)
+				}
+			}
+		})
+	}
+}
+
+// hclString emits the whole quoted literal, quotes included, because the two
+// hazards need different treatment and only one of them is an HCL opener: a `"`
+// or a `\` has to be backslash-escaped or the value ends the string early and
+// the parser reads whatever follows as HCL.
+func TestHCLStringHelper(t *testing.T) {
+	registerCustomHelpers()
+
+	tests := []struct {
+		name string
+		in   interface{}
+		want string
+	}{
+		{"a plain value", "al2023", `"al2023"`},
+		{"nil renders an empty literal", nil, `""`},
+		{"empty string", "", `""`},
+		{"an opener is doubled", "${var.x}", `"$${var.x}"`},
+		{"a quote is backslash-escaped, not HTML-escaped", `a"b`, `"a\"b"`},
+		{"a backslash is escaped", `a\b`, `"a\\b"`},
+		{"both hazards at once", `ami-0abc" ${var.injected}`, `"ami-0abc\" $${var.injected}"`},
+		{"a non-string scalar still quotes", 30, `"30"`},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := raymond.Render(`{{{hclString v}}}`, map[string]interface{}{"v": tc.in})
+			if err != nil {
+				t.Fatalf("render: %v", err)
+			}
+			if out != tc.want {
+				t.Errorf("hclString(%v) = %s, want %s", tc.in, out, tc.want)
+			}
+			if strings.Contains(out, "&quot;") {
+				t.Errorf("hclString HTML-escaped its value, which is not valid HCL: %s", out)
+			}
+		})
+	}
+}
+
+// hclArray is `array` plus hclEscapeString on every string in the tree. Keys
+// too: a JSON object key lands inside a quoted HCL string exactly like a value.
+func TestHCLArrayHelper(t *testing.T) {
+	registerCustomHelpers()
+
+	tests := []struct {
+		name string
+		in   interface{}
+		want string
+	}{
+		{"nil is an empty list", nil, "[]"},
+		{"a typed nil slice is an empty list", []string(nil), "[]"},
+		{"a plain list is unchanged", []interface{}{"a", "b"}, `["a","b"]`},
+		{
+			name: "an opener inside a nested value is doubled",
+			in: []interface{}{map[string]interface{}{
+				"resources": []interface{}{"arn:aws:s3:::b/${aws:PrincipalTag/team}/*"},
+			}},
+			want: `[{"resources":["arn:aws:s3:::b/$${aws:PrincipalTag/team}/*"]}]`,
+		},
+		{
+			name: "a key is escaped as well as a value",
+			in:   []interface{}{map[string]interface{}{"${k}": "%{v}"}},
+			want: `[{"$${k}":"%%{v}"}]`,
+		},
+		{
+			name: "the YAML shape of a nested mapping is handled",
+			in:   []interface{}{map[interface{}]interface{}{"device_name": "/dev/xvdb${x}"}},
+			want: `[{"device_name":"/dev/xvdb$${x}"}]`,
+		},
+		{
+			name: "a non-string leaf is left alone",
+			in:   []interface{}{map[string]interface{}{"size_gb": 100}},
+			want: `[{"size_gb":100}]`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := raymond.Render(`{{{hclArray v}}}`, map[string]interface{}{"v": tc.in})
+			if err != nil {
+				t.Fatalf("render: %v", err)
+			}
+			if out != tc.want {
+				t.Errorf("hclArray = %s, want %s", out, tc.want)
+			}
+		})
+	}
+}
+
+// hclArray must not be HTML-escaped either, for the reason the array helper
+// documents: a double-stache call site turned every " into &quot;, which is not
+// valid HCL and failed terraform init.
+func TestHCLArrayHelper_IsNotHTMLEscaped(t *testing.T) {
+	registerCustomHelpers()
+
+	for _, tpl := range []string{`{{hclArray v}}`, `{{{hclArray v}}}`} {
+		out, err := raymond.Render(tpl, map[string]interface{}{"v": []interface{}{"m7i.large"}})
+		if err != nil {
+			t.Fatalf("render %s: %v", tpl, err)
+		}
+		if out != `["m7i.large"]` {
+			t.Errorf(`%s = %s, want ["m7i.large"]`, tpl, out)
+		}
+	}
+}
+
+// `array` itself is deliberately unchanged. Escaping it would alter the
+// rendering of every existing environment — {{{array services}}} carries every
+// service field — and break the zero-diff contract for a hazard that predates
+// compute pools. This test is what keeps a later "fix" from doing it quietly.
+func TestArrayHelper_StillDoesNotEscape(t *testing.T) {
+	registerCustomHelpers()
+
+	out, err := raymond.Render(`{{{array v}}}`, map[string]interface{}{
+		"v": []interface{}{"${var.x}"},
+	})
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if out != `["${var.x}"]` {
+		t.Errorf("array must keep its existing output byte for byte, got %s", out)
+	}
+}
+
+// A wrong type is a configuration error, and it has to arrive as an error
+// rather than as a Go stack trace — raymond re-panics anything not carrying an
+// `error`. hclArray inherits that from renderHCLList, and its label is
+// deliberately not a superset of the array helper's, so describeArrayHelperError
+// does not claim an hclArray failure and go hunting for {{array ...}} sites.
+func TestHCLArrayHelper_WrongTypeIsAnError(t *testing.T) {
+	registerCustomHelpers()
+
+	_, err := raymond.Render(`{{{hclArray v}}}`, map[string]interface{}{"v": "not-a-list"})
+	if err == nil {
+		t.Fatal("a scalar where a list belongs should be an error")
+	}
+	if !strings.Contains(err.Error(), hclArrayHelperErr) {
+		t.Errorf("error should name the hclArray helper, got %v", err)
+	}
+	if strings.Contains(err.Error(), arrayHelperErr) {
+		t.Errorf("an hclArray failure must not be reported as an array failure, got %v", err)
 	}
 }

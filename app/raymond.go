@@ -52,45 +52,260 @@ func registerCustomHelpers() {
 // describeArrayHelperError can recognise one coming back out of raymond.
 const arrayHelperErr = "array helper"
 
+// hclArrayHelperErr is deliberately NOT a superset of arrayHelperErr: the
+// capital A keeps describeArrayHelperError from claiming an hclArray failure
+// and then hunting for {{array ...}} call sites that had nothing to do with it.
+const hclArrayHelperErr = "hclArray helper"
+
+// hclEscapeString escapes the two HCL2 template openers, and nothing else.
+//
+//	"${" -> "$${"      "%{" -> "%%{"
+//
+// Why this exists at all: every helper that emits into env/main.hbs writes its
+// output straight into generated HCL, and json.Marshal — which is all `array`
+// does — escapes <, > and & but not $ or %. In HCL2 `${` opens an
+// interpolation and `%{` opens a directive, inside quoted strings and inside
+// heredocs alike. So a user who types
+//
+//	user_data_extra: 'echo "${HOSTNAME} booted" >> /var/log/pool'
+//
+// into a textarea gets `Error: Unknown variable; There is no variable named
+// "HOSTNAME"` out of terraform plan — and essentially every non-trivial
+// user-data script contains ${. The same hole reaches instance_policies[].
+// resources, where IAM documents routinely carry ${aws:PrincipalTag/...}.
+// Config content becoming Terraform syntax is the bug; a failed plan is only
+// the loudest symptom of it.
+//
+// Only the two-character sequences are doubled. Doubling every $ would corrupt
+// correct scripts: HCL's escape is $${, and a $$ not followed by { is two
+// literal dollar signs, so `echo $HOME` would render as `echo $$HOME`.
+func hclEscapeString(s string) string {
+	s = strings.ReplaceAll(s, "${", "$${")
+	s = strings.ReplaceAll(s, "%{", "%%{")
+	return s
+}
+
+// hclHeredocBaseMarker is the delimiter every heredoc uses when the content
+// allows it, so the generated main.tf reads the way it always has.
+const hclHeredocBaseMarker = "EOT"
+
+// hclHeredocMarker picks a delimiter that the body cannot terminate.
+//
+// The other half of the hazard hclEscapeString exists to close. A heredoc ends
+// at the first line that is nothing but the marker, so a user-data script
+// containing a bare
+//
+//	EOT
+//
+// on a line of its own — a here-document of the user's own, a shell function
+// that echoes a banner, a base64 blob that happens to wrap that way — closes
+// the heredoc early, and every remaining line of the script is handed to the
+// HCL parser as configuration. That is the same defect as an unescaped `${`:
+// config content becoming syntax. Doubling openers does not help, because the
+// terminator is not an opener.
+//
+// So the marker is derived from the content instead of fixed: EOT, then EOT_1,
+// EOT_2, and so on until one is found that no line of the body equals. The loop
+// always terminates — the body is finite, so it can collide with only finitely
+// many markers.
+//
+// A line is treated as a terminator if it equals the marker after trimming
+// whitespace. HCL only allows leading whitespace before the marker (and only
+// for the indented `<<-` form), so this is stricter than HCL is; being stricter
+// costs a suffix on the delimiter and never a mis-parse.
+func hclHeredocMarker(body string) string {
+	conflicts := func(marker string) bool {
+		for _, line := range strings.Split(body, "\n") {
+			if strings.TrimSpace(line) == marker {
+				return true
+			}
+		}
+		return false
+	}
+
+	if !conflicts(hclHeredocBaseMarker) {
+		return hclHeredocBaseMarker
+	}
+	for i := 1; ; i++ {
+		marker := fmt.Sprintf("%s_%d", hclHeredocBaseMarker, i)
+		if !conflicts(marker) {
+			return marker
+		}
+	}
+}
+
+// hclHeredocString renders a value as a COMPLETE indented heredoc — the `<<-`
+// opener, the escaped body, and the closing marker, all three, so that the
+// delimiter cannot desynchronise from the content it delimits. That is the
+// whole reason this is one helper rather than the template writing `<<-EOT`
+// itself and asking a helper for the body.
+//
+// The closing marker is emitted at column 0, which is what the template did
+// before and what keeps `<<-`'s indent stripping a no-op.
+func hclHeredocString(s string) string {
+	body := hclEscapeString(s)
+	marker := hclHeredocMarker(body)
+	return fmt.Sprintf("<<-%s\n%s\n%s", marker, body, marker)
+}
+
+// escapeHCLTemplateOpeners applies hclEscapeString to every string in a decoded
+// YAML tree — values and map keys alike, since a JSON object key lands inside a
+// quoted HCL string too.
+//
+// It runs after convertToJSONCompatible, so map[interface{}]interface{} has
+// already collapsed to map[string]interface{}; the extra cases below are for
+// values that reached a helper from a Go struct rather than from YAML.
+func escapeHCLTemplateOpeners(data interface{}) interface{} {
+	switch v := data.(type) {
+	case string:
+		return hclEscapeString(v)
+	case []interface{}:
+		out := make([]interface{}, len(v))
+		for i, item := range v {
+			out[i] = escapeHCLTemplateOpeners(item)
+		}
+		return out
+	case []string:
+		out := make([]string, len(v))
+		for i, item := range v {
+			out[i] = hclEscapeString(item)
+		}
+		return out
+	case map[string]interface{}:
+		out := make(map[string]interface{}, len(v))
+		for key, item := range v {
+			out[hclEscapeString(key)] = escapeHCLTemplateOpeners(item)
+		}
+		return out
+	case map[interface{}]interface{}:
+		out := make(map[string]interface{}, len(v))
+		for key, item := range v {
+			out[hclEscapeString(fmt.Sprintf("%v", key))] = escapeHCLTemplateOpeners(item)
+		}
+		return out
+	default:
+		return data
+	}
+}
+
+// renderHCLList is the shared body of the array and hclArray helpers.
+//
+// An absent key is an empty list. All twenty {{array ...}} sites in
+// env/main.hbs read an optional field, so a config that simply omits one is
+// well-formed and must still generate. Panicking on nil meant every
+// hand-written or partial YAML crashed generation instead of producing output.
+//
+// A wrong *type* is a genuine configuration error and still fails — but as an
+// error, not a panic. raymond's errRecover only converts a panic carrying an
+// `error` into a returned error and re-panics anything else, so a panic
+// carrying a string unwinds through raymond and prints a Go stack trace at the
+// user. That is never the right way to report a bad YAML value.
+func renderHCLList(items interface{}, label string, escape bool) raymond.SafeString {
+	if items == nil {
+		return "[]"
+	}
+
+	v := reflect.ValueOf(items)
+	if v.Kind() != reflect.Slice && v.Kind() != reflect.Array {
+		panic(fmt.Errorf("%s: expected a list, got %T (%s)", label, items, formatYAMLValue(items)))
+	}
+
+	// A typed nil slice ([]string(nil)) marshals to `null`, which is not a
+	// valid HCL list. It means what an absent key means: nothing was set.
+	if v.Kind() == reflect.Slice && v.IsNil() {
+		return "[]"
+	}
+
+	// Convert map[interface{}]interface{} to map[string]interface{} for JSON compatibility
+	converted := convertToJSONCompatible(items)
+	if escape {
+		converted = escapeHCLTemplateOpeners(converted)
+	}
+
+	jsonBytes, err := json.Marshal(converted)
+	if err != nil {
+		panic(fmt.Errorf("%s: cannot render %s as a list: %w", label, formatYAMLValue(items), err))
+	}
+	return raymond.SafeString(jsonBytes)
+}
+
 func registerCustomHelpersOnce() {
 	// array renders a YAML list as a JSON array, which is valid HCL for a
-	// list(...) variable.
+	// list(...) variable. See renderHCLList for the nil and wrong-type rules.
 	//
-	// An absent key is an empty list. All twenty {{array ...}} sites in
-	// env/main.hbs read an optional field, so a config that simply omits one is
-	// well-formed and must still generate. Panicking on nil meant every
-	// hand-written or partial YAML crashed generation instead of producing
-	// output.
-	//
-	// A wrong *type* is a genuine configuration error and still fails — but as an
-	// error, not a panic. raymond's errRecover only converts a panic carrying an
-	// `error` into a returned error and re-panics anything else, so a panic
-	// carrying a string unwinds through raymond and prints a Go stack trace at
-	// the user. That is never the right way to report a bad YAML value.
+	// It deliberately does NOT escape HCL template openers. Changing that would
+	// alter the rendering of every existing environment — {{{array services}}}
+	// at env/main.hbs alone travels through every service field — and break the
+	// zero-diff contract for a hazard that predates the compute pools. New call
+	// sites that carry user-controlled strings use hclArray instead.
 	raymond.RegisterHelper("array", func(items interface{}) raymond.SafeString {
-		if items == nil {
-			return "[]"
+		return renderHCLList(items, arrayHelperErr, false)
+	})
+
+	// hclArray is `array` with hclEscapeString applied to every string in the
+	// tree, recursively, before json.Marshal. Use it for any list whose
+	// contents came out of a YAML file a user edits: instance_policies[].
+	// resources carries ${aws:PrincipalTag/...} routinely, and an unescaped one
+	// is an interpolation Terraform tries to resolve.
+	raymond.RegisterHelper("hclArray", func(items interface{}) raymond.SafeString {
+		return renderHCLList(items, hclArrayHelperErr, true)
+	})
+
+	// hclString renders a scalar as a COMPLETE quoted HCL string literal —
+	// quotes included, so the call site is `ami_id = {{{hclString ami_id}}}`
+	// and not `ami_id = "{{...}}"`.
+	//
+	// Two hazards, and they need different treatment, which is why this is not
+	// the same helper as hclEscape:
+	//
+	//  1. `"` and `\` must be backslash-escaped or the value simply ends the
+	//     HCL string early and whatever follows is parsed as HCL. Rendering the
+	//     value through a double-stache instead would have raymond HTML-escape
+	//     it — no breakout, but `&quot;` written into main.tf as data.
+	//  2. `${` and `%{` must be doubled, which no JSON encoder does.
+	//
+	// json.Marshal supplies (1) — HCL's quoted-template escapes are JSON's —
+	// and hclEscapeString supplies (2), applied first so the encoder cannot
+	// re-escape the doubling.
+	raymond.RegisterHelper("hclString", func(value interface{}) raymond.SafeString {
+		if value == nil {
+			return `""`
 		}
-
-		v := reflect.ValueOf(items)
-		if v.Kind() != reflect.Slice && v.Kind() != reflect.Array {
-			panic(fmt.Errorf("%s: expected a list, got %T (%s)", arrayHelperErr, items, formatYAMLValue(items)))
-		}
-
-		// A typed nil slice ([]string(nil)) marshals to `null`, which is not a
-		// valid HCL list. It means what an absent key means: nothing was set.
-		if v.Kind() == reflect.Slice && v.IsNil() {
-			return "[]"
-		}
-
-		// Convert map[interface{}]interface{} to map[string]interface{} for JSON compatibility
-		converted := convertToJSONCompatible(items)
-
-		jsonBytes, err := json.Marshal(converted)
+		encoded, err := json.Marshal(hclEscapeString(fmt.Sprintf("%v", value)))
 		if err != nil {
-			panic(fmt.Errorf("%s: cannot render %s as a list: %w", arrayHelperErr, formatYAMLValue(items), err))
+			panic(fmt.Errorf("hclString helper: cannot render %s as a string: %w", formatYAMLValue(value), err))
 		}
-		return raymond.SafeString(jsonBytes)
+		return raymond.SafeString(encoded)
+	})
+
+	// hclEscape doubles the HCL template openers and does nothing else. It is
+	// for a HEREDOC body, where hclString would be wrong twice over: the
+	// surrounding quotes do not belong there, and HCL processes backslash
+	// escapes only inside quoted templates, so a `\"` emitted into a heredoc
+	// stays a literal backslash and corrupts the user's script.
+	//
+	// The call site must use the triple-stache. {{hclEscape x}} runs raymond's
+	// HTML escaper over the result, turning `echo "hi"` into
+	// `echo &quot;hi&quot;` inside the generated main.tf.
+	raymond.RegisterHelper("hclEscape", func(value interface{}) raymond.SafeString {
+		if value == nil {
+			return ""
+		}
+		return raymond.SafeString(hclEscapeString(fmt.Sprintf("%v", value)))
+	})
+
+	// hclHeredoc is hclEscape plus the delimiter, so the call site is
+	// `user_data_extra = {{{hclHeredoc user_data_extra}}}` and nothing in the
+	// template names EOT. See hclHeredocString: a template that writes its own
+	// `<<-EOT` fences cannot react to a body that contains one.
+	//
+	// The triple-stache matters here for the same reason it does for hclEscape:
+	// {{hclHeredoc x}} would HTML-escape the script.
+	raymond.RegisterHelper("hclHeredoc", func(value interface{}) raymond.SafeString {
+		if value == nil {
+			return `""`
+		}
+		return raymond.SafeString(hclHeredocString(fmt.Sprintf("%v", value)))
 	})
 
 	//   [{ "name" : "PG_DATABASE_HOST", "value" : var.db_endpoint }, ...]

@@ -10,6 +10,7 @@ import (
 	"github.com/aymerick/raymond"
 	"github.com/charmbracelet/huh"
 	"github.com/samber/lo"
+	pricingpkg "madappgang.com/meroku/pricing"
 )
 
 func deployMenu() {
@@ -86,10 +87,17 @@ func runCommandToDeploy(env string) error {
 		os.Exit(1)
 	}
 
+	// One context for the whole of this deploy's AWS work, hoisted above the
+	// pre-flight rather than created after it: the EC2 compute pool checks in
+	// step 8 spend up to 45 seconds on sequential dry runs, and they belong to
+	// the same cancellation as the DNS pre-flight and the state reconnect
+	// below.
+	ctx := context.Background()
+
 	// Run comprehensive AWS pre-flight checks BEFORE changing directory
 	// This validates credentials, checks/creates S3 bucket, and handles SSO refresh
 	fmt.Printf("\n🚀 Starting deployment for environment: %s\n", env)
-	if err := AWSPreflightCheck(e); err != nil {
+	if err := AWSPreflightCheckContext(ctx, e); err != nil {
 		fmt.Printf("\n%v\n\n", err)
 		fmt.Println("❌ Pre-flight checks failed. Please fix the issues above and try again.")
 		os.Exit(1)
@@ -99,7 +107,6 @@ func runCommandToDeploy(env string) error {
 	// terraform. An undelegated DNS zone otherwise parks the whole apply on ACM
 	// validation, because module.workloads consumes certificate ARNs that come
 	// from aws_acm_certificate_validation.
-	ctx := context.Background()
 	needsZoneBootstrap := false
 
 	dnsResult, dnsErr := checkDNSPreflight(ctx, e)
@@ -182,6 +189,43 @@ func runCommandToDeploy(env string) error {
 	return runTerraformApply()
 }
 
+// envFileSearchPaths is where a config named <env> may live, in the order
+// loadEnvWithMigration (app/migrations.go) searches. It is duplicated rather
+// than shared because the loader takes a NAME and returns an Env, while
+// everything below needs the PATH — to stat it, to name it in an error, and to
+// hand it to loadEnvToMap, which reads a path directly.
+//
+// The order is the contract. `project/<env>.yaml` is the layout this repository
+// itself uses and documents (project/dev.yaml, project/prod.yaml), and every
+// caller that went through the loader — the TUI, the web UI, `meroku deploy`'s
+// own loadEnv — has always found it. Only the generate path looked at the
+// working-directory root alone, so a correctly laid-out project could be
+// deployed but not generated, and the message it got named a file that was
+// never supposed to be there.
+func envFileSearchPaths(env string) []string {
+	return []string{
+		env + ".yaml",
+		filepath.Join("project", env+".yaml"),
+		filepath.Join("..", "..", "project", env+".yaml"),
+		filepath.Join("..", env+".yaml"),
+	}
+}
+
+// resolveEnvFilePath returns the first path in envFileSearchPaths that exists.
+//
+// The error lists every path tried, because "not found" about a file the user
+// is looking straight at is the least useful thing this could say.
+func resolveEnvFilePath(env string) (string, error) {
+	paths := envFileSearchPaths(env)
+	for _, path := range paths {
+		if info, err := os.Stat(path); err == nil && !info.IsDir() {
+			return path, nil
+		}
+	}
+	return "", fmt.Errorf("environment file '%s.yaml' not found — looked in: %s",
+		env, strings.Join(paths, ", "))
+}
+
 // generateEnvironmentFiles writes env/<env>/ from <env>.yaml — the whole of what
 // `meroku generate` does to disk, and nothing else.
 //
@@ -197,9 +241,8 @@ func runCommandToDeploy(env string) error {
 func generateEnvironmentFiles(env string) error {
 	registerCustomHelpers()
 
-	envFile := env + ".yaml"
-	if _, err := os.Stat(envFile); err != nil {
-		return fmt.Errorf("environment file '%s' not found", envFile)
+	if _, err := resolveEnvFilePath(env); err != nil {
+		return err
 	}
 	templateFile := filepath.Join("infrastructure", "env", "main.hbs")
 	if _, err := os.Stat(templateFile); err != nil {
@@ -273,7 +316,16 @@ func applyTemplate(env string) {
 		os.Exit(1)
 	}
 
-	envMap, err := loadEnvToMap(env + ".yaml")
+	// Resolved rather than assumed to be at the working-directory root: this is
+	// the same order loadEnvWithMigration uses, so a project laid out as
+	// project/<env>.yaml generates exactly where it already deploys.
+	envFile, err := resolveEnvFilePath(env)
+	if err != nil {
+		fmt.Printf("error loading environment: %v\n", err)
+		os.Exit(1)
+	}
+
+	envMap, err := loadEnvToMap(envFile)
 	if err != nil {
 		fmt.Printf("error loading environment: %v", err)
 		os.Exit(1)
@@ -283,14 +335,14 @@ func applyTemplate(env string) {
 	// JWKS endpoint nobody chose. Failing here costs a second; the same mistake
 	// found by terraform costs an apply.
 	if err := validateAppSyncConfigMap(envMap); err != nil {
-		fmt.Printf("\n❌ Invalid configuration in %s.yaml:\n\n%v\n\n", env, err)
+		fmt.Printf("\n❌ Invalid configuration in %s:\n\n%v\n\n", envFile, err)
 		os.Exit(1)
 	}
 
 	// An ALB with no certificate plans clean and fails from AWS part-way through
 	// the apply, leaving a half-built stack. Cheaper to refuse here.
 	if err := validateALBConfigMap(envMap); err != nil {
-		fmt.Printf("\n❌ Invalid configuration in %s.yaml:\n\n%v\n\n", env, err)
+		fmt.Printf("\n❌ Invalid configuration in %s:\n\n%v\n\n", envFile, err)
 		os.Exit(1)
 	}
 
@@ -300,10 +352,13 @@ func applyTemplate(env string) {
 	// exist yet there is nothing to relocate.
 	warnOnRegionDrift(stringFromMap(envMap, "region"), stringFromMap(envMap, "aws_profile"))
 
-	// Filter out disabled services (enabled=false) before rendering
-	filterDisabledItems(envMap, "services")
-	filterDisabledItems(envMap, "scheduled_tasks")
-	filterDisabledItems(envMap, "event_processor_tasks")
+	// Everything that happens to envMap between loading and rendering: the
+	// disabled-item filter, the zero-config pool, and the compute refusals that
+	// have to see the result of both.
+	if err := preprocessEnvMap(envMap); err != nil {
+		fmt.Printf("\n❌ Invalid configuration in %s:\n\n%v\n\n", envFile, err)
+		os.Exit(1)
+	}
 
 	envMap["modules"] = "../../infrastructure/modules"
 	envMap["custom_modules"] = "../../custom"
@@ -335,6 +390,169 @@ func applyTemplate(env string) {
 	generateBridgeFile(env, envMap)
 
 	os.WriteFile(filepath.Join("env", env, "main.tf"), []byte(result), 0o644)
+}
+
+// preprocessEnvMap runs everything applyTemplate does to envMap between
+// loading and rendering, in order: filterDisabledItems x3, then
+// synthesizeDefaultComputePool, then validateComputeConfigMap. Path and
+// custom-module flags stay with each caller, because they differ.
+//
+// It exists because the render tests used to hand-replicate this block
+// (autodeploy_template_test.go). The moment applyTemplate gained a step, every
+// one of those tests exercised a pipeline that no longer existed — silently,
+// because a copied comment claiming "applyTemplate does these before rendering"
+// cannot go stale in a way the compiler notices. One function can.
+//
+// The order is the contract, not an accident. Filtering first means a disabled
+// service's dangling compute_pool is never refused. Synthesis before validation
+// means the FR-58 zero-config case — runtime: ec2 and nothing else — is the one
+// case the validator never sees as broken. DEV-9.
+func preprocessEnvMap(envMap map[string]interface{}) error {
+	filterDisabledItems(envMap, "services")
+	filterDisabledItems(envMap, "scheduled_tasks")
+	filterDisabledItems(envMap, "event_processor_tasks")
+
+	synthesizeDefaultComputePool(envMap)
+
+	return validateComputeConfigMap(envMap)
+}
+
+// synthesizeDefaultComputePool makes `runtime: ec2` a working one-line change
+// (FR-58).
+//
+// The injection and the reference to it are ONE operation. A pool that nothing
+// points at is not a convenience, it is a broken plan:
+//
+//	$ task infra-plan env=dev
+//	Error: Invalid index
+//	  aws_ecs_capacity_provider.pool[""]
+//
+// It writes to the in-memory map only, never to the user's YAML: generation is
+// not a mutating command, and making it one to save a print would be a much
+// larger promise than this feature needs. The cost — the synthesized pool never
+// appears in `git diff` — is paid for by the printout below, which states every
+// value it chose.
+//
+// The synthesized pool is deliberately NOT what the recommender would suggest.
+// capacity_type is on_demand rather than spot_with_base and network_mode is
+// bridge rather than awsvpc: a pool nobody asked for is not the place to opt
+// someone into spot interruption, and certainly not into a network mode with no
+// egress (DEV-13, D-6).
+func synthesizeDefaultComputePool(envMap map[string]interface{}) {
+	// 1. Which units run on EC2, and which of them name no pool.
+	type ec2Unit struct {
+		node interface{}
+		key  string // the field holding the pool name on that node
+	}
+	var units []ec2Unit
+
+	if workloadRaw, exists := envMap["workload"]; exists {
+		if workload, ok := computeNodeMap(workloadRaw); ok {
+			if computeStringField(workload, "backend_runtime") == computeRuntimeEC2 {
+				units = append(units, ec2Unit{node: workloadRaw, key: "backend_compute_pool"})
+			}
+		}
+	}
+	if servicesRaw, exists := envMap["services"]; exists {
+		if list, ok := servicesRaw.([]interface{}); ok {
+			for _, item := range list {
+				svc, ok := computeNodeMap(item)
+				if !ok {
+					continue
+				}
+				if computeStringField(svc, "runtime") == computeRuntimeEC2 {
+					units = append(units, ec2Unit{node: item, key: "compute_pool"})
+				}
+			}
+		}
+	}
+
+	// 2. No EC2 anywhere — every environment that exists today. Change nothing.
+	if len(units) == 0 {
+		return
+	}
+
+	// 3. The user has pools. Theirs win, and a unit with an empty compute_pool
+	//    is validateComputeConfigMap's rule 9 rather than a guess about which
+	//    of their pools they meant.
+	if len(computePoolViews(envMap)) > 0 {
+		return
+	}
+
+	// 4. Inject the pool AND rewrite the references to it, together. A unit
+	//    that already names a pool is never rewritten: with no pools defined it
+	//    can only be naming one that does not exist, which rule 1 refuses two
+	//    steps later with a better message than any guess here would be.
+	instanceTypes := pricingpkg.FallbackDefaultPoolInstanceTypes()
+	types := make([]interface{}, 0, len(instanceTypes))
+	for _, t := range instanceTypes {
+		types = append(types, t)
+	}
+
+	pool := map[string]interface{}{
+		"name":            "default",
+		"enabled":         true,
+		"instance_types":  types,
+		"capacity_type":   "on_demand",
+		"min_size":        1,
+		"max_size":        6,
+		"target_capacity": 100,
+		"network_mode":    computeNetworkBridge,
+		"ami_family":      computeAMIFamilyAL2023,
+		"root_volume_gb":  30,
+	}
+
+	compute := map[string]interface{}{}
+	if existing, ok := yamlSubMap(envMap, "compute"); ok {
+		for k, v := range existing {
+			compute[k] = v
+		}
+	}
+	compute["pools"] = []interface{}{pool}
+	envMap["compute"] = compute
+
+	rewritten := 0
+	for _, u := range units {
+		node, ok := computeNodeMap(u.node)
+		if !ok {
+			continue
+		}
+		if computeStringField(node, u.key) != "" {
+			continue
+		}
+		if computeSetString(u.node, u.key, "default") {
+			rewritten++
+		}
+	}
+
+	// 5. Say what was done, with the numbers, in the migration runner's tone.
+	//    This print is the only place the synthesized pool is visible, so it
+	//    prints even when nothing was rewritten.
+	fmt.Printf("  → No compute pool defined; synthesizing pool \"default\" for %d EC2 workload(s)\n", len(units))
+	fmt.Printf("      instance_types:  %s\n", strings.Join(instanceTypes, ", "))
+	fmt.Printf("      capacity_type:   on_demand\n")
+	fmt.Printf("      network_mode:    %s\n", computeNetworkBridge)
+	fmt.Printf("      size:            min 1, max 6, target capacity 100\n")
+	if rewritten < len(units) {
+		fmt.Printf("      note:            %d workload(s) already name a pool and were left alone\n", len(units)-rewritten)
+	}
+}
+
+// computeSetString writes a string into a YAML node IN PLACE, whichever of the
+// two map shapes it is — so a caller that never ran convertToJSONCompatible
+// keeps its map[interface{}]interface{} nodes and the template still sees the
+// value.
+func computeSetString(raw interface{}, key, value string) bool {
+	switch m := raw.(type) {
+	case map[string]interface{}:
+		m[key] = value
+		return true
+	case map[interface{}]interface{}:
+		m[key] = value
+		return true
+	default:
+		return false
+	}
 }
 
 // filterDisabledItems removes items with enabled=false from the given key in env map

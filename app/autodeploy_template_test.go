@@ -56,10 +56,14 @@ func renderMainHBS(t *testing.T, overlay map[string]interface{}) string {
 		t.Fatal("fixture yaml is not a mapping")
 	}
 
-	// applyTemplate does these before rendering.
-	filterDisabledItems(envMap, "services")
-	filterDisabledItems(envMap, "scheduled_tasks")
-	filterDisabledItems(envMap, "event_processor_tasks")
+	// The real pre-processing, not a copy of it: filters, then the zero-config
+	// compute pool, then the compute refusals. Calling the same function
+	// applyTemplate calls is what keeps every render test below on the pipeline
+	// that actually ships — a hand-replicated block went stale silently the
+	// first time applyTemplate gained a step.
+	if err := preprocessEnvMap(envMap); err != nil {
+		t.Fatalf("pre-processing the fixture config: %v", err)
+	}
 	envMap["modules"] = "../../infrastructure/modules"
 	envMap["custom_modules"] = "../../custom"
 	envMap["has_custom_pre"] = false
