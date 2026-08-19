@@ -566,6 +566,8 @@ textarea.mp-control,
 	background: rgb(0 0 0 / 36%);
 	border: 1px solid var(--mp-border);
 	border-radius: 6px;
+	font-size: var(--mp-type-control);
+	line-height: 18px;
 }
 
 .mp-readonly__value {
