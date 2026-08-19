@@ -36,7 +36,8 @@ import (
 // 23: Add AppSync auth_mode (cognito/oidc/lambda) and explicit api_key_enabled
 // 24: Repair the misspelt cognito.dashboard_callback_ur_ls key
 // 25: Normalize scheduled_tasks[].container_command from a scalar to list(string)
-const CurrentSchemaVersion = 25
+// 26: Add runtime (fargate|ec2) and compute_pool to the backend and services, for EC2 capacity pools
+const CurrentSchemaVersion = 26
 
 // EnvWithVersion extends Env with a schema version field
 type EnvWithVersion struct {
@@ -172,6 +173,11 @@ var AllMigrations = []Migration{
 		Version:     25,
 		Description: "Normalize scheduled_tasks container_command from a scalar to list(string)",
 		Apply:       migrateToV25,
+	},
+	{
+		Version:     26,
+		Description: "Add backend_runtime and per-service runtime (EC2 capacity pools)",
+		Apply:       migrateToV26,
 	},
 }
 

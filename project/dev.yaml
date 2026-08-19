@@ -71,6 +71,7 @@ event_processor_tasks:
   - SERVICE_DEPLOYMENT_IN_PROGRESS
   ecr_config:
     mode: create_ecr
+  enabled: true
   name: event_task1
   rule_name: hug_all
   rules:
@@ -96,39 +97,51 @@ postgres:
   max_capacity: 1
   min_capacity: 0
   multi_az: false
-  public_access: true
+  public_access: false
   skip_final_snapshot: true
   storage_encrypted: true
   username: dbadmin
 project: instagram
 pubsub_appsync:
+  api_key_enabled: false
   auth_lambda: false
+  auth_mode: lambda
   enabled: false
+  jwks_uri: ""
+  jwt_audience: ""
+  jwt_issuer: ""
   resolvers: false
   schema: false
 region: ap-southeast-2
 scheduled_tasks:
-- ecr_config:
+- auto_deploy: true
+  ecr_config:
     mode: create_ecr
+  enabled: true
   name: task1
   schedule: rate(1 minutes)
-- ecr_config:
+- auto_deploy: true
+  ecr_config:
     mode: create_ecr
+  enabled: true
   name: task2
   schedule: rate(1 hours)
-schema_version: 18
+schema_version: 26
 services:
-- container_port: 3000
+- auto_deploy: true
+  container_port: 3000
   cpu: 256
   desired_count: 3
   ecr_config:
     mode: create_ecr
+  enabled: true
   env_vars:
     SERVICE_TEST: PASSED
   host_port: 3000
   memory: 512
   name: service1
   remote_access: true
+  runtime: fargate
   xray_enabled: false
 ses:
   domain_name: null
@@ -147,6 +160,7 @@ use_default_vpc: true
 vpc_cidr: 10.0.0.0/16
 workload:
   backend_alb_domain_name: alb.instagram.madappgang.com.au
+  backend_auto_deploy: true
   backend_autoscaling_enabled: true
   backend_autoscaling_max_capacity: 10
   backend_autoscaling_min_capacity: 2
@@ -157,6 +171,7 @@ workload:
   backend_health_endpoint: null
   backend_image_port: 8080
   backend_memory: "1024"
+  backend_runtime: fargate
   bucket_postfix: null
   bucket_public: false
   enable_github_oidc: false
