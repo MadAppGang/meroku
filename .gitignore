@@ -33,7 +33,17 @@ modules/workloads/ci_lambda/bootstrap
 app/infrastructure
 app/dev.yaml
 app/prod.yaml
-app/prod.yaml
+
+# meroku writes <env>.yaml into whatever directory it is run from, and that file
+# carries account_id, aws_profile, state bucket names and notification emails.
+# Only app/*.yaml was ignored, so running the binary from the repository root —
+# which is the natural thing to do while developing — dropped a config holding a
+# real AWS account ID into an unignored path in a PUBLIC repository, one
+# `git add -A` away from being published. The tracked sample lives at
+# project/dev.yaml and is deliberately blank; these are the runtime ones.
+/dev.yaml
+/prod.yaml
+/staging.yaml
 modules/appsync/auth_lambda/.yarn
 modules/appsync/auth_lambda/node_modules
 modules/appsync/auth_lambda.zip
@@ -78,3 +88,11 @@ modules/neon/scripts/db-access.json
 /web/.playwright-cli
 /web/output/playwright/.playwright-cli
 /web/output/playwright
+
+# Working artifacts from AI-assisted development sessions: requirements drafts,
+# review transcripts, decision logs, captured diffs. They are scratch material,
+# not documentation — and they routinely quote real account IDs, ARNs, policy
+# IDs and hostnames straight out of live AWS responses, which this PUBLIC repo
+# must never carry. Finished documentation belongs in ai_docs/ directly, where
+# it gets written with synthetic placeholders.
+ai_docs/sessions/
