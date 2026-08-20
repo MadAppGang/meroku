@@ -1,5 +1,90 @@
 # Changelog
 
+## v4.3.0
+
+ECS tasks can now reach the internet through a NAT Gateway instead of each
+carrying its own public IPv4 address. Existing environments are unchanged: the
+schema migration stamps `egress_strategy: public_ip` everywhere, which is
+exactly what meroku generated before the field existed, so the next plan after
+upgrading is empty.
+
+### Why there is a choice at all
+
+Every task in `awsvpc` mode needs outbound access to pull its image, ship logs
+and call third-party APIs. The two ways of providing it are priced on different
+axes, and neither one wins everywhere:
+
+- a **public IPv4 address** costs $3.65/task/month and nothing per GB
+- a **NAT Gateway** costs $32.85/month flat and nothing per task
+
+So the cost of public IPs grows with every service you add while ignoring
+traffic entirely, and the cost of a NAT ignores service count while growing
+with traffic. They cross at roughly **5 services**, or **10 in production**,
+which runs one NAT per Availability Zone.
+
+| Services | Tasks | Public IPv4 | NAT (single) | NAT (per AZ) |
+|---|---|---|---|---|
+| 3 | 6 | **$21.90** | $35.60 | $67.95 |
+| 5 | 10 | **$36.50** | $37.25 | $69.30 |
+| 8 | 16 | $58.40 | **$39.45** | $71.10 |
+| 20 | 40 | $146.00 | **$49.35** | $79.20 |
+
+The crossing is gentle rather than a cliff — at 5 services the two options are
+under a dollar apart — so switching late costs very little.
+
+### egress_strategy
+
+```yaml
+egress_strategy: public_ip       # default; a public IPv4 per task
+egress_strategy: nat_gateway     # private subnets behind one NAT
+egress_strategy: nat_gateway_ha  # private subnets behind one NAT per AZ
+```
+
+`modules/vpc` gains private subnets, NAT Gateways and private route tables, all
+count-gated so a `public_ip` environment's plan stays exactly as it is today.
+Under `nat_gateway_ha` each private route table points at the NAT in its own
+zone, which avoids the $0.01/GB-each-way cross-AZ transfer charge.
+
+Switching also improves the security posture rather than trading against it:
+under either NAT strategy the tasks have no public address at all.
+
+### The free S3 gateway endpoint is now always created
+
+Gateway endpoints, unlike interface endpoints, have no hourly charge and no
+per-GB charge. Under `public_ip` it changes nothing measurable. Under a NAT it
+keeps ECR image layers — the largest single component of task egress — off the
+NAT entirely, avoiding $0.045/GB for no cost.
+
+### Networking is no longer reported as free
+
+`calculateVPCPricing` returned `$0` and `"cost": "Free"` while every task
+quietly accrued $3.65/month, including tasks an autoscaler adds without anyone
+deciding to. It now prices the public IPv4 addresses an environment actually
+uses. The pricing endpoint also carries an `egress` advisory saying where the
+environment sits relative to the switch threshold; it never blocks anything.
+
+### Composing with EC2 compute pools
+
+`assign_public_ip` is a variable now rather than a hardcoded `true`, and it is
+composed with the capacity-pool condition from v4.2.0: a task gets an address
+only if it is on Fargate **and** the strategy asks for one. ECS rejects
+`ENABLED` for EC2, so both conditions have to hold.
+
+### Switching an existing environment
+
+- `public_ip` → `nat_gateway` **is disruptive**. The API Gateway VPC link is
+  replaced rather than updated, because its subnets cannot be changed in place
+  (about two minutes), and the tasks cycle. Treat it as a maintenance action.
+- `nat_gateway` → `nat_gateway_ha` **is not**. It adds a NAT and repoints one
+  route table; no ECS service is touched.
+
+A NAT strategy on the default VPC is rejected at generation time — the default
+VPC has only public subnets, so it would otherwise plan clean and fail
+part-way through the apply.
+
+The full cost model, its sources and the growth curves are in
+`ai_docs/EGRESS_COST_MODEL.md`.
+
 ## v4.2.0
 
 ECS can now run on EC2 as well as Fargate, chosen per service. Everything that
