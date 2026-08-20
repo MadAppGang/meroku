@@ -68,9 +68,41 @@ export interface NodePricing {
 	attributedFrom?: string[];
 }
 
+/** Mirrors EgressStrategy in app/egress_advisor.go. */
+export type EgressStrategy = "public_ip" | "nat_gateway" | "nat_gateway_ha";
+
+export interface EgressFootprint {
+	Services: number;
+	Tasks: number;
+	AZs: number;
+	TrafficGB: number;
+}
+
+/**
+ * A non-blocking recommendation about how ECS tasks should reach the internet.
+ *
+ * Public IPv4 costs per task and nothing per GB; a NAT Gateway costs a flat
+ * hourly rate and nothing per task. They cross at roughly 5 services (10 in
+ * production, which runs one NAT per AZ). Mirrors EgressAdvice in
+ * app/egress_advisor.go — see ai_docs/EGRESS_COST_MODEL.md.
+ */
+export interface EgressAdvice {
+	footprint: EgressFootprint;
+	current: EgressStrategy;
+	recommended: EgressStrategy;
+	shouldSwitch: boolean;
+	threshold: number;
+	currentMonthlyCost: number;
+	switchedMonthlyCost: number;
+	monthlySaving: number;
+	servicesUntilSwitch: number;
+	summary: string;
+}
+
 export interface PricingResponse {
 	region: string;
 	nodes: Record<string, NodePricing>;
+	egress?: EgressAdvice;
 }
 
 export function usePricing(

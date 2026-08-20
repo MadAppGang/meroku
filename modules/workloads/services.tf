@@ -169,9 +169,11 @@ resource "aws_ecs_service" "services" {
   dynamic "network_configuration" {
     for_each = local.service_network_modes[each.key] == "awsvpc" ? [1] : []
     content {
-      security_groups  = [aws_security_group.services[each.key].id]
-      subnets          = var.subnet_ids
-      assign_public_ip = local.service_pools[each.key] == null
+      security_groups = [aws_security_group.services[each.key].id]
+      subnets         = var.subnet_ids
+      # Fargate AND the egress strategy must both want an address. See the same
+      # expression in backend.tf, and ai_docs/EGRESS_COST_MODEL.md.
+      assign_public_ip = local.service_pools[each.key] == null && var.assign_public_ip
     }
   }
 

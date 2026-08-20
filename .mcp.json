@@ -6,6 +6,10 @@
         "-y",
         "chrome-devtools-mcp@latest"
       ]
+    },
+    "stacktree": {
+      "type": "http",
+      "url": "https://api.stacktr.ee/mcp"
     }
   }
 }

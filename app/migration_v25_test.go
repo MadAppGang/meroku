@@ -165,8 +165,8 @@ func TestMigrateToV25LeavesOtherShapesAlone(t *testing.T) {
 // without it ever running.
 //
 // This used to also assert CurrentSchemaVersion == 25. That assertion belongs
-// to whichever version is current, not to v25, so schema v26 moved it into
-// TestV26IsRegisteredAtTheCurrentVersion and it moves again with the next bump.
+// to whichever version is current, not to v25, so it now lives in
+// TestV27IsRegisteredAtTheCurrentVersion and moves again with the next bump.
 // Pinning it here made every future schema version fail a test about the past.
 func TestV25IsRegistered(t *testing.T) {
 	for _, migration := range AllMigrations {

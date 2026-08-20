@@ -424,13 +424,13 @@ scheduled_tasks:
 	}
 }
 
-// The version constant, the history comment and the registered migration list
-// have to agree, or a file migrates to a version whose migration never ran.
-func TestV26IsRegisteredAtTheCurrentVersion(t *testing.T) {
-	if CurrentSchemaVersion != 26 {
-		t.Fatalf("CurrentSchemaVersion = %d, want 26", CurrentSchemaVersion)
-	}
-
+// v26 has to stay in the registry, or a file that is behind migrates past it
+// without it ever running.
+//
+// This used to also assert CurrentSchemaVersion == 26, the same way the v25
+// test once pinned 25. That assertion belongs to whichever version is current,
+// so schema v27 moved it into TestV27IsRegisteredAtTheCurrentVersion.
+func TestV26IsRegistered(t *testing.T) {
 	var v26 *Migration
 	for index := range AllMigrations {
 		if AllMigrations[index].Version == 26 {
