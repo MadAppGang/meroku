@@ -346,6 +346,13 @@ func applyTemplate(env string) {
 		os.Exit(1)
 	}
 
+	// A NAT egress strategy on the default VPC generates a module call with an
+	// empty subnet list: it plans clean and fails during the apply.
+	if err := validateEgressStrategyMap(envMap); err != nil {
+		fmt.Printf("\n❌ Invalid configuration in %s.yaml:\n\n%v\n\n", env, err)
+		os.Exit(1)
+	}
+
 	// The template pins the provider region from this config. Say so now if the
 	// shell disagrees, so an existing stack's relocation is not first seen as a
 	// destroy in the plan. A warning, not an error: on a stack that does not

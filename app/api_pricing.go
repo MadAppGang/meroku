@@ -18,6 +18,10 @@ import (
 type PricingResponse struct {
 	Region string                 `json:"region"`
 	Nodes  map[string]NodePricing `json:"nodes"`
+	// Egress is a non-blocking recommendation about how tasks should reach
+	// the internet. Advisory only: it never blocks a plan or an apply, and
+	// acting on it is the operator's choice. See ai_docs/EGRESS_COST_MODEL.md.
+	Egress EgressAdvice `json:"egress"`
 }
 
 // NodePricing represents pricing for a single node/service
@@ -357,11 +361,16 @@ func getPricing(w http.ResponseWriter, r *http.Request) {
 		response.Nodes["ecr"] = *ecrPricing
 	}
 
-	// 13. VPC pricing (for endpoints if used)
-	vpcPricing := calculateVPCPricing(region)
+	// 13. VPC pricing. The VPC, its subnets and the Internet Gateway are free,
+	// but the public IPv4 address meroku puts on every task is not, so this is
+	// priced from the actual task count rather than reported as $0.
+	vpcPricing := calculateVPCPricing(region, &env)
 	if vpcPricing != nil {
 		response.Nodes["vpc"] = *vpcPricing
 	}
+
+	// 14. Egress strategy advice. Advisory only — never blocks anything.
+	response.Egress = AdviseEgress(&env)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
@@ -966,22 +975,48 @@ func calculateECRPricing(ctx context.Context, client *pricing.Client, region str
 	return nodePricing
 }
 
-func calculateVPCPricing(region string) *NodePricing {
+// calculateVPCPricing prices the networking an environment actually pays for.
+//
+// The VPC itself, its subnets, route tables, security groups and the Internet
+// Gateway are all free, and the HTTP API VPC Links meroku creates carry no
+// hourly charge either. What is NOT free is the public IPv4 address attached to
+// every ECS task ($0.005/hr each), which is easy to miss precisely because
+// every other part of the network is free.
+//
+// Reporting this as "Free" hid a charge that scales linearly with task count —
+// including tasks an autoscaler adds without anyone deciding to. See
+// ai_docs/EGRESS_COST_MODEL.md.
+func calculateVPCPricing(region string, env *Env) *NodePricing {
 	nodePricing := &NodePricing{
-		ServiceName: "VPC",
+		ServiceName: "VPC & networking",
 		ServiceType: "networking",
 		Levels:      make(map[string]LevelPrice),
 	}
 
-	// VPC is free, but we'll show it with $0 pricing
+	footprint := countEgressFootprint(env)
+
 	for level := range WorkloadSpecs {
+		// Steady-state tasks carry a public IP each. Workload level scales the
+		// backend task count, so price the level's own count where it is
+		// higher than the configured one.
+		tasks := footprint.Tasks
+		if specs, ok := WorkloadSpecs[level]; ok {
+			if levelCount, ok := specs["ecs_desired_count"].(int); ok && levelCount > 1 {
+				tasks = footprint.Tasks + (levelCount - 1)
+			}
+		}
+
+		monthly := publicIPv4Monthly * float64(tasks)
+
 		nodePricing.Levels[level] = LevelPrice{
-			HourlyPrice:  0,
-			MonthlyPrice: 0,
+			HourlyPrice:  publicIPv4Hourly * float64(tasks),
+			MonthlyPrice: monthly,
 			Details: map[string]string{
-				"subnets":        "6",
-				"securityGroups": "Multiple",
-				"cost":           "Free",
+				"subnets":           fmt.Sprintf("%d public", footprint.AZs),
+				"securityGroups":    "Multiple",
+				"publicIPv4":        fmt.Sprintf("%d × $%.2f/mo", tasks, publicIPv4Monthly),
+				"vpcAndIGW":         "Free",
+				"apiGatewayVPCLink": "Free (HTTP API v2)",
 			},
 		}
 	}

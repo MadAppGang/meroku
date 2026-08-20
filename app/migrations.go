@@ -37,7 +37,8 @@ import (
 // 24: Repair the misspelt cognito.dashboard_callback_ur_ls key
 // 25: Normalize scheduled_tasks[].container_command from a scalar to list(string)
 // 26: Add runtime (fargate|ec2) and compute_pool to the backend and services, for EC2 capacity pools
-const CurrentSchemaVersion = 26
+// 27: Add egress_strategy (public_ip|nat_gateway|nat_gateway_ha) for how tasks reach the internet
+const CurrentSchemaVersion = 27
 
 // EnvWithVersion extends Env with a schema version field
 type EnvWithVersion struct {
@@ -178,6 +179,11 @@ var AllMigrations = []Migration{
 		Version:     26,
 		Description: "Add backend_runtime and per-service runtime (EC2 capacity pools)",
 		Apply:       migrateToV26,
+	},
+	{
+		Version:     27,
+		Description: "Add egress_strategy, defaulting to public_ip (existing behaviour)",
+		Apply:       migrateToV27,
 	},
 }
 
@@ -1831,4 +1837,35 @@ func scalarCommandToList(command string) []interface{} {
 	}
 
 	return []interface{}{command}
+}
+
+// migrateToV27 adds egress_strategy, which decides how ECS tasks reach the
+// internet: their own public IPv4 address, a single NAT Gateway, or one NAT per
+// AZ.
+//
+// Every existing environment gets "public_ip", which is exactly what meroku
+// generated before this field existed, so the migration is a no-op in AWS: the
+// next plan shows no changes. Operators opt into a NAT strategy when their
+// service count makes it cheaper — see ai_docs/EGRESS_COST_MODEL.md for the
+// thresholds, and app/egress_advisor.go for the advisory that surfaces them.
+//
+// Environments on the default VPC are pinned to public_ip regardless, because
+// the default VPC has no private subnets for a NAT strategy to use.
+func migrateToV27(data map[string]interface{}) error {
+	fmt.Println("  → Migrating to v27: Adding egress_strategy")
+
+	if existing, ok := data["egress_strategy"].(string); ok && existing != "" {
+		fmt.Printf("    ℹ️  egress_strategy already set to '%s', leaving it alone\n", existing)
+		return nil
+	}
+
+	data["egress_strategy"] = string(EgressPublicIP)
+
+	if useDefault, ok := data["use_default_vpc"].(bool); ok && useDefault {
+		fmt.Println("    ✓ Set egress_strategy: public_ip (required — the default VPC has no private subnets)")
+		return nil
+	}
+
+	fmt.Println("    ✓ Set egress_strategy: public_ip (current behaviour, no infrastructure change)")
+	return nil
 }

@@ -23,6 +23,11 @@ type Env struct {
 	// VPC Configuration
 	UseDefaultVPC bool   `yaml:"use_default_vpc"`
 	VPCCIDR       string `yaml:"vpc_cidr,omitempty"` // Optional, VPC module has default
+	// EgressStrategy (schema v27) decides how ECS tasks reach the internet:
+	// "public_ip" (default), "nat_gateway", or "nat_gateway_ha". It can be
+	// changed at any time; switching replaces the tasks' network configuration
+	// and triggers a rolling redeploy. See ai_docs/EGRESS_COST_MODEL.md.
+	EgressStrategy string `yaml:"egress_strategy,omitempty"`
 	// ECR Configuration
 	ECRStrategy      string `yaml:"ecr_strategy,omitempty"`       // "local" or "cross_account"
 	ECRAccountID     string `yaml:"ecr_account_id,omitempty"`     // For cross-account ECR access

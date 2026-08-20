@@ -145,9 +145,10 @@ data "aws_subnets" "all" {
 {{else}}
 # Create custom VPC (2 AZs with public subnets only)
 module "vpc" {
-  source   = "{{ modules }}/vpc"
-  project  = "{{ project }}"
-  env      = "{{ env }}"
+  source          = "{{ modules }}/vpc"
+  project         = "{{ project }}"
+  env             = "{{ env }}"
+  egress_strategy = "{{ default egress_strategy "public_ip" }}"
   {{#if vpc_cidr}}
   vpc_cidr = "{{ vpc_cidr }}"
   {{/if}}
@@ -159,6 +160,18 @@ module "vpc" {
 locals {
   vpc_id     = {{#if use_default_vpc}}data.aws_vpc.default.id{{else}}module.vpc.vpc_id{{/if}}
   subnet_ids = {{#if use_default_vpc}}data.aws_subnets.all.ids{{else}}module.vpc.subnet_ids{{/if}}
+
+  # Where ECS tasks run, and whether they need a public IPv4 address.
+  #
+  # These follow egress_strategy: public_ip puts tasks in the public subnets
+  # with an address each, while the NAT strategies move them to private subnets
+  # behind a NAT Gateway and drop the addresses. Internet-facing resources (the
+  # ALB) keep using subnet_ids above, which is always the public set.
+  #
+  # The default VPC has no private subnets, so it is pinned to public_ip
+  # regardless of what the YAML asks for. See ai_docs/EGRESS_COST_MODEL.md.
+  task_subnet_ids  = {{#if use_default_vpc}}data.aws_subnets.all.ids{{else}}module.vpc.task_subnet_ids{{/if}}
+  assign_public_ip = {{#if use_default_vpc}}true{{else}}module.vpc.assign_public_ip{{/if}}
 }
 
 {{#if domain.enabled}}
@@ -521,7 +534,10 @@ module "workloads" {
   {{/if}}
   domain = "{{ domain.domain_name }}"
   vpc_id     = local.vpc_id
-  subnet_ids = local.subnet_ids
+  # ECS tasks and the API Gateway VPC links follow the egress strategy. The ALB
+  # is a separate module and stays on the public subnets.
+  subnet_ids       = local.task_subnet_ids
+  assign_public_ip = local.assign_public_ip
 {{!-- lambda_path is deliberately not emitted: the CI Lambda artifact is built by
       modules/workloads/lambda.tf at apply time into ci_lambda/.build/<env>/, and
       nothing reads a module-root bootstrap. The variable stays declared in
@@ -801,8 +817,9 @@ module "schedule_task_{{name}}" {
   {{#if dlq_arn}}
   dlq_arn = "{{dlq_arn}}"
   {{/if}}
-  subnet_ids = local.subnet_ids
-  vpc_id     = local.vpc_id
+  subnet_ids       = local.task_subnet_ids
+  assign_public_ip = local.assign_public_ip
+  vpc_id           = local.vpc_id
   cluster = module.workloads.ecr_cluster.arn
   {{#if @root.domain.enabled}}
   api_domain = module.domain.api_domain_name
@@ -854,8 +871,9 @@ module "event_bus_task_{{name}}" {
   {{#if container_command}}
   container_command = {{{ container_command }}}
   {{/if}}
-  subnet_ids = local.subnet_ids
-  vpc_id     = local.vpc_id
+  subnet_ids       = local.task_subnet_ids
+  assign_public_ip = local.assign_public_ip
+  vpc_id           = local.vpc_id
   cluster = module.workloads.ecr_cluster.arn
   {{#if @root.domain.enabled}}
   api_domain = module.domain.api_domain_name

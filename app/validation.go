@@ -518,6 +518,63 @@ func validateALBConfigMap(envMap map[string]interface{}) error {
 			"to serve this environment through API Gateway.")
 }
 
+// validateEgressStrategyMap validates egress_strategy on the raw map handed to
+// the template engine.
+//
+// Two failures are worth catching before generation rather than during an
+// apply. An unrecognised value renders straight into the vpc module, where
+// terraform rejects it with a message about a variable the operator never
+// typed. And a NAT strategy on the default VPC renders a module call whose
+// task_subnet_ids resolve to nothing, because the default VPC has no private
+// subnets — that one plans clean and fails at apply with an empty subnet list.
+func validateEgressStrategyMap(envMap map[string]interface{}) error {
+	raw, present := envMap["egress_strategy"]
+	if !present || raw == nil {
+		return nil // absent means public_ip
+	}
+
+	strategy, ok := raw.(string)
+	if !ok {
+		return fmt.Errorf("egress_strategy must be a string, got %T", raw)
+	}
+	if strategy == "" {
+		return nil
+	}
+
+	valid := false
+	for _, candidate := range ValidEgressStrategies {
+		if EgressStrategy(strategy) == candidate {
+			valid = true
+			break
+		}
+	}
+	if !valid {
+		return fmt.Errorf(
+			"egress_strategy: %q is not a valid value.\n\n"+
+				"Expected one of:\n"+
+				"  public_ip       every task gets a public IPv4 address (default, cheapest below ~5 services)\n"+
+				"  nat_gateway     private subnets behind one NAT Gateway\n"+
+				"  nat_gateway_ha  private subnets behind one NAT Gateway per AZ\n\n"+
+				"See ai_docs/EGRESS_COST_MODEL.md for which one fits this environment.",
+			strategy)
+	}
+
+	useDefaultVPC, _ := envMap["use_default_vpc"].(bool)
+	if useDefaultVPC && EgressStrategy(strategy) != EgressPublicIP {
+		return fmt.Errorf(
+			"egress_strategy is %q but use_default_vpc is true.\n\n"+
+				"A NAT strategy runs tasks in private subnets, and the AWS default VPC has\n"+
+				"only public ones. There is nowhere to put the tasks, so generation would\n"+
+				"emit a module call with an empty subnet list that fails part-way through\n"+
+				"the apply.\n\n"+
+				"Either set use_default_vpc: false so meroku creates a VPC with private\n"+
+				"subnets, or set egress_strategy: public_ip.",
+			strategy)
+	}
+
+	return nil
+}
+
 // validateAppSyncConfigMap validates the AppSync block of the raw map that is
 // handed to the template engine. Generation renders from the map, not the
 // struct, so this is the check that actually stands between a misconfigured

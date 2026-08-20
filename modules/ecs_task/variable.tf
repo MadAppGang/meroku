@@ -65,6 +65,16 @@ variable "subnet_ids" {
   type = list(string)
 }
 
+# See modules/workloads/variables.tf for the full rationale. Scheduled tasks are
+# short-lived, so their share of the public IPv4 charge is small either way, but
+# they must follow the environment's egress strategy: in a NAT environment
+# subnet_ids are private and a public address would be unroutable.
+variable "assign_public_ip" {
+  description = "Give the task a public IPv4 address. False when a NAT Gateway provides egress."
+  type        = bool
+  default     = true
+}
+
 variable "vpc_id" {
   type = string
 }

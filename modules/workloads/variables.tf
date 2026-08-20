@@ -65,6 +65,20 @@ variable "subnet_ids" {
   type = list(string)
 }
 
+# Whether ECS tasks get their own public IPv4 address.
+#
+# True is the public_ip egress strategy: each task pays $0.005/hr for its
+# address and reaches the internet through the Internet Gateway. False means a
+# NAT Gateway provides egress instead and subnet_ids are private subnets, so an
+# address would be both useless and unroutable. The vpc module decides this and
+# exposes it as its assign_public_ip output; callers should pass that through
+# rather than setting it directly. See ai_docs/EGRESS_COST_MODEL.md.
+variable "assign_public_ip" {
+  description = "Give each ECS task a public IPv4 address. False when a NAT Gateway provides egress."
+  type        = bool
+  default     = true
+}
+
 variable "github_subjects" {
   type    = list(string)
   default = ["repo:MadAppGang/*:*"]

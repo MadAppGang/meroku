@@ -76,9 +76,14 @@ resource "aws_ecs_service" "backend" {
   dynamic "network_configuration" {
     for_each = local.backend_network_mode == "awsvpc" ? [1] : []
     content {
-      security_groups  = [aws_security_group.backend.id]
-      subnets          = var.subnet_ids
-      assign_public_ip = local.backend_pool == null
+      security_groups = [aws_security_group.backend.id]
+      subnets         = var.subnet_ids
+      # Two independent conditions, and both have to hold:
+      #   local.backend_pool == null -> Fargate. ECS rejects ENABLED for EC2.
+      #   var.assign_public_ip       -> the egress strategy wants an address.
+      # A NAT strategy sets the second false, which is what takes the task off
+      # its own public address. See ai_docs/EGRESS_COST_MODEL.md.
+      assign_public_ip = local.backend_pool == null && var.assign_public_ip
     }
   }
 
