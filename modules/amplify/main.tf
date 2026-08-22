@@ -206,7 +206,7 @@ locals {
   subdomain_keys = {
     for mapping in local.all_subdomain_mappings : (
       mapping.subdomain == "" ? mapping.app_name : "${mapping.app_name}-${mapping.subdomain}"
-    ) => {
+      ) => {
       app_name    = mapping.app_name
       domain_name = local.app_domains[mapping.app_name]
       prefix      = mapping.subdomain

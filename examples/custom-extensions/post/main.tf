@@ -17,8 +17,8 @@ resource "aws_cloudwatch_dashboard" "main" {
         width  = 12
         height = 6
         properties = {
-          title   = "API Gateway Requests"
-          region  = var.region
+          title  = "API Gateway Requests"
+          region = var.region
           metrics = [
             ["AWS/ApiGateway", "Count", "ApiId", var.api_gateway_id]
           ]
@@ -33,8 +33,8 @@ resource "aws_cloudwatch_dashboard" "main" {
         width  = 12
         height = 6
         properties = {
-          title   = "ECS CPU Utilization"
-          region  = var.region
+          title  = "ECS CPU Utilization"
+          region = var.region
           metrics = [
             ["AWS/ECS", "CPUUtilization", "ClusterName", var.ecs_cluster_name]
           ]
@@ -49,8 +49,8 @@ resource "aws_cloudwatch_dashboard" "main" {
         width  = 12
         height = 6
         properties = {
-          title   = "API Gateway Latency"
-          region  = var.region
+          title  = "API Gateway Latency"
+          region = var.region
           metrics = [
             ["AWS/ApiGateway", "Latency", "ApiId", var.api_gateway_id]
           ]
@@ -65,8 +65,8 @@ resource "aws_cloudwatch_dashboard" "main" {
         width  = 12
         height = 6
         properties = {
-          title   = "ECS Memory Utilization"
-          region  = var.region
+          title  = "ECS Memory Utilization"
+          region = var.region
           metrics = [
             ["AWS/ECS", "MemoryUtilization", "ClusterName", var.ecs_cluster_name]
           ]
@@ -87,7 +87,7 @@ resource "aws_cloudwatch_metric_alarm" "api_high_latency" {
   namespace           = "AWS/ApiGateway"
   period              = 300
   statistic           = "Average"
-  threshold           = 1000  # 1 second
+  threshold           = 1000 # 1 second
   alarm_description   = "API latency is above 1 second"
 
   dimensions = {

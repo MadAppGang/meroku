@@ -24,14 +24,14 @@ resource "aws_db_instance" "database" {
   # Use new instance_class variable, fallback to old 'instance' for backwards compatibility
   instance_class = var.instance_class != "db.t4g.micro" ? var.instance_class : var.instance
   # Use new allocated_storage variable, fallback to old 'storage' for backwards compatibility
-  allocated_storage      = var.allocated_storage != 20 ? var.allocated_storage : tonumber(var.storage)
-  storage_type           = var.storage_type
-  storage_encrypted      = var.storage_encrypted
-  multi_az               = var.multi_az
-  deletion_protection    = var.deletion_protection
-  skip_final_snapshot    = var.skip_final_snapshot
-  username               = local.db_username
-  db_name                = local.db_name
+  allocated_storage                   = var.allocated_storage != 20 ? var.allocated_storage : tonumber(var.storage)
+  storage_type                        = var.storage_type
+  storage_encrypted                   = var.storage_encrypted
+  multi_az                            = var.multi_az
+  deletion_protection                 = var.deletion_protection
+  skip_final_snapshot                 = var.skip_final_snapshot
+  username                            = local.db_username
+  db_name                             = local.db_name
   password                            = aws_ssm_parameter.postgres_password.value
   vpc_security_group_ids              = [aws_security_group.database.id]
   publicly_accessible                 = var.public_access
@@ -48,14 +48,14 @@ resource "aws_db_instance" "database" {
 
 # Aurora Serverless v2 Cluster (when aurora = true)
 resource "aws_rds_cluster" "aurora" {
-  count                  = var.aurora ? 1 : 0
-  cluster_identifier     = "${var.project}-aurora-${var.env}"
-  engine                 = "aurora-postgresql"
-  engine_mode            = "provisioned"
-  engine_version         = lookup(local.aurora_version_map, var.engine_version, "17.5")
-  database_name          = local.db_name
-  master_username        = local.db_username
-  master_password        = aws_ssm_parameter.postgres_password.value
+  count                               = var.aurora ? 1 : 0
+  cluster_identifier                  = "${var.project}-aurora-${var.env}"
+  engine                              = "aurora-postgresql"
+  engine_mode                         = "provisioned"
+  engine_version                      = lookup(local.aurora_version_map, var.engine_version, "17.5")
+  database_name                       = local.db_name
+  master_username                     = local.db_username
+  master_password                     = aws_ssm_parameter.postgres_password.value
   skip_final_snapshot                 = true
   vpc_security_group_ids              = [aws_security_group.database.id]
   db_subnet_group_name                = aws_db_subnet_group.aurora[0].name

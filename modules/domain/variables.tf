@@ -1,10 +1,10 @@
 
 variable "domain_zone" {
-  type    = string
+  type = string
 }
-  
+
 variable "env" {
-  type    = string
+  type = string
 }
 
 #v2
@@ -14,12 +14,12 @@ variable "create_domain_zone" {
 }
 
 variable "add_env_domain_prefix" {
-  type = bool
+  type    = bool
   default = true
 }
 
 variable "api_domain_prefix" {
-  type = string
+  type    = string
   default = "api"
 }
 

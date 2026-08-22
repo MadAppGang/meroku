@@ -99,15 +99,21 @@ jobs:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
           terraform_wrapper: false
 
-      # Scoped to modules/workloads rather than the whole repository, and the
-      # one pre-existing offender inside it (services.tf) was reformatted rather
-      # than excluded, so there are no exemptions within the scope. The rest of
-      # the repository is not covered here: 18 files across the other modules
-      # are unformatted today, and project/env/dev/main.tf is a committed
-      # generated artifact that terraform fmt cannot even parse. Widening the
-      # scope is a separate change, not a silent carve-out in this one.
+      # Repository-wide, with no exemptions.
+      #
+      # This was scoped to modules/workloads while two things blocked widening
+      # it: twelve unformatted files across the other modules, and
+      # project/env/dev/main.tf — a committed generated artifact so stale it was
+      # syntactically invalid ("backend_remote_access = " with no value), which
+      # made `terraform fmt -recursive .` fail to parse the repository rather
+      # than report formatting.
+      #
+      # Both are gone. The artifact was deleted and env renders are gitignored
+      # (they are build output), and every remaining file was reformatted rather
+      # than excluded. Keep it that way: an exclusion here is how the drift came
+      # back last time.
       - name: Format
-        run: terraform fmt -check -recursive -diff modules/workloads
+        run: terraform fmt -check -recursive -diff .
 
       - name: Init
         run: terraform init -backend=false -input=false

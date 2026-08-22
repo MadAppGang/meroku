@@ -10,8 +10,8 @@ resource "aws_route53_zone" "root" {
 }
 
 resource "aws_iam_role" "dns_delegation" {
-  name               = "${replace(var.domain_name, ".", "-")}-dns-delegation"
-  description        = "Role for cross-account DNS delegation for ${var.domain_name}"
+  name        = "${replace(var.domain_name, ".", "-")}-dns-delegation"
+  description = "Role for cross-account DNS delegation for ${var.domain_name}"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -26,8 +26,8 @@ resource "aws_iam_role" "dns_delegation" {
   })
 
   tags = {
-    Name        = "${var.domain_name}-dns-delegation"
-    Purpose     = "DNS Cross-Account Delegation"
+    Name    = "${var.domain_name}-dns-delegation"
+    Purpose = "DNS Cross-Account Delegation"
   }
 }
 

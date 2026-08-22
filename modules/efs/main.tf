@@ -39,9 +39,9 @@ resource "aws_security_group" "efs" {
 
 resource "aws_efs_mount_target" "this" {
   for_each = {
-    for pair in setproduct(keys(aws_efs_file_system.this), var.private_subnets) : 
+    for pair in setproduct(keys(aws_efs_file_system.this), var.private_subnets) :
     "${pair[0]}-${pair[1]}" => {
-      efs_name = pair[0]
+      efs_name  = pair[0]
       subnet_id = pair[1]
     }
   }

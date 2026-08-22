@@ -4,17 +4,17 @@ variable "amplify_apps" {
     name                  = string
     github_repository     = string
     environment_variables = optional(map(string), {})
-    branches             = list(object({
-      name                          = string
-      stage                        = optional(string, "DEVELOPMENT")
-      enable_auto_build            = optional(bool, true)
-      enable_pull_request_preview  = optional(bool, false)
-      environment_variables        = optional(map(string), {})
-      custom_subdomains            = optional(list(string), [])
+    branches = list(object({
+      name                        = string
+      stage                       = optional(string, "DEVELOPMENT")
+      enable_auto_build           = optional(bool, true)
+      enable_pull_request_preview = optional(bool, false)
+      environment_variables       = optional(map(string), {})
+      custom_subdomains           = optional(list(string), [])
     }))
-    subdomain_prefix     = optional(string)       # NEW: Auto-constructs domain
-    custom_domain        = optional(string)       # For manual override (edge cases)
-    spa_mode             = optional(bool, true)   # Per-app SPA routing control
+    subdomain_prefix = optional(string)     # NEW: Auto-constructs domain
+    custom_domain    = optional(string)     # For manual override (edge cases)
+    spa_mode         = optional(bool, true) # Per-app SPA routing control
   }))
   default = []
 }
