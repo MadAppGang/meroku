@@ -1,5 +1,49 @@
 # Changelog
 
+## v4.3.1
+
+Every module now declares which AWS provider major it is built for. Nothing
+about a deployed environment changes: the constraint added is the one those
+environments were already resolving.
+
+### CI was validating a provider nothing runs
+
+Only `modules/workloads` declared a provider constraint. The other seventeen
+declared none, so `terraform init -backend=false` — in CI, and in any standalone
+validation of a module — resolved the newest `hashicorp/aws`, currently 6.60.0,
+while every generated environment pins `~> 5.0` and gets 5.100.0.
+
+`modules/workloads/versions.tf` already named this when EC2 compute pools
+landed. This applies the same fix to the rest of the repository.
+
+### The deprecation warnings were an artifact of that
+
+`data.aws_region.current.name` appeared deprecated in 36 places. It is not
+deprecated in the provider this repository runs: `.name` is correct in 5.x and
+deprecated in 6.x, and 5.x exposes no `.region` to move to. The warning came
+from validating the wrong major, so the fix is the pin rather than a rewrite —
+**no `aws_region` usage changed.**
+
+`try(data.aws_region.current.region, data.aws_region.current.name)` does not
+bridge the two majors. An attribute the provider schema does not define fails
+at validate time rather than at evaluation, so `try()` never reaches its
+fallback. Checked against 5.100.0 rather than assumed.
+
+Every module now resolves 5.100.0 and validates with no warnings, and a
+generated environment still initialises and validates end to end.
+
+### Two modules are deliberately untouched
+
+- `modules/workloads` keeps its narrower floor (`>= 5.34.0, < 6.0.0`), which
+  exists for `aws_ecs_capacity_provider`'s `managed_draining`.
+- `modules/dns-delegation` already pins `~> 5.0` inside `main.tf`, alongside the
+  `configuration_aliases` its cross-account provider needs. A module may carry
+  only one `required_providers` block.
+
+Moving to provider 6.x stays open — every module validates cleanly under 6.60.0
+today — but it is deliberately not this change, because `validate` passing says
+nothing about whether an existing stack plans clean across a provider major.
+
 ## v4.3.0
 
 ECS tasks can now reach the internet through a NAT Gateway instead of each
