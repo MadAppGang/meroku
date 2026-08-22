@@ -35,7 +35,7 @@ variable "origins" {
   EOT
   type = list(object({
     name              = string
-    type              = string  # "s3", "amplify", "alb", "custom"
+    type              = string # "s3", "amplify", "alb", "custom"
     domain_name       = string
     origin_path       = optional(string, "")
     http_port         = optional(number, 80)
@@ -168,13 +168,13 @@ variable "min_ttl" {
 variable "default_ttl" {
   description = "Default TTL for cached objects (seconds)"
   type        = number
-  default     = 86400  # 1 day
+  default     = 86400 # 1 day
 }
 
 variable "max_ttl" {
   description = "Maximum TTL for cached objects (seconds)"
   type        = number
-  default     = 31536000  # 1 year
+  default     = 31536000 # 1 year
 }
 
 variable "compress" {
@@ -219,7 +219,7 @@ variable "custom_error_responses" {
 variable "lambda_function_associations" {
   description = "Lambda@Edge function associations"
   type = list(object({
-    event_type   = string  # viewer-request, origin-request, origin-response, viewer-response
+    event_type   = string # viewer-request, origin-request, origin-response, viewer-response
     lambda_arn   = string
     include_body = optional(bool, false)
   }))
@@ -229,7 +229,7 @@ variable "lambda_function_associations" {
 variable "cloudfront_function_associations" {
   description = "CloudFront Function associations"
   type = list(object({
-    event_type   = string  # viewer-request, viewer-response
+    event_type   = string # viewer-request, viewer-response
     function_arn = string
   }))
   default = []
@@ -242,7 +242,7 @@ variable "cloudfront_function_associations" {
 variable "price_class" {
   description = "CloudFront price class: PriceClass_All, PriceClass_200, PriceClass_100"
   type        = string
-  default     = "PriceClass_100"  # Use only US and Europe for cost savings
+  default     = "PriceClass_100" # Use only US and Europe for cost savings
 }
 
 variable "geo_restriction_type" {

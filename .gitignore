@@ -96,3 +96,16 @@ modules/neon/scripts/db-access.json
 # must never carry. Finished documentation belongs in ai_docs/ directly, where
 # it gets written with synthetic placeholders.
 ai_docs/sessions/
+
+# Generated Terraform.
+#
+# `meroku generate <env>` renders env/main.hbs into env/<env>/*.tf inside a
+# PROJECT directory. Only the template is source; the render is build output and
+# is rewritten on every generate.
+#
+# project/env/dev/main.tf was committed by accident and sat here for two major
+# versions, stale and syntactically invalid ("backend_remote_access = " with no
+# value), which is why `terraform fmt -recursive .` could not parse the
+# repository at all.
+project/env/
+/env/*/
