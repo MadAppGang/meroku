@@ -1,5 +1,38 @@
 # Changelog
 
+## v4.3.2
+
+`terraform fmt` is now enforced across the whole repository instead of
+`modules/workloads` alone, with no exemptions. Formatting only: `git diff -w`
+over `modules/` is empty, so nothing semantic moved.
+
+### What was actually blocking it
+
+The gate's own comment said widening the scope was a separate change, and named
+two blockers. Twelve files across the other modules were unformatted, which was
+the expected half.
+
+The other half was not formatting at all. `project/env/dev/main.tf` is
+generated output — `meroku generate <env>` renders `env/main.hbs` into
+`env/<env>/*.tf` — that had been committed by accident and then left untouched
+for two major versions. By the end it was syntactically invalid:
+
+```hcl
+  backend_remote_access = 
+  docker_image = ""
+```
+
+An empty boolean render, so `terraform fmt -recursive .` failed to *parse* the
+repository rather than reporting formatting on it. That is what made a
+repository-wide gate impossible.
+
+Nothing referenced the file, so it is deleted, and env renders are gitignored
+in both layouts (`project/env/` and `/env/*/`) so it cannot come back.
+`env/main.hbs` and `env/outputs.tf` are source and stay tracked.
+
+With the parse failure gone, one more file surfaced outside `modules/` —
+`examples/custom-extensions/post/main.tf` — and is formatted here too.
+
 ## v4.3.1
 
 Every module now declares which AWS provider major it is built for. Nothing
