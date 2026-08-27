@@ -80,6 +80,20 @@ type remoteStateSummary struct {
 	DataCount        int
 	Serial           int64
 	TerraformVersion string
+
+	// ManagedTypes is the set of managed resource types this state tracks.
+	//
+	// It answers "does this environment own resource X", which no AWS read can
+	// settle: an account-level resource can exist and belong entirely to another
+	// project's state. Asking AWS returns existence; only the state returns
+	// ownership, and acting on existence alone destroys the resource for
+	// whichever project does own it.
+	ManagedTypes map[string]bool
+}
+
+// owns reports whether this state manages any instance of a resource type.
+func (s remoteStateSummary) owns(resourceType string) bool {
+	return s.ManagedTypes[resourceType]
 }
 
 // remoteStateLookup reads the remote state for an environment.
@@ -933,6 +947,7 @@ func summarizeTerraformState(data []byte) (remoteStateSummary, error) {
 	s := remoteStateSummary{
 		Serial:           f.Serial,
 		TerraformVersion: f.TerraformVersion,
+		ManagedTypes:     map[string]bool{},
 	}
 	for _, r := range f.Resources {
 		n := len(r.Instances)
@@ -943,6 +958,7 @@ func summarizeTerraformState(data []byte) (remoteStateSummary, error) {
 			s.DataCount += n
 		} else {
 			s.ManagedCount += n
+			s.ManagedTypes[r.Type] = true
 		}
 	}
 	s.ResourceCount = s.ManagedCount + s.DataCount

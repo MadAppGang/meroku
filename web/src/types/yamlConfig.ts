@@ -179,6 +179,10 @@ export interface YamlInfrastructureConfig {
 		// CI/CD configuration
 		enable_github_oidc?: boolean;
 		github_oidc_subjects?: string[];
+		// AWS holds one GitHub OIDC provider per account. Absent or true means
+		// this project creates it; false means another project in the account
+		// already owns it and this one federates against that. Schema v28.
+		github_oidc_create_provider?: boolean;
 
 		// Database admin tools
 		install_pg_admin?: boolean;

@@ -590,6 +590,7 @@ module "workloads" {
   ecr_trusted_accounts = []
   {{/notEmpty}}
   github_oidc_enabled = {{workload.enable_github_oidc}}
+  github_oidc_create_provider = {{default workload.github_oidc_create_provider true}}
   github_subjects = {{{array workload.github_oidc_subjects}}}
   {{#if workload.backend_container_command}}
   backend_container_command = {{array backend_container_command}}

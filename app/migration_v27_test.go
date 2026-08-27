@@ -5,22 +5,22 @@ import (
 	"testing"
 )
 
-// The version constant, the registered migration list and the newest migration
-// have to agree, or a file migrates to a version whose migration never ran.
+// v27 has to stay in the registry, or a file that is behind migrates past it
+// without it ever running.
 //
-// This check belongs to whichever migration is currently newest. When v28 is
-// added, move it there and leave a registration-only check behind, the way
-// TestV25IsRegistered was left.
-func TestV27IsRegisteredAtTheCurrentVersion(t *testing.T) {
-	if CurrentSchemaVersion != 27 {
-		t.Fatalf("CurrentSchemaVersion = %d, want 27", CurrentSchemaVersion)
+// This used to also assert CurrentSchemaVersion == 27. That assertion belongs
+// to whichever version is current, not to v27, so it now lives in
+// TestV28IsRegisteredAtTheCurrentVersion and moves again with the next bump.
+func TestV27IsRegistered(t *testing.T) {
+	for _, migration := range AllMigrations {
+		if migration.Version == 27 {
+			if migration.Apply == nil {
+				t.Fatal("the v27 entry has no Apply function")
+			}
+			return
+		}
 	}
-
-	last := AllMigrations[len(AllMigrations)-1]
-	if last.Version != CurrentSchemaVersion {
-		t.Errorf("last registered migration is v%d, but CurrentSchemaVersion is %d",
-			last.Version, CurrentSchemaVersion)
-	}
+	t.Fatal("AllMigrations has no entry for version 27")
 }
 
 func TestMigrateToV27_DefaultsToPublicIP(t *testing.T) {

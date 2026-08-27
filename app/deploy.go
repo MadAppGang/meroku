@@ -103,6 +103,16 @@ func runCommandToDeploy(env string) error {
 		os.Exit(1)
 	}
 
+	// An account holds one GitHub OIDC provider, so a second project sharing the
+	// account has to federate against the first project's rather than create its
+	// own. Settled here, after the pre-flight has validated credentials and while
+	// we are still at the project root, so the regeneration below finds
+	// <env>.yaml and env/<env>/ where it expects them.
+	if resolveGithubOIDCForEnv(ctx, env, &e) {
+		// The config changed, so the generated terraform is now stale.
+		applyTemplate(env)
+	}
+
 	// Decide which deployment plan this environment needs before touching
 	// terraform. An undelegated DNS zone otherwise parks the whole apply on ACM
 	// validation, because module.workloads consumes certificate ARNs that come
