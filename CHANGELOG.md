@@ -1,5 +1,62 @@
 # Changelog
 
+## v4.4.1
+
+A Fargate service in `services:` no longer breaks `terraform plan`. The
+precondition added in v4.2.0 rendered a `null` into its own error message, so
+the check written to explain a bad `compute_pool` became the thing that failed,
+on configurations that had nothing wrong with them.
+
+### The error
+
+```
+Error: Invalid template interpolation value
+  on modules/workloads/services.tf line 282, in resource "aws_ecs_service" "services":
+ 282:       error_message = "Service \"${each.key}\" sets runtime \"ec2\" with compute pool
+    ├────────────────
+    │ each.key is "magento-bridge"
+    │ local.service_pools is object with 1 attribute "magento-bridge"
+
+The expression result is null. Cannot include a null value in a string template.
+```
+
+The condition on that precondition **passes**. `local.service_pools` maps every
+non-EC2 service to `null` on purpose, because `null` is what `launch_type`,
+`assign_public_ip` and the placement strategy read to mean "Fargate". So
+`local.service_pools[each.key] == null` is true and the rule holds.
+
+Terraform renders `error_message` before it tests the condition, and for every
+instance of the resource. A rule that passes therefore still fails the plan if
+its message interpolates a value that is legally null on the happy path.
+
+### Who it hit
+
+Every project with at least one service in `services:` on Fargate, from v4.2.0
+(2026-08-19) onwards. Fargate is the default runtime, so the plan died before it
+reached the first resource.
+
+### The fix
+
+The pool name reaches the message through a map that has no nulls in it:
+
+```hcl
+service_pool_names = { for k, v in local.service_pools : k => v == null ? "" : v }
+```
+
+The condition is untouched. An `ec2` service naming a pool that is missing or
+disabled still fails with the same sentence, verified on a reduced case that
+plans clean for a null pool and fails as intended for a bad one.
+
+`terraform validate` does not catch this class of bug. It reported success on
+the case `plan` rejected, and `modules/workloads` cannot be planned in CI
+without AWS credentials, so there is no test to add here. The map is total by
+construction instead, which is the same treatment every other pool read in
+`ec2_capacity.tf` already had.
+
+`modules/workloads/backend.tf` carries the same precondition and was never
+affected: `var.backend_compute_pool` is `optional(string, "")` and cannot be
+null.
+
 ## v4.4.0
 
 Every AWS resource name with a length cap now goes through one algorithm
