@@ -192,6 +192,12 @@ type Workload struct {
 	SlackWebhook       string   `yaml:"slack_webhook"`
 	EnableGithubOIDC   bool     `yaml:"enable_github_oidc"`
 	GithubOIDCSubjects []string `yaml:"github_oidc_subjects"`
+	// *bool because absent and false mean different things here. AWS allows one
+	// GitHub OIDC provider per account, so nil means "not decided yet, meroku may
+	// resolve it against the account" while an explicit false is an operator's
+	// (or a previous resolution's) statement that another project owns it.
+	// Schema v28. nil/true = create it, false = federate against the existing one.
+	GithubOIDCCreateProvider *bool `yaml:"github_oidc_create_provider,omitempty"`
 
 	InstallPgAdmin bool   `yaml:"install_pg_admin"`
 	PgAdminEmail   string `yaml:"pg_admin_email"`

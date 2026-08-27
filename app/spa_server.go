@@ -164,6 +164,10 @@ func mainRouter() http.Handler {
 	mux.HandleFunc("/api/environments/configure-cross-account-ecr", corsMiddleware(configureCrossAccountECR))
 	mux.HandleFunc("/api/environments/check-ecr-trust-policy", corsMiddleware(checkECRTrustPolicyDeployedInAWS))
 
+	// GitHub Actions OIDC: one provider per AWS account, so a second project
+	// sharing the account federates against the first project's.
+	mux.HandleFunc("/api/environments/github-oidc-status", corsMiddleware(getGithubOIDCStatus))
+
 	// Custom Terraform Extensions
 	mux.HandleFunc("/api/custom-terraform/files", corsMiddleware(listCustomTerraformFiles))
 	mux.HandleFunc("/api/custom-terraform/file", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {

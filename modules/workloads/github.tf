@@ -1,15 +1,21 @@
 
+# The OIDC provider is account-scoped, not project-scoped: AWS keys it on the
+# issuer URL, which the ARN embeds as its resource path
+# (arn:aws:iam::<account>:oidc-provider/token.actions.githubusercontent.com).
+# There is no field left over to distinguish two of them, so the first project
+# in an account creates it and every later project federates against that one
+# by setting github_oidc_create_provider = false.
+#
+# thumbprint_list is deliberately absent. AWS verifies this issuer's JWKS
+# endpoint against its own trusted root CAs and consults thumbprints only when
+# the IdP's certificate is signed by some other CA, which GitHub's is not. The
+# two hashes pinned here until now were read by nothing.
 resource "aws_iam_openid_connect_provider" "github" {
   url   = "https://token.actions.githubusercontent.com"
-  count = var.github_oidc_enabled ? 1 : 0
+  count = var.github_oidc_enabled && var.github_oidc_create_provider ? 1 : 0
 
   client_id_list = [
     "sts.amazonaws.com"
-  ]
-
-  thumbprint_list = [
-    "6938fd4d98bab03faadb97b34396831e3780aea1",
-    "1c58a3a8518e8759bf075b76b750d4f2df264fcd" # https://github.blog/changelog/2023-06-27-github-actions-update-on-oidc-integration-with-aws/
   ]
 
   tags = {
@@ -21,6 +27,28 @@ resource "aws_iam_openid_connect_provider" "github" {
   }
 }
 
+# Resolves the provider another project in this account already owns. Counted
+# to the exact complement of the resource above, so precisely one of the two
+# exists whenever OIDC is enabled.
+data "aws_iam_openid_connect_provider" "github" {
+  count = var.github_oidc_enabled && !var.github_oidc_create_provider ? 1 : 0
+  url   = "https://token.actions.githubusercontent.com"
+}
+
+locals {
+  # The create branch must keep referencing the resource attribute rather than
+  # building the ARN from the account ID. The reference is what gives Terraform
+  # the dependency edge that orders the provider before the role; a derived
+  # string would supply the same value with no edge, letting the role be created
+  # first and failing the apply with "MalformedPolicyDocument: Invalid principal
+  # in policy".
+  github_oidc_provider_arn = (
+    var.github_oidc_create_provider
+    ? one(aws_iam_openid_connect_provider.github[*].arn)
+    : one(data.aws_iam_openid_connect_provider.github[*].arn)
+  )
+}
+
 data "aws_iam_policy_document" "github_trust_relationship" {
   count = var.github_oidc_enabled ? 1 : 0
   statement {
@@ -28,7 +56,7 @@ data "aws_iam_policy_document" "github_trust_relationship" {
     actions = ["sts:AssumeRoleWithWebIdentity"]
     principals {
       type        = "Federated"
-      identifiers = [aws_iam_openid_connect_provider.github[0].arn]
+      identifiers = [local.github_oidc_provider_arn]
     }
     condition {
       test     = "StringEquals"

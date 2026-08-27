@@ -88,6 +88,18 @@ variable "github_oidc_enabled" {
   type    = bool
   default = false
 }
+
+# AWS allows exactly one OIDC provider per issuer URL per account, so a second
+# meroku project sharing an account cannot create its own. Set this to false
+# there: the role is still created, and it federates against the provider the
+# first project already owns. Default true leaves every existing project's plan
+# unchanged.
+variable "github_oidc_create_provider" {
+  type        = bool
+  default     = true
+  description = "Create the account-level GitHub OIDC provider. Set false when another project in this AWS account already manages it."
+}
+
 variable "backend_image_port" {
   default = 8080
   type    = number

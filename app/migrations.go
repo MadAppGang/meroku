@@ -38,7 +38,8 @@ import (
 // 25: Normalize scheduled_tasks[].container_command from a scalar to list(string)
 // 26: Add runtime (fargate|ec2) and compute_pool to the backend and services, for EC2 capacity pools
 // 27: Add egress_strategy (public_ip|nat_gateway|nat_gateway_ha) for how tasks reach the internet
-const CurrentSchemaVersion = 27
+// 28: Add workload.github_oidc_create_provider, for sharing one account's GitHub OIDC provider
+const CurrentSchemaVersion = 28
 
 // EnvWithVersion extends Env with a schema version field
 type EnvWithVersion struct {
@@ -184,6 +185,11 @@ var AllMigrations = []Migration{
 		Version:     27,
 		Description: "Add egress_strategy, defaulting to public_ip (existing behaviour)",
 		Apply:       migrateToV27,
+	},
+	{
+		Version:     28,
+		Description: "Add github_oidc_create_provider, defaulting to true (existing behaviour)",
+		Apply:       migrateToV28,
 	},
 }
 
@@ -1867,5 +1873,42 @@ func migrateToV27(data map[string]interface{}) error {
 	}
 
 	fmt.Println("    ✓ Set egress_strategy: public_ip (current behaviour, no infrastructure change)")
+	return nil
+}
+
+// migrateToV28 records that this project creates the account's GitHub OIDC
+// provider, which is what every project did before the flag existed.
+//
+// Scoped to configs that actually enable OIDC. Writing the key into a project
+// with enable_github_oidc: false would be describing a resource that config
+// never creates, and every environment file in the repository would grow a line
+// about a feature it does not use.
+//
+// The consequence is that a project enabling OIDC later has no key to flip, so
+// the writers in aws_preflight.go and api.go both insert as well as flip. That
+// is the right place for the tolerance: it also covers hand-written configs,
+// which no migration ever sees.
+func migrateToV28(data map[string]interface{}) error {
+	fmt.Println("  → Migrating to v28: Adding workload.github_oidc_create_provider")
+
+	workload, ok := data["workload"].(map[interface{}]interface{})
+	if !ok {
+		fmt.Println("    ℹ️  No workload section; nothing to annotate")
+		return nil
+	}
+
+	if enabled, _ := workload["enable_github_oidc"].(bool); !enabled {
+		fmt.Println("    ℹ️  GitHub OIDC is not enabled; leaving the key out")
+		return nil
+	}
+
+	if existing, has := workload["github_oidc_create_provider"]; has {
+		fmt.Printf("    ℹ️  github_oidc_create_provider already set to %v, leaving it alone\n", existing)
+		return nil
+	}
+
+	workload["github_oidc_create_provider"] = true
+	fmt.Println("    ✓ Set github_oidc_create_provider: true (current behaviour, no infrastructure change)")
+	fmt.Println("       Set it to false if another project in this AWS account already owns the provider.")
 	return nil
 }

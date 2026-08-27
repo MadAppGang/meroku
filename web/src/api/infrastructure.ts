@@ -1378,6 +1378,50 @@ export const infrastructureApi = {
 		return response.json();
 	},
 
+	/**
+	 * Resolves how this environment relates to the account's GitHub OIDC provider.
+	 *
+	 * AWS holds one provider per issuer URL per account, so a second meroku
+	 * project sharing an account has to federate against the first project's
+	 * rather than create its own. When the answer differs from what is on disk,
+	 * the server records it in {env}.yaml and reports `changed` with the backup
+	 * it wrote; the caller must show that rather than let the file change
+	 * silently.
+	 *
+	 * Rejects when the environment is unknown or AWS could not be read. A failed
+	 * read is not evidence of absence, so callers must not treat a rejection as
+	 * "no provider exists".
+	 */
+	async getGitHubOIDCStatus(env: string): Promise<{
+		exists: boolean;
+		arn?: string;
+		owned_by_this_env: boolean;
+		owner_project?: string;
+		owner_env?: string;
+		create_provider: boolean;
+		changed: boolean;
+		backup?: string;
+		summary: string;
+	}> {
+		const response = await fetch(
+			`${API_BASE_URL}/api/environments/github-oidc-status`,
+			{
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({ env }),
+			},
+		);
+		if (!response.ok) {
+			const error: ErrorResponse = await response.json();
+			throw new Error(
+				error.error || "Failed to check the GitHub OIDC provider",
+			);
+		}
+		return response.json();
+	},
+
 	async getFargateOptions(): Promise<FargateOptionsResponse> {
 		const response = await fetch(`${API_BASE_URL}/api/fargate/options`);
 		if (!response.ok) {
