@@ -432,7 +432,7 @@ module "custom_pre" {
 # ============================================================================
 {{#each extensions.sns_topics}}
 resource "aws_sns_topic" "ext_{{name}}" {
-  name = "{{@root.project}}-{{@root.env}}-{{name}}{{#if fifo}}.fifo{{/if}}"
+  name = "{{awsName @root.project @root.env name "" "sns_topic" fifo}}"
   {{#if display_name}}
   display_name = "{{display_name}}"
   {{/if}}
@@ -463,7 +463,7 @@ resource "aws_sns_topic" "ext_{{name}}" {
 {{#if dlq_enabled}}
 # Dead Letter Queue for {{name}}
 resource "aws_sqs_queue" "ext_{{name}}_dlq" {
-  name = "{{@root.project}}-{{@root.env}}-{{name}}-dlq{{#if fifo}}.fifo{{/if}}"
+  name = "{{awsName @root.project @root.env name "dlq" "sqs_queue" fifo}}"
   {{#if fifo}}
   fifo_queue                  = true
   content_based_deduplication = true
@@ -483,7 +483,7 @@ resource "aws_sqs_queue" "ext_{{name}}_dlq" {
 {{/if}}
 
 resource "aws_sqs_queue" "ext_{{name}}" {
-  name = "{{@root.project}}-{{@root.env}}-{{name}}{{#if fifo}}.fifo{{/if}}"
+  name = "{{awsName @root.project @root.env name "" "sqs_queue" fifo}}"
   {{#if fifo}}
   fifo_queue                  = true
   content_based_deduplication = true

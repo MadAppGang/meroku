@@ -107,7 +107,7 @@ resource "aws_appsync_api_key" "pubsub" {
 }
 
 resource "aws_iam_role" "appsync" {
-  name = "${var.project}-${var.env}-appsync-role"
+  name = module.naming.names["appsync_role"]
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"

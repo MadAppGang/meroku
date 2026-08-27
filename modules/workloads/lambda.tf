@@ -194,11 +194,11 @@ data "aws_iam_policy_document" "lambda_deploy_assume_role" {
 resource "aws_iam_role" "lambda_deploy_iam" {
   # IAM role names are account-global: a second meroku project deployed into the
   # same AWS account collides unless the name carries ${var.project}.
-  name               = "${var.project}_lambda_deploy_iam_${var.env}"
+  name               = module.naming.names["lambda_deploy_role"]
   assume_role_policy = data.aws_iam_policy_document.lambda_deploy_assume_role.json
 
   tags = {
-    Name        = "${var.project}_lambda_deploy_iam_${var.env}"
+    Name        = module.naming.names["lambda_deploy_role"]
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
@@ -236,7 +236,7 @@ resource "aws_cloudwatch_log_group" "lambda_deploy" {
 # Lambda function names are account+region-global — see the log group above.
 resource "aws_lambda_function" "lambda_deploy" {
   filename      = local.ci_lambda_zip
-  function_name = "${var.project}_ci_lambda_${var.env}"
+  function_name = module.naming.names["ci_lambda"]
   handler       = "bootstrap"
   role          = aws_iam_role.lambda_deploy_iam.arn
   runtime       = "provided.al2"
@@ -299,7 +299,7 @@ resource "aws_lambda_function" "lambda_deploy" {
   }
 
   tags = {
-    Name        = "${var.project}_ci_lambda_${var.env}"
+    Name        = module.naming.names["ci_lambda"]
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
@@ -509,12 +509,12 @@ resource "aws_cloudwatch_event_rule" "ci_ecr_push" {
   # repository-name list is not a valid pattern.
   count = length(local.ci_ecr_repos) > 0 ? 1 : 0
 
-  name          = "${var.project}_ci_ecr_${var.env}"
+  name          = module.naming.names["ci_ecr_rule"]
   description   = "CI/CD: image pushed to a repository this project deploys from"
   event_pattern = local.ci_ecr_pattern
 
   tags = {
-    Name        = "${var.project}_ci_ecr_${var.env}"
+    Name        = module.naming.names["ci_ecr_rule"]
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
@@ -566,7 +566,7 @@ resource "aws_lambda_permission" "ci_ecr_push" {
 # service ARNs is what stops a second project in the same account producing
 # Slack noise here.
 resource "aws_cloudwatch_event_rule" "ci_ecs_state" {
-  name        = "${var.project}_ci_ecs_${var.env}"
+  name        = module.naming.names["ci_ecs_rule"]
   description = "CI/CD: ECS deployment state changes for this cluster"
   event_pattern = jsonencode({
     source      = ["aws.ecs"]
@@ -575,7 +575,7 @@ resource "aws_cloudwatch_event_rule" "ci_ecs_state" {
   })
 
   tags = {
-    Name        = "${var.project}_ci_ecs_${var.env}"
+    Name        = module.naming.names["ci_ecs_rule"]
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
@@ -598,7 +598,7 @@ resource "aws_lambda_permission" "ci_ecs_state" {
 }
 
 resource "aws_cloudwatch_event_rule" "ci_ssm_change" {
-  name        = "${var.project}_ci_ssm_${var.env}"
+  name        = module.naming.names["ci_ssm_rule"]
   description = "CI/CD: SSM parameter updates under this project's path"
   event_pattern = jsonencode({
     source      = ["aws.ssm"]
@@ -612,7 +612,7 @@ resource "aws_cloudwatch_event_rule" "ci_ssm_change" {
   })
 
   tags = {
-    Name        = "${var.project}_ci_ssm_${var.env}"
+    Name        = module.naming.names["ci_ssm_rule"]
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
@@ -646,7 +646,7 @@ resource "aws_lambda_permission" "ci_ssm_change" {
 # here in the first place. Cross-project separation for a legacy payload is the
 # handler's project check, which can only act on fields the payload carries.
 resource "aws_cloudwatch_event_rule" "ci_manual_deploy" {
-  name        = "${var.project}_ci_manual_${var.env}"
+  name        = module.naming.names["ci_manual_rule"]
   description = "CI/CD: manual deployment triggers on an environment-scoped source"
   event_pattern = jsonencode({
     source      = local.ci_manual_sources_scoped
@@ -654,7 +654,7 @@ resource "aws_cloudwatch_event_rule" "ci_manual_deploy" {
   })
 
   tags = {
-    Name        = "${var.project}_ci_manual_${var.env}"
+    Name        = module.naming.names["ci_manual_rule"]
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
@@ -687,7 +687,7 @@ resource "aws_lambda_permission" "ci_manual_deploy" {
 # cannot be filtered without breaking existing pipelines, and this one cannot be
 # left unfiltered without recreating the defect.
 resource "aws_cloudwatch_event_rule" "ci_manual_deploy_global" {
-  name        = "${var.project}_ci_manual_global_${var.env}"
+  name        = module.naming.names["ci_manual_global_rule"]
   description = "CI/CD: manual deployment triggers on an environment-agnostic source, scoped by detail"
   event_pattern = jsonencode({
     source      = local.ci_manual_sources_global
@@ -699,7 +699,7 @@ resource "aws_cloudwatch_event_rule" "ci_manual_deploy_global" {
   })
 
   tags = {
-    Name        = "${var.project}_ci_manual_global_${var.env}"
+    Name        = module.naming.names["ci_manual_global_rule"]
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
@@ -735,7 +735,7 @@ resource "aws_cloudwatch_event_rule" "s3_env_file_change_rule" {
   # Account+region-global, and PutRule is an upsert — so two projects declaring
   # the same bucket/key silently shared one rule. The name is derived from the
   # raw YAML bucket/key, which carries no project, hence the explicit prefix.
-  name        = "s3-env-${var.project}-${var.env}-${local.s3_event_rule_names[each.key]}"
+  name        = module.naming.names["s3_env_rule_${each.key}"]
   description = "Event rule for S3 env file changes for ${each.value.bucket}/${each.value.key}"
   event_pattern = jsonencode({
     "source" : ["aws.s3"],
@@ -751,7 +751,7 @@ resource "aws_cloudwatch_event_rule" "s3_env_file_change_rule" {
   })
 
   tags = {
-    Name        = "s3-env-${local.s3_event_rule_names[each.key]}"
+    Name        = module.naming.names["s3_env_rule_${each.key}"]
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
@@ -777,7 +777,10 @@ resource "aws_lambda_permission" "allow_eventbridge" {
   # all_env_files_s3 rather than the backend-only list, so the deeper
   # per-service keys are newly reachable here. Reuse the same bounded, md5-unique
   # name the rule above is built from (<=21 chars) instead of the raw key.
-  statement_id  = "AllowEventBridgeS3_${local.s3_event_rule_names[each.key]}"
+  # A statement_id caps at 100 and accepts only [A-Za-z0-9-_], which the rule
+  # name satisfies: `sanitized` has already replaced "/" and "." with "_", and
+  # the digest is hex.
+  statement_id  = "AllowEventBridgeS3_${module.naming.names["s3_env_rule_${each.key}"]}"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.lambda_deploy.function_name
   principal     = "events.amazonaws.com"
@@ -810,14 +813,12 @@ locals {
     }
   }
 
-  # The rule name is assembled as:
-  #   "s3-env-" (7) + project + "-" + env + "-" + sanitized (<=12) + "-" + hash (8)
-  # which stays inside the 64-character EventBridge limit for any realistic
-  # project and environment name. The hash is always appended rather than only
-  # on truncation, so uniqueness never depends on the readable part surviving.
-  s3_event_rule_names = {
-    for key, val in local.s3_event_rule_keys : key => "${substr(val.sanitized, 0, 12)}-${val.hash}"
-  }
+  # The assembled name moved to naming.tf, which applies the same rule this
+  # block used to implement on its own — truncate the readable part, append an
+  # unconditional digest — to every capped name in the module rather than to
+  # this one. `sanitized` and `hash` stay here because naming.tf reproduces the
+  # historical string from them, which is what keeps deployed rules from being
+  # renamed.
 
   // Identifier -> actual ECS resource names. Keys come from the identifiers
   // module; no identifier string is written literally here.

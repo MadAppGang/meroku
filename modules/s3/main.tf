@@ -5,11 +5,11 @@ locals {
 resource "aws_s3_bucket" "this" {
   for_each = local.bucket_names
 
-  bucket = "${var.project}-${each.key}-${var.env}"
+  bucket = module.naming.names[each.key]
 
   # Add tags for better resource management
   tags = {
-    Name        = "${var.project}-${each.key}-${var.env}"
+    Name        = module.naming.names[each.key]
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"

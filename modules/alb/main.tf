@@ -1,7 +1,7 @@
 resource "aws_lb" "alb" {
   count = var.enabled ? 1 : 0
 
-  name               = "${var.project}-alb-${var.env}"
+  name               = module.naming.names["alb"]
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
@@ -9,7 +9,7 @@ resource "aws_lb" "alb" {
   idle_timeout       = var.idle_timeout
 
   tags = {
-    Name        = "${var.project}-alb-${var.env}"
+    Name        = module.naming.names["alb"]
     Environment = var.env
     Project     = var.project
     Application = "${var.project}-${var.env}"

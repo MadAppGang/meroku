@@ -345,6 +345,35 @@ func registerCustomHelpersOnce() {
 		return raymond.SafeString(tfMap.String())
 	})
 
+	// Render an AWS resource name that is guaranteed to fit that resource type's
+	// length cap. This is the Handlebars half of the rule modules/naming
+	// implements for the Terraform half; see app/aws_name.go for why there are
+	// two and how they are kept in agreement.
+	//
+	// Usage: {{awsName @root.project @root.env name "" "sqs_queue" fifo}}
+	//        {{awsName @root.project @root.env name "dlq" "sqs_queue" fifo}}
+	//
+	// The empty fourth argument is how a template says "no second identity
+	// segment"; awsNameParts drops it. `kind` is looked up in awsNameLimits
+	// rather than passed as a number so a template cannot invent a cap.
+	raymond.RegisterHelper("awsName", func(project, env, part1, part2, kind string, fifo interface{}) raymond.SafeString {
+		limit, err := awsNameLimitFor(kind)
+		if err != nil {
+			// Raymond helpers cannot return an error. Emitting it into the
+			// rendered Terraform is deliberate: `terraform validate` then fails
+			// loudly on the generated file instead of the template silently
+			// producing a name with no cap applied.
+			return raymond.SafeString(fmt.Sprintf("INVALID_AWS_NAME_KIND__%s", kind))
+		}
+		parts := awsNameParts(part1, part2)
+		suffix := awsNameSuffix(fifo)
+		// The legacy form this template has always rendered: project, env, then
+		// the identity. Passed explicitly so a queue already deployed keeps its
+		// name; see the note on awsName.
+		legacy := legacyName(project, env, parts, "-", suffix)
+		return raymond.SafeString(awsName(project, env, parts, limit, "-", suffix, legacy))
+	})
+
 	// Helper for OR logic - used for Aurora capacity where 0 is valid
 	// Check if value exists (not nil) - distinguishes between "value is 0/false" vs "value is missing"
 	// Usage: {{#if (exists postgres.min_capacity)}}...{{/if}}

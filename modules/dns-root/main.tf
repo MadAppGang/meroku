@@ -10,7 +10,7 @@ resource "aws_route53_zone" "root" {
 }
 
 resource "aws_iam_role" "dns_delegation" {
-  name        = "${replace(var.domain_name, ".", "-")}-dns-delegation"
+  name        = module.naming.names["delegation_role"]
   description = "Role for cross-account DNS delegation for ${var.domain_name}"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"

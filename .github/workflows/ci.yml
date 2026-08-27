@@ -123,6 +123,29 @@ jobs:
         run: terraform validate
         working-directory: modules/workloads
 
+      # modules/naming decides what every capped AWS name is called, and its
+      # first contract is that nothing already deployed gets renamed — a rename
+      # is ForceNew, and for a target group attached to a listener rule the
+      # destroy blocks. That property is only checked here.
+      - name: Test the naming module
+        run: |
+          terraform init -backend=false -input=false
+          terraform test
+        working-directory: modules/naming
+
+      # Every module that consumes modules/naming. Validation was scoped to
+      # modules/workloads when it was the only module with a module block; a
+      # naming.tf that references a request key nothing declares is a plan-time
+      # error, so each consumer needs its own init and validate to catch it.
+      - name: Validate the naming consumers
+        run: |
+          set -e
+          for m in alb s3 postgres sqs ecs_task event_bridge_task appsync dns-root; do
+            echo "==> modules/$m"
+            terraform -chdir="modules/$m" init -backend=false -input=false
+            terraform -chdir="modules/$m" validate
+          done
+
   # The drift check between the committed golden capture and the tf_identifiers
   # module. Separate from the `go` job because it is the one test that needs a
   # terraform binary; the always-on boundary test does not, which is what stops

@@ -1,5 +1,43 @@
 locals {
   service_names = { for service in var.services : service.name => service }
+
+  # Target-group names come from modules/naming; see naming.tf for the request
+  # map that defines them. Only the lookup lives here.
+  service_tg_name          = { for k in keys(local.service_names) : k => module.naming.names["service_tg_${k}"] }
+  service_tg_instance_name = { for k in keys(local.service_names) : k => module.naming.names["service_tg_instance_${k}"] }
+
+  # Every target group that will actually exist: the two maps above are
+  # complementary, so this is exactly one name per service.
+  #
+  # The cascade lets forms MIX — a service short enough keeps its historical
+  # name while a longer one drops the decoration — and a service name that
+  # spells out another service's decorated form ("service-<x>-tg", "svc-<x>-i")
+  # can then land on a name already taken. It takes a perverse name to hit, but
+  # without this check the failure is a DuplicateTargetGroupName from the AWS
+  # API partway through an apply, naming neither service.
+  active_tg_names = [
+    for k, v in local.service_names :
+    local.service_bridge[k] ? local.service_tg_instance_name[k] : local.service_tg_name[k]
+  ]
+
+  duplicate_tg_names = [
+    for n in distinct(local.active_tg_names) : n
+    if length([for m in local.active_tg_names : m if m == n]) > 1
+  ]
+
+  tg_name_collision_message = <<-EOT
+    Two services resolve to the same ALB target-group name: ${join(", ", local.duplicate_tg_names)}.
+
+    Target-group names are capped at 32 characters, so a service whose own name
+    is long is rendered in a shortened form, and a service name that spells out
+    another service's decorated form ("service-<x>-tg", "svc-<x>-i") can land on
+    a name already taken.
+
+    Rename one of the colliding services in the `services:` block of your
+    environment YAML — anything not of the form "service-<x>-tg" or "svc-<x>-i"
+    will do — then re-run `task infra-gen-<env>`. AWS would otherwise reject
+    this with DuplicateTargetGroupName partway through the apply.
+  EOT
 }
 
 # Create ALB target group for each service.
@@ -12,11 +50,21 @@ locals {
 resource "aws_lb_target_group" "services" {
   for_each = { for k, v in local.service_names : k => v if var.enable_alb && !local.service_bridge[k] }
 
-  name        = "${var.project}-service-${each.key}-tg-${var.env}"
+  name        = local.service_tg_name[each.key]
   port        = each.value.container_port
   protocol    = "HTTP"
   vpc_id      = var.vpc_id
   target_type = "ip"
+
+  # Repeated on the instance twin below rather than hoisted into a `check`
+  # block: `check` only warns, and this must stop the apply. Between the two
+  # resources every service with a target group is covered.
+  lifecycle {
+    precondition {
+      condition     = length(local.duplicate_tg_names) == 0
+      error_message = local.tg_name_collision_message
+    }
+  }
 
   health_check {
     enabled             = true
@@ -31,7 +79,7 @@ resource "aws_lb_target_group" "services" {
   }
 
   tags = {
-    Name        = "${var.project}-service-${each.key}-tg-${var.env}"
+    Name        = local.service_tg_name[each.key]
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
@@ -52,12 +100,21 @@ resource "aws_lb_target_group" "services_instance" {
 
   # 32 characters is the AWS limit for a target-group name, and both groups exist
   # at once while a service is being flipped between runtimes, so the names must
-  # differ: "-svc-<name>-i-" rather than "-service-<name>-tg-".
-  name        = "${var.project}-svc-${each.key}-i-${var.env}"
+  # differ: "-svc-<name>-i-" rather than "-service-<name>-tg-". Shortening for a
+  # name that overflows even that form is modules/naming's job; the precondition
+  # below is what proves the two stayed apart.
+  name        = local.service_tg_instance_name[each.key]
   port        = each.value.container_port
   protocol    = "HTTP"
   vpc_id      = var.vpc_id
   target_type = "instance"
+
+  lifecycle {
+    precondition {
+      condition     = length(local.duplicate_tg_names) == 0
+      error_message = local.tg_name_collision_message
+    }
+  }
 
   health_check {
     enabled             = true
@@ -72,7 +129,7 @@ resource "aws_lb_target_group" "services_instance" {
   }
 
   tags = {
-    Name        = "${var.project}-svc-${each.key}-i-${var.env}"
+    Name        = local.service_tg_instance_name[each.key]
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
@@ -393,7 +450,7 @@ resource "aws_cloudwatch_log_group" "services" {
 resource "aws_iam_role" "services_task" {
   for_each = local.service_names
 
-  name               = "${var.project}_service_${each.key}_task_${var.env}"
+  name               = module.naming.names["service_task_role_${each.key}"]
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume_role.json
 
   tags = {
@@ -408,7 +465,7 @@ resource "aws_iam_role" "services_task" {
 resource "aws_iam_role" "services_task_execution" {
   for_each = local.service_names
 
-  name               = "${var.project}_service_${each.key}_task_execution_${var.env}"
+  name               = module.naming.names["service_task_execution_role_${each.key}"]
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume_role.json
 
   tags = {

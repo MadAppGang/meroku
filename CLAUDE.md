@@ -242,6 +242,83 @@ Additional services defined in YAML use these patterns:
 | IAM Execution Role | `${project}_service_${name}_task_execution_${env}` | `myapp_service_api_task_execution_dev` |
 | Target Group | `${project}-service-${name}-tg-${env}` | `myapp-service-api-tg-dev` |
 
+## AWS Name Length Limits — `modules/naming`
+
+**Never interpolate a capped AWS name at the resource. Declare it in the module's
+`naming.tf` instead.** Hand-assembling `"${var.project}-<decoration>-${var.env}"`
+is how a deploy came to fail with `"name" cannot be longer than 32 characters`,
+pointing at a line of Terraform rather than at the service that was too long.
+
+AWS caps are not generous: **32** (ALB, target group), **40** (App Runner), **63**
+(S3 bucket, RDS identifier), **64** (IAM role, Lambda, EventBridge rule,
+scheduler), **80** (SQS queue), **128** (IAM policy). A template like
+`${project}-service-${name}-tg-${env}` spends 13 of a 32-character budget on the
+words `service` and `tg`.
+
+### The cascade — first form that fits wins
+
+| # | Form | Example (`myapp` / `dev`) |
+|---|------|-------------------------------|
+| 1 | `legacy`, verbatim | `myapp-service-api-tg-dev` |
+| 2 | `project` + `parts` + `env` | `myapp-orders-sync-dev` |
+| 3 | `parts` + `md5:8` | `payments-4f2a9c1e` |
+
+The ordering is the design: the identity is the only field that tells two names
+apart in a console listing, so it is the **last** thing given up, never the first.
+
+**Form 1 exists solely to protect what is already deployed.** Most AWS names are
+ForceNew, and a target group a listener rule references cannot be deleted at all
+— a rename is a destroy-and-recreate whose destroy blocks. Pass the resource's
+current name as `legacy` and any name that fits today comes back byte-identical.
+
+`suffix` (`.fifo`, an S3 bucket postfix) is counted against the budget and never
+truncated.
+
+### Adding a name
+
+```hcl
+# modules/<yours>/naming.tf
+module "naming" {
+  source  = "../naming"
+  project = var.project
+  env     = var.env
+
+  requests = {
+    my_role = {
+      legacy    = "${var.project}_my_role_${var.env}"  # omit for a NEW resource
+      parts     = ["my", "role"]                       # identity, no project/env
+      limit     = 64
+      separator = "_"
+    }
+  }
+}
+```
+
+Then `name = module.naming.names["my_role"]`.
+
+Assert `module.naming.collisions` is empty in a `precondition` where several
+names share a shape — see `modules/workloads/services.tf`. The cascade lets forms
+mix, so a `parts` list spelling out another request's decorated form can land on
+a name already taken.
+
+### Two implementations, one rule
+
+The algorithm exists twice because name construction happens in two places that
+cannot share code:
+
+- **`modules/naming/`** — for `modules/**.tf`, which only see `var.project`/`var.env`.
+- **`app/aws_name.go`** — for `env/main.hbs` (SQS/SNS), rendered by Go *before*
+  Terraform runs. Exposed as the `awsName` Handlebars helper.
+
+They are pinned together by `app/testdata/aws_name_vectors.json`, read by
+`app/aws_name_test.go` and mirrored by `modules/naming/tests/cascade.tftest.hcl`.
+Change one half without the other and a test fails.
+
+Run them with `terraform -chdir=modules/naming test` and `go test ./app/...`.
+
+Names capped at 128 or above (IAM policies, security groups, log groups, ECS task
+definitions, SSM parameters) stay as literal templates — the cutoff is 80.
+
 ### Scheduled Tasks (`modules/ecs_task`)
 
 Scheduled ECS tasks use these patterns:
