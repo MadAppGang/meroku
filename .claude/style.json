@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "presets": [
+    "asd-ste100",
+    "no-slop",
+    "structured"
+  ],
+  "imports": [
+    "user:builtin-explanatory"
+  ],
+  "hash": "sha256:3ec8e202e39435191af8f174816dd4b6",
+  "updatedAt": "2026-08-27T13:17:37.823Z"
+}

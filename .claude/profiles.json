@@ -1,0 +1,74 @@
+{
+  "version": 2,
+  "profiles": {
+    "default": {
+      "name": "Default",
+      "marketplaces": {
+        "claude-code-plugins": {
+          "source": "github",
+          "repo": "anthropics/claude-code"
+        },
+        "claude-plugins-official": {
+          "source": "github",
+          "repo": "anthropics/claude-plugins-official"
+        },
+        "magus": {
+          "source": "github",
+          "repo": "MadAppGang/magus"
+        }
+      },
+      "plugins": {
+        "commit-commands@claude-code-plugins": "latest",
+        "explanatory-output-style@claude-code-plugins": "latest",
+        "feature-dev@claude-code-plugins": "latest",
+        "frontend-design@claude-code-plugins": "latest",
+        "learning-output-style@claude-code-plugins": "latest",
+        "ralph-wiggum@claude-code-plugins": "latest",
+        "code-review@claude-plugins-official": "latest",
+        "code-simplifier@claude-plugins-official": "latest",
+        "explanatory-output-style@claude-plugins-official": "latest",
+        "claude-code-setup@claude-plugins-official": "latest",
+        "claude-md-management@claude-plugins-official": "latest",
+        "skill-creator@claude-plugins-official": "latest",
+        "code-analysis@magus": "latest",
+        "mnemex@magus": "latest",
+        "claudish@magus": "latest",
+        "multimodel@magus": "latest",
+        "dev@magus": "latest",
+        "browser-use@magus": "latest",
+        "terminal@magus": "latest",
+        "madbench@magus": "latest"
+      },
+      "createdAt": "2026-08-27T13:13:42.118Z",
+      "mcpServers": {
+        "chrome-devtools": {
+          "command": "npx",
+          "args": [
+            "-y",
+            "chrome-devtools-mcp@latest"
+          ]
+        },
+        "stacktree": {
+          "type": "http",
+          "url": "https://api.stacktr.ee/mcp"
+        }
+      },
+      "settings": {
+        "extraKnownMarketplaces": {
+          "claude-code-plugins": {
+            "source": {
+              "source": "github",
+              "repo": "anthropics/claude-code"
+            }
+          },
+          "magus": {
+            "source": {
+              "source": "github",
+              "repo": "MadAppGang/magus"
+            }
+          }
+        }
+      }
+    }
+  }
+}
