@@ -1,5 +1,106 @@
 # Changelog
 
+## v4.4.0
+
+Every AWS resource name with a length cap now goes through one algorithm
+instead of being interpolated at the resource. Nothing already deployed is
+renamed: a name that fits today comes back byte-identical.
+
+### The failure, and what was actually behind it
+
+A deploy failed on:
+
+```
+Error: "name" cannot be longer than 32 characters
+  with module.workloads.aws_lb_target_group.services["..."],
+  on modules/workloads/services.tf line 15
+  15:  name = "${var.project}-service-${each.key}-tg-${var.env}"
+```
+
+The words `service` and `tg` spend 13 of the 32 characters AWS allows. With a
+nine-character project and `dev`, seven were left for the service name.
+
+That template was not unusual. A sweep of the module tree found 141 name sites
+across 18 modules, every one of them assembling
+`"${var.project}-<decoration>-${var.env}"` by hand with no length guard and no
+code in common. Two break with a nine-character project; eleven break with a
+nineteen-character project, `production` and a twenty-three character service
+name; seventeen at thirty. The target group was simply the first to cross a
+line, because 32 is the tightest cap AWS has — and the error names a line of
+Terraform rather than the service that is too long.
+
+### One cascade, first form that fits
+
+`modules/naming` takes a map of requests and returns names:
+
+| # | Form | Example |
+|---|------|---------|
+| 1 | `legacy`, verbatim | `myapp-service-api-tg-dev` |
+| 2 | `project` + `parts` + `env` | `myapp-orders-sync-dev` |
+| 3 | `parts` + `md5:8` | `payments-4f2a9c1e` |
+
+The ordering is the whole design. The identity is the only field that tells two
+of these apart in a console listing — project and env are the same for every
+resource in the environment and are already on the tags — so it is the last
+thing given up, never the first. Form 2 drops `service` and `tg`, which identify
+nothing, and buys back eleven characters at no cost.
+
+Form 1 exists only to protect what is already running. Most AWS names are
+ForceNew, and a target group a listener rule still references cannot be deleted
+at all, so a rename is a destroy-and-recreate whose destroy blocks. Passing a
+resource's current name as `legacy` is what keeps this release from moving any
+plan. `legacy_names_are_untouched` in the module's test suite asserts exactly
+that: every request with a legacy name that fits must come back on form 1.
+
+Applied to the 41 sites capped at 80 characters or less, across ten modules.
+Names capped at 128 or above — IAM policies, security groups, log groups, task
+definitions, SSM parameters — stay as literal templates. The cutoff is 80, and
+routing a name with two hundred characters of headroom through the registry
+would be churn on ForceNew resources for nothing.
+
+It also absorbs `lambda.tf`'s own truncate-and-hash for EventBridge rule names,
+which was this same idea implemented a second time.
+
+### Why it exists twice
+
+Terraform has no user-defined functions — 1.15.8 rejects a top-level
+`functions` block outright — so the only way to write the rule once for
+`modules/**.tf` is a module. But `env/main.hbs` builds SQS and SNS names from
+the environment YAML, and that is rendered by meroku before Terraform is ever
+invoked; no Terraform module can reach it. That half lives in `app/aws_name.go`
+behind an `awsName` Handlebars helper.
+
+The two are pinned together by `app/testdata/aws_name_vectors.json`, read by the
+Go tests and mirrored by `modules/naming/tests/cascade.tftest.hcl`. Change one
+half without the other and a test fails.
+
+`legacy` is supplied by the caller in both halves rather than derived, because
+there is no single historical template to derive from: `env/main.hbs` renders
+`project-env-identity`, every Terraform module renders `project-identity-env`,
+and several put env in the middle.
+
+### Details that are load-bearing
+
+`suffix` — `.fifo`, an S3 bucket postfix — is counted against the budget and is
+never truncated. A FIFO queue whose name loses `.fifo` is rejected by AWS.
+
+The digest covers project, env and the full parts list, so a truncated head
+never decides uniqueness and two environments sharing one AWS account cannot
+collide.
+
+`modules/workloads` asserts the module's `collisions` output in a precondition.
+The cascade lets forms mix — a short resource keeps form 1 while a long one
+moves to form 2 — so a service named `service-<x>-tg` can land on the name a
+service named `<x>` already has. It takes a deliberately perverse name to hit,
+but without the check it arrives as a `DuplicateTargetGroupName` from the AWS
+API partway through an apply, naming neither service.
+
+### CI
+
+`terraform test` now runs against `modules/naming`, and every module that
+consumes it is initialised and validated. Previously only `modules/workloads`
+was validated and no Terraform test ran at all.
+
 ## v4.3.2
 
 `terraform fmt` is now enforced across the whole repository instead of
