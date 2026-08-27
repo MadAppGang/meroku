@@ -1,5 +1,110 @@
 # Changelog
 
+## v4.5.0
+
+A second meroku project in one AWS account can finally enable GitHub Actions.
+Until now the first project into an account took the GitHub OIDC provider and
+every later one failed its apply, with no setting to do anything about it.
+
+### Why one project locked out the rest
+
+AWS keys an IAM OIDC provider on its issuer URL, and the ARN embeds that URL as
+its resource path:
+
+```
+arn:aws:iam::000000000000:oidc-provider/token.actions.githubusercontent.com
+```
+
+Nothing in that name varies per project, and the API reference is explicit:
+"You cannot register the same provider multiple times in a single AWS account."
+
+`modules/workloads/github.tf` created it whenever `enable_github_oidc` was set,
+so the second project's apply stopped at:
+
+```
+Error: creating IAM OIDC Provider: EntityAlreadyExists: Provider with url
+https://token.actions.githubusercontent.com already exists.
+```
+
+The IAM *role* was never part of the problem. It is already named per project,
+and both its trust policy and its `iam:PassRole` scope are per project. The
+provider is only a trust anchor — it says the account accepts tokens signed by
+GitHub, and carries no authorization of its own. Two projects sharing one give
+up nothing.
+
+### The setting
+
+`workload.github_oidc_create_provider`, schema v28, default `true`. Existing
+projects see no plan diff. Set it to `false` and the project builds its role
+against the provider another project already owns.
+
+### The part that needed care
+
+The obvious rule — *if the provider exists, do not create it* — is destructive.
+Applied to the project that owns the provider, `count` falls from 1 to 0, and a
+`count` of 1→0 destroys the real resource. The owner would delete the provider
+every project in the account depends on.
+
+So the question is not whether the provider exists. It is whether **this
+environment's state owns it**:
+
+| State owns it | Exists in account | `create_provider` |
+|---|---|---|
+| yes | yes | `true` — keep owning it |
+| no | yes | `false` — federate against it |
+| no | no | `true` — first project in the account |
+| yes | no | `true` — drift, recreate it |
+
+Terraform cannot answer that. HCL has no way to ask what is in its own state,
+and the AWS provider offers no list data source for OIDC providers — only the
+singular one, which fails outright when the provider is absent. meroku therefore
+resolves it once, from the state and IAM together, and writes the answer into
+`<env>.yaml`.
+
+### Where you will see it
+
+In the web UI, on the GitHub node, the moment you enable OIDC. That is where the
+constraint is worth learning, rather than half an hour later in a failed apply.
+It names the project that owns the provider, records the setting, and says which
+backup it wrote.
+
+The deploy path resolves it too, after the pre-flight, regenerating the terraform
+when the config changed — so CLI runs and hand-edited configs are covered.
+
+Both write through one editor that flips the key or inserts it, scoped to the
+`workload` block and backing the file up first. As with `domain.enabled`, the
+edit is deliberately a line rewrite rather than a marshal round-trip: re-encoding
+the document would drop every key the Go type does not model, and `<env>.yaml`
+is the one file in a project that cannot be regenerated.
+
+Neither AWS read is trusted blindly, and the two ways they fail are kept apart.
+`NoSuchEntity` is an answer — there is no provider — and resolves to "create it".
+`AccessDenied` is a refusal to answer, and writes nothing at all. Treating the
+second like the first would either create a duplicate or tell the owning project
+to stop creating a provider it owns.
+
+### `thumbprint_list` is gone
+
+Two SHA-1 thumbprints were pinned in `github.tf`. AWS validates this issuer's
+JWKS endpoint against its own trusted root certificate authorities and falls
+back to thumbprints only when the identity provider's certificate is signed by
+some other CA — which GitHub's is not. They were read by nothing, and would have
+rotted the next time GitHub rotated certificates.
+
+The attribute is `Optional` and `Computed`, so removing it registers no change;
+the terraform-provider-aws source says so in as many words. To be precise about
+what that means: providers already deployed keep the thumbprints stored in AWS.
+This removes the pins from configuration, not from your account.
+
+### Known gap
+
+Two projects can each claim the same repository in `github_oidc_subjects`. AWS
+allows it, so one repository's workflows could assume roles in both. meroku
+cannot see it today: overlap between `dev.yaml` and `prod.yaml` is the ordinary
+case, and a genuinely conflicting project lives in a checkout meroku never
+reads. Detecting it means reading the account's IAM roles, which is its own
+change.
+
 ## v4.4.1
 
 A Fargate service in `services:` no longer breaks `terraform plan`. The
