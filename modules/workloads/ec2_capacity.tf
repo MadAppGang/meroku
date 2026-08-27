@@ -467,7 +467,7 @@ resource "aws_ecs_cluster_capacity_providers" "main" {
 resource "aws_iam_role" "ecs_instance" {
   count = local.pool_count
 
-  name = "${var.project}_ecs_instance_${var.env}"
+  name = module.naming.names["ecs_instance_role"]
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -483,7 +483,7 @@ resource "aws_iam_role" "ecs_instance" {
   })
 
   tags = {
-    Name        = "${var.project}_ecs_instance_${var.env}"
+    Name        = module.naming.names["ecs_instance_role"]
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
@@ -539,11 +539,11 @@ resource "aws_iam_role_policy" "ecs_instance_extra" {
 resource "aws_iam_instance_profile" "ecs_instance" {
   count = local.pool_count
 
-  name = "${var.project}_ecs_instance_${var.env}"
+  name = module.naming.names["ecs_instance_role"]
   role = aws_iam_role.ecs_instance[0].name
 
   tags = {
-    Name        = "${var.project}_ecs_instance_${var.env}"
+    Name        = module.naming.names["ecs_instance_role"]
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
@@ -574,7 +574,7 @@ resource "aws_iam_instance_profile" "ecs_instance" {
 resource "aws_security_group" "ecs_instance" {
   count = local.pool_count
 
-  name        = "${var.project}_ecs_instance_${var.env}"
+  name        = module.naming.names["ecs_instance_role"]
   description = "ECS container instances for ${var.project} ${var.env} compute pools"
   vpc_id      = var.vpc_id
 
@@ -613,7 +613,7 @@ resource "aws_security_group" "ecs_instance" {
   }
 
   tags = {
-    Name        = "${var.project}_ecs_instance_${var.env}"
+    Name        = module.naming.names["ecs_instance_role"]
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"

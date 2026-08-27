@@ -16,7 +16,7 @@ locals {
 resource "aws_cloudwatch_event_rule" "rule" {
   for_each = local.all_rules
 
-  name = "${var.project}_rule_${each.key}_${var.env}"
+  name = module.naming.names["rule_${each.key}"]
 
   event_pattern = jsonencode({
     source      = each.value.sources

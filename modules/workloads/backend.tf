@@ -435,7 +435,7 @@ resource "aws_cloudwatch_log_group" "backend" {
 }
 
 resource "aws_s3_bucket" "backend" {
-  bucket = "${var.project}-backend-${var.env}${var.backend_bucket_postfix}"
+  bucket = module.naming.names["backend_bucket"]
   tags = {
     Name        = local.backend_name
     Environment = var.env
@@ -486,11 +486,11 @@ resource "aws_s3_bucket_acl" "backend" {
 }
 
 resource "aws_iam_role" "backend_task" {
-  name               = "${var.project}_backend_task_${var.env}"
+  name               = module.naming.names["backend_task_role"]
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume_role.json
 
   tags = {
-    Name        = "${var.project}_backend_task_${var.env}"
+    Name        = module.naming.names["backend_task_role"]
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
@@ -499,11 +499,11 @@ resource "aws_iam_role" "backend_task" {
 }
 
 resource "aws_iam_role" "backend_task_execution" {
-  name               = "${var.project}_backend_task_execution_${var.env}"
+  name               = module.naming.names["backend_task_execution_role"]
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume_role.json
 
   tags = {
-    Name        = "${var.project}_backend_task_execution_${var.env}"
+    Name        = module.naming.names["backend_task_execution_role"]
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"

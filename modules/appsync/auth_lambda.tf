@@ -89,7 +89,7 @@ data "archive_file" "lambda_zip" {
 resource "aws_iam_role" "lambda_role" {
   count = local.use_lambda_auth ? 1 : 0
 
-  name = "${var.project}-${var.env}-appsync-lambda-exec"
+  name = module.naming.names["lambda_exec_role"]
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -126,7 +126,7 @@ resource "aws_lambda_function" "function" {
   count = local.use_lambda_auth ? 1 : 0
 
   filename         = data.archive_file.lambda_zip[0].output_path
-  function_name    = "${var.project}-${var.env}-appsync-auth"
+  function_name    = module.naming.names["auth_lambda"]
   description      = "AppSync Lambda authorizer: verifies RS256 JWTs against ${var.jwks_uri}"
   role             = aws_iam_role.lambda_role[0].arn
   handler          = "index.handler"

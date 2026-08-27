@@ -175,7 +175,7 @@ resource "aws_cloudwatch_log_group" "pgadmin" {
 
 resource "aws_iam_role" "pgadmin_task" {
   count              = var.pgadmin_enabled ? 1 : 0
-  name               = "${var.project}_pgadmin_task_${var.env}"
+  name               = module.naming.names["pgadmin_task_role"]
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume_role.json
 
   tags = {
@@ -189,7 +189,7 @@ resource "aws_iam_role" "pgadmin_task" {
 
 resource "aws_iam_role" "pgadmin_task_execution" {
   count              = var.pgadmin_enabled ? 1 : 0
-  name               = "${var.project}_pgadmin_task_execution_${var.env}"
+  name               = module.naming.names["pgadmin_task_execution_role"]
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume_role.json
 
   tags = {

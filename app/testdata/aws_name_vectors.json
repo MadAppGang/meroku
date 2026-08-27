@@ -1,0 +1,135 @@
+{
+  "_comment": [
+    "Shared truth table for the AWS naming cascade.",
+    "",
+    "Read by app/aws_name_test.go (Go half, env/main.hbs) and mirrored by",
+    "modules/naming/tests/cascade.tftest.hcl (Terraform half, modules/**.tf).",
+    "The two halves cannot share code -- one runs before Terraform, one inside",
+    "it -- so this file is what keeps them from drifting into two different",
+    "answers for the same input. Change the cascade in one half and this table",
+    "fails in the other.",
+    "",
+    "legacy is the exact string the resource is named TODAY. When it fits, it",
+    "must be returned untouched: renaming a live AWS resource is a destroy and",
+    "recreate, and for several resource types the destroy blocks."
+  ],
+
+  "vectors": [
+    {
+      "name": "legacy fits and is returned untouched",
+      "project": "myapp",
+      "env": "dev",
+      "parts": ["orders"],
+      "limit": 80,
+      "separator": "-",
+      "suffix": "",
+      "want": "myapp-dev-orders",
+      "want_form": 1
+    },
+    {
+      "name": "fifo suffix is preserved on the legacy form",
+      "project": "myapp",
+      "env": "dev",
+      "parts": ["orders"],
+      "limit": 80,
+      "separator": "-",
+      "suffix": ".fifo",
+      "want": "myapp-dev-orders.fifo",
+      "want_form": 1
+    },
+    {
+      "name": "dlq is a second identity segment, not decoration",
+      "project": "myapp",
+      "env": "dev",
+      "parts": ["orders", "dlq"],
+      "limit": 80,
+      "separator": "-",
+      "suffix": ".fifo",
+      "want": "myapp-dev-orders-dlq.fifo",
+      "want_form": 1
+    },
+    {
+      "name": "over limit drops to the digest form and keeps the identity",
+      "project": "an-extremely-long-project-name",
+      "env": "production",
+      "parts": ["orders-reconciliation-batch-processor"],
+      "limit": 80,
+      "separator": "-",
+      "suffix": ".fifo",
+      "want_max_len": 80,
+      "want_prefix": "orders-reconciliation-batch-processor",
+      "want_suffix": ".fifo",
+      "want_form": 3
+    },
+    {
+      "name": "fifo suffix survives even when the identity must be cut",
+      "project": "an-extremely-long-project-name",
+      "env": "production",
+      "parts": ["orders-reconciliation-batch-processor"],
+      "limit": 32,
+      "separator": "-",
+      "suffix": ".fifo",
+      "want_max_len": 32,
+      "want_suffix": ".fifo",
+      "want_form": 3
+    },
+    {
+      "name": "target group case that started this: decoration goes, name stays",
+      "project": "myapp",
+      "env": "dev",
+      "parts": ["orders-sync-connector"],
+      "limit": 32,
+      "separator": "-",
+      "suffix": "",
+      "legacy_override": "myapp-service-orders-sync-connector-tg-dev",
+      "want": "myapp-orders-sync-connector-dev",
+      "want_form": 2
+    },
+    {
+      "name": "underscore separator is honoured in every form",
+      "project": "an-extremely-long-project-name",
+      "env": "production",
+      "parts": ["scheduler", "payments-reconciliation", "task", "execution"],
+      "limit": 64,
+      "separator": "_",
+      "suffix": "",
+      "want_max_len": 64,
+      "want_prefix": "scheduler_payments-reconciliation",
+      "want_form": 3
+    },
+    {
+      "name": "readable head never ends on the separator",
+      "project": "an-extremely-long-project-name",
+      "env": "production",
+      "parts": ["abcdefghijklmnopqrstuv", "x"],
+      "limit": 32,
+      "separator": "-",
+      "suffix": "",
+      "want_max_len": 32,
+      "want_no_double_separator": true,
+      "want_form": 3
+    }
+  ],
+
+  "distinctness": {
+    "_comment": "Identities sharing a long prefix must not collide once truncated.",
+    "project": "myapp",
+    "env": "dev",
+    "limit": 32,
+    "separator": "-",
+    "identities": [
+      "payments-reconciliation-batch-alpha",
+      "payments-reconciliation-batch-bravo",
+      "payments-reconciliation-batch-charlie"
+    ]
+  },
+
+  "cross_env": {
+    "_comment": "Two envs sharing one AWS account must not collide either.",
+    "project": "myapp",
+    "envs": ["dev", "staging", "prod"],
+    "identity": "orders-sync-connector",
+    "limit": 32,
+    "separator": "-"
+  }
+}

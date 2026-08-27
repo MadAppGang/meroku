@@ -1,7 +1,7 @@
 data "aws_region" "current" {}
 
 resource "aws_scheduler_schedule_group" "group" {
-  name = "${var.project}-schedule-group-${var.env}-${var.task}"
+  name = module.naming.names["schedule_group"]
 
   tags = {
     Name        = "${var.project}-schedule-group-${var.env}-${var.task}"
@@ -13,7 +13,7 @@ resource "aws_scheduler_schedule_group" "group" {
 }
 
 resource "aws_scheduler_schedule" "scheduler" {
-  name       = "${var.project}-scheduler-${var.task}-${var.env}"
+  name       = module.naming.names["schedule"]
   group_name = aws_scheduler_schedule_group.group.name
 
   flexible_time_window {

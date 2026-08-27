@@ -1,5 +1,5 @@
 resource "aws_iam_role" "task" {
-  name               = "${var.project}_${var.task}_task_${var.env}"
+  name               = module.naming.names["task_role"]
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume_role.json
 
   tags = {
@@ -17,7 +17,7 @@ resource "aws_iam_role_policy_attachment" "task_cloudwatch" {
 }
 
 resource "aws_iam_role" "task_execution" {
-  name               = "${var.project}_scheduler_${var.task}_task_execution_${var.env}"
+  name               = module.naming.names["task_execution_role"]
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume_role.json
 
   tags = {
@@ -93,7 +93,7 @@ data "aws_iam_policy_document" "ssm_parameter_access" {
 }
 
 resource "aws_iam_role" "scheduler_role" {
-  name = "${var.project}_scheduler_${var.task}_role_${var.env}"
+  name = module.naming.names["scheduler_role"]
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [

@@ -18,7 +18,7 @@ locals {
 # Standard RDS Instance (when aurora = false)
 resource "aws_db_instance" "database" {
   count          = var.aurora ? 0 : 1
-  identifier     = "${var.project}-postgres-${var.env}"
+  identifier     = module.naming.names["postgres"]
   engine         = "postgres"
   engine_version = var.engine_version
   # Use new instance_class variable, fallback to old 'instance' for backwards compatibility
@@ -49,7 +49,7 @@ resource "aws_db_instance" "database" {
 # Aurora Serverless v2 Cluster (when aurora = true)
 resource "aws_rds_cluster" "aurora" {
   count                               = var.aurora ? 1 : 0
-  cluster_identifier                  = "${var.project}-aurora-${var.env}"
+  cluster_identifier                  = module.naming.names["aurora"]
   engine                              = "aurora-postgresql"
   engine_mode                         = "provisioned"
   engine_version                      = lookup(local.aurora_version_map, var.engine_version, "17.5")
@@ -85,7 +85,7 @@ resource "aws_rds_cluster" "aurora" {
 # Aurora Serverless v2 Instance
 resource "aws_rds_cluster_instance" "aurora" {
   count                      = var.aurora ? 1 : 0
-  identifier                 = "${var.project}-aurora-instance-${var.env}"
+  identifier                 = module.naming.names["aurora_instance"]
   cluster_identifier         = aws_rds_cluster.aurora[0].id
   instance_class             = "db.serverless"
   engine                     = aws_rds_cluster.aurora[0].engine

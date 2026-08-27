@@ -89,7 +89,7 @@ resource "aws_lb_listener_rule" "services" {
 resource "aws_lb_target_group" "backend" {
   count = var.enable_alb && !local.backend_bridge ? 1 : 0
 
-  name        = "${var.project}-backend-tg-${var.env}"
+  name        = module.naming.names["backend_tg"]
   port        = var.backend_image_port
   protocol    = "HTTP"
   vpc_id      = var.vpc_id
@@ -113,7 +113,7 @@ resource "aws_lb_target_group" "backend" {
   }
 
   tags = {
-    Name        = "${var.project}-backend-tg-${var.env}"
+    Name        = module.naming.names["backend_tg"]
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
@@ -138,7 +138,7 @@ resource "aws_lb_target_group" "backend_instance" {
   # A target-group name is 32 characters at most, and both this group and the
   # "ip" one exist at the same time while a backend is being flipped between
   # runtimes, so the two names must differ.
-  name        = "${var.project}-backend-inst-tg-${var.env}"
+  name        = module.naming.names["backend_tg_instance"]
   port        = var.backend_image_port
   protocol    = "HTTP"
   vpc_id      = var.vpc_id
@@ -162,7 +162,7 @@ resource "aws_lb_target_group" "backend_instance" {
   }
 
   tags = {
-    Name        = "${var.project}-backend-inst-tg-${var.env}"
+    Name        = module.naming.names["backend_tg_instance"]
     Environment = var.env
     Project     = var.project
     ManagedBy   = "meroku"
