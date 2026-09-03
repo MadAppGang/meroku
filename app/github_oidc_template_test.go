@@ -67,3 +67,69 @@ func TestTemplate_GithubOIDCCreateProvider_ExplicitTrueRendersTrue(t *testing.T)
 		t.Errorf("rendered %q, want %q", got, "github_oidc_create_provider = true")
 	}
 }
+
+// The YAML -> HCL link for github_subjects, which is what makes removing the
+// module's default safe.
+//
+// modules/workloads/variables.tf deliberately declares github_subjects with NO
+// default, so a direct module consumer who omits it gets Terraform's "No value
+// for required variable" rather than a silent org-wide grant. That is only safe
+// because generated configurations always pass the key. If main.hbs ever emitted
+// it conditionally, every generated env would stop planning — loudly, but for a
+// reason nobody would connect back to this change.
+//
+// So the claim is asserted rather than assumed, including the two cases that
+// would tempt somebody to add a conditional: the feature switched off, and no
+// subjects at all.
+func TestTemplate_GithubSubjects_AlwaysEmitted(t *testing.T) {
+	tests := []struct {
+		name     string
+		oidc     bool
+		subjects interface{} // nil means "delete the key entirely"
+		want     string
+	}{
+		{"absent key, oidc on", true, nil, "github_subjects = []"},
+		{"absent key, oidc off", false, nil, "github_subjects = []"},
+		{"empty list", true, []interface{}{}, "github_subjects = []"},
+		{
+			"populated", true,
+			[]interface{}{"repo:acme/api:ref:refs/heads/main"},
+			`github_subjects = ["repo:acme/api:ref:refs/heads/main"]`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			overlay := workloadOverlay(t, map[string]interface{}{
+				"enable_github_oidc": tt.oidc,
+			})
+			workload, ok := overlay["workload"].(map[string]interface{})
+			if !ok {
+				t.Fatal("workloadOverlay did not return a workload mapping")
+			}
+			if tt.subjects == nil {
+				delete(workload, "github_oidc_subjects")
+			} else {
+				workload["github_oidc_subjects"] = tt.subjects
+			}
+
+			block := workloadsModuleBlock(t, renderMainHBS(t, overlay))
+
+			var got string
+			for _, line := range strings.Split(block, "\n") {
+				trimmed := strings.TrimSpace(line)
+				if strings.HasPrefix(trimmed, "github_subjects") {
+					got = trimmed
+					break
+				}
+			}
+			if got == "" {
+				t.Fatalf("github_subjects is not in the workloads module block; the module "+
+					"variable has no default, so this would render an unplannable config\n%s", block)
+			}
+			if got != tt.want {
+				t.Errorf("rendered %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

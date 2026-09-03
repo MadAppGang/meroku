@@ -748,13 +748,31 @@ func createEnv(name, env string) Env {
 			SetupFCNSNS:                false,
 			BackendImagePort:           8080,
 			EnableGithubOIDC:           false,
-			GithubOIDCSubjects:         []string{"repo:MadAppGang/*", "repo:MadAppGang/project_backend:ref:refs/heads/main"},
-			BackendContainerCommand:    "",
-			InstallPgAdmin:             false,
-			PgAdminEmail:               "",
-			XrayEnabled:                false,
-			BackendEnvVariables:        map[string]string{"TEST": "passed"},
-			BackendPolicies:            []Policy{},
+			// A placeholder, and it has to be all three of these at once.
+			//
+			// Valid IAM: an empty list renders `"sub": []`, which AWS rejects at
+			// apply with MalformedPolicyDocument, so "no default" is not an
+			// option here the way it is in the Terraform module.
+			//
+			// Matching no real token: the previous default was
+			// "repo:MadAppGang/*", which matches every token issued to a workflow
+			// in MadAppGang's own repositories. For anyone who is not MadAppGang
+			// that shipped default granted a third-party organisation the ability
+			// to assume their deploy role — iam:PassRole over their task roles,
+			// ECR push, ecs:UpdateService — in their own AWS account.
+			//
+			// Obviously unfinished: nobody can mistake this for a working value,
+			// which is the whole point of a placeholder that must be edited.
+			//
+			// EnableGithubOIDC is false above, so a new project never meets this
+			// unintentionally; it is read only once somebody turns the feature on.
+			GithubOIDCSubjects:      []string{"repo:YOUR-GITHUB-ORG/YOUR-REPO:ref:refs/heads/main"},
+			BackendContainerCommand: "",
+			InstallPgAdmin:          false,
+			PgAdminEmail:            "",
+			XrayEnabled:             false,
+			BackendEnvVariables:     map[string]string{"TEST": "passed"},
+			BackendPolicies:         []Policy{},
 			// Backend scaling defaults (schema v4)
 			BackendDesiredCount:           1,
 			BackendAutoscalingEnabled:     false,
