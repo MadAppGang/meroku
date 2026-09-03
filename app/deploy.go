@@ -108,7 +108,19 @@ func runCommandToDeploy(env string) error {
 	// own. Settled here, after the pre-flight has validated credentials and while
 	// we are still at the project root, so the regeneration below finds
 	// <env>.yaml and env/<env>/ where it expects them.
-	if resolveGithubOIDCForEnv(ctx, env, &e) {
+	//
+	// The same pass asks the other GitHub OIDC question: whether another
+	// project in this account already trusts these subjects, which would mean
+	// one repository's workflow can assume both projects' roles.
+	oidc := resolveGithubOIDCForEnv(ctx, env, &e)
+	if oidc.Block {
+		// A confirmed overlap that nobody accepted. Nothing has been applied.
+		fmt.Println("\n❌ Deployment stopped: another project in this account trusts these GitHub subjects.")
+		fmt.Println("   Narrow workload.github_oidc_subjects so the two projects do not overlap,")
+		fmt.Println("   then run the deploy again.")
+		os.Exit(1)
+	}
+	if oidc.Regenerate {
 		// The config changed, so the generated terraform is now stale.
 		applyTemplate(env)
 	}

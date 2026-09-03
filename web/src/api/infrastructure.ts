@@ -619,6 +619,233 @@ export interface ComputeRecommendationQuery {
 	networkMode?: string;
 }
 
+/**
+ * A `sub` claim both this project's subject and another role's subject accept.
+ *
+ * `witness` is a concrete claim string, so the overlap is demonstrated rather
+ * than asserted. It is legitimately the empty string when both patterns are
+ * `*`, which callers must render as "any subject" rather than as a blank gap.
+ */
+export interface GitHubOIDCSubjectOverlap {
+	own_subject: string;
+	other_subject: string;
+	witness: string;
+}
+
+/** How the owning project of a conflicting role was determined. */
+export type GitHubOIDCAttribution = "tags" | "untagged" | "unavailable";
+
+export interface GitHubOIDCSubjectConflict {
+	role_name: string;
+	role_arn: string;
+	owner_project?: string;
+	owner_env?: string;
+	attribution: GitHubOIDCAttribution;
+	/** The role carries no `sub` condition at all: it trusts all of GitHub. */
+	unrestricted: boolean;
+	overlaps: GitHubOIDCSubjectOverlap[];
+}
+
+/**
+ * The scan did not need to run. `checked` is false, but nothing was missed, so
+ * the UI stays silent rather than claiming it could not verify.
+ */
+export type GitHubOIDCNotApplicableReason = "oidc_disabled" | "no_subjects";
+
+/**
+ * Something was not evaluated. `checked` is false and the UI must say so: an
+ * empty `conflicts` array here is absence of evidence, not evidence of absence.
+ */
+export type GitHubOIDCScanIncompleteReason =
+	| "no_account_id"
+	| "no_credentials"
+	| "wrong_account"
+	| "access_denied"
+	| "throttled"
+	| "timeout"
+	| "env_unreadable"
+	| "unparseable_policy"
+	| "pattern_too_long"
+	| "pagination_incomplete"
+	| "unevaluatable_claims"
+	| "pair_budget_exhausted";
+
+export type GitHubOIDCDegradedReason =
+	| GitHubOIDCNotApplicableReason
+	| GitHubOIDCScanIncompleteReason;
+
+/**
+ * The reasons that mean "nothing was missed". Everything else is incomplete.
+ *
+ * A fallback, not the rule. The server sends `kind` on every degraded entry and
+ * derives it from the reason at one place; this list is a second copy and can go
+ * stale, so it is only consulted when `kind` is absent. See
+ * {@link isGitHubOIDCNotApplicable}.
+ */
+export const GITHUB_OIDC_NOT_APPLICABLE_REASONS: ReadonlySet<string> =
+	new Set<GitHubOIDCNotApplicableReason>(["oidc_disabled", "no_subjects"]);
+
+/** Which partition a degraded entry belongs to, decided server-side. */
+export type GitHubOIDCDegradedKind = "not_applicable" | "scan_incomplete";
+
+export interface GitHubOIDCDegradedEntry {
+	reason: GitHubOIDCDegradedReason;
+	/**
+	 * The authoritative partition, derived server-side from `reason`. Optional
+	 * only because a response predating the field would omit it.
+	 */
+	kind?: GitHubOIDCDegradedKind;
+	detail?: string;
+}
+
+/**
+ * Whether a degraded entry means "the scan did not need to run", which the UI
+ * renders silently rather than as a yellow "could not verify" banner.
+ *
+ * `kind` wins whenever it is there. The hardcoded set is a fallback for a
+ * response that omits it: a not-applicable reason added to the backend later
+ * would not be in this bundle's copy of the list, and the UI would paint a
+ * spurious warning on every render of an environment that is simply not using
+ * the feature.
+ *
+ * Anything unrecognised counts as scan-incomplete, which is the safe direction:
+ * an empty `conflicts` array rendered as reassurance is the one outcome this
+ * whole feature exists to prevent.
+ */
+export function isGitHubOIDCNotApplicable(
+	entry: GitHubOIDCDegradedEntry,
+): boolean {
+	if (entry.kind !== undefined) {
+		return entry.kind === "not_applicable";
+	}
+	return GITHUB_OIDC_NOT_APPLICABLE_REASONS.has(entry.reason);
+}
+
+/**
+ * One of THIS project's own GitHub Actions roles whose deployed trust policy
+ * pins no GitHub claim at all: every repository on GitHub can assume it.
+ *
+ * Not a conflict — a conflict relates two roles and this is a property of one —
+ * and not a degradation either. The scan ran to completion and produced a
+ * definite answer; the answer is simply the worst one available, so it arrives
+ * with `checked: true` and an empty `degraded`. It outranks every other tier.
+ */
+export interface GitHubOIDCOwnUnrestrictedRole {
+	role_name: string;
+	role_arn?: string;
+	/** The environment of ours this role belongs to, when it could be attributed. */
+	env?: string;
+}
+
+/**
+ * One of THIS project's own subjects that accepts an entire GitHub
+ * organisation, because a wildcard falls at or before the `<repo>` segment of
+ * `repo:<org>/<repo>:<ref-spec>`.
+ *
+ * Like `GitHubOIDCOwnUnrestrictedRole` this is a property of our own
+ * configuration rather than a relation between two roles, so it arrives with
+ * `checked: true` and an empty `degraded`. It is ranked one tier below that and
+ * one above `conflicts`.
+ */
+export interface GitHubOIDCOrgWideSubject {
+	subject: string;
+	/**
+	 * The organisation segment, and only when it is a literal. Absent when the
+	 * organisation itself is wildcarded — broader still, but naming no
+	 * organisation.
+	 */
+	org?: string;
+	/**
+	 * True when this is meroku's untouched default. It changes only the copy,
+	 * never the verdict — but it changes it a lot: that default trusts a
+	 * third-party organisation's repositories.
+	 */
+	shipped_default: boolean;
+}
+
+/**
+ * A role this scan deliberately refused to judge: it restricts access by claims
+ * other than `sub`, which this scan does not reason about. Neither cleared nor
+ * flagged — reported.
+ */
+export interface GitHubOIDCUnevaluatedRole {
+	role_name: string;
+	reason: string;
+	claim_keys: string[];
+}
+
+/** What the scan compared this project's subjects from. */
+export type GitHubOIDCOwnSubjectsSource =
+	| "yaml"
+	| "request"
+	| "yaml+deployed"
+	| "request+deployed";
+
+export interface GitHubOIDCSubjectConflictsResponse {
+	/**
+	 * True only if the asserted account was scanned to completion and every
+	 * candidate role and subject was evaluated or safely excluded. False with an
+	 * empty `conflicts` array means nothing was proven, not that nothing is wrong.
+	 */
+	checked: boolean;
+	account_id?: string;
+	roles_scanned?: number;
+	own_subjects: string[];
+	own_subjects_source?: GitHubOIDCOwnSubjectsSource;
+	/** Own roles for this project and account: a declared blind spot, not a fault. */
+	excluded_roles: string[];
+	excluded_note?: string;
+	/**
+	 * Our own roles that trust all of GitHub. Independent of `conflicts` and
+	 * louder than it: this one is about our own configuration, and `checked` can
+	 * be true while it is populated.
+	 */
+	own_unrestricted_roles: GitHubOIDCOwnUnrestrictedRole[];
+	/**
+	 * Our own subjects that accept a whole GitHub organisation. Ranked below
+	 * `own_unrestricted_roles` and above `conflicts`, and — like both of those —
+	 * a finding rather than a degradation, so `checked` can be true beside it.
+	 */
+	own_org_wide_subjects: GitHubOIDCOrgWideSubject[];
+	conflicts: GitHubOIDCSubjectConflict[];
+	unevaluated_roles: GitHubOIDCUnevaluatedRole[];
+	degraded: GitHubOIDCDegradedEntry[];
+}
+
+/**
+ * The wire shape, which is not the same thing as the contract. The server
+ * promises `[]` for every array, but a Go zero-value slice marshals as `null`
+ * and the UI calls `.length` on all of them, so every array is optional and
+ * nullable here and coalesced on the way out.
+ */
+interface GitHubOIDCSubjectConflictsWire
+	extends Omit<
+		Partial<GitHubOIDCSubjectConflictsResponse>,
+		| "own_subjects"
+		| "excluded_roles"
+		| "own_unrestricted_roles"
+		| "own_org_wide_subjects"
+		| "conflicts"
+		| "unevaluated_roles"
+		| "degraded"
+	> {
+	own_subjects?: string[] | null;
+	excluded_roles?: string[] | null;
+	own_unrestricted_roles?: GitHubOIDCOwnUnrestrictedRole[] | null;
+	own_org_wide_subjects?: GitHubOIDCOrgWideSubject[] | null;
+	conflicts?:
+		| (Omit<GitHubOIDCSubjectConflict, "overlaps"> & {
+				overlaps?: GitHubOIDCSubjectOverlap[] | null;
+		  })[]
+		| null;
+	unevaluated_roles?:
+		| (Omit<GitHubOIDCUnevaluatedRole, "claim_keys"> & {
+				claim_keys?: string[] | null;
+		  })[]
+		| null;
+	degraded?: GitHubOIDCDegradedEntry[] | null;
+}
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || "";
 
 export const infrastructureApi = {
@@ -1420,6 +1647,77 @@ export const infrastructureApi = {
 			);
 		}
 		return response.json();
+	},
+
+	/**
+	 * Scans the environment's AWS account for another project's GitHub Actions
+	 * role whose trust policy accepts a `sub` claim this project's subjects also
+	 * accept. Where they overlap, one repository's workflow can assume both
+	 * roles, and the second grants `iam:PassRole`, ECR push and
+	 * `ecs:UpdateService` over a project it was never meant to touch.
+	 *
+	 * `ownSubjects` carries the subjects the user is currently looking at, so an
+	 * unsaved edit is evaluated instead of whatever is on disk. Omit it and the
+	 * server reads `{env}.yaml`. Either way the server echoes back what it
+	 * actually compared in `own_subjects`.
+	 *
+	 * Pass `signal` so a superseded scan can be cancelled; the request paginates
+	 * IAM and can outlive the edit that started it.
+	 *
+	 * Resolves with `checked: false` for every AWS-side failure rather than
+	 * rejecting — the verdict is three-valued and an HTTP status carries two.
+	 * Rejects only on a bad request, an unknown environment, or a transport
+	 * failure, none of which is evidence that no conflict exists.
+	 */
+	async getGitHubOIDCSubjectConflicts(
+		env: string,
+		ownSubjects?: string[],
+		signal?: AbortSignal,
+	): Promise<GitHubOIDCSubjectConflictsResponse> {
+		const response = await fetch(
+			`${API_BASE_URL}/api/environments/github-oidc-subject-conflicts`,
+			{
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify(
+					ownSubjects ? { env, own_subjects: ownSubjects } : { env },
+				),
+				signal,
+			},
+		);
+		if (!response.ok) {
+			const error: ErrorResponse = await response.json().catch(() => ({
+				error: "",
+			}));
+			throw new Error(
+				error.error ||
+					`Failed to check for overlapping OIDC subjects (HTTP ${response.status})`,
+			);
+		}
+
+		const wire: GitHubOIDCSubjectConflictsWire = await response.json();
+		// Defence in depth against a null slice: every one of these is measured
+		// with `.length` by the renderer, and a crash there would hide the very
+		// thing the scan found.
+		return {
+			...wire,
+			checked: wire.checked === true,
+			own_subjects: wire.own_subjects ?? [],
+			excluded_roles: wire.excluded_roles ?? [],
+			own_unrestricted_roles: wire.own_unrestricted_roles ?? [],
+			own_org_wide_subjects: wire.own_org_wide_subjects ?? [],
+			conflicts: (wire.conflicts ?? []).map((conflict) => ({
+				...conflict,
+				overlaps: conflict.overlaps ?? [],
+			})),
+			unevaluated_roles: (wire.unevaluated_roles ?? []).map((role) => ({
+				...role,
+				claim_keys: role.claim_keys ?? [],
+			})),
+			degraded: wire.degraded ?? [],
+		};
 	},
 
 	async getFargateOptions(): Promise<FargateOptionsResponse> {

@@ -39,6 +39,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
 const (
@@ -188,32 +189,116 @@ func newIAMClient(ctx context.Context, region string) (*iam.Client, error) {
 	return iam.NewFromConfig(cfg), nil
 }
 
-// resolveGithubOIDCForEnv settles how this environment relates to the account's
-// GitHub OIDC provider, records the answer in <env>.yaml, and reports whether
-// the file changed and so needs regenerating.
+// newAWSClientsForEnv builds the IAM and STS clients the subject overlap scan
+// uses, pinned to one environment's region and profile.
 //
-// It runs after the AWS pre-flight, which has already validated credentials,
-// and it is advisory in the same sense the compute pool checks are: a read it
-// could not make is reported and skipped. Refusing to deploy because a
-// diagnostic failed would be worse than deploying without it, and the apply
-// still fails loudly on a real collision.
+// Two things about it are load-bearing.
+//
+// It honours env.AWSProfile, which newIAMClient does not. A scan that runs
+// against whatever AWS_PROFILE the server happens to hold can list a different
+// account entirely and return a confident, meaningless "no conflicts".
+//
+// And both clients come from ONE aws.Config. Constructing them separately lets
+// STS assert account A while IAM lists account B, which defeats the assertion
+// completely — the assertion would then be checking the credentials of a client
+// that never makes the call whose answer is being trusted.
+//
+// The empty-profile case is not handled here: WithSharedConfigProfile("") is a
+// documented no-op, so passing it unconditionally would silently do nothing.
+// The refusal that covers a fresh environment lives in
+// githubOIDCConflictRefusal, where an empty account_id stops the scan outright.
+func newAWSClientsForEnv(ctx context.Context, env Env) (*iam.Client, *sts.Client, error) {
+	opts := []func(*config.LoadOptions) error{config.WithRegion(env.Region)}
+	if env.AWSProfile != "" {
+		opts = append(opts, config.WithSharedConfigProfile(env.AWSProfile))
+	}
+
+	cfg, err := config.LoadDefaultConfig(ctx, opts...)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to load AWS configuration: %w", err)
+	}
+	return iam.NewFromConfig(cfg), sts.NewFromConfig(cfg), nil
+}
+
+// githubOIDCOutcome is what the pre-deploy GitHub OIDC checks concluded.
+//
+// It exists because those checks now have two independent things to say and a
+// bool can only carry one. Widening the return type is what makes refusal
+// expressible at all: the old value meant "the YAML changed", and the deploy
+// path continued on every value that was not true, so "a confirmed subject
+// conflict the operator did not accept" had no channel to travel down.
+type githubOIDCOutcome struct {
+	// Regenerate is the existing bool's meaning, unchanged: <env>.yaml was
+	// rewritten and the generated terraform is now stale.
+	Regenerate bool
+	// Block is a confirmed subject conflict the operator did not accept —
+	// declined at the prompt, or found with no terminal to ask on. A scan that
+	// merely failed never sets it.
+	Block bool
+}
+
+// newGithubOIDCReader builds the IAM client the provider check reads with. A
+// variable so a test can answer it without reaching AWS, following
+// startSyncScreen in app/state_reconnect.go.
+var newGithubOIDCReader = func(ctx context.Context, region string) (iamOIDCReader, error) {
+	return newIAMClient(ctx, region)
+}
+
+// lookupGithubOIDCRemoteState is the same seam for the ownership half.
+var lookupGithubOIDCRemoteState remoteStateLookup = lookupRemoteStateFromS3
+
+// runGithubOIDCConflictCheck is the same seam for the subject overlap scan,
+// whose decision logic is tested directly in github_oidc_cli_test.go.
+var runGithubOIDCConflictCheck = checkGithubOIDCSubjectConflicts
+
+// resolveGithubOIDCForEnv settles how this environment relates to the account's
+// GitHub OIDC provider, records the answer in <env>.yaml, and then looks for
+// another project in the same account whose GitHub Actions role trusts the same
+// subjects.
+//
+// It runs after the AWS pre-flight, which has already validated credentials.
+// The two halves have deliberately different authority.
+//
+// The provider half is advisory in the same sense the compute pool checks are:
+// a read it could not make is reported and skipped. Refusing to deploy because
+// a diagnostic failed would be worse than deploying without it, and the apply
+// still fails loudly on a real collision. That contract also covers a subject
+// scan that could not finish — it prints an unmistakable "could not verify"
+// line and never blocks.
+//
+// A subject conflict the scan actually FOUND is not a failed diagnostic. It is
+// a privilege boundary that is not there, evidenced by a concrete sub claim
+// that assumes both roles, so it blocks unless a human accepts it at a prompt —
+// and unconditionally when there is nobody to ask.
 //
 // It mutates e alongside the file, the way applyDNSOutcome does, so the caller
 // is not left holding a stale config.
-func resolveGithubOIDCForEnv(ctx context.Context, envName string, e *Env) bool {
+func resolveGithubOIDCForEnv(ctx context.Context, envName string, e *Env) githubOIDCOutcome {
 	if !e.Workload.EnableGithubOIDC {
-		return false
+		return githubOIDCOutcome{}
 	}
 
+	// Sequenced rather than written as one composite literal: the provider half
+	// may rewrite <env>.yaml and mutate e, and the scan is handed a copy of e
+	// after it has done so.
+	out := githubOIDCOutcome{Regenerate: resolveGithubOIDCProvider(ctx, envName, e)}
+	out.Block = runGithubOIDCConflictCheck(ctx, *e)
+	return out
+}
+
+// resolveGithubOIDCProvider is the provider half, byte-for-byte the behaviour
+// that used to be the whole of resolveGithubOIDCForEnv. It reports whether
+// <env>.yaml was rewritten and so needs regenerating.
+func resolveGithubOIDCProvider(ctx context.Context, envName string, e *Env) bool {
 	fmt.Println("\n🔑 Checking the account's GitHub OIDC provider...")
 
-	iamClient, err := newIAMClient(ctx, e.Region)
+	iamClient, err := newGithubOIDCReader(ctx, e.Region)
 	if err != nil {
 		fmt.Printf("   ⚠️  Skipped: %v\n", err)
 		return false
 	}
 
-	status, err := resolveGithubOIDCStatus(ctx, *e, iamClient, lookupRemoteStateFromS3)
+	status, err := resolveGithubOIDCStatus(ctx, *e, iamClient, lookupGithubOIDCRemoteState)
 	if err != nil {
 		fmt.Printf("   ⚠️  Skipped: %v\n", err)
 		fmt.Println("      If the apply fails with EntityAlreadyExists, another project in this")

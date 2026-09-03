@@ -96,6 +96,11 @@ modules/neon/scripts/db-access.json
 # must never carry. Finished documentation belongs in ai_docs/ directly, where
 # it gets written with synthetic placeholders.
 ai_docs/sessions/
+# The directory actually in use is ai-docs/ with a hyphen, so the rule above
+# never matched and session artifacts have been committed here before. Both
+# spellings are listed rather than one corrected, because the underscore form
+# is what the paragraph above was written against and either could reappear.
+ai-docs/sessions/
 
 # Generated Terraform.
 #

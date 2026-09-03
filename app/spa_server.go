@@ -167,6 +167,10 @@ func mainRouter() http.Handler {
 	// GitHub Actions OIDC: one provider per AWS account, so a second project
 	// sharing the account federates against the first project's.
 	mux.HandleFunc("/api/environments/github-oidc-status", corsMiddleware(getGithubOIDCStatus))
+	// And a read-only scan for the other half of the problem: two projects in
+	// one account whose OIDC subject lists overlap can assume each other's
+	// roles, and AWS says nothing about it.
+	mux.HandleFunc("/api/environments/github-oidc-subject-conflicts", corsMiddleware(getGitHubOIDCSubjectConflicts))
 
 	// Custom Terraform Extensions
 	mux.HandleFunc("/api/custom-terraform/files", corsMiddleware(listCustomTerraformFiles))

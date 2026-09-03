@@ -79,9 +79,23 @@ variable "assign_public_ip" {
   default     = true
 }
 
+# The sub condition on the GitHub Actions role's trust policy: the only thing
+# deciding which repositories can assume it.
+#
+# There is DELIBERATELY no default. This used to default to
+# ["repo:MadAppGang/*:*"], which matches every token issued to a workflow in
+# MadAppGang's own repositories — so a direct consumer of this module who forgot
+# the variable silently granted a third-party organisation iam:PassRole over
+# their task roles, ECR push and ecs:UpdateService in their own AWS account.
+# Required means Terraform's own "No value for required variable" instead, which
+# is a question rather than a grant.
+#
+# Generated configurations are unaffected: env/main.hbs always emits
+# github_subjects, because the array helper renders [] for both a nil and an
+# empty list (renderHCLList, app/raymond.go).
 variable "github_subjects" {
-  type    = list(string)
-  default = ["repo:MadAppGang/*:*"]
+  description = "GitHub OIDC sub patterns allowed to assume this project's deploy role. No default: an omitted value must fail, not fall back to a wildcard."
+  type        = list(string)
 }
 
 variable "github_oidc_enabled" {
