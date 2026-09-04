@@ -1,5 +1,99 @@
 # Changelog
 
+## v4.6.1
+
+The compute pool preconditions now have a test that can fail. Their messages
+moved into `modules/compute_pool_check`, a module with no provider, so
+`terraform test` plans them in CI with no credentials and no network. Closes #24
+and #25.
+
+### Why the messages had no test
+
+v4.4.1 fixed a null interpolated into the compute pool error message. That bug
+shipped in v4.2.0 and survived v4.3.0, v4.3.1, v4.3.2 and v4.4.0 before a user
+hit it, and CI passed on every one of those releases.
+
+CI gives `modules/workloads` three steps: `fmt`, `init`, `validate`. Validate
+does not evaluate a precondition's `error_message` at all, so it reported
+success on the exact configuration `plan` rejected. Nothing else in the
+repository plans that module, and nothing can: it reads eight remote data
+sources (`aws_caller_identity`, `aws_region`, `aws_vpc`, `aws_lb`,
+`aws_ssm_parameter`, `aws_ssm_parameters_by_path` twice,
+`aws_organizations_organization`, `aws_iam_openid_connect_provider`). No
+provider stub gets a plan past those, so a CI plan needs real credentials.
+
+### What changed
+
+`modules/compute_pool_check` decides whether a workload's pool is usable and
+renders the sentence shown when it is not. It creates nothing and declares no
+provider, the same property that makes `modules/naming` testable.
+
+`aws_ecs_service.services` and `aws_ecs_service.backend` now read their
+precondition from it:
+
+```hcl
+precondition {
+  condition     = module.service_pool_check.valid[each.key]
+  error_message = module.service_pool_check.message[each.key]
+}
+```
+
+The message is rendered for every workload, the valid ones included, because
+that is what Terraform does with an `error_message` and therefore what the test
+has to exercise. Reintroducing the v4.2.0 bug in the module now fails
+`terraform test` with the same diagnostic that reached the user:
+
+```
+Error: Invalid template interpolation value
+  on main.tf line 28, in locals:
+    │ w.pool is null
+The expression result is null. Cannot include a null value in a string template.
+```
+
+Verified by making that edit and watching the suite fail, then reverting it.
+
+### What the new gate caught immediately
+
+The first CI run on this change failed, on a bug the local machine could not
+see:
+
+```
+Error: Invalid function argument
+  on main.tf line 12, in locals:
+  12:   valid = { ... k => w.pool == null || contains(var.pool_names, w.pool) }
+    │ w.pool is null
+Invalid value for "value" parameter: argument must not be null.
+```
+
+CI pins Terraform 1.9.8, which evaluates both operands of `||`. Terraform 1.16
+short-circuits and never calls `contains` with the null, so the same expression
+passes locally and fails on the version the project actually supports
+(`required_version = ">= 1.2.6"`).
+
+The preconditions this module replaces carried that identical shape, so a
+Fargate service on an older Terraform failed on `contains` rather than on the
+message. Both forms are gone: `valid` is now a conditional, and Terraform
+evaluates only the branch a conditional takes.
+
+### The bare period
+
+With no pools defined, the message used to offer an empty list and stop:
+
+```
+... or point the service at one of these: .
+```
+
+That is the likeliest state for anyone reading it, because they set
+`runtime: ec2` and never wrote a `compute` block. It now says what is true:
+
+```
+... This project defines no compute pools, so a service can only use runtime
+"fargate" until one is added under compute.pools.
+```
+
+The text for a project that does have pools is byte-identical to before, asserted
+whole in the test rather than by substring.
+
 ## v4.6.0
 
 Two meroku projects in one AWS account could claim the same GitHub OIDC subjects,
