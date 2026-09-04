@@ -49,8 +49,16 @@ variable "max_retry_attempts" {
   type        = number
   default     = null
 
+  # A conditional, not `== null || (...)`. Terraform evaluates only the branch a
+  # conditional takes, but `||` evaluates BOTH operands on the versions this
+  # repository supports (required_version >= 1.2.6; CI pins 1.9.8), and
+  # floor(null) is "argument must not be null". null is this variable's default
+  # and, per the description above, its normal state, so the || form failed at
+  # plan for every scheduled task that left it alone. Terraform 1.16
+  # short-circuits and hides it, and `terraform validate` does not run a
+  # variable validation at all, so no gate here could see it.
   validation {
-    condition     = var.max_retry_attempts == null || (var.max_retry_attempts >= 0 && var.max_retry_attempts <= 185 && floor(var.max_retry_attempts) == var.max_retry_attempts)
+    condition     = var.max_retry_attempts == null ? true : (var.max_retry_attempts >= 0 && var.max_retry_attempts <= 185 && floor(var.max_retry_attempts) == var.max_retry_attempts)
     error_message = "max_retry_attempts must be a whole number from 0 to 185."
   }
 }
