@@ -1,5 +1,72 @@
 # Changelog
 
+## v4.6.2
+
+Two guards that only worked because a recent Terraform short-circuits `&&` and
+`||`. Both failed on the version CI pins and on the floor this project claims to
+support, and both were on a default path rather than an exotic one.
+
+### Where this came from
+
+v4.6.1 hit the same thing in new code: `w.pool == null || contains(list, w.pool)`
+passed locally on 1.16 and failed in CI on 1.9.8, because 1.9.8 evaluates both
+operands and `contains(list, null)` is an error. That prompted a sweep of every
+`&&` and `||` in `modules/` and `env/main.hbs` — 50 sites, each checked against
+a 1.9.8 binary rather than by reading.
+
+Forty-seven are safe. Comparing null with `==` or `!=` is legal, `bool && bool`
+cannot fail, `can()` swallows its own errors, `nullable = false` rules the case
+out, and the strings from `fileset` are never null. Three needed a decision and
+two were broken:
+
+| Site | Guarded expression | 1.9.8 | 1.16 |
+|---|---|---|---|
+| `modules/ecs_task/variable.tf` | `floor(var.max_retry_attempts)` | `argument must not be null` | passes |
+| `modules/workloads/backend.tf` (×2) | `var.backend_policy[0].actions` | `Invalid index` | passes |
+| `modules/amplify/main.tf` | `app.custom_domain != ""` | passes | passes |
+
+### Why both were on the default path
+
+`max_retry_attempts` defaults to null, and its own description calls null the
+normal state: it omits the `retry_policy` block so AWS keeps its own default of
+185. So on 1.9.8 every scheduled task that left the variable alone failed at
+plan. `terraform validate` does not run a variable validation at all, which is
+why CI has been green on it.
+
+`backend_policy` is worse, because it is generated. `env/main.hbs` renders
+
+```handlebars
+backend_policy = [
+{{#each workload.policy}}
+```
+
+which emits `backend_policy = []` for any project without a `workload.policy`,
+and `backend.tf` then indexed `[0]` behind a `length() > 0` guard that did not
+stop it.
+
+### The fixes
+
+A conditional for the first, since Terraform evaluates only the branch a
+conditional takes, and `try()` for the second:
+
+```hcl
+condition = var.max_retry_attempts == null ? true : (...)
+count     = length(try(var.backend_policy[0].actions, [])) > 0 ? 1 : 0
+```
+
+Both were checked on 1.9.8 and 1.16 against a truth table covering null, valid
+and invalid retry values, and empty, actionless and populated policies. Every
+cell matches what the old expressions returned on 1.16, so nothing that plans
+today changes.
+
+### No test covers these
+
+Neither module can be planned in CI: they need providers and credentials, which
+is the same wall v4.6.1 described. The shape alone cannot be linted either — the
+amplify row above has the identical shape and is correct. What is repeatable is
+the method: grep every `&&` and `||`, then run each candidate through the pinned
+Terraform.
+
 ## v4.6.1
 
 The compute pool preconditions now have a test that can fail. Their messages
