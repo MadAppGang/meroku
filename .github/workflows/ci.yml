@@ -133,6 +133,23 @@ jobs:
           terraform test
         working-directory: modules/naming
 
+      # The precondition messages on the ECS services and the backend. The step
+      # above this one runs `terraform validate` on modules/workloads, and
+      # validate does not evaluate a precondition's error_message at all, so a
+      # message that cannot render passes every gate here and fails in the
+      # user's terminal. That is exactly what happened: a null interpolated into
+      # the compute_pool message shipped in v4.2.0 and broke every deploy with a
+      # Fargate service until v4.4.1, through four releases.
+      #
+      # modules/workloads reads eight remote data sources and can never be
+      # planned without AWS credentials, so the messages live in a module with
+      # no provider and are planned here instead.
+      - name: Test the compute pool check
+        run: |
+          terraform init -backend=false -input=false
+          terraform test
+        working-directory: modules/compute_pool_check
+
       # Every module that consumes modules/naming. Validation was scoped to
       # modules/workloads when it was the only module with a module block; a
       # naming.tf that references a request key nothing declares is a plan-time
