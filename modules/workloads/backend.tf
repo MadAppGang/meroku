@@ -802,7 +802,14 @@ resource "aws_iam_role_policy" "ecs_exec_policy" {
 
 // Create custom IAM policy from backend_policy if actions are specified
 resource "aws_iam_policy" "backend_custom_policy" {
-  count = length(var.backend_policy) > 0 && length(var.backend_policy[0].actions) > 0 ? 1 : 0
+  # try(), not `length(var.backend_policy) > 0 && ...[0]...`. Terraform
+  # evaluates both operands of && on the versions this repository supports
+  # (required_version >= 1.2.6; CI pins 1.9.8), so the guard did not stop the
+  # index and an empty list raised "Invalid index". env/main.hbs renders
+  # `backend_policy = []` whenever a project has no workload.policy, which is
+  # most of them, so this was the generated default. Terraform 1.16
+  # short-circuits and hides it.
+  count = length(try(var.backend_policy[0].actions, [])) > 0 ? 1 : 0
 
   name = "${var.project}_backend_custom_policy_${var.env}"
   policy = jsonencode({
@@ -828,7 +835,14 @@ resource "aws_iam_policy" "backend_custom_policy" {
 
 // Attach the custom policy to the backend task role if it exists
 resource "aws_iam_role_policy_attachment" "backend_custom_policy_attachment" {
-  count = length(var.backend_policy) > 0 && length(var.backend_policy[0].actions) > 0 ? 1 : 0
+  # try(), not `length(var.backend_policy) > 0 && ...[0]...`. Terraform
+  # evaluates both operands of && on the versions this repository supports
+  # (required_version >= 1.2.6; CI pins 1.9.8), so the guard did not stop the
+  # index and an empty list raised "Invalid index". env/main.hbs renders
+  # `backend_policy = []` whenever a project has no workload.policy, which is
+  # most of them, so this was the generated default. Terraform 1.16
+  # short-circuits and hides it.
+  count = length(try(var.backend_policy[0].actions, [])) > 0 ? 1 : 0
 
   role       = aws_iam_role.backend_task.name
   policy_arn = aws_iam_policy.backend_custom_policy[0].arn
