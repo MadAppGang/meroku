@@ -278,8 +278,8 @@ resource "aws_ecs_service" "services" {
     ignore_changes = [task_definition]
 
     precondition {
-      condition     = local.service_pools[each.key] == null || contains(keys(local.pools), local.service_pools[each.key])
-      error_message = "Service \"${each.key}\" sets runtime \"ec2\" with compute pool \"${local.service_pool_names[each.key]}\", which is not an enabled compute pool. Add a pool with that name under compute.pools, set enabled: true on it if it is disabled, or point the service at one of these: ${join(", ", keys(local.pools))}."
+      condition     = module.service_pool_check.valid[each.key]
+      error_message = module.service_pool_check.message[each.key]
     }
   }
 

@@ -76,16 +76,9 @@ locals {
     s.name => try(s.runtime, "fargate") == "ec2" ? s.compute_pool : null
   }
 
-  # The same map with the nulls rendered as "", for the ONE place a pool name is
-  # interpolated into text: the precondition error_message in services.tf.
-  # Terraform renders that message BEFORE it tests the condition, and for every
-  # instance of the resource, so a Fargate service — whose pool is deliberately
-  # null — killed the plan with "Invalid template interpolation value" pointing
-  # at the message, on a configuration that had nothing wrong with it. Reading
-  # the pool name through this map keeps the diagnostic from becoming the error.
-  # A human only ever sees the message for an "ec2" service, where the value is
-  # a real pool name.
-  service_pool_names = { for k, v in local.service_pools : k => v == null ? "" : v }
+  # Whether either of these names a usable pool, and what to say when it does
+  # not, is decided in pool_check.tf. That work sits in a module with no
+  # provider so it can be tested; see the comment there.
 
   # THE NETWORK MODE OF EACH WORKLOAD. Fargate is awsvpc and always will be — it
   # is the only mode Fargate supports. An EC2 workload takes its pool's.

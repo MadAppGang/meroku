@@ -148,8 +148,8 @@ resource "aws_ecs_service" "backend" {
     ignore_changes = [task_definition]
 
     precondition {
-      condition     = local.backend_pool == null || contains(keys(local.pools), local.backend_pool)
-      error_message = "The backend sets runtime \"ec2\" with compute pool \"${var.backend_compute_pool}\", which is not an enabled compute pool. Add a pool with that name under compute.pools, set enabled: true on it if it is disabled, or point the backend at one of these: ${join(", ", keys(local.pools))}."
+      condition     = module.backend_pool_check.valid["backend"]
+      error_message = module.backend_pool_check.message["backend"]
     }
   }
 
