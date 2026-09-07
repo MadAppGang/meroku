@@ -58,11 +58,97 @@ internal/testsupport/         the shared fixture every test loads
 | Source | Detail type | Effect | Honours `auto_deploy` |
 |---|---|---|---|
 | `aws.ecr` | `ECR Image Action` | deploy every identifier bound to the repository | yes |
-| `aws.ssm` | `Parameter Store Change` (`operation = Update`) | deploy the identifier owning the longest matching path prefix | yes |
+| `aws.ssm` | `Parameter Store Change` (`operation = Create` or `Update`) | deploy the identifier owning the longest matching path prefix | yes |
 | `aws.s3` | `AWS API Call via CloudTrail` | deploy every identifier bound to that bucket + key | yes |
 | `action.{env}`, `github.actions.{env}` | `DEPLOY`, `SERVICE_DEPLOY` | deploy the named identifier | **no** — asked for explicitly |
 | `action.deploy` | `DEPLOY`, `SERVICE_DEPLOY` | deploy the named identifier, only with `detail.project` + `detail.env` | **no** — asked for explicitly |
+| `terraform.{env}` | `SERVICE_DEPLOY` | deploy the service whose task definition Terraform just registered | yes — the resource is not created when it is off |
 | `aws.ecs` | `ECS Deployment State Change`, `ECS Service Action` | Slack only; never deploys, never errors | n/a |
+
+### The two SSM operations, and the one that is excluded
+
+`Create` and `Update` are the same operator action: `PutParameter` with and
+without `Overwrite`, with Parameter Store choosing between them purely on whether
+the name already existed. meroku writes parameters that way itself
+(`app/api_ssm.go`), so **adding** a variable emits `Create` and only ever
+`Create`. Both therefore deploy.
+
+Two exclusions ride on top:
+
+- **`Delete` is not in the rule**, and the absence is load-bearing. A deployment
+  cannot restore a deleted parameter; it makes the loss fatal. The revision the
+  service is running still lists the parameter in `secrets`, so every task
+  launched after the delete fails on `ResourceInitializationError` — a redeploy
+  replaces the tasks that were still working with ones that cannot start.
+  Terraform's next apply removes the entry from the list, and it is the only
+  thing that can.
+- **Terraform's own `{prefix}/env` placeholders are ignored on `Create`.**
+  `env.tf`, `env_services.tf` and `modules/ecs_task/env.tf` each create one
+  holding a single space, so the path exists for somebody to fill in; creating it
+  says nothing about the configuration, and on a first apply the ECS service it
+  names does not exist yet. The exclusion is `config.IsTerraformOwnedSSMPath`, an
+  equality test against the prefixes in `SSM_SERVICE_MAP` — *not*
+  `strings.HasSuffix(name, "/env")`, which would exclude an operator's own
+  `/{env}/{project}/backend/nested/env`. An **Update** of `{prefix}/env` is the
+  main configuration path here and always deploys.
+
+### Why Terraform invokes the Lambda directly
+
+`aws_ecs_service` carries `ignore_changes = [task_definition]`: Terraform owns
+the service's shape, CI owns which revision runs in it. That split has a hole,
+and `aws_lambda_invocation.backend_revision` / `.services_revision` are what
+close it.
+
+Adding an SSM parameter changes the `secrets` **list**, which lives in the task
+definition. Only Terraform can render a revision that lists it — this Lambda's
+one revision-producing call, `RegisterRevisionWithImage`, *clones* the latest
+ACTIVE revision and substitutes an image, carrying the old list forward. So
+Terraform registered the revision and deliberately did not deploy it, nothing
+told the Lambda it existed, and every component reported success while the
+container kept running the old configuration. The `Create` event cannot cover it
+either: Parameter Store emits it at `PutParameter` time, *before* the apply that
+registers the revision, so the deploy it triggers lands on the revision already
+running.
+
+One consequence, accepted deliberately: the **first** apply after this shipped
+deploys every auto-deployable service in the environment at once, because each
+was stranded on whatever revision it was last pushed. That is the repair — and
+the only thing that rescues a service whose stranded revision has since been
+deregistered — but it is a fleet-wide rolling restart triggered by an apply.
+
+#### A green apply does not mean the deployment succeeded
+
+The invoke is synchronous, so the apply waits for the Lambda to answer. It does
+**not** wait for the deployment: this Lambda calls `ecs:UpdateService` and
+returns, and there is no stabilisation waiter anywhere in it. ECS *accepting* the
+request is where its knowledge ends.
+
+The apply **fails** for exactly one class of problem — an error
+`deploy.Retryable()` calls retryable that is still failing after
+`MAX_DEPLOYMENT_RETRIES`: `ServerException`, 5xx server faults, the throttling
+family, network failures.
+
+The apply stays **green** for:
+
+- every configuration-shaped failure. `ServiceNotFoundException`,
+  `ClusterNotFoundException`, `AccessDeniedException`,
+  `InvalidParameterException` and an unknown identifier are all non-retryable
+  (`internal/deploy/retry.go`), and the handler answers them with
+  `{"status":"ignored"}` and a nil error. That is deliberate: EventBridge invokes
+  this function asynchronously as well, and returning an error for an event that
+  can never succeed means retrying it for hours.
+- **everything downstream of an accepted `UpdateService`** — tasks that
+  crashloop, an image that cannot be pulled, a secret in the new revision that
+  cannot be resolved. ECS returns 200, the Lambda returns success, and the apply
+  goes green while the service rolls back or sits stuck.
+
+So read a green apply as "ECS accepted the deployment request". The outcome
+arrives separately, through the `aws.ecs` state-change notifications the
+`ci_ecs_state` rule exists to deliver, and in the service's own event log.
+
+Scheduled tasks need no such edge: `modules/ecs_task/main.tf` targets
+`arn_without_revision`, resolved at run time, and `modules/event_bridge_task`
+pins `.arn` but is rewritten by the same apply that registered the revision.
 
 ### Which triggers actually exist, per environment
 
@@ -71,7 +157,7 @@ events can be *emitted* at all depends on the environment, and it is not uniform
 `SCHEDULED_TASK_MAP` is populated everywhere, which used to read as a promise that
 every environment auto-deploys its scheduled tasks. It never did.
 
-| Target | ECR push | SSM `Update` | S3 env file | Manual `DEPLOY` |
+| Target | ECR push | SSM `Create`/`Update` | S3 env file | Manual `DEPLOY` |
 |---|---|---|---|---|
 | backend, `dev` | yes | yes | yes | yes |
 | backend, other env | only with `ecr_strategy = local` | yes | yes | yes |
@@ -88,8 +174,13 @@ Why the blanks:
   `local.ci_task_repos` is empty. Nothing is dropped from `ECR_REPO_MAP` by
   policy here — the repository does not exist.
 - **Scheduled task SSM, everywhere.** `internal/handler/ssm.go` skips scheduled
-  tasks deliberately: a task reads its parameters when it next starts, so a new
-  revision would carry the same image and change nothing.
+  tasks deliberately, because there is nothing useful this Lambda could do. A
+  changed *value* is re-read when the task next starts; an *added* parameter
+  changes the `secrets` list in the task definition, and
+  `RegisterRevisionWithImage` clones the current revision, so the Lambda cannot
+  add the entry either. Only Terraform can — and once it has, the scheduler
+  reaches the new revision unaided, which is why the `aws_lambda_invocation`
+  edge exists for services alone.
 - **Scheduled task S3.** `S3_SERVICE_MAP` is built from the backend's env files
   and each service's; a scheduled task has no `env_files_s3` input.
 - **Scheduled task manual deploy.** There is no ECS service to update, so a
@@ -344,10 +435,22 @@ aws lambda invoke --function-name "$FN" --payload '{
   "detail":{"repository-name":"<project>_task_<name>","image-tag":"smoke","action-type":"PUSH","result":"SUCCESS"}
 }' --cli-binary-format raw-in-base64-out /dev/stdout
 
-# SSM env change
+# SSM env change (an Update of the env parameter: the main configuration path)
 aws lambda invoke --function-name "$FN" --payload '{
   "id":"4","source":"aws.ssm","detail-type":"Parameter Store Change",
   "detail":{"operation":"Update","name":"/<env>/<project>/backend/env","type":"SecureString"}
+}' --cli-binary-format raw-in-base64-out /dev/stdout
+
+# a newly ADDED parameter, which Parameter Store reports as Create
+aws lambda invoke --function-name "$FN" --payload '{
+  "id":"4b","source":"aws.ssm","detail-type":"Parameter Store Change",
+  "detail":{"operation":"Create","name":"/<env>/<project>/backend/DATABASE_URL","type":"SecureString"}
+}' --cli-binary-format raw-in-base64-out /dev/stdout
+
+# Terraform's own placeholder: must answer "ignored" on Create, and deploy on Update
+aws lambda invoke --function-name "$FN" --payload '{
+  "id":"4c","source":"aws.ssm","detail-type":"Parameter Store Change",
+  "detail":{"operation":"Create","name":"/<env>/<project>/backend/env","type":"SecureString"}
 }' --cli-binary-format raw-in-base64-out /dev/stdout
 
 # S3 env file write

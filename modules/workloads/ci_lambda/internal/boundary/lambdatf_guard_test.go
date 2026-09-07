@@ -1,28 +1,42 @@
 package boundary_test
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"madappgang.com/infrastructure/ci_lambda/internal/handler"
 )
 
 var commentLine = regexp.MustCompile(`(?m)^\s*(#|//).*$`)
 
-// lambdaTF returns modules/workloads/lambda.tf with comment lines blanked out,
-// three levels up from modules/workloads/ci_lambda/internal/boundary.
+// workloadsTF returns a file from modules/workloads — three levels up from
+// modules/workloads/ci_lambda/internal/boundary — with comment lines blanked
+// out.
 //
-// Comments are stripped so the guards below can talk about what the file
-// *does* without tripping over prose that mentions the very thing being
-// guarded against.
-func lambdaTF(t *testing.T) string {
+// Comments are stripped so the guards below can talk about what a file *does*
+// without tripping over prose that mentions the very thing being guarded
+// against. Several of those comments quote the forbidden construct by name.
+func workloadsTF(t *testing.T, name string) string {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join("..", "..", "..", "lambda.tf"))
+	b, err := os.ReadFile(filepath.Join("..", "..", "..", name))
 	require.NoError(t, err)
 	return commentLine.ReplaceAllString(string(b), "")
+}
+
+// lambdaTF returns modules/workloads/lambda.tf, stripped of comments.
+func lambdaTF(t *testing.T) string {
+	t.Helper()
+	return workloadsTF(t, "lambda.tf")
 }
 
 func requireAbsent(t *testing.T, src, needle, why string) {
@@ -264,13 +278,10 @@ func TestLambdaTFAutoDeployIsAFlagNotAFilter(t *testing.T) {
 	}
 }
 
-// ecrTF returns modules/workloads/ecr.tf with comment lines blanked out, for
-// the same reason lambdaTF strips them.
+// ecrTF returns modules/workloads/ecr.tf, stripped of comments.
 func ecrTF(t *testing.T) string {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join("..", "..", "..", "ecr.tf"))
-	require.NoError(t, err)
-	return commentLine.ReplaceAllString(string(b), "")
+	return workloadsTF(t, "ecr.tf")
 }
 
 // TestLambdaTFEcrRepoSetIsKnownAtPlanTime guards the count on the ECR event rule.
@@ -384,4 +395,302 @@ func TestLambdaTFDropsDeadConfiguration(t *testing.T) {
 	requireAbsent(t, src, "DEPLOYMENT_TIMEOUT_SECONDS", "it was validated and never used")
 	requireAbsent(t, src, "service_config", "it was passed and never read")
 	requireAbsent(t, src, "ecs:ListTaskDefinitions", "ECS resolves the latest revision from the family name")
+}
+
+// TestSSMRuleExcludesDelete pins an ABSENCE, which is why it exists at all.
+//
+// handler.PatternContracts states which operation values the rule must SELECT,
+// and TestEventPatternsMatchWhatTheHandlerParses enforces that. A contract of
+// required values structurally cannot say "and nothing else": adding "Delete"
+// to the rule would satisfy every existing assertion.
+//
+// It must stay out. A deletion cannot be repaired by a deployment — it makes
+// one destructive. The revision the service is running still lists the deleted
+// parameter in `secrets`, so every task launched after the delete fails on
+// ResourceInitializationError; a redeploy therefore turns a running service into
+// a stopped one, and the running tasks that would have survived are killed to do
+// it. Terraform's next apply removes the entry from the list, and it is the only
+// thing that can.
+func TestSSMRuleExcludesDelete(t *testing.T) {
+	body := inlinePattern(t, lambdaTF(t), "ci_ssm_change")
+
+	require.NotContainsf(t, body, `"`+handler.SSMOperationDelete+`"`,
+		"aws_cloudwatch_event_rule.ci_ssm_change selects operation %q. A deployment cannot restore "+
+			"a deleted parameter, and the revision the service is running still lists it in "+
+			"`secrets`, so the redeploy would replace tasks that were still working with ones that "+
+			"cannot start", handler.SSMOperationDelete)
+}
+
+// TestEveryAutoDeployableServiceNotifiesOnANewRevision pins the edge that was
+// missing entirely, and the defect it pins is an ABSENCE — so only a structural
+// test over the Terraform can express it.
+//
+// Every ECS service here carries ignore_changes = [task_definition]: Terraform
+// owns the service's shape, CI owns which revision runs in it. That is right for
+// an image push and it left NOBODY owning a configuration change. Adding an SSM
+// parameter changes the `secrets` LIST, which lives in the task definition, and
+// only Terraform can register a revision that lists it — the Lambda's
+// RegisterRevisionWithImage clones the latest ACTIVE revision and copies
+// container_definitions wholesale, carrying the old list forward. So Terraform
+// registered the revision and deliberately did not deploy it, the Lambda was
+// never told it existed, and every component reported success while the
+// container kept running the old configuration.
+//
+// Nor can the SSM Create event close the gap on its own: Parameter Store emits
+// it at PutParameter time, BEFORE the apply that registers the revision listing
+// the parameter, so the deploy it triggers lands on the revision already
+// running. "Terraform registered a revision" is the only event that means the
+// configuration change is deployable, and this test requires something to emit
+// it.
+func TestEveryAutoDeployableServiceNotifiesOnANewRevision(t *testing.T) {
+	detailFields := manualDetailTags(t)
+
+	for _, file := range []string{"backend.tf", "services.tf"} {
+		t.Run(file, func(t *testing.T) {
+			src := workloadsTF(t, file)
+
+			services := topLevelBlocks(src, "aws_ecs_service")
+			require.NotEmptyf(t, services, "no aws_ecs_service resource found in %s", file)
+
+			invocations := topLevelBlocks(src, "aws_lambda_invocation")
+
+			checked := 0
+			for _, name := range sortedNames(services) {
+				body := services[name]
+				if !strings.Contains(body, "ignore_changes = [task_definition]") {
+					continue
+				}
+				checked++
+
+				family := taskDefinitionRef(t, file, name, body)
+				notifier := invocationFor(t, file, name, family, invocations)
+
+				require.Containsf(t, notifier, "auto_deploy",
+					"%s: the invocation for aws_ecs_service.%s is not gated on auto_deploy. "+
+						"handler/manual.go deliberately does NOT consult the flag — a DEPLOY event is "+
+						"somebody asking for that exact deployment — so the gate has to be here, or an "+
+						"apply deploys a service whose operator switched automatic deploys off", file, name)
+
+				requireDeployablePayload(t, file, name, notifier, detailFields)
+			}
+
+			require.NotZerof(t, checked,
+				"%s has no aws_ecs_service carrying ignore_changes = [task_definition]; either the "+
+					"ownership split changed or this test has stopped finding the resources it "+
+					"reasons about", file)
+		})
+	}
+}
+
+// TestRevisionNotifiersAreOrderedAfterTheirServices pins the ordering edge that
+// aws_lambda_invocation.{backend,services}_revision deliberately do NOT state
+// with depends_on.
+//
+// Those resources tell the CI Lambda to deploy a service, so the service has to
+// exist first — and on the very first apply of an environment it is created in
+// the same run. The ordering is real today, but it is INDIRECT and nothing
+// declares it:
+//
+//	aws_lambda_invocation.*_revision
+//	  -> aws_lambda_function.lambda_deploy        (function_name)
+//	    -> local.ecs_service_map                  (the ECS_SERVICE_MAP variable)
+//	      -> aws_ecs_service.backend.name, aws_ecs_service.services[key].name
+//
+// A depends_on at the invocation would restate an edge that already exists and
+// would hide the fact that it does, so the comments there point here instead.
+// The risk that leaves is a refactor of the LAST link: building ECS_SERVICE_MAP
+// from module.ci_identifiers, or from var inputs, or from a name template, is a
+// perfectly reasonable-looking change that produces an identical map and
+// silently deletes the ordering guarantee. The first apply of a new environment
+// would then invoke the Lambda before the service exists, the Lambda would
+// answer ServiceNotFoundException — which retry.go classifies as non-retryable,
+// so the handler reports "ignored" with a nil error — and the apply would go
+// GREEN with the service never deployed. Every unit test would still pass.
+//
+// That is the shape this whole boundary package exists for, so the reference is
+// asserted rather than assumed.
+func TestRevisionNotifiersAreOrderedAfterTheirServices(t *testing.T) {
+	src := lambdaTF(t)
+
+	// Link 2: the invocation reaches the function by name.
+	for _, file := range []string{"backend.tf", "services.tf"} {
+		invocations := topLevelBlocks(workloadsTF(t, file), "aws_lambda_invocation")
+		require.NotEmptyf(t, invocations, "no aws_lambda_invocation resource found in %s", file)
+
+		for _, name := range sortedNames(invocations) {
+			require.Containsf(t, invocations[name], "aws_lambda_function.lambda_deploy",
+				"%s: aws_lambda_invocation.%s must name the function through the resource, not "+
+					"through a rendered string. The reference is the only thing that orders the "+
+					"invocation after the function — and, through the function's ECS_SERVICE_MAP, "+
+					"after the ECS service it is about to deploy", file, name)
+		}
+	}
+
+	// Link 1: the function's ECS_SERVICE_MAP is built from the service resources.
+	body, ok := balancedParens(src, "ecs_service_map = jsonencode(")
+	require.True(t, ok, "local.ecs_service_map not found in lambda.tf")
+
+	const why = "local.ecs_service_map must read %s. It is not decoration: it is the whole ordering " +
+		"guarantee behind aws_lambda_invocation.{backend,services}_revision, which carry no " +
+		"depends_on precisely because this reference already makes the Lambda function depend on " +
+		"every ECS service. Rebuild this map from module.ci_identifiers, from var inputs or from a " +
+		"name template and the map stays byte-identical while the edge disappears — then the first " +
+		"apply of a new environment invokes the Lambda before the service exists, the Lambda answers " +
+		"ServiceNotFoundException (non-retryable, so reported as \"ignored\" with a nil error), and " +
+		"the apply goes green with nothing deployed"
+
+	require.Containsf(t, body, "aws_ecs_service.backend.name", why, "aws_ecs_service.backend.name")
+	require.Regexpf(t, `aws_ecs_service\.services\[[^\]]+\]\.name`, body, why,
+		"aws_ecs_service.services[...].name")
+}
+
+// invocationFor returns the body of the aws_lambda_invocation keyed on the
+// revision of the given task definition, failing when there is none.
+func invocationFor(t *testing.T, file, service, family string, invocations map[string]string) string {
+	t.Helper()
+
+	// Keyed on .revision rather than .arn on purpose: the revision is the number
+	// that changes exactly when the rendered content did, so an apply that
+	// re-renders identical content invokes nothing.
+	keyed := regexp.MustCompile(`aws_ecs_task_definition\.` + regexp.QuoteMeta(family) + `(\[[^\]]*\])?\.revision`)
+
+	for _, name := range sortedNames(invocations) {
+		if keyed.MatchString(invocations[name]) {
+			return invocations[name]
+		}
+	}
+
+	require.FailNowf(t, "no revision notifier", ""+
+		"%s: aws_ecs_service.%s ignores task_definition, so Terraform registers a revision of "+
+		"aws_ecs_task_definition.%s and then deliberately does not deploy it — and no "+
+		"aws_lambda_invocation in that file is keyed on "+
+		"aws_ecs_task_definition.%s[...].revision. Nothing tells CI the revision exists, so a "+
+		"configuration change (a new SSM parameter, which changes the `secrets` LIST and can only "+
+		"be rendered by Terraform) reaches no container while every component reports success",
+		file, service, family, family)
+	return ""
+}
+
+// requireDeployablePayload checks that the invocation sends something the
+// Lambda will actually act on.
+//
+// An invocation that fires on every revision and carries a payload the handler
+// drops is the same silence this whole test exists to remove, one layer down. So
+// the detail-type comes from the handler's own exported constant, and every key
+// of the detail object is required to be a field manualDetail decodes —
+// encoding/json discards an unknown key without a word.
+func requireDeployablePayload(t *testing.T, file, service, notifier string, detailFields []string) {
+	t.Helper()
+
+	require.Containsf(t, notifier, `"`+handler.DetailTypeServiceDeploy+`"`,
+		"%s: the invocation for aws_ecs_service.%s must send detail-type %q; handler.Handle routes "+
+			"a deploy on the detail-type rather than the source, because the set of sources the "+
+			"generators emit has changed over time",
+		file, service, handler.DetailTypeServiceDeploy)
+
+	detail, ok := balanced(notifier, "detail = {")
+	require.Truef(t, ok, "%s: the invocation for aws_ecs_service.%s has no detail = { ... } object",
+		file, service)
+
+	keys := detailKeys(detail)
+	require.Containsf(t, keys, "service",
+		"%s: the invocation for aws_ecs_service.%s sends no `service` key; manual.go answers "+
+			"\"manual deploy detail must include a service field\" and deploys nothing", file, service)
+
+	for _, k := range keys {
+		require.Containsf(t, detailFields, k,
+			"%s: the invocation for aws_ecs_service.%s sends detail key %q, which no field of "+
+				"handler.manualDetail decodes; encoding/json drops it silently, so a renamed json "+
+				"tag would disable this notification without failing anything", file, service, k)
+	}
+}
+
+// detailKeys returns the argument names of an HCL object body, one level deep.
+var objectKey = regexp.MustCompile(`(?m)^\s*([a-z][a-z0-9_-]*)\s*=`)
+
+func detailKeys(body string) []string {
+	var out []string
+	for _, m := range objectKey.FindAllStringSubmatch(body, -1) {
+		out = append(out, m[1])
+	}
+	sort.Strings(out)
+	return out
+}
+
+// taskDefinitionRef returns the resource name of the aws_ecs_task_definition an
+// ECS service points at.
+func taskDefinitionRef(t *testing.T, file, service, body string) string {
+	t.Helper()
+
+	m := regexp.MustCompile(`task_definition\s*=\s*aws_ecs_task_definition\.([a-z0-9_]+)`).
+		FindStringSubmatch(body)
+	require.Lenf(t, m, 2, "%s: aws_ecs_service.%s does not point at an aws_ecs_task_definition",
+		file, service)
+	return m[1]
+}
+
+// topLevelBlocks returns the body of every top-level `resource "<typ>" "<name>"`
+// block, keyed by resource name. A top-level block is the only one whose closing
+// brace sits in column zero, which is what terminates the match.
+func topLevelBlocks(src, typ string) map[string]string {
+	re := regexp.MustCompile(`(?ms)^resource "` + regexp.QuoteMeta(typ) + `" "([a-z0-9_]+)" \{$(.*?)^\}$`)
+
+	out := map[string]string{}
+	for _, m := range re.FindAllStringSubmatch(src, -1) {
+		out[m[1]] = m[2]
+	}
+	return out
+}
+
+func sortedNames(m map[string]string) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// manualDetailTags returns the JSON field names handler.manualDetail decodes.
+//
+// Read out of the AST of the real source file, for the reason configGetenvNames
+// gives in lambdatf_names_test.go: a list kept alongside the type is one more
+// thing that can be updated in one place and not the other, which is the exact
+// failure mode under test. The type is unexported, so reflection cannot reach it
+// from here.
+func manualDetailTags(t *testing.T) []string {
+	t.Helper()
+
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, filepath.Join("..", "handler", "manual.go"), nil, 0)
+	require.NoError(t, err)
+
+	var tags []string
+	ast.Inspect(file, func(n ast.Node) bool {
+		spec, ok := n.(*ast.TypeSpec)
+		if !ok || spec.Name.Name != "manualDetail" {
+			return true
+		}
+		st, ok := spec.Type.(*ast.StructType)
+		require.True(t, ok, "handler.manualDetail is not a struct type")
+
+		for _, f := range st.Fields.List {
+			require.NotNilf(t, f.Tag, "manualDetail.%s has no json tag, so its wire name is its Go "+
+				"name by accident", f.Names[0].Name)
+			raw, err := strconv.Unquote(f.Tag.Value)
+			require.NoError(t, err)
+
+			tag := reflect.StructTag(raw).Get("json")
+			require.NotEmptyf(t, tag, "manualDetail.%s has no json tag", f.Names[0].Name)
+			if comma := strings.IndexByte(tag, ','); comma >= 0 {
+				tag = tag[:comma]
+			}
+			tags = append(tags, tag)
+		}
+		return false
+	})
+
+	require.NotEmpty(t, tags, "handler.manualDetail was not found in internal/handler/manual.go")
+	sort.Strings(tags)
+	return tags
 }

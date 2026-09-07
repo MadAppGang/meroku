@@ -396,6 +396,72 @@ resource "aws_ecs_task_definition" "services" {
   }
 }
 
+# The edge that tells CI a revision exists — see aws_lambda_invocation.backend_revision
+# in backend.tf for the full account of why it has to exist at all.
+#
+# In short: aws_ecs_service.services above ignores task_definition, so Terraform
+# registers a revision and deliberately does not deploy it, while the CI Lambda
+# cannot produce a revision carrying a new `secrets` entry either — its
+# RegisterRevisionWithImage clones the latest ACTIVE revision and copies
+# container_definitions wholesale. Adding an SSM parameter changed that list
+# (env_services.tf renders local.services_env_ssm from
+# data.aws_ssm_parameters_by_path.services into container_definitions at the
+# `secrets` argument above), so no component advanced the service and all of them
+# reported success.
+#
+# And note what a green apply of THIS resource does not tell you. The invoke is
+# synchronous, but the Lambda calls ecs:UpdateService and returns — ci_lambda has
+# no stabilisation waiter at all. The apply fails only on an error
+# deploy.Retryable() calls retryable (ServerException, 5xx, throttling, network)
+# after the retry budget; a service that ECS ACCEPTS and that then crashloops, or
+# cannot pull its image, or cannot resolve a secret in the new revision, returns
+# 200 and the apply goes green. backend.tf carries the full account, including
+# the configuration-shaped failures that are answered with "ignored" rather than
+# an error.
+resource "aws_lambda_invocation" "services_revision" {
+  # Only the services whose operator left automatic deploys on. The Lambda's
+  # manual path deliberately ignores the flag — a DEPLOY event is somebody asking
+  # for that exact deployment — so the policy has to be applied here, by not
+  # creating the resource at all.
+  #
+  # local.ci_service_auto_deploy (lambda.tf) is the same map that becomes
+  # AUTO_DEPLOY_MAP, so what gates this resource and what the Lambda reports are
+  # one derivation rather than two readings of service.auto_deploy.
+  for_each = toset([for name, enabled in local.ci_service_auto_deploy : name if enabled])
+
+  function_name = aws_lambda_function.lambda_deploy.function_name
+
+  # The revision, not the ARN: it is the number that changes exactly when the
+  # rendered content did, so an apply that re-renders identical content invokes
+  # nothing.
+  triggers = {
+    revision = aws_ecs_task_definition.services[each.key].revision
+  }
+
+  # events.CloudWatchEvent, routed by handler.Handle on the detail-type. The
+  # detail is manualDetail verbatim, and internal/boundary reads that struct's
+  # json tags out of the AST to fail on a key encoding/json would silently drop.
+  #
+  # The identifier comes from module.ci_identifiers rather than from each.key,
+  # because it must be the key ECS_SERVICE_MAP was built with; a service name and
+  # its identifier are the same string today and nothing here should depend on
+  # that staying true.
+  input = jsonencode({
+    source      = "terraform.${var.env}"
+    detail-type = "SERVICE_DEPLOY"
+    detail = {
+      service = module.ci_identifiers.service_ids[each.key]
+      project = var.project
+      env     = var.env
+      reason  = "Terraform registered ${var.project}_service_${each.key}_${var.env} revision ${aws_ecs_task_definition.services[each.key].revision}"
+    }
+  })
+
+  # No depends_on: aws_lambda_function.lambda_deploy reads
+  # aws_ecs_service.services[*].name through local.ecs_service_map, so every
+  # service is already upstream of this resource.
+}
+
 # Create Security Group for each service
 resource "aws_security_group" "services" {
   for_each = local.service_names

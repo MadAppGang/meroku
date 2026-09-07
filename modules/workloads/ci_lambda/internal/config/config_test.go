@@ -93,6 +93,47 @@ func TestIdentifierForSSMPath(t *testing.T) {
 	}
 }
 
+// TestIsTerraformOwnedSSMPath pins the one exclusion that keeps a created
+// parameter from being treated as an operator's configuration change.
+//
+// Three modules create a "{prefix}/env" parameter holding a single space so the
+// path exists to be filled in: env.tf for the backend, env_services.tf per
+// service, and modules/ecs_task/env.tf per scheduled task. Their creation is
+// Terraform describing itself, and on the first apply of an environment the ECS
+// service named by such a parameter does not exist yet.
+//
+// The predicate is an EQUALITY test against the prefixes Terraform shipped in
+// SSM_SERVICE_MAP, not strings.HasSuffix(path, "/env"). A suffix test would
+// exclude an operator's own /dev/acme/backend/nested/env, which is a real
+// configuration change and the last case below. The exact form also cannot
+// drift: lambda.tf builds those prefixes with
+// trimsuffix(aws_ssm_parameter.*.name, "/env") — from the very resources whose
+// names are being excluded here.
+func TestIsTerraformOwnedSSMPath(t *testing.T) {
+	cfg := testsupport.Config(t, nil)
+
+	cases := []struct {
+		path string
+		want bool
+	}{
+		{"/dev/acme/backend/env", true},      // env.tf
+		{"/dev/acme/legacy-api/env", true},   // env_services.tf
+		{"/dev/acme/task/cleanup/env", true}, // modules/ecs_task/env.tf
+		{"dev/acme/backend/env", true},       // the leading slash is optional
+		{"/dev/acme/backend/env/", true},     // as is a trailing one
+		{"/dev/acme/backend/DATABASE_URL", false},
+		{"/dev/acme/backend/nested/env", false}, // the case a suffix test gets wrong
+		{"/dev/acme/backend", false},
+		{"/dev/acme/unknown/env", false}, // no prefix maps it at all
+		{"/dev/otherproj/backend/env", false},
+		{"", false},
+	}
+
+	for _, c := range cases {
+		require.Equalf(t, c.want, cfg.IsTerraformOwnedSSMPath(c.path), "path %q", c.path)
+	}
+}
+
 func TestIdentifiersForS3(t *testing.T) {
 	cfg := testsupport.Config(t, nil)
 

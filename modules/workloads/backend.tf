@@ -350,6 +350,123 @@ resource "aws_ecs_task_definition" "backend" {
 }
 
 
+# The edge that tells CI a revision exists.
+#
+# aws_ecs_service.backend above ignores task_definition — Terraform owns the
+# service's shape, CI owns which revision runs in it. That split is right for an
+# image push and it left NOBODY owning a configuration change.
+#
+# Adding an SSM parameter changes the `secrets` LIST, and that list lives in the
+# task definition: env.tf reads data.aws_ssm_parameters_by_path.backend and
+# renders local.backend_env_ssm into container_definitions, which is ForceNew, so
+# Terraform registers a new revision. Only Terraform can produce that revision.
+# The CI Lambda cannot: its one revision-producing call,
+# awsecs.RegisterRevisionWithImage, CLONES the latest ACTIVE revision and
+# substitutes an image, copying container_definitions wholesale and carrying the
+# OLD secrets list forward. So Terraform registered the revision and deliberately
+# did not deploy it, nothing told the Lambda it existed, and every component
+# reported success while the container kept running the old configuration.
+#
+# The SSM event cannot close the gap by itself, even now that Create routes like
+# Update. Parameter Store emits Create at PutParameter time, which is BEFORE the
+# apply that registers the revision listing the parameter, so the deploy it
+# triggers lands on the revision already running. "Terraform registered a
+# revision" is the only event that means the configuration change is deployable,
+# and this resource is it.
+#
+# Keyed on .revision rather than .arn because the revision is the number that
+# changes exactly when the rendered content did; an apply that re-renders
+# identical content invokes nothing.
+#
+# Why an invocation and not an event: CloudTrail would need RegisterTaskDefinition
+# delivered as "AWS API Call via CloudTrail", which requires a logging trail in
+# every account and region — an unacceptable dependency for a module that must
+# work in a bare account. local-exec with the AWS CLI would add a binary
+# dependency this module deliberately has none of.
+#
+# WHAT A GREEN APPLY DOES AND DOES NOT MEAN. Read this before treating one as
+# proof that a deployment worked, because it is not.
+#
+# aws_lambda_invocation is a synchronous RequestResponse invoke, so the apply
+# waits for the Lambda to answer — but only for that. The Lambda calls
+# ecs:UpdateService and returns: there is no stabilisation waiter anywhere in
+# ci_lambda (main.go says so in as many words — "fire-and-forget: no deployment
+# waiter, which is why a 60s function timeout is enough"). ECS *accepting* the
+# request is where its knowledge ends.
+#
+# So the apply FAILS only when the Lambda hands back a Go error, and by the
+# error policy in internal/handler/handler.go it does that for exactly one
+# class: errors deploy.Retryable() calls retryable, still failing after
+# MAX_DEPLOYMENT_RETRIES — ECS ServerException, 5xx server faults, the
+# throttling family, network failures.
+#
+# The apply stays GREEN for everything else, and the list is longer than it
+# looks:
+#   * every configuration-shaped failure. ServiceNotFoundException,
+#     ClusterNotFoundException, AccessDeniedException, InvalidParameterException
+#     and an unknown identifier are all classified non-retryable
+#     (internal/deploy/retry.go), and the handler answers them with
+#     {"status":"ignored"} and a nil error — deliberately, because EventBridge
+#     invokes this function asynchronously too and returning an error there
+#     means retrying an unfixable event for hours.
+#   * EVERYTHING downstream of an accepted UpdateService. Tasks that crashloop,
+#     an image that cannot be pulled, a secret in the new revision that cannot
+#     be resolved: ECS returns 200 to the Lambda, the Lambda returns success,
+#     and the apply goes green while the service rolls back or sits stuck.
+#
+# A green apply therefore means "ECS accepted the deployment request", not "the
+# deployment succeeded". The outcome is reported separately, by the
+# aws_cloudwatch_event_rule.ci_ssm_change sibling ci_ecs_state — which exists
+# precisely to Slack ECS deployment state changes — and by the service's own
+# events in the console.
+#
+# The other consequence, accepted deliberately: the FIRST apply after this lands
+# deploys the backend, along with every service in services.tf, because each is
+# currently stranded on whatever revision it was last pushed. That is the repair
+# — and for a service whose stranded revision has since been deregistered, the
+# only thing that repairs it — but it is a fleet-wide rolling restart triggered
+# by a terraform apply, and must be announced rather than discovered.
+resource "aws_lambda_invocation" "backend_revision" {
+  # Gated on auto-deploy, and the gate has to be HERE. The Lambda's manual path
+  # (ci_lambda/internal/handler/manual.go) deliberately does not consult the
+  # flag: a DEPLOY event is somebody asking for that exact deployment, and
+  # turning off automatic deploys in prod must not also take away the button
+  # that deploys prod. Without this count an apply would therefore roll a
+  # backend whose operator explicitly opted out.
+  count = var.backend_auto_deploy ? 1 : 0
+
+  function_name = aws_lambda_function.lambda_deploy.function_name
+
+  triggers = {
+    revision = aws_ecs_task_definition.backend.revision
+  }
+
+  # The Lambda parses events.CloudWatchEvent and handler.Handle routes a deploy
+  # on the detail-type rather than the source, because the set of sources the
+  # workflow generators emit has changed over time. The detail is manualDetail
+  # verbatim; internal/boundary reads that struct's json tags out of the AST and
+  # fails if a key here is one encoding/json would silently drop.
+  #
+  # The identifier comes from module.ci_identifiers, never spelled out: it has to
+  # be the same key ECS_SERVICE_MAP is built with, or the Lambda answers "unknown
+  # target" and ignores the event.
+  input = jsonencode({
+    source      = "terraform.${var.env}"
+    detail-type = "SERVICE_DEPLOY"
+    detail = {
+      service = module.ci_identifiers.backend_id
+      project = var.project
+      env     = var.env
+      reason  = "Terraform registered ${local.backend_name} revision ${aws_ecs_task_definition.backend.revision}"
+    }
+  })
+
+  # No depends_on for the service: aws_lambda_function.lambda_deploy reads
+  # aws_ecs_service.backend.name through local.ecs_service_map, so the edge
+  # already exists and restating it would only hide that fact.
+}
+
+
 resource "aws_security_group" "backend" {
   name   = "${var.project}_backend_${var.env}"
   vpc_id = var.vpc_id

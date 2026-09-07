@@ -222,27 +222,158 @@ func TestSSMUpdateDeploysTheRightTarget(t *testing.T) {
 	}
 }
 
-func TestSSMNonUpdateOperationsAreIgnored(t *testing.T) {
-	for _, op := range []string{"Create", "Delete", "LabelParameterVersion"} {
-		h, dep, _ := newHandler(t, nil)
-		res, err := h.Handle(context.Background(), event("aws.ssm", "Parameter Store Change", map[string]string{
-			"operation": op, "name": "/dev/acme/backend/env",
-		}))
-		require.NoError(t, err)
-		require.Equalf(t, handler.StatusIgnored, res.Status, "operation %s", op)
-		require.Empty(t, dep.seen)
-	}
-}
-
-func TestSSMChangeForAScheduledTaskDoesNotRedeploy(t *testing.T) {
+// TestSSMCreateDeploysTheRightTarget is the regression test for the routing
+// asymmetry, and it replaces the "Create" third of the test that used to assert
+// the defect as a requirement (TestSSMNonUpdateOperationsAreIgnored).
+//
+// Create and Update are the same operator action — PutParameter with and
+// without Overwrite — and Parameter Store picks between them purely on whether
+// the name already existed. meroku itself writes parameters with PutParameter
+// (app/api_ssm.go), so ADDING a variable emits Create and only ever Create.
+// Routing the two differently meant the one operation that adds configuration
+// was the one nothing listened for.
+//
+// The path deliberately is NOT /dev/acme/backend/env. That name is Terraform's
+// own placeholder parameter and stays excluded on Create — see
+// TestSSMCreateOfATerraformPlaceholderIsIgnored — so using it here would have
+// exercised the exclusion and called it a deployment.
+func TestSSMCreateDeploysTheRightTarget(t *testing.T) {
 	h, dep, _ := newHandler(t, nil)
 
 	res, err := h.Handle(context.Background(), event("aws.ssm", "Parameter Store Change", map[string]string{
-		"operation": "Update", "name": "/dev/acme/task/cleanup/env",
+		"operation": "Create", "name": "/dev/acme/backend/DATABASE_URL", "type": "SecureString",
 	}))
+
+	require.NoError(t, err)
+	require.Equal(t, handler.StatusDeployed, res.Status)
+	require.Equal(t, []string{"backend"}, dep.ids())
+}
+
+// TestSSMCreateOfATerraformPlaceholderIsIgnored is the other side of the
+// routing change, and the reason the change is safe.
+//
+// env.tf, env_services.tf and modules/ecs_task/env.tf each create a
+// "{prefix}/env" parameter holding a single space, purely so the path exists
+// for an operator to fill in. Creating one is Terraform describing itself, not
+// a configuration change — and on the first apply of an environment the ECS
+// service it names does not exist yet.
+//
+// Only Create is excluded. An UPDATE of {prefix}/env is the main configuration
+// path in this system and must keep deploying; TestSSMUpdateDeploysTheRightTarget
+// is the test that says so.
+func TestSSMCreateOfATerraformPlaceholderIsIgnored(t *testing.T) {
+	for _, path := range []string{
+		"/dev/acme/backend/env",      // env.tf
+		"/dev/acme/legacy-api/env",   // env_services.tf
+		"/dev/acme/task/cleanup/env", // modules/ecs_task/env.tf
+	} {
+		h, dep, _ := newHandler(t, nil)
+		res, err := h.Handle(context.Background(), event("aws.ssm", "Parameter Store Change", map[string]string{
+			"operation": "Create", "name": path,
+		}))
+		require.NoErrorf(t, err, "path %s", path)
+		require.Equalf(t, handler.StatusIgnored, res.Status, "path %s", path)
+		require.Emptyf(t, dep.seen, "path %s", path)
+	}
+}
+
+// TestSSMCreateOfANestedParameterIsNotMistakenForAPlaceholder is the case a
+// literal strings.HasSuffix(name, "/env") gets wrong.
+//
+// Nothing stops an operator organising configuration into subtrees, and
+// /dev/acme/backend/nested/env is a parameter of theirs that happens to end in
+// the same four characters as Terraform's placeholder. The exclusion is
+// therefore an equality test against the prefixes Terraform shipped in
+// SSM_SERVICE_MAP, not a suffix test — see config.IsTerraformOwnedSSMPath.
+func TestSSMCreateOfANestedParameterIsNotMistakenForAPlaceholder(t *testing.T) {
+	h, dep, _ := newHandler(t, nil)
+
+	res, err := h.Handle(context.Background(), event("aws.ssm", "Parameter Store Change", map[string]string{
+		"operation": "Create", "name": "/dev/acme/backend/nested/env",
+	}))
+
+	require.NoError(t, err)
+	require.Equal(t, handler.StatusDeployed, res.Status)
+	require.Equal(t, []string{"backend"}, dep.ids())
+}
+
+// TestSSMDeleteIsIgnored is the surviving half of the split test, now with a
+// reason that holds.
+//
+// A deployment cannot repair a deleted parameter; it destroys the service that
+// is still running without it. The current revision still lists the parameter
+// in `secrets`, so every task launched after the delete fails to start on
+// ResourceInitializationError, and redeploying turns a running service into a
+// stopped one. Terraform's next apply removes the entry from the list, and it
+// is the only thing that can.
+func TestSSMDeleteIsIgnored(t *testing.T) {
+	for _, op := range []string{"Delete", "LabelParameterVersion"} {
+		h, dep, _ := newHandler(t, nil)
+		res, err := h.Handle(context.Background(), event("aws.ssm", "Parameter Store Change", map[string]string{
+			"operation": op, "name": "/dev/acme/backend/DATABASE_URL",
+		}))
+		require.NoErrorf(t, err, "operation %s", op)
+		require.Equalf(t, handler.StatusIgnored, res.Status, "operation %s", op)
+		require.Emptyf(t, dep.seen, "operation %s", op)
+	}
+}
+
+// TestSSMChangeForAScheduledTaskDoesNotRedeploy keeps the assertion it always
+// made and replaces the reason it gave for it.
+//
+// The old reason — "a scheduled task reads its secrets when it next runs" —
+// holds for a changed VALUE and is false for an added parameter: a new
+// parameter changes the `secrets` LIST, which lives in the task definition
+// (modules/ecs_task/main.tf), and no task start can conjure a list entry that
+// is not there.
+//
+// The reason that does hold is that the Lambda has nothing useful it could do.
+// Its one revision-producing call, RegisterRevisionWithImage, clones the latest
+// ACTIVE revision and substitutes an image; it cannot add a secrets entry
+// either. Only Terraform can, from data.aws_ssm_parameters_by_path.task — and
+// once it has, the scheduler reaches the new revision unaided:
+// modules/ecs_task/main.tf targets arn_without_revision, resolved at run time,
+// and modules/event_bridge_task/main.tf pins .arn but is rewritten by the same
+// apply that registered the revision.
+func TestSSMChangeForAScheduledTaskDoesNotRedeploy(t *testing.T) {
+	cases := []struct{ operation, name string }{
+		{"Update", "/dev/acme/task/cleanup/env"},
+		{"Update", "/dev/acme/task/cleanup/DATABASE_URL"},
+		{"Create", "/dev/acme/task/cleanup/env"},
+	}
+
+	for _, c := range cases {
+		h, dep, _ := newHandler(t, nil)
+		res, err := h.Handle(context.Background(), event("aws.ssm", "Parameter Store Change", map[string]string{
+			"operation": c.operation, "name": c.name,
+		}))
+		require.NoErrorf(t, err, "%s %s", c.operation, c.name)
+		require.Equalf(t, handler.StatusIgnored, res.Status, "%s %s", c.operation, c.name)
+		require.Emptyf(t, dep.seen,
+			"only Terraform can put a new parameter into a task definition's secrets list, and once "+
+				"it has, the scheduler reaches the new revision without help: %s %s", c.operation, c.name)
+	}
+}
+
+// TestSSMCreateForAScheduledTaskIsIgnored is the row the table above cannot
+// contain: the one that reaches the scheduled-task skip on its own merit.
+//
+// /dev/acme/task/cleanup/env is excluded one step earlier as Terraform's own
+// placeholder, so it would answer "ignored" even if the skip were deleted. A
+// created parameter that is NOT a placeholder is what proves the skip still
+// stands now that Create is a deploying operation.
+func TestSSMCreateForAScheduledTaskIsIgnored(t *testing.T) {
+	h, dep, _ := newHandler(t, nil)
+
+	res, err := h.Handle(context.Background(), event("aws.ssm", "Parameter Store Change", map[string]string{
+		"operation": "Create", "name": "/dev/acme/task/cleanup/FOO",
+	}))
+
 	require.NoError(t, err)
 	require.Equal(t, handler.StatusIgnored, res.Status)
-	require.Empty(t, dep.seen, "a scheduled task reads its secrets when it next runs")
+	require.Empty(t, dep.seen,
+		"the Lambda cannot add a secrets entry either; only Terraform can, and the scheduler picks "+
+			"the resulting revision up unaided")
 }
 
 func TestSSMUnknownParameterIsIgnored(t *testing.T) {
@@ -477,17 +608,29 @@ func TestAutoDeployDisabledIsReportedByName(t *testing.T) {
 		require.Zero(t, notifier.count, "nothing was deployed, so nothing is announced")
 	})
 
-	t.Run("SSM update", func(t *testing.T) {
-		h, dep, _ := newHandler(t, nil)
+	// Both deploying operations, because the policy has to hold for whichever
+	// one Parameter Store happens to emit. The Create row cannot use
+	// {prefix}/env: that name is Terraform's placeholder and is excluded one
+	// step earlier, which would answer "ignored" for the wrong reason and leave
+	// the disabled path unpinned for the operation that adds configuration.
+	t.Run("SSM change", func(t *testing.T) {
+		cases := []struct{ operation, name string }{
+			{"Update", "/dev/acme/" + disabled + "/env"},
+			{"Create", "/dev/acme/" + disabled + "/DATABASE_URL"},
+		}
 
-		res, err := h.Handle(context.Background(), event("aws.ssm", "Parameter Store Change", map[string]string{
-			"operation": "Update", "name": "/dev/acme/" + disabled + "/env",
-		}))
+		for _, c := range cases {
+			h, dep, _ := newHandler(t, nil)
 
-		require.NoError(t, err)
-		require.Equal(t, handler.StatusIgnored, res.Status)
-		require.Equal(t, "auto_deploy is disabled for "+disabled, res.Detail)
-		require.Empty(t, dep.seen)
+			res, err := h.Handle(context.Background(), event("aws.ssm", "Parameter Store Change", map[string]string{
+				"operation": c.operation, "name": c.name,
+			}))
+
+			require.NoErrorf(t, err, "%s %s", c.operation, c.name)
+			require.Equalf(t, handler.StatusIgnored, res.Status, "%s %s", c.operation, c.name)
+			require.Equalf(t, "auto_deploy is disabled for "+disabled, res.Detail, "%s %s", c.operation, c.name)
+			require.Emptyf(t, dep.seen, "%s %s", c.operation, c.name)
+		}
 	})
 
 	t.Run("S3 env file", func(t *testing.T) {

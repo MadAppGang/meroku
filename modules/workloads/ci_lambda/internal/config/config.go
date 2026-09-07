@@ -280,6 +280,47 @@ func (c *Config) IdentifierForSSMPath(path string) (string, bool) {
 	return bestID, true
 }
 
+// IsTerraformOwnedSSMPath reports whether a parameter path is one Terraform
+// creates for itself rather than one an operator configures.
+//
+// Three modules create a "{prefix}/env" parameter holding a single space, purely
+// so the path exists for somebody to fill in: env.tf for the backend,
+// env_services.tf per service, and modules/ecs_task/env.tf per scheduled task.
+// All three carry ignore_changes on the value, because after the first apply the
+// content belongs to the operator. Their CREATION is Terraform describing
+// itself, not a configuration change — and on the first apply of an environment
+// the ECS service such a parameter names does not exist yet.
+//
+// The test is an EQUALITY against the prefixes Terraform shipped in
+// SSM_SERVICE_MAP, not strings.HasSuffix(path, "/env"). A suffix test looks
+// equivalent and is not: nothing stops an operator organising configuration into
+// subtrees, and it would exclude their /dev/acme/backend/nested/env — a real
+// change to a real service — while still admitting
+// /dev/acme/backend/gcm-server-key, which modules/sns creates. The exact form
+// also cannot drift, because lambda.tf builds these prefixes with
+// trimsuffix(aws_ssm_parameter.*.name, "/env") from the very resources whose
+// names are being excluded here.
+//
+// It applies to Create alone. An UPDATE of {prefix}/env is the main
+// configuration path in this system and must keep deploying.
+//
+// Note what is deliberately NOT excluded: /{env}/{project}/backend/gcm-server-key
+// (modules/sns) and /{env}/{project}/backend/pg_database_password
+// (modules/postgres). Creating either genuinely adds a secret to the backend's
+// `secrets` list, so a deployment is the correct response. Enumerating them here
+// would put one truth — "which parameters does Terraform own?" — in two places,
+// with modules/workloads holding a copy of what modules/postgres and modules/sns
+// decide. That is the failure shape lambda.tf's own comments call defect D1.
+func (c *Config) IsTerraformOwnedSSMPath(path string) bool {
+	p := normalisePath(path)
+	for prefix := range c.SSMPrefixes {
+		if p == normalisePath(prefix)+"/env" {
+			return true
+		}
+	}
+	return false
+}
+
 // IdentifiersForS3 returns every identifier bound to this exact bucket and key.
 func (c *Config) IdentifiersForS3(bucket, key string) []string {
 	var ids []string

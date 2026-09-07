@@ -599,15 +599,38 @@ resource "aws_lambda_permission" "ci_ecs_state" {
 
 resource "aws_cloudwatch_event_rule" "ci_ssm_change" {
   name        = module.naming.names["ci_ssm_rule"]
-  description = "CI/CD: SSM parameter updates under this project's path"
+  description = "CI/CD: SSM parameter changes under this project's path"
   event_pattern = jsonencode({
     source      = ["aws.ssm"]
     detail-type = ["Parameter Store Change"]
     detail = {
       name = [{ prefix = "/${var.env}/${var.project}/" }]
-      # Create is Terraform's own parameter creation and Delete removes the
-      # configuration a service needs; neither is a reason to deploy.
-      operation = ["Update"]
+
+      # Create and Update are the SAME operator action: PutParameter with and
+      # without Overwrite, with Parameter Store picking between them purely on
+      # whether the name already existed. meroku writes parameters that way
+      # itself (app/api_ssm.go), so ADDING a variable emits Create and only ever
+      # Create — and while this rule filtered Create out, the one operation that
+      # adds configuration was the one nothing listened for. The Lambda excludes
+      # Terraform's own "{prefix}/env" placeholders on Create; that exclusion is
+      # derived from SSM_SERVICE_MAP rather than guessed at here, because it
+      # cannot be expressed as a name prefix.
+      #
+      # Delete stays out, and its absence is load-bearing rather than an
+      # oversight. A deployment cannot restore a deleted parameter — it makes
+      # the loss fatal. The revision the service runs still lists the parameter
+      # in `secrets`, so every task launched after the delete fails on
+      # ResourceInitializationError, and a redeploy replaces the tasks that were
+      # still working with ones that cannot start. Terraform's next apply
+      # removes the entry from the list, and it is the only thing that can.
+      #
+      # This list is asserted against handler.SSMDeployOperations, the slice the
+      # handler itself ranges over, by internal/boundary. A rule that stops
+      # matching what the handler reads is invisible from both sides: EventBridge
+      # simply never invokes the Lambda, no code path runs, and nothing reports a
+      # problem. The absence of "Delete" has its own test, because a contract of
+      # required values cannot say "and nothing else".
+      operation = ["Create", "Update"]
     }
   })
 

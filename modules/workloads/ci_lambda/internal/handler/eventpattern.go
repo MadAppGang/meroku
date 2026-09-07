@@ -24,9 +24,11 @@ const (
 	ECRActionTypePush = "PUSH"
 	ECRResultSuccess  = "SUCCESS"
 
-	// SSMOperationUpdate: Create is Terraform's own parameter creation and
-	// Delete removes the configuration a service needs. Neither is a deploy.
+	// The Parameter Store operations, all three of them, because two of the
+	// three are decisions rather than omissions.
+	SSMOperationCreate = "Create"
 	SSMOperationUpdate = "Update"
+	SSMOperationDelete = "Delete"
 
 	// DetailTypeDeploy / DetailTypeServiceDeploy are what the manual deploy
 	// generators emit. Handle routes manual deploys on the detail-type because
@@ -34,6 +36,52 @@ const (
 	DetailTypeDeploy        = "DEPLOY"
 	DetailTypeServiceDeploy = "SERVICE_DEPLOY"
 )
+
+// SSMDeployOperations are the Parameter Store operations that can mean an
+// operator changed this project's configuration.
+//
+// Create and Update are the SAME action. Both are PutParameter — with and
+// without Overwrite — and Parameter Store picks between them purely on whether
+// the name already existed. meroku writes parameters that way itself
+// (app/api_ssm.go), so ADDING a variable emits Create and only ever Create, and
+// routing the two differently meant the one operation that adds configuration
+// was the one nothing listened for.
+//
+// The cost of admitting Create, stated rather than left to be discovered:
+// adding a parameter now causes TWO rolling restarts where there used to be
+// none. The Create arrives at PutParameter time, before any apply, so the
+// deployment it triggers lands on the revision the service is ALREADY running —
+// a restart that changes nothing. The apply that follows registers revision N+1
+// carrying the new `secrets` entry, and aws_lambda_invocation.*_revision
+// (services.tf, backend.tf) deploys that one. Only the second restart delivers
+// the parameter.
+//
+// Create earns its place anyway, on the case the second restart cannot cover.
+// Delete-then-recreate: the revision the service is running still lists the
+// parameter in `secrets`, so its tasks cannot resolve a secret and are failing
+// right now, and the Create that restores the value is exactly the moment a
+// restart is warranted. No apply need follow that sequence — the rendered
+// content is unchanged, so Terraform registers no revision and the A1 edge never
+// fires. Without Create the service stays broken until somebody notices.
+//
+// SSMOperationDelete is deliberately absent, and its absence is load-bearing. A
+// deployment cannot restore a deleted parameter; it makes the loss fatal. The
+// revision the service is running still lists the parameter in `secrets`, so
+// every task launched after the delete fails on ResourceInitializationError —
+// redeploying replaces the tasks that were still working with ones that cannot
+// start. Terraform's next apply removes the entry from the list, and it is the
+// only thing that can. Because a PatternContract can only assert the PRESENCE
+// of a value, that absence is pinned separately by
+// internal/boundary.TestSSMRuleExcludesDelete.
+//
+// Two readers, one slice. ssm() ranges over it to decide whether an event
+// deploys, and PatternContracts() below publishes it as what lambda.tf's
+// ci_ssm_change rule must select. Deriving both from one value is what makes
+// eventpattern.go, ssm.go and lambda.tf impossible to change independently: a
+// rule that stops matching what the handler reads is otherwise invisible from
+// both sides — EventBridge simply never invokes the Lambda, no code path runs,
+// and nothing anywhere reports a problem.
+var SSMDeployOperations = []string{SSMOperationCreate, SSMOperationUpdate}
 
 // PatternContract is one EventBridge rule as this package needs it to be.
 type PatternContract struct {
@@ -82,7 +130,7 @@ func PatternContracts() []PatternContract {
 			Source: SourceSSM,
 			DetailFields: map[string][]string{
 				ssm["Name"]:      nil, // the project's parameter path prefix
-				ssm["Operation"]: {SSMOperationUpdate},
+				ssm["Operation"]: SSMDeployOperations,
 			},
 		},
 		{
