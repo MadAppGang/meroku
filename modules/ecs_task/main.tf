@@ -98,6 +98,21 @@ resource "aws_ecs_task_definition" "task" {
   execution_role_arn = aws_iam_role.task_execution.arn
   task_role_arn      = aws_iam_role.task.arn
 
+  # `environment`, lower case, matching every other container definition in this
+  # repository. This key was spelled `Environment` from 2024 until now and that
+  # was NOT a bug: awstypes.ContainerDefinition (aws-sdk-go-v2) carries no JSON
+  # struct tags, so the provider's encoding/json decode of this string matches
+  # field names case-insensitively and re-serialises the normalised form. The
+  # rename is a measured no-op — against provider 5.100.0 both spellings plan to
+  # the identical state string, `"environment":[{"name":"AWS_REGION",...}]`, and
+  # planning either one against a state holding it reports "No changes". No
+  # ForceNew, no new revision, nothing to migrate.
+  #
+  # It is renamed anyway because it is not self-evidently harmless: `Enviroment`,
+  # a real typo, silently yields no `environment` key at all and no error, so an
+  # unfamiliar reader cannot tell the two cases apart by looking. Disproving this
+  # one cost a full investigation with a captured HTTP request. Nobody should
+  # have to repeat it.
   container_definitions = jsonencode([merge(
     {
       name        = "${var.project}_container_${var.task}_${var.env}"
@@ -106,7 +121,7 @@ resource "aws_ecs_task_definition" "task" {
       image       = local.docker_image
       secrets     = local.task_env_ssm
       essential   = true
-      Environment = local.environment_variables
+      environment = local.environment_variables
 
       logConfiguration = {
         logDriver = "awslogs"
@@ -128,6 +143,32 @@ resource "aws_ecs_task_definition" "task" {
     terraform   = "true"
     env         = var.env
     Application = "${var.project}-${var.env}"
+  }
+
+  # A name may not appear in both `environment` and `secrets` above. ECS refuses
+  # the RegisterTaskDefinition call, so without this the apply dies part-way
+  # through, naming a variable whoever ran it never touched —
+  # env_secret_check.tf has the full account of how a project gets there.
+  #
+  # It lives on the TASK DEFINITION, matching modules/workloads and
+  # modules/event_bridge_task and for the same reason: this is the resource AWS
+  # rejects, so the address Terraform prints alongside the message is the one the
+  # reader has to fix. This resource carries no other lifecycle block, which
+  # matters — a resource may have only ONE, so anything added here later has to
+  # share this block rather than open a second.
+  #
+  # Meta-argument: no state, no diff. Needs Terraform >= 1.2, which versions.tf
+  # requires.
+  #
+  # Unlike modules/workloads, data.aws_ssm_parameters_by_path.task (env.tf) has
+  # no depends_on, so the read is not deferred behind the /env parameter's own
+  # creation and the condition is known at plan even on a brand-new environment.
+  # There is no first-apply window where it is postponed.
+  lifecycle {
+    precondition {
+      condition     = module.task_env_secret_check.valid["task"]
+      error_message = module.task_env_secret_check.message["task"]
+    }
   }
 }
 

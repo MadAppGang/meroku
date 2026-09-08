@@ -27,10 +27,13 @@ variable "workloads" {
     neighbours. It is the ONLY remedy the message can offer for those, because
     they are not in `yaml_file` to remove, and it differs per caller: a service's
     are in modules/workloads/env_services.tf, an event task's in
-    modules/event_bridge_task/env.tf. It is required rather than defaulted for
-    that reason — a default would be one caller's path silently handed to the
-    others, which is the wrong file to send a reader to at the exact moment they
-    have nowhere else to look.
+    modules/event_bridge_task/env.tf, a scheduled task's in
+    modules/ecs_task/env.tf. It is required rather than defaulted for that
+    reason — a default would be one caller's path silently handed to the others,
+    which is the wrong file to send a reader to at the exact moment they have
+    nowhere else to look. The last two are the trap: same seven names, same SSM
+    prefix, and still different files, because EVENT_SOURCE is
+    "<project>.event.<task>" in one and "<project>.task.<task>" in the other.
   EOT
 
   type = map(object({
