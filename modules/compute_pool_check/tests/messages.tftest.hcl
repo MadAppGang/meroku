@@ -8,11 +8,18 @@
 #      (no_pools_defined_says_so / no_message_ends_in_a_bare_period)
 #
 # Rule 1 is why this module exists. modules/workloads reads eight remote data
-# sources and cannot be planned in CI, and `terraform validate` never evaluates
-# a precondition's error_message, so between v4.2.0 and v4.4.1 a message that
-# interpolated a null shipped four times and broke every Fargate deploy. This
-# module has no provider, so `terraform test` plans it with no credentials and
-# no network, and a message that cannot render fails here instead of there.
+# sources, so `terraform plan` on it cannot run in CI, and `terraform validate`
+# never evaluates a precondition's error_message — so between v4.2.0 and v4.4.1
+# a message that interpolated a null shipped four times and broke every Fargate
+# deploy. This module has no provider, so `terraform test` plans it with no
+# credentials and no network, and a message that cannot render fails here
+# instead of there.
+#
+# modules/workloads/tests/ has since shown that `terraform test` CAN plan that
+# module under mock_provider. It does not fold this file back in: mock_provider
+# needs the AWS provider's schema and runs its client-side validation, so a
+# failure there surfaces wherever the plan walk happens to stop, while a message
+# that cannot render fails here on the line that renders it.
 #
 # Run: terraform test  (from modules/compute_pool_check)
 
