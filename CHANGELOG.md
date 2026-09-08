@@ -1,5 +1,132 @@
 # Changelog
 
+## v4.7.0
+
+### Action required: every pipeline must push an immutable image tag
+
+The ECR rule that triggers deployments now ignores `latest`. A pipeline that
+pushes only `:latest` **stops deploying — silently, with no error anywhere**.
+Pushes carrying no tag at all (buildx child manifests, for instance) stop
+matching too, because EventBridge requires a field named in a pattern to be
+present in the event.
+
+The generated pipelines already push `$GITHUB_SHA` alongside `latest` and need no
+change. Hand-written ones do. The "Push to ECR" panel in the web UI was itself
+generating a `latest`-only push; it now derives an immutable tag from the short
+commit SHA, falling back to a UTC timestamp outside a git repository, and pushes
+both.
+
+Two further behaviour changes, both deliberate:
+
+- **The first `terraform apply` after upgrading deploys every auto-deployable
+  service at once.** Each is currently stranded on whatever revision it last
+  received, and advancing them is the repair — but it is a fleet-wide rolling
+  restart triggered by an apply, so schedule it rather than discover it.
+- **An apply can now fail where it used to pass.** A new precondition rejects a
+  configuration ECS would reject later, and a deployment refused for want of an
+  IAM permission fails the apply instead of reporting success.
+
+### A configuration change never reached a running service
+
+Adding an SSM parameter produced a task-definition revision that was never
+deployed. The service kept running the previous revision, so the new
+configuration reached no container. Nothing logged an error: Terraform applied
+cleanly and showed a new revision, ECS accepted the deployment, and the Lambda
+logged nothing because it was never invoked. The only symptom was the container
+still emitting its pre-change error — which reads as "the parameter did not
+save", so the natural next action is to save it again.
+
+No component owned advancing a service to the revision carrying the current
+configuration. Adding a parameter changes the `secrets` **list**, which lives in
+the task definition and is rendered by Terraform from
+`data.aws_ssm_parameters_by_path`. Only Terraform can produce that revision — the
+Lambda's one revision-producing call clones the latest ACTIVE revision and copies
+the container definitions wholesale, carrying the old list forward. But
+`ignore_changes = [task_definition]` forbids Terraform from deploying it. Neither
+actor could finish the job alone, and nothing connected them.
+
+Two changes close it:
+
+| | |
+|---|---|
+| The missing edge | An `aws_lambda_invocation` keyed on the task definition's `revision` tells the CI Lambda that Terraform registered one. "Terraform registered a revision" is the only event meaning a configuration change is deployable. Gated on `auto_deploy`, so a service whose operator opted out is not deployed by an apply. |
+| Routing | Parameter Store emits `Create` when a parameter is **added** and `Update` only when an existing one changes value, so the rule listened for the case needing least help and ignored the one needing most. Both now deploy. |
+
+`Delete` stays excluded, and that absence is load-bearing: a deployment cannot
+restore a deleted parameter, it makes the loss fatal. The revision still lists
+the parameter in `secrets`, so every task launched after the delete fails on
+`ResourceInitializationError`, and redeploying replaces working tasks with ones
+that cannot start.
+
+Routing `Create` alone would not have fixed this. `PutParameter` emits `Create`
+before the apply that registers the revision listing the parameter, so the deploy
+it triggers lands on the revision already running. It earns its place for the
+delete-then-recreate case, which the notification edge cannot cover because no
+apply need follow.
+
+### A revision is now a rollback point
+
+An ECR push to a service registers a revision naming the image that was pushed,
+and deploys that exact revision. Previously a push handed ECS the bare family,
+ECS resolved the latest ACTIVE revision, and that revision's image was the
+`:latest` literal Terraform renders — so the deployed revision recorded no build
+at all, and rolling back to it later pulled whatever `:latest` pointed at then.
+
+This is why `latest` had to be filtered out of the trigger: the pipelines push two
+tags per build, and two registrations are not idempotent where two force-deploys
+were. If the `:latest` event landed second, the service would end pinned to a
+mutable tag.
+
+A configuration deploy is unchanged and still hands ECS the bare family. The task
+definition Terraform renders still pins `:latest` as a bootstrap value, so ECS
+re-resolves it at pull time. The consequence, accepted deliberately: a
+configuration change moves a service onto Terraform's revision, so the pin does
+not survive it. Older pinned revisions persist and remain rollback targets —
+Terraform only deregisters revisions it created.
+
+### `env_vars` and SSM auto-discovery no longer collide at apply time
+
+Two mechanisms write into the same container namespace and neither knew about the
+other: YAML `env_vars` becomes `environment`, SSM auto-discovery becomes
+`secrets`. ECS rejects a task definition where one name appears in both, with
+`ClientException: The secret name must be unique and not shared with any new or
+existing environment variables set on the container`. It failed during
+`RegisterTaskDefinition` in the middle of an apply, so it took down far more than
+the one service; the parameter need not be new, so anyone adding a colliding one
+broke a workload that previously applied cleanly; and the error named a variable
+they had not touched.
+
+A precondition now names the collision at plan time, for the backend, for
+services, for scheduled tasks and for event processor tasks. The comparison is on
+the upper-cased leaf segment, matching what ECS sees, so a lower-case parameter
+colliding with an upper-case variable is caught.
+
+### An IAM race no longer skips the repair silently
+
+On the first apply of a new environment the policy attachment completes a few
+seconds before the Lambda is invoked, and IAM has not propagated. The refusal is
+an authorization error, which was classified permanent, answered with "ignored"
+and a nil error — so the apply went green while the repair deployment did not
+happen and nothing said so.
+
+Rather than a fixed delay, the deployment now polls until the permission works,
+bounded by the invocation deadline. There is no added latency when IAM is already
+propagated, which is every apply on an existing environment. If the poll gives
+up, the apply fails carrying the real reason.
+
+The poll is scoped to deployments Terraform itself requested — identified by an
+event source no EventBridge rule accepts, so it can only have arrived by a direct
+synchronous invoke. Pushes, parameter changes and the deploy button all still
+report an authorization failure immediately.
+
+### Also
+
+`CLAUDE.md` no longer transcribes the YAML schema version. It said "Version 8"
+for twenty versions, because a number copied into prose has no way to be loudly
+wrong. It now points at `CurrentSchemaVersion` in `app/migrations.go`, and
+`ai_docs/MIGRATIONS.md` is brought up to date with a note that the constant wins
+on disagreement.
+
 ## v4.6.2
 
 Two guards that only worked because a recent Terraform short-circuits `&&` and
