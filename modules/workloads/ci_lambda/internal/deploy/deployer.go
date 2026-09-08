@@ -21,6 +21,15 @@ const (
 	SourceSSM    Source = "ssm"
 	SourceS3     Source = "s3"
 	SourceManual Source = "manual"
+	// SourceTerraform is a deploy asked for by `terraform apply` itself, through
+	// aws_lambda_invocation.{backend,services}_revision.
+	//
+	// It is split out of SourceManual for one reason: it is the only path whose
+	// caller is a SYNCHRONOUS Invoke rather than an asynchronous EventBridge
+	// delivery, and that difference is what makes the permission-propagation
+	// poll safe here and unsafe everywhere else. awaitingPropagation in retry.go
+	// carries the full argument.
+	SourceTerraform Source = "terraform"
 )
 
 var (
@@ -71,6 +80,12 @@ type Deployer struct {
 	// injected for tests
 	sleep  func(context.Context, time.Duration) error
 	jitter func() float64
+	// now is the clock fitsDeadline measures the remaining invocation budget
+	// against. It is injected alongside sleep so a test can drive a fake clock:
+	// the permission-propagation poll is bounded by the deadline and by nothing
+	// else, so a test of "it gives up rather than running past the deadline"
+	// would otherwise be a wall-clock race spinning on instant fake sleeps.
+	now func() time.Time
 }
 
 // New builds a Deployer.
@@ -82,6 +97,7 @@ func New(cfg *config.Config, e ECS, n slack.Notifier, log *slog.Logger) *Deploye
 		log:    log,
 		sleep:  sleepCtx,
 		jitter: defaultJitter,
+		now:    time.Now,
 	}
 }
 
@@ -147,41 +163,83 @@ func (d *Deployer) Deploy(ctx context.Context, req Request) (Result, error) {
 
 // attempt runs the AWS call, retrying only failures that could plausibly
 // succeed on a second try.
+//
+// Two budgets share the loop, because they answer different questions.
+//
+//   - RETRIES, for a transient AWS fault. Bounded by cfg.MaxRetries (2) with an
+//     exponential backoff from cfg.RetryBaseDelay (1s): three attempts over
+//     roughly three seconds, then give up.
+//   - PROPAGATION POLLS, for an authorization refusal on the Terraform path.
+//     Bounded by the invocation deadline and by nothing else, because the thing
+//     being waited on — IAM eventual consistency after
+//     aws_iam_role_policy_attachment.lambda_ecs — took longer than the entire
+//     retry budget in the run that produced this code. awaitingPropagation in
+//     retry.go records the timestamps and the scoping argument.
+//
+// They are counted separately on purpose. A poll must not consume the retry
+// budget (three attempts would expire ~3s in, well before the observed 6.4s),
+// and a retry must not inherit the poll's deadline-shaped bound (that is how a
+// permanent condition eats a whole invocation).
 func (d *Deployer) attempt(ctx context.Context, log *slog.Logger, req Request, target config.Target) (Result, error) {
-	var lastErr error
-	attempts := 0
+	var (
+		lastErr  error
+		attempts int
+		retries  int
+		polls    int
+	)
 
-	for i := 0; ; i++ {
-		if i > 0 {
-			delay := backoff(d.cfg.RetryBaseDelay, i, d.jitter())
-			if !d.fitsDeadline(ctx, delay) {
-				log.Warn("stopping retries: not enough invocation time left",
-					"attempt", i+1, "planned_delay", delay.String())
-				break
-			}
-			log.Warn("retrying deployment", "attempt", i+1, "max_attempts", d.cfg.MaxRetries+1, "delay", delay.String())
-			if err := d.sleep(ctx, delay); err != nil {
-				lastErr = fmt.Errorf("retry aborted: %w", err)
-				break
-			}
-		}
-
+loop:
+	for {
 		attempts++
 
 		res, err := d.call(ctx, req, target)
 		if err == nil {
+			if polls > 0 {
+				log.Info("permission propagated; deployment accepted",
+					"polls", polls, "attempts", attempts)
+			}
 			return res, nil
 		}
 		lastErr = err
 
-		if !Retryable(err) {
-			log.Error("deployment failed with a non-retryable error", "attempt", i+1, "error", err)
+		var delay time.Duration
+		switch {
+		case awaitingPropagation(req.Source, err):
+			polls++
+			delay = propagationDelay(polls, d.jitter())
+			// Logged at every poll, with the reason, so an operator reading
+			// CloudWatch sees a deliberate wait and what it is waiting for —
+			// not an unexplained pause between two log lines.
+			log.Warn("ecs call is not authorized yet; polling until the IAM policy propagates",
+				"attempt", attempts,
+				"poll", polls,
+				"delay", delay.String(),
+				"reason", "iam eventual consistency after the policy attachment; the poll is bounded by the invocation deadline and failing it fails the apply",
+				"error", err)
+
+		case Retryable(err):
+			log.Error("deployment attempt failed", "attempt", attempts, "error", err)
+			if retries >= d.cfg.MaxRetries {
+				break loop
+			}
+			retries++
+			delay = backoff(d.cfg.RetryBaseDelay, retries, d.jitter())
+			log.Warn("retrying deployment",
+				"attempt", attempts+1, "max_attempts", d.cfg.MaxRetries+1, "delay", delay.String())
+
+		default:
+			log.Error("deployment failed with a non-retryable error", "attempt", attempts, "error", err)
 			return Result{}, err
 		}
-		log.Error("deployment attempt failed", "attempt", i+1, "error", err)
 
-		if i >= d.cfg.MaxRetries {
-			break
+		if !d.fitsDeadline(ctx, delay) {
+			log.Warn("stopping retries: not enough invocation time left",
+				"attempt", attempts+1, "planned_delay", delay.String(), "polls", polls)
+			break loop
+		}
+		if err := d.sleep(ctx, delay); err != nil {
+			lastErr = fmt.Errorf("retry aborted: %w", err)
+			break loop
 		}
 	}
 
@@ -189,7 +247,21 @@ func (d *Deployer) attempt(ctx context.Context, log *slog.Logger, req Request, t
 	// the remaining invocation time cannot fit the next backoff, and when the
 	// context is cancelled mid-sleep — so MaxRetries+1 overstated the effort in
 	// exactly the cases an operator is most likely to be reading the message.
-	return Result{}, fmt.Errorf("deployment of %q failed after %d attempt(s): %w", req.ID, attempts, lastErr)
+	err := fmt.Errorf("deployment of %q failed after %d attempt(s): %w", req.ID, attempts, lastErr)
+
+	// The condition is "this deployment engaged the propagation poll and still
+	// did not go through", not "the last error happened to be AccessDenied".
+	// Those differ in the case that matters most: the poll runs out of
+	// invocation budget and lastErr is a cancelled sleep rather than the
+	// refusal. Retryable(context.DeadlineExceeded) is false, so without the
+	// wrap that outcome would be answered with `ignored` and a nil error — the
+	// green apply with nothing deployed, which is the defect. A permanent error
+	// cannot reach here after a poll: the default branch above returns it
+	// immediately and unwrapped.
+	if polls > 0 {
+		err = fmt.Errorf("%w: %w", ErrPropagationTimeout, err)
+	}
+	return Result{}, err
 }
 
 func (d *Deployer) call(ctx context.Context, req Request, target config.Target) (Result, error) {
@@ -235,13 +307,18 @@ func (d *Deployer) call(ctx context.Context, req Request, target config.Target) 
 
 // fitsDeadline reports whether the invocation has room for another sleep plus
 // a call.
+//
+// This is the only bound on the permission-propagation poll, so it is also the
+// thing that keeps that poll inside the Lambda's 60s timeout. It measures
+// against d.now rather than time.Now so a test can drive the poll to exhaustion
+// on a fake clock instead of racing a real one.
 func (d *Deployer) fitsDeadline(ctx context.Context, delay time.Duration) bool {
 	deadline, ok := ctx.Deadline()
 	if !ok {
 		return true
 	}
 	const callBudget = 2 * time.Second
-	return time.Until(deadline) > delay+callBudget
+	return deadline.Sub(d.now()) > delay+callBudget
 }
 
 // DeployAll deploys sequentially and never stops at the first failure.

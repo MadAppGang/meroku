@@ -473,6 +473,12 @@ resource "aws_lambda_invocation" "services_revision" {
   # because it must be the key ECS_SERVICE_MAP was built with; a service name and
   # its identifier are the same string today and nothing here should depend on
   # that staying true.
+  #
+  # `source` is a DISCRIMINATOR — handler/manual.go promotes "terraform.{env}" to
+  # deploy.SourceTerraform, the only source allowed to poll through the IAM
+  # propagation race that made the first apply of an environment report success
+  # while deploying nothing. backend.tf carries the full account and the measured
+  # timestamps; ci_lambda/internal/boundary pins the string in both files.
   input = jsonencode({
     source      = "terraform.${var.env}"
     detail-type = "SERVICE_DEPLOY"

@@ -588,6 +588,8 @@ func requireDeployablePayload(t *testing.T, file, service, notifier string, deta
 			"generators emit has changed over time",
 		file, service, handler.DetailTypeServiceDeploy)
 
+	requireTerraformSource(t, file, service, notifier)
+
 	detail, ok := balanced(notifier, "detail = {")
 	require.Truef(t, ok, "%s: the invocation for aws_ecs_service.%s has no detail = { ... } object",
 		file, service)
@@ -603,6 +605,48 @@ func requireDeployablePayload(t *testing.T, file, service, notifier string, deta
 				"handler.manualDetail decodes; encoding/json drops it silently, so a renamed json "+
 				"tag would disable this notification without failing anything", file, service, k)
 	}
+}
+
+// requireTerraformSource pins the `source` these invocations send, which the
+// Lambda reads as a discriminator rather than as documentation.
+//
+// handler.manual promotes a request whose event source is
+// handler.TerraformInvocationSource(env) — "terraform.{env}" — to
+// deploy.SourceTerraform, and that is the ONLY source permitted to poll through
+// an IAM permission-propagation race instead of reporting AccessDenied as
+// permanent. The permission is safe to grant here and nowhere else because no
+// rule in lambda.tf accepts a "terraform.*" source (local.ci_manual_sources_scoped
+// is action.{env} / github.actions.{env}, local.ci_manual_sources_global is
+// action.deploy), so an event carrying it cannot have come from EventBridge:
+// it arrived by direct RequestResponse Invoke, from a caller already blocked on
+// the answer, with no asynchronous redelivery behind it.
+//
+// The failure this pins is silent in both directions and in both files.
+// Rewriting this argument as "action.${var.env}" — a perfectly reasonable-looking
+// tidy-up, since that is what every other emitter sends — keeps the deployment
+// working, keeps every unit test passing, and switches the poll off: the first
+// apply of a new environment goes back to racing the policy attachment (the
+// recorded gap was 6.4s, against a ~3s ordinary retry budget), answering
+// AccessDenied, and reporting a GREEN apply with nothing deployed. Adding the
+// source to a rule in lambda.tf breaks it the other way, by letting an
+// asynchronous event claim a budget that assumes a synchronous caller.
+func requireTerraformSource(t *testing.T, file, service, notifier string) {
+	t.Helper()
+
+	// One derivation, two readers: the Go constant and the HCL literal. "${var.env}"
+	// stands in for the environment, which Terraform interpolates and the Lambda
+	// compares against PROJECT_ENV.
+	want := handler.TerraformInvocationSource("${var.env}")
+	re := regexp.MustCompile(`(?m)^\s*source\s*=\s*"` + regexp.QuoteMeta(want) + `"\s*$`)
+
+	require.Regexpf(t, re, notifier,
+		"%s: the invocation for aws_ecs_service.%s must send source = %q. handler.manual reads "+
+			"that exact string to promote the request to deploy.SourceTerraform, which is the only "+
+			"source allowed to wait out an IAM propagation race — see deploy.awaitingPropagation. "+
+			"Change it and the deploy keeps working, every Go test keeps passing, and the first "+
+			"apply of a new environment silently goes back to answering AccessDenied and reporting "+
+			"a green apply with nothing deployed",
+		file, service, want)
 }
 
 // detailKeys returns the argument names of an HCL object body, one level deep.

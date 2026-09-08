@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/aws/aws-lambda-go/events"
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ecs/types"
 	"github.com/stretchr/testify/require"
 	"madappgang.com/infrastructure/ci_lambda/internal/config"
@@ -572,6 +574,101 @@ func TestManualDeployOfAnUnknownServiceIsIgnoredNotRetried(t *testing.T) {
 
 	res, err := h.Handle(context.Background(), event("action.deploy", "DEPLOY", map[string]string{"service": "ghost"}))
 	require.NoError(t, err, "EventBridge must not retry an identifier that will never resolve")
+	require.Equal(t, handler.StatusIgnored, res.Status)
+}
+
+// TestTerraformInvocationIsRoutedAsItsOwnSource pins the discriminator that
+// scopes the IAM permission-propagation poll.
+//
+// aws_lambda_invocation.{backend,services}_revision send `source =
+// "terraform.${var.env}"`, and that is the only caller allowed to sit through an
+// AccessDenied while IAM catches up (deploy.awaitingPropagation records the
+// incident and the argument). Everything else on this route — the generated
+// GitHub Actions workflows, the web UI's deploy button — must stay
+// deploy.SourceManual and keep failing an authorization error immediately: those
+// arrive through EventBridge, where a retryable verdict means redelivery and a
+// DEPLOYMENT_INITIATING/DEPLOYMENT_FAILED pair per attempt, forever.
+//
+// Get this wrong in either direction and nothing else notices. Promote too
+// little and the first apply of a new environment is silently undeployed again;
+// promote too much and a human waits 45s to be told a policy is broken.
+func TestTerraformInvocationIsRoutedAsItsOwnSource(t *testing.T) {
+	cases := []struct {
+		name   string
+		source string
+		want   deploy.Source
+	}{
+		{"terraform apply, this environment", "terraform.dev", deploy.SourceTerraform},
+		{"terraform apply, another environment", "terraform.prod", deploy.SourceManual},
+		{"generated workflow", "github.actions.dev", deploy.SourceManual},
+		{"deploy button", "action.dev", deploy.SourceManual},
+		{"environment-agnostic source", "action.deploy", deploy.SourceManual},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			h, dep, _ := newHandler(t, nil) // the fixture is project "acme", env "dev"
+
+			res, err := h.Handle(context.Background(), event(c.source, handler.DetailTypeServiceDeploy,
+				map[string]string{"service": "backend", "project": "acme", "env": "dev"}))
+
+			require.NoError(t, err)
+			require.Equal(t, handler.StatusDeployed, res.Status)
+			require.Len(t, dep.seen, 1)
+			require.Equal(t, c.want, dep.seen[0].Source)
+		})
+	}
+}
+
+// TestTerraformInvocationSourceMatchesTheOneTerraformSends is the cheap half of
+// the pinning; internal/boundary asserts the other half against the real
+// backend.tf and services.tf.
+func TestTerraformInvocationSourceMatchesTheOneTerraformSends(t *testing.T) {
+	require.Equal(t, "terraform.dev", handler.TerraformInvocationSource("dev"))
+	require.Equal(t, "terraform.", handler.SourceTerraformPrefix)
+}
+
+// TestExhaustedPropagationPollFailsTheInvocation is where the silence used to
+// be.
+//
+// deployOne answers a non-retryable error with `ignored` and a NIL error, which
+// for a synchronous aws_lambda_invocation means the `terraform apply` goes GREEN
+// having deployed nothing. deploy.ErrPropagationTimeout is retryable precisely
+// so that outcome becomes a FunctionError and the apply fails with the
+// AccessDenied message attached.
+func TestExhaustedPropagationPollFailsTheInvocation(t *testing.T) {
+	cfg := testsupport.Config(t, nil)
+	cause := fmt.Errorf("%w: deployment of %q failed after 16 attempt(s): %w",
+		deploy.ErrPropagationTimeout, "backend",
+		&types.AccessDeniedException{Message: aws.String(
+			"is not authorized to perform: ecs:UpdateService")})
+	dep := &fakeDeployer{cfg: cfg, err: cause}
+	h := handler.New(cfg, dep, &nopNotifier{}, testsupport.Logger())
+
+	_, err := h.Handle(context.Background(), event("terraform.dev", handler.DetailTypeServiceDeploy,
+		map[string]string{"service": "backend", "project": "acme", "env": "dev"}))
+
+	require.Error(t, err, "a poll that gave up must fail the apply, not report success")
+	require.ErrorIs(t, err, deploy.ErrPropagationTimeout)
+	require.Contains(t, err.Error(), "ecs:UpdateService", "with the real reason attached")
+}
+
+// TestAccessDeniedOnAnEventBridgePathIsStillIgnored is the handler-level half of
+// the scoping guard. The ECR path is asynchronous: returning an error here makes
+// EventBridge redeliver an event that can never succeed.
+func TestAccessDeniedOnAnEventBridgePathIsStillIgnored(t *testing.T) {
+	cfg := testsupport.Config(t, nil)
+	dep := &fakeDeployer{cfg: cfg, err: &types.AccessDeniedException{}}
+	h := handler.New(cfg, dep, &nopNotifier{}, testsupport.Logger())
+
+	res, err := h.Handle(context.Background(), event("aws.ecr", "ECR Image Action", map[string]string{
+		"repository-name": "acme_backend",
+		"image-tag":       "abc123",
+		"action-type":     "PUSH",
+		"result":          "SUCCESS",
+	}))
+
+	require.NoError(t, err, "EventBridge must not redeliver an authorization failure it cannot fix")
 	require.Equal(t, handler.StatusIgnored, res.Status)
 }
 

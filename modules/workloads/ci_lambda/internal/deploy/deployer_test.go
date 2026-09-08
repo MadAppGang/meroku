@@ -26,6 +26,10 @@ type fakeECS struct {
 	updates   []awsecs.UpdateRequest
 	updateOut awsecs.UpdateResult
 	updateErr error
+	// updateErrN, when > 0, limits updateErr to the first N calls; later calls
+	// succeed. It models the condition the propagation poll exists for — a
+	// permission that is refused for a while and then simply starts working.
+	updateErrN int
 
 	registers []struct{ Family, Image string }
 	registerA string
@@ -34,7 +38,7 @@ type fakeECS struct {
 
 func (f *fakeECS) UpdateService(_ context.Context, req awsecs.UpdateRequest) (awsecs.UpdateResult, error) {
 	f.updates = append(f.updates, req)
-	if f.updateErr != nil {
+	if f.updateErr != nil && (f.updateErrN == 0 || len(f.updates) <= f.updateErrN) {
 		return awsecs.UpdateResult{}, f.updateErr
 	}
 	out := f.updateOut
@@ -65,6 +69,13 @@ func (r *recordingNotifier) levels() []slack.Level {
 
 // newTestDeployer wires the real Deployer with a fake clock so retry tests
 // finish instantly and the delays are observable.
+//
+// The clock is virtual, not merely absent: every fake sleep advances d.now by
+// the duration it was asked to wait, so fitsDeadline sees time passing exactly
+// as production would. Without that, a test of the permission-propagation poll —
+// which is bounded by the invocation deadline and by nothing else — would spin
+// on instant sleeps until the wall clock happened to catch up, and would assert
+// on however many iterations that machine managed.
 func newTestDeployer(t *testing.T, e ECS, n slack.Notifier, overrides map[string]string) (*Deployer, *[]time.Duration) {
 	t.Helper()
 
@@ -72,8 +83,11 @@ func newTestDeployer(t *testing.T, e ECS, n slack.Notifier, overrides map[string
 	d := New(cfg, e, n, testsupport.Logger())
 
 	var slept []time.Duration
+	virtual := time.Now()
+	d.now = func() time.Time { return virtual }
 	d.sleep = func(ctx context.Context, delay time.Duration) error {
 		slept = append(slept, delay)
+		virtual = virtual.Add(delay)
 		return ctx.Err()
 	}
 	d.jitter = func() float64 { return 0.5 } // no jitter, deterministic delays

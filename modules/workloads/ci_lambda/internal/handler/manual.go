@@ -69,16 +69,36 @@ func (h *Handler) manual(ctx context.Context, log *slog.Logger, ev events.CloudW
 		reason = "Manual deployment triggered"
 	}
 
+	// Same route, two very different callers, and the deployer has to be able to
+	// tell them apart.
+	//
+	// A "terraform.{env}" source can only have come from a direct Invoke, which
+	// in this module is aws_lambda_invocation.{backend,services}_revision during
+	// a `terraform apply` — the caller is blocked on the answer and there is no
+	// EventBridge redelivery behind it. That is the one caller allowed to sit
+	// through an IAM propagation race rather than reporting AccessDenied as
+	// permanent, and the one whose failure must fail the apply. Everything else
+	// on this route — the generated GitHub Actions workflows, the web UI's
+	// deploy button — stays SourceManual and keeps answering an authorization
+	// failure immediately, because a human clicking deploy against a genuinely
+	// broken policy should be told so in a second, not after 45s.
+	//
+	// See handler.TerraformInvocationSource and deploy.awaitingPropagation.
+	source := deploy.SourceManual
+	if ev.Source == TerraformInvocationSource(h.cfg.Env) {
+		source = deploy.SourceTerraform
+	}
+
 	// auto_deploy is deliberately NOT consulted here. It answers "may an event
 	// redeploy this on its own?", and a DEPLOY event is somebody asking for this
 	// exact deployment. Turning off automatic deploys in prod must not also take
 	// away the button that deploys prod.
-	log.Info("manual deploy resolved", "target", d.Service)
+	log.Info("manual deploy resolved", "target", d.Service, "deploy_source", string(source))
 	return h.deployOne(ctx, log, deploy.Request{
 		ID:             d.Service,
 		TaskDefinition: d.TaskDefinition,
 		ImageURI:       d.ImageURI,
 		Reason:         reason,
-		Source:         deploy.SourceManual,
+		Source:         source,
 	})
 }

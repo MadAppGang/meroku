@@ -411,24 +411,43 @@ resource "aws_ecs_task_definition" "backend" {
 # request is where its knowledge ends.
 #
 # So the apply FAILS only when the Lambda hands back a Go error, and by the
-# error policy in internal/handler/handler.go it does that for exactly one
-# class: errors deploy.Retryable() calls retryable, still failing after
+# error policy in internal/handler/handler.go it does that for exactly two
+# classes: errors deploy.Retryable() calls retryable, still failing after
 # MAX_DEPLOYMENT_RETRIES — ECS ServerException, 5xx server faults, the
-# throttling family, network failures.
+# throttling family, network failures — and an exhausted permission-propagation
+# poll (deploy.ErrPropagationTimeout), described below.
 #
 # The apply stays GREEN for everything else, and the list is longer than it
 # looks:
 #   * every configuration-shaped failure. ServiceNotFoundException,
-#     ClusterNotFoundException, AccessDeniedException, InvalidParameterException
-#     and an unknown identifier are all classified non-retryable
-#     (internal/deploy/retry.go), and the handler answers them with
-#     {"status":"ignored"} and a nil error — deliberately, because EventBridge
-#     invokes this function asynchronously too and returning an error there
-#     means retrying an unfixable event for hours.
+#     ClusterNotFoundException, InvalidParameterException and an unknown
+#     identifier are all classified non-retryable (internal/deploy/retry.go),
+#     and the handler answers them with {"status":"ignored"} and a nil error —
+#     deliberately, because EventBridge invokes this function asynchronously too
+#     and returning an error there means retrying an unfixable event for hours.
 #   * EVERYTHING downstream of an accepted UpdateService. Tasks that crashloop,
 #     an image that cannot be pulled, a secret in the new revision that cannot
 #     be resolved: ECS returns 200 to the Lambda, the Lambda returns success,
 #     and the apply goes green while the service rolls back or sits stuck.
+#
+# AccessDeniedException used to be on that GREEN list and is the one exception
+# now, because leaving it there cost a whole first apply. Measured on a real
+# run: aws_iam_role_policy_attachment.lambda_ecs completed at 06:01:17.0126 and
+# this invocation, together with both services_revision siblings, ran at
+# 06:01:23.38 — 6.4s later, before IAM had propagated. All three got
+# "AccessDeniedException: ... not authorized to perform: ecs:UpdateService",
+# against a policy that was correct and that worked on every later invocation.
+# Classified permanent, that produced {"status":"ignored"} with a nil error and
+# a GREEN apply in which the repair deployment simply never happened.
+#
+# The Lambda now polls for the permission instead — bounded by its own 60s
+# timeout, adding nothing at all when the permission is already in effect, and
+# scoped by the `source` field below to this path only (the EventBridge-driven
+# ECR/SSM/S3 paths still treat AccessDenied as permanent, because a retryable
+# verdict there means redelivery and a Slack storm). If the poll runs out, the
+# invocation FAILS and takes the apply with it, carrying the AccessDenied
+# message: a genuine policy mistake is now a failed apply with the real reason
+# rather than a green no-op. See internal/deploy/retry.go, awaitingPropagation.
 #
 # A green apply therefore means "ECS accepted the deployment request", not "the
 # deployment succeeded". The outcome is reported separately, by the
@@ -466,6 +485,20 @@ resource "aws_lambda_invocation" "backend_revision" {
   # The identifier comes from module.ci_identifiers, never spelled out: it has to
   # be the same key ECS_SERVICE_MAP is built with, or the Lambda answers "unknown
   # target" and ignores the event.
+  #
+  # `source` is a DISCRIMINATOR, not decoration. handler/manual.go compares it
+  # against handler.TerraformInvocationSource(env) — "terraform.{env}" — and
+  # promotes the request to deploy.SourceTerraform, the only source allowed to
+  # poll through the IAM propagation race described above. That permission is
+  # safe here and nowhere else because no rule in lambda.tf accepts a
+  # "terraform.*" source (local.ci_manual_sources_scoped is action.{env} /
+  # github.actions.{env}; local.ci_manual_sources_global is action.deploy), so an
+  # event carrying it can only have arrived by this direct, synchronous invoke —
+  # a caller already blocked on the answer, with no EventBridge redelivery behind
+  # it. Rewrite this to "action.${var.env}" to match the other emitters and
+  # nothing fails: the deploy still works, every Go test still passes, and the
+  # first apply of a new environment goes quietly back to racing IAM. Pinned by
+  # ci_lambda/internal/boundary, requireTerraformSource.
   input = jsonencode({
     source      = "terraform.${var.env}"
     detail-type = "SERVICE_DEPLOY"

@@ -35,7 +35,36 @@ const (
 	// the set of custom sources has changed over time.
 	DetailTypeDeploy        = "DEPLOY"
 	DetailTypeServiceDeploy = "SERVICE_DEPLOY"
+
+	// SourceTerraformPrefix is what aws_lambda_invocation.{backend,services}_revision
+	// puts in the `source` field. See TerraformInvocationSource.
+	SourceTerraformPrefix = "terraform."
 )
+
+// TerraformInvocationSource is the event source that means "`terraform apply`
+// invoked this Lambda directly", as opposed to EventBridge delivering somebody
+// else's DEPLOY event.
+//
+// It is a discriminator, not decoration. manual() promotes a request carrying
+// it to deploy.SourceTerraform, which is the only source allowed to poll
+// through an IAM propagation race — see deploy.awaitingPropagation for why that
+// permission cannot be given to the EventBridge-delivered sources.
+//
+// What makes it trustworthy is that no rule in lambda.tf accepts it:
+// local.ci_manual_sources_scoped is action.{env} / github.actions.{env} (plus
+// action.production in a production environment) and
+// local.ci_manual_sources_global is action.deploy. An event on a "terraform.*"
+// source therefore cannot arrive through EventBridge at all; it arrived by a
+// direct RequestResponse Invoke, which in this module is aws_lambda_invocation
+// and nothing else — a caller that is already blocked waiting for the answer,
+// with no asynchronous redelivery behind it.
+//
+// One derivation, two readers: this function and the `source` argument of the
+// two aws_lambda_invocation resources. internal/boundary asserts they agree,
+// because a rename on either side would switch the poll off in silence — the
+// deploy would simply go back to failing the first-apply race and reporting
+// success.
+func TerraformInvocationSource(env string) string { return SourceTerraformPrefix + env }
 
 // SSMDeployOperations are the Parameter Store operations that can mean an
 // operator changed this project's configuration.

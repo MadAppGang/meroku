@@ -123,20 +123,19 @@ The invoke is synchronous, so the apply waits for the Lambda to answer. It does
 returns, and there is no stabilisation waiter anywhere in it. ECS *accepting* the
 request is where its knowledge ends.
 
-The apply **fails** for exactly one class of problem — an error
-`deploy.Retryable()` calls retryable that is still failing after
-`MAX_DEPLOYMENT_RETRIES`: `ServerException`, 5xx server faults, the throttling
-family, network failures.
+The apply **fails** for two classes of problem: an error `deploy.Retryable()`
+calls retryable that is still failing after `MAX_DEPLOYMENT_RETRIES`
+(`ServerException`, 5xx server faults, the throttling family, network failures),
+and an exhausted permission-propagation poll — see below.
 
 The apply stays **green** for:
 
 - every configuration-shaped failure. `ServiceNotFoundException`,
-  `ClusterNotFoundException`, `AccessDeniedException`,
-  `InvalidParameterException` and an unknown identifier are all non-retryable
-  (`internal/deploy/retry.go`), and the handler answers them with
-  `{"status":"ignored"}` and a nil error. That is deliberate: EventBridge invokes
-  this function asynchronously as well, and returning an error for an event that
-  can never succeed means retrying it for hours.
+  `ClusterNotFoundException`, `InvalidParameterException` and an unknown
+  identifier are all non-retryable (`internal/deploy/retry.go`), and the handler
+  answers them with `{"status":"ignored"}` and a nil error. That is deliberate:
+  EventBridge invokes this function asynchronously as well, and returning an
+  error for an event that can never succeed means retrying it for hours.
 - **everything downstream of an accepted `UpdateService`** — tasks that
   crashloop, an image that cannot be pulled, a secret in the new revision that
   cannot be resolved. ECS returns 200, the Lambda returns success, and the apply
@@ -145,6 +144,51 @@ The apply stays **green** for:
 So read a green apply as "ECS accepted the deployment request". The outcome
 arrives separately, through the `aws.ecs` state-change notifications the
 `ci_ecs_state` rule exists to deliver, and in the service's own event log.
+
+#### `AccessDeniedException` on the first apply, and why it is the exception
+
+`AccessDeniedException` used to be on the green list, and leaving it there cost a
+whole first apply. Measured on a real run: `aws_iam_role_policy_attachment.lambda_ecs`
+completed at `06:01:17.0126` and the three
+`aws_lambda_invocation.{backend,services}_revision` resources ran at
+`06:01:23.38` — 6.4s later, before IAM had propagated. All three answered
+
+```
+AccessDeniedException: User: .../scratchpl_ci_lambda_dev is not authorized to
+perform: ecs:UpdateService ... because no identity-based policy allows the
+ecs:UpdateService action
+```
+
+against a policy that was **correct** — every later invocation succeeded. Read as
+permanent, that produced `{"status":"ignored"}`, a nil error and a green apply in
+which the repair deployment simply never happened.
+
+The Lambda now **polls** for the permission rather than sleeping a guessed
+interval: `deploy.awaitingPropagation` and the poll in `Deployer.attempt`. Three
+properties matter.
+
+- **No cost on the common path.** Every apply of an environment that already
+  exists succeeds on the first ECS call and never polls at all.
+- **Bounded by the invocation deadline**, not by a constant. The waits ramp
+  1s → 2s → 4s and hold, and `fitsDeadline` refuses one that will not fit inside
+  the function's 60s timeout with a call budget to spare. Reclassifying
+  `AccessDenied` as an ordinary retry would not have worked: `MAX_DEPLOYMENT_RETRIES=2`
+  over a 1s base is about three seconds, and the race above was still live at 6.4s.
+- **Exhausting it fails loudly.** The error carries `deploy.ErrPropagationTimeout`,
+  which `Retryable` reports true for, so `deployOne` returns a non-nil error, the
+  Lambda reports a `FunctionError`, and the apply **fails** with the AccessDenied
+  message attached. A genuine policy mistake is now a failed apply naming the
+  real reason instead of a green no-op.
+
+It is **scoped to Terraform's own invocations** and nothing else. The
+`aws_lambda_invocation` resources send `source = "terraform.{env}"`, no
+EventBridge rule accepts a `terraform.*` source, and `handler/manual.go` promotes
+only that source to `deploy.SourceTerraform`. The ECR, SSM and S3 paths — and a
+human clicking deploy in a workflow or the web UI — keep treating `AccessDenied`
+as permanent, because those are asynchronous: a retryable verdict there means
+EventBridge redelivers, and a `DEPLOYMENT_INITIATING` + `DEPLOYMENT_FAILED` pair
+goes to Slack on every attempt of every redelivery, for a condition that will
+never clear.
 
 Scheduled tasks need no such edge: `modules/ecs_task/main.tf` targets
 `arn_without_revision`, resolved at run time, and `modules/event_bridge_task`

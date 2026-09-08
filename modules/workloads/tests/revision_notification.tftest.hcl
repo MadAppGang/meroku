@@ -368,6 +368,29 @@ run "the_payload_is_the_one_the_lambda_decodes" {
     error_message = "The invocation must send detail-type SERVICE_DEPLOY; handler.Handle routes on it and answers anything else with \"ignored\" and a nil error, which is a GREEN apply that deployed nothing. Got: ${aws_lambda_invocation.backend_revision[0].input}"
   }
 
+  # The source is not routing — it is a DISCRIMINATOR, asserted here on the
+  # RENDERED value because that is the string handler/manual.go compares.
+  #
+  # "terraform.{env}" is the only source promoted to deploy.SourceTerraform, and
+  # deploy.SourceTerraform is the only source allowed to poll through an IAM
+  # permission-propagation race rather than reporting AccessDenied as permanent.
+  # That race is real and measured: on a first apply, the policy attachment
+  # completed at 06:01:17.0126 and these invocations ran at 06:01:23.38 — 6.4s
+  # later, before IAM had caught up — and all three answered
+  # "not authorized to perform: ecs:UpdateService" against a correct policy,
+  # which the old classification reported as a GREEN apply that deployed nothing.
+  # Rewriting this to "action.${var.env}" to match the other emitters breaks
+  # nothing visible and silently restores that.
+  assert {
+    condition     = jsondecode(aws_lambda_invocation.backend_revision[0].input).source == "terraform.${var.env}"
+    error_message = "The invocation must send source \"terraform.${var.env}\". handler/manual.go compares it against handler.TerraformInvocationSource(env) to promote the request to deploy.SourceTerraform — the only source permitted to wait out an IAM propagation race, and the only one whose failure fails the apply. Got: ${jsondecode(aws_lambda_invocation.backend_revision[0].input).source}"
+  }
+
+  assert {
+    condition     = jsondecode(aws_lambda_invocation.services_revision["orders"].input).source == "terraform.${var.env}"
+    error_message = "Every services_revision invocation must send source \"terraform.${var.env}\" too; a service that loses it races IAM on the first apply exactly as the backend did. Got: ${jsondecode(aws_lambda_invocation.services_revision["orders"].input).source}"
+  }
+
   # ---- the detail: exactly the keys manualDetail decodes -------------------
 
   # The exact key set, not a subset. handler.manualDetail decodes service,
