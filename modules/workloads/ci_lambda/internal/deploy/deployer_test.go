@@ -109,7 +109,22 @@ func TestUnknownIdentifierNeverReachesAWS(t *testing.T) {
 	require.Empty(t, notifier.messages, "nothing is announced for a target that does not exist")
 }
 
-func TestServiceDeployPassesTheFamily(t *testing.T) {
+// TestServiceConfigDeployPassesTheFamily pins the deploy that carries NO image:
+// an SSM or S3 configuration change, and the aws_lambda_invocation revision edge
+// that follows an apply.
+//
+// Handing ECS the bare family is the correct answer here and must stay. The
+// event means "Terraform has just registered the revision carrying this
+// change", and the family resolves to exactly that revision. Registering one
+// instead would be worse than redundant: RegisterRevisionWithImage clones the
+// latest ACTIVE revision, so it could only restate what ECS was about to pick
+// anyway — and it has no image to pin, which is the only reason the other
+// branch exists.
+//
+// This test is a split from the one that used to cover both cases. Keeping it
+// separate is the point: registering unconditionally passes every assertion in
+// the image test below and fails only here.
+func TestServiceConfigDeployPassesTheFamily(t *testing.T) {
 	ecsFake := &fakeECS{updateOut: awsecs.UpdateResult{
 		TaskDefinition: "arn:aws:ecs:us-east-1:000000000000:task-definition/acme_service_dev:11",
 		DeploymentID:   "ecs-svc/new",
@@ -117,9 +132,11 @@ func TestServiceDeployPassesTheFamily(t *testing.T) {
 	notifier := &recordingNotifier{}
 	d, _ := newTestDeployer(t, ecsFake, notifier, nil)
 
-	res, err := d.Deploy(context.Background(), Request{ID: "backend", Source: SourceECR})
+	res, err := d.Deploy(context.Background(), Request{ID: "backend", Source: SourceSSM})
 	require.NoError(t, err)
 
+	require.Empty(t, ecsFake.registers,
+		"a deploy with no image has nothing to pin; the family is what ECS must resolve")
 	require.Len(t, ecsFake.updates, 1)
 	require.Equal(t, "acme_service_dev", ecsFake.updates[0].ServiceName)
 	require.Equal(t, "acme_service_dev", ecsFake.updates[0].TaskDefinition, "the family, not a revision")
@@ -132,6 +149,73 @@ func TestServiceDeployPassesTheFamily(t *testing.T) {
 	require.Equal(t, []slack.Level{slack.LevelInfo, slack.LevelSuccess}, notifier.levels())
 }
 
+// TestServiceImageDeployRegistersAndPinsTheRevision is the other half of that
+// split, and the change this suite exists to pin.
+//
+// An ECR push knows the exact image it produced. Deploying the family would
+// throw that away: the revision Terraform renders names the image ":latest", so
+// the deployed revision would record no build at all and a rollback to it would
+// pull whatever ":latest" means at pull time. The service must be sent the ARN
+// that came back from the register, not the family — those are different
+// revisions the moment anything else registers one.
+func TestServiceImageDeployRegistersAndPinsTheRevision(t *testing.T) {
+	const arn = "arn:aws:ecs:us-east-1:000000000000:task-definition/acme_service_dev:12"
+
+	ecsFake := &fakeECS{
+		registerA: arn,
+		updateOut: awsecs.UpdateResult{TaskDefinition: arn, DeploymentID: "ecs-svc/pinned"},
+	}
+	d, _ := newTestDeployer(t, ecsFake, &recordingNotifier{}, nil)
+
+	image := "000000000000.dkr.ecr.us-east-1.amazonaws.com/acme_backend:9f2c1ab"
+	res, err := d.Deploy(context.Background(), Request{ID: "backend", ImageURI: image, Source: SourceECR})
+	require.NoError(t, err)
+
+	require.Len(t, ecsFake.registers, 1, "one push, one revision")
+	require.Equal(t, "acme_service_dev", ecsFake.registers[0].Family)
+	require.Equal(t, image, ecsFake.registers[0].Image)
+
+	require.Len(t, ecsFake.updates, 1)
+	require.Equal(t, "acme_service_dev", ecsFake.updates[0].ServiceName)
+	require.Equal(t, arn, ecsFake.updates[0].TaskDefinition,
+		"the ARN the register returned, not the family — the family would resolve to whatever "+
+			"is latest by the time ECS looks")
+	require.Equal(t, arn, res.TaskDefinition)
+	require.Equal(t, config.KindService, res.Kind)
+}
+
+// TestServiceImageDeployRegistersOnceAcrossRetries covers the interaction
+// between the new register and the retry loop that surrounds it.
+//
+// RegisterTaskDefinition is not idempotent: every call creates a revision. A
+// throttled or 500-ing UpdateService would therefore turn one image push into
+// three revisions, two of which nothing ever ran, and the service would end on
+// the third rather than the one whose ARN was reported first.
+func TestServiceImageDeployRegistersOnceAcrossRetries(t *testing.T) {
+	const arn = "arn:aws:ecs:us-east-1:000000000000:task-definition/acme_service_dev:12"
+
+	ecsFake := &fakeECS{
+		registerA:  arn,
+		updateErr:  &types.ServerException{},
+		updateErrN: 2, // the first two updates fail, the third succeeds
+	}
+	d, slept := newTestDeployer(t, ecsFake, &recordingNotifier{}, nil)
+
+	_, err := d.Deploy(context.Background(), Request{
+		ID:       "backend",
+		ImageURI: "000000000000.dkr.ecr.us-east-1.amazonaws.com/acme_backend:9f2c1ab",
+		Source:   SourceECR,
+	})
+	require.NoError(t, err)
+
+	require.Len(t, ecsFake.updates, 3, "two retries")
+	require.Len(t, *slept, 2)
+	require.Len(t, ecsFake.registers, 1, "the retry redeploys the revision it already registered")
+	for i, u := range ecsFake.updates {
+		require.Equalf(t, arn, u.TaskDefinition, "update %d lost the pin", i)
+	}
+}
+
 func TestManualDeployCanPinARevision(t *testing.T) {
 	ecsFake := &fakeECS{}
 	d, _ := newTestDeployer(t, ecsFake, &recordingNotifier{}, nil)
@@ -142,6 +226,31 @@ func TestManualDeployCanPinARevision(t *testing.T) {
 		Source:         SourceManual,
 	})
 	require.NoError(t, err)
+	require.Equal(t, "acme_service_dev:7", ecsFake.updates[0].TaskDefinition)
+	require.Empty(t, ecsFake.registers)
+}
+
+// TestAPinnedRevisionOutranksAnImage states the precedence where the two inputs
+// disagree, which is the case an operator actually hits: a rollback.
+//
+// "Deploy revision 7" is a request for revision 7. Registering a new revision
+// from an image would answer it with a different revision that happens to run
+// the same container — a different `secrets` list, a different task role, a
+// different everything the clone copied from whatever is latest today.
+func TestAPinnedRevisionOutranksAnImage(t *testing.T) {
+	ecsFake := &fakeECS{registerA: "arn:aws:ecs:us-east-1:000000000000:task-definition/acme_service_dev:99"}
+	d, _ := newTestDeployer(t, ecsFake, &recordingNotifier{}, nil)
+
+	_, err := d.Deploy(context.Background(), Request{
+		ID:             "backend",
+		TaskDefinition: "acme_service_dev:7",
+		ImageURI:       "000000000000.dkr.ecr.us-east-1.amazonaws.com/acme_backend:9f2c1ab",
+		Source:         SourceManual,
+	})
+	require.NoError(t, err)
+
+	require.Empty(t, ecsFake.registers, "an operator naming a revision gets that revision")
+	require.Len(t, ecsFake.updates, 1)
 	require.Equal(t, "acme_service_dev:7", ecsFake.updates[0].TaskDefinition)
 }
 

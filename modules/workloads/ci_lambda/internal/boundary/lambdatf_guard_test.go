@@ -421,6 +421,51 @@ func TestSSMRuleExcludesDelete(t *testing.T) {
 			"cannot start", handler.SSMOperationDelete)
 }
 
+// TestECRRuleExcludesTheMutableTag pins the second ABSENCE at this boundary,
+// and it exists for the same structural reason TestSSMRuleExcludesDelete does:
+// handler.PatternContracts can require that the rule filters on `image-tag`, and
+// can require that particular values are SELECTED, but no contract of required
+// values can say "and this one must not match".
+//
+// It has to stay out. Every pipeline this repo generates pushes two tags per
+// build — the immutable one, then handler.ECRMutableTag — so one build emits two
+// ECR events. While a service deploy was an idempotent UpdateService(family)
+// that cost nothing but a duplicate rolling deployment. It stopped being free
+// when an ECR push began registering a revision that PINS the pushed image
+// (deploy.Deployer.call): two events register two revisions, and which one the
+// service ends on is a race — EventBridge does not order deliveries. Lose it and
+// the service is pinned to a reference that resolves to a different image
+// tomorrow, which is precisely the property the pin exists to remove.
+//
+// The assertion is deliberately shaped, not a bare NotContains: `anything-but`
+// is the only construct that can express this. A positive allow-list cannot,
+// because a tag is arbitrary — a SHA, a semver, a branch name — so the excluded
+// value necessarily appears in the pattern text, and "does not contain latest"
+// would be satisfied by deleting the filter entirely.
+func TestECRRuleExcludesTheMutableTag(t *testing.T) {
+	src := lambdaTF(t)
+
+	exclusion := regexp.MustCompile(
+		`"?image-tag"?\s*=\s*\[\s*\{\s*"?anything-but"?\s*=\s*\[[^]]*"` +
+			regexp.QuoteMeta(handler.ECRMutableTag) + `"`)
+
+	// Both patterns, because the 2,048-character fallback is the one that only
+	// appears on large projects — exactly where nobody is watching.
+	for _, name := range []string{"ci_ecr_pattern_explicit", "ci_ecr_pattern_prefix"} {
+		t.Run(name, func(t *testing.T) {
+			body := jsonencodeLocal(t, src, name)
+
+			require.Regexpf(t, exclusion, body,
+				"local.%s does not exclude image-tag %q with anything-but. An ECR push now "+
+					"registers a task-definition revision pinning the pushed image, and every "+
+					"generated pipeline pushes %q in addition to its immutable tag — so without "+
+					"this filter one build registers two revisions and the service ends up pinned "+
+					"to a mutable reference, which is not a rollback point",
+				name, handler.ECRMutableTag, handler.ECRMutableTag)
+		})
+	}
+}
+
 // TestEveryAutoDeployableServiceNotifiesOnANewRevision pins the edge that was
 // missing entirely, and the defect it pins is an ABSENCE — so only a structural
 // test over the Terraform can express it.

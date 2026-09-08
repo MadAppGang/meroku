@@ -24,6 +24,24 @@ const (
 	ECRActionTypePush = "PUSH"
 	ECRResultSuccess  = "SUCCESS"
 
+	// ECRMutableTag is the tag the ci_ecr_push rule must NOT act on.
+	//
+	// Every pipeline this repo generates pushes two tags per build — an
+	// immutable one and this — so one build emits two ECR events. That was
+	// harmless while a service deploy was an idempotent UpdateService(family),
+	// and stopped being harmless when an ECR push began registering a revision
+	// that PINS the pushed image: two events then register two revisions, and
+	// the one carrying this tag pins a reference that can point somewhere else
+	// tomorrow. A revision that cannot say which image it runs is not a
+	// rollback point, which is the whole reason the pin exists.
+	//
+	// It is a constant here, and a literal inside lambda.tf's two ECR patterns,
+	// for the same reason SSMOperationDelete is: a PatternContract can only
+	// require that a value IS selected, so the exclusion is pinned separately
+	// by internal/boundary.TestECRRuleExcludesTheMutableTag against this
+	// constant. Change the tag here and that test names the Terraform.
+	ECRMutableTag = "latest"
+
 	// The Parameter Store operations, all three of them, because two of the
 	// three are decisions rather than omissions.
 	SSMOperationCreate = "Create"
@@ -147,6 +165,11 @@ func PatternContracts() []PatternContract {
 				ecr["RepositoryName"]: nil, // the project's repository allow-list
 				ecr["ActionType"]:     {ECRActionTypePush},
 				ecr["Result"]:         {ECRResultSuccess},
+				// The tag is filtered by exclusion, so no value can be required
+				// here — only that the rule filters on the field this package
+				// parses at all. What must be excluded is ECRMutableTag, pinned
+				// by internal/boundary.TestECRRuleExcludesTheMutableTag.
+				ecr["Tag"]: nil,
 			},
 		},
 		{

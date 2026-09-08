@@ -124,24 +124,89 @@ func TestECRPushFansOutToEveryConsumerOfTheRepository(t *testing.T) {
 	require.Len(t, dep.seen, 2)
 }
 
-func TestECRPushToAScheduledTaskCarriesTheImageURI(t *testing.T) {
+// TestECRPushCarriesTheImageURIToEveryKindOfTarget replaces a test called
+// TestECRPushToAScheduledTaskCarriesTheImageURI, whose name asserted an
+// exclusivity that no longer holds — and which was the whole defect.
+//
+// The image used to be attached to scheduled tasks alone, because only they had
+// no service to update. The consequence went unnoticed: a service deploy handed
+// ECS a bare family, ECS resolved Terraform's revision, and that revision names
+// its image ":latest". Nothing recorded which build was deployed, so no revision
+// was a rollback point. deploy.Deployer turns this URI into a revision that pins
+// the exact reference, and it can only do that if the handler passes one.
+func TestECRPushCarriesTheImageURIToEveryKindOfTarget(t *testing.T) {
+	cases := []struct {
+		name string
+		repo string
+		tag  string
+		want string
+	}{
+		{
+			name: "service",
+			repo: "acme_backend",
+			tag:  "9f2c1ab",
+			want: "000000000000.dkr.ecr.us-east-1.amazonaws.com/acme_backend:9f2c1ab",
+		},
+		{
+			name: "scheduled task",
+			repo: "acme_task_cleanup",
+			tag:  "v9",
+			want: "000000000000.dkr.ecr.us-east-1.amazonaws.com/acme_task_cleanup:v9",
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			h, dep, _ := newHandler(t, nil)
+
+			_, err := h.Handle(context.Background(), event("aws.ecr", "ECR Image Action", map[string]string{
+				"repository-name": c.repo,
+				"image-tag":       c.tag,
+				"action-type":     "PUSH",
+				"result":          "SUCCESS",
+			}))
+
+			require.NoError(t, err)
+			require.Len(t, dep.seen, 1)
+			require.Equal(t, c.want, dep.seen[0].ImageURI)
+			require.Empty(t, dep.seen[0].TaskDefinition,
+				"an ECR push names an image, never a revision; pinning one is the deployer's job")
+		})
+	}
+}
+
+// TestECRPushFanOutCarriesTheImageToEveryTarget guards the loop rather than one
+// request: one repository can feed several services, and each of them has to be
+// pinned to the image that was pushed.
+func TestECRPushFanOutCarriesTheImageToEveryTarget(t *testing.T) {
 	h, dep, _ := newHandler(t, nil)
 
 	_, err := h.Handle(context.Background(), event("aws.ecr", "ECR Image Action", map[string]string{
-		"repository-name": "acme_task_cleanup",
-		"image-tag":       "v9",
+		"repository-name": "acme_service_api",
+		"image-tag":       "9f2c1ab",
 		"action-type":     "PUSH",
 		"result":          "SUCCESS",
 	}))
-
 	require.NoError(t, err)
-	require.Len(t, dep.seen, 1)
-	require.Equal(t, "task:cleanup", dep.seen[0].ID)
-	require.Equal(t,
-		"000000000000.dkr.ecr.us-east-1.amazonaws.com/acme_task_cleanup:v9",
-		dep.seen[0].ImageURI)
+
+	require.Len(t, dep.seen, 2)
+	for _, req := range dep.seen {
+		require.Equalf(t,
+			"000000000000.dkr.ecr.us-east-1.amazonaws.com/acme_service_api:9f2c1ab",
+			req.ImageURI, "target %q was deployed without the image that triggered it", req.ID)
+	}
 }
 
+// TestECRPushUsesTheDigestWhenThereIsNoTag covers a fallback the ci_ecr_push
+// rule can no longer deliver on its own.
+//
+// Excluding handler.ECRMutableTag means the pattern NAMES image-tag, and
+// EventBridge requires a named field to be present, so an untagged push does not
+// match. That is wanted — the untagged events are buildx child manifests of a
+// build whose tagged manifest list emits its own event — but the digest branch
+// in ecrImageURI stays for the same reason ecr.go re-checks action-type and
+// result: an event can also arrive from a hand-made rule, and building a
+// registry reference with a bare ":" on the end would be worse than useless.
 func TestECRPushUsesTheDigestWhenThereIsNoTag(t *testing.T) {
 	h, dep, _ := newHandler(t, nil)
 

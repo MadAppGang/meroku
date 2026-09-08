@@ -46,10 +46,21 @@ type Request struct {
 	// ID is an identifier that already resolved against a Terraform-emitted
 	// map: "backend", a service name, or "task:{name}".
 	ID string
-	// ImageURI is the image to run. Scheduled tasks only.
+	// ImageURI is the image to run.
+	//
+	// Set, it means "register a revision of this family pinning this image, and
+	// deploy that revision". Empty, it means "deploy the family and let ECS
+	// resolve the latest ACTIVE revision" — which is the right answer for a
+	// configuration change, where Terraform has just registered the revision
+	// that carries it. Required for a scheduled task, which has no service to
+	// update and so has nothing else to deploy.
 	ImageURI string
 	// TaskDefinition pins a specific revision or ARN. Manual deploys only;
 	// empty means "let ECS resolve the latest ACTIVE revision of the family".
+	//
+	// It outranks ImageURI: an operator naming a revision is asking for THAT
+	// revision, and registering a new one would silently give them a different
+	// one.
 	TaskDefinition string
 	Reason         string
 	Source         Source
@@ -192,7 +203,14 @@ loop:
 	for {
 		attempts++
 
-		res, err := d.call(ctx, req, target)
+		// &req, not req: call pins a revision it registered back onto the
+		// request, so a retry of the UpdateService that follows redeploys THAT
+		// revision instead of registering another one. RegisterTaskDefinition
+		// is not idempotent — without the write-back, a single throttled update
+		// would turn one image push into up to three revisions, two of which
+		// nothing ever ran. attempt holds its own copy of the Request, so the
+		// mutation cannot escape this deployment.
+		res, err := d.call(ctx, &req, target)
 		if err == nil {
 			if polls > 0 {
 				log.Info("permission propagated; deployment accepted",
@@ -264,7 +282,11 @@ loop:
 	return Result{}, err
 }
 
-func (d *Deployer) call(ctx context.Context, req Request, target config.Target) (Result, error) {
+// call makes the one AWS round trip an attempt consists of.
+//
+// req is a pointer because a successful RegisterRevisionWithImage is recorded
+// on it — see the call site in attempt for why that matters.
+func (d *Deployer) call(ctx context.Context, req *Request, target config.Target) (Result, error) {
 	if target.Kind == config.KindScheduledTask {
 		if req.ImageURI == "" {
 			return Result{}, fmt.Errorf(
@@ -282,10 +304,39 @@ func (d *Deployer) call(ctx context.Context, req Request, target config.Target) 
 		}, nil
 	}
 
-	// Hand ECS the family, not a revision we resolved ourselves.
+	// Which revision this service is told to run, in strict precedence.
+	//
+	//  1. An explicit TaskDefinition. A manual pinned deploy is somebody naming
+	//     a revision; registering anything would hand them a different one.
+	//  2. An ImageURI. An ECR push knows the exact image it produced, and the
+	//     only way to make a service run THAT image — and to leave behind a
+	//     revision that still names it a month later — is to register one.
+	//     Terraform's own revision cannot: it renders the container image as
+	//     ":latest", so a rollback to it resolves to whatever ":latest" means at
+	//     pull time.
+	//  3. The bare family. A configuration deploy has no image to pin and does
+	//     not need one: it happens because Terraform just registered the
+	//     revision carrying the change, and the family resolves to exactly that
+	//     revision. Registering a clone here would be actively wrong — the clone
+	//     would copy container_definitions wholesale and could only ever restate
+	//     what ECS is about to pick anyway.
+	//
+	// The revision registered in case 2 does not survive the next configuration
+	// change: that path takes case 3, moving the service onto Terraform's
+	// ":latest" revision. Accepted, and cheap to live with — the SHA-pinned
+	// revisions stay ACTIVE and remain rollback targets, because Terraform
+	// deregisters only the revisions it created and never sees these.
 	taskDef := target.TaskFamily
-	if req.TaskDefinition != "" {
+	switch {
+	case req.TaskDefinition != "":
 		taskDef = req.TaskDefinition
+	case req.ImageURI != "":
+		arn, err := d.ecs.RegisterRevisionWithImage(ctx, target.TaskFamily, req.ImageURI)
+		if err != nil {
+			return Result{}, err
+		}
+		req.TaskDefinition = arn
+		taskDef = arn
 	}
 
 	out, err := d.ecs.UpdateService(ctx, awsecs.UpdateRequest{

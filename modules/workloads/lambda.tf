@@ -419,6 +419,56 @@ locals {
   # listed by hand.
   ci_ecr_offprefix_repos = [for r in local.ci_ecr_repos : r if !startswith(r, "${var.project}_")]
 
+  # ---------------------------------------------------------------------------
+  # The pipeline contract: every build MUST push an immutable tag, and "latest"
+  # is deliberately ignored.
+  #
+  # Every generator in this repo pushes TWO tags per build — an immutable one and
+  # "latest" — and they do not even agree on the order:
+  # web/src/components/ServiceCICDConfiguration.tsx and
+  # docs/CI_CD_EVENTBRIDGE_PATTERN.md push the SHA first,
+  # web/src/components/Sidebar.tsx pushes "latest" first. ECR emits one PUSH
+  # event per tag, so one build has always produced two events.
+  #
+  # That used to be free. A service deploy was UpdateService(family, force), which
+  # is idempotent: running it twice started two rolling deployments of the same
+  # thing and nobody noticed. It stopped being free when an ECR push began
+  # REGISTERING a task-definition revision that pins the pushed image
+  # (ci_lambda/internal/deploy/deployer.go). Two events now mean two revisions per
+  # build, and which of them the service ends on is a race — EventBridge does not
+  # order deliveries, and the two invocations are concurrent. Lose it and the
+  # service is pinned to a MUTABLE tag: the revision resolves to whatever "latest"
+  # points at whenever a task next starts, which is the exact property the pin
+  # exists to remove. A revision that cannot say which image it runs is not a
+  # rollback point. Excluding the one tag that is mutable removes the race
+  # entirely rather than making it usually come out right.
+  #
+  # anything-but rather than a positive allow-list because a tag is arbitrary: a
+  # commit SHA, a semver, a branch name, a build number. Only the one mutable tag
+  # this repo's generators are known to publish is named.
+  #
+  # WHAT THIS COSTS, stated so nobody has to rediscover it:
+  #
+  #   - A pipeline that pushes ONLY "latest" gets NO deploys at all, silently.
+  #     EventBridge just never matches; no code runs, nothing is logged, and the
+  #     first symptom is a service that stopped picking up builds. Pushing an
+  #     immutable tag is therefore a REQUIREMENT of the pipeline, not a
+  #     convention. web/src/components/ECRPushInstructions.tsx still tells a human
+  #     to push :latest by hand — that path is manual, and it is exactly the shape
+  #     that hits this.
+  #   - EventBridge requires every field a pattern names to be PRESENT in the
+  #     event, so an untagged push no longer matches either. That is wanted: the
+  #     untagged events come from buildx child manifests of a build whose tagged
+  #     manifest list emits its own event, so the deploy still happens once.
+  #   - 42 characters of the 2,048-character budget, in both patterns below. See
+  #     the precondition on aws_cloudwatch_event_rule.ci_ecr_push.
+  #
+  # The value is pinned against the Go side by
+  # ci_lambda/internal/boundary.TestECRRuleExcludesTheMutableTag, because
+  # handler.PatternContracts can only require that a value IS selected — it
+  # structurally cannot say "and not this one".
+  # ---------------------------------------------------------------------------
+
   # An event pattern is capped at 2,048 characters (an EventBridge service
   # quota, raised only by a support ticket). Past roughly 60 repositories the
   # exhaustive list stops fitting, so fall back to a project-prefix filter
@@ -431,6 +481,7 @@ locals {
     detail = {
       action-type     = ["PUSH"]
       result          = ["SUCCESS"]
+      image-tag       = [{ anything-but = ["latest"] }]
       repository-name = local.ci_ecr_repos
     }
   })
@@ -439,8 +490,8 @@ locals {
   #
   # It used to be the bare prefix, which quietly narrowed the rule: every
   # manual_repo service stopped receiving ECR events the moment a project grew
-  # past the character limit (~92 repositories at 18-character names, ~69 at 25,
-  # ~51 at 35), while everything project-prefixed carried on working. A trigger
+  # past the character limit (~89 repositories at 18-character names, ~66 at 25,
+  # ~49 at 35), while everything project-prefixed carried on working. A trigger
   # that disappears as a side effect of project size is the worst kind: nothing
   # fails, nothing logs, and the cause is a length nobody is watching.
   ci_ecr_pattern_prefix = jsonencode({
@@ -449,6 +500,7 @@ locals {
     detail = {
       action-type     = ["PUSH"]
       result          = ["SUCCESS"]
+      image-tag       = [{ anything-but = ["latest"] }]
       repository-name = concat([{ prefix = "${var.project}_" }], local.ci_ecr_offprefix_repos)
     }
   })
@@ -524,8 +576,10 @@ resource "aws_cloudwatch_event_rule" "ci_ecr_push" {
   lifecycle {
     # Enough off-prefix repositories overflow the quota on their own, and there
     # is no third fallback: dropping them is what this rule exists to stop.
-    # Roughly 90 of them at 18-character names, 50 at 35. Fail the apply and say
-    # what to do rather than silently shipping a rule that ignores some of them.
+    # Roughly 88 of them at 18-character names, 48 at 35 — two fewer than before
+    # the image-tag filter, which spends 42 of the 2,048 characters. Fail the
+    # apply and say what to do rather than silently shipping a rule that ignores
+    # some of them.
     precondition {
       condition     = length(local.ci_ecr_pattern) <= 2048
       error_message = <<-EOT

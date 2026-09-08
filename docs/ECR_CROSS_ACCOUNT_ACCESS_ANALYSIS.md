@@ -297,6 +297,12 @@ make infra-apply env=prod
 ```
 
 ### 3. Test Image Pull
+
+This procedure tests the cross-account **pull**, so it deploys by hand below and
+a `:latest`-only push is enough. Do not copy it as a deploy recipe: the CI
+Lambda's ECR rule ignores `:latest`, so a real push must also carry an immutable
+tag or nothing is deployed. See `docs/ECR_STRATEGY.md` for the pipeline shape.
+
 ```bash
 # In dev: Push image
 docker push 111111111111.dkr.ecr.us-east-1.amazonaws.com/myproject_backend:latest

@@ -54,19 +54,29 @@ func (h *Handler) ecr(ctx context.Context, log *slog.Logger, ev events.CloudWatc
 
 	imageURI := ecrImageURI(ev.AccountID, ev.Region, d)
 
+	// The image travels with EVERY target, service and scheduled task alike.
+	//
+	// It used to be attached only to scheduled tasks, on the reasoning that a
+	// service has an ECS service to update and a task does not. True, and it
+	// left the service deploy unable to say WHICH image it deployed: it handed
+	// ECS the bare family, ECS resolved the latest ACTIVE revision, and that
+	// revision's container image is the ":latest" literal Terraform renders. The
+	// deployed revision therefore recorded no build at all — rolling back to it
+	// later would pull whatever ":latest" points at then, not the image that was
+	// pushed now. deploy.Deployer turns this URI into a revision that pins the
+	// exact reference, which is what makes a revision a rollback point.
+	//
+	// This is safe to do unconditionally only because the rule ignores the
+	// mutable tag (ECRMutableTag): one build now yields one event, so one push
+	// registers one revision. See lambda.tf's ci_ecr_pattern_* locals.
 	reqs := make([]deploy.Request, 0, len(ids))
 	for _, id := range ids {
-		req := deploy.Request{
-			ID:     id,
-			Reason: fmt.Sprintf("New image pushed to %s", imageURI),
-			Source: deploy.SourceECR,
-		}
-		if h.cfg.IsScheduledTask(id) {
-			// A scheduled task has no ECS service to update; the deploy is a
-			// new task-definition revision carrying this image.
-			req.ImageURI = imageURI
-		}
-		reqs = append(reqs, req)
+		reqs = append(reqs, deploy.Request{
+			ID:       id,
+			ImageURI: imageURI,
+			Reason:   fmt.Sprintf("New image pushed to %s", imageURI),
+			Source:   deploy.SourceECR,
+		})
 	}
 
 	log.Info("ECR push resolved", "targets", ids)
