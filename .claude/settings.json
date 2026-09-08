@@ -45,7 +45,7 @@
     "code-analysis@magus": "7.0.0",
     "multimodel@magus": "3.4.0",
     "statusline@magus": "3.0.0",
-    "dev@magus": "3.3.0",
+    "dev@magus": "7.2.0",
     "code-review@claude-plugins-official": "b819188d2eea",
     "code-simplifier@claude-plugins-official": "0.0.0",
     "explanatory-output-style@claude-plugins-official": "0.0.0",
