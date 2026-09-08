@@ -185,16 +185,29 @@ jobs:
       # workflow renders it.
       #
       # The two halves are split on purpose. This step owns the TEXT, byte for
-      # byte, against synthetic inputs and no provider. The mock_provider suite
+      # byte, against synthetic inputs and no provider. The mock_provider suites
       # in modules/workloads/tests/env_secret_collision.tftest.hcl (run by "Test
       # the revision notification" above, which runs every *.tftest.hcl in that
-      # directory) owns the WIRING — that the names handed to this module are the
-      # upper-cased ones ECS actually compares.
+      # directory) and modules/event_bridge_task/tests/ (the step below) own the
+      # WIRING — that the names handed to this module are the upper-cased ones
+      # ECS actually compares.
       - name: Test the env/secret collision check
         run: |
           terraform init -backend=false -input=false
           terraform test
         working-directory: modules/env_secret_check
+
+      # The third caller of that check, and a separate step because it is a
+      # separate module: modules/event_bridge_task builds a container definition
+      # of the same shape from its own locals, so the wiring can rot on its own.
+      # Its paths differ from a service's in both halves — an extra "task"
+      # segment in the SSM prefix, `environment_variables` rather than `env_vars`
+      # in the YAML — and the message names all of them.
+      - name: Test the event task env/secret collision
+        run: |
+          terraform init -backend=false -input=false
+          terraform test
+        working-directory: modules/event_bridge_task
 
       # Every module that consumes modules/naming. Validation was scoped to
       # modules/workloads when it was the only module with a module block; a

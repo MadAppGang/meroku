@@ -739,14 +739,17 @@ The infrastructure includes an automatic migration system for YAML configuration
 
 ### Current Schema Version
 
-**Version 8** - Includes:
-- Aurora Serverless v2 support (v2)
-- DNS management fields (v3)
-- Backend scaling configuration (v4)
-- Account ID and AWS profile tracking (v5)
-- Custom VPC configuration (v6)
-- ECR strategy configuration (v7)
-- ECR trusted accounts for cross-account access (v8)
+**The authority is `CurrentSchemaVersion` in `app/migrations.go`.** Read it there.
+The per-version history is the comment block directly above that constant, and
+`AllMigrations` below it is the list the migrator actually runs — the three move
+together in one commit, so none of them can be stale while the others are right.
+
+This section used to carry the number and a copied-out feature list instead. It
+said "Version 8" for twenty versions, because a number transcribed into prose has
+no way to be loudly wrong: nothing reads it, nothing tests it, and bumping the
+constant does not touch it. Do not put the number back. Adding a migration means
+editing `app/migrations.go` (constant, history comment, `AllMigrations`) and the
+table in [ai_docs/MIGRATIONS.md](./ai_docs/MIGRATIONS.md) — not this file.
 
 ### How It Works
 

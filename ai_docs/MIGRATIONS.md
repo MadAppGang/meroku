@@ -40,8 +40,19 @@ The meroku application includes a comprehensive YAML schema migration system tha
 | 22 | CI/CD auto-deploy | `backend_auto_deploy` and per-target `auto_deploy` |
 | 23 | AppSync auth modes | `auth_mode` and `api_key_enabled` on `pubsub_appsync` |
 | 24 | Cognito key repair | `cognito.dashboard_callback_ur_ls` → `dashboard_callback_urls` |
+| 25 | container_command list | `scheduled_tasks[].container_command` normalized from a scalar to `list(string)` |
+| 26 | EC2 capacity pools | `runtime` (`fargate`\|`ec2`) and `compute_pool` on the backend and services |
+| 27 | Egress strategy | `egress_strategy` (`public_ip`\|`nat_gateway`\|`nat_gateway_ha`), defaulting to `public_ip` |
+| 28 | Shared GitHub OIDC | `workload.github_oidc_create_provider`, defaulting to `true` |
 
-Current version: **v24**
+Current version: **v28**
+
+This table is a transcription, and a transcription rots. The authority is
+`CurrentSchemaVersion` in `app/migrations.go`, with the per-version history in
+the comment block above it and `AllMigrations` below it. If the number here and
+the constant there disagree, the constant is right and this table is behind —
+which is what happened to CLAUDE.md, where the same number sat at "Version 8"
+for twenty versions.
 
 ### A note on v23's two defaults
 
@@ -167,7 +178,8 @@ Migrations are idempotent - they only add missing fields and never remove or mod
 
 To add a new migration for schema changes:
 
-1. **Update CurrentSchemaVersion** in `migrations.go`:
+1. **Update CurrentSchemaVersion** in `migrations.go`, and the line for the new
+   version in the history comment directly above it:
    ```go
    const CurrentSchemaVersion = 6  // Increment
    ```
@@ -202,6 +214,11 @@ To add a new migration for schema changes:
        return 6
    }
    ```
+
+5. **Add a row to the Schema Version History table above** and bump the
+   "Current version" line under it. Nothing enforces this, which is exactly why
+   the table had been four versions behind — it is the step to do in the same
+   commit as step 1 or not at all.
 
 ## Migration Examples
 

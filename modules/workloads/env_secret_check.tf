@@ -47,10 +47,11 @@ module "service_env_secret_check" {
   source = "../env_secret_check"
 
   workloads = { for k, v in local.service_names : k => {
-    subject    = "Service \"${k}\""
-    ssm_path   = "/${var.env}/${var.project}/${k}"
-    yaml_field = "env_vars"
-    yaml_file  = "project/${var.env}.yaml"
+    subject         = "Service \"${k}\""
+    ssm_path        = "/${var.env}/${var.project}/${k}"
+    yaml_field      = "env_vars"
+    yaml_file       = "project/${var.env}.yaml"
+    defaults_source = "modules/workloads/env_services.tf"
 
     environment = [for e in local.services_container_env[k] : e.name]
     secrets     = [for s in local.services_env_ssm[k] : s.name]
@@ -62,10 +63,11 @@ module "backend_env_secret_check" {
 
   workloads = {
     backend = {
-      subject    = "The backend"
-      ssm_path   = "/${var.env}/${var.project}/backend"
-      yaml_field = "backend_env_variables"
-      yaml_file  = "project/${var.env}.yaml"
+      subject         = "The backend"
+      ssm_path        = "/${var.env}/${var.project}/backend"
+      yaml_field      = "backend_env_variables"
+      yaml_file       = "project/${var.env}.yaml"
+      defaults_source = "modules/workloads/env.tf"
 
       # `try` and `compact`, unlike the services branch, because var.backend_env
       # carries no type constraint (variables.tf) and env/main.hbs concatenates

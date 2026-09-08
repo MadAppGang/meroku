@@ -61,7 +61,7 @@ locals {
         the better home for anything sensitive anyway, and it can be
         changed without a terraform apply.
 
-    If the name is one meroku sets itself — AWS_REGION, URL, PG_DATABASE_HOST, EVENT_SOURCE, SERVICE_NAME and the rest of the lists in modules/workloads/env_services.tf and env.tf — only the first option is open, because it is not in ${w.yaml_file} to remove.
+    If the name is one meroku sets itself — AWS_REGION and the rest of the list in ${w.defaults_source} — only the first option is open, because it is not in ${w.yaml_file} to remove.
   EOT
   }
 }

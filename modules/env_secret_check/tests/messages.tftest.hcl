@@ -10,6 +10,10 @@
 #   4. Case is not folded here. The SSM side arrives already upper-cased, so
 #      folding again would invent a collision ECS does not have.
 #      (case_is_not_folded_a_second_time)
+#   5. Every file path and field name in the message is the CALLER's, so a
+#      caller that is not modules/workloads gets a message that sends its
+#      reader to files that exist.
+#      (a_non_workloads_caller_gets_its_own_file_paths)
 #
 # Rule 1 is why this module exists at all rather than two inline expressions in
 # modules/workloads. That module reads eight remote data sources, so
@@ -20,13 +24,14 @@
 # `terraform test` plans it with no credentials and no network, and a message
 # that cannot render fails here instead of in a user's terminal.
 #
-# modules/workloads/tests/ does now show that `terraform test` CAN plan that
-# module under mock_provider, and env_secret_collision.tftest.hcl there covers
-# the wiring — which names reach this module, and that the upper-casing on the
-# SSM side happens before they do. It does not replace this file: mock_provider
-# needs the AWS provider's schema and runs its client-side validation, so a
-# failure there surfaces wherever the plan walk happens to stop, while a message
-# that cannot render fails here on the line that renders it.
+# modules/workloads/tests/ does now show that `terraform test` CAN plan a
+# provider-bearing caller under mock_provider, and env_secret_collision.tftest.hcl
+# there and in modules/event_bridge_task/tests/ covers the wiring — which names
+# reach this module, and that the upper-casing on the SSM side happens before
+# they do. Neither replaces this file: mock_provider needs the AWS provider's
+# schema and runs its client-side validation, so a failure there surfaces
+# wherever the plan walk happens to stop, while a message that cannot render
+# fails here on the line that renders it.
 #
 # Run: terraform test  (from modules/env_secret_check)
 
@@ -35,24 +40,26 @@ variables {
     # Clean. The list is empty, which is the case that renders on every plan of
     # every healthy project and therefore the case most likely to crash unseen.
     clean = {
-      subject     = "Service \"web\""
-      ssm_path    = "/dev/acme/web"
-      yaml_field  = "env_vars"
-      yaml_file   = "project/dev.yaml"
-      environment = ["AWS_REGION", "SERVICE_NAME"]
-      secrets     = ["ENV", "DATABASE_PASSWORD"]
+      subject         = "Service \"web\""
+      ssm_path        = "/dev/acme/web"
+      yaml_field      = "env_vars"
+      yaml_file       = "project/dev.yaml"
+      defaults_source = "modules/workloads/env_services.tf"
+      environment     = ["AWS_REGION", "SERVICE_NAME"]
+      secrets         = ["ENV", "DATABASE_PASSWORD"]
     }
 
     # The reported failure: SCAN_CURSOR_STORE declared in YAML, and an SSM
     # parameter under the service's path whose upper-cased last segment is the
     # same string.
     colliding = {
-      subject     = "Service \"orders\""
-      ssm_path    = "/dev/acme/orders"
-      yaml_field  = "env_vars"
-      yaml_file   = "project/dev.yaml"
-      environment = ["AWS_REGION", "SCAN_CURSOR_STORE", "SERVICE_NAME"]
-      secrets     = ["ENV", "SCAN_CURSOR_STORE"]
+      subject         = "Service \"orders\""
+      ssm_path        = "/dev/acme/orders"
+      yaml_field      = "env_vars"
+      yaml_file       = "project/dev.yaml"
+      defaults_source = "modules/workloads/env_services.tf"
+      environment     = ["AWS_REGION", "SCAN_CURSOR_STORE", "SERVICE_NAME"]
+      secrets         = ["ENV", "SCAN_CURSOR_STORE"]
     }
   }
 }
@@ -149,12 +156,13 @@ run "multiple_collisions_are_all_listed_in_sorted_order" {
   variables {
     workloads = {
       many = {
-        subject     = "The backend"
-        ssm_path    = "/dev/acme/backend"
-        yaml_field  = "backend_env_variables"
-        yaml_file   = "project/dev.yaml"
-        environment = ["ZULU", "ALPHA", "AWS_REGION", "MIKE"]
-        secrets     = ["MIKE", "ZULU", "ALPHA", "ENV"]
+        subject         = "The backend"
+        ssm_path        = "/dev/acme/backend"
+        yaml_field      = "backend_env_variables"
+        yaml_file       = "project/dev.yaml"
+        defaults_source = "modules/workloads/env.tf"
+        environment     = ["ZULU", "ALPHA", "AWS_REGION", "MIKE"]
+        secrets         = ["MIKE", "ZULU", "ALPHA", "ENV"]
       }
     }
   }
@@ -185,12 +193,13 @@ run "case_is_not_folded_a_second_time" {
   variables {
     workloads = {
       mixed = {
-        subject     = "Service \"orders\""
-        ssm_path    = "/dev/acme/orders"
-        yaml_field  = "env_vars"
-        yaml_file   = "project/dev.yaml"
-        environment = ["scan_cursor_store"]
-        secrets     = ["SCAN_CURSOR_STORE"]
+        subject         = "Service \"orders\""
+        ssm_path        = "/dev/acme/orders"
+        yaml_field      = "env_vars"
+        yaml_file       = "project/dev.yaml"
+        defaults_source = "modules/workloads/env_services.tf"
+        environment     = ["scan_cursor_store"]
+        secrets         = ["SCAN_CURSOR_STORE"]
       }
     }
   }
@@ -198,5 +207,67 @@ run "case_is_not_folded_a_second_time" {
   assert {
     condition     = output.valid["mixed"]
     error_message = "\"scan_cursor_store\" and \"SCAN_CURSOR_STORE\" are two different names to ECS and it accepts both on one container. Folding case here would refuse a configuration AWS applies. The case that DOES need catching — a lower-case SSM parameter against an upper-case YAML variable — is caught because modules/workloads upper-cases the parameter's last segment before the name ever reaches this module; see modules/workloads/tests/env_secret_collision.tftest.hcl."
+  }
+}
+
+# The third caller, and the reason `defaults_source` is a variable rather than a
+# constant in the message.
+#
+# modules/event_bridge_task has the same two mechanisms — `environment` from an
+# event task's `environment_variables` in project/<env>.yaml, `secrets` from
+# every SSM parameter under /<env>/<project>/task/<task> — but every path in
+# them differs from a service's, and so does the file its always-set variables
+# live in. The message used to name "modules/workloads/env_services.tf and
+# env.tf" outright, which is exactly wrong for this caller: that sentence is
+# where a reader is sent when the colliding name is one they CANNOT edit, so a
+# pointer to a file setting no such variable for their task leaves them nowhere
+# at all.
+#
+# AWS_REGION is the fixture on purpose. It is the one name every caller sets on
+# every container, it is in no YAML file, and `aws ssm put-parameter --name
+# /dev/acme/task/ingest/aws_region` is a plausible thing for somebody to type.
+run "a_non_workloads_caller_gets_its_own_file_paths" {
+  command = apply
+
+  variables {
+    workloads = {
+      ingest = {
+        subject         = "Event task \"ingest\""
+        ssm_path        = "/dev/acme/task/ingest"
+        yaml_field      = "environment_variables"
+        yaml_file       = "project/dev.yaml"
+        defaults_source = "modules/event_bridge_task/env.tf"
+        environment     = ["AWS_REGION", "EVENT_SOURCE", "SQS_QUEUE_URL"]
+        secrets         = ["ENV", "AWS_REGION"]
+      }
+    }
+  }
+
+  assert {
+    condition     = output.collisions["ingest"] == tolist(["AWS_REGION"])
+    error_message = "The parameter /dev/acme/task/ingest/aws_region becomes the secret AWS_REGION, which modules/event_bridge_task also sets as a plain variable. Got ${jsonencode(output.collisions["ingest"])}."
+  }
+
+  assert {
+    condition     = strcontains(output.message["ingest"], "Event task \"ingest\" would set AWS_REGION both")
+    error_message = "The subject is the caller's to choose and must reach the sentence unaltered. Got: ${output.message["ingest"]}"
+  }
+
+  # The nested path. A caller keyed one level deeper than a service is the shape
+  # a hardcoded "/<env>/<project>/<name>" would quietly get wrong.
+  assert {
+    condition     = strcontains(output.message["ingest"], "/dev/acme/task/ingest") && strcontains(output.message["ingest"], "environment_variables in project/dev.yaml")
+    error_message = "Both halves must be named with THIS caller's path and field, not a service's. Got: ${output.message["ingest"]}"
+  }
+
+  # The remedy paragraph, and the point of the run.
+  assert {
+    condition     = strcontains(output.message["ingest"], "the rest of the list in modules/event_bridge_task/env.tf")
+    error_message = "AWS_REGION is set by the module, not by the user, so deleting the parameter is the only remedy — and the reader can only confirm that by reading the file that sets it. It must be the CALLER's file. Got: ${output.message["ingest"]}"
+  }
+
+  assert {
+    condition     = !strcontains(output.message["ingest"], "modules/workloads")
+    error_message = "No message may name modules/workloads unless its own caller asked for it; an event task's reader has no env_services.tf to read. Got: ${output.message["ingest"]}"
   }
 }
