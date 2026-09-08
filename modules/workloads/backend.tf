@@ -294,13 +294,17 @@ resource "aws_ecs_task_definition" "backend" {
   container_definitions = jsonencode(concat(
     local.xray_container,
     [{
-      name        = local.backend_name
-      command     = var.backend_container_command
-      cpu         = local.backend_pool == null ? max(var.backend_cpu, 256) : var.backend_cpu
-      memory      = local.backend_pool == null ? max(var.backend_memory, 512) : var.backend_memory
-      image       = local.docker_image
-      secrets     = local.backend_env_ssm
-      environment = concat(local.backend_env, var.backend_env)
+      name    = local.backend_name
+      command = var.backend_container_command
+      cpu     = local.backend_pool == null ? max(var.backend_cpu, 256) : var.backend_cpu
+      memory  = local.backend_pool == null ? max(var.backend_memory, 512) : var.backend_memory
+      image   = local.docker_image
+      secrets = local.backend_env_ssm
+
+      # Assembled in env.tf, not here, so that the precondition below compares
+      # the list this argument actually carries. Byte-identical to the inline
+      # concat it replaces.
+      environment = local.backend_container_env
       environmentFiles = [
         for file in local.env_files_s3 : {
           value = "arn:aws:s3:::${file.bucket}/${file.key}"
@@ -346,6 +350,18 @@ resource "aws_ecs_task_definition" "backend" {
     ManagedBy   = "meroku"
     terraform   = "true"
     Application = "${var.project}-${var.env}"
+  }
+
+  # The backend's half of the rule the services carry too. See the precondition
+  # on aws_ecs_task_definition.services in services.tf for why it sits on the
+  # task definition rather than on the ECS service, and env_secret_check.tf for
+  # what the collision is and how a project acquires one without editing
+  # anything.
+  lifecycle {
+    precondition {
+      condition     = module.backend_env_secret_check.valid["backend"]
+      error_message = module.backend_env_secret_check.message["backend"]
+    }
   }
 }
 

@@ -65,6 +65,34 @@ locals {
     ] : []
   )
 
+  # Exactly what lands in the container definition's `environment` — the shared
+  # list above, then this service's own env_vars, then the three meroku derives
+  # per service. Order is the order it has always been rendered in; jsonencode
+  # sorts an object's keys but never a list's elements, so reordering here would
+  # register a task-definition revision in every environment for no change.
+  #
+  # It is a local rather than an inline expression in services.tf because
+  # env_secret_check.tf has to compare these names against the discovered secret
+  # names, and it has to compare the ones ECS will compare. Two copies of the
+  # expression is two copies that can drift, and a check reading the stale copy
+  # is worse than no check at all — it reports success on the config that fails.
+  services_container_env = {
+    for service_name, service in local.service_names : service_name => concat(
+      local.services_env,
+      [
+        for name, value in service.env_vars : {
+          name  = name
+          value = value
+        }
+      ],
+      [
+        { name = "EVENT_SOURCE", value = local.services_event_source[service_name] },
+        { name = "SERVICE_INTERNAL_URL", value = local.services_internal_domain[service_name] },
+        { name = "SERVICE_NAME", value = service_name },
+      ],
+    )
+  }
+
   # Per-service EventBridge source name
   services_event_source = {
     for service_name, _ in local.service_names : service_name => "${var.project}.${service_name}"

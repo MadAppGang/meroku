@@ -123,6 +123,27 @@ jobs:
         run: terraform validate
         working-directory: modules/workloads
 
+      # aws_lambda_invocation.{backend,services}_revision — the edge that tells
+      # the CI Lambda a new ECS task-definition revision exists. Without it a
+      # configuration change reaches no container and every component reports
+      # success.
+      #
+      # Those resources are gated on auto_deploy at the resource itself, because
+      # ci_lambda/internal/handler/manual.go deliberately does not consult the
+      # flag — so an ungated apply deploys a service whose operator opted out.
+      # `terraform validate` above evaluates no count, no for_each and no
+      # jsonencode, and the Go guard in ci_lambda/internal/boundary reads these
+      # files as text, so between them they cannot tell
+      # `count = var.backend_auto_deploy ? 1 : 0` from
+      # `count = var.backend_auto_deploy != null ? 1 : 0`.
+      #
+      # This suite evaluates them: it drives modules/workloads under
+      # mock_provider — no AWS account, no credentials, no network — with the
+      # flag set both ways, and decodes the payload the Lambda receives.
+      - name: Test the revision notification
+        run: terraform test
+        working-directory: modules/workloads
+
       # modules/naming decides what every capped AWS name is called, and its
       # first contract is that nothing already deployed gets renamed — a rename
       # is ForceNew, and for a target group attached to a listener rule the
@@ -141,14 +162,39 @@ jobs:
       # the compute_pool message shipped in v4.2.0 and broke every deploy with a
       # Fargate service until v4.4.1, through four releases.
       #
-      # modules/workloads reads eight remote data sources and can never be
-      # planned without AWS credentials, so the messages live in a module with
-      # no provider and are planned here instead.
+      # modules/workloads reads eight remote data sources, so `terraform plan`
+      # on it can never run without AWS credentials. The messages therefore live
+      # in a module with no provider at all and are planned here instead, which
+      # also keeps a message failure pointing at the message rather than at
+      # whichever unrelated resource the plan happened to reach first.
+      #
+      # (The step above does now plan modules/workloads itself, under
+      # mock_provider. That route exists for the revision-notification gate and
+      # does not replace this one: mock_provider still needs the AWS provider's
+      # schema and its client-side validation, and this module needs neither.)
       - name: Test the compute pool check
         run: |
           terraform init -backend=false -input=false
           terraform test
         working-directory: modules/compute_pool_check
+
+      # The other precondition message, and here for the same reason as the one
+      # above: a name that appears in both a container's `environment` and its
+      # `secrets` is refused by ECS at RegisterTaskDefinition, so the check that
+      # catches it early has a sentence to render, and nothing else in this
+      # workflow renders it.
+      #
+      # The two halves are split on purpose. This step owns the TEXT, byte for
+      # byte, against synthetic inputs and no provider. The mock_provider suite
+      # in modules/workloads/tests/env_secret_collision.tftest.hcl (run by "Test
+      # the revision notification" above, which runs every *.tftest.hcl in that
+      # directory) owns the WIRING — that the names handed to this module are the
+      # upper-cased ones ECS actually compares.
+      - name: Test the env/secret collision check
+        run: |
+          terraform init -backend=false -input=false
+          terraform test
+        working-directory: modules/env_secret_check
 
       # Every module that consumes modules/naming. Validation was scoped to
       # modules/workloads when it was the only module with a module block; a

@@ -341,16 +341,11 @@ resource "aws_ecs_task_definition" "services" {
       // 2. from env_files_s3
       // 3. from env_vars variable
       secrets = local.services_env_ssm[each.key]
-      environment = concat(local.services_env, [
-        for name, value in each.value.env_vars : {
-          name  = name
-          value = value
-        }
-        ], [
-        { name = "EVENT_SOURCE", value = local.services_event_source[each.key] },
-        { name = "SERVICE_INTERNAL_URL", value = local.services_internal_domain[each.key] },
-        { name = "SERVICE_NAME", value = each.key }
-      ])
+
+      # Assembled in env_services.tf, not here, so that the precondition below
+      # compares the list this argument actually carries. Byte-identical to the
+      # inline concat it replaces.
+      environment = local.services_container_env[each.key]
       environmentFiles = [
         for file in local.services_env_files_s3[each.key] : {
           value = "arn:aws:s3:::${file.bucket}/${file.key}"
@@ -393,6 +388,38 @@ resource "aws_ecs_task_definition" "services" {
     ManagedBy   = "meroku"
     terraform   = "true"
     Application = "${var.project}-${var.env}"
+  }
+
+  # A name may not appear in both `environment` and `secrets` above. ECS refuses
+  # the RegisterTaskDefinition call, so without this the apply dies part-way
+  # through, naming a variable whoever ran it never touched — env_secret_check.tf
+  # has the full account of how a project gets there.
+  #
+  # It lives on the TASK DEFINITION rather than on aws_ecs_service.services, and
+  # deliberately: this is the resource AWS rejects, so the address Terraform
+  # prints alongside the message is the one the reader has to fix. Both are
+  # plan-time and either would stop the apply before an API call, so the only
+  # thing to choose between them is where the error points. A first lifecycle
+  # block here is also free of the constraint that applies over on the ECS
+  # service, which already carries one — a resource may have only ONE lifecycle
+  # block, so its compute_pool precondition and anything added beside it have to
+  # share.
+  #
+  # Meta-argument: no state, no diff. Needs Terraform >= 1.2, which versions.tf
+  # requires.
+  #
+  # On the FIRST apply of a new environment this condition is unknown at plan:
+  # data.aws_ssm_parameters_by_path.services depends_on the SSM parameter being
+  # created in that same apply, so the read is deferred and the secret names with
+  # it. Terraform postpones an unknown precondition to apply time rather than
+  # failing, which is the right answer — the check still runs, one step later.
+  # Every subsequent plan, which is where a parameter added out of band shows up,
+  # evaluates it at plan.
+  lifecycle {
+    precondition {
+      condition     = module.service_env_secret_check.valid[each.key]
+      error_message = module.service_env_secret_check.message[each.key]
+    }
   }
 }
 

@@ -69,4 +69,12 @@ locals {
       { "name" : "ADOT_COLLECTOR_URL", "value" : "localhost:2000" }
     ] : []
   )
+
+  # Exactly what lands in the container definition's `environment`. A local
+  # rather than an inline concat in backend.tf for the same reason as
+  # local.services_container_env (env_services.tf): env_secret_check.tf compares
+  # these names against the discovered secret names and must compare the ones
+  # ECS will compare, and a second copy of the expression is a copy that can
+  # drift into reporting success on the config that fails.
+  backend_container_env = concat(local.backend_env, var.backend_env)
 }
