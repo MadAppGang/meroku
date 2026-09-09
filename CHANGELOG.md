@@ -1,5 +1,77 @@
 # Changelog
 
+## v4.8.0
+
+### The CI role could push images into another project's repositories
+
+The GitHub Actions deploy role granted nine ECR actions on `Resource: "*"`. In an
+account hosting one project that reads as broad but contained. In an account
+hosting two — the configuration `github_oidc_create_provider` exists to support —
+it was cross-project: **project A's workflow token could replace project B's
+container images**, and vice versa.
+
+Nothing was failing, which is why it survived. The extra reach was never
+exercised, so no deploy broke and no log recorded it. It was found by comparing a
+hand-made role, deliberately scoped to two repositories, against the one meroku
+generates: adopting meroku's version *widened* the role and changed no behaviour
+at all.
+
+The ECR actions are now scoped to this project's own repository namespace:
+
+| | |
+|---|---|
+| `ecr:GetAuthorizationToken` | Stays on `"*"`, alone in its own statement. It is evaluated at the registry and has no resource; scoping it denies it, and `docker login` fails in every workflow. The wildcard is the only form AWS accepts, and the token it returns is worthless without a repository-level grant. |
+| The other eight | Scoped to `${project}_backend`, `${project}_service_*` and `${project}_task_*`, in this account and this region. |
+| `ecs:*`, `events:PutEvents`, `iam:PassRole` | Unchanged. |
+
+Prefixes rather than a list of repository names, for two reasons. The generated
+workflows create their own repository when it is missing
+(`describe-repositories || create-repository`), and `ecr:CreateRepository` cannot
+be authorised against a list that by definition does not contain the repository
+being created. And a prefix keeps the policy a constant three ARNs against the
+10,240-character inline-policy cap, where an enumeration grows with the service
+count.
+
+**What to expect on upgrade.** The next `terraform apply` shows one changed IAM
+policy. Every push path the generated pipelines use is unaffected — verified
+against AWS's own policy engine, action by action, before and after. A
+*hand-written* workflow that pushes to a repository outside the documented naming
+convention will start failing, loudly, with `AccessDeniedException` naming the
+ARN.
+
+One residual case, narrower than the wildcard it replaces but worth stating: two
+projects in one account named such that one name plus `_service` or `_task`
+prefixes the other still overlap.
+
+### The policy document moved so it could be tested
+
+`modules/workloads` reads eight remote data sources, so it can never be planned
+without AWS credentials, and its tests must mock `aws_iam_policy_document` — a
+generated mock string is not a policy document and the provider rejects it
+client-side. The effect is that no test in `modules/workloads/tests/` can read a
+rendered policy. A test asserting on the locals that feed a statement passes
+while the statement itself grants `"*"`; that was reproduced, with the whole
+suite green.
+
+`data.aws_iam_policy_document.github` now lives in `modules/github_policy`, which
+takes account and region as inputs and reads nothing remote. It plans with no
+credentials, so its tests assert on the **actual rendered JSON** — asking whether
+a given repository ARN is reachable, rather than whether a string looks right.
+That distinction is what catches a prefix one character too loose.
+
+The rendered policy is byte-identical before and after the move.
+
+`ai_docs/IAM_POLICY_TESTING.md` records the constraint and the pattern, including
+how to check a policy change against a real account read-only with
+`iam:SimulateCustomPolicy`.
+
+### Also
+
+- `task lambda:test` now passes `-count=1`. The boundary guards read `.tf` files
+  three directories above the Go module, so Go cannot hash them: the suite
+  returned `ok (cached)` after a guarded file changed. CI was already safe.
+
+
 ## v4.7.0
 
 ### Action required: every pipeline must push an immutable image tag

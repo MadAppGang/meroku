@@ -49,6 +49,46 @@ locals {
   )
 }
 
+# ---------------------------------------------------------------------------
+# The deploy role's permissions live in ../github_policy, not here.
+#
+# The reason is testability, and it is not a preference. Every test file in
+# modules/workloads/tests/ must declare `mock_data "aws_iam_policy_document"`
+# with a stub json string — a generated mock value is not a policy document and
+# the AWS provider validates that CLIENT-side, so without the stub seven
+# resources in this module fail with `"policy" contains an invalid JSON policy`
+# before a single assertion runs. While the document was declared in this file,
+# `data.aws_iam_policy_document.github.json` was therefore structurally
+# unreadable from any test in this directory: whatever the statement blocks
+# said, the attribute returned the stub. `override_data` does not rescue it
+# either — it REPLACES a mocked address's values with hand-written ones, moving
+# in the same direction as the mock, and there is no construct that un-mocks an
+# address back to the real provider.
+#
+# A leaf module has none of that. It declares no other policy resource, so it
+# needs no mock, and `aws_iam_policy_document` renders client-side — so
+# ../github_policy/tests/ can plan the real provider with no credentials and no
+# network and read the JSON the role actually receives. That is the only place
+# the ECR scoping property can be checked against the rendered policy rather
+# than against the locals it is built from.
+#
+# The account ID and region are passed IN for the same reason: a data source in
+# the leaf module would make it unplannable without AWS, which is the whole
+# problem this move solves. See ../github_policy/main.tf for the ECR reasoning
+# that used to be here.
+# ---------------------------------------------------------------------------
+module "github_policy" {
+  source = "../github_policy"
+
+  project            = var.project
+  env                = var.env
+  aws_account_id     = local.aws_account_id
+  region             = data.aws_region.current.name
+  ecr_strategy       = var.ecr_strategy
+  ecr_account_id     = var.ecr_account_id
+  ecr_account_region = var.ecr_account_region
+}
+
 data "aws_iam_policy_document" "github_trust_relationship" {
   count = var.github_oidc_enabled ? 1 : 0
   statement {
@@ -85,48 +125,17 @@ resource "aws_iam_role" "github_role" {
   }
 }
 
-# Separate policy attachment (replaces deprecated inline_policy)
+# Separate policy attachment (replaces deprecated inline_policy).
+#
+# This is the ONLY policy on the role, and it must stay that way: an
+# aws_iam_role_policy_attachment to a managed policy such as
+# AmazonEC2ContainerRegistryPowerUser — the reflex fix when a deploy fails with
+# AccessDenied — would restore account-wide ECR write on top of the scoped grant
+# in ../github_policy, and no test in that module can see it: it renders one
+# document and knows nothing about what else is attached to the role.
 resource "aws_iam_role_policy" "github_access" {
   count  = var.github_oidc_enabled ? 1 : 0
   name   = "GithubAccessPolicy"
   role   = aws_iam_role.github_role[0].id
-  policy = data.aws_iam_policy_document.github.json
-}
-
-data "aws_iam_policy_document" "github" {
-  statement {
-    effect = "Allow"
-    actions = [
-      "ecr:CompleteLayerUpload",
-      "ecr:GetAuthorizationToken",
-      "ecr:UploadLayerPart",
-      "ecr:BatchGetImage",
-      "ecr:InitiateLayerUpload",
-      "ecr:BatchCheckLayerAvailability",
-      "ecr:PutImage",
-      "ecr:DescribeRepositories",
-      "ecr:CreateRepository",
-      "ecs:UpdateService",
-      "ecs:DescribeServices",
-      "ecs:RegisterTaskDefinition",
-      "ecs:DescribeTaskDefinition",
-      "events:PutEvents"
-    ]
-    resources = ["*"]
-  }
-
-  # iam:PassRole is required when calling ecs:UpdateService or ecs:RegisterTaskDefinition
-  # because ECS needs to assume the task execution role to pull images from ECR.
-  # Scoped to this project's task and execution roles only.
-  statement {
-    effect = "Allow"
-    actions = [
-      "iam:PassRole"
-    ]
-    resources = [
-      "arn:aws:iam::${local.aws_account_id}:role/${var.project}_*_task_${var.env}",
-      "arn:aws:iam::${local.aws_account_id}:role/${var.project}_*_task_execution_${var.env}",
-      "arn:aws:iam::${local.aws_account_id}:role/${var.project}_scheduler_*_task_execution_${var.env}"
-    ]
-  }
+  policy = module.github_policy.json
 }
