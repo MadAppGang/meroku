@@ -133,7 +133,15 @@ tasks:
   lambda:test:
     desc: Run Lambda unit tests
     dir: '{{.LAMBDA_DIR}}'
-    cmd: go test -v ./...
+    # -count=1 is load-bearing, not caution. internal/boundary reads Terraform
+    # files that live THREE DIRECTORIES ABOVE this Go module and therefore
+    # outside it — modules/workloads/github.tf, main.tf, backend.tf. Go hashes
+    # only the module's own inputs, so mutating github.tf invalidates nothing
+    # and the guard reports `ok (cached)` on a file it has not looked at.
+    # Reproduced: restoring `resources = ["*"]` to the ECR statement passed
+    # cached and failed under -count=1. CI is already safe (.github/workflows/
+    # ci.yml uses -count=1); this is the local signal.
+    cmd: go test -v ./... -count=1
 
   lambda:test:golden:
     desc: Drift-check the Terraform→Go boundary golden file (needs terraform; add -- -update to rewrite it)

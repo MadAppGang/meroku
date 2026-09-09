@@ -154,6 +154,23 @@ jobs:
           terraform test
         working-directory: modules/naming
 
+      # What the GitHub Actions deploy role can actually reach in ECR. The
+      # policy document was extracted out of modules/workloads/github.tf into
+      # modules/github_policy for one reason: every test file in
+      # modules/workloads/tests/ must mock aws_iam_policy_document with a stub
+      # json string, or seven resources there fail client-side with
+      # `"policy" contains an invalid JSON policy` — so the rendered policy is
+      # unreadable from that directory and no assertion there can see whether a
+      # neighbouring project's repository is reachable. This module declares no
+      # data source and renders client-side, so the real JSON is planned here
+      # with no credentials and no network. That property — the grant stops at
+      # this project's ECR namespace — is only checked here.
+      - name: Test the github policy module
+        run: |
+          terraform init -backend=false -input=false
+          terraform test
+        working-directory: modules/github_policy
+
       # The precondition messages on the ECS services and the backend. The step
       # above this one runs `terraform validate` on modules/workloads, and
       # validate does not evaluate a precondition's error_message at all, so a
