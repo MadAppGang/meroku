@@ -145,9 +145,41 @@ variable "custom_env_vars" {
 data "aws_iam_policy_document" "default_ecr_policy" {
   statement {
     sid = "Default ECR policy"
+
+    # THIS ACCOUNT, and nothing else.
+    #
+    # This is the statement that grants writes — ecr:PutImage,
+    # ecr:BatchDeleteImage, ecr:DeleteRepository, ecr:SetRepositoryPolicy — and
+    # its principal was `type = "*"` / `identifiers = ["*"]` with no condition
+    # attached. On a RESOURCE policy that is not a permissive default; it is
+    # public. Any principal in any AWS account could replace the image behind a
+    # tag this infrastructure pulls, which is code execution here at the next
+    # task start, or delete the repository outright. It was deployed that way,
+    # in three modules at once.
+    #
+    # The account-root form is a delegation rather than a grant: a same-account
+    # caller is allowed only if its OWN identity policy also allows the action,
+    # and no principal outside the account is reached at all. Nothing here was
+    # relying on the resource policy alone — every ECS execution role attaches
+    # AmazonECSTaskExecutionRolePolicy (modules/workloads/backend.tf,
+    # modules/workloads/services.tf, modules/workloads/pgadmin.tf,
+    # modules/ecs_task/iam.tf, modules/event_bridge_task/iam.tf), which carries
+    # the four pull actions by identity, and the GitHub Actions deploy role gets
+    # its push actions from modules/github_policy. A human pushing by hand needs
+    # ECR permissions of their own, which is the point.
+    #
+    # The SECOND statement below keeps its wildcard deliberately: it is
+    # read-only AND carries aws:PrincipalOrgID, which is precisely the
+    # confinement this one lacked. Do not "fix" it to match.
+    #
+    # This document exists three times, byte for byte, in the three modules
+    # named above, and a fix applied to one copy is worth nothing. The guards in
+    # modules/workloads/ci_lambda/internal/boundary/ecrtf_guard_test.go read all
+    # three and fail if any of them regains an unconditioned wildcard principal
+    # or drifts out of step with the others.
     principals {
-      type        = "*"
-      identifiers = ["*"]
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
     }
     actions = [
       "ecr:GetDownloadUrlForLayer",

@@ -1,5 +1,85 @@
 # Changelog
 
+## v4.8.1
+
+### Action required: every ECR repository this tool created was world-writable
+
+The repository policy meroku attaches to each ECR repository granted
+`ecr:PutImage`, `ecr:DeleteRepository`, `ecr:BatchDeleteImage`,
+`ecr:SetRepositoryPolicy` and `ecr:DeleteRepositoryPolicy` to
+`Principal: "*"` with **no condition attached**.
+
+On an identity policy a wildcard principal is meaningless. On a **resource**
+policy it is publication. Any principal in any AWS account could replace the
+image behind a tag your infrastructure pulls — which is code execution in your
+account at the next task start — or delete the repository outright.
+
+This was confirmed deployed, not merely present in the source.
+
+**Apply this release, then check your own account.** Upgrading fixes the policy
+meroku writes from now on; it does not tell you whether anything was already
+done to a repository. Worth reviewing:
+
+- CloudTrail for `PutImage`, `BatchDeleteImage`, `DeleteRepository` and
+  `SetRepositoryPolicy` calls on your ECR repositories whose principal is not
+  yours;
+- image digests against the ones your pipeline actually built;
+- `aws ecr get-repository-policy --repository-name <name>` on every repository,
+  before and after the apply.
+
+The four affected attachment sites, all of which this release fixes:
+
+| Repository | Written by |
+|---|---|
+| `${project}_backend` | `modules/workloads/ecr.tf` |
+| `${project}_service_*` | `modules/workloads/ecr.tf` |
+| `${project}_task_*` | `modules/ecs_task` |
+| event-bridge task repositories | `modules/event_bridge_task` |
+
+The statement's principal is now the account root:
+
+```hcl
+principals {
+  type        = "AWS"
+  identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
+}
+```
+
+The action list is unchanged. The document's *second* statement is unchanged and
+keeps its wildcard deliberately — it is read-only and carries
+`aws:PrincipalOrgID`, which is precisely the confinement the first statement
+lacked. The two sitting side by side is what made the omission visible.
+
+**One behaviour change worth knowing before you apply.** A wildcard principal is
+a direct grant: it was sufficient on its own, even for a caller with no ECR
+permissions of its own. An account-root principal is a *delegation* — a
+same-account caller must now also be allowed by its own identity policy. Every
+path meroku generates already is: each ECS execution role attaches
+`AmazonECSTaskExecutionRolePolicy`, which carries the pull actions, and the
+GitHub Actions role gets its push actions from `modules/github_policy` as of
+v4.8.0. A **hand-written role, or a person, pushing with no ECR permissions of
+their own worked before and will now get `AccessDenied`.** That is the fix doing
+its job, and it is the one way this surfaces as a broken pipeline.
+
+### The same document existed three times
+
+`default_ecr_policy` was defined byte-for-byte identically in
+`modules/workloads/ecr.tf`, `modules/ecs_task/variable.tf` and
+`modules/event_bridge_task/variables.tf`. One defect, three deployments, and
+fixing any one of them would have left the other two live.
+
+A new guard in `modules/workloads/ci_lambda/internal/boundary/` reads all three
+and fails if any regains an unconditioned wildcard principal, or if the three
+drift out of step with each other. Reverting a single copy trips three separate
+assertions.
+
+These three should be one shared module, as `modules/github_policy` now is for
+the deploy role's document. That extraction is deliberately not in this release —
+a security fix should be the smallest change that closes the hole. The drift
+guard's failure message says so, and tells the next person to extract rather than
+diverge.
+
+
 ## v4.8.0
 
 ### The CI role could push images into another project's repositories
