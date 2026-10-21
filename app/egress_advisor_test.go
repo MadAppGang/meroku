@@ -151,10 +151,12 @@ func TestAdviseEgress_BelowThresholdKeepsPublicIP(t *testing.T) {
 }
 
 func TestAdviseEgress_NonProdSwitchesAtSix(t *testing.T) {
+	// Two tasks per service: the shape the threshold is computed for.
 	env := &Env{Services: []Service{
-		{Name: "a"}, {Name: "b"}, {Name: "c"}, {Name: "d"},
+		{Name: "a", DesiredCount: 2}, {Name: "b", DesiredCount: 2},
+		{Name: "c", DesiredCount: 2}, {Name: "d", DesiredCount: 2},
 	}}
-	env.Workload.BackendDesiredCount = 1
+	env.Workload.BackendDesiredCount = 2
 
 	// backend + 4 = 5 services: with its Elastic IP counted, a NAT is not
 	// cheaper yet.
@@ -162,8 +164,8 @@ func TestAdviseEgress_NonProdSwitchesAtSix(t *testing.T) {
 		t.Fatal("5 services is below the non-prod threshold; should not recommend switching")
 	}
 
-	env.Services = append(env.Services, Service{Name: "e"})
-	advice := AdviseEgress(env) // 6 services
+	env.Services = append(env.Services, Service{Name: "e", DesiredCount: 2})
+	advice := AdviseEgress(env) // 6 services, 12 tasks
 
 	if !advice.ShouldSwitch {
 		t.Fatal("6 services should trip the non-prod threshold")
@@ -179,10 +181,10 @@ func TestAdviseEgress_NonProdSwitchesAtSix(t *testing.T) {
 func TestAdviseEgress_ProdHoldsUntilElevenAndWantsHA(t *testing.T) {
 	var services []Service
 	for i := 0; i < 4; i++ {
-		services = append(services, Service{Name: string(rune('a' + i))})
+		services = append(services, Service{Name: string(rune('a' + i)), DesiredCount: 2})
 	}
 	env := &Env{IsProd: true, Services: services}
-	env.Workload.BackendDesiredCount = 1
+	env.Workload.BackendDesiredCount = 2
 
 	// 5 services in prod: still below the prod threshold of 11.
 	advice := AdviseEgress(env)
@@ -195,7 +197,7 @@ func TestAdviseEgress_ProdHoldsUntilElevenAndWantsHA(t *testing.T) {
 
 	// Grow to 11 services.
 	for i := 4; i < 10; i++ {
-		env.Services = append(env.Services, Service{Name: string(rune('a' + i))})
+		env.Services = append(env.Services, Service{Name: string(rune('a' + i)), DesiredCount: 2})
 	}
 	advice = AdviseEgress(env)
 	if !advice.ShouldSwitch {
@@ -203,6 +205,32 @@ func TestAdviseEgress_ProdHoldsUntilElevenAndWantsHA(t *testing.T) {
 	}
 	if advice.Recommended != EgressNATGatewayHA {
 		t.Errorf("Recommended = %q, want %q for prod", advice.Recommended, EgressNATGatewayHA)
+	}
+}
+
+func TestAdviseEgress_OneTaskPerServiceStaysOnPublicIP(t *testing.T) {
+	// Six services at the default desired_count of 1: past the service
+	// threshold, but six public IPs ($21.90) still cost less than one NAT
+	// (about $42 at the default traffic). Advising the switch would raise
+	// the bill.
+	env := &Env{Services: []Service{
+		{Name: "a"}, {Name: "b"}, {Name: "c"}, {Name: "d"}, {Name: "e"},
+	}}
+
+	advice := AdviseEgress(env)
+
+	if advice.ShouldSwitch {
+		t.Fatalf("NAT is dearer than 6 public IPs; should not recommend switching: %q", advice.Summary)
+	}
+	if advice.Recommended != EgressPublicIP {
+		t.Errorf("Recommended = %q, want %q", advice.Recommended, EgressPublicIP)
+	}
+	natCost := fmt.Sprintf("$%.2f/mo", egressMonthlyCost(EgressNATGateway, advice.Footprint))
+	if !strings.Contains(advice.Summary, natCost) {
+		t.Errorf("Summary should quote the NAT cost %s, got %q", natCost, advice.Summary)
+	}
+	if strings.Contains(advice.Summary, "(0 more)") {
+		t.Errorf("Summary must not count down to a threshold already passed: %q", advice.Summary)
 	}
 }
 

@@ -217,11 +217,19 @@ func AdviseEgress(env *Env) EgressAdvice {
 	threshold := switchThreshold(isProd)
 	current := EffectiveEgressStrategy(env)
 
+	natCandidate := recommendedStrategy(isProd)
+	pastThreshold := footprint.Services >= threshold
+	natCheaper := egressMonthlyCost(natCandidate, footprint) < egressMonthlyCost(EgressPublicIP, footprint)
+
 	// Below the threshold public IPs are cheapest; at or above it, the NAT form
-	// appropriate to this kind of environment is.
+	// appropriate to this kind of environment usually is. The threshold assumes
+	// two tasks per service, but a public IP bills per task and desired_count
+	// defaults to 1, so a move off public IPs must also win on price. An
+	// environment already on a NAT is not told to move back: past the threshold
+	// the gap is a few dollars, and every added task closes it.
 	recommended := EgressPublicIP
-	if footprint.Services >= threshold {
-		recommended = recommendedStrategy(isProd)
+	if pastThreshold && (natCheaper || current != EgressPublicIP) {
+		recommended = natCandidate
 	}
 
 	// The default VPC has no private subnets, so a NAT strategy is not
@@ -252,19 +260,26 @@ func AdviseEgress(env *Env) EgressAdvice {
 	}
 
 	switch {
-	case pinnedToPublic && footprint.Services >= threshold:
+	case pinnedToPublic && pastThreshold && natCheaper:
 		advice.Summary = fmt.Sprintf(
 			"%d service(s), %d task(s): public IPv4 costs $%.2f/mo and a NAT Gateway would be "+
 				"cheaper, but this environment uses the default VPC, which has no private "+
 				"subnets. Set use_default_vpc: false to make the switch available.",
 			footprint.Services, footprint.Tasks, currentCost)
 
+	case !advice.ShouldSwitch && recommended == EgressPublicIP && pastThreshold:
+		advice.Summary = fmt.Sprintf(
+			"%d service(s), %d task(s): %s is still the cheapest option at $%.2f/mo. A %s "+
+				"would cost $%.2f/mo; it becomes cheaper as the task count grows.",
+			footprint.Services, footprint.Tasks, natLabel(current), currentCost,
+			natLabel(natCandidate), egressMonthlyCost(natCandidate, footprint))
+
 	case !advice.ShouldSwitch && recommended == EgressPublicIP:
 		advice.Summary = fmt.Sprintf(
 			"%d service(s), %d task(s): %s is the cheapest option at $%.2f/mo. Revisit at "+
 				"%d services (%d more), where a %s becomes cheaper.",
 			footprint.Services, footprint.Tasks, natLabel(current), currentCost,
-			threshold, advice.ServicesUntilSwitch, natLabel(recommendedStrategy(isProd)))
+			threshold, advice.ServicesUntilSwitch, natLabel(natCandidate))
 
 	case !advice.ShouldSwitch:
 		advice.Summary = fmt.Sprintf(

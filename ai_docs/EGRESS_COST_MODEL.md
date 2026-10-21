@@ -147,6 +147,13 @@ cheaper, at two tasks per service. Before the Elastic IP was counted they were
 5 and 10, which switched one service early: at 5 services a single NAT costs
 $4.40 a month more than public IPs.
 
+The thresholds assume two tasks per service. A public IP bills per task, and
+`desired_count` defaults to 1, so the advisor also prices the actual footprint:
+it recommends a NAT only when the NAT is cheaper for the tasks the environment
+runs. At 6 services with one task each, public IPs cost $21.90 against about
+$42 for a NAT, and the advisor keeps public IPs. An environment already on a
+NAT is never told to move back.
+
 ### Why not the other options
 
 - **NAT instance** (fck-nat and similar) is the cheapest option at every size —
