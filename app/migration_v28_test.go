@@ -2,22 +2,19 @@ package main
 
 import "testing"
 
-// The version constant, the registered migration list and the newest migration
-// have to agree, or a file migrates to a version whose migration never ran.
-//
-// This check belongs to whichever migration is currently newest. When v29 is
-// added, move it there and leave a registration-only check behind, the way
-// TestV27IsRegistered was left.
-func TestV28IsRegisteredAtTheCurrentVersion(t *testing.T) {
-	if CurrentSchemaVersion != 28 {
-		t.Fatalf("CurrentSchemaVersion = %d, want 28", CurrentSchemaVersion)
+// v28 has to stay in the registry, or a file that is behind migrates past it
+// without it ever running. The current-version check moved to
+// TestV29IsRegisteredAtTheCurrentVersion with the v29 bump.
+func TestV28IsRegistered(t *testing.T) {
+	for _, migration := range AllMigrations {
+		if migration.Version == 28 {
+			if migration.Apply == nil {
+				t.Fatal("the v28 entry has no Apply function")
+			}
+			return
+		}
 	}
-
-	last := AllMigrations[len(AllMigrations)-1]
-	if last.Version != CurrentSchemaVersion {
-		t.Errorf("last registered migration is v%d, but CurrentSchemaVersion is %d",
-			last.Version, CurrentSchemaVersion)
-	}
+	t.Fatal("AllMigrations has no entry for version 28")
 }
 
 // workloadDoc builds the map shape yaml.v2 produces for a nested block: string
