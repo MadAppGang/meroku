@@ -36,7 +36,9 @@
         "dev@magus": "latest",
         "browser-use@magus": "latest",
         "terminal@magus": "latest",
-        "madbench@magus": "latest"
+        "madbench@magus": "latest",
+        "code-search@magus": "latest",
+        "bunjs@magus": "latest"
       },
       "createdAt": "2026-08-27T13:13:42.118Z",
       "mcpServers": {
