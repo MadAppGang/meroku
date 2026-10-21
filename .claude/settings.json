@@ -12,7 +12,6 @@
     "claude-code-setup@claude-plugins-official": true,
     "claude-md-management@claude-plugins-official": true,
     "skill-creator@claude-plugins-official": true,
-    "code-analysis@magus": true,
     "mnemex@magus": true,
     "claudish@magus": true,
     "multimodel@magus": true,
@@ -42,22 +41,21 @@
     "frontend-design@claude-code-plugins": "1.0.0",
     "learning-output-style@claude-code-plugins": "1.0.0",
     "ralph-wiggum@claude-code-plugins": "1.0.0",
-    "code-analysis@magus": "7.0.0",
-    "multimodel@magus": "3.4.0",
+    "multimodel@magus": "5.8.0",
     "statusline@magus": "3.0.0",
-    "dev@magus": "7.2.0",
+    "dev@magus": "9.3.5",
     "code-review@claude-plugins-official": "b819188d2eea",
     "code-simplifier@claude-plugins-official": "0.0.0",
     "explanatory-output-style@claude-plugins-official": "0.0.0",
     "claude-code-setup@claude-plugins-official": "0.0.0",
     "claude-md-management@claude-plugins-official": "0.0.0",
     "skill-creator@claude-plugins-official": "b819188d2eea",
-    "terminal@magus": "4.1.4",
-    "browser-use@magus": "1.4.0",
+    "terminal@magus": "5.5.0",
+    "browser-use@magus": "1.10.0",
     "kanban@magus": "1.6.0",
     "designer@magus": "0.4.2",
-    "madbench@magus": "0.1.1",
-    "mnemex@magus": "1.0.2"
-  },
-  "outputStyle": "composed"
+    "madbench@magus": "0.12.3",
+    "mnemex@magus": "1.2.0",
+    "claudish@magus": "2.10.0"
+  }
 }

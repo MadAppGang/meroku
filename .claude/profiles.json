@@ -30,7 +30,6 @@
         "claude-code-setup@claude-plugins-official": "latest",
         "claude-md-management@claude-plugins-official": "latest",
         "skill-creator@claude-plugins-official": "latest",
-        "code-analysis@magus": "latest",
         "mnemex@magus": "latest",
         "claudish@magus": "latest",
         "multimodel@magus": "latest",
@@ -68,7 +67,8 @@
             }
           }
         }
-      }
+      },
+      "updatedAt": "2026-10-21T10:49:13.659Z"
     }
   }
 }
