@@ -32,3 +32,7 @@ bun.lock
 bun.lockb
 package-lock.json
 yarn.lock
+
+# vitest browser-mode failure artifacts
+.vitest-attachments/
+__screenshots__/

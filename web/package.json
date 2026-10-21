@@ -12,8 +12,10 @@
 		"storybook": "storybook dev -p 6006",
 		"build-storybook": "storybook build",
 		"check:property-panels": "node scripts/check-property-panel-boundaries.mjs",
+		"check:property-panels-v3": "node scripts/check-property-panel-v3-boundaries.mjs",
 		"test-storybook": "vitest run --project=storybook",
-		"test": "echo 'No application test runner is configured; use pnpm test-storybook for component stories.'"
+		"test": "vitest run --project=unit --project=dom",
+		"test:unit": "vitest run --project=unit"
 	},
 	"dependencies": {
 		"@biomejs/biome": "^2.2.6",

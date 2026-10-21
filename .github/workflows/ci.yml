@@ -339,3 +339,15 @@ jobs:
       # this step turns into `pnpm exec biome ci src` when it lands.
       - name: Build
         run: pnpm build
+
+      # `unit` runs in Node; `dom` mounts the real Sidebar in headless Chromium
+      # and is what proves the properties-v3 panel writes nothing to YAML until
+      # Save (and nothing destructive until confirmation).
+      - name: Install Chromium for browser tests
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Test
+        run: pnpm run test
+
+      - name: Property panel V3 boundaries
+        run: pnpm run check:property-panels-v3

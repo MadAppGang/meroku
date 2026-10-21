@@ -531,7 +531,7 @@ infrastructure/
 - Always run `task infra-plan env={env}` before applying changes
 - Test infrastructure changes in dev environment first
 - Use `task test` to run Go tests
-- Frontend tests: none exist yet — `web/` has no test runner installed. `task test:web` is a placeholder until vitest is added.
+- Frontend tests: `task test:web` runs vitest (`web/vitest.config.ts`) — project `unit` (`src/**/__tests__/**/*.test.ts`, Node) and project `dom` (`src/**/__tests__/**/*.test.tsx`, headless Chromium via Playwright; install once with `pnpm exec playwright install chromium`). Storybook stories run separately with `pnpm test-storybook`. `pnpm run check:property-panels-v3` enforces the properties-v3 boundaries.
 
 ## Terraform Plan Viewer
 
