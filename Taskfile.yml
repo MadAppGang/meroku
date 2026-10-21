@@ -31,7 +31,7 @@ tasks:
     cmd: go test ./...
 
   test:web:
-    desc: Run web frontend tests
+    desc: Run web frontend tests (vitest unit + dom; dom needs Playwright Chromium)
     dir: '{{.WEB_DIR}}'
     cmd: pnpm run test
 

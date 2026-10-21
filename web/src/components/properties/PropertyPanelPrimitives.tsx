@@ -1330,10 +1330,12 @@ export function PropertyOverflowText({
 	value,
 	tooltip = value,
 	ariaLabel,
+	className,
 }: {
 	value: string;
 	tooltip?: string;
 	ariaLabel?: string;
+	className?: string;
 }) {
 	const textRef = useRef<HTMLElement>(null);
 	const [overflowing, setOverflowing] = useState(false);
@@ -1355,7 +1357,7 @@ export function PropertyOverflowText({
 	const text = (
 		<code
 			ref={textRef}
-			className="mp-overflow-text"
+			className={`mp-overflow-text${className ? ` ${className}` : ""}`}
 			data-overflow={overflowing || undefined}
 			tabIndex={overflowing ? 0 : undefined}
 			aria-label={ariaLabel}

@@ -1,0 +1,540 @@
+/*
+ * properties-v3 — UI-layer stylesheet.
+ *
+ * Only styles for v3-specific composites (multi-channel save bar, telemetry
+ * rows, notices, key-value tables, confirm dialog, structural layout). All
+ * colors/spacing reference the shared mp-* token custom properties defined in
+ * components/properties/property-panel.css (single source of truth).
+ */
+
+/* Shared mp-* tokens and primitives; the app only loads them through V3. */
+@import "../../properties/property-panel.css";
+
+/* Runtime value row + log viewer (ported with RuntimePrimitives.tsx). */
+.mp-runtime-parameter {
+	min-width: 0;
+	min-height: 24px;
+	padding: 0 2px 0 6px;
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	overflow: hidden;
+	color: var(--mp-text-muted);
+	background: transparent;
+	border-bottom: 1px solid var(--mp-border);
+	font-size: var(--mp-type-description);
+	line-height: 16px;
+}
+
+.mp-runtime-parameter[data-resolved="false"] {
+	color: var(--mp-text-muted);
+}
+
+.mp-runtime-parameter__value {
+	min-width: 0;
+	flex: 1;
+	overflow: hidden;
+	color: var(--mp-text-muted);
+	font-size: calc(var(--mp-type-description) - 1px);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.mp-runtime-parameter[data-resolved="false"] .mp-runtime-parameter__value {
+	font-family: var(--mp-font-sans);
+	font-size: var(--mp-type-description);
+}
+
+.mp-runtime-parameter__action {
+	width: 24px;
+	height: 24px;
+	padding: 0;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 auto;
+	color: var(--mp-text-muted);
+	background: transparent;
+	border: 0;
+	border-radius: 4px;
+	cursor: pointer;
+}
+
+.mp-runtime-parameter__action:hover {
+	color: var(--mp-link);
+	background: var(--mp-accent-soft);
+}
+
+.mp-runtime-parameter__action:focus-visible {
+	color: var(--mp-link);
+	outline: none;
+	box-shadow: 0 0 0 2px var(--mp-accent-focus);
+}
+
+.mp-runtime-parameter__action svg {
+	width: 12px;
+	height: 12px;
+}
+
+.mp-log-viewer {
+	min-width: 0;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	background: var(--mp-surface-raised);
+	border: 1px solid var(--mp-border);
+	border-radius: 6px;
+}
+
+.mp-log-viewer__toolbar {
+	min-height: 34px;
+	padding: 4px 5px 4px 9px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.mp-log-viewer__status {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	color: var(--mp-text-muted);
+	font-size: var(--mp-type-description);
+	white-space: nowrap;
+}
+
+.mp-log-viewer__status > span {
+	width: 6px;
+	height: 6px;
+	background: var(--mp-text-muted);
+	border-radius: 999px;
+}
+
+.mp-log-viewer[data-live="true"] .mp-log-viewer__status {
+	color: var(--mp-link);
+}
+
+.mp-log-viewer[data-live="true"] .mp-log-viewer__status > span {
+	background: var(--mp-accent);
+	box-shadow: 0 0 0 3px var(--mp-accent-focus);
+}
+
+.mp-log-viewer__actions {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.mp-log-viewer__button {
+	min-height: 25px;
+	padding: 0 9px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 5px;
+	color: var(--mp-accent-contrast);
+	background: var(--mp-accent);
+	border: 1px solid var(--mp-accent);
+	border-radius: 5px;
+	font: 600 var(--mp-type-description) / 1 var(--mp-font-sans);
+	text-decoration: none;
+	cursor: pointer;
+}
+
+.mp-log-viewer__button--secondary {
+	color: var(--mp-text-secondary);
+	background: transparent;
+	border-color: var(--mp-border);
+}
+
+.mp-log-viewer__button:hover {
+	filter: brightness(0.96);
+}
+
+.mp-log-viewer__button--secondary:hover {
+	color: var(--mp-link);
+	background: var(--mp-accent-soft);
+	border-color: var(--mp-accent-outline);
+}
+
+.mp-log-viewer__button:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 2px var(--mp-accent-focus);
+}
+
+.mp-log-viewer__button svg {
+	width: 11px;
+	height: 11px;
+}
+
+.mp-log-viewer__output {
+	width: 100%;
+	height: 220px;
+	padding: 8px 10px;
+	display: block;
+	overflow: auto;
+	color: var(--mp-text-secondary);
+	background: color-mix(
+		in srgb,
+		var(--mp-surface-raised) 74%,
+		var(--mp-surface) 26%
+	);
+	border: 0;
+	border-top: 1px solid var(--mp-border);
+	border-radius: 0;
+	font-size: 11px;
+	line-height: 18px;
+	resize: none;
+	white-space: pre;
+}
+
+.mp-log-viewer__output[data-empty="true"] {
+	color: var(--mp-text-muted);
+	font-family: var(--mp-font-sans);
+}
+
+.mp-log-viewer__output:focus-visible {
+	outline: none;
+	box-shadow: inset 0 0 0 2px var(--mp-accent-focus);
+}
+
+.mp-v3-field-item {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+}
+
+.mp-v3-field-item__header {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-height: 16px;
+}
+
+.mp-v3-field-item__note {
+	font-size: 11px;
+	color: var(--mp-text-muted);
+}
+
+/* Structural layout primitives ------------------------------------------- */
+
+.mp-v3-stack {
+	display: flex;
+	flex-direction: column;
+	gap: var(--mp-v3-gap, 8px);
+	min-width: 0;
+}
+
+.mp-v3-row {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: var(--mp-v3-gap, 8px);
+	min-width: 0;
+	flex-wrap: wrap;
+}
+
+.mp-v3-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+	gap: var(--mp-v3-gap, 8px) 12px;
+	min-width: 0;
+}
+
+.mp-v3-text {
+	margin: 0;
+	min-width: 0;
+}
+
+.mp-v3-text[data-variant="muted"] {
+	color: var(--mp-text-muted);
+}
+
+.mp-v3-text[data-variant="mono"] {
+	font-family: var(--mp-font-mono);
+}
+
+/* Telemetry --------------------------------------------------------------- */
+
+/* Full-span fields inside the v3 grid take the whole row. */
+.mp-v3-grid > .mp-compact-field[data-span="full"] {
+	grid-column: 1 / -1;
+}
+
+/* Telemetry rows: the value keeps the full row width (flex-grow, ellipsis
+   only past it) and the timestamp wraps onto its own quieter line, so long
+   ISO timestamps never push into a neighbouring column. */
+.mp-v3-telemetry__row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 2px 8px;
+	min-width: 0;
+}
+
+.mp-v3-telemetry__row > .mp-runtime-parameter__value {
+	flex: 1 1 auto;
+}
+
+.mp-v3-telemetry__timestamp {
+	flex-basis: 100%;
+	max-width: 100%;
+	font-size: 10px;
+	color: var(--mp-text-muted);
+	opacity: 0.8;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.mp-v3-telemetry__demo {
+	font-size: 10px;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	padding: 1px 6px;
+	border-radius: 999px;
+	border: 1px solid currentColor;
+	opacity: 0.7;
+	white-space: nowrap;
+}
+
+/* Notices ----------------------------------------------------------------- */
+
+.mp-v3-notice {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	padding: 8px 10px;
+	border-radius: 8px;
+	font-size: 12px;
+	border: 1px solid var(--mp-border, transparent);
+}
+
+.mp-v3-notice[data-tone="warning"] {
+	border-color: var(--mp-warning);
+	background: color-mix(in srgb, var(--mp-warning) 12%, transparent);
+}
+
+.mp-v3-notice[data-tone="danger"] {
+	border-color: var(--mp-danger);
+	background: color-mix(in srgb, var(--mp-danger) 12%, transparent);
+}
+
+.mp-v3-notice[data-tone="info"] {
+	border-color: var(--mp-accent);
+	background: color-mix(in srgb, var(--mp-accent) 12%, transparent);
+}
+
+.mp-v3-notice__body {
+	flex: 1;
+	min-width: 0;
+}
+
+.mp-v3-notice__title {
+	font-weight: 600;
+}
+
+.mp-v3-notice__list {
+	margin: 4px 0 0;
+	padding-left: 18px;
+}
+
+.mp-v3-notice__dismiss {
+	flex-shrink: 0;
+}
+
+/* Key-value table ---------------------------------------------------------- */
+
+.mp-v3-kv-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 12px;
+}
+
+.mp-v3-kv-table th,
+.mp-v3-kv-table td {
+	text-align: left;
+	padding: 4px 6px;
+	vertical-align: middle;
+	min-width: 0;
+}
+
+.mp-v3-kv-table th {
+	font-weight: 600;
+	font-size: 11px;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	opacity: 0.7;
+}
+
+.mp-v3-kv-table td .mp-control {
+	width: 100%;
+	min-width: 0;
+}
+
+.mp-v3-kv-table__row-remove {
+	width: 28px;
+}
+
+.mp-v3-kv-table__checkbox {
+	width: 16px;
+	height: 16px;
+	accent-color: currentColor;
+	margin: 0;
+}
+
+/* Save bar (multi-channel) -------------------------------------------------- */
+
+.mp-v3-save-bar footer.mp-savebar {
+	flex-direction: column;
+	align-items: stretch;
+	gap: 6px;
+}
+
+.mp-v3-save-bar__channels {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.mp-v3-save-bar__channel {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+	font-size: 12px;
+}
+
+.mp-v3-save-bar__channel-summary {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.mp-v3-save-bar__deploy-status {
+	font-size: 11px;
+	color: var(--mp-text-muted);
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.mp-v3-save-bar__actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+}
+
+/* Destructive confirm dialog ------------------------------------------------ */
+
+.mp-v3-confirm__resources {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	max-height: 260px;
+	overflow: auto;
+}
+
+.mp-v3-confirm__resource {
+	border-radius: 8px;
+	padding: 6px 10px;
+	border: 1px solid var(--mp-border, transparent);
+}
+
+.mp-v3-confirm__resource-name {
+	font-weight: 600;
+}
+
+.mp-v3-confirm__paths {
+	margin: 4px 0 0;
+	padding-left: 16px;
+	font-family: var(--mp-font-mono);
+	font-size: 11px;
+	word-break: break-all;
+}
+
+.mp-v3-confirm__clarification {
+	font-size: 12px;
+}
+
+.mp-v3-confirm__footer {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+}
+
+/* Impact badge (v3 tone vocabulary: neutral/info/success/warning/danger/locked) */
+
+.mp-v3-impact-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 1px 6px;
+	border-radius: 999px;
+	font-size: 10px;
+	line-height: 1.2;
+	letter-spacing: 0.02em;
+	text-transform: uppercase;
+	white-space: nowrap;
+}
+
+.mp-v3-impact-badge__dot {
+	width: 5px;
+	height: 5px;
+	border-radius: 50%;
+	background: currentColor;
+}
+
+.mp-v3-impact-badge--compact {
+	padding: 1px 5px;
+	font-size: 9px;
+}
+
+.mp-v3-impact-badge--danger {
+	color: var(--mp-danger);
+	background: color-mix(in srgb, var(--mp-danger) 12%, transparent);
+	border: 1px solid color-mix(in srgb, var(--mp-danger) 25%, transparent);
+}
+
+.mp-v3-impact-badge--warning {
+	color: var(--mp-warning);
+	background: color-mix(in srgb, var(--mp-warning) 12%, transparent);
+	border: 1px solid color-mix(in srgb, var(--mp-warning) 25%, transparent);
+}
+
+.mp-v3-impact-badge--info {
+	color: var(--mp-link);
+	background: color-mix(in srgb, var(--mp-link) 10%, transparent);
+	border: 1px solid color-mix(in srgb, var(--mp-link) 20%, transparent);
+}
+
+/* Text is darkened toward the surface text token so the label keeps >=4.5
+   contrast on the tinted background in both light and dark surfaces. */
+.mp-v3-impact-badge--success {
+	color: color-mix(in srgb, var(--mp-success) 65%, var(--mp-text));
+	background: color-mix(in srgb, var(--mp-success) 10%, transparent);
+	border: 1px solid color-mix(in srgb, var(--mp-success) 20%, transparent);
+}
+
+.mp-v3-impact-badge--neutral {
+	color: var(--mp-text-secondary);
+	background: color-mix(in srgb, var(--mp-text-secondary) 8%, transparent);
+	border: 1px solid
+		color-mix(in srgb, var(--mp-text-secondary) 16%, transparent);
+}
+
+.mp-v3-impact-badge--locked {
+	color: var(--mp-text-muted);
+	background: color-mix(in srgb, var(--mp-text-muted) 8%, transparent);
+	border: 1px solid color-mix(in srgb, var(--mp-text-muted) 16%, transparent);
+}

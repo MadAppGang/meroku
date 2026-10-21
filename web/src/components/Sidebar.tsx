@@ -29,7 +29,14 @@ import {
 	X,
 	Zap,
 } from "lucide-react";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import {
+	Suspense,
+	useCallback,
+	useEffect,
+	useId,
+	useRef,
+	useState,
+} from "react";
 import type { AccountInfo } from "../api/infrastructure";
 import type { ComponentNode } from "../types";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
@@ -75,6 +82,11 @@ import { ParameterStoreDescription } from "./ParameterStoreDescription";
 import { ParameterStoreNodeProperties } from "./ParameterStoreNodeProperties";
 import { PostgresConnectionInfo } from "./PostgresConnectionInfo";
 import { PostgresNodeProperties } from "./PostgresNodeProperties";
+import {
+	CONFIG_PANEL_BINDINGS,
+	isPropertyPanelsV3Enabled,
+	LazyConfigPropertyPanel,
+} from "./properties-v3/production";
 import { Route53DNSRecords } from "./Route53DNSRecords";
 import { Route53NodeProperties } from "./Route53NodeProperties";
 import { S3NodeProperties } from "./S3NodeProperties";
@@ -352,6 +364,28 @@ export function Sidebar({
 	}, [selectedNode, checkScrollButtons]);
 
 	if (!isOpen || !selectedNode) return null;
+
+	// Opt-in properties-v3 panel (?panels=v3): edits are drafted and saved
+	// explicitly, with confirmation for replacement changes.
+	if (
+		selectedNode.type === "postgres" &&
+		config &&
+		onConfigChange &&
+		isPropertyPanelsV3Enabled()
+	) {
+		return (
+			<div className="fixed right-0 top-0 h-full w-[768px] bg-gray-900 border-l border-gray-700 shadow-xl z-50 flex flex-col overflow-y-auto">
+				<Suspense fallback={null}>
+					<LazyConfigPropertyPanel
+						binding={CONFIG_PANEL_BINDINGS.postgres}
+						config={config}
+						onConfigChange={onConfigChange}
+						onClose={onClose}
+					/>
+				</Suspense>
+			</div>
+		);
+	}
 
 	return (
 		<div className="fixed right-0 top-0 h-full w-[768px] bg-gray-900 border-l border-gray-700 shadow-xl z-50 flex flex-col">

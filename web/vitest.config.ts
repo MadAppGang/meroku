@@ -10,6 +10,25 @@ export default defineConfig({
 	test: {
 		projects: [
 			{
+				test: {
+					name: "unit",
+					include: ["src/**/__tests__/**/*.test.ts"],
+					environment: "node",
+				},
+			},
+			{
+				test: {
+					name: "dom",
+					include: ["src/**/__tests__/**/*.test.tsx"],
+					browser: {
+						enabled: true,
+						headless: true,
+						provider: playwright({}),
+						instances: [{ browser: "chromium" }],
+					},
+				},
+			},
+			{
 				extends: true,
 				plugins: [
 					storybookTest({ configDir: path.join(dirname, ".storybook") }),
