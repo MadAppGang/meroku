@@ -367,7 +367,6 @@ Each item closes a limitation or defect in `ai_docs/ARCHITECTURE_V4_DECISIONS.md
 | 10 | Alarms | DLQ depth and dropped events (section 2.4), plus a warning when the S3 `.env` trigger has no CloudTrail trail (Defect 4). |
 | 11 | IAM tightening | Defects 8, 9 and 10. |
 | 12 | SNS webhooks to `api_domain` | Defect 6. |
-| 13 | Advisor NAT price | The docs now count the NAT Gateway's own Elastic IP ($3.65 a month, `aws_eip.nat` in `modules/vpc/main.tf`): one NAT costs $36.50, not $32.85, and the break-even moves to about 6 services (11 with a NAT per zone). `app/egress_advisor.go` still uses $32.85 and switches at 5 and 10. Add the Elastic IP to `natGatewayMonthly`, then decide whether the thresholds move to 6 and 11. |
 
 ### 4.1 IPv6-only workloads (research 2026-09-30)
 

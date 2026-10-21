@@ -49,8 +49,8 @@ func TestEgressMonthlyCost_PublicIPIsAZInvariant(t *testing.T) {
 func TestEgressMonthlyCost_NATGatewayScalesWithTraffic(t *testing.T) {
 	// Mirror of the above: NAT has no per-task component but does bill per GB.
 	f := EgressFootprint{Services: 3, Tasks: 6, AZs: 2, TrafficGB: 50}
-	// 32.85 hourly + 50*0.045 processing + cross-AZ 2*0.01*50*0.5
-	closeTo(t, egressMonthlyCost(EgressNATGateway, f), 35.60, "single NAT at 50 GB")
+	// 32.85 hourly + 3.65 Elastic IP + 50*0.045 processing + cross-AZ 2*0.01*50*0.5
+	closeTo(t, egressMonthlyCost(EgressNATGateway, f), 39.25, "single NAT at 50 GB")
 
 	manyTasks := f
 	manyTasks.Tasks = 600
@@ -60,8 +60,8 @@ func TestEgressMonthlyCost_NATGatewayScalesWithTraffic(t *testing.T) {
 
 	heavy := f
 	heavy.TrafficGB = 5000
-	// 32.85 + 225 + cross-AZ 50
-	closeTo(t, egressMonthlyCost(EgressNATGateway, heavy), 307.85, "single NAT at 5 TB")
+	// 36.50 + 225 + cross-AZ 50
+	closeTo(t, egressMonthlyCost(EgressNATGateway, heavy), 311.50, "single NAT at 5 TB")
 }
 
 func TestEgressMonthlyCost_HAAvoidsCrossAZ(t *testing.T) {
@@ -75,8 +75,8 @@ func TestEgressMonthlyCost_HAAvoidsCrossAZ(t *testing.T) {
 	if ha >= single {
 		t.Errorf("at 50 TB, HA NAT (%.2f) should undercut single NAT (%.2f) by avoiding cross-AZ", ha, single)
 	}
-	closeTo(t, ha, 2315.70, "HA NAT at 50 TB")
-	closeTo(t, single, 2782.85, "single NAT at 50 TB")
+	closeTo(t, ha, 2323.00, "HA NAT at 50 TB")
+	closeTo(t, single, 2786.50, "single NAT at 50 TB")
 }
 
 func TestCountEgressFootprint_SkipsDisabledServices(t *testing.T) {
@@ -142,24 +142,31 @@ func TestAdviseEgress_BelowThresholdKeepsPublicIP(t *testing.T) {
 	if advice.Recommended != EgressPublicIP {
 		t.Errorf("Recommended = %q, want %q", advice.Recommended, EgressPublicIP)
 	}
-	if advice.ServicesUntilSwitch != 2 {
-		t.Errorf("ServicesUntilSwitch = %d, want 2", advice.ServicesUntilSwitch)
+	if advice.ServicesUntilSwitch != 3 {
+		t.Errorf("ServicesUntilSwitch = %d, want 3", advice.ServicesUntilSwitch)
 	}
 	if advice.MonthlySaving != 0 {
 		t.Errorf("MonthlySaving = %.2f, want 0 below the threshold", advice.MonthlySaving)
 	}
 }
 
-func TestAdviseEgress_NonProdSwitchesAtFive(t *testing.T) {
+func TestAdviseEgress_NonProdSwitchesAtSix(t *testing.T) {
 	env := &Env{Services: []Service{
 		{Name: "a"}, {Name: "b"}, {Name: "c"}, {Name: "d"},
 	}}
 	env.Workload.BackendDesiredCount = 1
 
-	advice := AdviseEgress(env) // backend + 4 = 5 services
+	// backend + 4 = 5 services: with its Elastic IP counted, a NAT is not
+	// cheaper yet.
+	if AdviseEgress(env).ShouldSwitch {
+		t.Fatal("5 services is below the non-prod threshold; should not recommend switching")
+	}
+
+	env.Services = append(env.Services, Service{Name: "e"})
+	advice := AdviseEgress(env) // 6 services
 
 	if !advice.ShouldSwitch {
-		t.Fatal("5 services should trip the non-prod threshold")
+		t.Fatal("6 services should trip the non-prod threshold")
 	}
 	if advice.Recommended != EgressNATGateway {
 		t.Errorf("Recommended = %q, want %q for non-prod", advice.Recommended, EgressNATGateway)
@@ -169,7 +176,7 @@ func TestAdviseEgress_NonProdSwitchesAtFive(t *testing.T) {
 	}
 }
 
-func TestAdviseEgress_ProdHoldsUntilTenAndWantsHA(t *testing.T) {
+func TestAdviseEgress_ProdHoldsUntilElevenAndWantsHA(t *testing.T) {
 	var services []Service
 	for i := 0; i < 4; i++ {
 		services = append(services, Service{Name: string(rune('a' + i))})
@@ -177,7 +184,7 @@ func TestAdviseEgress_ProdHoldsUntilTenAndWantsHA(t *testing.T) {
 	env := &Env{IsProd: true, Services: services}
 	env.Workload.BackendDesiredCount = 1
 
-	// 5 services in prod: still below the prod threshold of 10.
+	// 5 services in prod: still below the prod threshold of 11.
 	advice := AdviseEgress(env)
 	if advice.ShouldSwitch {
 		t.Error("5 services in prod is below the prod threshold; should not recommend switching")
@@ -186,13 +193,13 @@ func TestAdviseEgress_ProdHoldsUntilTenAndWantsHA(t *testing.T) {
 		t.Errorf("Threshold = %d, want %d for prod", advice.Threshold, switchThresholdProd)
 	}
 
-	// Grow to 10 services.
-	for i := 4; i < 9; i++ {
+	// Grow to 11 services.
+	for i := 4; i < 10; i++ {
 		env.Services = append(env.Services, Service{Name: string(rune('a' + i))})
 	}
 	advice = AdviseEgress(env)
 	if !advice.ShouldSwitch {
-		t.Fatal("10 services in prod should trip the prod threshold")
+		t.Fatal("11 services in prod should trip the prod threshold")
 	}
 	if advice.Recommended != EgressNATGatewayHA {
 		t.Errorf("Recommended = %q, want %q for prod", advice.Recommended, EgressNATGatewayHA)

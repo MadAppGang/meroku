@@ -134,18 +134,18 @@ advisory does not need to be urgent or blocking.
 
 | Phase | When | Strategy | Cost |
 |---|---|---|---|
-| 1 | 1–4 services | public IPv4 per task | $7–29 /mo |
-| 2 (non-prod) | 5+ services | one NAT Gateway | ~$41–53 /mo flat |
-| 2 (prod) | 10+ services | one NAT Gateway per AZ | ~$80–87 /mo flat |
+| 1 | 1–5 services | public IPv4 per task | $7–37 /mo |
+| 2 (non-prod) | 6+ services | one NAT Gateway | ~$42–53 /mo flat |
+| 2 (prod) | 11+ services | one NAT Gateway per AZ | ~$80–87 /mo flat |
 
 Non-prod switches earlier because a single NAT is acceptable there; a NAT
 Gateway is zonal, so one NAT means one AZ's failure takes out egress. Production
 carries the HA cost, which pushes its break-even to roughly 11 services.
 
-The thresholds of 5 and 10 sit one service before the break-even points of
-about 6 and 11. At the threshold the NAT costs $4.40 (non-prod) or $6.75 (prod)
-a month more than public IPs. `app/egress_advisor.go` still prices a NAT at
-$32.85 without its Elastic IP, so its savings figure is $3.65 too high per NAT.
+The thresholds of 6 and 11 are the first service counts at which the NAT is
+cheaper, at two tasks per service. Before the Elastic IP was counted they were
+5 and 10, which switched one service early: at 5 services a single NAT costs
+$4.40 a month more than public IPs.
 
 ### Why not the other options
 

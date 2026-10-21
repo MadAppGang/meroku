@@ -272,9 +272,9 @@ The resulting choices:
 
 | Size | Choice | us-east-1, per month | Sydney, per month |
 |---|---|---|---|
-| 1 to 4 services | `public_ip` | US$7 to US$29 | A$10 to A$42 |
-| 5+ services, non-production | `nat_gateway` | about US$41 to US$53 | about A$75 to A$96 |
-| 10+ services, production | `nat_gateway_ha` | about US$80 to US$87 | about A$146 to A$159 |
+| 1 to 5 services | `public_ip` | US$7 to US$37 | A$10 to A$52 |
+| 6+ services, non-production | `nat_gateway` | about US$42 to US$53 | about A$76 to A$96 |
+| 11+ services, production | `nat_gateway_ha` | about US$80 to US$87 | about A$147 to A$159 |
 
 The service counts in this table come from us-east-1 prices. The advisor uses
 the same counts in every region.
@@ -306,13 +306,11 @@ option at scale is also the safer one.
 
 - The advisor only recommends. You still have to notice the advice and make
   the switch yourself.
-- The advisor recommends the switch at 5 services, and at 10 for production.
-  The NAT only becomes cheaper at about 6 and 11 services in us-east-1, and
-  at about 8 and 15 in Sydney. Switching at 5 services costs US$4.40 (A$22.47
-  in Sydney) a month more than staying on public IPs. Switching production at
-  10 costs US$6.75 (A$41.82) more.
-- The advisor calculates with us-east-1 prices and leaves out the NAT's own
-  public IP, so the saving it shows is US$3.65 too high for each NAT.
+- The advisor calculates with us-east-1 prices. In Sydney the NAT only becomes
+  cheaper at about 8 and 15 services, so the advisor recommends the switch
+  about two services too early there. Switching at 6 services costs A$13.37 a
+  month more than staying on public IPs. Switching production at 11 costs
+  A$32.66 more.
 
 ---
 

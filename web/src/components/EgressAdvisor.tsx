@@ -6,7 +6,7 @@ import { Button } from "./ui/button";
  * Visual advisor for the ECS egress strategy.
  *
  * Public IPv4 costs per task and nothing per GB. A NAT Gateway costs a flat
- * hourly rate and nothing per task. They cross at roughly 5 services, or 10 in
+ * hourly rate and nothing per task. They cross at roughly 6 services, or 11 in
  * production where a NAT runs in each AZ. This component shows where the
  * environment currently sits relative to that crossing.
  *

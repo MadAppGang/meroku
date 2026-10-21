@@ -48,15 +48,21 @@ const (
 	crossAZPerGBPerLeg = 0.01
 
 	publicIPv4Monthly = publicIPv4Hourly * hoursPerMonth // $3.65
-	natGatewayMonthly = natGatewayHourly * hoursPerMonth // $32.85
+
+	// A NAT Gateway needs an Elastic IP of its own (aws_eip.nat in
+	// modules/vpc), and that address bills like any other public IPv4
+	// address. Leaving it out undercounts every NAT by $3.65.
+	natGatewayMonthly = natGatewayHourly*hoursPerMonth + publicIPv4Monthly // $32.85 + $3.65 = $36.50
 )
 
-// Switch thresholds, in services. Production carries the cost of a NAT per AZ,
-// which roughly doubles the fixed side and so pushes its break-even out to
-// about ten services. See the crossing table in ai_docs/EGRESS_COST_MODEL.md.
+// Switch thresholds, in services: the first service count at which a NAT is
+// cheaper, at two tasks per service and defaultEgressGB. Production carries the
+// cost of a NAT per AZ, which doubles the fixed side and so pushes its
+// break-even out to eleven services. See the crossing table in
+// ai_docs/EGRESS_COST_MODEL.md.
 const (
-	switchThresholdNonProd = 5
-	switchThresholdProd    = 10
+	switchThresholdNonProd = 6
+	switchThresholdProd    = 11
 )
 
 // defaultEgressGB is the monthly per-environment egress assumed when a caller
