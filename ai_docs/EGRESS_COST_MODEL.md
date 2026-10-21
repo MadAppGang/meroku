@@ -27,6 +27,7 @@ us-east-1 list prices, August 2026. A month is 730 hours.
 |---|---|---|
 | Public IPv4 address | $0.005 / hr | $3.65 |
 | NAT Gateway | $0.045 / hr | $32.85 |
+| NAT Gateway Elastic IP (one per NAT) | $0.005 / hr | $3.65 |
 | NAT Gateway data processing | $0.045 / GB | — |
 | Interface VPC endpoint (per AZ) | $0.01 / hr | $7.30 |
 | Interface endpoint data processing | $0.01 / GB | — |
@@ -37,6 +38,12 @@ us-east-1 list prices, August 2026. A month is 730 hours.
 | Egress-only Internet Gateway | free | $0 |
 | IPv6 address | free | $0 |
 | HTTP API (v2) VPC Link | free | $0 |
+
+Each NAT Gateway needs its own Elastic IP (`aws_eip.nat` in
+`modules/vpc/main.tf`). That address is a public IPv4 address and costs the same
+$3.65 a month as a task address, so one NAT costs **$36.50** a month before any
+traffic. An earlier version of this document left the address out and used
+$32.85; every figure below includes it.
 
 Two of these are worth stating explicitly because they are commonly assumed to
 cost money and do not:
@@ -49,8 +56,8 @@ cost money and do not:
   endpoints. There is never a cost reason not to create the S3 one.
 
 Regional variation is real and material. ap-southeast-2 charges $0.059/hr for a
-NAT Gateway against $0.045 in us-east-1, so a Sydney NAT costs $43/mo rather
-than $32.85. The advisor uses us-east-1 rates; treat its output as a floor.
+NAT Gateway against $0.045 in us-east-1, so a Sydney NAT costs $46.72/mo with its
+Elastic IP, rather than $36.50. The advisor uses us-east-1 rates; treat its output as a floor.
 
 Internet data-transfer-out is excluded from every comparison below, because
 every option pays it identically and it cancels.
@@ -63,7 +70,7 @@ free in the others.
 | Option | Fixed driver | Tasks | AZs | Regions | Traffic |
 |---|---|---|---|---|---|
 | Public IPv4 | $3.65 / task | linear | flat | linear | flat |
-| NAT Gateway | $32.85 / NAT | flat | linear\* | linear | linear |
+| NAT Gateway | $36.50 / NAT (with its EIP) | flat | linear\* | linear | linear |
 | NAT instance | ~$7.36 / instance | flat | linear\* | linear | stepped |
 | Interface endpoints | $7.30 / endpoint / AZ | flat | linear | linear | mild |
 | IPv6 + egress-only IGW | none | flat | flat | flat | flat |
@@ -86,19 +93,19 @@ Two tasks per service, 2 AZs, single NAT, traffic ramping with size.
 
 | Services | Tasks | Traffic | Public IPv4 | NAT (single) | NAT (HA) | IPv6 |
 |---|---|---|---|---|---|---|
-| 1 | 2 | 20 GB | **$7.30** | $33.95 | $66.60 | $0 |
-| 2 | 4 | 30 GB | **$14.60** | $34.50 | $67.05 | $0 |
-| 3 | 6 | 50 GB | **$21.90** | $35.60 | $67.95 | $0 |
-| 5 | 10 | 80 GB | **$36.50** | $37.25 | $69.30 | $0 |
-| 8 | 16 | 120 GB | $58.40 | **$39.45** | $71.10 | $0 |
-| 12 | 24 | 180 GB | $87.60 | **$42.75** | $73.80 | $0 |
-| 20 | 40 | 300 GB | $146.00 | **$49.35** | $79.20 | $0 |
+| 1 | 2 | 20 GB | **$7.30** | $37.60 | $73.90 | $0 |
+| 2 | 4 | 30 GB | **$14.60** | $38.15 | $74.35 | $0 |
+| 3 | 6 | 50 GB | **$21.90** | $39.25 | $75.25 | $0 |
+| 5 | 10 | 80 GB | **$36.50** | $40.90 | $76.60 | $0 |
+| 8 | 16 | 120 GB | $58.40 | **$43.10** | $78.40 | $0 |
+| 12 | 24 | 180 GB | $87.60 | **$46.40** | $81.10 | $0 |
+| 20 | 40 | 300 GB | $146.00 | **$53.00** | $86.50 | $0 |
 
-At 20 services, moving from public IPs to a single NAT saves **$96.65/mo
-($1,160/yr)** per environment.
+At 20 services, moving from public IPs to a single NAT saves **$93.00/mo
+($1,116/yr)** per environment.
 
 Holding services fixed at 3 and growing traffic instead shows the opposite
-shape — public IPv4 stays at $21.90 while a NAT Gateway climbs to $2,782.85 at
+shape — public IPv4 stays at $21.90 while a NAT Gateway climbs to $2,786.50 at
 50 TB/mo.
 
 ## Where the lines cross
@@ -107,18 +114,19 @@ Tasks at which a NAT Gateway becomes cheaper than public IPv4, at 2 AZs:
 
 | Traffic | Single NAT wins above | HA NAT wins above |
 |---|---|---|
-| 20 GB | 9.3 tasks (5 services) | 18.2 tasks (10 services) |
-| 50 GB | 9.8 tasks (5 services) | 18.6 tasks (10 services) |
-| 100 GB | 10.5 tasks (6 services) | 19.2 tasks (10 services) |
-| 200 GB | 12.0 tasks (7 services) | 20.5 tasks (11 services) |
-| 500 GB | 16.5 tasks (9 services) | 24.2 tasks (13 services) |
+| 20 GB | 10.3 tasks (6 services) | 20.2 tasks (11 services) |
+| 50 GB | 10.8 tasks (6 services) | 20.6 tasks (11 services) |
+| 100 GB | 11.5 tasks (6 services) | 21.2 tasks (11 services) |
+| 200 GB | 13.0 tasks (7 services) | 22.5 tasks (12 services) |
+| 500 GB | 17.5 tasks (9 services) | 26.2 tasks (14 services) |
 
 More traffic pushes the threshold **up**, because the NAT charges per GB and a
 public IP does not.
 
-The crossing is gentle, not a cliff. At 5 services the two options are $36.50
-against $37.25 — under a dollar apart. Being a service or two late costs
-pennies, so the advisory does not need to be urgent or blocking.
+The crossing is gentle, not a cliff. At 5 services public IPs cost $36.50
+against $40.90 for one NAT, $4.40 apart. At 6 services the NAT is about $2
+cheaper. Being a service early or late costs a few dollars a month, so the
+advisory does not need to be urgent or blocking.
 
 ## The decision
 
@@ -127,12 +135,17 @@ pennies, so the advisory does not need to be urgent or blocking.
 | Phase | When | Strategy | Cost |
 |---|---|---|---|
 | 1 | 1–4 services | public IPv4 per task | $7–29 /mo |
-| 2 (non-prod) | 5+ services | one NAT Gateway | ~$35–49 /mo flat |
-| 2 (prod) | 10+ services | one NAT Gateway per AZ | ~$68–79 /mo flat |
+| 2 (non-prod) | 5+ services | one NAT Gateway | ~$41–53 /mo flat |
+| 2 (prod) | 10+ services | one NAT Gateway per AZ | ~$80–87 /mo flat |
 
 Non-prod switches earlier because a single NAT is acceptable there; a NAT
 Gateway is zonal, so one NAT means one AZ's failure takes out egress. Production
-carries the HA cost, which pushes its break-even to roughly 10 services.
+carries the HA cost, which pushes its break-even to roughly 11 services.
+
+The thresholds of 5 and 10 sit one service before the break-even points of
+about 6 and 11. At the threshold the NAT costs $4.40 (non-prod) or $6.75 (prod)
+a month more than public IPs. `app/egress_advisor.go` still prices a NAT at
+$32.85 without its Elastic IP, so its savings figure is $3.65 too high per NAT.
 
 ### Why not the other options
 

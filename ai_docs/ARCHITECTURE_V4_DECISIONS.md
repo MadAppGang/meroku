@@ -18,7 +18,7 @@ and we say so openly where we don't. Every choice follows the same five goals:
 
 - **Secure by default.** Nothing is open to the internet unless it has to be.
 - **The smallest possible bill.** An idle project costs a few dollars, not
-  US$66 (A$123 in Sydney).
+  US$73 (A$133 in Sydney).
 - **The least possible maintenance.** Nobody patches or restarts servers by
   hand.
 - **The full power of AWS.** It's plain Terraform in your account. If a choice
@@ -128,7 +128,7 @@ On EC2, the network mode decides how many addresses you pay for (A$ at
 |---|---|---|---|
 | Fargate | 8, one per task | US$29.20 | A$41.69 |
 | One EC2 machine, `bridge` mode | 1, shared | US$3.65 | A$5.21 |
-| One EC2 machine, `awsvpc` mode | 0, they can't get one | nothing works without a NAT at US$32.85 | nothing works without a NAT at A$61.49 |
+| One EC2 machine, `awsvpc` mode | 0, they can't get one | nothing works without a NAT at US$36.50 | nothing works without a NAT at A$66.70 |
 
 AWS recommends `awsvpc`, and our first plan used it. It didn't work in our
 setup. In `awsvpc` mode on EC2, each task gets its own network card, and AWS
@@ -179,7 +179,7 @@ projects don't have. For our projects, `bridge` is the better option.
 Yes, AWS recommends `awsvpc`. AWS writes its recommendations for large
 companies, where isolation comes first and the bill comes second. Meroku is
 built for small and mid-size projects, where the bill matters more. Following
-the AWS advice here would give a small team a US$32.85 (A$61.49) NAT bill
+the AWS advice here would give a small team a US$36.50 (A$66.70) NAT bill
 instead of one US$3.65 (A$5.21) IP, and a quarter of the tasks per machine.
 
 One thing to know: anything inside the VPC can reach the random ports (32768
@@ -198,12 +198,13 @@ Its error message also says the VPC has no NAT, which is wrong in NAT mode.
 each the cheapest at a different size.
 
 **Why we chose it.** A public IP costs US$3.65 (A$5.21) per task and nothing
-per GB. A NAT Gateway costs US$32.85 (A$61.49) a month plus US$0.045 (A$0.0842)
-per GB, and nothing per task. More services make the NAT cheaper. More traffic
+per GB. A NAT Gateway costs US$36.50 (A$66.70) a month, including the public IP that
+each NAT needs for itself, plus US$0.045 (A$0.0842) per GB, and nothing per
+task. More services make the NAT cheaper. More traffic
 makes public IPs cheaper. With 2 tasks per service, one NAT becomes cheaper at
-about 5 services in us-east-1 (US$37.25 against US$36.50 for public IPs). In
-Sydney a NAT costs more and a public IP doesn't, so the NAT becomes cheaper
-later, at about 7 services.
+about 6 services in us-east-1. At 5 services it still costs US$40.90 against
+US$36.50 for public IPs. In Sydney a NAT costs more and a public IP doesn't,
+so the NAT becomes cheaper later, at about 8 services.
 
 **The analysis.** Unit prices (A$ at 1 USD = 1.4277 AUD):
 
@@ -211,6 +212,7 @@ later, at about 7 services.
 |---|---|---|---|---|
 | Public IPv4 address | US$0.005 per hour | US$3.65 | A$0.0071 per hour | A$5.21 |
 | NAT Gateway | US$0.045 per hour, plus US$0.045 per GB | US$32.85 plus traffic | A$0.0842 per hour, plus A$0.0842 per GB | A$61.49 plus traffic |
+| Public IP of the NAT Gateway, one per NAT | US$0.005 per hour | US$3.65 | A$0.0071 per hour | A$5.21 |
 | NAT instance (fck-nat or similar): a `t4g.nano`, its public IP, an 8 GB disk | US$0.0042 per hour for the machine | about US$7.36 | A$0.0076 per hour for the machine | about A$11.83 |
 | Interface VPC endpoint, per zone | US$0.01 per hour, plus US$0.01 per GB | US$7.30 | A$0.0186 per hour, plus A$0.0143 per GB | A$13.55 |
 | Traffic between zones | US$0.01 per GB each way | none | A$0.0143 per GB each way | none |
@@ -222,7 +224,7 @@ Each option gets more expensive with only one thing:
 | Option | Grows with tasks | Grows with traffic | Fixed cost |
 |---|---|---|---|
 | Public IP per task | yes, US$3.65 or A$5.21 each | no | none |
-| NAT Gateway | no | yes, US$0.045 or A$0.0842 per GB | US$32.85 or A$61.49 per NAT |
+| NAT Gateway | no | yes, US$0.045 or A$0.0842 per GB | US$36.50 or A$66.70 per NAT, with its public IP |
 | NAT instance | no | in steps | about US$7.36 or A$11.83 |
 | VPC endpoints | no | a little | US$7.30 or A$13.55 per endpoint per zone |
 | IPv6 | no | no | none |
@@ -235,33 +237,33 @@ us-east-1, US$ per month:
 
 | Services | Tasks | Traffic | Public IPs | One NAT | NAT per zone |
 |---|---|---|---|---|---|
-| 1 | 2 | 20 GB | **US$7.30** | US$33.95 | US$66.60 |
-| 3 | 6 | 50 GB | **US$21.90** | US$35.60 | US$67.95 |
-| 5 | 10 | 80 GB | **US$36.50** | US$37.25 | US$69.30 |
-| 8 | 16 | 120 GB | US$58.40 | **US$39.45** | US$71.10 |
-| 12 | 24 | 180 GB | US$87.60 | **US$42.75** | US$73.80 |
-| 20 | 40 | 300 GB | US$146.00 | **US$49.35** | US$79.20 |
+| 1 | 2 | 20 GB | **US$7.30** | US$37.60 | US$73.90 |
+| 3 | 6 | 50 GB | **US$21.90** | US$39.25 | US$75.25 |
+| 5 | 10 | 80 GB | **US$36.50** | US$40.90 | US$76.60 |
+| 8 | 16 | 120 GB | US$58.40 | **US$43.10** | US$78.40 |
+| 12 | 24 | 180 GB | US$87.60 | **US$46.40** | US$81.10 |
+| 20 | 40 | 300 GB | US$146.00 | **US$53.00** | US$86.50 |
 
 Sydney, A$ per month (1 USD = 1.4277 AUD):
 
 | Services | Tasks | Traffic | Public IPs | One NAT | NAT per zone |
 |---|---|---|---|---|---|
-| 1 | 2 | 20 GB | **A$10.42** | A$63.46 | A$124.67 |
-| 3 | 6 | 50 GB | **A$31.27** | A$66.42 | A$127.19 |
-| 5 | 10 | 80 GB | **A$52.11** | A$69.37 | A$129.72 |
-| 8 | 16 | 120 GB | A$83.38 | **A$73.31** | A$133.09 |
-| 12 | 24 | 180 GB | A$125.07 | **A$79.22** | A$138.14 |
-| 20 | 40 | 300 GB | A$208.44 | **A$91.04** | A$148.25 |
+| 1 | 2 | 20 GB | **A$10.42** | A$68.67 | A$135.09 |
+| 3 | 6 | 50 GB | **A$31.27** | A$71.63 | A$137.62 |
+| 5 | 10 | 80 GB | **A$52.11** | A$74.58 | A$140.14 |
+| 8 | 16 | 120 GB | A$83.38 | **A$78.52** | A$143.51 |
+| 12 | 24 | 180 GB | A$125.07 | **A$84.43** | A$148.57 |
+| 20 | 40 | 300 GB | A$208.44 | **A$96.26** | A$158.67 |
 
 When a NAT becomes cheaper than public IPs:
 
 | | us-east-1 | Sydney |
 |---|---|---|
-| One NAT | from about 5 services | from about 7 services |
-| A NAT per zone | from about 10 services | from about 13 services |
+| One NAT | from about 6 services | from about 8 services |
+| A NAT per zone | from about 11 services | from about 15 services |
 
-At 20 services, one NAT saves about US$97 a month per environment in
-us-east-1, and about A$117 in Sydney. Meroku always creates the S3 gateway
+At 20 services, one NAT saves about US$93 a month per environment in
+us-east-1, and about A$112 in Sydney. Meroku always creates the S3 gateway
 endpoint, which is free. ECR stores image layers in S3. So the layers, the
 biggest part of the traffic, never pass through the NAT. Only the small ECR
 API calls do.
@@ -271,8 +273,8 @@ The resulting choices:
 | Size | Choice | us-east-1, per month | Sydney, per month |
 |---|---|---|---|
 | 1 to 4 services | `public_ip` | US$7 to US$29 | A$10 to A$42 |
-| 5+ services, non-production | `nat_gateway` | about US$37 to US$49 | about A$69 to A$91 |
-| 10+ services, production | `nat_gateway_ha` | about US$72 to US$79 | about A$136 to A$148 |
+| 5+ services, non-production | `nat_gateway` | about US$41 to US$53 | about A$75 to A$96 |
+| 10+ services, production | `nat_gateway_ha` | about US$80 to US$87 | about A$146 to A$159 |
 
 The service counts in this table come from us-east-1 prices. The advisor uses
 the same counts in every region.
@@ -281,7 +283,7 @@ Production gets one NAT per availability zone. With a single NAT, all outbound
 traffic stops when its zone goes down.
 
 "Why not just use a NAT from day one, Jack?" you'll ask me. It's a fair
-question. A project with one service would pay US$34 a month (A$63 in Sydney)
+question. A project with one service would pay US$38 a month (A$69 in Sydney)
 to reach the internet, before it has a single user. That goes against
 "smallest bill".
 
@@ -304,10 +306,13 @@ option at scale is also the safer one.
 
 - The advisor only recommends. You still have to notice the advice and make
   the switch yourself.
-- The advisor calculates with us-east-1 prices. In Sydney it recommends the
-  switch about two services too early. Switching at 5 services costs A$17.26 a
-  month more than staying on public IPs. Switching production at 10 costs
-  A$31.40 more.
+- The advisor recommends the switch at 5 services, and at 10 for production.
+  The NAT only becomes cheaper at about 6 and 11 services in us-east-1, and
+  at about 8 and 15 in Sydney. Switching at 5 services costs US$4.40 (A$22.47
+  in Sydney) a month more than staying on public IPs. Switching production at
+  10 costs US$6.75 (A$41.82) more.
+- The advisor calculates with us-east-1 prices and leaves out the NAT's own
+  public IP, so the saving it shows is US$3.65 too high for each NAT.
 
 ---
 
