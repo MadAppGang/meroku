@@ -105,6 +105,7 @@ const (
 	githubOIDCReasonThrottled       = "throttled"
 	githubOIDCReasonTimeout         = "timeout"
 	githubOIDCReasonEnvUnreadable   = "env_unreadable"
+	githubOIDCReasonStateUnreadable = "state_unreadable"
 	githubOIDCReasonUnparseable     = "unparseable_policy"
 	githubOIDCReasonPatternTooLong  = "pattern_too_long"
 	githubOIDCReasonPagination      = "pagination_incomplete"
@@ -292,6 +293,11 @@ type githubOIDCOrgWideSubject struct {
 	// only the copy, never the verdict — but it changes it a lot: this is the
 	// case where the grant is to a third party the user has never heard of.
 	ShippedDefault bool `json:"shipped_default"`
+	// DeployedOnly marks a subject the configured list no longer carries: it
+	// comes from the trust policy of a role already deployed, and the next
+	// apply replaces it with the configured subjects. Still a finding, since
+	// the live role accepts it until then, but one that deploying removes.
+	DeployedOnly bool `json:"deployed_only"`
 }
 
 // githubOIDCUnevaluatedRole is a GitHub role the scan looked at and could not
@@ -610,7 +616,7 @@ type githubOIDCCandidate struct {
 // because the caller has three outcomes to render and an error has one: a
 // conflict, a clean bill, and a scan that could not finish. Collapsing the
 // third into either of the others is the defect this feature exists to prevent.
-func scanGitHubSubjectConflicts(ctx context.Context, env Env, requested []string, roles iamRoleLister, ident callerIdentityReader) githubOIDCConflictsResponse {
+func scanGitHubSubjectConflicts(ctx context.Context, env Env, requested []string, roles iamRoleLister, ident callerIdentityReader, state remoteStateLookup) githubOIDCConflictsResponse {
 	resp, refused := githubOIDCConflictRefusal(env, requested)
 	if refused {
 		return resp
@@ -656,7 +662,30 @@ func scanGitHubSubjectConflicts(ctx context.Context, env Env, requested []string
 		}
 	}
 
+	// Every role this environment's own state manages is ours, whatever it is
+	// called. The computed name above is only what the CURRENT module would
+	// call it. An environment deployed before modules/workloads stopped
+	// hard-coding "GithubActionsRole" still holds that role until an apply
+	// renames it, and computing names alone reported it as another project's
+	// conflict with this one. A state that has never been written is a fresh
+	// environment and owns nothing; a state that could not be read is said out
+	// loud, because its roles may then be reported as somebody else's.
+	stateSummary, err := state(ctx, env)
+	switch {
+	case err == nil:
+		for name := range stateSummary.IAMRoleNames {
+			if _, known := own[name]; !known {
+				own[name] = env.Env
+			}
+		}
+	case errors.Is(err, errRemoteStateAbsent):
+	default:
+		resp.degrade(githubOIDCReasonStateUnreadable, fmt.Sprintf(
+			"could not read this environment's terraform state, so a role it manages under an older name may be reported as a conflict: %v", err))
+	}
+
 	candidates, deployed := githubOIDCWalkRoles(ctx, &resp, roles, own)
+	configured := append([]string(nil), resp.OwnSubjects...)
 
 	// The union. Without it, narrowing the subject list in YAML and not
 	// applying it renders green while the deployed role still overlaps.
@@ -696,6 +725,9 @@ func scanGitHubSubjectConflicts(ctx context.Context, env Env, requested []string
 	//
 	// Costs nothing and reaches no API: the answer is a property of the strings.
 	resp.OwnOrgWideSubjects = githubOIDCFindOrgWideSubjects(resp.OwnSubjects)
+	for i := range resp.OwnOrgWideSubjects {
+		resp.OwnOrgWideSubjects[i].DeployedOnly = !githubOIDCContains(configured, resp.OwnOrgWideSubjects[i].Subject)
+	}
 
 	githubOIDCCompare(ctx, &resp, candidates)
 	githubOIDCAttribute(ctx, &resp, roles)
@@ -776,6 +808,12 @@ func githubOIDCWalkRoles(ctx context.Context, resp *githubOIDCConflictsResponse,
 			}
 
 			if isOwn {
+				// The state's roles make every task role "own" too. Those
+				// federate nothing, so there is nothing to exclude or compare,
+				// and naming them among the excluded GitHub roles would be noise.
+				if !grant.IsGitHub {
+					continue
+				}
 				// Ours. Excluded from conflicts, but its deployed subjects are
 				// exactly what we must compare against everybody else.
 				excluded = append(excluded, name)
@@ -1191,7 +1229,7 @@ func getGitHubOIDCSubjectConflicts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	iamClient, stsClient, err := newAWSClientsForEnv(ctx, env)
+	iamClient, stsClient, state, err := newAWSClientsForEnv(ctx, env)
 	if err != nil {
 		resp := newGithubOIDCConflictsResponse()
 		resp.AccountID = env.AccountID
@@ -1201,7 +1239,7 @@ func getGitHubOIDCSubjectConflicts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeGithubOIDCConflicts(w, scanGitHubSubjectConflicts(ctx, env, req.OwnSubjects, iamClient, stsClient))
+	writeGithubOIDCConflicts(w, scanGitHubSubjectConflicts(ctx, env, req.OwnSubjects, iamClient, stsClient, state))
 }
 
 func writeGithubOIDCConflicts(w http.ResponseWriter, resp githubOIDCConflictsResponse) {

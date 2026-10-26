@@ -72,6 +72,10 @@ const (
 	// githubOIDCSaysUnverified is the scan that could not finish. Yellow, and
 	// never blocking.
 	githubOIDCSaysUnverified
+	// githubOIDCSaysDeployedOrgWide is an org-wide subject that only the
+	// deployed role still carries. Yellow, and never blocking: the deploy is
+	// what removes it.
+	githubOIDCSaysDeployedOrgWide
 	// githubOIDCSaysConflict is a found overlap. Red.
 	githubOIDCSaysConflict
 	// githubOIDCSaysOwnOrgWide is a subject of ours that accepts an entire
@@ -130,7 +134,12 @@ func decideGithubOIDCConflicts(resp githubOIDCConflictsResponse, interactive boo
 	// deploys the same service — while a role trusting all of GitHub cannot.
 	// Non-interactive still aborts, on the same grounds as the conflict path: a
 	// CI run that auto-continues past a finding is the same as no check at all.
-	if len(resp.OwnOrgWideSubjects) > 0 {
+	//
+	// Only a subject the configured list still carries reaches this arm. One
+	// that survives solely in the deployed role's trust policy is removed by
+	// the very deploy being asked about, so stopping it would keep the
+	// org-wide grant live; it is reported below instead, with no question.
+	if githubOIDCAnyConfiguredOrgWide(resp.OwnOrgWideSubjects) {
 		d := githubOIDCConflictDecision{
 			Severity: githubOIDCSaysOwnOrgWide,
 			Report:   githubOIDCOrgWideReport(resp, incomplete, interactive),
@@ -143,6 +152,17 @@ func decideGithubOIDCConflicts(resp githubOIDCConflictsResponse, interactive boo
 		return d
 	}
 
+	d := decideGithubOIDCBelowOrgWide(resp, incomplete, interactive)
+	if len(resp.OwnOrgWideSubjects) > 0 {
+		d = githubOIDCWithDeployedOrgWideNote(d, resp)
+	}
+	return d
+}
+
+// decideGithubOIDCBelowOrgWide is the conflict, unverified and clear tiers,
+// split out so a deployed-only org-wide note can sit on top of whichever of
+// them applies without hiding it.
+func decideGithubOIDCBelowOrgWide(resp githubOIDCConflictsResponse, incomplete []githubOIDCDegraded, interactive bool) githubOIDCConflictDecision {
 	// A found conflict outranks everything, including an incomplete scan. The
 	// evidence is already in hand; that the walk did not finish only means
 	// there may be more of it.
@@ -180,6 +200,41 @@ func decideGithubOIDCConflicts(resp githubOIDCConflictsResponse, interactive boo
 		Report: fmt.Sprintf("   ✅ No other project in this account trusts these GitHub subjects (%s scanned).",
 			githubOIDCPluralRoles(resp.RolesScanned)),
 	}
+}
+
+// githubOIDCAnyConfiguredOrgWide reports whether any org-wide subject is still
+// in the configured list, rather than only on the deployed role.
+func githubOIDCAnyConfiguredOrgWide(subjects []githubOIDCOrgWideSubject) bool {
+	for _, s := range subjects {
+		if !s.DeployedOnly {
+			return true
+		}
+	}
+	return false
+}
+
+// githubOIDCWithDeployedOrgWideNote puts the deployed-only org-wide subjects on
+// top of a decision without changing whether it prompts or blocks. A tier that
+// had nothing to say is raised to a warning, so the note is never printed as
+// part of a green line.
+func githubOIDCWithDeployedOrgWideNote(d githubOIDCConflictDecision, resp githubOIDCConflictsResponse) githubOIDCConflictDecision {
+	var b strings.Builder
+	b.WriteString("⚠️  The deployed GitHub Actions role still trusts an entire organisation.\n")
+	for _, s := range resp.OwnOrgWideSubjects {
+		fmt.Fprintf(&b, "\n   %s\n", strconv.Quote(s.Subject))
+	}
+	b.WriteString("\n   workload.github_oidc_subjects no longer lists it. This deploy replaces the\n")
+	b.WriteString("   role's trust policy with the configured subjects, which removes it.")
+
+	note := b.String()
+	if d.Report != "" {
+		note += "\n\n" + d.Report
+	}
+	d.Report = note
+	if d.Severity == githubOIDCSaysNothing || d.Severity == githubOIDCSaysClear {
+		d.Severity = githubOIDCSaysDeployedOrgWide
+	}
+	return d
 }
 
 // githubOIDCIncompleteReasons returns the degraded entries that mean something
@@ -287,6 +342,11 @@ func githubOIDCOrgWideReport(resp githubOIDCConflictsResponse, incomplete []gith
 
 	for _, s := range resp.OwnOrgWideSubjects {
 		fmt.Fprintf(&b, "\n   %s\n", strconv.Quote(s.Subject))
+		if s.DeployedOnly {
+			b.WriteString("      Only the deployed role still trusts this; the configured list no longer\n")
+			b.WriteString("      does, and this deploy removes it.\n")
+			continue
+		}
 		if s.ShippedDefault {
 			b.WriteString("      This is meroku's default, unchanged. It matches every token issued to\n")
 			b.WriteString("      a workflow in MadAppGang's own repositories — an organisation that is\n")
@@ -334,7 +394,7 @@ func githubOIDCOrgWideReport(resp githubOIDCConflictsResponse, incomplete []gith
 // available even when other org-wide subjects sit beside it.
 func githubOIDCAnyShippedDefault(subjects []githubOIDCOrgWideSubject) bool {
 	for _, s := range subjects {
-		if s.ShippedDefault {
+		if s.ShippedDefault && !s.DeployedOnly {
 			return true
 		}
 	}
@@ -466,7 +526,7 @@ func renderGithubOIDCReport(d githubOIDCConflictDecision) string {
 	switch d.Severity {
 	case githubOIDCSaysOwnUnrestricted, githubOIDCSaysOwnOrgWide, githubOIDCSaysConflict:
 		return lipgloss.NewStyle().Foreground(theme.Error).Render(d.Report)
-	case githubOIDCSaysUnverified:
+	case githubOIDCSaysUnverified, githubOIDCSaysDeployedOrgWide:
 		return lipgloss.NewStyle().Foreground(theme.Warning).Render(d.Report)
 	default:
 		return d.Report
@@ -550,7 +610,7 @@ func githubOIDCScanFromAWS(ctx context.Context, e Env) githubOIDCConflictsRespon
 	ctx, cancel := context.WithTimeout(ctx, githubOIDCConflictScanTimeout)
 	defer cancel()
 
-	iamClient, stsClient, err := newAWSClientsForEnv(ctx, e)
+	iamClient, stsClient, state, err := newAWSClientsForEnv(ctx, e)
 	if err != nil {
 		resp := newGithubOIDCConflictsResponse()
 		resp.AccountID = e.AccountID
@@ -559,7 +619,7 @@ func githubOIDCScanFromAWS(ctx context.Context, e Env) githubOIDCConflictsRespon
 		return resp
 	}
 
-	return scanGitHubSubjectConflicts(ctx, e, nil, iamClient, stsClient)
+	return scanGitHubSubjectConflicts(ctx, e, nil, iamClient, stsClient, state)
 }
 
 // checkGithubOIDCSubjectConflicts runs the scan, reports it, and returns

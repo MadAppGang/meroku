@@ -664,6 +664,7 @@ export type GitHubOIDCScanIncompleteReason =
 	| "throttled"
 	| "timeout"
 	| "env_unreadable"
+	| "state_unreadable"
 	| "unparseable_policy"
 	| "pattern_too_long"
 	| "pagination_incomplete"
@@ -761,6 +762,11 @@ export interface GitHubOIDCOrgWideSubject {
 	 * third-party organisation's repositories.
 	 */
 	shipped_default: boolean;
+	/**
+	 * True when only the deployed role still carries this subject: the
+	 * configured list no longer does, and the next apply removes it.
+	 */
+	deployed_only: boolean;
 }
 
 /**

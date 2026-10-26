@@ -39,6 +39,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
@@ -198,7 +199,7 @@ func newIAMClient(ctx context.Context, region string) (*iam.Client, error) {
 // against whatever AWS_PROFILE the server happens to hold can list a different
 // account entirely and return a confident, meaningless "no conflicts".
 //
-// And both clients come from ONE aws.Config. Constructing them separately lets
+// And every client comes from ONE aws.Config. Constructing them separately lets
 // STS assert account A while IAM lists account B, which defeats the assertion
 // completely — the assertion would then be checking the credentials of a client
 // that never makes the call whose answer is being trusted.
@@ -207,7 +208,7 @@ func newIAMClient(ctx context.Context, region string) (*iam.Client, error) {
 // documented no-op, so passing it unconditionally would silently do nothing.
 // The refusal that covers a fresh environment lives in
 // githubOIDCConflictRefusal, where an empty account_id stops the scan outright.
-func newAWSClientsForEnv(ctx context.Context, env Env) (*iam.Client, *sts.Client, error) {
+func newAWSClientsForEnv(ctx context.Context, env Env) (*iam.Client, *sts.Client, remoteStateLookup, error) {
 	opts := []func(*config.LoadOptions) error{config.WithRegion(env.Region)}
 	if env.AWSProfile != "" {
 		opts = append(opts, config.WithSharedConfigProfile(env.AWSProfile))
@@ -215,9 +216,16 @@ func newAWSClientsForEnv(ctx context.Context, env Env) (*iam.Client, *sts.Client
 
 	cfg, err := config.LoadDefaultConfig(ctx, opts...)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to load AWS configuration: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to load AWS configuration: %w", err)
 	}
-	return iam.NewFromConfig(cfg), sts.NewFromConfig(cfg), nil
+	// The state read goes through the same pinned config as the IAM listing.
+	// lookupRemoteStateFromS3 uses the ambient profile, and the web server's
+	// ambient profile can belong to another account entirely.
+	s3Client := s3.NewFromConfig(cfg)
+	state := func(ctx context.Context, env Env) (remoteStateSummary, error) {
+		return readRemoteStateSummary(ctx, s3Client, env)
+	}
+	return iam.NewFromConfig(cfg), sts.NewFromConfig(cfg), state, nil
 }
 
 // githubOIDCOutcome is what the pre-deploy GitHub OIDC checks concluded.

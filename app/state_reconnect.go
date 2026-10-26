@@ -89,6 +89,14 @@ type remoteStateSummary struct {
 	// ownership, and acting on existence alone destroys the resource for
 	// whichever project does own it.
 	ManagedTypes map[string]bool
+
+	// IAMRoleNames is the name of every aws_iam_role instance this state
+	// manages. It answers "is this role ours" by what the state holds rather
+	// than by what name the current module would compute: a role created under
+	// an older naming scheme (modules/workloads once hard-coded
+	// "GithubActionsRole") is still this environment's until an apply renames
+	// it, and no computed name can know that.
+	IAMRoleNames map[string]bool
 }
 
 // owns reports whether this state manages any instance of a resource type.
@@ -948,6 +956,7 @@ func summarizeTerraformState(data []byte) (remoteStateSummary, error) {
 		Serial:           f.Serial,
 		TerraformVersion: f.TerraformVersion,
 		ManagedTypes:     map[string]bool{},
+		IAMRoleNames:     map[string]bool{},
 	}
 	for _, r := range f.Resources {
 		n := len(r.Instances)
@@ -959,6 +968,18 @@ func summarizeTerraformState(data []byte) (remoteStateSummary, error) {
 		} else {
 			s.ManagedCount += n
 			s.ManagedTypes[r.Type] = true
+		}
+		if r.Mode == "managed" && r.Type == "aws_iam_role" {
+			for _, raw := range r.Instances {
+				var inst struct {
+					Attributes struct {
+						Name string `json:"name"`
+					} `json:"attributes"`
+				}
+				if json.Unmarshal(raw, &inst) == nil && inst.Attributes.Name != "" {
+					s.IAMRoleNames[inst.Attributes.Name] = true
+				}
+			}
 		}
 	}
 	s.ResourceCount = s.ManagedCount + s.DataCount
@@ -973,8 +994,12 @@ func lookupRemoteStateFromS3(ctx context.Context, env Env) (remoteStateSummary, 
 	if err != nil {
 		return remoteStateSummary{}, fmt.Errorf("failed to load AWS configuration: %w", err)
 	}
+	return readRemoteStateSummary(ctx, s3.NewFromConfig(cfg), env)
+}
 
-	client := s3.NewFromConfig(cfg)
+// readRemoteStateSummary is lookupRemoteStateFromS3 with the client supplied,
+// for a caller that has to pin the profile the client reads with.
+func readRemoteStateSummary(ctx context.Context, client *s3.Client, env Env) (remoteStateSummary, error) {
 	out, err := client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(env.StateBucket),
 		Key:    aws.String(env.StateFile),

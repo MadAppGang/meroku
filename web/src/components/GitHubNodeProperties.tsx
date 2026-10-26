@@ -45,6 +45,7 @@ const DEGRADED_REASON_TEXT: Partial<Record<GitHubOIDCDegradedReason, string>> =
 		throttled: "AWS throttled the request",
 		timeout: "the scan ran out of time",
 		env_unreadable: "another environment's config could not be read",
+		state_unreadable: "this environment's terraform state could not be read",
 		unparseable_policy: "a role's trust policy could not be parsed",
 		pattern_too_long: "a subject pattern was too long to compare",
 		pagination_incomplete: "AWS returned an incomplete list of roles",

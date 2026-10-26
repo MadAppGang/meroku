@@ -177,8 +177,30 @@ func accessDenied() error {
 // the sibling environments a test wrote and never the ones in this repository.
 func scanIn(t *testing.T, dir string, env Env, requested []string, roles *fakeRoleLister, ident *fakeCallerIdentity) githubOIDCConflictsResponse {
 	t.Helper()
+	return scanInWithState(t, dir, env, requested, roles, ident, noRemoteState)
+}
+
+// scanInWithState is scanIn with this environment's terraform state supplied.
+func scanInWithState(t *testing.T, dir string, env Env, requested []string, roles *fakeRoleLister, ident *fakeCallerIdentity, state remoteStateLookup) githubOIDCConflictsResponse {
+	t.Helper()
 	chdir(t, dir)
-	return scanGitHubSubjectConflicts(context.Background(), env, requested, roles, ident)
+	return scanGitHubSubjectConflicts(context.Background(), env, requested, roles, ident, state)
+}
+
+// noRemoteState is an environment that has never been applied.
+func noRemoteState(context.Context, Env) (remoteStateSummary, error) {
+	return remoteStateSummary{}, errRemoteStateAbsent
+}
+
+// stateWithRoles is an applied environment whose state manages these roles.
+func stateWithRoles(names ...string) remoteStateLookup {
+	return func(context.Context, Env) (remoteStateSummary, error) {
+		s := remoteStateSummary{IAMRoleNames: map[string]bool{}}
+		for _, n := range names {
+			s.IAMRoleNames[n] = true
+		}
+		return s, nil
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -1430,7 +1452,7 @@ func TestScanGitHubSubjectConflictsHonoursCancellation(t *testing.T) {
 	roles := &fakeRoleLister{pages: []listRolesPage{
 		rolePage(false, "", iamRole("billing-role", subjectPolicy("repo:acme/*"))),
 	}}
-	resp := scanGitHubSubjectConflicts(ctx, conflictEnv("repo:acme/api:*"), nil, roles, callerIn(testConflictAccount))
+	resp := scanGitHubSubjectConflicts(ctx, conflictEnv("repo:acme/api:*"), nil, roles, callerIn(testConflictAccount), noRemoteState)
 
 	wantDegraded(t, resp, githubOIDCReasonTimeout)
 	wantNotChecked(t, resp)
