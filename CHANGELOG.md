@@ -1,6 +1,32 @@
 # Changelog
 
-## Unreleased
+## v4.8.2
+
+### Upgrading a pre-v17 SES setup no longer recreates it
+
+Before Schema v17 the `ses` module held one domain, so its resources sat at
+unkeyed addresses such as `module.ses.aws_ses_domain_identity.domain`. v17 keyed
+every resource by domain name, and nothing told Terraform the old and new
+addresses were the same object. The first plan after upgrading destroyed the
+live SES identity, its DKIM tokens and its DNS records and created them again for
+the same domain. Mail stopped until SES re-verified the domain. The DNS records
+carry `allow_overwrite`, so a create could upsert the record and the unordered
+destroy of the old address could then delete it.
+
+`env/main.hbs` now renders `moved` blocks for all 11 addresses the module has
+ever had without a key: the identity, DKIM, the verification and DKIM records,
+SPF, DMARC and the three MAIL FROM resources. A move whose source is not in state
+does nothing, so projects created on v17 or later plan exactly as before.
+
+The key is the domain the module receives, resolved once in Go
+(`assignSESPrimaryDomain`) and read by both the module's legacy `domain =` line
+and the moves. That covers `ses.domains`, a legacy `ses.domain_name`, and the
+derived `mail.<env>.<domain>` a config with an empty `domain_name` still uses.
+
+Checked against a real pre-v17 state: the identity and DKIM only move. States
+created before the SPF/DMARC rework stored the DKIM CNAME names relative to the
+zone (`<token>._domainkey`), and the module now writes the full name, so those
+three records are still deleted and re-created with the same tokens.
 
 Generation used to report success and write the wrong Terraform. Five separate
 sites did it, and they are one defect: raymond resolves an unknown name to the
