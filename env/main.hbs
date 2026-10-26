@@ -958,15 +958,8 @@ module "ses" {
   ]
   {{else}}
   # Legacy single domain configuration (backward compatibility)
-  {{#if ses.domain_name}}
-  domain = "{{ses.domain_name}}"
-  {{else}}
-    {{#compare env "==" "prod"}}
-  domain = "mail.{{ domain.domain_name }}"
-    {{else}}
-  domain = "mail.{{ env }}.{{ domain.domain_name }}"
-    {{/compare}}
-  {{/if}}
+  {{!-- ses.domain_name, else mail.[<env>.]<domain>: assignSESPrimaryDomain in app/ses_primary_domain.go --}}
+  domain = "{{ses_primary_domain}}"
   {{#if domain.enabled}}
   zone_id = module.domain.zone_id
   {{/if}}
@@ -987,6 +980,66 @@ module "ses" {
   global_dmarc_rua_email     = "{{ses.dmarc_rua_email}}"
   {{/if}}
 }
+
+{{#if ses_primary_domain}}
+# Before Schema v17 the ses module held a single domain, so these resources had
+# no for_each key. Without the moves Terraform destroys the live SES identity,
+# its DKIM tokens and DNS records and creates them again for the same domain:
+# mail stops until re-verification, and a DNS record's destroy can land after
+# its create (allow_overwrite upserts the same name) and delete the live record.
+# A move whose `from` is absent from state is a no-op, so projects created on
+# v17 or later are unaffected. The key is the domain the module receives; see
+# assignSESPrimaryDomain in app/ses_primary_domain.go.
+#
+# The DKIM CNAMEs may still be replaced after the move: states created before
+# the SPF/DMARC rework stored their name zone-relative (<token>._domainkey) and
+# the module now writes the full name. That is a delete and re-create of the
+# same three records, seconds apart; the DKIM tokens themselves are kept.
+moved {
+  from = module.ses.aws_ses_domain_identity.domain
+  to   = module.ses.aws_ses_domain_identity.domain["{{ses_primary_domain}}"]
+}
+moved {
+  from = module.ses.aws_ses_domain_dkim.dkim
+  to   = module.ses.aws_ses_domain_dkim.dkim["{{ses_primary_domain}}"]
+}
+moved {
+  from = module.ses.aws_route53_record.domain_amazonses_verification_record
+  to   = module.ses.aws_route53_record.domain_amazonses_verification_record["{{ses_primary_domain}}"]
+}
+moved {
+  from = module.ses.aws_route53_record.domain_amazonses_dkim_record[0]
+  to   = module.ses.aws_route53_record.domain_amazonses_dkim_record["{{ses_primary_domain}}-dkim-0"]
+}
+moved {
+  from = module.ses.aws_route53_record.domain_amazonses_dkim_record[1]
+  to   = module.ses.aws_route53_record.domain_amazonses_dkim_record["{{ses_primary_domain}}-dkim-1"]
+}
+moved {
+  from = module.ses.aws_route53_record.domain_amazonses_dkim_record[2]
+  to   = module.ses.aws_route53_record.domain_amazonses_dkim_record["{{ses_primary_domain}}-dkim-2"]
+}
+moved {
+  from = module.ses.aws_route53_record.spf
+  to   = module.ses.aws_route53_record.spf["{{ses_primary_domain}}"]
+}
+moved {
+  from = module.ses.aws_ses_domain_mail_from.mail_from[0]
+  to   = module.ses.aws_ses_domain_mail_from.mail_from["{{ses_primary_domain}}"]
+}
+moved {
+  from = module.ses.aws_route53_record.mail_from_mx[0]
+  to   = module.ses.aws_route53_record.mail_from_mx["{{ses_primary_domain}}"]
+}
+moved {
+  from = module.ses.aws_route53_record.mail_from_spf[0]
+  to   = module.ses.aws_route53_record.mail_from_spf["{{ses_primary_domain}}"]
+}
+moved {
+  from = module.ses.aws_route53_record.dmarc
+  to   = module.ses.aws_route53_record.dmarc["{{ses_primary_domain}}"]
+}
+{{/if}}
 {{/if}}
 
 

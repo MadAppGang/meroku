@@ -441,7 +441,8 @@ func applyTemplate(env string) {
 
 // preprocessEnvMap runs everything applyTemplate does to envMap between
 // loading and rendering, in order: filterDisabledItems x3, then
-// synthesizeDefaultComputePool, then validateComputeConfigMap. Path and
+// synthesizeDefaultComputePool, assignSESPrimaryDomain, then
+// validateComputeConfigMap. Path and
 // custom-module flags stay with each caller, because they differ.
 //
 // It exists because the render tests used to hand-replicate this block
@@ -460,6 +461,7 @@ func preprocessEnvMap(envMap map[string]interface{}) error {
 	filterDisabledItems(envMap, "event_processor_tasks")
 
 	synthesizeDefaultComputePool(envMap)
+	assignSESPrimaryDomain(envMap)
 
 	return validateComputeConfigMap(envMap)
 }
