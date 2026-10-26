@@ -1,5 +1,34 @@
 # Changelog
 
+## v4.8.3
+
+### A deploy no longer reports its own old GitHub Actions role as another project's
+
+Until December 2025 `modules/workloads` named the GitHub Actions role
+`GithubActionsRole` in every project. Environments deployed then still hold a
+role with that name, untagged, until an apply renames it to
+`<project>-<env>-github-actions-role`. The subject overlap scan recognised its
+own roles only by the name the current module computes, so it reported that role
+as "another project in this account" and the deploy that would rename it stopped
+at the overlap prompt.
+
+The scan now also reads this environment's Terraform state, and every
+`aws_iam_role` in it counts as its own, whatever it is called. The read uses the
+environment's `aws_profile`, as the IAM listing does. A role the state does not
+hold is still reported, so a different project that kept the old name is not
+hidden. If the state cannot be read, the scan says so (`state_unreadable`)
+instead of quietly falling back.
+
+That role usually still trusts meroku's old default, `repo:MadAppGang/*`. An
+org-wide subject that only the deployed role carries, and that
+`workload.github_oidc_subjects` no longer lists, is now a warning saying the
+deploy removes it, not a prompt: stopping the deploy would keep the org-wide
+trust policy live. An org-wide subject still in the configured list asks as
+before.
+
+The apply replaces the old role, so a workflow that assumes
+`role/GithubActionsRole` has to point at the new name once it has run.
+
 ## v4.8.2
 
 ### Upgrading a pre-v17 SES setup no longer recreates it
