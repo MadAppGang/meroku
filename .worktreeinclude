@@ -3,3 +3,5 @@
 .mcp.json
 .claude/models.json
 .claude/profiles/active.json
+# local secrets (LINEAR_API_KEY) and MCP enablement — gitignored, copied into worktrees
+.claude/settings.local.json
