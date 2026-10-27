@@ -1,5 +1,37 @@
 # Changelog
 
+## v4.8.4
+
+### CI can push to an external backend image repository, when you say so
+
+The GitHub Actions role's ECR grant covered only this project's
+`<project>_backend`, `<project>_service_*` and `<project>_task_*` repositories.
+`workload.backend_external_docker_image` never reached the policy, so a project
+whose CI pushes to that repository failed at the push step with AccessDenied,
+and meroku applied the setting without a word.
+
+A new workload setting, `github_push_external_image` (default `false`), adds
+that one repository, by exact name, to the existing grant. It applies only when
+the image is an ECR repository in this account and this region. An image in
+another account or region, or outside ECR, gets nothing: an IAM grant here
+cannot reach it. The grant is not automatic because the image may be another
+team's, and an automatic grant would let this project's CI overwrite it.
+
+When the image is an ECR repository in this account and region, GitHub OIDC is
+on and the flag is off, generation prints:
+
+    workload.backend_external_docker_image: CI cannot push to <repo>; set github_push_external_image if CI builds this image
+
+An image that names one of this project's own prefixed repositories does not
+warn; the existing grant already covers it.
+
+The grant also gains `ecr:GetDownloadUrlForLayer`. A plain push does not use it,
+but a build that pulls layers from ECR does: `cache-from type=registry`, or a
+Dockerfile `FROM <ecr image>`.
+
+No schema migration. Existing projects render the flag as `false`, and their
+policy changes only by the added action.
+
 ## v4.8.3
 
 ### A deploy no longer reports its own old GitHub Actions role as another project's
