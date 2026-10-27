@@ -103,6 +103,15 @@ variable "github_oidc_enabled" {
   default = false
 }
 
+# Grant the deploy role push access to var.docker_image when it is an ECR
+# repository in this account and region. Default false so env/*/main.tf files
+# generated before this variable existed still plan, unchanged.
+variable "github_push_external_image" {
+  type        = bool
+  default     = false
+  description = "Grant the GitHub Actions role the scoped ECR actions on the docker_image repository (same account and region only)."
+}
+
 # AWS allows exactly one OIDC provider per issuer URL per account, so a second
 # meroku project sharing an account cannot create its own. Set this to false
 # there: the role is still created, and it federates against the provider the

@@ -210,3 +210,49 @@ run "the_grant_does_not_grow_with_the_service_count" {
     error_message = "The ECR grant must stay three ARNs — the backend, service and scheduled-task name PREFIXES — no matter how many services the project has. Thirty services here and a grant that is not three means the prefixes were replaced by an enumeration of repository names, which denies `create-repository` for every repository not yet applied and walks the inline policy into its 10,240-character cap at around 110 repositories. Both failures land on a user's apply or in a user's pipeline, never here. Got ${length(module.github_policy.ecr_repository_arns)}: ${jsonencode(module.github_policy.ecr_repository_arns)}"
   }
 }
+
+# ---------------------------------------------------------------------------
+# 3. The external backend image reaches the policy module.
+#
+# REGRESSION: MTL-288 GitHub Actions role cannot push to an external backend image repository — Fixed in /dev:fix session dev-fix-20261028-002336-a4ff689a
+#
+# ../github_policy decides whether an opted-in external image is granted, and
+# its own suite tests that decision. It can only decide on what it is handed:
+# this run checks the module block passes the RAW var.docker_image and the
+# opt-in flag. Passing local.docker_image instead would hand over this
+# project's own <ecr>:latest whenever no image is set, and passing nothing at
+# all is the defect.
+#
+# The mock provider makes the region and account random strings, so both are
+# pinned here to match the image. The "every ARN carries the project name"
+# assertion of run 1 is deliberately not repeated: an opted-in external
+# repository legitimately does not carry it.
+# ---------------------------------------------------------------------------
+
+run "the_caller_hands_the_module_the_external_image_and_the_flag" {
+  command = plan
+
+  override_data {
+    target = data.aws_region.current
+    values = {
+      name = "us-east-1"
+    }
+  }
+
+  override_data {
+    target = data.aws_caller_identity.current
+    values = {
+      account_id = "000000000000"
+    }
+  }
+
+  variables {
+    docker_image               = "000000000000.dkr.ecr.us-east-1.amazonaws.com/shared/acme-api:v1"
+    github_push_external_image = true
+  }
+
+  assert {
+    condition     = contains(module.github_policy.ecr_repository_arns, "arn:aws:ecr:us-east-1:000000000000:repository/shared/acme-api")
+    error_message = "With docker_image set to an in-account ECR image and github_push_external_image = true, the deploy role must be granted that repository. If it is missing, modules/workloads/github.tf is not passing var.docker_image and var.github_push_external_image to module \"github_policy\". Got: ${jsonencode(module.github_policy.ecr_repository_arns)}"
+  }
+}

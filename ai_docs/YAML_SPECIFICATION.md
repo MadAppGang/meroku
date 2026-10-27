@@ -41,6 +41,11 @@ workload:
   # Basic backend configuration
   backend_health_endpoint: <string>          # Health check endpoint (default: "/health/live")
   backend_external_docker_image: <string>    # External Docker image URL (leave empty to use ECR)
+  github_push_external_image: <boolean>      # Grant the GitHub Actions role push access to backend_external_docker_image (default: false)
+                                             # Only for a private ECR image in this account and region; other accounts,
+                                             # other regions and non-ECR images get no grant. With enable_github_oidc on
+                                             # and this unset, deploy warns: "workload.backend_external_docker_image:
+                                             # CI cannot push to <repo>; set github_push_external_image if CI builds this image"
   backend_container_command: <list>          # Container command override (uses backend Dockerfile CMD if not set)
     - <string>
   backend_image_port: <number>               # Container port (default: 8080)

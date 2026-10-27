@@ -99,20 +99,24 @@ variables {
 # ---------------------------------------------------------------------------
 
 run "the_rendered_policy_is_the_whole_grant" {
+  # REGRESSION: MTL-288 GitHub Actions role cannot push to an external backend image repository — Fixed in /dev:fix session dev-fix-20261028-002336-a4ff689a
+  #
   # The ECR calls every generated workflow makes, and no others.
   #
   #   describe-or-create probe  DescribeRepositories, CreateRepository
   #                             (web/src/components/Sidebar.tsx:817-818)
   #   layer upload              InitiateLayerUpload, UploadLayerPart,
   #                             CompleteLayerUpload, BatchCheckLayerAvailability
+  #   layer download            GetDownloadUrlForLayer (cache-from,
+  #                             FROM <ecr image>)
   #   manifest                  PutImage, BatchGetImage
   #
   # EQUALITY, not containment, and that is the point of the assertion. The
-  # predecessor test asserted these eight were PRESENT, so adding
+  # predecessor test asserted these nine were PRESENT, so adding
   # ecr:DeleteRepository and ecr:BatchDeleteImage alongside them passed — which
   # hands the CI role the ability to delete this project's images and
   # repositories outright, a far worse outcome than the over-wide grant this
-  # whole change removed. Whoever adds a ninth action has to come here and say
+  # whole change removed. Whoever adds a tenth action has to come here and say
   # which pipeline step needs it.
   assert {
     condition = jsonencode(sort(flatten([
@@ -124,11 +128,12 @@ run "the_rendered_policy_is_the_whole_grant" {
       "ecr:CompleteLayerUpload",
       "ecr:CreateRepository",
       "ecr:DescribeRepositories",
+      "ecr:GetDownloadUrlForLayer",
       "ecr:InitiateLayerUpload",
       "ecr:PutImage",
       "ecr:UploadLayerPart",
     ])
-    error_message = "The repository-scoped statement must grant EXACTLY the eight ECR calls the generated workflows make — no fewer, no more. One missing is an AccessDeniedException part-way through a `docker push` in a pipeline nobody is watching, since the policy just gets smaller and plan and apply both stay green. One extra is reach nobody asked for: ecr:DeleteRepository or ecr:BatchDeleteImage here lets a compromised or merely buggy workflow destroy this project's images and repositories, which no CI step needs and no rollback recovers. Rendered policy was:\n${output.json}"
+    error_message = "The repository-scoped statement must grant EXACTLY the nine ECR calls the generated workflows make — no fewer, no more. One missing is an AccessDeniedException part-way through a `docker push` in a pipeline nobody is watching, since the policy just gets smaller and plan and apply both stay green. One extra is reach nobody asked for: ecr:DeleteRepository or ecr:BatchDeleteImage here lets a compromised or merely buggy workflow destroy this project's images and repositories, which no CI step needs and no rollback recovers. Rendered policy was:\n${output.json}"
   }
 
   # Exactly ONE statement carries those actions. This is the assertion that

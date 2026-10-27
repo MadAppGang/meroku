@@ -12,8 +12,10 @@ output "ecr_repository_arns" {
   description = <<-EOT
     Every ECR resource the repository-scoped statement grants: this project's
     three name prefixes in this account, plus the same three in the source
-    account under ecr_strategy = "cross_account". Constant size by design — it
-    does not grow with the service or scheduled-task count.
+    account under ecr_strategy = "cross_account", plus at most one external
+    backend repository by exact name when push_external_image is on and the
+    image is in this account and region. Constant size by design — it does not
+    grow with the service or scheduled-task count.
 
     Exposed alongside `json` because it is the input to the property, and a
     failure that names the offending ARN reads better than one that names a

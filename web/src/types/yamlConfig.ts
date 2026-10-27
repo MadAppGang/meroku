@@ -135,6 +135,9 @@ export interface YamlInfrastructureConfig {
 		// Basic backend configuration
 		backend_health_endpoint?: string;
 		backend_external_docker_image?: string;
+		// Grant the GitHub Actions role push access to the external image's
+		// repository. Same account and region ECR only. Default false.
+		github_push_external_image?: boolean;
 		backend_container_command?: string[];
 		backend_image_port?: number;
 		backend_remote_access?: boolean;

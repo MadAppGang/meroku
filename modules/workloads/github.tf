@@ -87,6 +87,11 @@ module "github_policy" {
   ecr_strategy       = var.ecr_strategy
   ecr_account_id     = var.ecr_account_id
   ecr_account_region = var.ecr_account_region
+
+  # The RAW var.docker_image, not local.docker_image: the local falls back to
+  # this project's own <ecr>:latest, which the prefixes already cover.
+  backend_external_image = var.docker_image
+  push_external_image    = var.github_push_external_image
 }
 
 data "aws_iam_policy_document" "github_trust_relationship" {

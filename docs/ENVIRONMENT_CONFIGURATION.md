@@ -97,6 +97,14 @@ The `workload` section configures your main backend application and related infr
 - **Example**: `"nginx:latest"`, `"public.ecr.aws/docker/library/redis:7"`
 - **Notes**: Leave empty to use the project's ECR repository.
 
+#### `github_push_external_image`
+- **Type**: Boolean
+- **Description**: Let the GitHub Actions deploy role push to the repository named in `backend_external_docker_image`
+- **Default**: `false`
+- **Example**: `true` with `backend_external_docker_image: "000000000000.dkr.ecr.us-east-1.amazonaws.com/shared/acme-api:v1"`
+- **Notes**: The grant is made only when the image is a private ECR URI in the same AWS account and the same region as this environment. It adds that one repository, by exact name, to the role's ECR statement. Images in another account or region, and non-ECR images (Docker Hub, `public.ecr.aws`), get no grant. It is off by default because the repository may belong to another team, and an automatic grant would let this project's CI overwrite its images. With `enable_github_oidc: true`, an in-account, in-region ECR image and this flag unset, deploy prints:
+  `⚠️  workload.backend_external_docker_image: CI cannot push to <repo>; set github_push_external_image if CI builds this image`
+
 #### `backend_container_command`
 - **Type**: Array of strings or string
 - **Description**: Override the container's default command

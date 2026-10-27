@@ -75,3 +75,15 @@ variable "ecr_account_region" {
   type        = string
   default     = ""
 }
+
+variable "backend_external_image" {
+  description = "workload.backend_external_docker_image, raw: the caller's var.docker_image, never its local.docker_image fallback. Empty when the backend uses this project's own repository. Granted only with push_external_image, and only when it is an ECR URI in THIS account and THIS region; see local.github_ecr_external_repository_arns."
+  type        = string
+  default     = ""
+}
+
+variable "push_external_image" {
+  description = "Grant the scoped ECR actions on the backend_external_image repository. Off by default: the image may belong to another team, and an automatic grant would let this project's CI overwrite it."
+  type        = bool
+  default     = false
+}

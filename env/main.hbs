@@ -591,6 +591,7 @@ module "workloads" {
   {{/notEmpty}}
   github_oidc_enabled = {{workload.enable_github_oidc}}
   github_oidc_create_provider = {{default workload.github_oidc_create_provider true}}
+  github_push_external_image = {{default workload.github_push_external_image false}}
   github_subjects = {{{array workload.github_oidc_subjects}}}
   {{#if workload.backend_container_command}}
   backend_container_command = {{{array workload.backend_container_command}}}

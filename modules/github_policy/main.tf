@@ -42,11 +42,16 @@
 # ---------------------------------------------------------------------------
 
 locals {
-  # The ECR actions AWS supports resource-level permissions for. All eight used
-  # to sit on "*" together with GetAuthorizationToken, which in an account
-  # hosting two meroku projects let each project's CI role push an image over
-  # the other's tags, or create repositories inside the other's namespace. The
-  # push path is unchanged; only its reach is.
+  # The ECR actions AWS supports resource-level permissions for. Eight of these
+  # nine used to sit on "*" together with GetAuthorizationToken, which in an
+  # account hosting two meroku projects let each project's CI role push an image
+  # over the other's tags, or create repositories inside the other's namespace.
+  # The push path is unchanged; only its reach is.
+  #
+  # ecr:GetDownloadUrlForLayer is the ninth. A push alone does not need it, but
+  # a build that pulls layers from ECR does: `cache-from type=registry` and a
+  # Dockerfile `FROM <ecr image>` both fetch each layer through it, and fail
+  # with AccessDenied without it.
   #
   # ecr:GetAuthorizationToken is deliberately ABSENT. It is evaluated at the
   # registry, not at a repository — there is no resource for IAM to match it
@@ -62,6 +67,7 @@ locals {
     "ecr:CompleteLayerUpload",
     "ecr:CreateRepository",
     "ecr:DescribeRepositories",
+    "ecr:GetDownloadUrlForLayer",
     "ecr:InitiateLayerUpload",
     "ecr:PutImage",
     "ecr:UploadLayerPart",
@@ -87,11 +93,11 @@ locals {
   #      an enumeration would deny the very step that exists for the
   #      not-yet-applied case.
   #   2. It keeps the policy a CONSTANT size — three ARNs, six under
-  #      cross_account — independent of the caller's services and of the
-  #      scheduled-task count. An enumeration grows with the service count and
-  #      reaches the 10,240-character inline-policy cap (aws_iam_role_policy is
-  #      inline; the 6,144 managed-policy cap does not apply) at around 110
-  #      repositories.
+  #      cross_account, plus one for an opted-in external image — independent
+  #      of the caller's services and of the scheduled-task count. An
+  #      enumeration grows with the service count and reaches the
+  #      10,240-character inline-policy cap (aws_iam_role_policy is inline; the
+  #      6,144 managed-policy cap does not apply) at around 110 repositories.
   #
   # This is NOT the "defect D1" drift that modules/workloads/ecr.tf:186-193
   # warns against. That warning is about re-deriving a SPECIFIC service's
@@ -104,17 +110,28 @@ locals {
   # The shape is not a new idiom either: it is the iam:PassRole statement below,
   # and modules/workloads/backend.tf:844-847 verbatim.
   #
-  # ONE SUPPORTED MODE FALLS OUTSIDE THIS GRANT: ecr_config.mode = "manual_repo".
-  # It points a service at an arbitrary registry URI, which reduces to a name
-  # like "team/legacy-api" carrying nothing of the project, so no prefix can
-  # cover it. No GENERATED workflow is affected — the manual-repo branch
+  # TWO SUPPORTED MODES FALL OUTSIDE THESE PREFIXES.
+  #
+  # The first is ecr_config.mode = "manual_repo". It points a service at an
+  # arbitrary registry URI, which reduces to a name like "team/legacy-api"
+  # carrying nothing of the project, so no prefix can cover it. No GENERATED
+  # workflow is affected — the manual-repo branch
   # (ServiceCICDConfiguration.tsx:143-190) makes no ECR call at all, and the
   # generator builds ECR_REPOSITORY from the project and service name even for
   # the other modes, never from the configured URI. But that generator
   # inconsistency means anyone on this mode already pushes by hand, and a hand
   # push to an in-account ECR repository named outside the convention is now
   # denied where the wildcard allowed it. It fails loudly, at the push step,
-  # with AccessDeniedException naming the ARN.
+  # with AccessDeniedException naming the ARN. This change does not cover it.
+  #
+  # The second is workload.backend_external_docker_image, which can name an ECR
+  # repository such as "shared/acme-api" for the backend. The opt-in
+  # var.push_external_image covers it: with the flag on, that one repository is
+  # added by exact name to the same statement, and only when the image is in
+  # THIS account and THIS region (local.github_ecr_external_repository_arns
+  # below). It is not automatic because the image may be another team's
+  # repository, and an automatic grant would let this project's CI overwrite
+  # it.
   #
   # THIS account and THIS region, never var.ecr_account_id /
   # var.ecr_account_region — those name repositories that do not exist here, so
@@ -172,13 +189,41 @@ locals {
     : []
   )
 
+  # The image grammar: <12-digit account>.dkr.ecr.<region>.amazonaws.com/<repo>
+  # with an optional :tag and @sha256:digest. Captures: account, region, repo.
+  # The repo part follows the ECR name grammar with "/" allowed, so "*" and "?"
+  # cannot match and a YAML value cannot put an IAM wildcard in the Resource.
+  # Other partitions (amazonaws.com.cn) do not match; the ARNs here are
+  # hardcoded to arn:aws anyway.
+  #
+  # app/github_external_image.go holds a copy of this regex to decide whether
+  # to print a deploy warning. The two must stay identical: edit both.
+  ecr_image_uri_regex = "^([0-9]{12})\\.dkr\\.ecr\\.([a-z0-9-]+)\\.amazonaws\\.com/([a-z0-9]+(?:[._-][a-z0-9]+)*(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)*)(?::[A-Za-z0-9_][A-Za-z0-9_.-]{0,127})?(?:@sha256:[a-f0-9]+)?$"
+
+  # A non-matching image becomes ["", "", ""] rather than null, because && does
+  # not short-circuit on the Terraform versions this module supports (>= 1.2.6),
+  # so the comparisons below are evaluated even when the flag is off.
+  # aws_account_id and region are validated non-empty, so "" never equals them.
+  external_image = try(regex(local.ecr_image_uri_regex, var.backend_external_image), ["", "", ""])
+
+  # The opted-in external backend repository: zero or one ARN, by exact name.
+  github_ecr_external_repository_arns = (
+    var.push_external_image &&
+    local.external_image[0] == var.aws_account_id &&
+    local.external_image[1] == var.region
+    ? ["arn:aws:ecr:${var.region}:${var.aws_account_id}:repository/${local.external_image[2]}"]
+    : []
+  )
+
   # The assertable surface, and the value the scoped statement below must
   # reference bare. Also an output, so a test may read it without depending on
-  # this module being the root module of the run.
-  github_ecr_repository_arns = concat(
+  # this module being the root module of the run. distinct() because an
+  # external image may name this project's own <project>_backend.
+  github_ecr_repository_arns = distinct(concat(
     local.github_ecr_local_repository_arns,
     local.github_ecr_source_repository_arns,
-  )
+    local.github_ecr_external_repository_arns,
+  ))
 }
 
 data "aws_iam_policy_document" "github" {

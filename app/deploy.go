@@ -389,6 +389,11 @@ func applyTemplate(env string) {
 		os.Exit(1)
 	}
 
+	// Printed here, not in preprocessEnvMap, which render tests call.
+	for _, w := range githubExternalImageWarnings(envMap) {
+		fmt.Printf("⚠️  %s\n", w)
+	}
+
 	envMap["modules"] = "../../infrastructure/modules"
 	envMap["custom_modules"] = "../../custom"
 

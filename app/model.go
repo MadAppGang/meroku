@@ -191,9 +191,13 @@ type Workload struct {
 	BackendPolicies         []Policy          `yaml:"backend_policies"`
 	EnvFilesS3              []S3EnvFile       `yaml:"env_files_s3"`
 
-	SlackWebhook       string   `yaml:"slack_webhook"`
-	EnableGithubOIDC   bool     `yaml:"enable_github_oidc"`
-	GithubOIDCSubjects []string `yaml:"github_oidc_subjects"`
+	SlackWebhook     string `yaml:"slack_webhook"`
+	EnableGithubOIDC bool   `yaml:"enable_github_oidc"`
+	// Grants the GitHub Actions role push access to BackendExternalDockerImage
+	// when it is an ECR repository in this account and region. See
+	// modules/github_policy/main.tf.
+	GithubPushExternalImage bool     `yaml:"github_push_external_image,omitempty"`
+	GithubOIDCSubjects      []string `yaml:"github_oidc_subjects"`
 	// *bool because absent and false mean different things here. AWS allows one
 	// GitHub OIDC provider per account, so nil means "not decided yet, meroku may
 	// resolve it against the account" while an explicit false is an operator's
