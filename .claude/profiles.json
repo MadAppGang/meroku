@@ -23,7 +23,6 @@
         "feature-dev@claude-code-plugins": "latest",
         "frontend-design@claude-code-plugins": "latest",
         "learning-output-style@claude-code-plugins": "latest",
-        "ralph-wiggum@claude-code-plugins": "latest",
         "code-review@claude-plugins-official": "latest",
         "code-simplifier@claude-plugins-official": "latest",
         "explanatory-output-style@claude-plugins-official": "latest",
@@ -38,7 +37,8 @@
         "terminal@magus": "latest",
         "madbench@magus": "latest",
         "code-search@magus": "latest",
-        "bunjs@magus": "latest"
+        "bunjs@magus": "latest",
+        "ralph-loop@claude-code-plugins": "latest"
       },
       "createdAt": "2026-08-27T13:13:42.118Z",
       "mcpServers": {
@@ -77,7 +77,7 @@
           }
         }
       },
-      "updatedAt": "2026-10-21T10:49:13.659Z"
+      "updatedAt": "2026-10-28T08:44:31.952Z"
     }
   }
 }
