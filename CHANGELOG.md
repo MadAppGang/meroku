@@ -1,5 +1,53 @@
 # Changelog
 
+## v4.9.0
+
+### "Fix with AI" opens Claude Code instead of meroku's own AI
+
+meroku no longer calls the Anthropic API and no longer asks for
+`ANTHROPIC_API_KEY`. Its built-in AI features are gone: the troubleshooting
+agent, the one-shot AI Help, the plan "explain" page, the AWS SSO AI agent and
+the API-key startup screen. Their instructions had gone stale; the agent was told
+to run a `--generate` flag that does not exist.
+
+In their place, `[a] Fix with AI (Claude Code)` on the failed apply, plan and
+destroy screens, "🤖 Fix with AI (Claude Code)" in the main menu, and the AWS SSO
+checks all do the same thing. meroku writes a briefing to
+`<project>/.meroku/claude/<time>-<operation>.md` and starts Claude Code beside
+itself:
+
+- inside tmux, in a new pane split to the right, in the project root;
+- otherwise it prints the briefing's full path and the command to run.
+
+The briefing is built into the meroku binary, so it matches the version you run.
+It says what meroku is and how it runs, where it ran (env, AWS profile, region and
+account from your env YAML), and what failed, including provider errors that are
+not tied to a resource and Terraform's stderr. It tells Claude not to fix the
+problem directly in AWS and not to edit the generated Terraform in `env/<env>/`.
+The fix is one of: a bug fix in meroku, a manual step agreed with you for an edge
+case meroku cannot migrate, or a change to the env YAML followed by a rerun.
+
+The `.meroku/` folder ignores itself in git, and briefings are readable only by
+you, because they can contain raw error output.
+
+### Deploy failures no longer end meroku
+
+Generation, migration, pre-flight, OIDC and DNS failures in a deploy used to exit
+the process. They now print the failing step and offer `[a] Fix with AI` or
+`[Enter]` to go back to the menu. Cancelling the DNS setup screen returns to the
+menu. `meroku generate`, `meroku migrate` and `meroku dns` still exit with status 1
+on failure.
+
+### Other changes
+
+- After you hand a failed plan to Claude, meroku no longer runs its automatic
+  `terraform init` recovery on the same directory.
+- `a` pressed while an apply is still running no longer starts a second apply.
+- The custom Terraform panel in the web UI no longer has the "Copy AI Prompt"
+  button.
+- Project setup and update checks use `github.com/MadAppGang/meroku` directly
+  instead of the repository's old name.
+
 ## v4.8.5
 
 ### Enter on the Apply Complete screen returns to the main menu
