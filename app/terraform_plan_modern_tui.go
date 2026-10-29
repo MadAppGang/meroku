@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -28,24 +27,7 @@ const (
 	dashboardView viewMode = iota
 	applyView
 	fullScreenDiffView
-	aiHelpView
 )
-
-// AI visualization messages
-type aiSuccessMsg struct{}
-type aiErrorMsg struct {
-	err error
-}
-
-// AI help messages
-type aiHelpReadyMsg struct {
-	problem  string
-	commands []string
-	errors   []string
-}
-type aiHelpErrorMsg struct {
-	err error
-}
 
 // Type definitions from the original implementation
 type PlannedResource struct {
@@ -139,19 +121,12 @@ type modernPlanModel struct {
 	showReplaceMode  bool
 	// Full-screen diff state
 	diffResource *ResourceChange // Resource being viewed in full-screen
-	// AI error display
-	aiError     string
-	showAIError bool
-	aiLoading   bool
-	// AI help view
-	aiHelpProblem          string
-	aiHelpCommands         []string
-	aiHelpErrors           []string
-	aiHelpViewport         viewport.Model // Top viewport: errors + analysis
-	aiHelpCommandsViewport viewport.Model // Bottom viewport: suggested fix
-	aiHelpLoading          bool
-	// AI Agent flag
-	launchAIAgent bool // Set to true when user presses 's' to launch autonomous agent
+	// target is the environment this plan is for, captured at the project
+	// root before the chdir into env/<env>. The Claude Code handoff reads it.
+	target handoffTarget
+	// launchClaude is set by [a] on a failed apply; the viewer quits and
+	// showModernTerraformPlanTUI starts the handoff.
+	launchClaude bool
 }
 
 type modernKeyMap struct {
@@ -164,7 +139,6 @@ type modernKeyMap struct {
 	Space   key.Binding
 	Tab     key.Binding
 	Apply   key.Binding
-	AskAI   key.Binding
 	Copy    key.Binding
 	Quit    key.Binding
 	Help    key.Binding
@@ -181,7 +155,7 @@ func (k modernKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down, k.Left, k.Right},
 		{k.Tab, k.Enter, k.Space, k.Replace},
-		{k.Copy, k.Apply, k.AskAI},
+		{k.Copy, k.Apply},
 		{k.Help, k.Quit},
 	}
 }
@@ -222,10 +196,6 @@ var modernKeys = modernKeyMap{
 	Apply: key.NewBinding(
 		key.WithKeys("a"),
 		key.WithHelp("a", "apply"),
-	),
-	AskAI: key.NewBinding(
-		key.WithKeys("e"),
-		key.WithHelp("e", "ask AI to explain"),
 	),
 	Copy: key.NewBinding(
 		key.WithKeys("c"),
@@ -696,39 +666,6 @@ func (m *modernPlanModel) Init() tea.Cmd {
 
 func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case aiSuccessMsg:
-		m.aiLoading = false
-		m.showAIError = false
-		// Clear screen and force redraw
-		return m, tea.Batch(tea.ClearScreen, func() tea.Msg {
-			return tea.WindowSizeMsg{Width: m.width, Height: m.height}
-		})
-
-	case aiErrorMsg:
-		m.aiLoading = false
-		m.aiError = msg.err.Error()
-		m.showAIError = true
-		return m, nil
-
-	case aiHelpReadyMsg:
-		// AI help fetch completed successfully
-		m.aiHelpLoading = false
-		m.aiHelpProblem = msg.problem
-		m.aiHelpCommands = msg.commands
-		m.aiHelpErrors = msg.errors
-		// Update both viewports with their respective content
-		m.aiHelpViewport.SetContent(m.buildAIHelpErrorsContent())
-		m.aiHelpCommandsViewport.SetContent(m.buildAIHelpCommandsContent())
-		return m, nil
-
-	case aiHelpErrorMsg:
-		// AI help fetch failed
-		m.aiHelpLoading = false
-		m.aiError = msg.err.Error()
-		m.showAIError = true
-		m.currentView = applyView // Go back to apply view
-		return m, nil
-
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -776,48 +713,17 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.logViewport.Height = viewportHeight
 				m.updateApplyLogViewport()
 			}
-
-		case aiHelpView:
-			// Resize AI help viewports
-			availableHeight := m.height - 2
-			errorsHeight := int(float64(availableHeight)*0.6) - 2
-			commandsHeight := availableHeight - errorsHeight - 4
-
-			// Ensure minimum heights
-			if errorsHeight < 10 {
-				errorsHeight = 10
-			}
-			if commandsHeight < 6 {
-				commandsHeight = 6
-			}
-
-			m.aiHelpViewport.Width = m.width - 4
-			m.aiHelpViewport.Height = errorsHeight
-			m.aiHelpCommandsViewport.Width = m.width - 4
-			m.aiHelpCommandsViewport.Height = commandsHeight
 		}
 
 		m.updateTreeViewport()
 		m.updateDetailViewport()
 
 	case tea.KeyMsg:
-		// If showing AI error, any key dismisses it
-		if m.showAIError {
-			m.showAIError = false
-			m.aiError = ""
-			return m, nil
-		}
-
 		switch {
 		case key.Matches(msg, m.keys.Quit):
 			// Escape from full-screen diff goes back to dashboard
 			if m.currentView == fullScreenDiffView {
 				m.currentView = dashboardView
-				return m, nil
-			}
-			// Escape from AI help view goes back to apply view
-			if m.currentView == aiHelpView {
-				m.currentView = applyView
 				return m, nil
 			}
 			return m, tea.Quit
@@ -830,53 +736,20 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.currentView = dashboardView
 			}
 
-		case key.Matches(msg, m.keys.AskAI):
-			if os.Getenv("ANTHROPIC_API_KEY") != "" {
-				m.aiLoading = true
-				m.showAIError = false
-				m.aiError = ""
-				return m, m.askAIToExplainCmd()
-			} else {
-				m.aiError = "ANTHROPIC_API_KEY environment variable not set. Set it with: export ANTHROPIC_API_KEY=your_key_here"
-				m.showAIError = true
-				return m, nil
-			}
-
 		case key.Matches(msg, m.keys.Copy):
 			if m.currentView == dashboardView {
 				m.copyChangesToClipboard()
 			}
 
 		case key.Matches(msg, m.keys.Apply):
-			// Don't apply again if we're already in apply view with completed deployment
-			if m.currentView == applyView && m.applyState != nil && m.applyState.applyComplete {
-				// If we have errors and AI is available, show AI help view
-				if m.applyState.hasErrors && isAIHelperAvailable() {
-					// Immediately switch to AI help view with loading state
-					m.currentView = aiHelpView
-					m.aiHelpLoading = true
-
-					// Calculate viewport heights (same as render function)
-					availableHeight := m.height - 2
-					errorsHeight := int(float64(availableHeight)*0.6) - 2
-					commandsHeight := availableHeight - errorsHeight - 4
-
-					// Ensure minimum heights
-					if errorsHeight < 10 {
-						errorsHeight = 10
-					}
-					if commandsHeight < 6 {
-						commandsHeight = 6
-					}
-
-					// Initialize both viewports
-					m.aiHelpViewport = viewport.New(m.width-4, errorsHeight)
-					m.aiHelpCommandsViewport = viewport.New(m.width-4, commandsHeight)
-
-					// Launch async fetch and start animation
-					return m, tea.Batch(m.fetchAIHelp(), m.tickCmd())
+			// Once an apply has run, [a] never starts another one. On a failed
+			// apply it is "Fix with AI": leave the viewer and let
+			// showModernTerraformPlanTUI hand off to Claude Code.
+			if m.currentView == applyView && m.applyState != nil {
+				if m.applyState.applyComplete && m.applyState.hasErrors {
+					m.launchClaude = true
+					return m, tea.Quit
 				}
-				// Otherwise, just ignore the key press
 				return m, nil
 			}
 
@@ -978,9 +851,6 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if m.currentView == fullScreenDiffView {
 				// Scroll down in full-screen diff view
 				m.diffViewport.LineDown(1)
-			} else if m.currentView == aiHelpView {
-				// Scroll down in AI help view (errors section)
-				m.aiHelpViewport.LineDown(1)
 			} else if m.currentView == applyView && m.applyState != nil {
 				// Only scroll logs if logs section is selected
 				if m.applyState.selectedSection == 2 {
@@ -996,26 +866,11 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if m.currentView == fullScreenDiffView {
 				// Scroll up in full-screen diff view
 				m.diffViewport.LineUp(1)
-			} else if m.currentView == aiHelpView {
-				// Scroll up in AI help view (errors section)
-				m.aiHelpViewport.LineUp(1)
 			} else if m.currentView == applyView && m.applyState != nil {
 				// Only scroll logs if logs section is selected
 				if m.applyState.selectedSection == 2 {
 					m.logViewport.LineUp(1)
 				}
-			}
-
-		case msg.Type == tea.KeyPgDown:
-			if m.currentView == aiHelpView {
-				// Scroll down in commands viewport
-				m.aiHelpCommandsViewport.LineDown(3)
-			}
-
-		case msg.Type == tea.KeyPgUp:
-			if m.currentView == aiHelpView {
-				// Scroll up in commands viewport
-				m.aiHelpCommandsViewport.LineUp(3)
 			}
 
 		case key.Matches(msg, m.keys.Replace):
@@ -1057,22 +912,14 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case msg.String() == "s":
-			// Context-aware 's' key:
-			// - During apply: Stop the apply process
-			// - After errors: Launch autonomous AI agent
-			if m.currentView == applyView && m.applyState != nil {
-				if m.applyState.isApplying {
-					// Stop apply if currently applying
-					if m.applyState.cmd != nil {
-						m.applyState.cmd.Process.Kill()
-					}
-					m.applyState.isApplying = false
-					m.applyState.hasErrors = true
-				} else if m.applyState.applyComplete && m.applyState.hasErrors && isAIHelperAvailable() {
-					// Set flag to launch autonomous AI agent and exit TUI
-					m.launchAIAgent = true
-					return m, tea.Quit
+			// [s] Stop: kill a running apply. It does nothing once terraform
+			// has exited.
+			if m.currentView == applyView && m.applyState != nil && m.applyState.isApplying {
+				if m.applyState.cmd != nil && m.applyState.cmd.Process != nil {
+					m.applyState.cmd.Process.Kill()
 				}
+				m.applyState.isApplying = false
+				m.applyState.hasErrors = true
 			}
 
 		case msg.String() == "l":
@@ -1158,6 +1005,12 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.applyState.isApplying = false
 			m.applyState.applyComplete = true
 			m.applyState.hasErrors = true
+			// Keep the cause for the Claude Code handoff; this message used to
+			// be the only place it existed, and nothing read it.
+			if msg.err != nil {
+				m.applyState.failureCause = msg.err.Error()
+			}
+			m.applyState.stderrOutput = msg.stderr
 
 			// Same reasoning as applyCompleteMsg: the process is gone, so nothing
 			// is still running. The errors themselves are in the summary panel.
@@ -1370,10 +1223,6 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Normal tick without clearing (just animation updates)
 			return m, m.tickCmd()
 		}
-		// Also tick if we're loading AI help (for spinner animation)
-		if m.currentView == aiHelpView && m.aiHelpLoading {
-			return m, m.tickCmd()
-		}
 	}
 
 	// Update viewports
@@ -1400,16 +1249,6 @@ func (m *modernPlanModel) View() string {
 		return "Loading..."
 	}
 
-	// Show AI loading indicator
-	if m.aiLoading {
-		return m.renderAILoading()
-	}
-
-	// Show AI error overlay
-	if m.showAIError {
-		return m.renderAIError()
-	}
-
 	switch m.currentView {
 	case dashboardView:
 		return m.renderDashboard()
@@ -1417,8 +1256,6 @@ func (m *modernPlanModel) View() string {
 		return m.renderApplyView()
 	case fullScreenDiffView:
 		return m.renderFullScreenDiff()
-	case aiHelpView:
-		return m.renderAIHelpView()
 	default:
 		return m.renderDashboard()
 	}
@@ -1563,11 +1400,7 @@ func (m *modernPlanModel) renderProgressBar(label string, percent float64, color
 }
 
 func (m *modernPlanModel) renderFooter() string {
-	help := "[↑↓] Navigate  [Space/Enter] Expand  [r] Replace  [i] Import  [c] Copy  "
-	if os.Getenv("ANTHROPIC_API_KEY") != "" {
-		help += "[e] Ask AI  "
-	}
-	help += "[a] Apply  [?] Help  [q] Quit"
+	help := "[↑↓] Navigate  [Space/Enter] Expand  [r] Replace  [i] Import  [c] Copy  [a] Apply  [?] Help  [q] Quit"
 
 	// Add indicator for marked resources
 	if len(m.markedForReplace) > 0 {
@@ -3850,58 +3683,6 @@ func (m *modernPlanModel) copyChangesToClipboard() {
 	}
 }
 
-func (m *modernPlanModel) askAIToExplainCmd() tea.Cmd {
-	return func() tea.Msg {
-		// Get only the changes (not no-ops)
-		changes := []ResourceChange{}
-		for _, change := range m.plan.ResourceChanges {
-			if len(change.Change.Actions) > 0 && change.Change.Actions[0] != "no-op" && change.Change.Actions[0] != "read" {
-				changes = append(changes, change)
-			}
-		}
-
-		// Prepare the data for Anthropic
-		planData := struct {
-			TerraformVersion string           `json:"terraform_version"`
-			ResourceChanges  []ResourceChange `json:"resource_changes"`
-			Summary          struct {
-				Total   int `json:"total"`
-				Create  int `json:"create"`
-				Update  int `json:"update"`
-				Delete  int `json:"delete"`
-				Replace int `json:"replace"`
-			} `json:"summary"`
-		}{
-			TerraformVersion: m.plan.TerraformVersion,
-			ResourceChanges:  changes,
-		}
-
-		// Calculate summary
-		for _, change := range changes {
-			if len(change.Change.Actions) > 0 {
-				switch change.Change.Actions[0] {
-				case "create":
-					planData.Summary.Create++
-				case "update":
-					planData.Summary.Update++
-				case "delete":
-					planData.Summary.Delete++
-				case "replace":
-					planData.Summary.Replace++
-				}
-			}
-		}
-		planData.Summary.Total = len(changes)
-
-		// Call Anthropic API - this will handle its own output
-		err := callAnthropicForVisualizationWithProgress(planData)
-		if err != nil {
-			return aiErrorMsg{err: err}
-		}
-		return aiSuccessMsg{}
-	}
-}
-
 func (m *modernPlanModel) showImportHelp(resource *ResourceChange) {
 	// Generate import ID based on resource type
 	importID := m.getImportIDHint(resource.Type, resource.Address)
@@ -5122,8 +4903,8 @@ func (m *modernPlanModel) renderApplyFooter() string {
 	}
 
 	if m.applyState.applyComplete {
-		if m.applyState.hasErrors && isAIHelperAvailable() {
-			help += "[a] AI Help • [s] Solve with AI • "
+		if m.applyState.hasErrors {
+			help += "[a] Fix with AI (Claude Code)  "
 		}
 		help += "[Enter] Continue  "
 	}
@@ -5468,241 +5249,36 @@ func isComputedAttribute(key string) bool {
 	return false
 }
 
-func showModernTerraformPlanTUI(planJSON string) error {
+// showModernTerraformPlanTUI shows the plan and runs the apply. target is the
+// environment the plan belongs to; it feeds the Claude Code handoff offered on
+// a failed apply.
+func showModernTerraformPlanTUI(planJSON string, target handoffTarget) error {
 	model, err := initModernTerraformPlanTUI(planJSON)
 	if err != nil {
 		return err
 	}
 
-	p := tea.NewProgram(model, tea.WithAltScreen())
-	// Store program reference for sending messages during apply
-	if m, ok := model.(*modernPlanModel); ok {
-		m.program = p
+	m, ok := model.(*modernPlanModel)
+	if !ok {
+		return fmt.Errorf("unexpected plan model type %T", model)
 	}
+	m.target = target
 
-	_, err = p.Run()
-	if err != nil {
+	p := tea.NewProgram(m, tea.WithAltScreen())
+	// Store program reference for sending messages during apply
+	m.program = p
+
+	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("error running TUI: %w", err)
 	}
 
-	// Check if user requested autonomous AI agent (pressed 's')
-	if m, ok := model.(*modernPlanModel); ok && m.launchAIAgent {
-		launchAIAgentForApplyErrors(m)
+	// [a] on a failed apply: hand off to Claude Code now that the alt screen
+	// is gone and the terminal is ours again.
+	if m.launchClaude {
+		offerClaudeHandoff(m.handoffContext())
 	}
-
-	// No longer prompt for AI help after exiting - users can press 'a' in the TUI for AI help
-	// This old prompting behavior has been replaced with in-TUI AI help view
 
 	return nil
-}
-
-// offerAIHelpForApplyErrors offers AI assistance after apply errors
-func offerAIHelpForApplyErrors(m *modernPlanModel) {
-	// Collect error messages
-	var errorMessages []string
-	for _, res := range m.applyState.completed {
-		if !res.Success && res.Error != "" {
-			errorMessages = append(errorMessages, fmt.Sprintf("Resource: %s\nAction: %s\nError: %s",
-				res.Address, res.Action, res.Error))
-		}
-	}
-
-	if len(errorMessages) == 0 {
-		return
-	}
-
-	// Get current directory
-	workingDir, _ := os.Getwd()
-
-	// Get AWS profile from environment or use default
-	awsProfile := os.Getenv("AWS_PROFILE")
-	if awsProfile == "" {
-		awsProfile = "default"
-	}
-
-	// Get region from environment variable or use default
-	awsRegion := os.Getenv("AWS_REGION")
-	if awsRegion == "" {
-		awsRegion = os.Getenv("AWS_DEFAULT_REGION")
-	}
-	if awsRegion == "" {
-		awsRegion = "us-east-1" // fallback
-	}
-
-	// Extract environment from working directory (e.g., env/dev)
-	envName := "unknown"
-	if strings.Contains(workingDir, "/env/") {
-		parts := strings.Split(workingDir, "/env/")
-		if len(parts) > 1 {
-			envParts := strings.Split(parts[1], "/")
-			if len(envParts) > 0 {
-				envName = envParts[0]
-			}
-		}
-	}
-
-	ctx := ErrorContext{
-		Operation:   "apply",
-		Environment: envName,
-		AWSProfile:  awsProfile,
-		AWSRegion:   awsRegion,
-		Errors:      errorMessages,
-		WorkingDir:  workingDir,
-	}
-
-	offerAIHelp(ctx)
-}
-
-// launchAIAgentForApplyErrors launches the autonomous AI agent to fix apply errors
-func launchAIAgentForApplyErrors(m *modernPlanModel) {
-	if m.applyState == nil {
-		return
-	}
-
-	// Collect detailed error information as structured data
-	type ErrorInfo struct {
-		Resource     string `json:"resource"`
-		Action       string `json:"action"`
-		Error        string `json:"error"`
-		ErrorSummary string `json:"error_summary,omitempty"`
-		ErrorDetail  string `json:"error_detail,omitempty"`
-		Timestamp    string `json:"timestamp"`
-	}
-
-	var errors []ErrorInfo
-	var errorMessages []string
-
-	for _, res := range m.applyState.completed {
-		if !res.Success && res.Error != "" {
-			errorInfo := ErrorInfo{
-				Resource:     res.Address,
-				Action:       res.Action,
-				Error:        res.Error,
-				ErrorSummary: res.ErrorSummary,
-				ErrorDetail:  res.ErrorDetail,
-				Timestamp:    res.Timestamp.Format("2006-01-02 15:04:05"),
-			}
-			errors = append(errors, errorInfo)
-
-			// Build human-readable error message
-			errorMsg := fmt.Sprintf("═══════════════════════════════════════════════════════════════════\nRESOURCE: %s\nACTION: %s\nTIMESTAMP: %s\n\nERROR:\n%s",
-				res.Address, res.Action, errorInfo.Timestamp, res.Error)
-
-			if res.ErrorSummary != "" {
-				errorMsg += fmt.Sprintf("\n\nERROR SUMMARY:\n%s", res.ErrorSummary)
-			}
-
-			if res.ErrorDetail != "" {
-				errorMsg += fmt.Sprintf("\n\nERROR DETAIL:\n%s", res.ErrorDetail)
-			}
-
-			errorMessages = append(errorMessages, errorMsg)
-		}
-	}
-
-	if len(errors) == 0 {
-		fmt.Println("No errors found to troubleshoot.")
-		return
-	}
-
-	// Convert errors to JSON for structured data
-	errorsJSON, _ := json.MarshalIndent(errors, "", "  ")
-
-	// Get current directory
-	workingDir, _ := os.Getwd()
-
-	// Extract environment from working directory (e.g., env/dev)
-	envName := "unknown"
-	if strings.Contains(workingDir, "/env/") {
-		parts := strings.Split(workingDir, "/env/")
-		if len(parts) > 1 {
-			envParts := strings.Split(parts[1], "/")
-			if len(envParts) > 0 {
-				envName = envParts[0]
-			}
-		}
-	}
-
-	// Load environment config to get AWS profile and region from YAML
-	var awsProfile, awsRegion string
-
-	// Try to load from YAML config file
-	if envName != "unknown" {
-		// Navigate to project root (two levels up from env/envName)
-		projectRoot := filepath.Dir(filepath.Dir(workingDir))
-		envConfigPath := filepath.Join(projectRoot, envName+".yaml")
-
-		if _, err := os.Stat(envConfigPath); err == nil {
-			// Change to project root temporarily to load config
-			originalDir, _ := os.Getwd()
-			os.Chdir(projectRoot)
-
-			if envConfig, err := loadEnv(envName); err == nil {
-				// Use region from YAML config (PRIORITY)
-				if envConfig.Region != "" {
-					awsRegion = envConfig.Region
-				}
-				// Use AWS profile from YAML config (PRIORITY)
-				if envConfig.AWSProfile != "" {
-					awsProfile = envConfig.AWSProfile
-				}
-			}
-
-			// Restore original directory
-			os.Chdir(originalDir)
-		}
-	}
-
-	// Fallback to environment variables if not found in YAML
-	if awsProfile == "" {
-		awsProfile = os.Getenv("AWS_PROFILE")
-		if awsProfile == "" {
-			awsProfile = "default"
-		}
-	}
-
-	if awsRegion == "" {
-		awsRegion = os.Getenv("AWS_REGION")
-		if awsRegion == "" {
-			awsRegion = os.Getenv("AWS_DEFAULT_REGION")
-		}
-		if awsRegion == "" {
-			awsRegion = "us-east-1" // ultimate fallback
-		}
-	}
-
-	// Build AgentContext for the autonomous agent
-	agentContext := &AgentContext{
-		Operation:      "terraform_apply",
-		Environment:    envName,
-		AWSProfile:     awsProfile,
-		AWSRegion:      awsRegion,
-		WorkingDir:     workingDir,
-		InitialError:   strings.Join(errorMessages, "\n\n"),
-		ResourceErrors: errorMessages,
-		AdditionalInfo: map[string]string{
-			"errors_json":     string(errorsJSON),
-			"error_count":     fmt.Sprintf("%d", len(errors)),
-			"terraform_phase": "apply",
-			"has_diagnostics": fmt.Sprintf("%v", errors[0].ErrorSummary != "" || errors[0].ErrorDetail != ""),
-		},
-	}
-
-	// Launch the AI Agent TUI
-	fmt.Println("\n🚀 Launching Autonomous AI Agent...")
-	fmt.Println("   The agent will analyze and attempt to fix the deployment errors.")
-	fmt.Println()
-
-	err := RunAIAgentTUI(agentContext)
-	if err != nil {
-		fmt.Printf("\n❌ AI agent failed: %v\n", err)
-		fmt.Print("\nPress Enter to continue...")
-		fmt.Scanln()
-		return
-	}
-
-	fmt.Print("\nPress Enter to continue...")
-	fmt.Scanln()
 }
 
 func (m *modernPlanModel) renderApplyErrorDetailsView(header, elapsed string) string {
@@ -5885,386 +5461,4 @@ func (m *modernPlanModel) tickCmd() tea.Cmd {
 	return tea.Tick(time.Millisecond*100, func(t time.Time) tea.Msg {
 		return applyTickMsg{}
 	})
-}
-
-// renderAILoading shows a loading indicator while AI is processing
-func (m *modernPlanModel) renderAILoading() string {
-	loadingStyle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(theme.Info).
-		Padding(2, 4)
-
-	content := "🤖 Asking AI to explain your infrastructure changes...\n\n"
-	content += "This may take a moment. The browser will open automatically when ready.\n\n"
-	content += "Press Ctrl+C to cancel"
-
-	return lipgloss.Place(
-		m.width,
-		m.height,
-		lipgloss.Center,
-		lipgloss.Center,
-		loadingStyle.Render(content),
-	)
-}
-
-// renderAIError shows an error message overlay
-func (m *modernPlanModel) renderAIError() string {
-	// Create a full-screen background overlay
-	backgroundStyle := lipgloss.NewStyle().
-		Background(adapt("15", "0")).
-		Width(m.width).
-		Height(m.height)
-
-	errorBoxStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(theme.Error).
-		Background(theme.Panel).
-		Padding(1, 2).
-		Width(m.width - 10)
-
-	titleStyle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(theme.Error).
-		Padding(0, 0, 1, 0)
-
-	errorStyle := lipgloss.NewStyle().
-		Foreground(theme.Text).
-		Padding(0, 0, 1, 0)
-
-	helpStyle := lipgloss.NewStyle().
-		Foreground(theme.Faint).
-		Italic(true)
-
-	content := titleStyle.Render("❌ AI Visualization Error") + "\n\n"
-	content += errorStyle.Render(m.aiError) + "\n\n"
-	content += helpStyle.Render("Press any key to continue...")
-
-	errorBox := lipgloss.Place(
-		m.width,
-		m.height,
-		lipgloss.Center,
-		lipgloss.Center,
-		errorBoxStyle.Render(content),
-	)
-
-	// Render the background with the error box on top
-	return backgroundStyle.Render(errorBox)
-}
-
-// fetchAIHelpAndShowView fetches AI suggestions and switches to AI help view
-func (m *modernPlanModel) fetchAIHelp() tea.Cmd {
-	return func() tea.Msg {
-		// Collect error messages from completed resources
-		var errorMessages []string
-
-		m.applyState.mu.Lock()
-		defer m.applyState.mu.Unlock()
-
-		// Debug: Log what's in the diagnostics map
-		if debugFile, err := tuiDebugFile("/tmp/terraform_debug.log", os.O_APPEND|os.O_WRONLY, 0644); err == nil {
-			fmt.Fprintf(debugFile, "[AI HELP DEBUG] Diagnostics map contents:\n")
-			for addr, diag := range m.applyState.diagnostics {
-				if diag != nil {
-					fmt.Fprintf(debugFile, "  Address: %s\n  Summary: %s\n  Detail: %s\n", addr, diag.Summary, diag.Detail)
-				}
-			}
-			fmt.Fprintf(debugFile, "[AI HELP DEBUG] Completed resources:\n")
-			for _, res := range m.applyState.completed {
-				if !res.Success {
-					fmt.Fprintf(debugFile, "  Address: %s\n  Error: %s\n  ErrorSummary: %s\n  ErrorDetail: %s\n",
-						res.Address, res.Error, res.ErrorSummary, res.ErrorDetail)
-				}
-			}
-			debugFile.Close()
-		}
-
-		for _, res := range m.applyState.completed {
-			if !res.Success {
-				// Get the actual error message - check diagnostics map FIRST for latest info
-				var errorMsg string
-
-				// Check if we have diagnostic info in the map (most recent/complete)
-				if diagnostic, exists := m.applyState.diagnostics[res.Address]; exists && diagnostic != nil {
-					// Build comprehensive error message with all available diagnostic info
-					var diagParts []string
-
-					// Main error message
-					if diagnostic.Summary != "" {
-						diagParts = append(diagParts, diagnostic.Summary)
-					}
-
-					// Additional details (if different from summary)
-					if diagnostic.Detail != "" && diagnostic.Detail != diagnostic.Summary {
-						diagParts = append(diagParts, fmt.Sprintf("\n\n%s", diagnostic.Detail))
-					}
-
-					// File location
-					if diagnostic.Range != nil {
-						diagParts = append(diagParts, fmt.Sprintf("\n\nLocation: %s (line %d)", diagnostic.Range.Filename, diagnostic.Range.Start.Line))
-					}
-
-					// Code snippet context
-					if diagnostic.Snippet != nil && diagnostic.Snippet.Context != "" {
-						diagParts = append(diagParts, fmt.Sprintf("\nAffected resource: %s", diagnostic.Snippet.Context))
-					}
-
-					errorMsg = strings.Join(diagParts, "")
-				}
-
-				// Fallback to stored values if no diagnostic in map
-				if errorMsg == "" {
-					if res.ErrorDetail != "" {
-						errorMsg = res.ErrorDetail
-					} else if res.ErrorSummary != "" {
-						errorMsg = res.ErrorSummary
-					} else if res.Error != "" {
-						errorMsg = res.Error
-					}
-				}
-
-				// Skip "cancelled" errors - we only want the root causes
-				if strings.Contains(strings.ToLower(errorMsg), "cancelled due to previous errors") {
-					continue
-				}
-
-				// Build a complete error message using all available error information
-				var errorParts []string
-				errorParts = append(errorParts, fmt.Sprintf("Resource: %s", res.Address))
-				errorParts = append(errorParts, fmt.Sprintf("Action: %s", res.Action))
-				errorParts = append(errorParts, fmt.Sprintf("Error: %s", errorMsg))
-
-				errorMessages = append(errorMessages, strings.Join(errorParts, "\n"))
-			}
-		}
-
-		if len(errorMessages) == 0 {
-			return aiHelpErrorMsg{err: fmt.Errorf("no errors to analyze")}
-		}
-
-		// Get current directory
-		workingDir, _ := os.Getwd()
-
-		// Get AWS profile from environment or use default
-		awsProfile := os.Getenv("AWS_PROFILE")
-		if awsProfile == "" {
-			awsProfile = "default"
-		}
-
-		// Get region from environment variable or use default
-		awsRegion := os.Getenv("AWS_REGION")
-		if awsRegion == "" {
-			awsRegion = os.Getenv("AWS_DEFAULT_REGION")
-		}
-		if awsRegion == "" {
-			awsRegion = "us-east-1" // fallback
-		}
-
-		// Extract environment from working directory (e.g., env/dev)
-		envName := "unknown"
-		if strings.Contains(workingDir, "/env/") {
-			parts := strings.Split(workingDir, "/env/")
-			if len(parts) > 1 {
-				envParts := strings.Split(parts[1], "/")
-				if len(envParts) > 0 {
-					envName = envParts[0]
-				}
-			}
-		}
-
-		ctx := ErrorContext{
-			Operation:   "apply",
-			Environment: envName,
-			AWSProfile:  awsProfile,
-			AWSRegion:   awsRegion,
-			Errors:      errorMessages,
-			WorkingDir:  workingDir,
-		}
-
-		// Get AI suggestions
-		problem, commands, err := getAIErrorSuggestions(ctx)
-		if err != nil {
-			// Return error message
-			return aiHelpErrorMsg{err: err}
-		}
-
-		// Return success message with data
-		return aiHelpReadyMsg{
-			problem:  problem,
-			commands: commands,
-			errors:   errorMessages,
-		}
-	}
-}
-
-// buildAIHelpErrorsContent builds the top section: errors + analysis
-func (m *modernPlanModel) buildAIHelpErrorsContent() string {
-	var content strings.Builder
-	divider := strings.Repeat("─", m.width-8)
-
-	// Original Error Section
-	content.WriteString(lipgloss.NewStyle().
-		Foreground(theme.Error).
-		Bold(true).
-		Render("❌ Original Error"))
-	content.WriteString("\n")
-	content.WriteString(divider)
-	content.WriteString("\n\n")
-
-	errorStyle := lipgloss.NewStyle().
-		Foreground(theme.Error)
-
-	for _, err := range m.aiHelpErrors {
-		// Split error into lines and render each line with the style
-		// This ensures multi-line errors maintain consistent red coloring
-		lines := strings.Split(err, "\n")
-		for _, line := range lines {
-			if line != "" {
-				content.WriteString(errorStyle.Render(line))
-				content.WriteString("\n")
-			} else {
-				content.WriteString("\n")
-			}
-		}
-		content.WriteString("\n")
-	}
-
-	// AI Analysis Section
-	content.WriteString(lipgloss.NewStyle().
-		Foreground(theme.Yellow).
-		Bold(true).
-		Render("💡 AI Analysis"))
-	content.WriteString("\n")
-	content.WriteString(divider)
-	content.WriteString("\n\n")
-
-	problemStyle := lipgloss.NewStyle().
-		Foreground(theme.Text)
-	content.WriteString(problemStyle.Render(m.aiHelpProblem))
-	content.WriteString("\n\n")
-
-	return content.String()
-}
-
-// buildAIHelpCommandsContent builds the bottom section: suggested fix
-func (m *modernPlanModel) buildAIHelpCommandsContent() string {
-	var content strings.Builder
-	divider := strings.Repeat("─", m.width-8)
-
-	// Suggested Fix Section
-	content.WriteString(lipgloss.NewStyle().
-		Foreground(theme.Success).
-		Bold(true).
-		Render("📋 Suggested Fix"))
-	content.WriteString("\n")
-	content.WriteString(divider)
-	content.WriteString("\n\n")
-
-	if len(m.aiHelpCommands) > 0 {
-		content.WriteString("Run these commands:\n\n")
-
-		commandStyle := lipgloss.NewStyle().
-			Foreground(theme.Info).
-			Bold(true)
-
-		for i, cmd := range m.aiHelpCommands {
-			content.WriteString(commandStyle.Render(fmt.Sprintf("  %d. %s", i+1, cmd)))
-			content.WriteString("\n")
-		}
-	} else {
-		content.WriteString(dimStyle.Render("No specific commands suggested"))
-		content.WriteString("\n")
-	}
-
-	content.WriteString("\n")
-	disclaimerStyle := lipgloss.NewStyle().
-		Foreground(theme.Dim).
-		Italic(true)
-	content.WriteString(disclaimerStyle.Render("⚠️  AI-generated suggestions - please review before running"))
-
-	return content.String()
-}
-
-// renderAIHelpView renders the AI help view with split layout: top scrollable, bottom fixed
-func (m *modernPlanModel) renderAIHelpView() string {
-	// Header
-	header := headerStyle.Width(m.width).Render("🤖 AI Error Help")
-
-	// Show loading state if still fetching
-	if m.aiHelpLoading {
-		spinnerFrames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-		frame := spinnerFrames[int(time.Now().UnixMilli()/100)%len(spinnerFrames)]
-
-		loadingStyle := lipgloss.NewStyle().
-			Bold(true).
-			Foreground(theme.Info).
-			Align(lipgloss.Center, lipgloss.Center)
-
-		loadingContent := fmt.Sprintf("%s Analyzing errors with AI...\n\nPlease wait while Claude analyzes the error and suggests fixes.", frame)
-
-		loadingBox := boxStyle.
-			Width(m.width - 2).
-			Height(m.height - 4).
-			Render(loadingStyle.Render(loadingContent))
-
-		footerText := dimStyle.Render("[ESC] Cancel")
-
-		return lipgloss.JoinVertical(
-			lipgloss.Left,
-			header,
-			loadingBox,
-			footerText,
-		)
-	}
-
-	// Calculate heights for split layout
-	// Header: 1 line
-	// Footer: 1 line
-	// Available height: m.height - 2
-	// Split: 60% for errors/analysis (top), 40% for commands (bottom)
-	// Both viewports are scrollable
-
-	availableHeight := m.height - 2                       // -2 for header and footer
-	errorsHeight := int(float64(availableHeight)*0.6) - 2 // -2 for borders
-	commandsHeight := availableHeight - errorsHeight - 4  // -4 for both borders
-
-	// Ensure minimum heights
-	if errorsHeight < 10 {
-		errorsHeight = 10
-	}
-	if commandsHeight < 6 {
-		commandsHeight = 6
-	}
-
-	// Top viewport with errors + analysis (scrollable)
-	errorsViewportBox := boxStyle.
-		Width(m.width - 2).
-		Height(errorsHeight).
-		BorderForeground(theme.Error).
-		Render(m.aiHelpViewport.View())
-
-	// Bottom viewport with suggested fix (scrollable)
-	commandsViewportBox := boxStyle.
-		Width(m.width - 2).
-		Height(commandsHeight).
-		BorderForeground(theme.Success).
-		Render(m.aiHelpCommandsViewport.View())
-
-	// Footer with help text
-	totalLines := m.aiHelpViewport.TotalLineCount() - m.aiHelpViewport.Height
-	if totalLines < 1 {
-		totalLines = 1
-	}
-	scrollPercent := int((float64(m.aiHelpViewport.YOffset) / float64(totalLines)) * 100)
-	if scrollPercent > 100 {
-		scrollPercent = 100
-	}
-	footerText := dimStyle.Render(fmt.Sprintf("[↑↓] Scroll Errors (%d%%) • [PgUp/PgDn] Scroll Commands • [ESC] Back", scrollPercent))
-
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		header,
-		errorsViewportBox,
-		commandsViewportBox,
-		footerText,
-	)
 }

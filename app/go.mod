@@ -3,8 +3,6 @@ module madappgang.com/meroku
 go 1.23.0
 
 require (
-	github.com/PuerkitoBio/goquery v1.10.3
-	github.com/anthropics/anthropic-sdk-go v1.14.0
 	github.com/atotto/clipboard v0.1.4
 	github.com/aws/aws-sdk-go-v2 v1.41.0
 	github.com/aws/aws-sdk-go-v2/config v1.27.31
@@ -40,6 +38,7 @@ require (
 	github.com/charmbracelet/x/term v0.2.0
 	github.com/creack/pty v1.1.24
 	github.com/gorilla/websocket v1.5.3
+	github.com/hashicorp/hcl/v2 v2.24.0
 	github.com/mattn/go-isatty v0.0.20
 	github.com/miekg/dns v1.1.68
 	github.com/muesli/cancelreader v0.2.2
@@ -51,7 +50,6 @@ require (
 
 require (
 	github.com/agext/levenshtein v1.2.1 // indirect
-	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.6.11 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.16.12 // indirect
@@ -73,7 +71,6 @@ require (
 	github.com/charmbracelet/x/exp/strings v0.0.0-20240722160745-212f7b056ed0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
-	github.com/hashicorp/hcl/v2 v2.24.0 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect
@@ -82,10 +79,7 @@ require (
 	github.com/mitchellh/hashstructure/v2 v2.0.2 // indirect
 	github.com/muesli/ansi v0.0.0-20230316100256-276c6243b2f6 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
-	github.com/tidwall/gjson v1.18.0 // indirect
-	github.com/tidwall/match v1.1.1 // indirect
-	github.com/tidwall/pretty v1.2.1 // indirect
-	github.com/tidwall/sjson v1.2.5 // indirect
+	github.com/stretchr/testify v1.8.4 // indirect
 	github.com/zclconf/go-cty v1.16.3 // indirect
 	golang.org/x/mod v0.25.0 // indirect
 	golang.org/x/net v0.41.0 // indirect

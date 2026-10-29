@@ -4,6 +4,10 @@
 
 This document audits all places in the codebase where AWS SSO configuration examples or instructions are provided, ensuring they all follow the correct modern SSO format.
 
+> **Note:** sections 1, 8, 9 and 10 audited the AWS SSO AI agent (`app/aws_sso_agent*.go`).
+> That agent has been removed; SSO problems are now handed to Claude Code (see
+> [CLAUDE_CODE_HANDOFF.md](./CLAUDE_CODE_HANDOFF.md)). Those files no longer exist.
+
 ## ✅ Locations Audited
 
 ### 1. **Agent Prompts** - `app/aws_sso_agent_prompts.go`

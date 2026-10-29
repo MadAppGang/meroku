@@ -270,7 +270,7 @@ Based on documentation, the wizard is successful if:
 
 ### Related Documentation
 - [AWS Pre-Flight Checks](./AWS_PREFLIGHT_CHECKS.md) - Validation system
-- [AI Agent Architecture](./AI_AGENT_ARCHITECTURE.md) - Error troubleshooting
+- [Claude Code Handoff](./CLAUDE_CODE_HANDOFF.md) - "Fix with AI": hands errors and SSO problems to Claude Code
 - [DNS Management](./DNS_ARCHITECTURE.md) - Similar wizard pattern
 
 ### External Resources

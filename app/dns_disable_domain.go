@@ -43,39 +43,39 @@ func disableCustomDomain(envName string) (string, error) {
 // applyDNSOutcome acts on what the DNS setup screen returned, and reports
 // whether the environment config changed and so needs regenerating.
 //
-// It exits the process on the paths where continuing would produce a deploy the
-// operator did not ask for. Keeping that decision here rather than in the model
-// keeps the TUI free of process control, which is what makes it testable.
-func applyDNSOutcome(envName string, e *Env, outcome dnsSetupOutcome) bool {
+// It stops the deploy on the paths where continuing would produce a deploy the
+// operator did not ask for: an error when the config could not be changed,
+// errDeployStopped when the operator cancelled. Keeping that decision here
+// rather than in the model keeps the TUI free of process control, which is
+// what makes it testable.
+func applyDNSOutcome(envName string, e *Env, outcome dnsSetupOutcome) (bool, error) {
 	switch {
 	case outcome.Delegated:
-		return false
+		return false, nil
 
 	case outcome.SkipDomain:
 		backup, err := disableCustomDomain(envName)
 		if err != nil {
-			fmt.Printf("\n❌ Could not disable the custom domain: %v\n", err)
-			fmt.Printf("   Set domain.enabled to false in %s.yaml by hand, then re-run.\n", envName)
-			os.Exit(1)
+			return false, fmt.Errorf("could not disable the custom domain: %w; "+
+				"set domain.enabled to false in %s.yaml by hand, then re-run", err, envName)
 		}
 		e.Domain.Enabled = false
 		fmt.Printf("\n🌐 Custom domain disabled in %s.yaml (backup: %s)\n", envName, backup)
 		fmt.Println("   The certificate and hosted zone leave the plan — review it before applying.")
 		fmt.Println("   Re-enable it any time by setting domain.enabled back to true.")
-		return true
+		return true, nil
 
 	case outcome.ContinueAnyway:
 		fmt.Println("\n⚠️  Continuing without delegation, as requested.")
 		fmt.Println("   Certificate validation cannot succeed, so the apply is expected to")
 		fmt.Println("   stall on it for 20 minutes and then fail.")
-		return false
+		return false, nil
 
 	default:
 		// Cancelled.
 		fmt.Println("\n⏸  Delegation is not in place yet — stopping before the apply stalls.")
 		fmt.Println("   Re-run the deploy once it resolves. Check with: meroku dns validate")
-		os.Exit(0)
-		return false
+		return false, errDeployStopped
 	}
 }
 

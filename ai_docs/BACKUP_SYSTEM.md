@@ -52,7 +52,6 @@ Backups are automatically created when:
 1. **YAML Migration** - Schema version upgrades (automatic on load)
 2. **Manual Migration** - Running `./meroku migrate dev.yaml`
 3. **AWS SSO Setup** - Writing AWS configuration files
-4. **AI Agent Edits** - AI agent modifying Terraform or YAML files
 
 ## Backup Naming Convention
 
@@ -171,7 +170,6 @@ ls -t backup/dev.yaml.backup_* | tail -n +11 | xargs rm
 
 The backup system is covered by tests in:
 - `app/migrations_test.go:467` - YAML migration backups
-- `app/ai_agent_security_test.go:291` - AI agent file backups
 
 Run tests:
 ```bash

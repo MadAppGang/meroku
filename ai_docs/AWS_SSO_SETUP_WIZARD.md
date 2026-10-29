@@ -426,7 +426,7 @@ choices := []string{
     "⚙️  AWS SSO Setup Wizard",  // NEW
     "🔐 Select AWS Profile",
     "🌐 DNS Setup",
-    "🤖 AI Agent - Troubleshoot Issues",
+    "🤖 Fix with AI (Claude Code)",
     "📊 View Infrastructure State",
     "🗑️  Destroy Infrastructure",
     "Exit",

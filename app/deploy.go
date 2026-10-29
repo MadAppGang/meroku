@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -50,30 +51,36 @@ func deployMenu() {
 		case "go:back":
 			return
 		case "":
+			// The select was cancelled. Back to the main menu rather than
+			// ending the whole session.
 			fmt.Println("No environment selected")
-			os.Exit(1)
+			return
 		}
 	}
 
-	runCommandToDeploy(env)
+	deployInteractive(env, os.Stdin, offerClaudeHandoff)
 }
 
+// runCommandToDeploy generates, checks and deploys env from the project root.
+// A failure in one of meroku's own steps comes back as a *deployStepError
+// naming the step; plan and apply failures come back as runTerraformApply
+// returned them. The working directory is restored on every return.
 func runCommandToDeploy(env string) error {
 	wd, err := os.Getwd()
 	if err != nil {
-		fmt.Println("Error getting current working directory:", err)
-		os.Exit(1)
+		return stepErr("setup", fmt.Errorf("getting the current working directory: %w", err))
 	}
 	defer os.Chdir(wd)
 
-	createFolderIfNotExists("env")
-	err = createFolderIfNotExists(filepath.Join("env", env))
-	if err != nil {
-		fmt.Println("Error creating folder for environment:", err)
-		os.Exit(1)
+	if err := createFolderIfNotExists("env"); err != nil {
+		return stepErr("setup", fmt.Errorf("creating the env directory: %w", err))
 	}
-	//
-	applyTemplate(env)
+	if err := createFolderIfNotExists(filepath.Join("env", env)); err != nil {
+		return stepErr("setup", fmt.Errorf("creating env/%s: %w", env, err))
+	}
+	if err := applyTemplate(env); err != nil {
+		return stepErr("generate", err)
+	}
 
 	// The CI Lambda is built by terraform itself (modules/workloads/lambda.tf:
 	// null_resource.build_ci_lambda -> .build/<env>/ci_lambda.zip, linux/arm64).
@@ -83,8 +90,7 @@ func runCommandToDeploy(env string) error {
 
 	e, err := loadEnv(env)
 	if err != nil {
-		fmt.Println("Error loading environment:", err)
-		os.Exit(1)
+		return stepErr("migration", fmt.Errorf("loading environment %s: %w", env, err))
 	}
 
 	// One context for the whole of this deploy's AWS work, hoisted above the
@@ -97,10 +103,8 @@ func runCommandToDeploy(env string) error {
 	// Run comprehensive AWS pre-flight checks BEFORE changing directory
 	// This validates credentials, checks/creates S3 bucket, and handles SSO refresh
 	fmt.Printf("\n🚀 Starting deployment for environment: %s\n", env)
-	if err := AWSPreflightCheckContext(ctx, e); err != nil {
-		fmt.Printf("\n%v\n\n", err)
-		fmt.Println("❌ Pre-flight checks failed. Please fix the issues above and try again.")
-		os.Exit(1)
+	if err := deployPreflight(ctx, e); err != nil {
+		return stepErr("preflight", err)
 	}
 
 	// An account holds one GitHub OIDC provider, so a second project sharing the
@@ -115,14 +119,14 @@ func runCommandToDeploy(env string) error {
 	oidc := resolveGithubOIDCForEnv(ctx, env, &e)
 	if oidc.Block {
 		// A confirmed overlap that nobody accepted. Nothing has been applied.
-		fmt.Println("\n❌ Deployment stopped: another project in this account trusts these GitHub subjects.")
-		fmt.Println("   Narrow workload.github_oidc_subjects so the two projects do not overlap,")
-		fmt.Println("   then run the deploy again.")
-		os.Exit(1)
+		return stepErr("oidc", errors.New("deployment stopped: another project in this account trusts these GitHub subjects; "+
+			"narrow workload.github_oidc_subjects so the two projects do not overlap, then run the deploy again"))
 	}
 	if oidc.Regenerate {
 		// The config changed, so the generated terraform is now stale.
-		applyTemplate(env)
+		if err := applyTemplate(env); err != nil {
+			return stepErr("generate", err)
+		}
 	}
 
 	// Decide which deployment plan this environment needs before touching
@@ -147,18 +151,23 @@ func runCommandToDeploy(env string) error {
 			// itself, so hand off to the DNS setup screen rather than stopping.
 			outcome, err := runDNSSetupTUI(e, dnsResult)
 			if err != nil {
-				fmt.Printf("\n❌ DNS setup failed: %v\n", err)
-				os.Exit(1)
+				return stepErr("dns", fmt.Errorf("DNS setup: %w", err))
 			}
-			if applyDNSOutcome(env, &e, outcome) {
+			changed, err := applyDNSOutcome(env, &e, outcome)
+			if err != nil {
+				return stepErr("dns", err)
+			}
+			if changed {
 				// The config changed, so the generated terraform is now stale.
-				applyTemplate(env)
+				if err := applyTemplate(env); err != nil {
+					return stepErr("generate", err)
+				}
 			}
 
 		case dnsPlanMissingZone:
-			fmt.Println("\n❌ Deployment stopped: DNS configuration problem.")
-			fmt.Println("   Fix the issue above, then run the deploy again.")
-			os.Exit(1)
+			// describeDNSPreflight above has printed what is wrong.
+			return stepErr("dns", errors.New("deployment stopped: DNS configuration problem (details above); "+
+				"fix it, then run the deploy again"))
 
 		case dnsPlanBootstrap:
 			// Two-phase deploy. Phase 1 needs terraform, so it has to wait until
@@ -167,12 +176,12 @@ func runCommandToDeploy(env string) error {
 		}
 	}
 
-	err = os.Chdir(filepath.Join("env", env))
-	if err != nil {
-		fmt.Println("Error changing directory to env folder:", err)
-		os.Exit(1)
+	if err := os.Chdir(filepath.Join("env", env)); err != nil {
+		return stepErr("init", fmt.Errorf("changing into env/%s: %w", env, err))
 	}
-	terraformInitIfNeeded()
+	if err := terraformInitIfNeeded(); err != nil {
+		return err
+	}
 
 	// Phase 1 of a two-phase deploy: create the hosted zone on its own, set up
 	// delegation, and only then run the full apply. Splitting is what makes a
@@ -182,8 +191,7 @@ func runCommandToDeploy(env string) error {
 	if needsZoneBootstrap {
 		outcome, err := runDNSBootstrapAndDelegate(ctx, e)
 		if err != nil {
-			fmt.Printf("\n❌ DNS bootstrap failed: %v\n", err)
-			os.Exit(1)
+			return stepErr("dns", fmt.Errorf("DNS bootstrap: %w", err))
 		}
 
 		// Regeneration reads <env>.yaml and writes env/<env>/, both relative to
@@ -191,24 +199,32 @@ func runCommandToDeploy(env string) error {
 		// done from there and the directory restored afterwards.
 		if outcome.SkipDomain {
 			if err := os.Chdir(wd); err != nil {
-				fmt.Println("Error returning to the project directory:", err)
-				os.Exit(1)
+				return stepErr("dns", fmt.Errorf("returning to the project directory: %w", err))
 			}
-			applyDNSOutcome(env, &e, outcome)
-			applyTemplate(env)
+			if _, err := applyDNSOutcome(env, &e, outcome); err != nil {
+				return stepErr("dns", err)
+			}
+			if err := applyTemplate(env); err != nil {
+				return stepErr("generate", err)
+			}
 			if err := os.Chdir(filepath.Join("env", env)); err != nil {
-				fmt.Println("Error changing directory to env folder:", err)
-				os.Exit(1)
+				return stepErr("init", fmt.Errorf("changing into env/%s: %w", env, err))
 			}
-			terraformInitIfNeeded()
-		} else {
-			applyDNSOutcome(env, &e, outcome)
+			if err := terraformInitIfNeeded(); err != nil {
+				return err
+			}
+		} else if _, err := applyDNSOutcome(env, &e, outcome); err != nil {
+			return stepErr("dns", err)
 		}
 
 		fmt.Println("\n🌐 Phase 2 of 2: deploying everything else")
 	}
 
-	return runTerraformApply()
+	// wd is the project root (captured before the chdir above) and e is the
+	// loaded env, including any DNS outcome applied to it. The Claude Code
+	// handoff on a failed plan or apply reads both from here, never from the
+	// working directory or $AWS_PROFILE.
+	return runTerraformApply(handoffTarget{ProjectRoot: wd, EnvName: env, Env: e})
 }
 
 // envFileSearchPaths is where a config named <env> may live, in the order
@@ -256,10 +272,10 @@ func resolveEnvFilePath(env string) (string, error) {
 // would therefore re-enter whatever called it. Recovery calls this; only the
 // command calls the command.
 //
-// The inputs are checked here rather than left to applyTemplate, which exits the
-// process on a missing template. Recovery has just told the user their
-// infrastructure is intact; ending that sentence with an abrupt os.Exit would be
-// a poor way to keep the promise.
+// The inputs are checked here so the messages name the project-root layout;
+// applyTemplate's own errors are returned as they are. Recovery has just told
+// the user their infrastructure is intact, so it must learn when generation
+// did not happen rather than report success.
 func generateEnvironmentFiles(env string) error {
 	registerCustomHelpers()
 
@@ -278,15 +294,17 @@ func generateEnvironmentFiles(env string) error {
 		return fmt.Errorf("creating env/%s directory: %w", env, err)
 	}
 
-	applyTemplate(env)
-	return nil
+	return applyTemplate(env)
 }
 
-func handleGenerateCommand(args []string) {
+// handleGenerateCommand is `meroku generate <env>`. It is non-interactive: it
+// returns the error for main to print and exit 1 on, and never prompts.
+func handleGenerateCommand(args []string) error {
 	// Register custom Handlebars helpers
 	registerCustomHelpers()
 
 	if len(args) == 0 {
+		// Bad CLI usage: process-level, nothing for a handoff to fix.
 		fmt.Println("Usage: meroku generate <environment>")
 		fmt.Println("Example: meroku generate dev")
 		fmt.Println("")
@@ -298,8 +316,7 @@ func handleGenerateCommand(args []string) {
 	fmt.Printf("Generating Terraform configuration for environment: %s\n", env)
 
 	if err := generateEnvironmentFiles(env); err != nil {
-		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
+		return err
 	}
 
 	fmt.Printf("✓ Generated: env/%s/main.tf\n", env)
@@ -321,21 +338,26 @@ func handleGenerateCommand(args []string) {
 	// exists anyway, so it has nothing to write.
 	cfg, loadErr := loadEnv(env)
 	if loadErr != nil {
-		return
+		return nil
 	}
 	if err := reconnectStateIfNeeded(context.Background(), env, cfg, filepath.Join("env", env)); err != nil {
 		// Generation itself succeeded and its output is valid, so this is reported
 		// rather than fatal. The user is told exactly what to run by hand.
 		fmt.Printf("⚠️  Could not finish syncing with the deployed state: %v\n", err)
 	}
+	return nil
 }
 
-func applyTemplate(env string) {
+// applyTemplate renders env/<env>/main.tf from the env YAML. It returns every
+// failure instead of exiting, so the interactive deploy can offer the Claude
+// Code handoff and `meroku generate` can exit 1. A YAML that does not load or
+// migrate is tagged as the "migration" step.
+func applyTemplate(env string) error {
 	// Read the template file
-	templateContent, err := os.ReadFile(filepath.Join("infrastructure", "env", "main.hbs"))
+	templateFile := filepath.Join("infrastructure", "env", "main.hbs")
+	templateContent, err := os.ReadFile(templateFile)
 	if err != nil {
-		fmt.Printf("error reading template file: %v", err)
-		os.Exit(1)
+		return fmt.Errorf("reading template %s: %w", templateFile, err)
 	}
 
 	// Resolved rather than assumed to be at the working-directory root: this is
@@ -343,36 +365,31 @@ func applyTemplate(env string) {
 	// project/<env>.yaml generates exactly where it already deploys.
 	envFile, err := resolveEnvFilePath(env)
 	if err != nil {
-		fmt.Printf("error loading environment: %v\n", err)
-		os.Exit(1)
+		return stepErr("migration", fmt.Errorf("loading environment: %w", err))
 	}
 
 	envMap, err := loadEnvToMap(envFile)
 	if err != nil {
-		fmt.Printf("error loading environment: %v", err)
-		os.Exit(1)
+		return stepErr("migration", fmt.Errorf("loading environment %s: %w", envFile, err))
 	}
 
 	// Refuse to generate terraform that would deploy an authorizer trusting a
 	// JWKS endpoint nobody chose. Failing here costs a second; the same mistake
 	// found by terraform costs an apply.
 	if err := validateAppSyncConfigMap(envMap); err != nil {
-		fmt.Printf("\n❌ Invalid configuration in %s:\n\n%v\n\n", envFile, err)
-		os.Exit(1)
+		return fmt.Errorf("invalid configuration in %s:\n\n%w", envFile, err)
 	}
 
 	// An ALB with no certificate plans clean and fails from AWS part-way through
 	// the apply, leaving a half-built stack. Cheaper to refuse here.
 	if err := validateALBConfigMap(envMap); err != nil {
-		fmt.Printf("\n❌ Invalid configuration in %s:\n\n%v\n\n", envFile, err)
-		os.Exit(1)
+		return fmt.Errorf("invalid configuration in %s:\n\n%w", envFile, err)
 	}
 
 	// A NAT egress strategy on the default VPC generates a module call with an
 	// empty subnet list: it plans clean and fails during the apply.
 	if err := validateEgressStrategyMap(envMap); err != nil {
-		fmt.Printf("\n❌ Invalid configuration in %s.yaml:\n\n%v\n\n", env, err)
-		os.Exit(1)
+		return fmt.Errorf("invalid configuration in %s:\n\n%w", envFile, err)
 	}
 
 	// The template pins the provider region from this config. Say so now if the
@@ -385,8 +402,7 @@ func applyTemplate(env string) {
 	// disabled-item filter, the zero-config pool, and the compute refusals that
 	// have to see the result of both.
 	if err := preprocessEnvMap(envMap); err != nil {
-		fmt.Printf("\n❌ Invalid configuration in %s:\n\n%v\n\n", envFile, err)
-		os.Exit(1)
+		return fmt.Errorf("invalid configuration in %s:\n\n%w", envFile, err)
 	}
 
 	// Printed here, not in preprocessEnvMap, which render tests call.
@@ -404,14 +420,12 @@ func applyTemplate(env string) {
 	// Create a new template and parse the content
 	tmpl, err := raymond.Parse(string(templateContent))
 	if err != nil {
-		fmt.Printf("error parsing template: %v", err)
-		os.Exit(1)
+		return fmt.Errorf("parsing template %s: %w", templateFile, err)
 	}
 	// Execute the template with the environment data
 	result, err := tmpl.Exec(envMap)
 	if err != nil {
-		fmt.Printf("Error executing template: %v\n", describeArrayHelperError(err, string(templateContent), envMap))
-		os.Exit(1)
+		return fmt.Errorf("executing template %s: %v", templateFile, describeArrayHelperError(err, string(templateContent), envMap))
 	}
 
 	// Append custom terraform files
@@ -430,8 +444,7 @@ func applyTemplate(env string) {
 	// of what gets checked, which is deliberate: it lands in this file and breaks
 	// it in exactly the same way.
 	if err := validateGeneratedHCL(mainTf, result); err != nil {
-		fmt.Printf("\n❌ %v\n\n", err)
-		os.Exit(1)
+		return err
 	}
 
 	// The error here was dropped. A full disk, a read-only checkout or a missing
@@ -439,9 +452,9 @@ func applyTemplate(env string) {
 	// file, which then read as "terraform is broken" rather than "nothing was
 	// written".
 	if err := os.WriteFile(mainTf, []byte(result), 0o644); err != nil {
-		fmt.Printf("\n❌ Could not write %s: %v\n\n", mainTf, err)
-		os.Exit(1)
+		return fmt.Errorf("could not write %s: %w", mainTf, err)
 	}
+	return nil
 }
 
 // preprocessEnvMap runs everything applyTemplate does to envMap between

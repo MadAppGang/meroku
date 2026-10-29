@@ -27,15 +27,18 @@ const (
 )
 
 type destroyProgressModel struct {
-	phase              destroyPhase
-	currentResource    string
-	destroyedItems     map[string]bool // Use map to track unique destroyed resources
-	destroyedCount     int             // Actual count of destroyed resources
-	outputLines        []string
-	outputMutex        sync.Mutex
-	errorDetails       string
-	errorOutput        []string
-	requestAIHelp      bool // Track if user requested AI help
+	phase           destroyPhase
+	currentResource string
+	destroyedItems  map[string]bool // Use map to track unique destroyed resources
+	destroyedCount  int             // Actual count of destroyed resources
+	outputLines     []string
+	outputMutex     sync.Mutex
+	errorDetails    string
+	errorOutput     []string
+	// target is the environment being destroyed, captured at the project
+	// root. launchClaude is set by [a] on the error screen.
+	target             handoffTarget
+	launchClaude       bool
 	width              int
 	height             int
 	startTime          time.Time
@@ -114,8 +117,13 @@ type destroyErrorMsg struct {
 	output []string
 }
 
-func newDestroyProgressModel(env string) *destroyProgressModel {
+func newDestroyProgressModel(target handoffTarget) *destroyProgressModel {
+	env := target.EnvName
+	if env == "" {
+		env = target.Env.Env
+	}
 	return &destroyProgressModel{
+		target:             target,
 		phase:              destroyInitializing,
 		destroyedItems:     make(map[string]bool),
 		destroyedCount:     0,
@@ -414,9 +422,10 @@ func (m *destroyProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 
-			// Try to fix with AI with 'a' key (only in error state and if AI is available)
-			if m.phase == destroyError && msg.String() == "a" && isAIHelperAvailable() {
-				m.requestAIHelp = true
+			// Fix with AI: leave the TUI and let the caller hand off to
+			// Claude Code.
+			if m.phase == destroyError && msg.String() == "a" {
+				m.launchClaude = true
 				return m, tea.Quit
 			}
 
@@ -696,11 +705,7 @@ func (m *destroyProgressModel) View() string {
 		if m.copiedToClip {
 			footerParts = append(footerParts, "✓ Copied!")
 		} else {
-			footerOptions := "[E] Full Error • [C] Copy"
-			if isAIHelperAvailable() {
-				footerOptions += " • [A] AI Help"
-			}
-			footerOptions += " • Q - exit"
+			footerOptions := "[a] Fix with AI (Claude Code) • [E] Full Error • [C] Copy • Q - exit"
 			footerParts = append(footerParts, footerOptions)
 		}
 	} else {
@@ -775,110 +780,34 @@ func (m *destroyProgressModel) renderFullErrorView() string {
 	return content.String()
 }
 
-func runTerraformDestroyWithProgress(env string) error {
-	p := tea.NewProgram(
-		newDestroyProgressModel(env),
-		tea.WithAltScreen(),
-	)
+// runTerraformDestroyWithProgress destroys the environment target names,
+// from the project root. target also feeds the Claude Code handoff offered
+// when the destroy fails.
+func runTerraformDestroyWithProgress(target handoffTarget) error {
+	m := newDestroyProgressModel(target)
+	p := tea.NewProgram(m, tea.WithAltScreen())
 
-	model, err := p.Run()
-	if err != nil {
+	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("error running destroy progress TUI: %w", err)
 	}
-
-	// Check if there was an error
-	if finalModel, ok := model.(*destroyProgressModel); ok {
-		if finalModel.phase == destroyError {
-			// Check if user requested AI help
-			if finalModel.requestAIHelp {
-				// Offer AI help directly without prompting
-				if len(finalModel.errorOutput) > 0 {
-					// Get current directory
-					workingDir, _ := os.Getwd()
-
-					// Get AWS profile from environment or use default
-					awsProfile := os.Getenv("AWS_PROFILE")
-					if awsProfile == "" {
-						awsProfile = "default"
-					}
-
-					// Get region from environment variable or use default
-					awsRegion := os.Getenv("AWS_REGION")
-					if awsRegion == "" {
-						awsRegion = os.Getenv("AWS_DEFAULT_REGION")
-					}
-					if awsRegion == "" {
-						awsRegion = "us-east-1" // fallback
-					}
-
-					ctx := ErrorContext{
-						Operation:   "destroy",
-						Environment: finalModel.env,
-						AWSProfile:  awsProfile,
-						AWSRegion:   awsRegion,
-						Errors:      finalModel.errorOutput,
-						WorkingDir:  workingDir,
-					}
-
-					// Get AI suggestions directly without prompting
-					problem, commands, err := getAIErrorSuggestions(ctx)
-					if err != nil {
-						fmt.Printf("\n❌ Failed to get AI suggestions: %v\n", err)
-					} else {
-						displayAISuggestions(problem, commands)
-					}
-
-					fmt.Print("\nPress Enter to continue...")
-					fmt.Scanln()
-				}
-			} else {
-				// Offer AI help with prompt (old behavior when user exits without pressing 'a')
-				offerAIHelpForDestroyErrors(finalModel)
-			}
-
-			errorMsg := finalModel.errorDetails
-			if len(finalModel.errorOutput) > 0 {
-				errorMsg = strings.Join(finalModel.errorOutput, "\n")
-			}
-			return fmt.Errorf("terraform destroy failed: %s", errorMsg)
-		}
-	}
-
-	return nil
+	return destroyRunResult(m, offerClaudeHandoff)
 }
 
-// offerAIHelpForDestroyErrors offers AI assistance after destroy errors
-func offerAIHelpForDestroyErrors(m *destroyProgressModel) {
-	if len(m.errorOutput) == 0 {
-		return
+// destroyRunResult is what a finished destroy TUI returns, after handing off
+// to Claude Code if the user pressed [a] on the error screen.
+func destroyRunResult(m *destroyProgressModel, offer func(HandoffContext)) error {
+	if m.phase != destroyError {
+		return nil
 	}
 
-	// Get current directory
-	workingDir, _ := os.Getwd()
-
-	// Get AWS profile from environment or use default
-	awsProfile := os.Getenv("AWS_PROFILE")
-	if awsProfile == "" {
-		awsProfile = "default"
+	errorMsg := m.errorDetails
+	if len(m.errorOutput) > 0 {
+		errorMsg = strings.Join(m.errorOutput, "\n")
 	}
 
-	// Get region from environment variable or use default
-	awsRegion := os.Getenv("AWS_REGION")
-	if awsRegion == "" {
-		awsRegion = os.Getenv("AWS_DEFAULT_REGION")
+	if m.launchClaude {
+		offer(m.handoffContext())
+		return fmt.Errorf("terraform destroy failed: %s: %w", errorMsg, errHandedOff)
 	}
-	if awsRegion == "" {
-		awsRegion = "us-east-1" // fallback
-	}
-
-	ctx := ErrorContext{
-		Operation:   "destroy",
-		Environment: m.env,
-		AWSProfile:  awsProfile,
-		AWSRegion:   awsRegion,
-		Errors:      m.errorOutput,
-		WorkingDir:  workingDir,
-	}
-
-	offerAIHelp(ctx)
+	return fmt.Errorf("terraform destroy failed: %s", errorMsg)
 }

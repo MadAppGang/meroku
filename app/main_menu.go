@@ -33,7 +33,7 @@ func mainMenu() string {
 		huh.NewOption("✨ Create new environment", "create"),
 		huh.NewOption("🔄 Change Environment", "change-env"),
 		huh.NewOption("💥 Nuke/Destroy Environment", "nuke"),
-		huh.NewOption("🤖 AI Agent - Troubleshoot Issues", "ai-agent"),
+		huh.NewOption("🤖 Fix with AI (Claude Code)", "claude"),
 		huh.NewOption("🔐 AWS SSO Tools", "sso-menu"),
 		huh.NewOption("🔍 Check for updates", "update"),
 		huh.NewOption("👋 Exit", "exit"),
@@ -88,9 +88,10 @@ func mainMenu() string {
 			fmt.Printf("Error selecting environment: %v\n", err)
 		}
 		return mainMenu()
-	case action == "ai-agent":
-		// Run AI agent for troubleshooting
-		offerAIAgentFromMenu()
+	case action == "claude":
+		// Start Claude Code beside meroku with a briefing about this project
+		// and environment; it asks the user what is wrong.
+		offerMenuHandoff()
 		return mainMenu()
 	case action == "sso-menu":
 		// Open SSO tools submenu
@@ -104,25 +105,12 @@ func mainMenu() string {
 
 // ssoToolsMenu shows the AWS SSO tools submenu
 func ssoToolsMenu() {
-	// Check if Anthropic API key is available
-	anthropicKey := os.Getenv("ANTHROPIC_API_KEY")
-	hasAPIKey := anthropicKey != ""
-
-	// Build options based on API key availability
 	options := []huh.Option[string]{
 		huh.NewOption("🔐 SSO Setup Wizard", "wizard"),
-	}
-
-	if hasAPIKey {
-		options = append(options, huh.NewOption("🤖 SSO AI Agent (Enhanced)", "agent"))
-	} else {
-		options = append(options, huh.NewOption("🤖 AI Agent (API key not configured)", "agent_disabled"))
-	}
-
-	options = append(options,
+		huh.NewOption("🤖 Fix with AI (Claude Code)", "claude"),
 		huh.NewOption("✓ Validate Configuration", "validate"),
 		huh.NewOption("← Back to Main Menu", "back"),
-	)
+	}
 
 	var action string
 	err := huh.NewSelect[string]().
@@ -139,15 +127,8 @@ func ssoToolsMenu() {
 	case "wizard":
 		runSSOWizardFromMenu()
 		ssoToolsMenu() // Return to SSO menu
-	case "agent":
-		runEnhancedSSOAgentFromMenu()
-		ssoToolsMenu() // Return to SSO menu
-	case "agent_disabled":
-		fmt.Println("\n❌ AI Agent Not Available")
-		fmt.Println("The AI Agent requires an Anthropic API key to function.")
-		fmt.Println("Please set the ANTHROPIC_API_KEY environment variable:")
-		fmt.Println("\n  export ANTHROPIC_API_KEY=your_key_here")
-		fmt.Println("\nGet your API key from: https://console.anthropic.com/settings/keys")
+	case "claude":
+		runSSOHandoffFromMenu()
 		ssoToolsMenu() // Return to SSO menu
 	case "validate":
 		validateAWSFromMenu()
@@ -224,9 +205,13 @@ func getProjectName() string {
 	return name
 }
 
+// infrastructureCloneURL is the repository a new project's infrastructure/
+// directory is cloned from.
+const infrastructureCloneURL = "https://github.com/MadAppGang/meroku.git"
+
 func initProject() {
 	os.RemoveAll("./infrastructure/")
-	cmd := exec.Command("git", "clone", "--depth=1", "--branch=main", "https://github.com/MadAppGang/infrastructure.git", "./infrastructure")
+	cmd := exec.Command("git", "clone", "--depth=1", "--branch=main", infrastructureCloneURL, "./infrastructure")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		fmt.Println("Error cloning infrastructure:", output)
@@ -308,8 +293,9 @@ func runSSOWizardFromMenu() {
 	}
 }
 
-// runSSOAgentFromMenu runs the AWS SSO AI Agent
-func runSSOAgentFromMenu() {
+// runSSOHandoffFromMenu hands the selected environment's AWS profile to
+// Claude Code with the SSO goal.
+func runSSOHandoffFromMenu() {
 	// Get environment selection
 	envName, _, err := selectEnvironmentForSSO()
 	if err != nil {
@@ -330,17 +316,7 @@ func runSSOAgentFromMenu() {
 		profileName = envName
 	}
 
-	// Run AI agent
-	if err := RunSSOAgent(profileName, &yamlEnv); err != nil {
-		fmt.Printf("AI Agent error: %v\n", err)
-	}
-}
-
-// runEnhancedSSOAgentFromMenu runs the SSO AI Agent (uses existing agent for now)
-func runEnhancedSSOAgentFromMenu() {
-	// TODO: Create enhanced agent with tool support (read/write config, ask user, web search)
-	// For now, use existing agent
-	runSSOAgentFromMenu()
+	offerSSOHandoff(envName, yamlEnv, profileName, nil)
 }
 
 // validateAWSFromMenu validates AWS configuration

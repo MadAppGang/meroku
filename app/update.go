@@ -12,9 +12,12 @@ import (
 	"github.com/charmbracelet/huh/spinner"
 )
 
+// latestVersionURL is the version.txt of the newest release on main.
+const latestVersionURL = "https://raw.githubusercontent.com/MadAppGang/meroku/main/version.txt"
+
 func updateInfrastructure() error {
 	// Fetch the remote version.txt file from GitHub repository
-	resp, err := http.Get("https://raw.githubusercontent.com/MadAppGang/infrastructure/main/version.txt")
+	resp, err := http.Get(latestVersionURL)
 	if err != nil {
 		return fmt.Errorf("failed to fetch remote version: %w", err)
 	}
@@ -95,7 +98,7 @@ func checkVersionAtStartup() VersionCheckResult {
 	result := VersionCheckResult{}
 
 	// Fetch the remote version.txt file from GitHub repository
-	resp, err := http.Get("https://raw.githubusercontent.com/MadAppGang/infrastructure/main/version.txt")
+	resp, err := http.Get(latestVersionURL)
 	if err != nil {
 		result.Error = fmt.Errorf("failed to fetch remote version: %w", err)
 		return result

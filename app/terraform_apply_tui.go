@@ -28,6 +28,15 @@ type applyState struct {
 	// Terraform process
 	cmd *exec.Cmd
 	mu  sync.Mutex
+	// stderr collects what terraform writes outside its -json stream: crashes,
+	// plugin and backend failures. It used to go nowhere.
+	stderr *tailBuffer
+
+	// Why the apply ended in error, kept for the Claude Code handoff:
+	// failureCause is the error applyErrorMsg carried (exit status, pipe or
+	// start failure), stderrOutput is terraform's stderr at that moment.
+	failureCause string
+	stderrOutput string
 
 	// State
 	isApplying    bool
@@ -99,7 +108,40 @@ type logEntry struct {
 // Messages for apply state updates
 type applyStartMsg struct{}
 type applyCompleteMsg struct{ success bool }
-type applyErrorMsg struct{ err error }
+type applyErrorMsg struct {
+	err    error
+	stderr string // terraform's stderr, when the process got far enough to write any
+}
+
+// tailBuffer is an io.Writer that keeps the last max bytes written to it. It
+// is written by the exec goroutine and read after Wait, so it locks.
+type tailBuffer struct {
+	mu  sync.Mutex
+	buf []byte
+	max int
+}
+
+func newTailBuffer(max int) *tailBuffer { return &tailBuffer{max: max} }
+
+func (b *tailBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.buf = append(b.buf, p...)
+	if over := len(b.buf) - b.max; over > 0 {
+		b.buf = append([]byte(nil), b.buf[over:]...)
+	}
+	return len(p), nil
+}
+
+func (b *tailBuffer) String() string {
+	if b == nil {
+		return ""
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return string(b.buf)
+}
+
 type applyTickMsg struct{} // For animating progress bars
 
 type resourceStartMsg struct {
@@ -380,11 +422,13 @@ func (m *modernPlanModel) startTerraformApply() tea.Cmd {
 		if err != nil {
 			return applyErrorMsg{err: err}
 		}
+		m.applyState.stderr = newTailBuffer(maxBriefingErrorOutput)
+		cmd.Stderr = m.applyState.stderr
 
 		m.applyState.cmd = cmd
 
 		if err := cmd.Start(); err != nil {
-			return applyErrorMsg{err: err}
+			return applyErrorMsg{err: err, stderr: m.applyState.stderr.String()}
 		}
 
 		// Start parsing JSON output in goroutine
@@ -564,7 +608,7 @@ func (m *modernPlanModel) parseTerraformOutput(stdout interface{}) {
 
 	// Check if process completed
 	if err := m.applyState.cmd.Wait(); err != nil {
-		m.sendMsg(applyErrorMsg{err: err})
+		m.sendMsg(applyErrorMsg{err: err, stderr: m.applyState.stderr.String()})
 	} else {
 		m.sendMsg(applyCompleteMsg{success: true})
 	}

@@ -30,7 +30,9 @@ func nukeMenu() {
 			println(fmt.Sprintf("\n🔥 Proceeding with destruction of environment '%s'...\n", nukeFinal.selectedEnv))
 
 			// Run the same destroy progress TUI used by the regular destroy command
-			err := runTerraformDestroyWithProgress(nukeFinal.selectedEnv)
+			// nukeMenu runs at the project root, so this is the place to
+			// capture it (and the env YAML) for a handoff on failure.
+			err := runTerraformDestroyWithProgress(handoffTargetFromProjectRoot(nukeFinal.selectedEnv))
 			if err != nil {
 				println(fmt.Sprintf("\n❌ Destruction failed: %v\n", err))
 				return

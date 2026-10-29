@@ -366,11 +366,7 @@ export function CustomTerraformManager({
 			</div>
 
 			{/* Bridge Variables Reference Panel */}
-			<SidebarRight
-				variables={bridgeVariables}
-				onInsert={handleInsert}
-				environment={environment}
-			/>
+			<SidebarRight variables={bridgeVariables} onInsert={handleInsert} />
 
 			{/* New File Dialog */}
 			<Dialog open={showNewFileDialog} onOpenChange={setShowNewFileDialog}>

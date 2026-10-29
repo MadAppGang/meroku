@@ -22,12 +22,11 @@ export AWS_CONFIG_FILE=$PWD/test-configs/aws-config-modern-sso
 ### 1. Empty Config (`aws-config-empty`)
 **Scenario:** Fresh install, no AWS configuration at all
 
-**Use case:** Test the wizard/agent from scratch
+**Use case:** Test the wizard from scratch
 
 **Expected behavior:**
 - Validation should fail (profile not found)
 - Wizard should guide through complete setup
-- AI agent should ask all required questions
 
 **Test command:**
 ```bash
@@ -65,7 +64,6 @@ export AWS_CONFIG_FILE=$PWD/test-configs/aws-config-modern-sso
 **Expected behavior:**
 - Validation should recognize as legacy SSO
 - Should work but recommend migrating to modern SSO
-- AI agent should suggest migration
 
 **Test command:**
 ```bash
@@ -85,7 +83,6 @@ export AWS_CONFIG_FILE=$PWD/test-configs/aws-config-modern-sso
 **Expected behavior:**
 - Validation should fail with specific missing field errors
 - Wizard should complete missing fields
-- AI agent should identify and ask for missing info
 
 **Test command:**
 ```bash
@@ -115,16 +112,16 @@ export AWS_CONFIG_FILE=$PWD/test-configs/aws-config-modern-sso
 # Follow prompts to configure a profile
 ```
 
-### Test AI Agent
+### Test the Claude Code handoff
 
 ```bash
-# Ensure ANTHROPIC_API_KEY is set
-export ANTHROPIC_API_KEY=your_key_here
-
 # Start with incomplete config
 ./app/meroku --aws-config test-configs/aws-config-incomplete
-# Select: "🤖 AWS SSO AI Agent"
-# Watch the agent analyze and fix the configuration
+# Select: "🔐 AWS SSO Tools" → "🤖 Fix with AI (Claude Code)"
+# Inside tmux with `claude` on PATH, Claude Code opens in a pane to the right.
+# Otherwise meroku prints the briefing path and the command to start it.
+# The briefing (.meroku/claude/<time>-sso.md) should name the profile, the
+# missing fields and the AWS config path.
 ```
 
 ### Test Config Writing

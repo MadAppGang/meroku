@@ -377,35 +377,58 @@ env:
   IAM_ROLE: arn:aws:iam::${account}:role/${project}-${env}-github-actions-role
 ```
 
-## AI Agent
+## Fix with AI (Claude Code handoff)
 
-This infrastructure includes an **autonomous AI agent** that can investigate and fix deployment errors automatically using the ReAct pattern (Reasoning + Acting).
+meroku has no AI of its own and needs no API key. "Fix with AI" writes a briefing
+about what failed and starts [Claude Code](https://claude.com/claude-code) beside
+meroku to read it.
 
-### When to Use
+### Where it is offered
 
-1. **Automatic**: After terraform apply/destroy failures, you'll be prompted to run the agent
-2. **Manual**: Select "🤖 AI Agent - Troubleshoot Issues" from the main menu
+- **Key `a`** on the failed-apply screen, the failed-plan screen and the failed-destroy
+  screen. Footer: `[a] Fix with AI (Claude Code)`. On the normal plan dashboard `a` is
+  still Apply.
+- **Main menu**: "🤖 Fix with AI (Claude Code)". Nothing has failed yet, so the briefing
+  tells Claude to ask the user what is wrong.
+- **AWS SSO**: "🤖 Fix with AI (Claude Code)" in the AWS SSO Tools menu, in the startup
+  SSO check, and as choice 2 of the profile validator's fix prompt. The briefing names
+  the profile, the fields the inspector found missing and the AWS config path. It holds
+  no tokens or keys.
 
-### How It Works
+### What happens
 
-The agent uses an iterative debugging approach:
-- **Think**: Analyzes the situation and decides what to do next
-- **Act**: Executes commands (AWS CLI, file edits, terraform)
-- **Observe**: Reviews results and adapts strategy
-- **Repeat**: Continues until problem is solved or max iterations reached
+1. meroku writes the briefing to `<project root>/.meroku/claude/<YYYYMMDD-HHMMSS>-<operation>.md`
+   and creates `.meroku/.gitignore` containing `*` so the directory never gets committed.
+   The briefing can contain raw Terraform/AWS error output.
+2. Inside tmux with `claude` on PATH: meroku runs `tmux split-window -h -c <project root>`
+   and starts `claude` in the new right-hand pane with a one-line prompt that points at
+   the briefing file. The briefing itself is never put on the command line.
+3. Otherwise: meroku prints the briefing's absolute path and the command to start
+   Claude Code on it, and waits for Enter.
 
-### Documentation
+The project root, env name, AWS profile, region and account come from the env YAML
+meroku loaded (threaded down from `runCommandToDeploy` / the menu), never from the
+working directory or `$AWS_PROFILE`.
 
-- [AI Agent Architecture](./ai_docs/AI_AGENT_ARCHITECTURE.md) - Technical design and implementation
-- [AI Agent User Guide](./ai_docs/AI_AGENT_USER_GUIDE.md) - How to use the agent effectively
+### The rules the briefing gives Claude
 
-### Requirements
+- Do NOT fix the problem directly in AWS (no console changes, no CLI/SDK writes).
+- Do NOT edit the generated Terraform in `env/<env>/`; meroku regenerates it.
+- Allowed fixes, in order: (a) a meroku bug, fixed in meroku itself
+  (github.com/MadAppGang/meroku); (b) an edge case meroku cannot migrate, done as an
+  agreed one-off manual step that gets written down; (c) a configuration problem,
+  fixed in the env YAML and rerun through meroku.
+- Read-only inspection (`describe`/`list`/`get`, `terraform state list/show`,
+  `terraform plan`) is fine. Investigate and explain first; ask before any write.
 
-```bash
-export ANTHROPIC_API_KEY=your_key_here
-```
+### Code and docs
 
-Get your API key from: https://console.anthropic.com/settings/keys
+- Briefing text: `app/claude_briefing/briefing.md`, embedded with `go:embed`, so it
+  always matches the binary that is running.
+- Launcher and renderer: `app/claude_handoff.go`. Context builders (apply, plan,
+  destroy, menu, SSO): `app/claude_handoff_context.go`.
+- [Claude Code Handoff](./ai_docs/CLAUDE_CODE_HANDOFF.md) — how it works and how to
+  change the briefing.
 
 ## Memories
 

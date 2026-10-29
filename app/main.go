@@ -31,7 +31,7 @@ var (
 	envFlag        = flag.String("env", "", "Environment to use (e.g., dev, prod)")
 	versionFlag    = flag.Bool("version", false, "Show version information")
 	renderDiffFlag = flag.String("renderdiff", "", "Render terraform plan diff view from JSON file (for testing)")
-	debugFlag      = flag.String("debug", "", "Debug mode to test screens (e.g., api_missing_key)")
+	debugFlag      = flag.String("debug", "", "Debug mode to test screens (e.g., terraform_plan)")
 	awsConfigFlag  = flag.String("aws-config", "", "Custom AWS config file path (for testing different scenarios)")
 	monitorFlag    = flag.Bool("monitor", false, "Open infrastructure monitor dashboard")
 	themeFlag      = flag.String("theme", "auto", "Color theme: auto | light | dark (auto reads the terminal background)")
@@ -134,16 +134,6 @@ func main() {
 		log.Printf("[Pricing] Continuing with fallback prices only")
 	}
 
-	// Check for Anthropic API key (only in interactive mode)
-	// Skip check if using flags that don't need AI (version, renderdiff, dns, migrate, generate, web)
-	needsInteractiveCheck := !*versionFlag && *renderDiffFlag == "" && !*webFlag && *debugFlag == ""
-	if needsInteractiveCheck && len(flag.Args()) == 0 {
-		// Only show the screen in fully interactive mode (no commands)
-		if !CheckAnthropicAPIKey() {
-			ShowAPIKeyRequiredScreen()
-		}
-	}
-
 	// Handle renderdiff flag for testing terraform plan diff view
 	if *renderDiffFlag != "" {
 		if err := runRenderDiff(*renderDiffFlag); err != nil {
@@ -157,20 +147,18 @@ func main() {
 	args := flag.Args()
 	if len(args) > 0 && args[0] == "dns" {
 		// DNS commands don't need environment selection
-		handleDNSCommand(args[1:])
-		os.Exit(0)
+		os.Exit(cliExitCode(handleDNSCommand(args[1:])))
 	}
 
 	// Handle migrate commands (before environment selection)
 	if len(args) > 0 && args[0] == "migrate" {
-		handleMigrateCommand(args[1:])
-		os.Exit(0)
+		os.Exit(cliExitCode(handleMigrateCommand(args[1:])))
 	}
 
-	// Handle generate commands (before environment selection)
+	// Handle generate commands (before environment selection). Non-interactive:
+	// a failure prints and exits 1, it never offers the Claude Code handoff.
 	if len(args) > 0 && args[0] == "generate" {
-		handleGenerateCommand(args[1:])
-		os.Exit(0)
+		os.Exit(cliExitCode(handleGenerateCommand(args[1:])))
 	}
 
 	// Handle monitor subcommand (before environment selection prompts)
@@ -299,8 +287,9 @@ func main() {
 	os.Exit(0)
 }
 
-// handleDNSCommand handles DNS subcommands
-func handleDNSCommand(args []string) {
+// handleDNSCommand handles DNS subcommands. Non-interactive: a failure is
+// returned for main to print and exit 1 on.
+func handleDNSCommand(args []string) error {
 	if len(args) == 0 {
 		fmt.Println("DNS management commands:")
 		fmt.Println("  dns setup    - Run DNS setup wizard")
@@ -308,79 +297,67 @@ func handleDNSCommand(args []string) {
 		fmt.Println("  dns validate - Validate DNS configuration")
 		fmt.Println("  dns delegate - Delegate an environment's zone from its parent")
 		fmt.Println("  dns remove   - Remove subdomain delegation")
-		return
+		return nil
 	}
 
 	switch args[0] {
 	case "setup":
 		runDNSSetupWizard()
+		return nil
 	case "delegate":
-		if err := runDNSDelegateCommand(args[1:]); err != nil {
-			fmt.Printf("Error: %v\n", err)
-			os.Exit(1)
-		}
+		return runDNSDelegateCommand(args[1:])
 	case "status":
-		if err := runDNSStatus(nil, args[1:]); err != nil {
-			fmt.Printf("Error: %v\n", err)
-			os.Exit(1)
-		}
+		return runDNSStatus(nil, args[1:])
 	case "validate":
-		if err := runDNSValidate(nil, args[1:]); err != nil {
-			fmt.Printf("Error: %v\n", err)
-			os.Exit(1)
-		}
+		return runDNSValidate(nil, args[1:])
 	case "remove":
 		if len(args) < 2 {
+			// Bad CLI usage: process-level, nothing for a handoff to fix.
 			fmt.Println("Usage: dns remove [subdomain]")
 			os.Exit(1)
 		}
-		if err := runDNSRemove(nil, args[1:]); err != nil {
-			fmt.Printf("Error: %v\n", err)
-			os.Exit(1)
-		}
+		return runDNSRemove(nil, args[1:])
 	default:
+		// Bad CLI usage: process-level, nothing for a handoff to fix.
 		fmt.Printf("Unknown DNS command: %s\n", args[0])
 		fmt.Println("Available commands: setup, status, validate, delegate, remove")
 		os.Exit(1)
 	}
+	return nil
 }
 
-// handleMigrateCommand handles migration subcommands
-func handleMigrateCommand(args []string) {
+// handleMigrateCommand handles migration subcommands. Non-interactive: a
+// failure is returned for main to print and exit 1 on.
+func handleMigrateCommand(args []string) error {
 	if len(args) == 0 {
 		fmt.Println("YAML Schema Migration Commands:")
 		fmt.Println("  migrate all      - Migrate all YAML files in project directory")
 		fmt.Println("  migrate <file>   - Migrate a specific YAML file")
 		fmt.Println()
 		fmt.Printf("Current schema version: v%d\n", CurrentSchemaVersion)
-		return
+		return nil
 	}
 
 	switch args[0] {
 	case "all":
 		if err := MigrateAllYAMLFiles(); err != nil {
-			fmt.Printf("Error: %v\n", err)
-			os.Exit(1)
+			return err
 		}
 		fmt.Println("\nAll migrations completed successfully!")
 	default:
 		// Treat as filename
 		filename := args[0]
 		if err := MigrateYAMLFile(filename); err != nil {
-			fmt.Printf("Error: %v\n", err)
-			os.Exit(1)
+			return err
 		}
 		fmt.Println("Migration completed successfully!")
 	}
+	return nil
 }
 
 // handleDebugScreen handles debug mode for testing screens
 func handleDebugScreen(screenName string) {
 	switch screenName {
-	case "api_missing_key", "api":
-		fmt.Println("Debug Mode: Displaying API key missing screen")
-		ShowAPIKeyRequiredScreen()
-
 	case "terraform_plan", "plan":
 		fmt.Println("Debug Mode: Displaying Terraform Plan TUI with sample data")
 		fmt.Println("Sample plan includes:")
@@ -409,18 +386,15 @@ func handleDebugScreen(screenName string) {
 	case "list", "help", "":
 		fmt.Println("Debug Mode - Available Screens:")
 		fmt.Println()
-		fmt.Println("  api_missing_key, api    - Anthropic API key required screen")
-		fmt.Println("                             Shows when ANTHROPIC_API_KEY is not set")
-		fmt.Println()
 		fmt.Println("  terraform_plan, plan    - Terraform plan viewer TUI")
 		fmt.Println("                             Interactive plan review with sample data")
-		fmt.Println("                             Navigate with arrows, press 'a' for AI help")
+		fmt.Println("                             Navigate with arrows; 'a' applies (after a failed")
+		fmt.Println("                             apply, 'a' hands the failure to Claude Code)")
 		fmt.Println()
 		fmt.Println("Usage:")
 		fmt.Println("  ./meroku --debug <screen_name>")
 		fmt.Println()
 		fmt.Println("Examples:")
-		fmt.Println("  ./meroku --debug api")
 		fmt.Println("  ./meroku --debug terraform_plan")
 		fmt.Println("  ./meroku --debug list")
 		os.Exit(0)
@@ -477,7 +451,7 @@ func handleMonitorCommand(args []string) {
 }
 
 // performAutoSSOValidation validates AWS SSO configuration at startup
-// If validation fails, offers to fix via wizard or AI agent
+// If validation fails, offers to fix via the wizard or a Claude Code handoff
 func performAutoSSOValidation() error {
 	// Load the current environment YAML
 	yamlEnv, err := loadEnv(selectedEnvironment)
@@ -530,22 +504,11 @@ func performAutoSSOValidation() error {
 
 	fmt.Printf("\nWould you like to fix this now?\n\n")
 
-	// Check if Anthropic API key is available
-	anthropicKey := os.Getenv("ANTHROPIC_API_KEY")
-	hasAPIKey := anthropicKey != ""
-
-	// Build options based on API key availability
 	options := []huh.Option[string]{
 		huh.NewOption("🔐 Run Interactive Setup Wizard", "wizard"),
+		huh.NewOption("🤖 Fix with AI (Claude Code)", "claude"),
+		huh.NewOption("⏭  Skip for now (continue to main menu)", "skip"),
 	}
-
-	if hasAPIKey {
-		options = append(options, huh.NewOption("🤖 Use AI Agent", "agent"))
-	} else {
-		options = append(options, huh.NewOption("🤖 AI Agent (API key not configured)", "agent_disabled"))
-	}
-
-	options = append(options, huh.NewOption("⏭  Skip for now (continue to main menu)", "skip"))
 
 	// Offer fix options
 	var choice string
@@ -565,24 +528,13 @@ func performAutoSSOValidation() error {
 		if err := RunSSOWizard(profileName, &yamlEnv); err != nil {
 			return fmt.Errorf("wizard failed: %w", err)
 		}
-	case "agent":
-		fmt.Println("\n🤖 Starting AWS SSO AI Agent...")
-		if err := RunSSOAgent(profileName, &yamlEnv); err != nil {
-			return fmt.Errorf("AI agent failed: %w", err)
-		}
-	case "agent_disabled":
-		fmt.Println("\n❌ AI Agent Not Available")
-		fmt.Println("The AI Agent requires an Anthropic API key to function.")
-		fmt.Println("Please set the ANTHROPIC_API_KEY environment variable:")
-		fmt.Println("\n  export ANTHROPIC_API_KEY=your_key_here")
-		fmt.Println("\nGet your API key from: https://console.anthropic.com/settings/keys")
-		fmt.Println("Returning to main menu...")
-		return nil
+	case "claude":
+		offerSSOHandoff(selectedEnvironment, yamlEnv, profileName, nil)
 	case "skip":
 		fmt.Println("\n⏭  Skipping AWS SSO configuration check")
 		fmt.Println("Note: You can configure AWS SSO later from the main menu:")
 		fmt.Println("  - 🔐 AWS SSO Setup Wizard")
-		fmt.Println("  - 🤖 AWS SSO AI Agent")
+		fmt.Println("  - 🤖 Fix with AI (Claude Code)")
 		fmt.Println("  - ✓ Validate AWS Configuration")
 	}
 

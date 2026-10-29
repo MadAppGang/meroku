@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -37,14 +36,17 @@ type planProgressModel struct {
 	errorDetails    string
 	errorOutput     []string
 	isRecoverable   bool
-	requestAIHelp   bool
-	width           int
-	height          int
-	startTime       time.Time
-	cmd             *exec.Cmd
-	done            chan bool
-	ticker          *time.Ticker
-	spinnerFrame    int
+	// target is the environment being planned, captured at the project root.
+	target handoffTarget
+	// launchClaude is set by [a] on the error screen; the caller hands off.
+	launchClaude bool
+	width        int
+	height       int
+	startTime    time.Time
+	cmd          *exec.Cmd
+	done         chan bool
+	ticker       *time.Ticker
+	spinnerFrame int
 }
 
 type progressMsg struct {
@@ -60,8 +62,9 @@ type planErrorMsg struct {
 	output []string
 }
 
-func newPlanProgressModel() *planProgressModel {
+func newPlanProgressModel(target handoffTarget) *planProgressModel {
 	return &planProgressModel{
+		target:         target,
 		phase:          phaseInitializing,
 		processedItems: []string{},
 		outputLines:    []string{},
@@ -265,9 +268,10 @@ func (m *planProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Quit
 		case "a":
-			// Try to fix with AI (only in error phase and if AI is available)
-			if m.phase == phaseError && isAIHelperAvailable() {
-				m.requestAIHelp = true
+			// Fix with AI: leave the TUI and let the caller hand off to
+			// Claude Code. Only offered once the plan has failed.
+			if m.phase == phaseError {
+				m.launchClaude = true
 				return m, tea.Quit
 			}
 		case "enter":
@@ -553,12 +557,7 @@ func (m *planProgressModel) renderError() string {
 		content.WriteString("\n\n")
 	}
 
-	// Build footer with options based on AI availability
-	footerOptions := "q - exit"
-	if isAIHelperAvailable() {
-		footerOptions += " • a - try to fix with AI"
-	}
-	footerOptions += " • Enter - return to menu"
+	footerOptions := "[a] Fix with AI (Claude Code) • [Enter] return to menu • [q] exit"
 
 	content.WriteString(lipgloss.NewStyle().
 		Foreground(theme.Muted).
@@ -658,85 +657,39 @@ func (m *planProgressModel) getErrorSuggestions() string {
 	return strings.Join(suggestions, "\n")
 }
 
-// Helper function to run the TUI
-func runTerraformPlanWithProgress() error {
-	p := tea.NewProgram(
-		newPlanProgressModel(),
-		tea.WithAltScreen(),
-	)
+// runTerraformPlanWithProgress runs `terraform plan` under the progress TUI.
+// target is the environment being planned; it feeds the Claude Code handoff
+// offered when the plan fails.
+func runTerraformPlanWithProgress(target handoffTarget) error {
+	m := newPlanProgressModel(target)
+	p := tea.NewProgram(m, tea.WithAltScreen())
 
-	model, err := p.Run()
-	if err != nil {
+	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("error running plan progress TUI: %w", err)
 	}
+	return planRunResult(m, offerClaudeHandoff)
+}
 
-	// Check if there was an error in the plan
-	if finalModel, ok := model.(*planProgressModel); ok {
-		// Check if user requested AI help
-		if finalModel.requestAIHelp && finalModel.phase == phaseError {
-			// Offer AI help directly without prompting
-			if len(finalModel.errorOutput) > 0 {
-				// Get current directory
-				workingDir, _ := os.Getwd()
+// planRunResult is what a finished plan TUI returns, after handing off to
+// Claude Code if the user pressed [a] on the error screen.
+func planRunResult(m *planProgressModel, offer func(HandoffContext)) error {
+	handedOff := m.launchClaude && m.phase == phaseError
+	if handedOff {
+		offer(m.handoffContext())
+	}
 
-				// Get AWS profile from environment or use default
-				awsProfile := os.Getenv("AWS_PROFILE")
-				if awsProfile == "" {
-					awsProfile = "default"
-				}
-
-				// Get region from environment variable or use default
-				awsRegion := os.Getenv("AWS_REGION")
-				if awsRegion == "" {
-					awsRegion = os.Getenv("AWS_DEFAULT_REGION")
-				}
-				if awsRegion == "" {
-					awsRegion = "us-east-1" // fallback
-				}
-
-				// Extract environment from working directory (e.g., env/dev)
-				envName := "unknown"
-				if strings.Contains(workingDir, "/env/") {
-					parts := strings.Split(workingDir, "/env/")
-					if len(parts) > 1 {
-						envParts := strings.Split(parts[1], "/")
-						if len(envParts) > 0 {
-							envName = envParts[0]
-						}
-					}
-				}
-
-				ctx := ErrorContext{
-					Operation:   "plan",
-					Environment: envName,
-					AWSProfile:  awsProfile,
-					AWSRegion:   awsRegion,
-					Errors:      finalModel.errorOutput,
-					WorkingDir:  workingDir,
-				}
-
-				// Get AI suggestions directly without prompting
-				problem, commands, err := getAIErrorSuggestions(ctx)
-				if err != nil {
-					fmt.Printf("\n❌ Failed to get AI suggestions: %v\n", err)
-				} else {
-					displayAISuggestionsWithContext(problem, commands, finalModel.errorOutput)
-				}
-
-				fmt.Print("\nPress Enter to continue...")
-				fmt.Scanln()
-			}
+	if m.phase == phaseError || m.phase == phaseRecovering {
+		// Include both the error details and the full output for error recovery
+		errorMsg := m.errorDetails
+		if len(m.errorOutput) > 0 {
+			errorMsg = strings.Join(m.errorOutput, "\n")
 		}
-
-		if finalModel.phase == phaseError || finalModel.phase == phaseRecovering {
-			// Include both the error details and the full output for error recovery
-			errorMsg := finalModel.errorDetails
-			if len(finalModel.errorOutput) > 0 {
-				errorMsg = strings.Join(finalModel.errorOutput, "\n")
-			}
-			// Return error so runTerraformApply can attempt recovery
-			return fmt.Errorf("terraform plan failed: %s", errorMsg)
+		if handedOff {
+			// Claude is investigating: runTerraformApply must not recover.
+			return fmt.Errorf("terraform plan failed: %s: %w", errorMsg, errHandedOff)
 		}
+		// Return error so runTerraformApply can attempt recovery
+		return fmt.Errorf("terraform plan failed: %s", errorMsg)
 	}
 
 	return nil

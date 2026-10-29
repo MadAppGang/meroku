@@ -36,7 +36,9 @@ func terraformInit(flags ...string) (string, error) {
 	return "", nil
 }
 
-func terraformInitIfNeeded() {
+// terraformInitIfNeeded runs the pre-flight and `terraform init` in env/<env>.
+// Failures come back tagged "preflight" or "init" for the deploy to report.
+func terraformInitIfNeeded() error {
 	// Get the environment from selectedEnvironment global variable or current directory
 	envName := selectedEnvironment
 	if envName == "" {
@@ -62,9 +64,7 @@ func terraformInitIfNeeded() {
 
 			// CRITICAL: Run pre-flight checks with auto-recovery
 			if err := AWSPreflightCheck(env); err != nil {
-				fmt.Printf("\n%v\n\n", err)
-				fmt.Println("❌ Pre-flight checks failed. Please fix the issues above and try again.")
-				os.Exit(1)
+				return stepErr("preflight", err)
 			}
 		}
 	}
@@ -84,19 +84,39 @@ func terraformInitIfNeeded() {
 			fmt.Println("• Run 'terraform init -reconfigure' manually")
 			fmt.Println("• Check your AWS credentials: aws sts get-caller-identity")
 			fmt.Println("• Verify S3 backend configuration in main.tf")
-			os.Exit(1)
+			return stepErr("init", err)
 		}
 	} else if err != nil {
-		fmt.Printf("Error checking .terraform directory: %v\n", err)
-		os.Exit(1)
+		return stepErr("init", fmt.Errorf("checking the .terraform directory: %w", err))
 	} else {
 		fmt.Println("✅ Terraform already initialized.")
 	}
+	return nil
 }
 
-func runTerraformApply() error {
+// errHandedOff marks a failure the user handed to Claude Code with [a].
+// meroku then leaves the environment alone: no init/-reconfigure recovery or
+// re-plan racing Claude for the state lock and .terraform/.
+var errHandedOff = errors.New("handed off to Claude Code")
+
+// applyPlanStep and applyPlanRecovery are the plan and the recovery-command
+// lookup runTerraformApply uses. Variables so tests can drive the flow without
+// running Terraform.
+var (
+	applyPlanStep     = runTerraformPlanWithProgress
+	applyPlanRecovery = terraformError
+)
+
+// runTerraformApply plans and applies the environment in the current
+// directory (env/<env>). target names that environment and the project root;
+// it is captured before the chdir and only feeds the Claude Code handoff.
+func runTerraformApply(target handoffTarget) error {
 	// Run the new progress TUI for terraform plan
-	err := runTerraformPlanWithProgress()
+	err := applyPlanStep(target)
+	if errors.Is(err, errHandedOff) {
+		// The user chose Claude Code over automatic recovery.
+		return err
+	}
 	if err != nil {
 		// Check if we can recover from the error
 		errString := err.Error()
@@ -106,7 +126,7 @@ func runTerraformApply() error {
 		var commands []string
 
 		for recoverErr == nil && retryCount < maxRetries {
-			commands, recoverErr = terraformError(errString)
+			commands, recoverErr = applyPlanRecovery(errString)
 			if recoverErr != nil {
 				// Cannot recover, error was already shown in TUI
 				return fmt.Errorf("terraform plan failed: %w", err)
@@ -120,7 +140,7 @@ func runTerraformApply() error {
 			} else {
 				fmt.Printf("✅ Attempt %d succeeded.\n", retryCount+1)
 				// Retry the plan with progress TUI
-				return runTerraformApply()
+				return runTerraformApply(target)
 			}
 			retryCount++
 		}
@@ -200,7 +220,7 @@ func runTerraformApply() error {
 	fmt.Println("✅ Terraform plan generated successfully")
 
 	// Show interactive TUI
-	err = showModernTerraformPlanTUI(string(jsonOutput))
+	err = showModernTerraformPlanTUI(string(jsonOutput), target)
 	if err != nil {
 		return fmt.Errorf("error showing plan TUI: %w", err)
 	}

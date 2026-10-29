@@ -88,7 +88,7 @@ func (v *AWSProfileValidator) ValidateProfile(env *Env) ProfileValidationResult 
 		result.Success = false
 		result.Errors = append(result.Errors, fmt.Sprintf("Profile '%s' not found in AWS config", env.AWSProfile))
 		result.Fixable = true
-		result.FixSuggestion = "Run the AWS SSO Setup Wizard or AI Agent to create this profile"
+		result.FixSuggestion = "Run the AWS SSO Setup Wizard, or Fix with AI (Claude Code), to create this profile"
 		return result
 	}
 
@@ -211,7 +211,7 @@ func OfferFix(results []ProfileValidationResult) error {
 	fmt.Println()
 	fmt.Println("How would you like to fix this?")
 	fmt.Println("  [1] Interactive Wizard (step-by-step)")
-	fmt.Println("  [2] AI Agent (automatic)")
+	fmt.Println("  [2] Fix with AI (Claude Code)")
 	fmt.Println("  [3] Skip for now")
 	fmt.Println()
 	fmt.Print("Choice (1-3): ")
@@ -234,14 +234,13 @@ func OfferFix(results []ProfileValidationResult) error {
 		return nil
 
 	case "2":
-		// Run AI agent for each broken profile
+		// One Claude Code handoff per broken profile, each with what the
+		// validator found wrong with it.
 		for _, result := range needsFix {
-			fmt.Printf("\n═══ AI Agent: Setting up profile %s ═══\n\n", result.Profile)
+			fmt.Printf("\n═══ Fix with AI (Claude Code): profile %s ═══\n", result.Profile)
 			envName := strings.TrimSuffix(filepath.Base(result.YAMLPath), ".yaml")
 			yamlEnv, _ := loadEnv(envName)
-			if err := RunSSOAgent(result.Profile, &yamlEnv); err != nil {
-				return fmt.Errorf("AI agent failed: %w", err)
-			}
+			offerSSOHandoff(envName, yamlEnv, result.Profile, result.Errors)
 		}
 		return nil
 
