@@ -1,5 +1,18 @@
 # Changelog
 
+## v4.8.5
+
+### Enter on the Apply Complete screen returns to the main menu
+
+After an apply finished, the footer offered `[Enter] Continue`, but the apply
+view had no Enter handler, so the key did nothing. `Esc` switched to the plan
+dashboard instead of the menu, and only `q` or `Ctrl+C` left the viewer.
+
+Enter now leaves the viewer once terraform has exited, after a successful apply
+and after a failed one, and meroku prints "Returning to main menu...". While an
+apply is still running, Enter does nothing. After a failed apply, `s` still
+launches the AI agent.
+
 ## v4.8.4
 
 ### CI can push to an external backend image repository, when you say so
