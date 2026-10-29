@@ -964,6 +964,10 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if m.currentView == fullScreenDiffView {
 				// Enter or Escape in full-screen diff goes back to dashboard
 				m.currentView = dashboardView
+			} else if m.currentView == applyView && m.applyState != nil && m.applyState.applyComplete {
+				// "[Enter] Continue": terraform has exited, so leave the viewer;
+				// showModernTerraformPlanTUI then returns to the main menu.
+				return m, tea.Quit
 			}
 
 		case key.Matches(msg, m.keys.Down):
