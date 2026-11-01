@@ -1,5 +1,26 @@
 # Changelog
 
+## v4.10.1
+
+### Health check examples that work on slim images
+
+The v4.10.0 example for `health_check_command` used `wget`. Slim and
+distroless images (`oven/bun:*-slim`, `node:*-slim`, `python:*-slim`,
+`gcr.io/distroless/*`) usually have neither `wget` nor `curl`, so that check
+fails on every probe and ECS restarts the task in a loop.
+
+`ai_docs/SERVICE_NETWORK_ACCESS.md` now shows how to check an image for these
+tools, and gives probes that use the runtime already in the image (Bun, Node,
+Python), with no shell needed:
+
+```yaml
+health_check_command: ["CMD", "bun", "--eval", "await fetch('http://127.0.0.1:8080/health/live').then(r => process.exit(r.ok ? 0 : 1))"]
+```
+
+If the Dockerfile has a `HEALTHCHECK`, copy its command. ECS ignores that line,
+but the command is known to work in the image. The warning meroku prints for an
+`internal` or `none` service without a health check no longer suggests `wget`.
+
 ## v4.10.0
 
 ### Choose who can reach each service: `network_access`
