@@ -9,7 +9,9 @@ services:
     network_access: public      # default
   - name: magento-bridge
     network_access: internal
-    health_check_command: "wget -qO- http://localhost:8080/health/live || exit 1"
+    # The image is oven/bun:*-slim, which has no wget or curl, so the probe
+    # uses the runtime that is already there. See "Health check" below.
+    health_check_command: ["CMD", "bun", "--eval", "await fetch('http://127.0.0.1:8080/health/live').then(r => process.exit(r.ok ? 0 : 1))"]
   - name: worker
     network_access: none
 ```
@@ -81,9 +83,35 @@ list. A list that does not start with `CMD` or `CMD-SHELL` is refused at
 generate time, naming the service; ECS would otherwise reject it partway
 through the apply. The YAML keeps the form you wrote when meroku saves it.
 
+### Check that the tool is in the image
+
+Slim and distroless base images usually have no `wget` or `curl`:
+`oven/bun:*-slim`, `node:*-slim`, `python:*-slim`, `gcr.io/distroless/*` and
+`scratch` among them. Check before you write the command:
+
+```bash
+docker run --rm --entrypoint sh <image> -c 'command -v wget curl'
+```
+
+If neither is there, probe with the runtime the image already runs. Use the
+list form, so no shell is needed:
+
+```yaml
+# Bun
+health_check_command: ["CMD", "bun", "--eval", "await fetch('http://127.0.0.1:8080/health/live').then(r => process.exit(r.ok ? 0 : 1))"]
+# Node 18+
+health_check_command: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health/live').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+# Python
+health_check_command: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=4).status == 200 else 1)"]
+```
+
+If the Dockerfile already has a `HEALTHCHECK`, copy its command: ECS ignores
+the Dockerfile's `HEALTHCHECK`, but the command in it is known to work in that
+image.
+
 meroku never invents the command, because the tool it calls must exist in the
-image: a `curl` check on a distroless image fails on every probe, and ECS
-replaces the task in a loop. `meroku` prints a warning at generate time for an
+image: a check whose tool is missing fails on every probe, and ECS replaces the
+task in a loop. `meroku` prints a warning at generate time for an
 `internal` or `none` service without one. When set, it renders as
 `healthCheck` with interval 30s, timeout 5s, 3 retries and a 60s start period.
 When empty, no `healthCheck` key is rendered and the task definition is

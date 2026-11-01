@@ -56,8 +56,10 @@ func validateNetworkAccessConfigMap(envMap map[string]interface{}) error {
 			if cmd, _ := service["health_check_command"].([]interface{}); len(cmd) == 0 {
 				fmt.Printf("⚠️  service '%s' is network_access: %s and has no health_check_command.\n", name, access)
 				fmt.Println("   It is not behind the ALB, so nothing health-checks it: ECS replaces a task only")
-				fmt.Println("   when its process exits. Add a command that works in the image, e.g.")
-				fmt.Println(`   health_check_command: "wget -qO- http://localhost:<port>/health/live || exit 1"`)
+				fmt.Println("   when its process exits. Add a health_check_command that uses a tool the image")
+				fmt.Println("   really has. Slim and distroless images usually have no wget or curl; probe with")
+				fmt.Println("   the runtime instead, or copy the Dockerfile's HEALTHCHECK. Examples:")
+				fmt.Println("   ai_docs/SERVICE_NETWORK_ACCESS.md#check-that-the-tool-is-in-the-image")
 			}
 		}
 	}
