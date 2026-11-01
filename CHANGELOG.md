@@ -1,5 +1,57 @@
 # Changelog
 
+## v4.10.0
+
+### Choose who can reach each service: `network_access`
+
+Each service in `services:` takes a new `network_access` field:
+
+```yaml
+services:
+  - name: magento-bridge
+    network_access: internal
+    health_check_command: "wget -qO- http://localhost:8080/health/live || exit 1"
+```
+
+| Value | Reachable from |
+|---|---|
+| `public` (default) | Only the project's front door: the ALB when `enable_alb` is on, otherwise API Gateway |
+| `internal` | Only inside the VPC. No ALB rule, no API Gateway route |
+| `full_open` | The front door, and the container port on the task's public IP from anywhere (the old behaviour) |
+| `none` | Nobody. For workers |
+
+No value changes outbound traffic or the task's public IP, so image pulls from
+ECR, SSM and CloudWatch Logs work as before.
+
+**Upgrading changes nothing.** Schema v30 writes `network_access: full_open`
+onto every existing service, so your next plan for an untouched environment
+shows no change. Change the value to tighten a service. New services default to
+`public`. Before you apply a change from `full_open` to `internal`, check that
+the plan updates the ECS service in place.
+
+Two holes are closed for services that are not `full_open`:
+
+- Every service used to get a route on API Gateway's public `execute-api` URL,
+  even in ALB projects. `internal` and `none` services no longer get one.
+- Moving a service to `none` now really removes its ingress rule. Before, a
+  security group left with no rules kept the old ones.
+
+### Container health check: `health_check_command`
+
+Optional, per service. A string runs through the container's shell:
+`"curl -f http://localhost:3000/health/live || exit 1"`. For an image with no
+shell, give a list: `["CMD", "/app/healthcheck"]`. `internal` and `none`
+services are no longer behind the ALB, whose health check was the only one
+meroku set up, so meroku warns when they have none. meroku does not make one up,
+because the command has to exist in the image.
+
+The web UI's service panel has a Network Access selector.
+
+### Custom Terraform is additive only
+
+`docs/CUSTOM_EXTENSIONS.md` now says so: custom Terraform can add resources but
+cannot change or remove what meroku's modules create.
+
 ## v4.9.0
 
 ### "Fix with AI" opens Claude Code instead of meroku's own AI
