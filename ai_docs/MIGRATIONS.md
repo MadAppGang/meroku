@@ -44,8 +44,21 @@ The meroku application includes a comprehensive YAML schema migration system tha
 | 26 | EC2 capacity pools | `runtime` (`fargate`\|`ec2`) and `compute_pool` on the backend and services |
 | 27 | Egress strategy | `egress_strategy` (`public_ip`\|`nat_gateway`\|`nat_gateway_ha`), defaulting to `public_ip` |
 | 28 | Shared GitHub OIDC | `workload.github_oidc_create_provider`, defaulting to `true` |
+| 29 | backend_container_command list | `workload.backend_container_command` normalized from a scalar to `list(string)` |
+| 30 | Service network access | `services[].network_access` (`public`\|`internal`\|`full_open`\|`none`); existing services pinned to `full_open` |
 
-Current version: **v28**
+Current version: **v30**
+
+### A note on v30 — the default and the migration disagree on purpose
+
+An absent `network_access` renders as `public` (front door only), because that
+is the right choice for a service someone is adding today. Every service that
+existed before v30 behaved like `full_open` (the container port open to the
+internet as well), so the migration writes `full_open` onto each of them. Both
+choices are needed: without the migration, every existing service would be
+narrowed on its next apply; without the `public` default, new services would
+copy a setting nobody chose. See
+[SERVICE_NETWORK_ACCESS.md](./SERVICE_NETWORK_ACCESS.md).
 
 This table is a transcription, and a transcription rots. The authority is
 `CurrentSchemaVersion` in `app/migrations.go`, with the per-version history in

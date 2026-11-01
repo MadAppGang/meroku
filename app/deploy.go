@@ -480,7 +480,11 @@ func preprocessEnvMap(envMap map[string]interface{}) error {
 
 	synthesizeDefaultComputePool(envMap)
 	assignSESPrimaryDomain(envMap)
+	normalizeHealthCheckCommands(envMap)
 
+	if err := validateNetworkAccessConfigMap(envMap); err != nil {
+		return err
+	}
 	return validateComputeConfigMap(envMap)
 }
 

@@ -54,8 +54,11 @@ resource "aws_lb_listener" "https" {
 # One rule per named service, mirroring API Gateway's `ANY /<name>/{proxy+}` routes so the
 # URL layout is identical on both ingress paths. Priority is derived from the sorted
 # service names, keeping it stable across plans as services are added or removed.
+#
+# The priority indexes ALL service names, not only the ones on the ALB, so moving
+# one service to internal leaves a gap rather than renumbering every rule after it.
 resource "aws_lb_listener_rule" "services" {
-  for_each = { for k, v in local.service_names : k => v if var.enable_alb }
+  for_each = { for k, v in local.service_names : k => v if local.service_on_alb[k] }
 
   listener_arn = aws_lb_listener.https[0].arn
   priority     = index(sort(keys(local.service_names)), each.key) + 10

@@ -166,20 +166,16 @@ func TestMigrateToV29IsIdempotent(t *testing.T) {
 	}
 }
 
-// The version constant, the registered migration list and the newest migration
-// have to agree, or a file migrates to a version whose migration never ran.
-//
-// This check belongs to whichever migration is currently newest. When v30 is
-// added, move it there and leave a registration-only check behind, the way
-// TestV28IsRegistered was left.
-func TestV29IsRegisteredAtTheCurrentVersion(t *testing.T) {
-	if CurrentSchemaVersion != 29 {
-		t.Fatalf("CurrentSchemaVersion = %d, want 29", CurrentSchemaVersion)
+// v29 has to stay in the registry. The current-version check moved to
+// TestV30IsRegisteredAtTheCurrentVersion with the v30 bump.
+func TestV29IsRegistered(t *testing.T) {
+	for _, migration := range AllMigrations {
+		if migration.Version == 29 {
+			if migration.Apply == nil {
+				t.Fatal("the v29 entry has no Apply function")
+			}
+			return
+		}
 	}
-
-	last := AllMigrations[len(AllMigrations)-1]
-	if last.Version != CurrentSchemaVersion {
-		t.Errorf("last registered migration is v%d, but CurrentSchemaVersion is %d",
-			last.Version, CurrentSchemaVersion)
-	}
+	t.Fatal("AllMigrations has no entry for version 29")
 }

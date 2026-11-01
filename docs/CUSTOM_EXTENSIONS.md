@@ -68,6 +68,18 @@ Just need to add a simple resource?
   └─> Use Raw Terraform files
 ```
 
+### Custom code can only add
+
+Every extension type above runs next to the core modules, never inside them.
+Custom Terraform can create new resources and read core outputs, but it cannot
+change, narrow or remove a resource the core modules create. For example, it
+cannot close a service's security group: that group's ingress rules are inline,
+so any rule added from outside is removed on the next apply.
+
+If the core creates something you need changed, the change belongs in the
+template as a YAML setting. For example, a service's firewall is set with
+`services[].network_access`.
+
 ---
 
 ## Step-by-Step Tutorials

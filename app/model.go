@@ -522,6 +522,16 @@ type Service struct {
 	// identically, which is what keeps a pre-v26 config at a zero plan diff.
 	Runtime     string `yaml:"runtime,omitempty"`
 	ComputePool string `yaml:"compute_pool,omitempty"`
+
+	// NetworkAccess (schema v30) is who may open a connection to the container
+	// port: public | internal | full_open | none (see migration_v30.go). Empty
+	// renders as public. Outbound traffic and the public IP never change.
+	NetworkAccess string `yaml:"network_access,omitempty"`
+	// HealthCheckCommand is the container health check: a shell command string,
+	// or a raw ECS list such as ["CMD", "/app/healthcheck"] for images with no
+	// shell. See health_check_command.go. It runs inside the container, so the
+	// tool must exist in the image.
+	HealthCheckCommand HealthCheckCommand `yaml:"health_check_command,omitempty"`
 }
 
 type DNSConfig struct {

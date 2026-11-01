@@ -1,6 +1,103 @@
 locals {
   service_names = { for service in var.services : service.name => service }
 
+  # network_access (schema v30) decides three things per service, and these
+  # three locals are the only place each is decided:
+  #
+  #   value      ALB wiring        API Gateway route   container port open to
+  #   ---------  ----------------  ------------------  -------------------------
+  #   full_open  if enable_alb     always              0.0.0.0/0 + ::/0 (pre-v30)
+  #   public     if enable_alb     if !enable_alb      ALB SG, or the VPC Link
+  #   internal   no                no                  the VPC CIDR
+  #   none       no                no                  nobody
+  #
+  # The API Gateway column is the one that is easy to miss. The services' routes
+  # used to exist unconditionally, ALB or not, and the execute-api URL is public.
+  # Its VPC Link sits inside the VPC, so narrowing the security group to the VPC
+  # CIDR alone would have left an internal service reachable from the internet
+  # through `https://<api-id>.execute-api.<region>.amazonaws.com/<service>/`.
+  #
+  # full_open reproduces the pre-v30 resources exactly; the v30 migration pins
+  # every existing service to it, which is what keeps their plans empty.
+  service_network_access = { for k, v in local.service_names : k => v.network_access }
+
+  service_on_alb = { for k, a in local.service_network_access :
+    k => var.enable_alb && contains(["public", "full_open"], a)
+  }
+
+  service_on_api_gateway = { for k, a in local.service_network_access :
+    k => a == "full_open" || (a == "public" && !var.enable_alb)
+  }
+
+  # The security-group ingress per mode, in attribute form, so every field must
+  # be stated. full_open is the pre-v30 inline rule with the values AWS reads
+  # back for the fields it never set ("" / [] / false), which is what keeps its
+  # plan empty. none is [] — and only the attribute form makes [] mean "remove".
+  service_ingress_rule_template = {
+    description      = ""
+    protocol         = "tcp"
+    cidr_blocks      = []
+    ipv6_cidr_blocks = []
+    prefix_list_ids  = []
+    security_groups  = []
+    self             = false
+  }
+
+  service_ingress_rules = { for k, v in local.service_names : k => {
+    full_open = [merge(local.service_ingress_rule_template, {
+      from_port        = v.container_port
+      to_port          = v.container_port
+      cidr_blocks      = ["0.0.0.0/0"]
+      ipv6_cidr_blocks = ["::/0"]
+    })]
+
+    # Behind the ALB: only the ALB's own security group. Behind API Gateway: the
+    # service's VPC Link carries THIS security group (api_gateway.tf), so
+    # `self` admits the VPC Link and nothing else.
+    public = var.enable_alb ? (var.alb_security_group_id == "" ? [] : [merge(local.service_ingress_rule_template, {
+      from_port       = v.container_port
+      to_port         = v.container_port
+      security_groups = [var.alb_security_group_id]
+      description     = "network_access=public: from the ALB only"
+      })]) : [merge(local.service_ingress_rule_template, {
+      from_port   = v.container_port
+      to_port     = v.container_port
+      self        = true
+      description = "network_access=public: from the API Gateway VPC Link only"
+    })]
+
+    # Anything inside the VPC: other services, the backend, a bastion.
+    internal = [merge(local.service_ingress_rule_template, {
+      from_port   = v.container_port
+      to_port     = v.container_port
+      cidr_blocks = [data.aws_vpc.selected.cidr_block]
+      description = "network_access=internal: from inside the VPC only"
+    })]
+
+    # Replies to the task's own outbound connections still arrive: security
+    # groups are stateful.
+    none = []
+  }[v.network_access] }
+
+  # The container health check, as a map holding at most one key. A `for` with
+  # an `if` rather than `cond ? {healthCheck = ...} : {}`: the two arms of that
+  # conditional are different object types and Terraform refuses to unify them.
+  #
+  # ECS runs the command INSIDE the container, so it must exist in the image —
+  # a curl check on a distroless image fails every time and ECS replaces the
+  # task in a loop. That is why meroku never invents one.
+  service_health_check = { for k, v in local.service_names :
+    k => { for key, hc in {
+      healthCheck = {
+        command     = v.health_check_command
+        interval    = 30
+        timeout     = 5
+        retries     = 3
+        startPeriod = 60
+      }
+    } : key => hc if length(v.health_check_command) > 0 }
+  }
+
   # Target-group names come from modules/naming; see naming.tf for the request
   # map that defines them. Only the lookup lives here.
   service_tg_name          = { for k in keys(local.service_names) : k => module.naming.names["service_tg_${k}"] }
@@ -48,7 +145,7 @@ locals {
 # are complementary, so exactly one exists per service. For every Fargate service
 # local.service_bridge[k] is false and this renders today's set.
 resource "aws_lb_target_group" "services" {
-  for_each = { for k, v in local.service_names : k => v if var.enable_alb && !local.service_bridge[k] }
+  for_each = { for k, v in local.service_names : k => v if local.service_on_alb[k] && !local.service_bridge[k] }
 
   name        = local.service_tg_name[each.key]
   port        = each.value.container_port
@@ -96,7 +193,7 @@ resource "aws_lb_target_group" "services" {
 # follows the registration with no further change, and ec2_capacity.tf's instance
 # security group opens 32768-65535 from the ALB for exactly this.
 resource "aws_lb_target_group" "services_instance" {
-  for_each = { for k, v in local.service_names : k => v if var.enable_alb && local.service_bridge[k] }
+  for_each = { for k, v in local.service_names : k => v if local.service_on_alb[k] && local.service_bridge[k] }
 
   # 32 characters is the AWS limit for a target-group name, and both groups exist
   # at once while a service is being flipped between runtimes, so the names must
@@ -234,8 +331,12 @@ resource "aws_ecs_service" "services" {
     }
   }
 
+  # local.service_on_alb is var.enable_alb for public and full_open services, so
+  # every pre-v30 service renders the block exactly as before. Removing it from
+  # a live service (moving it to internal or none) is an in-place UpdateService
+  # under provider >= 5.x, not a replacement.
   dynamic "load_balancer" {
-    for_each = var.enable_alb ? [1] : []
+    for_each = local.service_on_alb[each.key] ? [1] : []
     content {
       target_group_arn = local.service_target_group_arns[each.key]
       container_name   = "${var.project}_service_${each.key}_${var.env}"
@@ -318,9 +419,12 @@ resource "aws_ecs_task_definition" "services" {
     }
   }
 
+  # merge() with local.service_health_check adds a healthCheck key only when the
+  # service sets health_check_command. Without one the container JSON, and so
+  # the task definition, is byte-identical to what it was before v30.
   container_definitions = jsonencode(concat(
     each.value.xray_enabled ? local.xray_service_container : [],
-    [{
+    [merge({
       name   = "${var.project}_service_${each.key}_${var.env}"
       cpu    = each.value.cpu
       memory = each.value.memory
@@ -378,7 +482,7 @@ resource "aws_ecs_task_definition" "services" {
         hostPort      = local.service_bridge[each.key] ? 0 : each.value.host_port
         name          = "${var.project}_service_${each.key}_${var.env}"
       }]
-    }]
+    }, local.service_health_check[each.key])]
   ))
 
   tags = {
@@ -502,13 +606,17 @@ resource "aws_security_group" "services" {
   name   = "${var.project}_service_${each.key}_${var.env}"
   vpc_id = var.vpc_id
 
-  ingress {
-    protocol         = "tcp"
-    from_port        = each.value.container_port
-    to_port          = each.value.container_port
-    cidr_blocks      = ["0.0.0.0/0"]
-    ipv6_cidr_blocks = ["::/0"]
-  }
+  # `ingress` is written as an ATTRIBUTE, not as blocks, and that is load
+  # bearing. On aws_security_group the argument is optional AND computed: a
+  # resource with zero `ingress {}` blocks does not mean "no rules", it means
+  # "not managed", and the rules already on the group stay. Moving a full_open
+  # service to none with dynamic blocks would have planned no change and left
+  # 0.0.0.0/0 open. An attribute set to [] removes every rule.
+  #
+  # The rules are inline on purpose: an inline set is authoritative, so the
+  # group holds exactly what the chosen mode allows and nothing a hand-added
+  # rule left behind. See local.service_ingress_rules for the rule per mode.
+  ingress = local.service_ingress_rules[each.key]
 
   egress {
     protocol         = "-1"

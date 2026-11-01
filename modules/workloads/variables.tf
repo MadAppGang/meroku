@@ -398,6 +398,27 @@ variable "services" {
     # exact failure mode app/autodeploy_template_test.go was written to catch.
     runtime      = optional(string, "fargate")
     compute_pool = optional(string, "")
+    # Who may open a connection to the container port (schema v30). Outbound
+    # traffic and the task's public IP are the same in every mode. See
+    # local.service_network_access in services.tf for what each value creates.
+    #   public    — only through the project's front door: the ALB when
+    #               enable_alb is on, otherwise API Gateway. The default.
+    #   internal  — only from inside the VPC. No ALB, no API Gateway route.
+    #   full_open — front door AND the container port open to the internet.
+    #               What every service got before v30; the migration pins
+    #               existing services to it so their plans do not change.
+    #   none      — no inbound connections at all (workers).
+    # Same load-bearing rule as runtime above: undeclared here, the field is
+    # dropped by object conversion and every service silently gets "public".
+    network_access = optional(string, "public")
+    # Container health check command, always in ECS list form here:
+    # ["CMD-SHELL", "<shell command>"] or ["CMD", "<program>", "<args>"...].
+    # The YAML also accepts a plain string; meroku turns it into the CMD-SHELL
+    # form before rendering (app/health_check_command.go). Empty renders no
+    # healthCheck key, so the task definition is unchanged.
+    # internal/none services have no ALB health check, so this is the only way
+    # ECS learns that a running task is unhealthy.
+    health_check_command = optional(list(string), [])
     env_files_s3 = optional(list(object({
       bucket = string
       key    = string
@@ -410,6 +431,13 @@ variable "services" {
     }))
   }))
   default = []
+
+  validation {
+    condition = alltrue([
+      for s in var.services : contains(["public", "internal", "full_open", "none"], s.network_access)
+    ])
+    error_message = "services[].network_access must be one of: public, internal, full_open, none."
+  }
 }
 
 

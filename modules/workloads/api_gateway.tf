@@ -11,9 +11,11 @@ resource "aws_apigatewayv2_api" "api_gateway" {
   }
 }
 
-# VPC Links for services
+# VPC Links for services. Only for services whose network_access puts them on
+# API Gateway; see local.service_on_api_gateway in services.tf. Every pre-v30
+# service is full_open, which is always on it, so the set is unchanged for them.
 resource "aws_apigatewayv2_vpc_link" "services" {
-  for_each = local.service_names
+  for_each = { for k, v in local.service_names : k => v if local.service_on_api_gateway[k] }
 
   name               = "${var.project}-${each.key}-${var.env}"
   security_group_ids = [aws_security_group.services[each.key].id]
@@ -45,7 +47,7 @@ resource "aws_apigatewayv2_vpc_link" "backend" {
 
 # Integrations for services
 resource "aws_apigatewayv2_integration" "services" {
-  for_each = local.service_names
+  for_each = { for k, v in local.service_names : k => v if local.service_on_api_gateway[k] }
 
   api_id             = aws_apigatewayv2_api.api_gateway.id
   integration_type   = "HTTP_PROXY"
@@ -62,7 +64,7 @@ resource "aws_apigatewayv2_integration" "services" {
 
 # Routes for services
 resource "aws_apigatewayv2_route" "services" {
-  for_each = local.service_names
+  for_each = { for k, v in local.service_names : k => v if local.service_on_api_gateway[k] }
 
   api_id    = aws_apigatewayv2_api.api_gateway.id
   route_key = "ANY /${each.key}/{proxy+}"

@@ -8,7 +8,10 @@ import {
 import { useId } from "react";
 import type { AccountInfo } from "../api/infrastructure";
 import type { ComponentNode } from "../types";
-import type { YamlInfrastructureConfig } from "../types/yamlConfig";
+import type {
+	ServiceNetworkAccess,
+	YamlInfrastructureConfig,
+} from "../types/yamlConfig";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Badge } from "./ui/badge";
 import {
@@ -20,8 +23,45 @@ import {
 } from "./ui/card";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "./ui/select";
 import { Separator } from "./ui/separator";
 import { Switch } from "./ui/switch";
+
+const NETWORK_ACCESS_OPTIONS: Array<{
+	value: ServiceNetworkAccess;
+	label: string;
+	description: string;
+}> = [
+	{
+		value: "public",
+		label: "Public",
+		description:
+			"Reachable only through the project's front door (the ALB, or API Gateway when the ALB is off).",
+	},
+	{
+		value: "internal",
+		label: "Internal",
+		description:
+			"Reachable only from inside the VPC. Not on the ALB or API Gateway.",
+	},
+	{
+		value: "full_open",
+		label: "Full open",
+		description:
+			"Front door, and the container port open to the whole internet on the task's public IP.",
+	},
+	{
+		value: "none",
+		label: "None",
+		description: "No inbound connections at all, for workers.",
+	},
+];
 
 interface ServicePropertiesProps {
 	config: YamlInfrastructureConfig;
@@ -150,6 +190,58 @@ export function ServiceProperties({
 						</AlertDescription>
 					</Alert>
 				)}
+
+				<Separator />
+
+				{/* Network Access (schema v30) */}
+				<div className="space-y-2">
+					<Label htmlFor={`${uid}-network-access`}>Network Access</Label>
+					<Select
+						value={serviceConfig.network_access ?? "public"}
+						onValueChange={(value) =>
+							handleServiceChange({
+								network_access: value as ServiceNetworkAccess,
+							})
+						}
+					>
+						<SelectTrigger
+							id={`${uid}-network-access`}
+							className="bg-gray-800 border-gray-600 text-white"
+						>
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							{NETWORK_ACCESS_OPTIONS.map((option) => (
+								<SelectItem key={option.value} value={option.value}>
+									{option.label}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+					<p className="text-xs text-gray-500">
+						{
+							NETWORK_ACCESS_OPTIONS.find(
+								(o) => o.value === (serviceConfig.network_access ?? "public"),
+							)?.description
+						}{" "}
+						Outbound traffic is the same in every mode.
+					</p>
+				</div>
+
+				{(serviceConfig.network_access === "internal" ||
+					serviceConfig.network_access === "none") &&
+					!serviceConfig.health_check_command?.length && (
+						<Alert className="border-yellow-600 bg-yellow-900/20">
+							<AlertTriangle className="h-4 w-4 text-yellow-400" />
+							<AlertDescription className="text-xs text-gray-300">
+								This service is not behind the ALB, so nothing health-checks it:
+								ECS replaces a task only when its process exits. Add
+								<code className="mx-1">health_check_command</code>
+								to the service in the YAML, using a tool that exists in the
+								image.
+							</AlertDescription>
+						</Alert>
+					)}
 
 				<Separator />
 

@@ -40,7 +40,8 @@ import (
 // 27: Add egress_strategy (public_ip|nat_gateway|nat_gateway_ha) for how tasks reach the internet
 // 28: Add workload.github_oidc_create_provider, for sharing one account's GitHub OIDC provider
 // 29: Normalize workload.backend_container_command from a scalar to list(string)
-const CurrentSchemaVersion = 29
+// 30: Add services[].network_access (public|internal|full_open|none); existing services pinned to full_open
+const CurrentSchemaVersion = 30
 
 // EnvWithVersion extends Env with a schema version field
 type EnvWithVersion struct {
@@ -196,6 +197,11 @@ var AllMigrations = []Migration{
 		Version:     29,
 		Description: "Normalize workload.backend_container_command from a scalar to list(string)",
 		Apply:       migrateToV29,
+	},
+	{
+		Version:     30,
+		Description: "Add services[].network_access, pinning existing services to full_open (existing behaviour)",
+		Apply:       migrateToV30,
 	},
 }
 

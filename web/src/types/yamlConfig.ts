@@ -21,6 +21,15 @@ export interface ECRConfig {
 export type ComputeRuntime = "fargate" | "ec2";
 
 /**
+ * services[].network_access (schema v30). Absent means "public".
+ * - public: only through the project's front door (ALB, else API Gateway)
+ * - internal: only from inside the VPC
+ * - full_open: front door AND the container port open to the internet
+ * - none: no inbound connections
+ */
+export type ServiceNetworkAccess = "public" | "internal" | "full_open" | "none";
+
+/**
  * A pool's task networking mode (schema v26).
  *
  * A union rather than `string` so the editor's control and the type cannot
@@ -447,6 +456,13 @@ export interface YamlInfrastructureConfig {
 		 */
 		runtime?: ComputeRuntime;
 		compute_pool?: string;
+		/** Who may connect to the container port (schema v30). Absent means "public". */
+		network_access?: ServiceNetworkAccess;
+		/**
+		 * Container health check: a shell command string, or the raw ECS list
+		 * form such as ["CMD", "/app/healthcheck"] for images with no shell.
+		 */
+		health_check_command?: string | string[];
 	}>;
 
 	// S3 Buckets
