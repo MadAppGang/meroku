@@ -1,5 +1,22 @@
 # Changelog
 
+## v4.10.3
+
+### `meroku update-infra` is now `meroku update`
+
+The command that brings a project's `infrastructure/` up to the binary's
+version is now called `meroku update`. The upgrade steps are:
+
+```bash
+brew upgrade meroku
+meroku update
+meroku generate dev
+```
+
+`meroku update-infra` still works, but it is no longer listed in `meroku help`.
+The message meroku prints when `infrastructure/` is older than the binary now
+names `meroku update`.
+
 ## v4.10.2
 
 ### meroku refuses to generate against an older `infrastructure/`
