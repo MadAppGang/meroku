@@ -262,3 +262,69 @@ run "alb_project_wires_only_front_door_services_to_the_alb" {
     error_message = "network_access must never change assign_public_ip."
   }
 }
+
+# ---------------------------------------------------------------------------
+# An ALB project whose services run in bridge mode on an EC2 pool.
+#
+# The run above pins the Fargate half of MTL-359: every fixture service is
+# awsvpc, so aws_lb_target_group.services_instance is never planned there. This
+# run replaces the service list with two services on one bridge-mode pool, the
+# only thing that routes a service to the "instance" target group. The shared
+# list stays as it is: the run above indexes all its names for priorities.
+# ---------------------------------------------------------------------------
+run "alb_project_keeps_bridge_mode_target_groups_off_the_alb" {
+  command = plan
+
+  variables {
+    enable_alb                 = true
+    alb_arn                    = "arn:aws:elasticloadbalancing:us-east-1:000000000000:loadbalancer/app/mock/0000000000000000"
+    alb_security_group_id      = "sg-0a1b0000000000000"
+    subdomains_certificate_arn = "arn:aws:acm:us-east-1:000000000000:certificate/00000000-0000-0000-0000-000000000000"
+    domain_zone_id             = "Z00000000000000000000"
+
+    compute_pools = [
+      { name = "general", instance_types = ["t3.small"], network_mode = "bridge" },
+    ]
+
+    services = [
+      { name = "front", network_access = "full_open", runtime = "ec2", compute_pool = "general", docker_image = "public.ecr.aws/nginx/nginx:stable" },
+      { name = "back", network_access = "internal", runtime = "ec2", compute_pool = "general", docker_image = "public.ecr.aws/nginx/nginx:stable" },
+    ]
+  }
+
+  override_resource {
+    target = null_resource.build_ci_lambda
+  }
+
+  # Guards the premise: with neither service in bridge mode, the asserts below
+  # would be checking an empty services_instance for the wrong reason.
+  assert {
+    condition     = local.service_bridge["front"] && local.service_bridge["back"]
+    error_message = "Both services must be bridge-mode for this run to test services_instance. Got ${jsonencode(local.service_network_modes)}."
+  }
+
+  # REGRESSION: MTL-359 — bridge-mode target group must outlive the service's time on the ALB
+  # Same failure as the Fargate case, on the "instance" twin: if moving a
+  # bridge-mode service to internal or none deletes its target group, Terraform
+  # deletes it in the same apply before the UpdateService that drops
+  # load_balancer, and ECS never stops the old task.
+  assert {
+    condition     = sort(keys(aws_lb_target_group.services_instance)) == tolist(["back", "front"])
+    error_message = "With the ALB on, every bridge-mode service needs an instance target group whatever its network_access. A target group deleted in the same apply as the service leaves the ALB strands the old ECS task (MTL-359). Got ${jsonencode(sort(keys(aws_lb_target_group.services_instance)))}, want [\"back\",\"front\"]."
+  }
+
+  assert {
+    condition     = length(aws_lb_target_group.services) == 0
+    error_message = "A bridge-mode service must get the \"instance\" target group, never the \"ip\" one: target_type is ForceNew. Got ${jsonencode(sort(keys(aws_lb_target_group.services)))} in aws_lb_target_group.services."
+  }
+
+  assert {
+    condition     = sort(keys(aws_lb_listener_rule.services)) == tolist(["front"])
+    error_message = "Only the full_open service gets a listener rule. An internal service with a rule is reachable from the internet through the ALB. Got ${jsonencode(sort(keys(aws_lb_listener_rule.services)))}."
+  }
+
+  assert {
+    condition     = length(aws_ecs_service.services["front"].load_balancer) == 1 && length(aws_ecs_service.services["back"].load_balancer) == 0
+    error_message = "Only the full_open service may carry a load_balancer block. The internal one keeps its target group so the old task can be deregistered, but must not be registered in it."
+  }
+}

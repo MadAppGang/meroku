@@ -153,7 +153,9 @@ Moving a service from `full_open` to `internal`:
   replaced).
 - `aws_lb_listener_rule.services["<name>"]`: destroyed.
 - `aws_lb_target_group.services["<name>"]`: no change. It stays while
-  `enable_alb` is on.
+  `enable_alb` is on. A service on an EC2 pool in `bridge` network mode uses
+  `aws_lb_target_group.services_instance["<name>"]` (target type `instance`)
+  instead, and it stays the same way.
 - `aws_ecs_service.services["<name>"]`: `load_balancer` removed. Under the
   pinned provider (`>= 5.34, < 6`) this is an in-place `UpdateService`, which
   triggers a rolling deployment. Check the plan says `update in-place` and not
