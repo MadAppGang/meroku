@@ -1,5 +1,41 @@
 # Changelog
 
+## v4.10.2
+
+### meroku refuses to generate against an older `infrastructure/`
+
+Homebrew upgrades the meroku binary, but a project's `infrastructure/` folder
+(meroku's Terraform modules) changes only when you update it. A newer binary
+used with older modules wrote settings the modules did not know, and Terraform
+dropped them without a message. Setting `network_access` on a project still at
+v4.9.0 modules gave a plan with "No changes".
+
+Generation now stops when `infrastructure/version.txt` is older than the binary:
+
+```
+infrastructure/ is v4.9.0, meroku is v4.10.2.
+...
+Update it to match this binary:
+
+    meroku update-infra
+```
+
+Set `MEROKU_ALLOW_INFRA_MISMATCH=1` to generate against older modules on
+purpose. If `infrastructure/` is newer than the binary, meroku only warns.
+
+### `meroku update-infra`
+
+Replaces `infrastructure/` without the interactive "Check for updates" screen,
+so scripts, CI and agents can use it. With no argument it installs the release
+that matches the binary (tag `v<version>`), so the binary and the modules always
+match. `meroku update-infra main` or any tag or branch also works.
+
+The old copy stays in place until the new one is fully downloaded. Before, the
+update deleted `infrastructure/` first, so a failed download (no network, or a
+tag that does not exist) left the project with no modules. A symlinked
+`infrastructure/` (a developer's meroku checkout) is refused rather than
+replaced. The same safer update is used by the TUI.
+
 ## v4.10.1
 
 ### Health check examples that work on slim images
