@@ -18,12 +18,18 @@ services:
 
 ## The four values
 
-| Value | Reachable from | ALB target group, listener rule, `load_balancer` | API Gateway route, integration, VPC Link | Security group ingress on the container port |
+| Value | Reachable from | ALB listener rule, `load_balancer` | API Gateway route, integration, VPC Link | Security group ingress on the container port |
 |---|---|---|---|---|
 | `public` *(default)* | the project's front door only | if `enable_alb` | if `enable_alb` is off | the ALB's security group, or the service's own group (`self`, which is what the VPC Link carries) |
 | `internal` | inside the VPC only | no | no | the VPC CIDR |
 | `full_open` | front door, and the task's public IP directly | if `enable_alb` | always | `0.0.0.0/0` and `::/0` |
 | `none` | nobody | no | no | none |
+
+The ALB target group is not in the table: it exists for every service while
+`enable_alb` is on, whatever the value. Only the listener rule and the
+service's `load_balancer` block follow the value, and they are what put a
+service on the ALB. A target group with no listener rule receives no traffic.
+See "Why the target group stays" below.
 
 The decisions are made in three locals in `modules/workloads/services.tf`:
 `service_on_alb`, `service_on_api_gateway` and `service_ingress_rules`.
@@ -59,9 +65,9 @@ asserts that `none` plans a known, empty set.
 
 ECS runs a container health check inside the container. Before v30 the only
 health check was the ALB target group's (`/health/live`). An `internal` or
-`none` service has no target group, so without `health_check_command` ECS
-replaces a task only when its process exits. A task that is running but hung
-stays in service.
+`none` service is not registered in a target group, so without
+`health_check_command` ECS replaces a task only when its process exits. A task
+that is running but hung stays in service.
 
 `health_check_command` takes one of two forms:
 
@@ -145,9 +151,9 @@ Moving a service from `full_open` to `internal`:
 
 - `aws_security_group.services["<name>"]`: updated in place (ingress rule
   replaced).
-- `aws_lb_listener_rule.services["<name>"]` and
-  `aws_lb_target_group.services["<name>"]`: destroyed. The listener rule goes
-  first, because the target group cannot be deleted while a rule references it.
+- `aws_lb_listener_rule.services["<name>"]`: destroyed.
+- `aws_lb_target_group.services["<name>"]`: no change. It stays while
+  `enable_alb` is on.
 - `aws_ecs_service.services["<name>"]`: `load_balancer` removed. Under the
   pinned provider (`>= 5.34, < 6`) this is an in-place `UpdateService`, which
   triggers a rolling deployment. Check the plan says `update in-place` and not
@@ -155,25 +161,36 @@ Moving a service from `full_open` to `internal`:
 - `aws_apigatewayv2_route`, `_integration` and `_vpc_link` for the service:
   destroyed.
 
+After the apply, ECS starts the new task, then deregisters the old one from the
+target group and stops it by itself, about 1-2 minutes after the new task is
+running. The target group has no listener rule, so the old target's state is
+`unused` and deregistration does not wait the 300 s deregistration delay.
+
 Listener rule priorities are computed over all service names, so removing one
 service from the ALB leaves a gap and does not renumber the others.
 
-### Known issue: the old task is not stopped after leaving the ALB
+### Why the target group stays
 
-Seen on the first real migration (magento-bridge, `full_open` → `internal`,
-2026-11-03). The apply succeeds, the new task starts and becomes HEALTHY, but
-the old task keeps running, and ECS logs no event about it:
+meroku v4.10.0 to v4.10.3 deleted the target group in the same apply that
+moved a service to `internal` or `none`. Terraform deleted it before the
+`UpdateService` that removes `load_balancer`, because the service's stored
+state lists the target group as a dependency, and Terraform orders the update
+of a resource after the destroy of its dependencies. ECS then could not
+deregister the old task from a target group that no longer existed, and never
+stopped it: the old deployment stayed at `desired 0, running 1`, the old task
+at `desiredStatus RUNNING`, and ECS logged no event (MTL-359).
 
-- the new deployment stays `IN_PROGRESS`;
-- the old deployment shows `desired 0, running 1`;
-- the old task stays at `desiredStatus RUNNING`.
+The module now keeps the target group for every service while `enable_alb` is
+on. Only the listener rule and the `load_balancer` block follow
+`network_access`.
 
-Cause: the same apply removes the service's `load_balancer` and destroys the
-target group. `UpdateService` returns before ECS has drained the old task, and
-Terraform then deletes the target group the old task is still registered in.
-ECS does not finish the deregistration on its own.
+An environment that already moved a service to `internal` or `none` on
+v4.10.0 to v4.10.3 gets a one-time plan that creates an empty target group for
+that service. It is a create only: nothing is destroyed or replaced, and the
+new group has no listener rule, so nothing is exposed.
 
-Fix it by stopping the old task. The new task is already serving:
+If you are still on v4.10.0 to v4.10.3 modules and the old task is stuck,
+stop it. The new task is already serving:
 
 ```bash
 aws ecs list-tasks --cluster <project>_cluster_<env> --service-name <project>_service_<name>_<env>
@@ -182,8 +199,12 @@ aws ecs stop-task  --cluster <project>_cluster_<env> --task <old-task-arn> --rea
 
 ECS then logs `deregistered 1 targets`, and the deployment reaches a steady
 state about 2.5 minutes later. The old task stops with `stopCode
-UserInitiated`. Changing the module so that one apply is enough is tracked
-separately.
+UserInitiated`.
+
+Remaining limitation: turning `enable_alb` off while services are running
+deletes every target group, the listener rule and every `load_balancer` block
+in one apply. That is expected to strand the old tasks in the same way. It has
+not been verified.
 
 ## Limitations
 

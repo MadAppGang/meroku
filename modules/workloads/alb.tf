@@ -23,6 +23,10 @@ locals {
   # local.service_bridge entry is false, so both selectors resolve to exactly the
   # resource that is referenced today.
   #
+  # Every service has a target group while enable_alb is on, whatever its
+  # network_access; only the listener rule and the load_balancer block follow
+  # local.service_on_alb (MTL-359, see services.tf).
+  #
   # try(...) covers enable_alb = false, where every target group has count or
   # for_each zero and a bare index would be an error at plan time rather than a
   # null nobody reads.
@@ -57,6 +61,10 @@ resource "aws_lb_listener" "https" {
 #
 # The priority indexes ALL service names, not only the ones on the ALB, so moving
 # one service to internal leaves a gap rather than renumbering every rule after it.
+#
+# This rule, not the target group, is what puts a service on the ALB: it is gated
+# on local.service_on_alb, while the target group stays for as long as enable_alb
+# is on.
 resource "aws_lb_listener_rule" "services" {
   for_each = { for k, v in local.service_names : k => v if local.service_on_alb[k] }
 

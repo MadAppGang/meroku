@@ -4,12 +4,17 @@ locals {
   # network_access (schema v30) decides three things per service, and these
   # three locals are the only place each is decided:
   #
-  #   value      ALB wiring        API Gateway route   container port open to
+  #   value      ALB rule + LB     API Gateway route   container port open to
   #   ---------  ----------------  ------------------  -------------------------
   #   full_open  if enable_alb     always              0.0.0.0/0 + ::/0 (pre-v30)
   #   public     if enable_alb     if !enable_alb      ALB SG, or the VPC Link
   #   internal   no                no                  the VPC CIDR
   #   none       no                no                  nobody
+  #
+  # "ALB rule + LB" is the listener rule and the service's load_balancer block.
+  # The target group is NOT in this table: it exists for every service while
+  # enable_alb is on, whatever network_access says (MTL-359, see
+  # aws_lb_target_group.services below).
   #
   # The API Gateway column is the one that is easy to miss. The services' routes
   # used to exist unconditionally, ALB or not, and the execute-api URL is public.
@@ -21,6 +26,8 @@ locals {
   # every existing service to it, which is what keeps their plans empty.
   service_network_access = { for k, v in local.service_names : k => v.network_access }
 
+  # Gates the listener rule and the load_balancer block only, never the target
+  # group.
   service_on_alb = { for k, a in local.service_network_access :
     k => var.enable_alb && contains(["public", "full_open"], a)
   }
@@ -144,8 +151,18 @@ locals {
 # the separate "instance" resource below instead; the two for_each expressions
 # are complementary, so exactly one exists per service. For every Fargate service
 # local.service_bridge[k] is false and this renders today's set.
+#
+# Gated on var.enable_alb, not local.service_on_alb: the target group outlives
+# the service's time on the ALB (MTL-359). When moving a service to internal or
+# none deleted it in the same apply, Terraform deleted it BEFORE the
+# UpdateService that drops load_balancer, because the service's stored-state
+# dependency orders the update after the destroy. ECS then never stopped the
+# old task. A target group with no listener rule costs nothing and receives no
+# traffic; its target shows "unused", so deregistration skips the
+# deregistration delay. The old task still stops about 1-2 minutes after the
+# new task is running.
 resource "aws_lb_target_group" "services" {
-  for_each = { for k, v in local.service_names : k => v if local.service_on_alb[k] && !local.service_bridge[k] }
+  for_each = { for k, v in local.service_names : k => v if var.enable_alb && !local.service_bridge[k] }
 
   name        = local.service_tg_name[each.key]
   port        = each.value.container_port
@@ -192,8 +209,10 @@ resource "aws_lb_target_group" "services" {
 # and that overrides it. health_check already probes "traffic-port", so it
 # follows the registration with no further change, and ec2_capacity.tf's instance
 # security group opens 32768-65535 from the ALB for exactly this.
+#
+# Gated on var.enable_alb for the same reason as the "ip" group above (MTL-359).
 resource "aws_lb_target_group" "services_instance" {
-  for_each = { for k, v in local.service_names : k => v if local.service_on_alb[k] && local.service_bridge[k] }
+  for_each = { for k, v in local.service_names : k => v if var.enable_alb && local.service_bridge[k] }
 
   # 32 characters is the AWS limit for a target-group name, and both groups exist
   # at once while a service is being flipped between runtimes, so the names must
@@ -334,7 +353,8 @@ resource "aws_ecs_service" "services" {
   # local.service_on_alb is var.enable_alb for public and full_open services, so
   # every pre-v30 service renders the block exactly as before. Removing it from
   # a live service (moving it to internal or none) is an in-place UpdateService
-  # under provider >= 5.x, not a replacement.
+  # under provider >= 5.x, not a replacement. The target group is kept (it
+  # follows var.enable_alb), so ECS can deregister and stop the old task.
   dynamic "load_balancer" {
     for_each = local.service_on_alb[each.key] ? [1] : []
     content {

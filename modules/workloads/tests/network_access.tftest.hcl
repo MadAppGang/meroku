@@ -185,9 +185,18 @@ run "alb_project_wires_only_front_door_services_to_the_alb" {
     target = null_resource.build_ci_lambda
   }
 
+  # REGRESSION: MTL-359 — old ECS task never stopped after a service left the ALB — Fixed in /dev:fix session dev-fix-20261102-115054-mtl359
+  # The target group must not follow network_access. If moving a service from
+  # public/full_open to internal/none deletes its target group, Terraform deletes
+  # it in the same apply before the UpdateService that drops load_balancer, and
+  # ECS never stops the old task. The listener-rule and load_balancer asserts
+  # below are what keep internal and none services off the ALB.
+  # Every fixture service is Fargate/awsvpc ("bridge" is only a name; it has no
+  # runtime = "ec2"), so all five keys belong in services, and none in
+  # services_instance.
   assert {
-    condition     = sort(keys(aws_lb_target_group.services)) == tolist(["implied", "legacy", "web"])
-    error_message = "Only public and full_open services get an ALB target group. Got ${jsonencode(sort(keys(aws_lb_target_group.services)))}."
+    condition     = sort(keys(aws_lb_target_group.services)) == tolist(["bridge", "implied", "legacy", "web", "worker"]) && length(aws_lb_target_group.services_instance) == 0
+    error_message = "With the ALB on, every awsvpc service needs an ALB target group whatever its network_access. A target group deleted in the same apply as the service leaves the ALB strands the old ECS task (MTL-359). Got ${jsonencode(sort(keys(aws_lb_target_group.services)))}, want [\"bridge\",\"implied\",\"legacy\",\"web\",\"worker\"]."
   }
 
   assert {

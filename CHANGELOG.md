@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Fixed: the old task is stopped after a service leaves the ALB (MTL-359)
+
+Moving a service from `public` or `full_open` to `internal` or `none` in an
+ALB project deleted its target group in the same apply. Terraform deleted it
+before the ECS service update, and ECS then never stopped the old task: it
+kept running until someone ran `aws ecs stop-task`.
+
+The target group now exists for every service while `enable_alb` is on,
+whatever `network_access` says. Only the listener rule and the service's
+`load_balancer` block follow `network_access`. ECS now deregisters and stops
+the old task by itself, about 1-2 minutes after the new task is running.
+
+An environment that already moved a service to `internal` or `none` on
+v4.10.0 to v4.10.3 gets a one-time plan that creates an empty target group for
+that service. Nothing is destroyed or exposed.
+
 ## v4.10.3
 
 ### `meroku update-infra` is now `meroku update`
