@@ -123,6 +123,12 @@ next deploy, not on the `terraform apply` that registers it.
 
 ## Upgrading: the v30 migration
 
+First bring the project's `infrastructure/` to the same version as the binary:
+`meroku update-infra`. Older modules do not declare `network_access`, and
+Terraform drops undeclared fields silently, so the plan would show no change.
+Since v4.10.2 `meroku generate` refuses to run against an older
+`infrastructure/`.
+
 An absent value renders as `public`. Every service that existed before v30
 behaved like `full_open`, so the v30 migration writes `network_access:
 full_open` onto each existing service. An untouched environment plans no

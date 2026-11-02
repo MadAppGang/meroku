@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -207,17 +206,16 @@ func getProjectName() string {
 
 // infrastructureCloneURL is the repository a new project's infrastructure/
 // directory is cloned from.
-const infrastructureCloneURL = "https://github.com/MadAppGang/meroku.git"
+var infrastructureCloneURL = "https://github.com/MadAppGang/meroku.git"
 
+// initProject installs meroku's main branch as infrastructure/, for a new
+// project and for the TUI's "Check for updates". replaceInfrastructure keeps
+// the old copy until the new one is complete.
 func initProject() {
-	os.RemoveAll("./infrastructure/")
-	cmd := exec.Command("git", "clone", "--depth=1", "--branch=main", infrastructureCloneURL, "./infrastructure")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		fmt.Println("Error cloning infrastructure:", output)
+	if err := replaceInfrastructure("main"); err != nil {
+		fmt.Println("Error cloning infrastructure:", err)
 		os.Exit(1)
 	}
-	os.RemoveAll("./infrastructure/.git")
 }
 
 func initProjectIfNeeded() {

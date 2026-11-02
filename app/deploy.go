@@ -353,6 +353,12 @@ func handleGenerateCommand(args []string) error {
 // Code handoff and `meroku generate` can exit 1. A YAML that does not load or
 // migrate is tagged as the "migration" step.
 func applyTemplate(env string) error {
+	// Before anything is migrated or rendered: an infrastructure/ older than
+	// this binary drops new settings silently. See checkInfrastructureVersion.
+	if err := checkInfrastructureVersion(); err != nil {
+		return err
+	}
+
 	// Read the template file
 	templateFile := filepath.Join("infrastructure", "env", "main.hbs")
 	templateContent, err := os.ReadFile(templateFile)
