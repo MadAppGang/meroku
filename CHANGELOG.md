@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v4.10.4
 
 ### Fixed: the old task is stopped after a service leaves the ALB (MTL-359)
 
