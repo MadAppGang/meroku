@@ -158,6 +158,33 @@ Moving a service from `full_open` to `internal`:
 Listener rule priorities are computed over all service names, so removing one
 service from the ALB leaves a gap and does not renumber the others.
 
+### Known issue: the old task is not stopped after leaving the ALB
+
+Seen on the first real migration (magento-bridge, `full_open` → `internal`,
+2026-11-03). The apply succeeds, the new task starts and becomes HEALTHY, but
+the old task keeps running, and ECS logs no event about it:
+
+- the new deployment stays `IN_PROGRESS`;
+- the old deployment shows `desired 0, running 1`;
+- the old task stays at `desiredStatus RUNNING`.
+
+Cause: the same apply removes the service's `load_balancer` and destroys the
+target group. `UpdateService` returns before ECS has drained the old task, and
+Terraform then deletes the target group the old task is still registered in.
+ECS does not finish the deregistration on its own.
+
+Fix it by stopping the old task. The new task is already serving:
+
+```bash
+aws ecs list-tasks --cluster <project>_cluster_<env> --service-name <project>_service_<name>_<env>
+aws ecs stop-task  --cluster <project>_cluster_<env> --task <old-task-arn> --reason "drain after leaving ALB"
+```
+
+ECS then logs `deregistered 1 targets`, and the deployment reaches a steady
+state about 2.5 minutes later. The old task stops with `stopCode
+UserInitiated`. Changing the module so that one apply is enough is tracked
+separately.
+
 ## Limitations
 
 - Services on an EC2 pool in `bridge` network mode have no task-level security
