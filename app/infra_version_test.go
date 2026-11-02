@@ -43,7 +43,7 @@ func TestCheckInfrastructureVersion_RefusesOlderModules(t *testing.T) {
 	if !errors.Is(err, errInfraOutdated) {
 		t.Fatalf("want errInfraOutdated, got %v", err)
 	}
-	for _, want := range []string{"v4.9.0", "v4.10.0", "meroku update-infra", allowInfraMismatchEnv} {
+	for _, want := range []string{"v4.9.0", "v4.10.0", "meroku update", allowInfraMismatchEnv} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("message does not mention %q:\n%s", want, err)
 		}
@@ -138,13 +138,13 @@ func localInfraRepo(t *testing.T, tag string) {
 	t.Cleanup(func() { infrastructureCloneURL = old })
 }
 
-func TestUpdateInfra_InstallsTheTagMatchingTheBinary(t *testing.T) {
+func TestUpdate_InstallsTheTagMatchingTheBinary(t *testing.T) {
 	localInfraRepo(t, "v4.10.2")
 	withBinaryVersion(t, "4.10.2")
 	root := projectWithInfra(t, "v4.9.0")
 
-	if err := handleUpdateInfraCommand(nil); err != nil {
-		t.Fatalf("update-infra: %v", err)
+	if err := handleUpdateCommand(nil); err != nil {
+		t.Fatalf("update: %v", err)
 	}
 	data, err := os.ReadFile(filepath.Join(root, infraDir, "version.txt"))
 	if err != nil || strings.TrimSpace(string(data)) != "v4.10.2" {
@@ -161,11 +161,11 @@ func TestUpdateInfra_InstallsTheTagMatchingTheBinary(t *testing.T) {
 
 // A failed clone must leave the old modules in place. The old initProject
 // deleted them first, so a typo in a ref left the project with nothing.
-func TestUpdateInfra_FailedCloneKeepsTheOldCopy(t *testing.T) {
+func TestUpdate_FailedCloneKeepsTheOldCopy(t *testing.T) {
 	localInfraRepo(t, "v4.10.2")
 	root := projectWithInfra(t, "v4.9.0")
 
-	if err := handleUpdateInfraCommand([]string{"v9.9.9-does-not-exist"}); err == nil {
+	if err := handleUpdateCommand([]string{"v9.9.9-does-not-exist"}); err == nil {
 		t.Fatal("a ref that does not exist must fail")
 	}
 	data, err := os.ReadFile(filepath.Join(root, infraDir, "version.txt"))
@@ -178,7 +178,7 @@ func TestUpdateInfra_FailedCloneKeepsTheOldCopy(t *testing.T) {
 	}
 }
 
-func TestUpdateInfra_RefusesASymlinkedCheckout(t *testing.T) {
+func TestUpdate_RefusesASymlinkedCheckout(t *testing.T) {
 	localInfraRepo(t, "v4.10.2")
 	checkout := t.TempDir()
 	root := t.TempDir()
@@ -187,7 +187,7 @@ func TestUpdateInfra_RefusesASymlinkedCheckout(t *testing.T) {
 	}
 	chdir(t, root)
 
-	err := handleUpdateInfraCommand([]string{"v4.10.2"})
+	err := handleUpdateCommand([]string{"v4.10.2"})
 	if err == nil || !strings.Contains(err.Error(), "symlink") {
 		t.Fatalf("a symlinked infrastructure/ must be refused, got %v", err)
 	}
@@ -196,10 +196,10 @@ func TestUpdateInfra_RefusesASymlinkedCheckout(t *testing.T) {
 	}
 }
 
-func TestUpdateInfra_DevBuildNeedsAnExplicitRef(t *testing.T) {
+func TestUpdate_DevBuildNeedsAnExplicitRef(t *testing.T) {
 	withBinaryVersion(t, "dev")
 	chdir(t, t.TempDir())
-	if err := handleUpdateInfraCommand(nil); err == nil {
+	if err := handleUpdateCommand(nil); err == nil {
 		t.Fatal("a dev build has no release tag to default to")
 	}
 }

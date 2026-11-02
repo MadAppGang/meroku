@@ -124,7 +124,7 @@ next deploy, not on the `terraform apply` that registers it.
 ## Upgrading: the v30 migration
 
 First bring the project's `infrastructure/` to the same version as the binary:
-`meroku update-infra`. Older modules do not declare `network_access`, and
+`meroku update`. Older modules do not declare `network_access`, and
 Terraform drops undeclared fields silently, so the plan would show no change.
 Since v4.10.2 `meroku generate` refuses to run against an older
 `infrastructure/`.

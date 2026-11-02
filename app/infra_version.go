@@ -75,7 +75,7 @@ func checkInfrastructureVersion() error {
 			"The older modules do not know every setting this meroku writes, and Terraform\n"+
 			"drops unknown settings silently: the plan would show no change for them.\n\n"+
 			"Update it to match this binary:\n\n"+
-			"    meroku update-infra\n\n"+
+			"    meroku update\n\n"+
 			"(or set %s=1 to generate against the old modules on purpose)",
 			errInfraOutdated, infraDir, infraRaw, version, allowInfraMismatchEnv)
 	case infraVer.GT(binVer):
@@ -84,20 +84,20 @@ func checkInfrastructureVersion() error {
 	return nil
 }
 
-// handleUpdateInfraCommand is `meroku update-infra [ref]`. Non-interactive, for
+// handleUpdateCommand is `meroku update [ref]`. Non-interactive, for
 // scripts, CI and agents, which the TUI's "Check for updates" cannot serve.
 //
 // With no ref it installs the release matching this binary (tag v<version>), so
 // the binary and the modules agree by construction. A ref may be any tag or
 // branch, e.g. `main`.
-func handleUpdateInfraCommand(args []string) error {
+func handleUpdateCommand(args []string) error {
 	ref := ""
 	if len(args) > 0 {
 		ref = args[0]
 	}
 	if ref == "" {
 		if version == "dev" {
-			return fmt.Errorf("this is a development build with no release tag; name one: meroku update-infra <tag|branch>")
+			return fmt.Errorf("this is a development build with no release tag; name one: meroku update <tag|branch>")
 		}
 		ref = "v" + strings.TrimPrefix(version, "v")
 	}

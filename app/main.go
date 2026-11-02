@@ -77,9 +77,8 @@ func printMerokuUsage() {
 	fmt.Println("                   S3 backend and reconnect it if it is disconnected")
 	fmt.Println("                   (read-only: never applies, destroys or migrates state)")
 	fmt.Println("  migrate <file>   Migrate YAML configuration to the current schema")
-	fmt.Println("  update-infra [ref]")
-	fmt.Println("                   Replace infrastructure/ with the release matching this")
-	fmt.Println("                   meroku (or a tag/branch). Non-interactive")
+	fmt.Println("  update [ref]     Update infrastructure/ (meroku's modules) to match this")
+	fmt.Println("                   meroku, or to a tag/branch. Run after `brew upgrade meroku`")
 	fmt.Println("  dns <subcommand> Manage DNS zones and cross-account delegation")
 	fmt.Println("  monitor [env]    Open the infrastructure monitor dashboard")
 	fmt.Println("  help             Show this message")
@@ -165,8 +164,9 @@ func main() {
 	}
 
 	// Non-interactive infrastructure/ update, for scripts, CI and agents.
-	if len(args) > 0 && args[0] == "update-infra" {
-		os.Exit(cliExitCode(handleUpdateInfraCommand(args[1:])))
+	// "update-infra" is the name v4.10.2 shipped; kept as an unlisted alias.
+	if len(args) > 0 && (args[0] == "update" || args[0] == "update-infra") {
+		os.Exit(cliExitCode(handleUpdateCommand(args[1:])))
 	}
 
 	// Handle monitor subcommand (before environment selection prompts)
