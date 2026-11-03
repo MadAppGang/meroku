@@ -30,6 +30,7 @@ import {
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Switch } from "./ui/switch";
+import { VPCRangeCard } from "./VPCRangeCard";
 
 interface ECSNodePropertiesProps {
 	config: YamlInfrastructureConfig;
@@ -199,6 +200,15 @@ export function ECSNodeProperties({
 					</div>
 				</CardContent>
 			</Card>
+
+			{/* Network range (custom VPC only) */}
+			{!config.use_default_vpc && (
+				<VPCRangeCard
+					env={config.env}
+					value={config.vpc_cidr ?? ""}
+					onApply={(vpcCidr) => onConfigChange({ vpc_cidr: vpcCidr })}
+				/>
+			)}
 
 			{/* ECS Cluster Configuration */}
 			<Card>

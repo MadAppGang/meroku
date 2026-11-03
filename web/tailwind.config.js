@@ -17,6 +17,13 @@ export default {
 			},
 		},
 		extend: {
+			// Tailwind 3 has no built-in `aria-invalid:` variant (v4 does). The
+			// shadcn components in src/components/ui use it for their error
+			// state, so without this entry those classes generate nothing and an
+			// invalid field looks exactly like a valid one.
+			aria: {
+				invalid: 'invalid="true"',
+			},
 			fontFamily: {
 				sans: ["Inter", "sans-serif"],
 				mono: ["JetBrains Mono", "monospace"],
@@ -44,6 +51,12 @@ export default {
 				destructive: {
 					DEFAULT: "hsl(var(--destructive))",
 					foreground: "hsl(var(--destructive-foreground))",
+				},
+				// Error text, icons and invalid-field borders. `destructive` is a
+				// fill colour (dark red behind white text) and is too dark to read
+				// as text or a border on the dark card.
+				danger: {
+					DEFAULT: "hsl(var(--danger))",
 				},
 				muted: {
 					DEFAULT: "hsl(var(--muted))",

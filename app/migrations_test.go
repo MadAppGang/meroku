@@ -1635,7 +1635,7 @@ func TestMigrateToV23_HandlesMissingAndMalformedSections(t *testing.T) {
 // A brand new project is the case where "default off" applies without
 // qualification: there is no deployed key to preserve.
 func TestNewEnvironmentDefaultsAPIKeyOff(t *testing.T) {
-	env := createEnv("testproject", "dev")
+	env := createEnv("testproject", "dev", "10.42.0.0/16")
 
 	if env.AppSyncPubSub.APIKeyEnabled {
 		t.Error("a new environment must not be given an API key: it bypasses auth_mode entirely")
@@ -1649,7 +1649,7 @@ func TestNewEnvironmentDefaultsAPIKeyOff(t *testing.T) {
 // The serialized form is what the next `meroku` run reads back, so assert on the
 // YAML rather than only on the struct.
 func TestNewEnvironmentSerializesAPIKeyOff(t *testing.T) {
-	env := createEnv("testproject", "dev")
+	env := createEnv("testproject", "dev", "10.42.0.0/16")
 
 	out, err := yaml.Marshal(env)
 	if err != nil {

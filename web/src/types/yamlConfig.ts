@@ -122,6 +122,8 @@ export interface YamlInfrastructureConfig {
 	// VPC Configuration
 	use_default_vpc?: boolean;
 	vpc_cidr?: string;
+	/** Turns off meroku's range checks for vpc_cidr (keeps an already-deployed range). */
+	allow_vpc_cidr_override?: boolean;
 
 	// API Configuration
 	api_domain?: string;

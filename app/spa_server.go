@@ -63,6 +63,9 @@ func mainRouter() http.Handler {
 		}
 	}))
 
+	// VPC range: validation, overlap report and free-range suggestions
+	mux.HandleFunc("/api/vpc-cidr", corsMiddleware(getVPCCIDRReport))
+
 	// ECS
 	mux.HandleFunc("/api/ecs/cluster", corsMiddleware(getECSClusterInfo))
 	mux.HandleFunc("/api/ecs/network", corsMiddleware(getECSNetworkInfo))

@@ -5,7 +5,7 @@ import (
 )
 
 func TestCreateEnv_VPCDefaults(t *testing.T) {
-	env := createEnv("testproject", "dev")
+	env := createEnv("testproject", "dev", "10.42.0.0/16")
 
 	// Test VPC configuration defaults for new projects
 	tests := []struct {
@@ -23,8 +23,8 @@ func TestCreateEnv_VPCDefaults(t *testing.T) {
 		{
 			name:   "VPCCIDR should be set to default",
 			got:    env.VPCCIDR,
-			want:   "10.0.0.0/16",
-			reason: "Sensible default CIDR (can be overridden, VPC module has same default)",
+			want:   "10.42.0.0/16",
+			reason: "createEnv writes the range its caller picked (newEnvVPCCIDR in production)",
 		},
 		{
 			name:   "SchemaVersion should be current",
@@ -45,7 +45,7 @@ func TestCreateEnv_VPCDefaults(t *testing.T) {
 
 func TestCreateEnv_VPCSimplicity(t *testing.T) {
 	// Test that we've removed complexity
-	env := createEnv("testproject", "dev")
+	env := createEnv("testproject", "dev", "10.42.0.0/16")
 
 	// These fields should NOT exist in the struct anymore
 	// This test will fail to compile if fields are added back
@@ -57,7 +57,7 @@ func TestCreateEnv_VPCSimplicity(t *testing.T) {
 }
 
 func TestCreateEnv_BackendScalingDefaults(t *testing.T) {
-	env := createEnv("testproject", "dev")
+	env := createEnv("testproject", "dev", "10.42.0.0/16")
 
 	// Test backend scaling defaults (schema v4)
 	if env.Workload.BackendDesiredCount != 1 {

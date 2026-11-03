@@ -20,6 +20,8 @@
 		--accent-foreground: 0 0% 98%;
 		--destructive: 0 62.8% 30.6%;
 		--destructive-foreground: 0 0% 98%;
+		/* Error text/icons/borders: #ef4444 on the dark card, about 5.3:1 contrast. */
+		--danger: 0 84.2% 60.2%;
 		--border: 0 0% 14.9%;
 		--input: 0 0% 14.9%;
 		--ring: 0 0% 83.1%;
@@ -29,6 +31,13 @@
 		--chart-3: 30 80% 55%;
 		--chart-4: 280 65% 60%;
 		--chart-5: 340 75% 55%;
+	}
+
+	/* Light surfaces (property panels set data-theme="light"): a deeper red,
+	   #b91c1c, about 6.5:1 on white. */
+	.light,
+	[data-theme="light"] {
+		--danger: 0 73.7% 41.8%;
 	}
 }
 

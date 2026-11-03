@@ -23,6 +23,10 @@ type Env struct {
 	// VPC Configuration
 	UseDefaultVPC bool   `yaml:"use_default_vpc"`
 	VPCCIDR       string `yaml:"vpc_cidr,omitempty"` // Optional, VPC module has default
+	// AllowVPCCIDROverride turns off meroku's vpc_cidr rule checks for this
+	// environment — the escape hatch for a VPC already deployed with a range the
+	// rules now refuse. Overlap warnings still print. See app/vpc_cidr.go.
+	AllowVPCCIDROverride bool `yaml:"allow_vpc_cidr_override,omitempty"`
 	// EgressStrategy (schema v27) decides how ECS tasks reach the internet:
 	// "public_ip" (default), "nat_gateway", or "nat_gateway_ha". It can be
 	// changed at any time; switching replaces the tasks' network configuration
@@ -733,7 +737,10 @@ func generateRandomString(length int) string {
 	return string(result)
 }
 
-func createEnv(name, env string) Env {
+// createEnv builds a new environment config. vpcCIDR is written explicitly
+// into the YAML; callers get one from newEnvVPCCIDR so new environments do not
+// all share 10.0.0.0/16.
+func createEnv(name, env, vpcCIDR string) Env {
 	return Env{
 		SchemaVersion: CurrentSchemaVersion, // Always create with latest schema version
 		Project:       name,
@@ -747,8 +754,8 @@ func createEnv(name, env string) Env {
 		// VPC Configuration (schema v6)
 		// Default to custom VPC for new projects (simpler, more control)
 		// Always creates 2 AZs with public subnets only, no NAT gateway
-		UseDefaultVPC: false,         // Use custom VPC by default
-		VPCCIDR:       "10.0.0.0/16", // Optional, VPC module has this default
+		UseDefaultVPC: false,   // Use custom VPC by default
+		VPCCIDR:       vpcCIDR, // Random free /16 from newEnvVPCCIDR, never re-randomised
 		// ECR Configuration (schema v7)
 		// Default to local ECR for new projects
 		ECRStrategy:        "local",

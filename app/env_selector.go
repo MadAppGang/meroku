@@ -160,6 +160,13 @@ func selectEnvironment() error {
 		if err != nil {
 			return fmt.Errorf("failed to configure AWS profile: %w", err)
 		}
+		// The account is known now, so its existing VPCs can be checked. Runs
+		// before the reload below so a range it writes is what gets loaded.
+		offerVPCCIDRCheckForNewAccount(selected, func(title string) (bool, error) {
+			var ok bool
+			err := huh.NewConfirm().Title(title).Affirmative("Yes, check").Negative("No").Value(&ok).Run()
+			return ok, err
+		})
 		// Reload environment to get the updated account_id
 		env, _ = loadEnv(selected)
 	} else {

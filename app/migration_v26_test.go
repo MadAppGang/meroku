@@ -456,7 +456,7 @@ func TestV26IsRegistered(t *testing.T) {
 // compute: {} in a generated file is a placeholder someone has to delete, and
 // the template treats absence and empty identically anyway.
 func TestCreateEnv_ComputeDefaults(t *testing.T) {
-	env := createEnv("testproject", "dev")
+	env := createEnv("testproject", "dev", "10.42.0.0/16")
 
 	if env.Workload.BackendRuntime != "fargate" {
 		t.Errorf("Workload.BackendRuntime = %q, want \"fargate\"", env.Workload.BackendRuntime)

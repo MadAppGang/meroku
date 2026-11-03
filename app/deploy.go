@@ -398,11 +398,22 @@ func applyTemplate(env string) error {
 		return fmt.Errorf("invalid configuration in %s:\n\n%w", envFile, err)
 	}
 
+	// A VPC range outside the rules (public, reserved, wrong size, host bits
+	// set) is refused before anything is built from it. Existing deployed
+	// environments opt out with allow_vpc_cidr_override: true.
+	if err := validateVPCCIDRMap(env, envMap); err != nil {
+		return fmt.Errorf("invalid configuration in %s:\n\n%w", envFile, err)
+	}
+
 	// The template pins the provider region from this config. Say so now if the
 	// shell disagrees, so an existing stack's relocation is not first seen as a
 	// destroy in the plan. A warning, not an error: on a stack that does not
 	// exist yet there is nothing to relocate.
 	warnOnRegionDrift(stringFromMap(envMap, "region"), stringFromMap(envMap, "aws_profile"))
+
+	// Overlap with a sibling environment is a warning: two environments that
+	// are never connected may share a range. Offline — no AWS call here.
+	warnOnVPCCIDROverlap(envFile, envMap)
 
 	// Everything that happens to envMap between loading and rendering: the
 	// disabled-item filter, the zero-config pool, and the compute refusals that

@@ -87,7 +87,8 @@ Shown on the `ecs` node; they scope the whole stack.
 | `state_file` | string | required | CREATE | Same. |
 | `schema_version` | int | automatic | RO | Managed by migrations. Current: 24. |
 | `use_default_vpc` | boolean | default `false` | TF-REPLACE | Flipping recreates every subnet-bound resource. |
-| `vpc_cidr` | string | only when `use_default_vpc` is false; default `10.0.0.0/16` | TF-REPLACE | Replaces the VPC and everything in it. |
+| `vpc_cidr` | string | only when `use_default_vpc` is false; new envs get a random free /16 from 10.0.0.0/8, an unset key builds `10.0.0.0/16` | TF-REPLACE | Replaces the VPC and everything in it. Edited through the "Network range" card, backed by `GET /api/vpc-cidr` ([VPC_CIDR_ALLOCATION.md](./VPC_CIDR_ALLOCATION.md)). |
+| `allow_vpc_cidr_override` | boolean | optional, default `false` | TF | Read only by `meroku generate`, which skips the `vpc_cidr` rule checks; nothing in AWS changes. For an env already deployed with a range the rules refuse. |
 | `api_domain` | string | optional | TF | Custom domain for API Gateway. |
 
 Runtime values on the same node:

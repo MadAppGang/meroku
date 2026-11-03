@@ -166,7 +166,20 @@ Key decisions:
 
 Configuration options (minimal):
 - `use_default_vpc`: `true` (use AWS default VPC) or `false` (create custom VPC)
-- `vpc_cidr`: Optional CIDR block for custom VPC (defaults to "10.0.0.0/16")
+- `vpc_cidr`: CIDR block for the custom VPC. New environments get a **random free /16** from
+  10.0.0.0/8 (never 10.0.0.0/15 or 10.99.0.0/16, never a range a sibling env uses), written
+  explicitly into the YAML. An unset key still builds the module default `10.0.0.0/16`.
+- `allow_vpc_cidr_override`: Optional escape hatch that turns off the `vpc_cidr` rule checks
+  for an environment already deployed with a range the rules now refuse.
+
+**VPC ranges must not overlap** if environments are ever to be peered or share a Transit
+Gateway, and a VPC's primary range can never be changed — changing `vpc_cidr` replaces the VPC
+and everything in it. Rules (errors at `meroku generate`): IPv4 network address, private
+(10.0.0.0/8 or 192.168.0.0/16), not in 172.16.0.0/12, 169.254.0.0/16 or 198.19.0.0/16, size
+/16–/19. Overlap with another env is a warning. `meroku vpc-cidr check|suggest|assign <env>
+[--aws] [--force]` checks, suggests or writes a range (`--aws` also avoids every VPC in the env's
+account and in every sibling env's account; `assign` writes only for environments not yet deployed). Code: `app/vpc_cidr*.go`,
+`GET /api/vpc-cidr`. Full design: [VPC CIDR Allocation](./ai_docs/VPC_CIDR_ALLOCATION.md).
 
 This architecture is the simplest possible while maintaining high availability:
 - **2 Availability Zones** - Minimum for HA, covers regional failures

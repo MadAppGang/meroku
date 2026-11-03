@@ -61,6 +61,71 @@ export interface ServiceDiscovery {
 	serviceCount: number;
 }
 
+/**
+ * GET /api/vpc-cidr — see ai-docs/sessions/dev-feature-vpc-cidr-alloc-20261102-a7c3/api-contract.md.
+ * The Go validator is the single source of truth; the UI never re-implements the rules.
+ * `message` is technical (CLI/logs); `hint` is the plain-language text the UI shows.
+ */
+export type VPCCIDRIssueCode =
+	| "invalid_format"
+	| "not_network_address"
+	| "reserved_range"
+	| "not_private"
+	| "size";
+
+export interface VPCCIDRIssue {
+	code: VPCCIDRIssueCode;
+	message: string;
+	hint: string;
+	/** Corrected value when one exists, e.g. "10.5.0.0/16" for "10.5.1.0/16". */
+	fix?: string;
+}
+
+export interface VPCCIDRWarning {
+	message: string;
+	hint: string;
+	/** `env "staging"` or "another network in this AWS account". */
+	source: string;
+}
+
+export type VPCCIDRDeployed = "no" | "yes" | "unknown" | "unchecked";
+
+export interface VPCCIDRCandidateResult {
+	value: string;
+	valid: boolean;
+	/** No "/" yet or fewer than 4 numbers: the user is still typing. */
+	incomplete: boolean;
+	error?: VPCCIDRIssue;
+	warnings: VPCCIDRWarning[];
+}
+
+export interface VPCCIDRReport {
+	env: string;
+	useDefaultVpc: boolean;
+	/** `allow_vpc_cidr_override: true` in the env YAML. */
+	override: boolean;
+	configured: string;
+	effective: string;
+	error?: VPCCIDRIssue;
+	warnings: VPCCIDRWarning[];
+	suggestions: string[];
+	awsChecked: boolean;
+	awsNote?: string;
+	deployed: VPCCIDRDeployed;
+	deployedReason: string;
+	candidate?: VPCCIDRCandidateResult;
+}
+
+export interface VPCCIDRReportOptions {
+	/** Also check VPCs in the env's AWS account (ignored server-side when `candidate` is set). */
+	aws?: boolean;
+	/** Number of suggestions, 1..10 (server default 5). */
+	count?: number;
+	/** A value the user is typing; validated and checked against sibling envs only. */
+	candidate?: string;
+	signal?: AbortSignal;
+}
+
 export interface ECSServicesInfo {
 	services: ServiceInfo[];
 	scheduledTasks: TaskInfo[];
@@ -918,6 +983,26 @@ export const infrastructureApi = {
 		);
 		if (!response.ok) {
 			throw new Error("Failed to fetch ECS network info");
+		}
+		return response.json();
+	},
+
+	async getVPCCIDRReport(
+		env: string,
+		opts: VPCCIDRReportOptions = {},
+	): Promise<VPCCIDRReport> {
+		const params = new URLSearchParams({ env });
+		if (opts.aws) params.set("aws", "1");
+		if (opts.count !== undefined) params.set("count", String(opts.count));
+		if (opts.candidate !== undefined) params.set("candidate", opts.candidate);
+		const response = await fetch(`${API_BASE_URL}/api/vpc-cidr?${params}`, {
+			signal: opts.signal,
+		});
+		if (!response.ok) {
+			const error: Partial<ErrorResponse> = await response
+				.json()
+				.catch(() => ({}));
+			throw new Error(error.error || "Failed to check the network range");
 		}
 		return response.json();
 	},

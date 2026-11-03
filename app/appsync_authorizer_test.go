@@ -148,7 +148,7 @@ func TestValidateAppSyncConfigMap(t *testing.T) {
 }
 
 func TestValidateAppSyncConfig_Struct(t *testing.T) {
-	env := createEnv("testproject", "dev")
+	env := createEnv("testproject", "dev", "10.42.0.0/16")
 	if err := validateAppSyncConfig(&env); err != nil {
 		t.Fatalf("a fresh project has appsync disabled and must validate: %v", err)
 	}

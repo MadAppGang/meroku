@@ -3369,7 +3369,11 @@ func ensureProductionEnvironmentWithAccountID(rootDomain, accountID, profile str
 	}
 
 	// Create new production environment
-	env := createEnv(projectName, "prod")
+	vpcCIDR, err := newEnvVPCCIDR("prod")
+	if err != nil {
+		return err
+	}
+	env := createEnv(projectName, "prod", vpcCIDR)
 	env.IsProd = true
 	env.AccountID = accountID
 	env.AWSProfile = profile
@@ -3412,7 +3416,11 @@ func ensureProductionEnvironment(rootDomain, zoneID, accountID string) error {
 		}
 	} else {
 		// File doesn't exist, create new environment
-		env = createEnv("project", "prod")
+		vpcCIDR, err := newEnvVPCCIDR("prod")
+		if err != nil {
+			return err
+		}
+		env = createEnv("project", "prod", vpcCIDR)
 		env.IsProd = true
 	}
 
@@ -3446,7 +3454,11 @@ func propagateRootZoneInfo(dnsConfig *DNSConfig) error {
 		} else {
 			// File doesn't exist, create new environment
 			projectName := getProjectNameForDNS()
-			env = createEnv(projectName, envName)
+			vpcCIDR, err := newEnvVPCCIDR(envName)
+			if err != nil {
+				return err
+			}
+			env = createEnv(projectName, envName, vpcCIDR)
 		}
 
 		// CRITICAL: Keep domain_name as root domain!

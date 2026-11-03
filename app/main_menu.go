@@ -165,7 +165,12 @@ func createEnvMenu() string {
 		return createEnvMenu()
 	}
 
-	e := createEnv(projectName, name)
+	vpcCIDR, err := newEnvVPCCIDR(name)
+	if err != nil {
+		fmt.Println("Error picking a network range for the environment:", err)
+		return ""
+	}
+	e := createEnv(projectName, name, vpcCIDR)
 
 	// Save to current directory
 	err = saveEnvToFile(e, name+".yaml")
@@ -175,6 +180,7 @@ func createEnvMenu() string {
 	}
 
 	fmt.Printf("Environment '%s' created successfully.\n", name)
+	fmt.Printf("Network range (vpc_cidr): %s — picked at random, avoiding your other environments.\n", vpcCIDR)
 	return name
 }
 

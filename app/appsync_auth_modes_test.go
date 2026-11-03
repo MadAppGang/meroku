@@ -221,7 +221,7 @@ func TestValidateAppSyncConfigMap_CognitoModeReadsTheCognitoSection(t *testing.T
 }
 
 func TestValidateAppSyncConfig_StructUsesEnvironmentCognito(t *testing.T) {
-	env := createEnv("testproject", "dev")
+	env := createEnv("testproject", "dev", "10.42.0.0/16")
 	env.AppSyncPubSub.Enabled = true
 	env.AppSyncPubSub.AuthMode = AppSyncAuthCognito
 

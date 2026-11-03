@@ -71,12 +71,13 @@ state_file: string      # Optional, defaults to "state.tfstate"
 |-------|---------|---------|
 | `region` | `^[a-z]{2}-[a-z]+-\d$` | `us-east-1`, `ap-southeast-2` |
 | `account_id` | `^\d{12}$` | `123456789012` |
-| `vpc_cidr` | Valid CIDR notation | `10.0.0.0/16` |
+| `vpc_cidr` | IPv4 network address, private (10.0.0.0/8 or 192.168.0.0/16), not in 172.16.0.0/12 / 169.254.0.0/16 / 198.19.0.0/16, size /16–/19. Rules live in `app/vpc_cidr.go` (`validateVPCCIDR`); skipped with `allow_vpc_cidr_override: true`. Overlap with a sibling env is a warning. See [VPC_CIDR_ALLOCATION.md](./VPC_CIDR_ALLOCATION.md) | `10.137.0.0/16` |
 
 #### Allowed Values
 ```yaml
 ecr_strategy: ["local", "cross_account"]  # Required
 use_default_vpc: boolean
+allow_vpc_cidr_override: boolean  # Optional; turns off the vpc_cidr rule checks
 ```
 
 #### Conditional Validation: ECR Cross-Account

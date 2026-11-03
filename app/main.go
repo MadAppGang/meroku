@@ -80,6 +80,9 @@ func printMerokuUsage() {
 	fmt.Println("  update [ref]     Update infrastructure/ (meroku's modules) to match this")
 	fmt.Println("                   meroku, or to a tag/branch. Run after `brew upgrade meroku`")
 	fmt.Println("  dns <subcommand> Manage DNS zones and cross-account delegation")
+	fmt.Println("  vpc-cidr <check|suggest|assign> <env> [--aws] [--force]")
+	fmt.Println("                   Validate an environment's VPC range, suggest a free one,")
+	fmt.Println("                   or write one (only for environments not yet deployed)")
 	fmt.Println("  monitor [env]    Open the infrastructure monitor dashboard")
 	fmt.Println("  help             Show this message")
 	fmt.Println("")
@@ -155,6 +158,11 @@ func main() {
 	// Handle migrate commands (before environment selection)
 	if len(args) > 0 && args[0] == "migrate" {
 		os.Exit(cliExitCode(handleMigrateCommand(args[1:])))
+	}
+
+	// VPC range checks and assignment (before environment selection).
+	if len(args) > 0 && args[0] == "vpc-cidr" {
+		os.Exit(cliExitCode(handleVPCCIDRCommand(args[1:])))
 	}
 
 	// Handle generate commands (before environment selection). Non-interactive:

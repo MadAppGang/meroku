@@ -154,6 +154,16 @@ jobs:
           terraform test
         working-directory: modules/naming
 
+      # vpc_cidr validation checks only format, network address and /16–/20
+      # (what the subnet maths can carve), so a VPC already deployed with a
+      # range meroku's rules now reject still plans. Range policy (private
+      # ranges, reserved ranges, /19 limit) lives in Go: app/vpc_cidr.go.
+      - name: Test the VPC module
+        run: |
+          terraform init -backend=false -input=false
+          terraform test
+        working-directory: modules/vpc
+
       # What the GitHub Actions deploy role can actually reach in ECR. The
       # policy document was extracted out of modules/workloads/github.tf into
       # modules/github_policy for one reason: every test file in
