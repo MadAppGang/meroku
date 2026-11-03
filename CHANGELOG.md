@@ -1,5 +1,31 @@
 # Changelog
 
+## v4.11.0
+
+### New environments get their own network range
+
+Every custom-VPC environment used to get `10.0.0.0/16`. Two environments with
+the same range can never be connected by VPC peering or a Transit Gateway, and
+a VPC's range cannot be changed without rebuilding the VPC and everything in
+it.
+
+- A new environment now gets a random free `/16` from `10.0.0.0/8`, written
+  into its YAML. It never takes a range another environment of the project
+  uses. Existing environments keep their `vpc_cidr`; an environment without
+  the key still builds `10.0.0.0/16`.
+- `meroku generate` refuses a `vpc_cidr` that is not a private IPv4 network
+  address, is outside `/16` to `/19`, or lies in `172.16.0.0/12`,
+  `169.254.0.0/16` or `198.19.0.0/16`. A range shared with another environment
+  is a warning. `allow_vpc_cidr_override: true` turns the checks off for an
+  environment already deployed with a range the rules now refuse.
+- `meroku vpc-cidr check|suggest|assign <env> [--aws] [--force]` checks a
+  range, suggests a free one, or writes one. `--aws` also avoids every VPC in
+  the environment's AWS account and in each other environment's account.
+  `assign` writes only to an environment that is not deployed yet, unless
+  `--force` is given.
+- The web UI has a "Network range" card: five ready ranges to pick from, and a
+  manual field that shows what is wrong as you type.
+
 ## v4.10.4
 
 ### Fixed: the old task is stopped after a service leaves the ALB (MTL-359)
