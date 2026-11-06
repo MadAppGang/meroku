@@ -160,12 +160,13 @@ variable "backend_health_check" {
   })
   default = null
 
+  # try() rather than a length guard: Terraform before 1.12 evaluates both
+  # sides of && and ||, so command[0] on an empty list would raise
+  # "Invalid index" instead of failing this validation.
   validation {
     condition = var.backend_health_check == null ? true : (
-      length(var.backend_health_check.command) > 0 && (
-        (var.backend_health_check.command[0] == "CMD-SHELL" && length(var.backend_health_check.command) == 2) ||
-        (var.backend_health_check.command[0] == "CMD" && length(var.backend_health_check.command) >= 2)
-      )
+      (try(var.backend_health_check.command[0], "") == "CMD-SHELL" && length(var.backend_health_check.command) == 2) ||
+      (try(var.backend_health_check.command[0], "") == "CMD" && length(var.backend_health_check.command) >= 2)
     )
     error_message = "backend_health_check.command must be [\"CMD-SHELL\", \"<shell command>\"] or [\"CMD\", \"<program>\", \"<args>\"...]."
   }
