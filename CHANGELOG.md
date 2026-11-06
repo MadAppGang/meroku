@@ -1,5 +1,46 @@
 # Changelog
 
+## v4.11.1
+
+### Choose what the SES domain's apex TXT record holds
+
+For every SES domain with a `zone_id`, meroku writes the TXT record at the
+domain itself as `v=spf1 include:amazonses.com ~all`, TTL 600, and replaces
+whatever TXT values were there. On a domain that also sends mail through
+another provider, such as Google, applying that removed the other provider
+from SPF.
+
+Three optional keys under `ses.domains[]` set that record:
+
+- `spf_record`: the full SPF value, for example
+  `v=spf1 include:_spf.google.com include:amazonses.com ~all`.
+- `spf_ttl`: the TTL of the record set. `0` is accepted as a value.
+- `apex_txt_values`: other TXT values to keep at the domain, such as
+  `google-site-verification=...`. They go into the same record set, with the
+  same TTL.
+
+A YAML without these keys generates exactly the same Terraform as before.
+
+Route53 keeps one TXT record set per name, and meroku replaces it whole, so
+**list every TXT value at the domain that you need kept**. An unlisted one is
+still removed on apply. Records at other names, such as
+`google._domainkey.<domain>`, are never touched.
+
+A value longer than 255 characters is split into 255-character strings
+automatically. A value you have already split with the delimiter `" "` is
+kept as written. Plan refuses:
+
+- an `spf_record` that does not start with `v=spf1`;
+- an `apex_txt_values` entry that is empty, or is itself an SPF record, because
+  two SPF records at one name break SPF for the domain;
+- a value holding a character outside printable ASCII (write it as an octal
+  escape such as `\344`), or a `"` that is not part of a `" "` delimiter;
+- a split that would land inside a `\` escape;
+- an `spf_ttl` that is negative or not a whole number.
+
+The MAIL FROM subdomain's SPF record stays `v=spf1 include:amazonses.com ~all`,
+because only SES sends from it.
+
 ## v4.11.0
 
 ### New environments get their own network range
