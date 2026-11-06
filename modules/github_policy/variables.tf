@@ -44,7 +44,7 @@ variable "aws_account_id" {
 }
 
 variable "region" {
-  description = "The region this role's repositories live in — data.aws_region.current.name at the caller. THIS region, never var.ecr_account_region."
+  description = "The region this role's repositories live in — data.aws_region.current.region at the caller. THIS region, never var.ecr_account_region."
   type        = string
 
   validation {

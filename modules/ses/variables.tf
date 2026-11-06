@@ -26,13 +26,20 @@ variable "domains" {
     - spf_ttl: TTL of the apex TXT record set (optional, defaults to 600)
     - apex_txt_values: Extra TXT values written into the same apex record set
       as the SPF value, with the same TTL (optional)
-    Apex values longer than 255 characters are split into 255-character strings
+    - txt_records: Extra TXT record sets at names below the domain, each with
+      a name relative to the domain (e.g. "google._domainkey"), its values and
+      an optional TTL (default 600) (optional)
+    - zone_origin: "created" (default) when meroku created the zone, so the
+      listed values are the whole record set; "existing" when it did not, so
+      meroku adds its values to the live set and removes only those (optional)
+    TXT values longer than 255 characters are split into 255-character strings
     joined by the three-character delimiter `" "`.
     Note: test_emails are at global SES level (account-wide in AWS)
   EOT
   type = list(object({
     domain              = string
     zone_id             = optional(string)
+    zone_origin         = optional(string)
     enable_mail_from    = optional(bool)
     mail_from_subdomain = optional(string)
     dmarc_policy        = optional(string)
@@ -40,11 +47,91 @@ variable "domains" {
     spf_record          = optional(string)
     spf_ttl             = optional(number)
     apex_txt_values     = optional(list(string))
+    txt_records = optional(list(object({
+      name   = string
+      values = list(string)
+      ttl    = optional(number)
+    })))
   }))
   default = []
 
   # Conditions use `for ... if` filters rather than `||`: Terraform 1.9 does not
   # short-circuit `||`, so `x == null || f(x)` still evaluates f(null).
+
+  validation {
+    condition = alltrue([
+      for d in var.domains : contains(["created", "existing"], d.zone_origin) if d.zone_origin != null
+    ])
+    error_message = "zone_origin must be \"created\" or \"existing\"."
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for d in var.domains : [
+        for r in d.txt_records : can(regex("^[a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?(\\.[a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?)*$", r.name))
+      ] if d.txt_records != null
+    ]))
+    error_message = "txt_records[].name must be a DNS name relative to the domain, such as \"google._domainkey\": lower-case letters, digits, hyphens and underscores, with dots between the parts, no dot at the end, not empty and not @."
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for d in var.domains : [
+        for r in d.txt_records : r.name != lower(d.domain) && !endswith(r.name, ".${lower(d.domain)}")
+      ] if d.txt_records != null
+    ]))
+    error_message = "txt_records[].name is relative to the domain: write \"google._domainkey\", not \"google._domainkey.example.com\"."
+  }
+
+  validation {
+    condition = alltrue([
+      for d in var.domains : length(distinct([for r in d.txt_records : r.name])) == length(d.txt_records) if d.txt_records != null
+    ])
+    error_message = "txt_records names must be unique within a domain: put every value for one name in one entry."
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for d in var.domains : [for r in d.txt_records : length("${r.name}.${d.domain}") <= 253] if d.txt_records != null
+    ]))
+    error_message = "txt_records[].name plus the domain must be 253 characters or fewer."
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for d in var.domains : [for r in d.txt_records : length(r.values) > 0] if d.txt_records != null
+    ]))
+    error_message = "txt_records[].values must hold at least one value."
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for d in var.domains : [
+        for r in d.txt_records : [
+          for x in r.values : try(replace(x, "\" \"", "") != "", false)
+        ]
+      ] if d.txt_records != null
+    ]))
+    error_message = "txt_records[].values entries must not be null, empty, or only the delimiter \" \"."
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for d in var.domains : [
+        for r in d.txt_records : [
+          for x in r.values : !can(regex("(?i)^v=spf1( |$)", replace(x, "\" \"", ""))) if x != null
+        ]
+      ] if d.txt_records != null
+    ]))
+    error_message = "txt_records must not contain an SPF record: meroku writes SPF only at the domain itself, through spf_record."
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for d in var.domains : [for r in d.txt_records : r.ttl >= 0 && floor(r.ttl) == r.ttl if r.ttl != null] if d.txt_records != null
+    ]))
+    error_message = "txt_records[].ttl must be a whole number of seconds, 0 or more."
+  }
 
   validation {
     condition = alltrue([
@@ -81,9 +168,10 @@ variable "domains" {
       for x in concat(
         [for d in var.domains : d.spf_record if d.spf_record != null],
         flatten([for d in var.domains : d.apex_txt_values if d.apex_txt_values != null]),
+        flatten([for d in var.domains : [for r in d.txt_records : r.values] if d.txt_records != null]),
       ) : can(regex("^[\\x20-\\x7E]*$", x)) if x != null
     ])
-    error_message = "spf_record and apex_txt_values may hold only printable ASCII characters (0x20-0x7E). Write any other byte as a DNS octal escape such as \\344."
+    error_message = "spf_record, apex_txt_values and txt_records values may hold only printable ASCII characters (0x20-0x7E). Write any other byte as a DNS octal escape such as \\344."
   }
 
   validation {
@@ -91,9 +179,10 @@ variable "domains" {
       for x in concat(
         [for d in var.domains : d.spf_record if d.spf_record != null],
         flatten([for d in var.domains : d.apex_txt_values if d.apex_txt_values != null]),
+        flatten([for d in var.domains : [for r in d.txt_records : r.values] if d.txt_records != null]),
       ) : !can(regex("\"", replace(x, "\" \"", ""))) && !can(regex("^\"|\"$", x)) if x != null
     ])
-    error_message = "spf_record and apex_txt_values may contain a double quote only as part of the string delimiter \" \" between two parts of a value, never at its start or end."
+    error_message = "spf_record, apex_txt_values and txt_records values may contain a double quote only as part of the string delimiter \" \" between two parts of a value, never at its start or end."
   }
 
   validation {
@@ -101,6 +190,7 @@ variable "domains" {
       for x in concat(
         [for d in var.domains : d.spf_record if d.spf_record != null],
         flatten([for d in var.domains : d.apex_txt_values if d.apex_txt_values != null]),
+        flatten([for d in var.domains : [for r in d.txt_records : r.values] if d.txt_records != null]),
         ) : [
         for segment in split("\" \"", x) : [
           for i in range(max(0, ceil(length(segment) / 255) - 1)) :
@@ -108,7 +198,7 @@ variable "domains" {
         ]
       ] if x != null
     ]))
-    error_message = "An apex TXT value over 255 characters would be split inside a backslash escape. Split it yourself with the delimiter \" \" at a point outside any escape."
+    error_message = "A TXT value over 255 characters would be split inside a backslash escape. Split it yourself with the delimiter \" \" at a point outside any escape."
   }
 }
 
@@ -126,6 +216,17 @@ variable "zone_id" {
   description = "[DEPRECATED] Use zone_id in domains list. Route53 hosted zone ID for DNS record creation"
   type        = string
   default     = ""
+}
+
+variable "zone_origin" {
+  description = "Zone origin of the legacy single domain: \"created\" when meroku created the zone, \"existing\" when it did not (see domains[].zone_origin)."
+  type        = string
+  default     = "created"
+
+  validation {
+    condition     = contains(["created", "existing"], var.zone_origin)
+    error_message = "zone_origin must be \"created\" or \"existing\"."
+  }
 }
 
 variable "test_emails" {

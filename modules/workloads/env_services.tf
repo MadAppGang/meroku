@@ -49,7 +49,7 @@ locals {
       { "name" : "PG_DATABASE_HOST", "value" : var.db_endpoint },
       { "name" : "PG_DATABASE_USERNAME", "value" : var.db_user },
       { "name" : "PG_DATABASE_NAME", "value" : var.db_name },
-      { "name" : "AWS_REGION", "value" : data.aws_region.current.name },
+      { "name" : "AWS_REGION", "value" : data.aws_region.current.region },
       { "name" : "URL", "value" : var.api_domain },
       { "name" : "SQS_QUEUE_URL", "value" : var.sqs_queue_url },
       { "name" : "AWS_QUEUE_URL", "value" : var.sqs_queue_url },

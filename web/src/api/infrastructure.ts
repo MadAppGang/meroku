@@ -1,4 +1,5 @@
 import type { PricingResponse } from "../hooks/use-pricing";
+import type { SESDNSIssue } from "../lib/sesDnsValidation";
 import { fetchWithTokenRetry } from "../utils/fetchWithRetry";
 
 export interface Environment {
@@ -114,6 +115,41 @@ export interface VPCCIDRReport {
 	deployed: VPCCIDRDeployed;
 	deployedReason: string;
 	candidate?: VPCCIDRCandidateResult;
+}
+
+/**
+ * GET /api/ses-dns — what one SES domain's DNS records look like: the kind
+ * of zone it lives in, what the domain itself publishes now, and the sender
+ * (SPF) record meroku suggests. Body built by app/ses_dns_service.go.
+ */
+export type SESZoneOrigin = "created" | "existing" | "";
+
+export interface SESLiveApex {
+	apex_ttl: number | null;
+	/** Sender records published now, joined into one string each. */
+	spf: string[];
+	/** Every other TXT value at the domain itself. */
+	apex_other: string[];
+	/** Set when AWS could not be read; the other fields are then empty. */
+	read_error?: string;
+}
+
+export interface SESDNSReport {
+	domain: string;
+	/** "created": meroku made the zone. "existing": it did not. "": no zone. */
+	zone_origin: SESZoneOrigin;
+	zone_id: string;
+	live: SESLiveApex | null;
+	suggested_spf: string;
+	issues: SESDNSIssue[];
+}
+
+export interface SESDNSReportOptions {
+	/** A sender record the user is typing, checked in place of the YAML's. */
+	candidate?: string;
+	/** false skips the AWS read. */
+	live?: boolean;
+	signal?: AbortSignal;
 }
 
 export interface VPCCIDRReportOptions {
@@ -1003,6 +1039,26 @@ export const infrastructureApi = {
 				.json()
 				.catch(() => ({}));
 			throw new Error(error.error || "Failed to check the network range");
+		}
+		return response.json();
+	},
+
+	async getSESDNS(
+		env: string,
+		domain: string,
+		opts: SESDNSReportOptions = {},
+	): Promise<SESDNSReport> {
+		const params = new URLSearchParams({ env, domain });
+		if (opts.candidate !== undefined) params.set("candidate", opts.candidate);
+		if (opts.live === false) params.set("live", "0");
+		const response = await fetch(`${API_BASE_URL}/api/ses-dns?${params}`, {
+			signal: opts.signal,
+		});
+		if (!response.ok) {
+			const error: Partial<ErrorResponse> = await response
+				.json()
+				.catch(() => ({}));
+			throw new Error(error.error || "Failed to read the domain's records");
 		}
 		return response.json();
 	},

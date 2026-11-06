@@ -124,7 +124,7 @@ variables {
 # region it is given, and its own tests can only ever check it against the
 # values they pass in. The scope is only this project's scope because THIS file's
 # module block passes var.project, local.aws_account_id and
-# data.aws_region.current.name. Nothing downstream can notice if it stops.
+# data.aws_region.current.region. Nothing downstream can notice if it stops.
 # ---------------------------------------------------------------------------
 
 run "the_caller_hands_the_module_this_project_this_account_this_region" {
@@ -172,7 +172,7 @@ run "the_caller_hands_the_module_this_project_this_account_this_region" {
       for arn in module.github_policy.ecr_repository_arns :
       length(split(":", arn)) == 6 && split(":", arn)[3] != "" && split(":", arn)[4] != ""
     ])
-    error_message = "Every ECR ARN granted must name a non-empty region and a non-empty account. Both are passed IN to ../github_policy — from data.aws_region.current.name and local.aws_account_id — so the module itself cannot tell whether the caller supplied them. An empty field yields a syntactically valid ARN that IAM accepts, that a plan diff renders as a grant, and that matches no repository in any account, which denies every push in the project and gives no clue why. Got: ${jsonencode(module.github_policy.ecr_repository_arns)}"
+    error_message = "Every ECR ARN granted must name a non-empty region and a non-empty account. Both are passed IN to ../github_policy — from data.aws_region.current.region and local.aws_account_id — so the module itself cannot tell whether the caller supplied them. An empty field yields a syntactically valid ARN that IAM accepts, that a plan diff renders as a grant, and that matches no repository in any account, which denies every push in the project and gives no clue why. Got: ${jsonencode(module.github_policy.ecr_repository_arns)}"
   }
 }
 
@@ -235,7 +235,7 @@ run "the_caller_hands_the_module_the_external_image_and_the_flag" {
   override_data {
     target = data.aws_region.current
     values = {
-      name = "us-east-1"
+      region = "us-east-1"
     }
   }
 

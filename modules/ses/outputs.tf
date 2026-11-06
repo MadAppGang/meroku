@@ -91,12 +91,23 @@ output "manual_dns_instructions" {
             note  = "DMARC policy record"
           }
         ],
+        # Extra TXT records, one entry per value
+        flatten([
+          for r in local.txt_records[domain_key] : [
+            for value in local.txt_record_sets["${domain_key}|${r.name}"].values : {
+              name  = local.txt_record_sets["${domain_key}|${r.name}"].fqdn
+              type  = "TXT"
+              value = value
+              note  = "Extra TXT record"
+            }
+          ]
+        ]),
         # Add MAIL FROM records if enabled for this domain
         lookup(local.enabled_mail_from, domain_key, null) != null ? [
           {
             name  = local.enabled_mail_from[domain_key].mail_from_domain
             type  = "MX"
-            value = "10 feedback-smtp.${data.aws_region.current.name}.amazonses.com"
+            value = "10 feedback-smtp.${data.aws_region.current.region}.amazonses.com"
             note  = "Custom MAIL FROM MX record"
           },
           {
@@ -163,7 +174,7 @@ output "verification_token_legacy" {
 
 # DNS Records Created (updated for multi-domain)
 output "dns_records_created" {
-  description = "Summary of DNS records created by this module (only for domains with zone_id)"
+  description = "Summary of DNS records this module writes (only for domains with zone_id). In a zone meroku did not create, a TXT entry means meroku's values in that record set, not the whole set."
   value = {
     for domain_key, domain in local.domains_map : domain_key => domain.zone_id != null ? concat(
       [
@@ -188,6 +199,13 @@ output "dns_records_created" {
           name = "${aws_ses_domain_dkim.dkim[domain_key].dkim_tokens[i]}._domainkey.${domain.domain}"
           type = "CNAME"
           note = "DKIM record ${i + 1}/3"
+        }
+      ],
+      [
+        for r in local.txt_records[domain_key] : {
+          name = local.txt_record_sets["${domain_key}|${r.name}"].fqdn
+          type = "TXT"
+          note = "Extra TXT record"
         }
       ],
       lookup(local.enabled_mail_from, domain_key, null) != null ? [

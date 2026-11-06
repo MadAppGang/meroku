@@ -302,7 +302,7 @@ func TestGithubPolicyModuleIsWiredToThisAccountAndRegion(t *testing.T) {
 		},
 		{
 			input: "region",
-			want:  "data.aws_region.current.name",
+			want:  "data.aws_region.current.region",
 			why: "the region field of an ECR ARN is part of the scope, and this one must be the region " +
 				"the role is deployed into. var.ecr_account_region defaults to \"\" and yields " +
 				"arn:aws:ecr::<account>:repository/... — accepted by IAM, shown as a grant in the plan, " +

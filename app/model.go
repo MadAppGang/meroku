@@ -428,6 +428,19 @@ type SESDomain struct {
 	SPFRecord     string   `yaml:"spf_record,omitempty"`
 	SPFTTL        *int     `yaml:"spf_ttl,omitempty"`
 	ApexTXTValues []string `yaml:"apex_txt_values,omitempty"`
+
+	// Extra TXT record sets at names below the domain, such as a Google
+	// Workspace DKIM key at google._domainkey (optional).
+	TXTRecords []SESTXTRecord `yaml:"txt_records,omitempty"`
+}
+
+// SESTXTRecord is one extra TXT record set of an SES domain. Name is relative
+// to the domain. Values longer than 255 characters are split automatically.
+// TTL is a pointer so that 0 is kept as a value; unset means 600.
+type SESTXTRecord struct {
+	Name   string   `yaml:"name" json:"name"`
+	Values []string `yaml:"values" json:"values"`
+	TTL    *int     `yaml:"ttl,omitempty" json:"ttl,omitempty"`
 }
 
 type Sqs struct {

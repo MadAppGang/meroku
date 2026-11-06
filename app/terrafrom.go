@@ -90,6 +90,9 @@ func terraformInitIfNeeded() error {
 		return stepErr("init", fmt.Errorf("checking the .terraform directory: %w", err))
 	} else {
 		fmt.Println("✅ Terraform already initialized.")
+		if err := upgradeLockedProviderIfBehind(); err != nil {
+			return stepErr("init", err)
+		}
 	}
 	return nil
 }
@@ -233,6 +236,15 @@ func terraformError(output string) ([]string, error) {
 	fmt.Println("Recovering from error ... ")
 
 	clean := stripAnsiEscapeCodes(output)
+
+	// A lock file that pins an older provider version than main.tf allows.
+	// Only -upgrade may select a version outside the lock, and the message
+	// also contains "terraform init", which the patterns below would answer
+	// with a plain init that fails the same way.
+	if strings.Contains(clean, "does not match configured version constraint") ||
+		strings.Contains(clean, "terraform init -upgrade") {
+		return []string{"terraform", "init", "-upgrade", "-input=false"}, nil
+	}
 
 	// Check for errors that require terraform init -reconfigure
 	reconfigurePatterns := []string{

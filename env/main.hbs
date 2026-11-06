@@ -9,10 +9,10 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = "~> 6.0"
     }
   }
-  required_version = ">= 1.2.6"
+  required_version = ">= 1.10.0"
 }
 
 # Stamp every resource in this environment with identifying tags, so the whole
@@ -963,6 +963,17 @@ module "ses" {
 {{#if this.apex_txt_values}}
       apex_txt_values = {{{hclArray this.apex_txt_values}}}
 {{/if}}
+{{#if this.txt_records}}
+      txt_records = [
+{{#each this.txt_records}}
+        { name = {{{hclString this.name}}}, values = {{{hclArray this.values}}}{{#if (exists this.ttl)}}, ttl = {{this.ttl}}{{/if}} },
+{{/each}}
+      ]
+{{/if}}
+{{!-- Only zones meroku did not create are written: the module defaults to "created". resolveSESZones in app/ses_zone_origin.go. --}}
+{{#if (eq this._zone_origin "existing")}}
+      zone_origin = "existing"
+{{/if}}
     }{{#unless @last}},{{/unless}}
     {{/each}}
   ]
@@ -973,6 +984,9 @@ module "ses" {
   {{#if domain.enabled}}
   zone_id = module.domain.zone_id
   {{/if}}
+{{#if (eq ses_legacy_zone_origin "existing")}}
+  zone_origin = "existing"
+{{/if}}
   {{/if}}
 
   # Test email addresses (account-wide, not per-domain)
@@ -1049,6 +1063,102 @@ moved {
   from = module.ses.aws_route53_record.dmarc
   to   = module.ses.aws_route53_record.dmarc["{{ses_primary_domain}}"]
 }
+{{/if}}
+{{#if ses_merge_any}}
+# SES records in DNS zones meroku did not create
+#
+# In such a zone meroku owns single TXT values, not whole record sets (see
+# modules/ses/main.tf and ai_docs/SES_DNS_OWNERSHIP.md). Earlier versions held
+# the apex SPF, the verification and the DMARC record sets as whole
+# aws_route53_record resources. Destroying those would delete the live sets,
+# values written by others included, so they are moved to names the module
+# does not declare and then forgotten without a destroy. The values the
+# module now owns are already in those sets, so its first apply writes
+# nothing. A move or removal with nothing in state is a no-op.
+{{#each ses_merge_domains}}
+moved {
+  from = module.ses.aws_route53_record.spf[{{{hclString this}}}]
+  to   = module.ses.aws_route53_record.spf_released[{{{hclString this}}}]
+}
+moved {
+  from = module.ses.aws_route53_record.domain_amazonses_verification_record[{{{hclString this}}}]
+  to   = module.ses.aws_route53_record.domain_amazonses_verification_record_released[{{{hclString this}}}]
+}
+moved {
+  from = module.ses.aws_route53_record.dmarc[{{{hclString this}}}]
+  to   = module.ses.aws_route53_record.dmarc_released[{{{hclString this}}}]
+}
+{{/each}}
+removed {
+  from = module.ses.aws_route53_record.spf_released
+  lifecycle {
+    destroy = false
+  }
+}
+removed {
+  from = module.ses.aws_route53_record.domain_amazonses_verification_record_released
+  lifecycle {
+    destroy = false
+  }
+}
+removed {
+  from = module.ses.aws_route53_record.dmarc_released
+  lifecycle {
+    destroy = false
+  }
+}
+# End of SES records in DNS zones meroku did not create
+{{/if}}
+{{else}}
+{{#if ses_merge_any}}
+# SES records in DNS zones meroku did not create
+#
+# SES is off, so module "ses" is not rendered. Without these blocks Terraform
+# would drop the module's values from state without running their destroy
+# provisioners, and meroku's values would stay in DNS. With them, each value
+# meroku added is removed from its record set, and everything else in the set
+# is kept. Nothing in state makes these a no-op.
+removed {
+  from = module.ses.terraform_data.dns_slot
+  lifecycle {
+    destroy = true
+  }
+  provisioner "local-exec" {
+    when        = destroy
+    interpreter = ["/bin/sh", self.input.script]
+    command     = "remove"
+    environment = {
+      R53_ZONE_ID = self.input.zone_id
+      R53_NAME    = self.input.fqdn
+      R53_SLOT    = ""
+      R53_VALUE   = self.input.value
+      R53_TTL     = ""
+      AWS_REGION  = self.input.region
+      AWS_PAGER   = ""
+    }
+  }
+}
+removed {
+  from = module.ses.terraform_data.dns_value
+  lifecycle {
+    destroy = true
+  }
+  provisioner "local-exec" {
+    when        = destroy
+    interpreter = ["/bin/sh", self.input.script]
+    command     = "remove"
+    environment = {
+      R53_ZONE_ID = self.input.zone_id
+      R53_NAME    = self.input.fqdn
+      R53_SLOT    = ""
+      R53_VALUE   = self.input.value
+      R53_TTL     = ""
+      AWS_REGION  = self.input.region
+      AWS_PAGER   = ""
+    }
+  }
+}
+# End of SES records in DNS zones meroku did not create
 {{/if}}
 {{/if}}
 
@@ -1692,7 +1802,7 @@ output "account_id" {
 }
 
 output "region" {
-  value = data.aws_region.current.name
+  value = data.aws_region.current.region
 }
 
 output "backend_task_role_name" {

@@ -121,7 +121,7 @@ resource "aws_iam_policy" "allow_admin_confirm_signup_policy" {
         "cognito-idp:AdminConfirmSignUp"
       ],
       "Resource": [
-        "arn:aws:cognito-idp:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:userpool/${aws_cognito_user_pool.user_pool.id}"
+        "arn:aws:cognito-idp:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:userpool/${aws_cognito_user_pool.user_pool.id}"
       ]
     }
   ]

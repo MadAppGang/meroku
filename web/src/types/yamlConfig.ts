@@ -634,6 +634,22 @@ export interface SESDomain {
 	mail_from_subdomain?: string; // Subdomain for MAIL FROM (e.g., "bounce")
 	dmarc_policy?: "none" | "quarantine" | "reject"; // DMARC policy
 	dmarc_rua_email?: string; // Email for DMARC reports
+	// The domain's one sender (SPF) record. Empty means
+	// "v=spf1 include:amazonses.com ~all".
+	spf_record?: string;
+	spf_ttl?: number; // TTL of the TXT record set at the domain itself
+	apex_txt_values?: string[]; // Other TXT values at the domain itself
+	txt_records?: SESTXTRecord[]; // TXT records at names under the domain
+}
+
+/**
+ * A TXT record at a name under an SES domain, for example
+ * google._domainkey. name is relative to the domain.
+ */
+export interface SESTXTRecord {
+	name: string;
+	values: string[];
+	ttl?: number;
 }
 
 /**

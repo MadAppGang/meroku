@@ -22,7 +22,7 @@ resource "aws_appsync_graphql_api" "pubsub" {
     for_each = local.use_cognito_auth ? [1] : []
     content {
       user_pool_id   = var.cognito_user_pool_id
-      aws_region     = var.cognito_user_pool_region != "" ? var.cognito_user_pool_region : data.aws_region.current.name
+      aws_region     = var.cognito_user_pool_region != "" ? var.cognito_user_pool_region : data.aws_region.current.region
       default_action = var.cognito_default_action
       # Null means every app client in the pool is accepted. modules/cognito
       # creates web, mobile and dashboard clients on one pool, so leaving this

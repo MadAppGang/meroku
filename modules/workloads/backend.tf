@@ -325,7 +325,7 @@ resource "aws_ecs_task_definition" "backend" {
         options = {
           awslogs-group         = aws_cloudwatch_log_group.backend.name
           awslogs-stream-prefix = "ecs"
-          awslogs-region        = data.aws_region.current.name
+          awslogs-region        = data.aws_region.current.region
         }
       }
 
@@ -783,9 +783,9 @@ resource "aws_iam_policy" "backend_eventbridge" {
           "events:ListEventBuses"
         ]
         Resource = [
-          "arn:aws:events:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:event-bus/default",
-          "arn:aws:events:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:event-bus/${var.project}-*",
-          "arn:aws:events:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:rule/*"
+          "arn:aws:events:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:event-bus/default",
+          "arn:aws:events:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:event-bus/${var.project}-*",
+          "arn:aws:events:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:rule/*"
         ]
       }
     ]
@@ -887,7 +887,7 @@ resource "aws_iam_policy" "ssm_parameter_access" {
 data "aws_iam_policy_document" "ssm_parameter_access" {
   statement {
     actions   = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
-    resources = ["arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/${var.env}/${var.project}/backend/*"]
+    resources = ["arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.env}/${var.project}/backend/*"]
   }
 }
 
