@@ -1,5 +1,29 @@
 locals {
   backend_name = "${var.project}_service_${var.env}"
+
+  # The container health check, as a map holding at most one key, merged into
+  # the backend container below. With var.backend_health_check null it is {},
+  # the merge adds nothing, and the container JSON and the task definition are
+  # unchanged. Iterating a one-element list rather than writing
+  # `cond ? { healthCheck = ... } : {}` keeps a null variable from being
+  # dereferenced, and the two arms of that conditional are different object
+  # types that Terraform refuses to unify (see local.service_health_check in
+  # services.tf).
+  #
+  # ECS runs the command INSIDE the container, so the tool it calls must exist
+  # in the image, or every probe fails and ECS replaces the task in a loop.
+  # aws_service_discovery_service.backend uses health_check_custom_config, in
+  # which ECS itself reports task health to Cloud Map, so a task failing this
+  # check is marked unhealthy there too and nothing else needs to change.
+  backend_health_check = { for hc in(var.backend_health_check == null ? [] : [var.backend_health_check]) :
+    "healthCheck" => {
+      command     = hc.command
+      interval    = hc.interval
+      timeout     = hc.timeout
+      retries     = hc.retries
+      startPeriod = hc.start_period
+    }
+  }
 }
 
 data "aws_vpc" "selected" {
@@ -16,6 +40,26 @@ resource "aws_ecs_service" "backend" {
   scheduling_strategy                = "REPLICA"
   enable_ecs_managed_tags            = true
   enable_execute_command             = var.backend_remote_access
+
+  # Emitted only when var.backend_circuit_breaker is set, so an environment
+  # without it plans no change. With rollback, a deployment whose tasks keep
+  # failing to start or failing the container health check rolls back to the
+  # last completed deployment.
+  #
+  # Removing the block does NOT turn a breaker off. In provider 6.x the
+  # attribute carries DiffSuppressFunc SuppressMissingOptionalConfigurationBlock,
+  # which hides the 1 -> 0 block-count change, so Terraform plans nothing and
+  # the service keeps the breaker exactly as it was last applied. That same
+  # suppression is why a service that never had the block shows no diff for the
+  # { enable = false, rollback = false } ECS reports for it. To turn it off,
+  # set enable = false.
+  dynamic "deployment_circuit_breaker" {
+    for_each = var.backend_circuit_breaker == null ? [] : [var.backend_circuit_breaker]
+    content {
+      enable   = deployment_circuit_breaker.value.enable
+      rollback = deployment_circuit_breaker.value.rollback
+    }
+  }
 
   # launch_type and capacity_provider_strategy are STRICTLY either/or, and the
   # conditional below is what enforces it: there is no ConflictsWith on either
@@ -291,9 +335,11 @@ resource "aws_ecs_task_definition" "backend" {
     }
   }
 
+  # merge() with local.backend_health_check adds a healthCheck key only when
+  # var.backend_health_check is set; otherwise the container JSON is unchanged.
   container_definitions = jsonencode(concat(
     local.xray_container,
-    [{
+    [merge({
       name    = local.backend_name
       command = var.backend_container_command
       cpu     = local.backend_pool == null ? max(var.backend_cpu, 256) : var.backend_cpu
@@ -341,7 +387,7 @@ resource "aws_ecs_task_definition" "backend" {
         hostPort      = local.backend_bridge ? 0 : var.backend_image_port
         name          = local.backend_name
       }]
-  }]))
+  }, local.backend_health_check)]))
 
   tags = {
     Name        = local.backend_name

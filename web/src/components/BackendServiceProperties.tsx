@@ -46,6 +46,25 @@ export function BackendServiceProperties({
 		});
 	};
 
+	const healthCheck = config.workload?.backend_health_check;
+	const healthCheckIsList = Array.isArray(healthCheck?.command);
+	const healthCheckText = Array.isArray(healthCheck?.command)
+		? healthCheck.command.join(" ")
+		: (healthCheck?.command ?? "");
+
+	// A typed string is a shell command. Timing fields set in the YAML are kept;
+	// an empty field removes the whole health check.
+	const handleHealthCheckCommandChange = (value: string) => {
+		handleWorkloadChange({
+			backend_health_check:
+				value.trim() === "" ? undefined : { ...healthCheck, command: value },
+		});
+	};
+
+	const circuitBreaker = config.workload?.backend_circuit_breaker;
+	const rollbackEnabled =
+		circuitBreaker?.enable === true && circuitBreaker?.rollback === true;
+
 	const handleCreateApiDomainChange = (checked: boolean) => {
 		onConfigChange({
 			domain: {
@@ -166,7 +185,9 @@ export function BackendServiceProperties({
 					</Label>
 					<Input
 						id={`${uid}-backend_container_command`}
-						value={(config.workload?.backend_container_command ?? []).join(", ")}
+						value={(config.workload?.backend_container_command ?? []).join(
+							", ",
+						)}
 						onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
 							handleWorkloadChange({
 								backend_container_command: parseContainerCommand(
@@ -180,6 +201,55 @@ export function BackendServiceProperties({
 					<p className="text-xs text-gray-500">
 						Override container startup command (comma-separated)
 					</p>
+				</div>
+
+				<div className="space-y-2">
+					<Label htmlFor={`${uid}-backend_health_check_command`}>
+						Container health check command
+					</Label>
+					<Input
+						id={`${uid}-backend_health_check_command`}
+						value={healthCheckText}
+						readOnly={healthCheckIsList}
+						disabled={healthCheckIsList}
+						onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+							handleHealthCheckCommandChange(e.target.value)
+						}
+						placeholder="curl -f http://localhost:8080/health || exit 1"
+						className="font-mono"
+					/>
+					<p className="text-xs text-muted-foreground">
+						{healthCheckIsList
+							? "This command is written as a list in the YAML file. Change it there."
+							: "A command ECS runs inside the container to check that it works. The tool it uses (curl, wget or your own program) must be installed in the image, or ECS keeps restarting the container. Leave empty for no health check."}
+					</p>
+				</div>
+
+				<div className="flex items-center justify-between">
+					<div className="flex-1">
+						<Label htmlFor={`${uid}-backend_circuit_breaker`}>
+							Roll back failed deployments
+						</Label>
+						<p className="text-xs text-muted-foreground mt-1">
+							If a new version keeps failing to start, stop the deployment and
+							go back to the last version that worked
+						</p>
+					</div>
+					<Switch
+						id={`${uid}-backend_circuit_breaker`}
+						checked={rollbackEnabled}
+						onCheckedChange={(checked) =>
+							handleWorkloadChange({
+								// Removing the key does not switch a deployed breaker
+								// off, so "off" writes enable: false once one was set.
+								backend_circuit_breaker: checked
+									? { enable: true, rollback: true }
+									: circuitBreaker
+										? { enable: false, rollback: false }
+										: undefined,
+							})
+						}
+					/>
 				</div>
 
 				<Separator />

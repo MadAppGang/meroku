@@ -143,6 +143,78 @@ variable "backend_container_command" {
   default = []
 }
 
+# The backend container's ECS health check. null (the default) adds no
+# healthCheck key, so the container definition and the task definition are
+# unchanged. command is ["CMD-SHELL", "<shell command>"] or
+# ["CMD", "<program>", "<args>"...]; the YAML also accepts a plain string, which
+# meroku turns into the CMD-SHELL form before rendering
+# (app/health_check_command.go). The defaults are the ones services[] use
+# (local.service_health_check in services.tf).
+variable "backend_health_check" {
+  type = object({
+    command      = list(string)
+    interval     = optional(number, 30)
+    timeout      = optional(number, 5)
+    retries      = optional(number, 3)
+    start_period = optional(number, 60)
+  })
+  default = null
+
+  validation {
+    condition = var.backend_health_check == null ? true : (
+      length(var.backend_health_check.command) > 0 && (
+        (var.backend_health_check.command[0] == "CMD-SHELL" && length(var.backend_health_check.command) == 2) ||
+        (var.backend_health_check.command[0] == "CMD" && length(var.backend_health_check.command) >= 2)
+      )
+    )
+    error_message = "backend_health_check.command must be [\"CMD-SHELL\", \"<shell command>\"] or [\"CMD\", \"<program>\", \"<args>\"...]."
+  }
+
+  validation {
+    condition = var.backend_health_check == null ? true : (
+      floor(var.backend_health_check.interval) == var.backend_health_check.interval &&
+      var.backend_health_check.interval >= 5 && var.backend_health_check.interval <= 300
+    )
+    error_message = "backend_health_check.interval must be a whole number of seconds from 5 to 300."
+  }
+
+  validation {
+    condition = var.backend_health_check == null ? true : (
+      floor(var.backend_health_check.timeout) == var.backend_health_check.timeout &&
+      var.backend_health_check.timeout >= 2 && var.backend_health_check.timeout <= 120
+    )
+    error_message = "backend_health_check.timeout must be a whole number of seconds from 2 to 120."
+  }
+
+  validation {
+    condition = var.backend_health_check == null ? true : (
+      floor(var.backend_health_check.retries) == var.backend_health_check.retries &&
+      var.backend_health_check.retries >= 1 && var.backend_health_check.retries <= 10
+    )
+    error_message = "backend_health_check.retries must be a whole number from 1 to 10."
+  }
+
+  validation {
+    condition = var.backend_health_check == null ? true : (
+      floor(var.backend_health_check.start_period) == var.backend_health_check.start_period &&
+      var.backend_health_check.start_period >= 0 && var.backend_health_check.start_period <= 300
+    )
+    error_message = "backend_health_check.start_period must be a whole number of seconds from 0 to 300."
+  }
+}
+
+# The backend ECS service's deployment circuit breaker. null (the default)
+# renders no deployment_circuit_breaker block. To turn a breaker off once it has
+# been applied, set enable = false: removing the variable does not change the
+# service (see aws_ecs_service.backend in backend.tf).
+variable "backend_circuit_breaker" {
+  type = object({
+    enable   = optional(bool, true)
+    rollback = optional(bool, true)
+  })
+  default = null
+}
+
 
 variable "backend_health_endpoint" {
   default = "/health/live"

@@ -238,6 +238,33 @@ type Workload struct {
 	// that is actually deployed — "do not auto-deploy prod" would have been
 	// unsayable. nil/true keeps today's behaviour; a manual deploy always works.
 	BackendAutoDeploy *bool `yaml:"backend_auto_deploy,omitempty"`
+
+	// BackendHealthCheck is the backend container's ECS health check. nil
+	// renders nothing, so the container definition is the one meroku has
+	// always generated. See modules/workloads/backend.tf.
+	BackendHealthCheck *BackendHealthCheck `yaml:"backend_health_check,omitempty"`
+	// BackendCircuitBreaker is the backend service's ECS deployment circuit
+	// breaker. nil renders no block.
+	BackendCircuitBreaker *BackendCircuitBreaker `yaml:"backend_circuit_breaker,omitempty"`
+}
+
+// BackendHealthCheck is workload.backend_health_check. Command takes the same
+// string-or-list forms as services[].health_check_command. The numbers are
+// pointers so an explicit 0 (valid for start_period) survives a load and save,
+// and an absent field stays absent; the module supplies the defaults.
+type BackendHealthCheck struct {
+	Command     HealthCheckCommand `yaml:"command,omitempty"`
+	Interval    *int               `yaml:"interval,omitempty"`
+	Timeout     *int               `yaml:"timeout,omitempty"`
+	Retries     *int               `yaml:"retries,omitempty"`
+	StartPeriod *int               `yaml:"start_period,omitempty"`
+}
+
+// BackendCircuitBreaker is workload.backend_circuit_breaker. A nil field takes
+// the module default (true).
+type BackendCircuitBreaker struct {
+	Enable   *bool `yaml:"enable,omitempty"`
+	Rollback *bool `yaml:"rollback,omitempty"`
 }
 
 type S3EnvFile struct {

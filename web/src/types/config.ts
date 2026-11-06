@@ -1,3 +1,5 @@
+import type { BackendCircuitBreaker, BackendHealthCheck } from "./yamlConfig";
+
 export interface InfrastructureConfig {
 	project: string;
 	env: string;
@@ -21,6 +23,8 @@ export interface InfrastructureConfig {
 	// every reader carrying an Array.isArray branch for a shape schema v26
 	// converts on load.
 	backend_container_command?: string[];
+	backend_health_check?: BackendHealthCheck;
+	backend_circuit_breaker?: BackendCircuitBreaker;
 	backend_image_port?: number;
 	xray_enabled?: boolean;
 	setup_FCM_SNS?: boolean;

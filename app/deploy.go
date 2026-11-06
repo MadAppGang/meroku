@@ -478,7 +478,8 @@ func applyTemplate(env string) error {
 // loading and rendering, in order: filterDisabledItems x3, then
 // synthesizeDefaultComputePool, assignSESPrimaryDomain, resolveSESZones,
 // normalizeHealthCheckCommands, then validateSESDNSConfigMap,
-// validateNetworkAccessConfigMap and validateComputeConfigMap. Path and
+// validateNetworkAccessConfigMap, validateBackendHealthConfigMap and
+// validateComputeConfigMap. Path and
 // custom-module flags stay with each caller, because they differ.
 //
 // resolveSESZones runs after assignSESPrimaryDomain because it reads the
@@ -508,6 +509,9 @@ func preprocessEnvMap(envMap map[string]interface{}) error {
 		return err
 	}
 	if err := validateNetworkAccessConfigMap(envMap); err != nil {
+		return err
+	}
+	if err := validateBackendHealthConfigMap(envMap); err != nil {
 		return err
 	}
 	return validateComputeConfigMap(envMap)

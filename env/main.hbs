@@ -596,6 +596,34 @@ module "workloads" {
   {{#if workload.backend_container_command}}
   backend_container_command = {{{array workload.backend_container_command}}}
   {{/if}}
+{{!-- Absent keys render nothing; modules/workloads holds the defaults. The tags sit in column 0: two indented standalone blocks in a row leave indentation behind when neither renders, and that would change main.tf for every environment. --}}
+{{#if (exists workload.backend_health_check)}}
+  backend_health_check = {
+    command = {{{hclArray workload.backend_health_check.command}}}
+{{#if (exists workload.backend_health_check.interval)}}
+    interval = {{workload.backend_health_check.interval}}
+{{/if}}
+{{#if (exists workload.backend_health_check.timeout)}}
+    timeout = {{workload.backend_health_check.timeout}}
+{{/if}}
+{{#if (exists workload.backend_health_check.retries)}}
+    retries = {{workload.backend_health_check.retries}}
+{{/if}}
+{{#if (exists workload.backend_health_check.start_period)}}
+    start_period = {{workload.backend_health_check.start_period}}
+{{/if}}
+  }
+{{/if}}
+{{#if (exists workload.backend_circuit_breaker)}}
+  backend_circuit_breaker = {
+{{#if (exists workload.backend_circuit_breaker.enable)}}
+    enable = {{workload.backend_circuit_breaker.enable}}
+{{/if}}
+{{#if (exists workload.backend_circuit_breaker.rollback)}}
+    rollback = {{workload.backend_circuit_breaker.rollback}}
+{{/if}}
+  }
+{{/if}}
   xray_enabled = {{workload.xray_enabled}}
   pgadmin_enabled = {{workload.install_pg_admin}}
   pgadmin_email = "{{workload.pg_admin_email}}"

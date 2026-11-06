@@ -1,5 +1,34 @@
 # Changelog
 
+## v4.13.0
+
+### Backend container health check and deployment circuit breaker
+
+Two optional keys under `workload:`:
+
+```yaml
+workload:
+  backend_health_check:
+    command: "curl -fsS http://localhost:8080/health/live || exit 1"  # or ["CMD", "/app/healthcheck"]
+    interval: 30       # optional, default 30
+    timeout: 5         # optional, default 5
+    retries: 3         # optional, default 3
+    start_period: 60   # optional, default 60
+  backend_circuit_breaker:
+    enable: true       # optional, default true
+    rollback: true     # optional, default true
+```
+
+`backend_health_check` becomes the `healthCheck` of the backend container, so ECS
+replaces a task whose container stops answering. `backend_circuit_breaker` becomes
+the `deployment_circuit_breaker` of the backend ECS service, so a deployment whose
+tasks keep failing stops and rolls back. To turn a breaker off, set `enable: false`;
+removing the key leaves AWS as it was. The web app's backend panel has a health
+check command field and a "Roll back failed deployments" switch.
+
+An environment without the keys generates the same `main.tf` as v4.12.1 and plans
+no change. See [ai_docs/BACKEND_HEALTH_CHECK.md](./ai_docs/BACKEND_HEALTH_CHECK.md).
+
 ## v4.12.1
 
 ### Fixed: SES global settings edited in the web app now reach Terraform
