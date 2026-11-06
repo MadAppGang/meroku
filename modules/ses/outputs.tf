@@ -52,9 +52,20 @@ output "manual_dns_instructions" {
           {
             name  = domain.domain
             type  = "TXT"
-            value = "v=spf1 include:amazonses.com ~all"
+            value = local.apex_txt[domain_key].values[0]
             note  = "SPF authorization record"
-          },
+          }
+        ],
+        # Extra apex TXT values, in list order, after the SPF value
+        [
+          for value in slice(local.apex_txt[domain_key].values, 1, length(local.apex_txt[domain_key].values)) : {
+            name  = domain.domain
+            type  = "TXT"
+            value = value
+            note  = "Apex TXT value"
+          }
+        ],
+        [
           {
             name  = "${aws_ses_domain_dkim.dkim[domain_key].dkim_tokens[0]}._domainkey.${domain.domain}"
             type  = "CNAME"

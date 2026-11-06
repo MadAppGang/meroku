@@ -420,6 +420,14 @@ type SESDomain struct {
 	MailFromSubdomain string `yaml:"mail_from_subdomain,omitempty"` // Override global setting
 	DMARCPolicy       string `yaml:"dmarc_policy,omitempty"`        // Override global setting
 	DMARCRuaEmail     string `yaml:"dmarc_rua_email,omitempty"`     // Override global setting
+
+	// Apex TXT record set (optional). SPFRecord replaces the default
+	// "v=spf1 include:amazonses.com ~all"; SPFTTL replaces the default 600 and
+	// is a pointer so that 0 is kept as a value. ApexTXTValues are written into
+	// the same record set as the SPF value.
+	SPFRecord     string   `yaml:"spf_record,omitempty"`
+	SPFTTL        *int     `yaml:"spf_ttl,omitempty"`
+	ApexTXTValues []string `yaml:"apex_txt_values,omitempty"`
 }
 
 type Sqs struct {

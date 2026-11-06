@@ -164,6 +164,16 @@ jobs:
           terraform test
         working-directory: modules/vpc
 
+      # The apex TXT record set of each SES domain: optional spf_record,
+      # spf_ttl and apex_txt_values, the 255-character split, and the variable
+      # validations that refuse a malformed value at plan. `terraform validate`
+      # does not evaluate those validations, so only these plans exercise them.
+      - name: Test the SES module
+        run: |
+          terraform init -backend=false -input=false
+          terraform test
+        working-directory: modules/ses
+
       # What the GitHub Actions deploy role can actually reach in ECR. The
       # policy document was extracted out of modules/workloads/github.tf into
       # modules/github_policy for one reason: every test file in

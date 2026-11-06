@@ -539,6 +539,9 @@ One node per scheduled task.
 | `ses.domains[].mail_from_subdomain` | string | only when MAIL FROM enabled | TF | |
 | `ses.domains[].dmarc_policy` | `"none"` \| `"quarantine"` \| `"reject"` | per-domain override | TF | |
 | `ses.domains[].dmarc_rua_email` | string | per-domain override | TF | |
+| `ses.domains[].spf_record` | string | optional; default `v=spf1 include:amazonses.com ~all` | TF | Full apex SPF value; must begin `v=spf1`. Printable ASCII; a `"` only inside the `" "` delimiter. Over 255 characters is split automatically. The MAIL FROM SPF record is not affected. |
+| `ses.domains[].spf_ttl` | number | optional; default `600` | TF | TTL of the apex TXT record set. Whole number, `0` or more; `0` is a value. |
+| `ses.domains[].apex_txt_values` | string[] | optional | TF | Extra TXT values in the same apex record set as the SPF value, same TTL. An SPF record here is refused. The set is replaced whole on apply: list every apex TXT value to keep. |
 | `ses.global_enable_mail_from` | boolean | default for all domains | TF | |
 | `ses.global_mail_from_subdomain` | string | default for all domains | TF | |
 | `ses.global_dmarc_policy` | `"none"` \| `"quarantine"` \| `"reject"` | default for all domains | TF | |

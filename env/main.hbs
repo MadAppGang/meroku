@@ -954,6 +954,15 @@ module "ses" {
       {{#if this.dmarc_rua_email}}
       dmarc_rua_email = "{{this.dmarc_rua_email}}"
       {{/if}}
+{{#if this.spf_record}}
+      spf_record = {{{hclString this.spf_record}}}
+{{/if}}
+{{#if (exists this.spf_ttl)}}
+      spf_ttl = {{this.spf_ttl}}
+{{/if}}
+{{#if this.apex_txt_values}}
+      apex_txt_values = {{{hclArray this.apex_txt_values}}}
+{{/if}}
     }{{#unless @last}},{{/unless}}
     {{/each}}
   ]
