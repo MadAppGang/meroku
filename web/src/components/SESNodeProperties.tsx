@@ -284,13 +284,36 @@ export function SESNodeProperties({
 	};
 
 	const handleUpdateGlobalSettings = (updates: Partial<SESConfig>) => {
+		// Saving a setting under its real key also drops the old key that
+		// earlier versions wrote for it, which nothing reads.
+		const dropLegacy: Partial<SESConfig> = {};
+		if ("enable_mail_from" in updates)
+			dropLegacy.global_enable_mail_from = undefined;
+		if ("mail_from_subdomain" in updates)
+			dropLegacy.global_mail_from_subdomain = undefined;
+		if ("dmarc_policy" in updates) dropLegacy.global_dmarc_policy = undefined;
+		if ("dmarc_rua_email" in updates)
+			dropLegacy.global_dmarc_rua_email = undefined;
 		onConfigChange({
 			ses: {
 				...sesConfig,
+				...dropLegacy,
 				...updates,
 			},
 		});
 	};
+
+	// Values saved under the old global_* keys. They never reached Terraform.
+	const legacyGlobals: Partial<SESConfig> = {};
+	if (sesConfig.global_enable_mail_from !== undefined)
+		legacyGlobals.enable_mail_from = sesConfig.global_enable_mail_from;
+	if (sesConfig.global_mail_from_subdomain)
+		legacyGlobals.mail_from_subdomain = sesConfig.global_mail_from_subdomain;
+	if (sesConfig.global_dmarc_policy)
+		legacyGlobals.dmarc_policy = sesConfig.global_dmarc_policy;
+	if (sesConfig.global_dmarc_rua_email)
+		legacyGlobals.dmarc_rua_email = sesConfig.global_dmarc_rua_email;
+	const legacyGlobalEntries = Object.entries(legacyGlobals);
 
 	const toggleDomainExpanded = (domain: string) => {
 		setExpandedDomains((prev) => {
@@ -599,6 +622,28 @@ export function SESNodeProperties({
 
 							<div className="border-t border-gray-700 pt-4" />
 
+							{legacyGlobalEntries.length > 0 && (
+								<div className="p-3 rounded-lg border border-yellow-700 bg-yellow-950/30 space-y-2">
+									<p className="text-sm text-yellow-200">
+										These settings were saved by an earlier version of this app
+										and were never applied:
+									</p>
+									<ul className="text-xs font-mono text-yellow-100">
+										{legacyGlobalEntries.map(([key, value]) => (
+											<li key={key}>
+												{key}: {String(value)}
+											</li>
+										))}
+									</ul>
+									<Button
+										size="sm"
+										onClick={() => handleUpdateGlobalSettings(legacyGlobals)}
+									>
+										Apply these settings
+									</Button>
+								</div>
+							)}
+
 							{/* MAIL FROM Settings */}
 							<div className="flex items-center justify-between">
 								<div className="space-y-1">
@@ -609,23 +654,23 @@ export function SESNodeProperties({
 									</p>
 								</div>
 								<Switch
-									checked={sesConfig.global_enable_mail_from !== false}
+									checked={sesConfig.enable_mail_from !== false}
 									onCheckedChange={(checked) =>
 										handleUpdateGlobalSettings({
-											global_enable_mail_from: checked,
+											enable_mail_from: checked,
 										})
 									}
 								/>
 							</div>
 
-							{sesConfig.global_enable_mail_from !== false && (
+							{sesConfig.enable_mail_from !== false && (
 								<div className="space-y-2">
 									<Label>Default MAIL FROM Subdomain</Label>
 									<Input
-										value={sesConfig.global_mail_from_subdomain || "bounce"}
+										value={sesConfig.mail_from_subdomain || "bounce"}
 										onChange={(e) =>
 											handleUpdateGlobalSettings({
-												global_mail_from_subdomain: e.target.value,
+												mail_from_subdomain: e.target.value,
 											})
 										}
 										placeholder="bounce"
@@ -633,7 +678,7 @@ export function SESNodeProperties({
 									<p className="text-xs text-gray-500">
 										Bounce messages will come from{" "}
 										<code className="text-blue-400">
-											{sesConfig.global_mail_from_subdomain || "bounce"}
+											{sesConfig.mail_from_subdomain || "bounce"}
 											.yourdomain.com
 										</code>
 									</p>
@@ -644,13 +689,10 @@ export function SESNodeProperties({
 							<div className="space-y-2">
 								<Label>Default DMARC Policy</Label>
 								<Select
-									value={sesConfig.global_dmarc_policy || "none"}
+									value={sesConfig.dmarc_policy || "none"}
 									onValueChange={(value) =>
 										handleUpdateGlobalSettings({
-											global_dmarc_policy: value as
-												| "none"
-												| "quarantine"
-												| "reject",
+											dmarc_policy: value as "none" | "quarantine" | "reject",
 										})
 									}
 								>
@@ -678,10 +720,10 @@ export function SESNodeProperties({
 							<div className="space-y-2">
 								<Label>Default DMARC Report Email</Label>
 								<Input
-									value={sesConfig.global_dmarc_rua_email || ""}
+									value={sesConfig.dmarc_rua_email || ""}
 									onChange={(e) =>
 										handleUpdateGlobalSettings({
-											global_dmarc_rua_email: e.target.value,
+											dmarc_rua_email: e.target.value || undefined,
 										})
 									}
 									placeholder="dmarc-reports@yourdomain.com"
@@ -870,13 +912,11 @@ function DomainCard({
 
 	// Determine effective settings (per-domain or global fallback)
 	const effectiveMailFrom =
-		domain.enable_mail_from ?? sesConfig.global_enable_mail_from ?? true;
+		domain.enable_mail_from ?? sesConfig.enable_mail_from ?? true;
 	const effectiveMailFromSubdomain =
-		domain.mail_from_subdomain ||
-		sesConfig.global_mail_from_subdomain ||
-		"bounce";
+		domain.mail_from_subdomain || sesConfig.mail_from_subdomain || "bounce";
 	const effectiveDmarcPolicy =
-		domain.dmarc_policy || sesConfig.global_dmarc_policy || "none";
+		domain.dmarc_policy || sesConfig.dmarc_policy || "none";
 
 	// The keys the generated Terraform reads for the MAIL FROM defaults.
 	const { enable_mail_from, mail_from_subdomain } = sesConfig as SESConfig &
@@ -1126,23 +1166,17 @@ function generateYamlPreview(
 	}
 
 	// Global settings
-	if (sesConfig.global_enable_mail_from !== undefined) {
-		lines.push(
-			`  global_enable_mail_from: ${sesConfig.global_enable_mail_from}`,
-		);
+	if (sesConfig.enable_mail_from !== undefined) {
+		lines.push(`  enable_mail_from: ${sesConfig.enable_mail_from}`);
 	}
-	if (sesConfig.global_mail_from_subdomain) {
-		lines.push(
-			`  global_mail_from_subdomain: "${sesConfig.global_mail_from_subdomain}"`,
-		);
+	if (sesConfig.mail_from_subdomain) {
+		lines.push(`  mail_from_subdomain: "${sesConfig.mail_from_subdomain}"`);
 	}
-	if (sesConfig.global_dmarc_policy) {
-		lines.push(`  global_dmarc_policy: "${sesConfig.global_dmarc_policy}"`);
+	if (sesConfig.dmarc_policy) {
+		lines.push(`  dmarc_policy: "${sesConfig.dmarc_policy}"`);
 	}
-	if (sesConfig.global_dmarc_rua_email) {
-		lines.push(
-			`  global_dmarc_rua_email: "${sesConfig.global_dmarc_rua_email}"`,
-		);
+	if (sesConfig.dmarc_rua_email) {
+		lines.push(`  dmarc_rua_email: "${sesConfig.dmarc_rua_email}"`);
 	}
 
 	// Domains
