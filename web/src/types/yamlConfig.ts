@@ -662,7 +662,15 @@ export interface SESConfig {
 	domains?: SESDomain[];
 	// Test emails - account-wide for SES sandbox mode (Schema v18)
 	test_emails?: string[];
-	// Global settings (apply to all domains unless overridden)
+	// Settings for every domain unless a domain overrides them. These are the
+	// keys the generated Terraform reads (app/model.go Ses).
+	enable_mail_from?: boolean;
+	mail_from_subdomain?: string;
+	dmarc_policy?: "none" | "quarantine" | "reject";
+	dmarc_rua_email?: string;
+	// Keys earlier versions of this app wrote. Nothing reads them; they are
+	// shown as the current value until the setting is saved under its real
+	// key, and removed on that save.
 	global_enable_mail_from?: boolean;
 	global_mail_from_subdomain?: string;
 	global_dmarc_policy?: "none" | "quarantine" | "reject";

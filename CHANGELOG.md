@@ -1,5 +1,18 @@
 # Changelog
 
+## v4.12.1
+
+### Fixed: SES global settings edited in the web app now reach Terraform
+
+The web app saved the SES global settings as `global_enable_mail_from`,
+`global_mail_from_subdomain`, `global_dmarc_policy` and `global_dmarc_rua_email`,
+which nothing reads, so a MAIL FROM or DMARC choice made there never applied.
+It now saves `enable_mail_from`, `mail_from_subdomain`, `dmarc_policy` and
+`dmarc_rua_email`, the keys generate reads. The panel shows the value in force,
+lists any old `global_*` values as never applied, and its "Apply these settings"
+button moves them to the real keys. Nothing changes for an environment until a
+setting is saved.
+
 ## v4.12.0
 
 ### SES DNS records in zones meroku did not create keep other people's values

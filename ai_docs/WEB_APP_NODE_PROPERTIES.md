@@ -543,10 +543,11 @@ One node per scheduled task.
 | `ses.domains[].spf_ttl` | number | optional; default `600` in a zone meroku created, the live TTL in one it did not | TF | TTL of the apex TXT record set. Whole number, `0` or more; `0` is a value. |
 | `ses.domains[].apex_txt_values` | string[] | optional | TF | Extra TXT values in the same apex record set as the SPF value, same TTL. An SPF record here is refused. In a zone meroku created the set is replaced whole on apply: list every apex TXT value to keep. In a zone it did not create, meroku adds and removes only these values and its SPF value (see [SES DNS ownership](./SES_DNS_OWNERSHIP.md)). |
 | `ses.domains[].txt_records` | `{name, values[], ttl?}[]` | optional | TF | TXT records at names under the domain, e.g. `google._domainkey`. `name` is relative; `@`, the domain itself, `_amazonses`, `_dmarc` and the MAIL FROM subdomain are refused. `ttl` defaults to `600`. Same value rules as `apex_txt_values`. Edited in the web app under "Extra text records". |
-| `ses.global_enable_mail_from` | boolean | default for all domains | TF | Known defect: the web app writes the `global_*` keys, but generate reads `ses.enable_mail_from`, `ses.mail_from_subdomain`, `ses.dmarc_policy` and `ses.dmarc_rua_email`, so these four never reach Terraform. |
-| `ses.global_mail_from_subdomain` | string | default for all domains | TF | |
-| `ses.global_dmarc_policy` | `"none"` \| `"quarantine"` \| `"reject"` | default for all domains | TF | |
-| `ses.global_dmarc_rua_email` | string | default for all domains | TF | |
+| `ses.enable_mail_from` | boolean | `true` | TF | Default for all domains; a domain's own `enable_mail_from` overrides it. |
+| `ses.mail_from_subdomain` | string | `"bounce"` | TF | Default for all domains. |
+| `ses.dmarc_policy` | `"none"` \| `"quarantine"` \| `"reject"` | `"none"` | TF | Default for all domains. |
+| `ses.dmarc_rua_email` | string | `dmarc-reports@<domain>` | TF | Default for all domains. |
+| `ses.global_*` (four keys) | — | — | none | Written by web app versions before v4.12.1 and never read. The SES panel lists any it finds as "never applied" with an "Apply these settings" button, which moves them to the keys above; editing a setting also drops its old key. |
 | `ses.test_emails` | string[] | account-wide | TF | Verified identities for sandbox mode. |
 | `ses.domains[]` zone origin | `"created"` \| `"existing"` \| none | — | RO | From `GET /api/ses-dns`. Decides whether the YAML is the whole truth for the domain's records or meroku touches only its own values. Shown as the ownership note at the top of "Email sender records". |
 | Live apex TXT | `{apex_ttl, spf[], apex_other[], read_error?}` | — | RUNTIME | From `GET /api/ses-dns`; builds the "This app and the services your domain already uses" sender choice. An AWS failure is a 200 with `read_error`. |
