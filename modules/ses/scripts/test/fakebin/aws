@@ -1,0 +1,143 @@
+#!/usr/bin/env python3
+# A stand-in for the AWS CLI v2, for testing route53-txt.sh without AWS.
+#
+# It implements the two Route53 calls the script makes, with Route53's
+# semantics where they matter: a change batch is applied all or nothing, and a
+# DELETE must name the exact TTL and values of the live set, otherwise the
+# whole batch fails with InvalidChangeBatch.
+#
+# State lives under $FAKE_R53_DIR:
+#   <zone>/<name>.TXT   line 1 the TTL, then one value per line, Route53 form
+#   calls.log           one line per call: "list <name>" or "change <json>"
+#   fail_next           if present, a number n: the next n change calls fail
+#                       with InvalidChangeBatch (and n is decremented)
+#   lock                serialises calls, as Route53 does
+#
+# FAKE_AWS_VERSION overrides the `aws --version` text (to test the v1 refusal).
+import fcntl
+import json
+import os
+import sys
+
+args = sys.argv[1:]
+if args == ["--version"]:
+    print(os.environ.get("FAKE_AWS_VERSION", "aws-cli/2.17.0 Python/3.12.0 Linux/6.0 exe/x86_64"))
+    sys.exit(0)
+
+state = os.environ.get("FAKE_R53_DIR")
+if not state:
+    print("fake aws: FAKE_R53_DIR is not set", file=sys.stderr)
+    sys.exit(255)
+os.makedirs(state, exist_ok=True)
+
+
+def opt(flag):
+    if flag not in args:
+        return None
+    return args[args.index(flag) + 1]
+
+
+def set_path(zone, name):
+    return os.path.join(state, zone, name.rstrip(".") + ".TXT")
+
+
+def read(zone, name):
+    p = set_path(zone, name)
+    if not os.path.exists(p):
+        return None
+    with open(p) as f:
+        lines = f.read().splitlines()
+    return int(lines[0]), lines[1:]
+
+
+def log(line):
+    with open(os.path.join(state, "calls.log"), "a") as f:
+        f.write(line + "\n")
+
+
+lock = open(os.path.join(state, "lock"), "w")
+fcntl.flock(lock, fcntl.LOCK_EX)
+
+if args[:2] == ["route53", "list-resource-record-sets"]:
+    zone = opt("--hosted-zone-id")
+    name = opt("--start-record-name")
+    query = opt("--query") or ""
+    if opt("--start-record-type") != "TXT" or opt("--output") != "text":
+        print("fake aws: unexpected list arguments: %r" % args, file=sys.stderr)
+        sys.exit(255)
+    expected = "ResourceRecordSets[?Name=='%s' && Type=='TXT'] | [0].[TTL, ResourceRecords[].Value][]" % name
+    if query != expected:
+        print("fake aws: unexpected query %r, want %r" % (query, expected), file=sys.stderr)
+        sys.exit(255)
+    log("list " + name)
+    cur = read(zone, name)
+    # The text output of a flat JMESPath list: its items, tab-separated, on
+    # one line; a null result prints None.
+    print("None" if cur is None else "\t".join([str(cur[0])] + cur[1]))
+    sys.exit(0)
+
+if args[:2] == ["route53", "change-resource-record-sets"]:
+    zone = opt("--hosted-zone-id")
+    batch_arg = opt("--change-batch")
+    if not batch_arg or not batch_arg.startswith("file://"):
+        print("fake aws: --change-batch must be a file:// path", file=sys.stderr)
+        sys.exit(255)
+    with open(batch_arg[len("file://"):]) as f:
+        batch = json.load(f)
+    log("change " + json.dumps(batch["Changes"], sort_keys=True))
+
+    fail_path = os.path.join(state, "fail_next")
+    if os.path.exists(fail_path):
+        n = int(open(fail_path).read().strip() or 0)
+        if n > 0:
+            with open(fail_path, "w") as f:
+                f.write(str(n - 1))
+            print("An error occurred (InvalidChangeBatch) when calling the ChangeResourceRecordSets "
+                  "operation: [injected conflict]", file=sys.stderr)
+            sys.exit(254)
+
+    pending = {}
+    for c in batch["Changes"]:
+        rrs = c["ResourceRecordSet"]
+        name = rrs["Name"]
+        if rrs["Type"] != "TXT" or not name.endswith("."):
+            print("fake aws: unexpected record set %r" % rrs, file=sys.stderr)
+            sys.exit(255)
+        cur = pending[name] if name in pending else read(zone, name)
+        want = (int(rrs["TTL"]), [r["Value"] for r in rrs["ResourceRecords"]])
+        if c["Action"] == "DELETE":
+            if cur is None:
+                msg = "Tried to delete resource record set [name='%s', type='TXT'] but it was not found" % name
+            elif cur[0] != want[0] or sorted(cur[1]) != sorted(want[1]):
+                msg = ("Tried to delete resource record set [name='%s', type='TXT'] but the values "
+                       "provided do not match the current values" % name)
+            else:
+                pending[name] = None
+                continue
+        elif c["Action"] == "CREATE":
+            if cur is not None:
+                msg = "Tried to create resource record set [name='%s', type='TXT'] but it already exists" % name
+            elif not want[1]:
+                msg = "ResourceRecords must not be empty"
+            else:
+                pending[name] = want
+                continue
+        else:
+            msg = "fake aws: action %s is not used by the script" % c["Action"]
+        print("An error occurred (InvalidChangeBatch) when calling the ChangeResourceRecordSets "
+              "operation: [%s]" % msg, file=sys.stderr)
+        sys.exit(254)
+
+    for name, val in pending.items():
+        p = set_path(zone, name)
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        if val is None:
+            os.remove(p)
+        else:
+            with open(p, "w") as f:
+                f.write("\n".join([str(val[0])] + val[1]) + "\n")
+    print('{"ChangeInfo": {"Id": "/change/C000000000000", "Status": "PENDING"}}')
+    sys.exit(0)
+
+print("fake aws: unsupported call: %r" % args, file=sys.stderr)
+sys.exit(255)

@@ -476,9 +476,13 @@ func applyTemplate(env string) error {
 
 // preprocessEnvMap runs everything applyTemplate does to envMap between
 // loading and rendering, in order: filterDisabledItems x3, then
-// synthesizeDefaultComputePool, assignSESPrimaryDomain, then
-// validateComputeConfigMap. Path and
+// synthesizeDefaultComputePool, assignSESPrimaryDomain, resolveSESZones,
+// normalizeHealthCheckCommands, then validateSESDNSConfigMap,
+// validateNetworkAccessConfigMap and validateComputeConfigMap. Path and
 // custom-module flags stay with each caller, because they differ.
+//
+// resolveSESZones runs after assignSESPrimaryDomain because it reads the
+// ses_primary_domain that step stores for the legacy single-domain form.
 //
 // It exists because the render tests used to hand-replicate this block
 // (autodeploy_template_test.go). The moment applyTemplate gained a step, every
@@ -497,8 +501,12 @@ func preprocessEnvMap(envMap map[string]interface{}) error {
 
 	synthesizeDefaultComputePool(envMap)
 	assignSESPrimaryDomain(envMap)
+	resolveSESZones(envMap)
 	normalizeHealthCheckCommands(envMap)
 
+	if err := validateSESDNSConfigMap(envMap); err != nil {
+		return err
+	}
 	if err := validateNetworkAccessConfigMap(envMap); err != nil {
 		return err
 	}

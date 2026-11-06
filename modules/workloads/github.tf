@@ -83,7 +83,7 @@ module "github_policy" {
   project            = var.project
   env                = var.env
   aws_account_id     = local.aws_account_id
-  region             = data.aws_region.current.name
+  region             = data.aws_region.current.region
   ecr_strategy       = var.ecr_strategy
   ecr_account_id     = var.ecr_account_id
   ecr_account_region = var.ecr_account_region

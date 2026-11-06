@@ -27,14 +27,14 @@ locals {
     environment = [
       {
         name  = "AWS_REGION"
-        value = data.aws_region.current.name
+        value = data.aws_region.current.region
       }
     ]
     logConfiguration = {
       logDriver = "awslogs"
       options = {
         awslogs-group         = "${var.project}_adot_collector_${var.env}"
-        awslogs-region        = data.aws_region.current.name
+        awslogs-region        = data.aws_region.current.region
         awslogs-stream-prefix = "xray"
       }
     }

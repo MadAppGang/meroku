@@ -319,6 +319,9 @@ func getActionIcon(action string) string {
 		return "✗"
 	case "replace":
 		return "↻"
+	case "forget":
+		// A removed block with destroy = false: dropped from state, kept in AWS.
+		return "⊘"
 	default:
 		return "─"
 	}
@@ -1660,6 +1663,9 @@ func (m *modernPlanModel) renderFullScreenDiff() string {
 		case "read":
 			action = "READ"
 			actionColor = accentColor
+		case "forget":
+			action = "FORGET (kept in AWS)"
+			actionColor = accentColor
 		}
 	}
 
@@ -1759,6 +1765,10 @@ func (m *modernPlanModel) renderFullDiffContent(resource *ResourceChange) string
 			// Read operation
 			b.WriteString(sectionStyle.Render("🔍 Resource Read") + "\n\n")
 			b.WriteString("This resource will be read from the provider to update the state.\n")
+
+		case "forget":
+			b.WriteString(sectionStyle.Render("⊘ Removed from Terraform state only") + "\n\n")
+			b.WriteString("Terraform stops tracking this resource. Nothing is deleted in AWS: the record stays exactly as it is.\n")
 		}
 	}
 

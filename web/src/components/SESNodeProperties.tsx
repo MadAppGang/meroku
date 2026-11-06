@@ -16,11 +16,14 @@ import {
 	X,
 } from "lucide-react";
 import { useId, useState } from "react";
+import type { SESMailFromDefaults } from "../lib/sesDnsValidation";
 import type {
 	SESConfig,
 	SESDomain,
 	YamlInfrastructureConfig,
 } from "../types/yamlConfig";
+import { SESSenderRecord } from "./ses/SESSenderRecord";
+import { SESTextRecordsEditor } from "./ses/SESTextRecordsEditor";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -436,6 +439,7 @@ export function SESNodeProperties({
 										<DomainCard
 											key={domain.domain}
 											domain={domain}
+											env={config.env}
 											sesConfig={sesConfig}
 											isExpanded={expandedDomains.has(domain.domain)}
 											onToggleExpand={() => toggleDomainExpanded(domain.domain)}
@@ -838,6 +842,7 @@ export function SESNodeProperties({
 
 interface DomainCardProps {
 	domain: SESDomain;
+	env: string;
 	sesConfig: SESConfig;
 	isExpanded: boolean;
 	onToggleExpand: () => void;
@@ -850,6 +855,7 @@ interface DomainCardProps {
 
 function DomainCard({
 	domain,
+	env,
 	sesConfig,
 	isExpanded,
 	onToggleExpand,
@@ -871,6 +877,14 @@ function DomainCard({
 		"bounce";
 	const effectiveDmarcPolicy =
 		domain.dmarc_policy || sesConfig.global_dmarc_policy || "none";
+
+	// The keys the generated Terraform reads for the MAIL FROM defaults.
+	const { enable_mail_from, mail_from_subdomain } = sesConfig as SESConfig &
+		SESMailFromDefaults;
+	const sesDefaults: SESMailFromDefaults = {
+		enable_mail_from,
+		mail_from_subdomain,
+	};
 
 	return (
 		<div className="border rounded-lg overflow-hidden">
@@ -958,6 +972,18 @@ function DomainCard({
 							</p>
 						)}
 					</div>
+
+					<SESSenderRecord
+						env={env}
+						domain={domain}
+						sesDefaults={sesDefaults}
+						onUpdate={onUpdate}
+					/>
+					<SESTextRecordsEditor
+						domain={domain}
+						sesDefaults={sesDefaults}
+						onUpdate={onUpdate}
+					/>
 
 					{/* Advanced Settings (Collapsible) */}
 					<Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
@@ -1141,6 +1167,29 @@ function generateYamlPreview(
 			}
 			if (domain.dmarc_rua_email) {
 				lines.push(`      dmarc_rua_email: "${domain.dmarc_rua_email}"`);
+			}
+			if (domain.spf_record) {
+				lines.push(`      spf_record: ${JSON.stringify(domain.spf_record)}`);
+			}
+			if (domain.spf_ttl !== undefined) {
+				lines.push(`      spf_ttl: ${domain.spf_ttl}`);
+			}
+			if (domain.apex_txt_values && domain.apex_txt_values.length > 0) {
+				lines.push("      apex_txt_values:");
+				for (const v of domain.apex_txt_values) {
+					lines.push(`        - ${JSON.stringify(v)}`);
+				}
+			}
+			if (domain.txt_records && domain.txt_records.length > 0) {
+				lines.push("      txt_records:");
+				for (const r of domain.txt_records) {
+					lines.push(`        - name: ${JSON.stringify(r.name)}`);
+					if (r.ttl !== undefined) lines.push(`          ttl: ${r.ttl}`);
+					lines.push("          values:");
+					for (const v of r.values) {
+						lines.push(`            - ${JSON.stringify(v)}`);
+					}
+				}
 			}
 		}
 	}

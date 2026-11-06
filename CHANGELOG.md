@@ -1,5 +1,86 @@
 # Changelog
 
+## v4.12.0
+
+### SES DNS records in zones meroku did not create keep other people's values
+
+Until now, meroku replaced the whole TXT record set at the domain, at
+`_amazonses.<domain>` and at `_dmarc.<domain>` for every SES domain with a
+zone. In a zone it did not create, that removed values other services had put
+there. Destroying the domain deleted those sets, including the other values.
+
+meroku now decides, per SES domain, whether it created the zone:
+
+- **Zone meroku created** (an additional domain with `create_zone: true`, the
+  main domain with `create_domain_zone: true`, or a delegated `<env>.` zone).
+  Nothing changes: the YAML is the whole truth, and the generated Terraform
+  is byte-identical to v4.11.1.
+- **Zone meroku did not create** (`ses.domains[].zone_id`, an additional domain
+  with `zone_id`, or the main domain without `create_domain_zone`). meroku adds
+  and removes only its own values: the SPF value, `apex_txt_values`, the
+  verification token, the DMARC value and the new `txt_records`. Every other
+  value in the zone stays, on apply and on destroy.
+
+A domain can publish only one SPF and one DMARC record. If one that meroku did
+not write already exists, plan refuses until the YAML says what to publish:
+`spf_record` (the error suggests the live value with `include:amazonses.com`
+added) or `dmarc_policy` / `dmarc_rua_email`. meroku does not restore a
+replaced value on destroy.
+
+**First plan after upgrading**, for envs with a zone meroku did not create:
+the old record resources show as **forget (kept in AWS)**, not delete. They
+leave Terraform state and stay in Route53, and the new resources take the
+values over in place. Nothing is deleted from DNS.
+
+**New requirement** where Terraform runs for those envs: a POSIX `/bin/sh` and
+AWS CLI v2. meroku edits the shared record sets with
+`modules/ses/scripts/route53-txt.sh`, using the same credentials as the
+provider.
+
+### Extra TXT records under an SES domain
+
+`ses.domains[].txt_records` lists TXT records at names under the domain, for
+example Google Workspace's `google._domainkey`:
+
+```yaml
+ses:
+  domains:
+    - domain: example.com
+      txt_records:
+        - name: google._domainkey
+          values: ["v=DKIM1; k=rsa; p=FAKEKEYDONOTUSE"]
+          ttl: 3600   # optional, default 600
+```
+
+`name` is relative to the domain. Generate refuses `@`, the domain itself,
+`_amazonses`, `_dmarc`, the MAIL FROM subdomain, a name used twice, an SPF
+value, and values that break the `apex_txt_values` rules.
+
+### Web app
+
+The SES panel gains an "Email sender records" section per domain: a note
+saying who owns the zone's records, a "Who sends email from this domain?"
+choice (only this app; this app and the services the domain already uses;
+Google Workspace; Microsoft 365; or a record you write), the TTL, and
+editors for the other text values at the domain and extra text records, with
+a Google Workspace DKIM preset. It reads the live records through the new
+read-only `GET /api/ses-dns`. Values reach the YAML only once they are valid.
+
+### AWS provider 6.x
+
+Generated envs and all modules now use `hashicorp/aws ~> 6.0`, and generated
+envs require Terraform `>= 1.10.0`. `data.aws_region.current.name` became
+`.region` throughout. When an env's lock file pins provider 5.x, meroku runs
+`terraform init -upgrade` before plan, and a lock mismatch error now suggests
+the same command.
+
+### Plan viewer
+
+Instances in `removed { lifecycle { destroy = false } }` blocks show as
+`⊘ FORGET (kept in AWS)` and are no longer counted as deletions.
+
+See [SES DNS ownership](./ai_docs/SES_DNS_OWNERSHIP.md).
+
 ## v4.11.1
 
 ### Choose what the SES domain's apex TXT record holds

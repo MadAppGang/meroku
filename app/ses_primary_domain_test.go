@@ -92,6 +92,11 @@ func TestSESLegacyMovesFollowTheModuleDomain(t *testing.T) {
 
 			moved := map[string]string{}
 			for _, m := range sesMovedBlock.FindAllStringSubmatch(rendered, -1) {
+				// Moves from a keyed address belong to zones meroku did not
+				// create (ses_merge_template_test.go), not to the legacy form.
+				if strings.Contains(m[1], `["`) {
+					continue
+				}
 				moved[m[1]] = m[2]
 			}
 			for from, keyFmt := range sesLegacyAddresses {
@@ -116,7 +121,10 @@ func TestSESLegacyMovesAbsentWhenSESDisabled(t *testing.T) {
 	rendered := renderMainHBS(t, map[string]interface{}{
 		"ses": map[string]interface{}{"enabled": false, "domain_name": "mail.example.com"},
 	})
-	if strings.Contains(rendered, "module.ses.") {
+	// A removed block for module.ses is fine here (it is how meroku's values
+	// leave a zone it did not create); a moved block into the absent module
+	// is not.
+	if sesMovedBlock.MatchString(rendered) {
 		t.Error("moved blocks rendered for a disabled ses module; they would point at a module that does not exist")
 	}
 }

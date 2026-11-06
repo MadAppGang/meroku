@@ -16,7 +16,7 @@ data "aws_vpc" "default" {
 # # S3 VPC Endpoint
 # resource "aws_vpc_endpoint" "s3" {
 #   vpc_id            = var.vpc_id
-#   service_name      = "com.amazonaws.${data.aws_region.current.name}.s3"
+#   service_name      = "com.amazonaws.${data.aws_region.current.region}.s3"
 #   vpc_endpoint_type = "Gateway"
 #   route_table_ids   = [data.aws_route_table.default.id]
 
@@ -33,7 +33,7 @@ data "aws_vpc" "default" {
 # # DynamoDB VPC Endpoint
 # resource "aws_vpc_endpoint" "dynamodb" {
 #   vpc_id            = var.vpc_id
-#   service_name      = "com.amazonaws.${data.aws_region.current.name}.dynamodb"
+#   service_name      = "com.amazonaws.${data.aws_region.current.region}.dynamodb"
 #   vpc_endpoint_type = "Gateway"
 #   route_table_ids   = [data.aws_route_table.default.id]
 
@@ -50,7 +50,7 @@ data "aws_vpc" "default" {
 # # ECR VPC Endpoints
 # resource "aws_vpc_endpoint" "ecr_dkr" {
 #   vpc_id             = var.vpc_id
-#   service_name       = "com.amazonaws.${data.aws_region.current.name}.ecr.dkr"
+#   service_name       = "com.amazonaws.${data.aws_region.current.region}.ecr.dkr"
 #   vpc_endpoint_type  = "Interface"
 #   subnet_ids         = var.subnet_ids
 #   security_group_ids = [aws_security_group.ecr_endpoint.id]
@@ -69,7 +69,7 @@ data "aws_vpc" "default" {
 
 # resource "aws_vpc_endpoint" "ecr_api" {
 #   vpc_id             = var.vpc_id
-#   service_name       = "com.amazonaws.${data.aws_region.current.name}.ecr.api"
+#   service_name       = "com.amazonaws.${data.aws_region.current.region}.ecr.api"
 #   vpc_endpoint_type  = "Interface"
 #   subnet_ids         = var.subnet_ids
 #   security_group_ids = [aws_security_group.ecr_endpoint.id]

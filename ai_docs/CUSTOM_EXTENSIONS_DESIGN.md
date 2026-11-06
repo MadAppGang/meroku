@@ -207,7 +207,7 @@ output "bridge" {
   value = {
     project           = "myproject"
     env               = "dev"
-    region            = data.aws_region.current.name
+    region            = data.aws_region.current.region
     account_id        = data.aws_caller_identity.current.account_id
     vpc_id            = local.vpc_id
     subnet_ids        = local.subnet_ids

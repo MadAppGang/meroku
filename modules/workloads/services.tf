@@ -483,7 +483,7 @@ resource "aws_ecs_task_definition" "services" {
         options = {
           awslogs-group         = aws_cloudwatch_log_group.services[each.key].name
           awslogs-stream-prefix = "ecs"
-          awslogs-region        = data.aws_region.current.name
+          awslogs-region        = data.aws_region.current.region
         }
       }
 
@@ -755,7 +755,7 @@ resource "aws_iam_policy" "services_ssm_parameter_access" {
       {
         Effect   = "Allow"
         Action   = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
-        Resource = ["arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/${var.env}/${var.project}/${each.key}/*"]
+        Resource = ["arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.env}/${var.project}/${each.key}/*"]
       }
     ]
   })
@@ -876,9 +876,9 @@ resource "aws_iam_policy" "services_eventbridge" {
           "events:ListEventBuses"
         ]
         Resource = [
-          "arn:aws:events:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:event-bus/default",
-          "arn:aws:events:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:event-bus/${var.project}-*",
-          "arn:aws:events:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:rule/*"
+          "arn:aws:events:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:event-bus/default",
+          "arn:aws:events:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:event-bus/${var.project}-*",
+          "arn:aws:events:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:rule/*"
         ]
       }
     ]

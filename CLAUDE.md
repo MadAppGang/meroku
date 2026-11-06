@@ -390,6 +390,17 @@ env:
   IAM_ROLE: arn:aws:iam::${account}:role/${project}-${env}-github-actions-role
 ```
 
+## SES DNS records — who owns which value
+
+In a zone meroku **created**, the YAML is the whole truth for an SES domain's TXT
+records (`aws_route53_record`, `allow_overwrite`). In a zone it did **not**
+create (`ses.domains[].zone_id`, an additional domain with `zone_id`, a main
+domain without `create_domain_zone`), meroku adds and removes only its own
+values through `modules/ses/scripts/route53-txt.sh` (needs `/bin/sh` and AWS CLI
+v2) and refuses at plan to replace a foreign SPF or DMARC value the YAML does
+not set. Origin: `app/ses_zone_origin.go`. Full rules, migration and destroy
+behaviour: [SES DNS Ownership](./ai_docs/SES_DNS_OWNERSHIP.md).
+
 ## Fix with AI (Claude Code handoff)
 
 meroku has no AI of its own and needs no API key. "Fix with AI" writes a briefing

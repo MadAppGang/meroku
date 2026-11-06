@@ -12,7 +12,7 @@ data "aws_iam_policy_document" "efs_access" {
       ]
       resources = [
         for mount in var.backend_efs_mounts :
-        "arn:aws:elasticfilesystem:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:file-system/${var.available_efs[mount.efs_name].id}"
+        "arn:aws:elasticfilesystem:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:file-system/${var.available_efs[mount.efs_name].id}"
       ]
     }
   }

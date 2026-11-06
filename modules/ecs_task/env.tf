@@ -35,7 +35,7 @@ locals {
   default_env_vars = [
     {
       name  = "AWS_REGION"
-      value = data.aws_region.current.name
+      value = data.aws_region.current.region
     },
     {
       name  = "SQS_QUEUE_URL"

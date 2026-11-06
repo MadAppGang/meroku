@@ -199,7 +199,7 @@ resource "aws_vpc_endpoint" "s3" {
   # .name rather than .region: newer provider versions deprecate it, but the
   # version this repo pins does not expose .region yet, and every other module
   # here uses .name. Change all 37 call sites together, not this one alone.
-  service_name      = "com.amazonaws.${data.aws_region.current.name}.s3"
+  service_name      = "com.amazonaws.${data.aws_region.current.region}.s3"
   vpc_endpoint_type = "Gateway"
 
   route_table_ids = concat(

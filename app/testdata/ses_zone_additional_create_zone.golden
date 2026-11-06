@@ -1,0 +1,96 @@
+# Email domain configuration (Schema v17: Multi-domain support)
+module "ses" {
+  source = "../../infrastructure/modules/ses"
+  project = "instagram"
+  env     = "dev"
+
+  # Multi-domain configuration (Schema v17+)
+  # Auto-detects zone_id from Route53 domain module or additional_domains
+  domains = [
+    {
+      domain = "example.net"
+        
+        
+      zone_id = aws_route53_zone.additional_1.zone_id  # From additional_domains: example.net
+            
+        
+        
+
+          
+      
+                      }
+  ]
+
+
+  # Test email addresses (account-wide, not per-domain)
+  test_emails = []
+
+  # Global email deliverability configuration
+  global_enable_mail_from    = true
+  global_mail_from_subdomain = "bounce"
+  global_dmarc_policy        = "none"
+}
+
+# Before Schema v17 the ses module held a single domain, so these resources had
+# no for_each key. Without the moves Terraform destroys the live SES identity,
+# its DKIM tokens and DNS records and creates them again for the same domain:
+# mail stops until re-verification, and a DNS record's destroy can land after
+# its create (allow_overwrite upserts the same name) and delete the live record.
+# A move whose `from` is absent from state is a no-op, so projects created on
+# v17 or later are unaffected. The key is the domain the module receives; see
+# assignSESPrimaryDomain in app/ses_primary_domain.go.
+#
+# The DKIM CNAMEs may still be replaced after the move: states created before
+# the SPF/DMARC rework stored their name zone-relative (<token>._domainkey) and
+# the module now writes the full name. That is a delete and re-create of the
+# same three records, seconds apart; the DKIM tokens themselves are kept.
+moved {
+  from = module.ses.aws_ses_domain_identity.domain
+  to   = module.ses.aws_ses_domain_identity.domain["example.net"]
+}
+moved {
+  from = module.ses.aws_ses_domain_dkim.dkim
+  to   = module.ses.aws_ses_domain_dkim.dkim["example.net"]
+}
+moved {
+  from = module.ses.aws_route53_record.domain_amazonses_verification_record
+  to   = module.ses.aws_route53_record.domain_amazonses_verification_record["example.net"]
+}
+moved {
+  from = module.ses.aws_route53_record.domain_amazonses_dkim_record[0]
+  to   = module.ses.aws_route53_record.domain_amazonses_dkim_record["example.net-dkim-0"]
+}
+moved {
+  from = module.ses.aws_route53_record.domain_amazonses_dkim_record[1]
+  to   = module.ses.aws_route53_record.domain_amazonses_dkim_record["example.net-dkim-1"]
+}
+moved {
+  from = module.ses.aws_route53_record.domain_amazonses_dkim_record[2]
+  to   = module.ses.aws_route53_record.domain_amazonses_dkim_record["example.net-dkim-2"]
+}
+moved {
+  from = module.ses.aws_route53_record.spf
+  to   = module.ses.aws_route53_record.spf["example.net"]
+}
+moved {
+  from = module.ses.aws_ses_domain_mail_from.mail_from[0]
+  to   = module.ses.aws_ses_domain_mail_from.mail_from["example.net"]
+}
+moved {
+  from = module.ses.aws_route53_record.mail_from_mx[0]
+  to   = module.ses.aws_route53_record.mail_from_mx["example.net"]
+}
+moved {
+  from = module.ses.aws_route53_record.mail_from_spf[0]
+  to   = module.ses.aws_route53_record.mail_from_spf["example.net"]
+}
+moved {
+  from = module.ses.aws_route53_record.dmarc
+  to   = module.ses.aws_route53_record.dmarc["example.net"]
+}
+
+
+
+
+
+

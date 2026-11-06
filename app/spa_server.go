@@ -66,6 +66,9 @@ func mainRouter() http.Handler {
 	// VPC range: validation, overlap report and free-range suggestions
 	mux.HandleFunc("/api/vpc-cidr", corsMiddleware(getVPCCIDRReport))
 
+	// SES DNS records: zone origin, live apex values, suggested sender record
+	mux.HandleFunc("/api/ses-dns", corsMiddleware(getSESDNSReport))
+
 	// ECS
 	mux.HandleFunc("/api/ecs/cluster", corsMiddleware(getECSClusterInfo))
 	mux.HandleFunc("/api/ecs/network", corsMiddleware(getECSNetworkInfo))
