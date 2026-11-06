@@ -26,6 +26,11 @@ locals {
     mail_from_subdomain = var.mail_from_subdomain != "bounce" ? var.mail_from_subdomain : null
     dmarc_policy        = var.dmarc_policy != "none" ? var.dmarc_policy : null
     dmarc_rua_email     = var.dmarc_rua_email != "" ? var.dmarc_rua_email : null
+    spf_record          = null
+    spf_ttl             = null
+    # A typed null: concat with var.domains fails on a bare null here, because
+    # the element types cannot be unified.
+    apex_txt_values = tolist(null)
   }] : []
 
   all_domains = concat(local.legacy_domain, var.domains)
@@ -95,15 +100,34 @@ resource "aws_route53_record" "domain_amazonses_dkim_record" {
 
 # SPF tells receiving mail servers that Amazon SES is authorized to send
 # email on behalf of your domain (only if zone_id provided)
-# Note: allow_overwrite handles cases where TXT record already exists
+
+locals {
+  # The apex TXT record set of each domain: the SPF value first, then any extra
+  # values, all at one TTL. Route53 holds one string of at most 255 characters
+  # per quoted part, so each value is split on the delimiter `" "` and every
+  # part longer than 255 characters is cut into 255-character pieces joined by
+  # that delimiter. Empty parts are dropped. A value that is already split into
+  # parts of 255 characters or fewer comes out unchanged.
+  apex_txt = { for k, v in local.domains_map : k => {
+    ttl = coalesce(v.spf_ttl, 600)
+    values = [for value in concat(
+      [coalesce(v.spf_record, "v=spf1 include:amazonses.com ~all")],
+      v.apex_txt_values != null ? v.apex_txt_values : [],
+    ) : join("\" \"", flatten([for segment in split("\" \"", value) : regexall(".{1,255}", segment)]))]
+  } }
+}
+
+# Route53 holds one TXT record set per name, and allow_overwrite replaces that
+# whole set: any apex TXT value not listed in spf_record or apex_txt_values is
+# removed on apply.
 resource "aws_route53_record" "spf" {
   for_each = { for k, v in local.domains_map : k => v if v.zone_id != null }
 
   zone_id         = each.value.zone_id
   name            = each.value.domain
   type            = "TXT"
-  ttl             = "600"
-  records         = ["v=spf1 include:amazonses.com ~all"]
+  ttl             = local.apex_txt[each.key].ttl
+  records         = local.apex_txt[each.key].values
   allow_overwrite = true
 }
 
@@ -156,7 +180,9 @@ resource "aws_route53_record" "mail_from_mx" {
   allow_overwrite = true
 }
 
-# SPF record for custom MAIL FROM domain (only if zone_id provided)
+# SPF record for custom MAIL FROM domain (only if zone_id provided).
+# Only SES sends from this subdomain, so it keeps the SES-only value whatever
+# the apex spf_record says.
 resource "aws_route53_record" "mail_from_spf" {
   for_each = { for k, v in local.enabled_mail_from : k => v if v.zone_id != null }
 
