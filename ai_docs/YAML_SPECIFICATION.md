@@ -50,7 +50,16 @@ workload:
     - <string>
   backend_image_port: <number>               # Container port (default: 8080)
   backend_remote_access: <boolean>           # Enable ECS Exec for debugging (default: true)
-  
+  backend_health_check:                      # Optional ECS container health check (absent: none)
+    command: <string|list>                   # String = shell command (CMD-SHELL); list = ["CMD", ...] or ["CMD-SHELL", "<cmd>"]
+    interval: <number>                       # Seconds, 5-300 (default: 30)
+    timeout: <number>                        # Seconds, 2-120 (default: 5)
+    retries: <number>                        # 1-10 (default: 3)
+    start_period: <number>                   # Seconds, 0-300 (default: 60)
+  backend_circuit_breaker:                   # Optional ECS deployment circuit breaker (absent: not managed)
+    enable: <boolean>                        # Default: true. To turn off a deployed breaker set false; removing the key changes nothing
+    rollback: <boolean>                      # Roll back to the last completed deployment on failure (default: true)
+  # See ai_docs/BACKEND_HEALTH_CHECK.md
   # Backend scaling configuration
   backend_cpu: <number>                      # CPU units for backend (256, 512, 1024, 2048, 4096) (default: 256)
   backend_memory: <number>                   # Memory in MB for backend (default: 512)

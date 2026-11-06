@@ -106,6 +106,21 @@ export interface ComputeConfig {
 	pools?: ComputePool[];
 }
 
+/** `workload.backend_health_check`. The command runs inside the container. */
+export interface BackendHealthCheck {
+	command: string | string[];
+	interval?: number;
+	timeout?: number;
+	retries?: number;
+	start_period?: number;
+}
+
+/** `workload.backend_circuit_breaker`. */
+export interface BackendCircuitBreaker {
+	enable?: boolean;
+	rollback?: boolean;
+}
+
 /**
  * Complete YAML configuration interface based on YAML_SPECIFICATION.md
  */
@@ -150,6 +165,17 @@ export interface YamlInfrastructureConfig {
 		// repository. Same account and region ECR only. Default false.
 		github_push_external_image?: boolean;
 		backend_container_command?: string[];
+		/**
+		 * Container health check for the backend. A string command is a shell
+		 * command (`CMD-SHELL`); a list is passed to ECS as written. The numeric
+		 * fields are seconds, except `retries`. Absent means no health check.
+		 */
+		backend_health_check?: BackendHealthCheck;
+		/**
+		 * ECS deployment circuit breaker for the backend. Absent leaves the
+		 * service without one.
+		 */
+		backend_circuit_breaker?: BackendCircuitBreaker;
 		backend_image_port?: number;
 		backend_remote_access?: boolean;
 		backend_cpu?: string;

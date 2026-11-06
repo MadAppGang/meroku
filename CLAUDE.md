@@ -401,6 +401,14 @@ v2) and refuses at plan to replace a foreign SPF or DMARC value the YAML does
 not set. Origin: `app/ses_zone_origin.go`. Full rules, migration and destroy
 behaviour: [SES DNS Ownership](./ai_docs/SES_DNS_OWNERSHIP.md).
 
+## Backend health check and circuit breaker
+
+`workload.backend_health_check` (container `healthCheck`) and
+`workload.backend_circuit_breaker` (`deployment_circuit_breaker` on the backend ECS
+service) are optional; absent keys render nothing. A breaker is turned off with
+`enable: false`, never by removing the key (provider 6.x suppresses that diff).
+[Backend Health Check](./ai_docs/BACKEND_HEALTH_CHECK.md).
+
 ## Fix with AI (Claude Code handoff)
 
 meroku has no AI of its own and needs no API key. "Fix with AI" writes a briefing

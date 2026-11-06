@@ -228,6 +228,8 @@ The largest property surface in the app.
 | `workload.backend_container_command` | string[] | optional | TF-DEPLOY | Entrypoint override. |
 | `workload.backend_image_port` | number | default `8080` | TF-DEPLOY | Container port and target group port. |
 | `workload.backend_health_endpoint` | string | default `/health` | TF-DEPLOY | |
+| `workload.backend_health_check.command` | string \| string[] | optional | TF-DEPLOY | "Container health check command". A typed string is a shell command; empty removes the whole `backend_health_check` key and keeps nothing. A list-form command shows read-only (edit it in YAML). `interval`, `timeout`, `retries`, `start_period` are YAML-only. See [BACKEND_HEALTH_CHECK.md](./BACKEND_HEALTH_CHECK.md). |
+| `workload.backend_circuit_breaker` | `{enable, rollback}` | optional | TF | "Roll back failed deployments" switch. On writes `{enable: true, rollback: true}`; off writes `{enable: false, rollback: false}` once a breaker was set, because removing the key does not turn a deployed breaker off. |
 | Deployed image tag | string | — | RUNTIME | Task definition changes are ignored on redeploy, so CI/CD pushes are not reverted. |
 
 ### Compute and scaling
