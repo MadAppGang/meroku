@@ -79,6 +79,13 @@ the same command.
 Instances in `removed { lifecycle { destroy = false } }` blocks show as
 `⊘ FORGET (kept in AWS)` and are no longer counted as deletions.
 
+### Known limitation
+
+In a zone meroku did not create, removing `spf_record` after meroku published
+a custom value is refused at plan, because the live value looks foreign. Set
+`spf_record: v=spf1 include:amazonses.com ~all` once to return to the default,
+then the key can be removed. Nothing is changed when plan refuses.
+
 See [SES DNS ownership](./ai_docs/SES_DNS_OWNERSHIP.md).
 
 ## v4.11.1

@@ -72,6 +72,13 @@ publish instead:
 When the YAML does say, the check `ses_dns_slot_replacements` warns with the
 values that apply will replace.
 
+The guard compares against live DNS only; plan cannot see which value meroku
+wrote last time. So removing `spf_record` after meroku published a custom
+value is refused: the live custom SPF looks foreign. To return to the default,
+set `spf_record: v=spf1 include:amazonses.com ~all` and apply once; after that
+the key can be removed, because live and wanted then agree. The same holds for
+DMARC.
+
 ### Destroy
 
 - Removing a value or a record from the YAML removes only that value.
