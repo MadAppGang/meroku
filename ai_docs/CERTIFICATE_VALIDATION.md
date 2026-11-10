@@ -71,6 +71,33 @@ cannot be written, the screen falls back to comparing nameservers.
 Live check against a real zone:
 `MEROKU_LIVE_CANARY=<profile>:<zoneID>:<zone> go test -run TestCanaryLive ./app`.
 
+## Which zone the pre-flight checks
+
+With `create_domain_zone: true`, the zone the apply writes every record into
+is the one terraform state holds at `module.domain.aws_route53_zone.domain[0]`.
+Route53 allows several public zones with one name, so the pre-flight takes the
+zone from state, not from a lookup by name (`app/dns_zone_ownership.go`):
+
+| Terraform state | Public zones with the name | Pre-flight |
+|---|---|---|
+| holds zone X | X | checks delegation to X |
+| holds nothing | none | phase 1 creates the zone |
+| holds nothing | Y | imports Y, then checks |
+| holds X | X and Y, delegation points at Y | `state rm` X, imports Y, then checks |
+| holds nothing | several, delegation points at none | stops and names them |
+| unreadable (not initialised) | any | checks the delegated zone, imports nothing |
+
+The delegation is read from the registry or parent, not a resolver cache.
+A zone that keeps the delegation wins over the one in state because moving a
+delegation means waiting for caches again; moving records is one apply. The
+deploy imports before it continues (`adoptDomainZone`), then runs the
+pre-flight again. Other same-name zones are listed with the command that
+deletes them once the apply has moved their records out.
+
+Without this, a zone left in AWS after state was cleared passed the
+pre-flight, and the apply created a second zone and wrote the validation
+record into it, where ACM could never read it.
+
 ## Root domains: the registrar
 
 A root domain is delegated by the nameserver list at its registrar

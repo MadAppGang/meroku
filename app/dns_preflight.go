@@ -56,6 +56,12 @@ const (
 	// dnsPlanMissingZone - create_domain_zone is false but no such zone exists in
 	// this account. Today this surfaces as an opaque data.aws_route53_zone error.
 	dnsPlanMissingZone
+
+	// dnsPlanAdopt - a public zone with this name exists that terraform state
+	// does not hold. Import it (in place of the zone state holds, if any)
+	// before anything else, so the apply writes into the zone the pre-flight
+	// checks instead of creating another one.
+	dnsPlanAdopt
 )
 
 func (p dnsPlan) String() string {
@@ -70,6 +76,8 @@ func (p dnsPlan) String() string {
 		return "blocked"
 	case dnsPlanMissingZone:
 		return "missing-zone"
+	case dnsPlanAdopt:
+		return "adopt"
 	}
 	return "unknown"
 }
@@ -95,6 +103,14 @@ type dnsPreflightResult struct {
 	// PublicNameservers is what the public internet currently returns for ZoneName.
 	// Empty means no delegation exists at all.
 	PublicNameservers []string
+
+	// AdoptReplaces is, for dnsPlanAdopt, the zone state holds now; empty
+	// when state holds none.
+	AdoptReplaces string
+
+	// StrayZones are other public zones with the same name, which the apply
+	// never writes to.
+	StrayZones []string
 
 	// Reason is a human-readable explanation of the decision.
 	Reason string
@@ -211,9 +227,47 @@ func checkDNSPreflight(ctx context.Context, e Env) (dnsPreflightResult, error) {
 	}
 	res.ParentDomain = strings.TrimSuffix(getParentDomain(res.ZoneName), ".")
 
-	zoneID, zoneNS, err := findHostedZoneByName(ctx, e.AWSProfile, res.ZoneName)
-	if err != nil {
-		return res, err
+	var zoneID string
+	var zoneNS []string
+	if e.Domain.CreateDomainZone {
+		// The zone the apply writes to is the one in terraform state.
+		zones, err := hostedZonesLookup(ctx, e.AWSProfile, res.ZoneName)
+		if err != nil {
+			return res, err
+		}
+		var delegatedNS []string
+		if len(zones) > 0 {
+			delegatedNS, _ = delegationLookup(res.ZoneName)
+		}
+		choice := chooseZone(stateZoneLookup(e), zones, delegatedNS)
+		if choice.Blocked != "" {
+			res.Plan = dnsPlanMissingZone
+			res.Reason = choice.Blocked
+			return res, nil
+		}
+		zoneID, zoneNS = choice.Zone.ID, choice.Zone.Nameservers
+		res.StrayZones = choice.Strays
+		if choice.Adopt {
+			res.ZoneID, res.ZoneNameservers = zoneID, zoneNS
+			res.Plan = dnsPlanAdopt
+			res.AdoptReplaces = choice.Replaces
+			if choice.Replaces != "" {
+				res.Reason = fmt.Sprintf(
+					"%s is delegated to zone %s, but terraform state holds zone %s — use the delegated zone",
+					res.ZoneName, zoneID, choice.Replaces)
+			} else {
+				res.Reason = fmt.Sprintf(
+					"zone %s (%s) exists but terraform state does not hold it — import it instead of creating another",
+					res.ZoneName, zoneID)
+			}
+			return res, nil
+		}
+	} else {
+		var err error
+		zoneID, zoneNS, err = findHostedZoneByName(ctx, e.AWSProfile, res.ZoneName)
+		if err != nil {
+			return res, err
+		}
 	}
 	res.ZoneID = zoneID
 	res.ZoneNameservers = zoneNS
@@ -307,11 +361,24 @@ func checkDNSPreflight(ctx context.Context, e Env) (dnsPreflightResult, error) {
 
 // describeDNSPreflight renders the decision for the terminal.
 func describeDNSPreflight(res dnsPreflightResult) string {
+	s := describeDNSPlan(res)
+	for _, z := range res.StrayZones {
+		s += fmt.Sprintf("   ⚠️  zone %s has the same name and the apply does not use it; delete it once it is empty:\n", z) +
+			fmt.Sprintf("      aws route53 delete-hosted-zone --id %s\n", z)
+	}
+	return s
+}
+
+func describeDNSPlan(res dnsPreflightResult) string {
 	var b strings.Builder
 
 	switch res.Plan {
 	case dnsPlanSkip:
 		return "🌐 DNS: skipped (no custom domain)\n"
+	case dnsPlanAdopt:
+		b.WriteString("🌐 DNS: importing the existing zone into terraform state\n")
+		b.WriteString(fmt.Sprintf("   %s\n", res.Reason))
+		return b.String()
 	case dnsPlanNormal:
 		b.WriteString("🌐 DNS: ✅ delegation verified\n")
 		b.WriteString(fmt.Sprintf("   %s → zone %s\n", res.ZoneName, res.ZoneID))

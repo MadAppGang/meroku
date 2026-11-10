@@ -136,6 +136,18 @@ func runCommandToDeploy(env string) error {
 	needsZoneBootstrap := false
 
 	dnsResult, dnsErr := checkDNSPreflight(ctx, e)
+	if dnsErr == nil && dnsResult.Plan == dnsPlanAdopt {
+		// State must hold the zone the delegation is checked against, or the
+		// apply creates a second zone and writes the records there.
+		fmt.Printf("\n%s", describeDNSPreflight(dnsResult))
+		if err := adoptDomainZone(e, dnsResult); err != nil {
+			return stepErr("dns", fmt.Errorf("importing zone %s: %w", dnsResult.ZoneID, err))
+		}
+		dnsResult, dnsErr = checkDNSPreflight(ctx, e)
+		if dnsErr == nil && dnsResult.Plan == dnsPlanAdopt {
+			return stepErr("dns", fmt.Errorf("zone %s was imported but terraform state still does not hold it", dnsResult.ZoneID))
+		}
+	}
 	if dnsErr != nil {
 		// Fail open: an unreachable Route53 or resolver must not block a deploy
 		// that would otherwise succeed. Say so rather than pretending it passed.
