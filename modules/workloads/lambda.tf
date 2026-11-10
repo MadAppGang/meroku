@@ -83,10 +83,16 @@ resource "null_resource" "build_ci_lambda" {
     # `-replace=`. Each fails with "unable to load ci_lambda.zip: no such file or
     # directory" at apply time, on a checkout where nothing is wrong.
     #
-    # modules/appsync/auth_lambda.tf:56-64 carries the same probe for the same
-    # reason. This is the half of that pattern the CI Lambda originally copied
-    # without.
-    staged = fileexists(local.ci_lambda_zip) ? "present" : "absent"
+    # A missing artifact has to differ from every stored value, not just from
+    # "present": a build made on a fresh checkout stores whatever this said at
+    # plan time, so a constant "absent" matches the next fresh checkout and the
+    # build is skipped while the zip is still missing. uuid() is new on every
+    # plan, so a missing zip always rebuilds. Once the zip is on disk the value
+    # is "present", which rebuilds once more (byte-identical, so the function's
+    # source_code_hash does not change) and then stays put.
+    #
+    # modules/appsync/auth_lambda.tf carries the same probe for the same reason.
+    staged = fileexists(local.ci_lambda_zip) ? "present" : "absent-${uuid()}"
   }
 
   provisioner "local-exec" {

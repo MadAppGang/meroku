@@ -63,8 +63,10 @@ resource "null_resource" "auth_lambda_build" {
 
       # A fresh clone (CI) has no build directory even though the source hashes
       # are unchanged. Without this the archive step would fail or package a
-      # stale artifact.
-      staged = fileexists(local.auth_lambda_stage_probe) ? "present" : "absent"
+      # stale artifact. A missing build gets a value no stored one can match:
+      # a constant "absent" equals the value stored by a build made on an
+      # earlier fresh clone, and the build would be skipped.
+      staged = fileexists(local.auth_lambda_stage_probe) ? "present" : "absent-${uuid()}"
     }
   )
 
