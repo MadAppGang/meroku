@@ -95,15 +95,16 @@ func main() {
 	flag.Usage = printMerokuUsage
 	flag.Parse()
 
-	// Resolve light/dark theme before anything renders and before any Bubble
-	// Tea program owns stdin — the probe does a raw-mode read on stdin.
-	applyTheme()
-
-	// Handle version flag (early, before any initialization)
+	// Handle version flag (early, before any initialization). It prints plain
+	// text, so it needs no theme and must not query the terminal.
 	if *versionFlag {
 		fmt.Printf("meroku version %s\n", strings.TrimSpace(GetVersion()))
 		os.Exit(0)
 	}
+
+	// Resolve light/dark theme before anything renders and before any Bubble
+	// Tea program owns stdin — the probe does a raw-mode read on stdin.
+	applyTheme()
 
 	// Handle debug flag for testing screens (early, before any initialization)
 	if *debugFlag != "" {

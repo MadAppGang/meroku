@@ -95,27 +95,33 @@ func queryTerminalBackground(in, out term.File) (color.Color, bool) {
 // sentinel, or the reader stops. Split out from queryTerminalBackground so it
 // can be tested without a pty — including the case a terminal actually
 // produces, where the reply arrives split across several reads.
+//
+// It reads on past the OSC 11 color until the DA1 reply arrives too. The
+// terminal answers both requests, and a DA1 reply left unread stays in the
+// input queue: the shell prints it ("62;22;52c") once meroku exits.
 func readThemeReply(r io.Reader) (color.Color, bool) {
 	var acc []byte
 	var buf [256]byte
+	var bg color.Color
 	for {
 		n, err := r.Read(buf[:])
 		if n > 0 {
 			acc = append(acc, buf[:n]...)
-			if c, ok := parseOSC11(acc); ok {
-				return c, true
+			if bg == nil {
+				if c, ok := parseOSC11(acc); ok {
+					bg = c
+				}
 			}
-			// The sentinel came back without an OSC 11 reply: this terminal
-			// has told us, as clearly as it can, that it will not answer.
+			// The sentinel ends the exchange. Without an OSC 11 reply before
+			// it, this terminal has said it will not answer.
 			if hasDA1Reply(acc) {
-				return nil, false
+				return bg, bg != nil
 			}
 		}
-		if err != nil {
-			return nil, false // cancelled, EOF, or a read error — all "no answer"
-		}
-		if len(acc) > 4096 {
-			return nil, false // runaway input; not our reply
+		if err != nil || len(acc) > 4096 {
+			// Cancelled, EOF, a read error or runaway input. A color already
+			// read is still the answer.
+			return bg, bg != nil
 		}
 	}
 }

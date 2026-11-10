@@ -191,6 +191,21 @@ func TestReadThemeReply(t *testing.T) {
 	}
 }
 
+// The DA1 reply arrives after the color. Returning on the color would leave
+// it in the terminal's input queue for the shell to print.
+func TestReadThemeReplyDrainsTheDA1Reply(t *testing.T) {
+	r := &chunkReader{chunks: [][]byte{
+		[]byte("\x1b]11;rgb:0b0b/0b0b/1212\x1b\\"),
+		[]byte("\x1b[?62;22;52c"),
+	}}
+	if _, ok := readThemeReply(r); !ok {
+		t.Fatal("the color must still be the answer")
+	}
+	if len(r.chunks) != 0 {
+		t.Errorf("%d reads left unconsumed; the DA1 reply would reach the shell", len(r.chunks))
+	}
+}
+
 func TestReadThemeReplyCancelled(t *testing.T) {
 	if _, ok := readThemeReply(&chunkReader{err: errors.New("read canceled")}); ok {
 		t.Error("a cancelled read must report no answer")
