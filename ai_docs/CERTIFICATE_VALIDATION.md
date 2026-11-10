@@ -42,8 +42,34 @@ addressed to, over UDP and TCP. An answer from such a proxy is a cached
 recursive answer, not the server's. Registries and Route53 nameservers never
 offer recursion, so `delegationAtParent` and `authoritativeCNAME` reject any
 answer with the RA flag (and the CNAME lookup also requires AA) as
-`errPort53Intercepted`. The propagation screen then relies on the DNS-over-HTTPS
-resolvers alone.
+`errPort53Intercepted`.
+
+Then:
+
+- The delegation of a domain directly under a TLD is read from the registry
+  over RDAP (`app/dns_rdap.go`, bootstrap from IANA). A delegated subdomain
+  stays unchecked.
+- `meroku cert check` reads the validation CNAME through the DNS-over-HTTPS
+  resolvers and compares its value with ACM's.
+
+## The canary: measuring propagation on the DNS screen
+
+Matching nameservers say a resolver has the delegation, not that it can read
+the zone. The DNS screen writes a wildcard TXT record,
+`*._meroku-check.<zone>`, with a random token, and waits until Route53 reports
+it applied (`app/dns_canary.go`). Each check asks the DoH resolvers for a new
+name under it. A resolver counts once it returns the token. Two are enough to
+continue.
+
+A new name each round matters. A resolver that asked before the record
+existed, or while it still followed an old delegation, caches "no such name"
+for up to the SOA minimum (900 s on Route53), for that name only.
+
+The record is removed when the screen closes, whatever the outcome. If it
+cannot be written, the screen falls back to comparing nameservers.
+
+Live check against a real zone:
+`MEROKU_LIVE_CANARY=<profile>:<zoneID>:<zone> go test -run TestCanaryLive ./app`.
 
 ## Root domains: the registrar
 

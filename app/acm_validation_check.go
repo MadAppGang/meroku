@@ -58,6 +58,9 @@ type certCheck struct {
 	acmValidation
 	Verdict certVerdict
 	Detail  string
+	// readByResolvers is set when the verdict came from the public resolvers
+	// fetching the record itself, which already says what they can reach.
+	readByResolvers bool
 }
 
 // acmValidationLookup returns the validations of the account's certificates for
@@ -185,9 +188,7 @@ func judgeValidation(v acmValidation, zone string) certCheck {
 
 	delegated, err := delegationLookup(zone)
 	if errors.Is(err, errPort53Intercepted) {
-		c.Verdict = certUnchecked
-		c.Detail = "ACM is still checking; this network intercepts DNS, so meroku cannot ask the nameservers directly"
-		return c
+		return judgeThroughResolvers(c)
 	}
 	if err != nil || len(delegated) == 0 {
 		c.Verdict = certNotDelegated
@@ -197,8 +198,7 @@ func judgeValidation(v acmValidation, zone string) certCheck {
 	got, found, err := authoritativeCNAME(v.RecordName, delegated)
 	switch {
 	case errors.Is(err, errPort53Intercepted):
-		c.Verdict = certUnchecked
-		c.Detail = "ACM is still checking; this network intercepts DNS, so meroku cannot ask the nameservers directly"
+		return judgeThroughResolvers(c)
 	case err != nil:
 		c.Verdict = certNotDelegated
 		c.Detail = fmt.Sprintf("the nameservers %s is delegated to did not answer: %s", zone, shortError(err))
@@ -213,6 +213,32 @@ func judgeValidation(v acmValidation, zone string) certCheck {
 	default:
 		c.Verdict = certWaitingOnACM
 		c.Detail = "the record is correct at " + zone + "'s nameservers; ACM has not checked again yet"
+	}
+	return c
+}
+
+// recordCheck asks the public resolvers over HTTPS for a record. A variable so
+// tests can replace it.
+var recordCheck = checkRecordDoH
+
+// judgeThroughResolvers judges a pending validation when the nameservers cannot
+// be asked directly: the public resolvers fetch the validation record over
+// HTTPS, and one that returns the expected value has read it from the zone.
+func judgeThroughResolvers(c certCheck) certCheck {
+	c.readByResolvers = true
+	results := recordCheck(c.RecordName, "CNAME", c.RecordValue)
+	read, stale := countVerdicts(results)
+	switch {
+	case read > 0:
+		c.Verdict = certWaitingOnACM
+		c.Detail = fmt.Sprintf("%d of %d public resolvers return the correct record; ACM has not checked again yet",
+			read, len(results))
+	case stale == len(results):
+		c.Verdict = certNotDelegated
+		c.Detail = "no public resolver can reach the zone: every one fails the lookup"
+	default:
+		c.Verdict = certUnchecked
+		c.Detail = fmt.Sprintf("no public resolver returns the record yet (%d fail the lookup)", stale)
 	}
 	return c
 }
@@ -244,7 +270,7 @@ func checkCertificateValidation(ctx context.Context, e Env, also []string) ([]ce
 	stale := -1
 	for _, v := range vals {
 		c := judgeValidation(v, zone)
-		if (c.Verdict == certWaitingOnACM || c.Verdict == certUnchecked) && len(zoneNS) > 0 {
+		if (c.Verdict == certWaitingOnACM || c.Verdict == certUnchecked) && !c.readByResolvers && len(zoneNS) > 0 {
 			if stale < 0 {
 				_, stale = countVerdicts(propagationCheck(zone, zoneNS))
 			}

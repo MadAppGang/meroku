@@ -24,7 +24,21 @@ var errPort53Intercepted = errors.New("DNS on port 53 is intercepted on this net
 
 // delegationLookup returns the nameservers the parent zone delegates zone to.
 // A variable so tests can replace it.
-var delegationLookup = delegationAtParent
+var delegationLookup = delegationWithRDAPFallback
+
+// delegationWithRDAPFallback asks the parent over DNS, and when port 53 is
+// intercepted asks the registry over RDAP instead. RDAP covers only a domain
+// whose parent is a TLD; a delegated subdomain stays unchecked there.
+func delegationWithRDAPFallback(zone string) ([]string, error) {
+	ns, err := delegationAtParent(zone)
+	if !errors.Is(err, errPort53Intercepted) {
+		return ns, err
+	}
+	if rdapNS, rdapErr := rdapNameservers(zone); rdapErr == nil {
+		return rdapNS, nil
+	}
+	return nil, err
+}
 
 // delegationAtParent asks the authoritative servers of zone's parent (the TLD
 // registry for a root domain) which nameservers zone is delegated to.

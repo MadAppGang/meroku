@@ -16,8 +16,11 @@ func pendingValidation() acmValidation {
 
 func fakeDNS(t *testing.T, delegated []string, delegErr error, cname string, found bool, cnameErr error) {
 	t.Helper()
-	prevD, prevC := delegationLookup, authoritativeCNAME
-	t.Cleanup(func() { delegationLookup, authoritativeCNAME = prevD, prevC })
+	prevD, prevC, prevR := delegationLookup, authoritativeCNAME, recordCheck
+	t.Cleanup(func() { delegationLookup, authoritativeCNAME, recordCheck = prevD, prevC, prevR })
+	recordCheck = func(string, string, string) map[string]dohVerdict {
+		return map[string]dohVerdict{"Google": dohNotYet, "Cloudflare": dohStale}
+	}
 	delegationLookup = func(string) ([]string, error) { return delegated, delegErr }
 	authoritativeCNAME = func(string, []string) (string, bool, error) { return cname, found, cnameErr }
 }
@@ -99,5 +102,28 @@ func TestWithNoteSurvivesProgressUpdates(t *testing.T) {
 	s = withNote(s, "ACM: all 1 validated")
 	if s != "In progress (40.0s) · ACM: all 1 validated" {
 		t.Errorf("status = %q", s)
+	}
+}
+
+// On a network that intercepts port 53 the validation record is read through
+// the public resolvers over HTTPS instead.
+func TestJudgeValidationThroughResolvers(t *testing.T) {
+	fakeDNS(t, nil, errPort53Intercepted, "", false, nil)
+	recordCheck = func(name, rrtype, want string) map[string]dohVerdict {
+		if name != "_abc.example.work." || rrtype != "CNAME" || want != "_def.acm-validations.aws." {
+			t.Errorf("asked for %s %s = %s", name, rrtype, want)
+		}
+		return map[string]dohVerdict{"Google": dohResolved, "Cloudflare": dohResolved, "AdGuard": dohResolved, "NextDNS": dohStale}
+	}
+	got := judgeValidation(pendingValidation(), "example.work")
+	if got.Verdict != certWaitingOnACM || !strings.Contains(got.Detail, "3 of 4") {
+		t.Errorf("verdict = %v (%s)", got.Verdict, got.Detail)
+	}
+
+	recordCheck = func(string, string, string) map[string]dohVerdict {
+		return map[string]dohVerdict{"Google": dohStale, "Cloudflare": dohStale}
+	}
+	if got := judgeValidation(pendingValidation(), "example.work"); got.Verdict != certNotDelegated {
+		t.Errorf("all resolvers failing: verdict = %v", got.Verdict)
 	}
 }

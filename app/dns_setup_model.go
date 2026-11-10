@@ -69,6 +69,12 @@ type dnsRegistrationMsg struct {
 	reason string
 }
 
+// dnsCanaryReadyMsg reports the canary record written and applied.
+type dnsCanaryReadyMsg struct {
+	canary dnsCanary
+	err    error
+}
+
 // dnsRegistrarWrittenMsg reports the nameserver update at the registrar.
 type dnsRegistrarWrittenMsg struct{ err error }
 
@@ -186,6 +192,10 @@ type dnsSetupModel struct {
 	// atParent records that the parent zone already delegates to this zone.
 	atParent bool
 
+	// canary is the record propagation is measured with, once written.
+	canary        *dnsCanary
+	canaryWriting bool
+
 	// manual fallback: poll public DNS on a timer, so a record added by hand at a
 	// registrar is picked up without the operator having to press anything.
 	nextCheckIn int
@@ -292,7 +302,21 @@ func (m *dnsSetupModel) Init() tea.Cmd {
 	if m.step == stepCreateZone {
 		return tea.Batch(m.tick(), m.animTick(), m.createZoneCmd())
 	}
-	return tea.Batch(m.tick(), m.animTick(), m.findParentCmd())
+	return tea.Batch(m.tick(), m.animTick(), m.findParentCmd(), m.writeCanaryCmd())
+}
+
+// writeCanaryCmd writes the canary record into the zone, once.
+func (m *dnsSetupModel) writeCanaryCmd() tea.Cmd {
+	if m.canary != nil || m.canaryWriting || m.zoneID == "" || m.env.AWSProfile == "" {
+		return nil
+	}
+	m.canaryWriting = true
+	c := dnsCanary{Profile: m.env.AWSProfile, ZoneID: m.zoneID, Zone: m.zone, Token: newCanaryToken()}
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		defer cancel()
+		return dnsCanaryReadyMsg{canary: c, err: canaryRecordWriter(ctx, c, false)}
+	}
 }
 
 func (m *dnsSetupModel) tick() tea.Cmd {
@@ -569,10 +593,25 @@ func (m *dnsSetupModel) delegateCmd(c parentZoneCandidate) tea.Cmd {
 func (m *dnsSetupModel) pollPropagationCmd() tea.Cmd {
 	zone := m.zone
 	expected := m.nameservers
+	var canary *dnsCanary
+	if m.canary != nil {
+		c := *m.canary
+		canary = &c
+	}
 	return func() tea.Msg {
-		results := checkPropagationDoH(zone, expected)
 		delegated, err := delegationLookup(zone)
 		atParent := err == nil && nameserverSetsMatch(delegated, expected)
+
+		// With the canary in the zone, a resolver counts only once it returns
+		// the canary's value: proof it reads records from this zone, which is
+		// what certificate validation needs. Matching nameservers say less.
+		if canary != nil {
+			results := canaryCheck(*canary)
+			read, _ := countVerdicts(results)
+			return dnsPropagationMsg{results: results, ok: read >= 2, atParent: atParent}
+		}
+
+		results := checkPropagationDoH(zone, expected)
 
 		matched, _ := countVerdicts(results)
 		// Two independent resolvers agreeing is enough to proceed. That is half,
@@ -677,7 +716,16 @@ func (m *dnsSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.states[stepCreateZone] = stepOK
 		m.states[stepShowNameservers] = stepOK
 		m.step = stepFindParent
-		return m, m.findParentCmd()
+		return m, tea.Batch(m.findParentCmd(), m.writeCanaryCmd())
+
+	case dnsCanaryReadyMsg:
+		m.canaryWriting = false
+		if msg.err == nil {
+			c := msg.canary
+			m.canary = &c
+		}
+		// Without the canary the check falls back to comparing nameservers.
+		return m, nil
 
 	case dnsCandidatesMsg:
 		if msg.reason != "" || msg.err != nil {
@@ -1387,6 +1435,11 @@ func runDNSSetupTUI(e Env, res dnsPreflightResult) (dnsSetupOutcome, error) {
 	m := newDNSSetupModel(e, res)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	final, err := p.Run()
+	if fm, ok := final.(*dnsSetupModel); ok && fm.canary != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		_ = canaryRecordWriter(ctx, *fm.canary, true)
+		cancel()
+	}
 	if err != nil {
 		return dnsSetupOutcome{}, err
 	}

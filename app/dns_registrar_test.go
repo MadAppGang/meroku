@@ -115,3 +115,37 @@ func TestRootDomainWithoutAReachableRegistrationFallsBackToManual(t *testing.T) 
 		t.Error("not finding a registration is the manual path, not a failure")
 	}
 }
+
+// With the canary written, the propagate check counts resolvers that return
+// its value, not resolvers whose nameservers match.
+func TestPropagationUsesTheCanary(t *testing.T) {
+	prevCheck, prevDeleg := canaryCheck, delegationLookup
+	t.Cleanup(func() { canaryCheck, delegationLookup = prevCheck, prevDeleg })
+	delegationLookup = func(string) ([]string, error) { return testZoneNS, nil }
+	asked := 0
+	canaryCheck = func(c dnsCanary) map[string]dohVerdict {
+		asked++
+		if c.Token != "meroku-test" {
+			t.Errorf("token = %q", c.Token)
+		}
+		return map[string]dohVerdict{"Google": dohResolved, "Cloudflare": dohResolved, "AdGuard": dohStale, "NextDNS": dohNotYet}
+	}
+
+	m := rootDomainModel()
+	m.Update(dnsCanaryReadyMsg{canary: dnsCanary{Zone: "example.work", Token: "meroku-test"}})
+	msg := m.pollPropagationCmd()().(dnsPropagationMsg)
+	if asked != 1 || !msg.ok {
+		t.Errorf("asked=%d ok=%v, want the canary to decide", asked, msg.ok)
+	}
+}
+
+func TestCanaryNamesAreFreshUnderTheWildcard(t *testing.T) {
+	c := dnsCanary{Zone: "example.work."}
+	if c.wildcard() != "*._meroku-check.example.work" {
+		t.Errorf("wildcard = %q", c.wildcard())
+	}
+	a, b := c.freshName(), c.freshName()
+	if a == b || !strings.HasSuffix(a, "._meroku-check.example.work") {
+		t.Errorf("fresh names %q %q", a, b)
+	}
+}
