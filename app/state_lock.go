@@ -141,12 +141,16 @@ func describeStateLock(env string, lock stateLock, h lockHolder) []string {
 // starting new operations, waits for those in flight, writes the state and
 // releases the lock.
 func stopLockHolder(pid int, timeout time.Duration) error {
-	if err := syscall.Kill(pid, syscall.SIGINT); err != nil {
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return fmt.Errorf("finding terraform (PID %d): %w", pid, err)
+	}
+	if err := proc.Signal(os.Interrupt); err != nil {
 		return fmt.Errorf("stopping terraform (PID %d): %w", pid, err)
 	}
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		if err := syscall.Kill(pid, 0); err != nil {
+		if err := proc.Signal(syscall.Signal(0)); err != nil {
 			return nil
 		}
 		time.Sleep(time.Second)

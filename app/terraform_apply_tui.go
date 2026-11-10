@@ -43,9 +43,9 @@ type applyState struct {
 	applyComplete bool
 	// certWatchStarted is set once the ACM watch runs for this apply.
 	certWatchStarted bool
-	hasErrors     bool
-	errorCount    int
-	warningCount  int
+	hasErrors        bool
+	errorCount       int
+	warningCount     int
 
 	// Diagnostic tracking (for associating with errors)
 	diagnostics map[string]*DiagnosticInfo // resource address -> diagnostic
