@@ -135,6 +135,11 @@ func runCommandToDeploy(env string) error {
 	// from aws_acm_certificate_validation.
 	needsZoneBootstrap := false
 
+	// A lock left by a killed run fails every terraform step below.
+	if err := clearStaleStateLock(ctx, e); err != nil {
+		return stepErr("lock", err)
+	}
+
 	dnsResult, dnsErr := checkDNSPreflight(ctx, e)
 	if dnsErr == nil && dnsResult.Plan == dnsPlanAdopt {
 		// State must hold the zone the delegation is checked against, or the

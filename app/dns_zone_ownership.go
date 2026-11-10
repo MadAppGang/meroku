@@ -229,7 +229,19 @@ func stateHasAddress(list, address string) bool {
 	return false
 }
 
+// zoneImportFile is the import block written next to the generated terraform
+// for the length of one targeted apply.
+const zoneImportFile = "meroku_zone_import.tf"
+
+func zoneImportBlock(zoneID string) string {
+	return fmt.Sprintf("import {\n  to = %s\n  id = %q\n}\n", zoneTargetAddress, zoneID)
+}
+
 // zoneImporter makes terraform state own zoneID, dropping replaces first.
+//
+// `terraform import` evaluates the whole configuration, and with the zone
+// missing from state the for_each keys that derive from it are unknown, so
+// it fails. An import block applied with -target evaluates only the zone.
 var zoneImporter = func(e Env, zoneID, replaces string) error {
 	dir := envTerraformDir(e.Env)
 	if replaces != "" {
@@ -237,9 +249,15 @@ var zoneImporter = func(e Env, zoneID, replaces string) error {
 			return fmt.Errorf("terraform state rm %s: %w\n%s", zoneTargetAddress, err, lastLines(out, 12))
 		}
 	}
-	out, err := terraformInEnv(dir, e.AWSProfile, "import", "-input=false", "-no-color", zoneTargetAddress, zoneID)
+	path := filepath.Join(dir, zoneImportFile)
+	if err := os.WriteFile(path, []byte(zoneImportBlock(zoneID)), 0o644); err != nil {
+		return fmt.Errorf("writing %s: %w", path, err)
+	}
+	defer os.Remove(path)
+	out, err := terraformInEnv(dir, e.AWSProfile, "apply", "-input=false", "-no-color", "-auto-approve",
+		"-target="+zoneTargetAddress)
 	if err != nil {
-		return fmt.Errorf("terraform import %s %s: %w\n%s", zoneTargetAddress, zoneID, err, lastLines(out, 12))
+		return fmt.Errorf("importing %s as %s: %w\n%s", zoneID, zoneTargetAddress, err, lastLines(out, 12))
 	}
 	return nil
 }
@@ -264,6 +282,6 @@ func adoptDomainZone(e Env, res dnsPreflightResult) error {
 	if res.AdoptReplaces != "" {
 		fmt.Printf("   terraform state rm %s   (was %s)\n", zoneTargetAddress, res.AdoptReplaces)
 	}
-	fmt.Printf("   terraform import %s %s\n", zoneTargetAddress, res.ZoneID)
+	fmt.Printf("   terraform apply -target=%s   (import block, id %s)\n", zoneTargetAddress, res.ZoneID)
 	return zoneImporter(e, res.ZoneID, res.AdoptReplaces)
 }

@@ -91,7 +91,10 @@ The delegation is read from the registry or parent, not a resolver cache.
 A zone that keeps the delegation wins over the one in state because moving a
 delegation means waiting for caches again; moving records is one apply. The
 deploy imports before it continues (`adoptDomainZone`), then runs the
-pre-flight again. Other same-name zones are listed with the command that
+pre-flight again. The import is an `import {}` block in
+`env/<env>/meroku_zone_import.tf`, applied with `-target` on the zone and
+removed afterwards: `terraform import` evaluates the whole configuration and
+fails on `for_each` keys that derive from the missing zone. Other same-name zones are listed with the command that
 deletes them once the apply has moved their records out.
 
 Without this, a zone left in AWS after state was cleared passed the
@@ -107,6 +110,15 @@ keypress if the zone the registrar points at holds only NS and SOA, and asks
 first when that zone serves other records. The old zone is left alone:
 resolvers that cached the old nameservers fail the lookup either way, with "no
 such record" from the zone or a refusal once it is deleted.
+
+## Stale state lock at deploy start
+
+Before any terraform step, the deploy reads `<state_file>.tflock` from the
+state bucket (`app/state_lock_preflight.go`). A lock taken on this machine with
+no terraform running in `env/<env>` belongs to a run that was killed: it is
+released, after reading it again to be sure it is the same lock. A lock held
+by a running terraform, or taken on another machine, stops the deploy with who
+holds it and, for another machine, the `force-unlock` command.
 
 ## State lock held by another run
 

@@ -77,6 +77,13 @@ func TestPreflightAdoptsTheDelegatedZoneOverTheOneInState(t *testing.T) {
 	}
 }
 
+func TestZoneImportBlock(t *testing.T) {
+	want := "import {\n  to = module.domain.aws_route53_zone.domain[0]\n  id = \"ZAAAA\"\n}\n"
+	if got := zoneImportBlock("ZAAAA"); got != want {
+		t.Errorf("import block:\n%s", got)
+	}
+}
+
 func TestStateHasAddress(t *testing.T) {
 	list := "module.domain.aws_acm_certificate.api_domain\nmodule.domain.aws_route53_zone.domain[0]\n"
 	if !stateHasAddress(list, zoneTargetAddress) {
