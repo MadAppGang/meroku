@@ -63,9 +63,22 @@ type dnsScanDoneMsg struct{}
 
 type dnsDelegatedMsg struct{ err error }
 
+// dnsRegistrationMsg answers, for a root domain, which account registered it.
+type dnsRegistrationMsg struct {
+	scan   registrationScan
+	reason string
+}
+
+// dnsRegistrarWrittenMsg reports the nameserver update at the registrar.
+type dnsRegistrarWrittenMsg struct{ err error }
+
 type dnsPropagationMsg struct {
 	results map[string]dohVerdict
 	ok      bool
+	// atParent is true when the parent zone (the registry, for a root domain)
+	// delegates to the expected nameservers. It is the delegation itself, so it
+	// counts even while resolver caches still hold an older answer.
+	atParent bool
 }
 
 type dnsTickMsg time.Time
@@ -170,11 +183,19 @@ type dnsSetupModel struct {
 	// other sign of life, which reads as hung rather than waiting.
 	propagateIn       int
 	propagateChecking bool
+	// atParent records that the parent zone already delegates to this zone.
+	atParent bool
 
 	// manual fallback: poll public DNS on a timer, so a record added by hand at a
 	// registrar is picked up without the operator having to press anything.
 	nextCheckIn int
 	checking    bool
+
+	// root domain: the registration found in one of the local profiles, and
+	// whether the operator still has to confirm replacing its nameservers.
+	registration     *domainRegistration
+	confirmRegistrar bool
+	scanningRegistry bool
 
 	// domain adoption: moving the whole parent domain into Route53, for hosts
 	// that cannot delegate a subdomain at all.
@@ -340,10 +361,11 @@ func (m *dnsSetupModel) findParentCmd() tea.Cmd {
 	parent := m.parent
 	rescanAll := m.rescanAll
 
+	if parent == "" {
+		return m.findRegistrationCmd()
+	}
+
 	return func() tea.Msg {
-		if parent == "" {
-			return dnsCandidatesMsg{reason: "this is a root domain — delegate it at your registrar"}
-		}
 
 		publicNS, err := queryNameservers(parent)
 		if err != nil || len(publicNS) == 0 {
@@ -391,6 +413,39 @@ func (m *dnsSetupModel) findParentCmd() tea.Cmd {
 			note:   note,
 		}
 	}
+}
+
+// findRegistrationCmd asks every local profile whether its account holds the
+// root domain's registration.
+func (m *dnsSetupModel) findRegistrationCmd() tea.Cmd {
+	m.scanningRegistry = true
+	zone := m.zone
+	return func() tea.Msg {
+		profiles, err := getLocalAWSProfiles()
+		if err != nil || len(profiles) == 0 {
+			return dnsRegistrationMsg{reason: rootDomainManualReason(zone, nil)}
+		}
+		return dnsRegistrationMsg{scan: findDomainRegistration(context.Background(), profiles, zone)}
+	}
+}
+
+// registrarWriteCmd replaces the registrar's nameservers with the zone's.
+func (m *dnsSetupModel) registrarWriteCmd() tea.Cmd {
+	reg := *m.registration
+	nameservers := m.nameservers
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		return dnsRegistrarWrittenMsg{err: switchRegistrarNameservers(ctx, reg, nameservers)}
+	}
+}
+
+// startPropagation moves to the propagate step and starts the first check.
+func (m *dnsSetupModel) startPropagation() tea.Cmd {
+	m.step = stepPropagate
+	m.propagateChecking = true
+	m.propagateIn = secondsBetweenPropagationChecks
+	return m.pollPropagationCmd()
 }
 
 // waitForCandidate blocks on the next profile result.
@@ -516,13 +571,19 @@ func (m *dnsSetupModel) pollPropagationCmd() tea.Cmd {
 	expected := m.nameservers
 	return func() tea.Msg {
 		results := checkPropagationDoH(zone, expected)
+		delegated, err := delegationLookup(zone)
+		atParent := err == nil && nameserverSetsMatch(delegated, expected)
 
 		matched, _ := countVerdicts(results)
 		// Two independent resolvers agreeing is enough to proceed. That is half,
 		// not a majority: resolvers cache negative answers for minutes after a
 		// zone is created, so waiting for all of them routinely stalls long after
 		// the record is genuinely live at the authoritative servers.
-		return dnsPropagationMsg{results: results, ok: matched >= 2}
+		//
+		// The parent's own answer is enough on its own. Resolvers that cached a
+		// previous nameserver set keep it for up to two days, and a check that
+		// waits for them reports "pending" for a delegation that is done.
+		return dnsPropagationMsg{results: results, ok: matched >= 2 || atParent, atParent: atParent}
 	}
 }
 
@@ -644,6 +705,46 @@ func (m *dnsSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case dnsRegistrationMsg:
+		m.scanningRegistry = false
+		reg := msg.scan.Registration
+		if reg == nil {
+			reason := msg.reason
+			if reason == "" {
+				reason = rootDomainManualReason(m.zone, msg.scan.Unreachable)
+			}
+			m.manualReason = reason
+			m.states[stepFindParent] = stepSkipped
+			m.step = stepWriteRecord
+			m.nextCheckIn = secondsBetweenDNSChecks
+			return m, nil
+		}
+		m.registration = reg
+		m.manualReason = ""
+		m.states[stepFindParent] = stepOK
+		switch decideRegistrarAction(*reg, m.nameservers) {
+		case registrarAlreadySet:
+			m.states[stepWriteRecord] = stepOK
+			return m, m.startPropagation()
+		case registrarAutoSwitch:
+			m.step = stepWriteRecord
+			return m, m.registrarWriteCmd()
+		default:
+			m.step = stepWriteRecord
+			m.confirmRegistrar = true
+			return m, nil
+		}
+
+	case dnsRegistrarWrittenMsg:
+		if msg.err != nil {
+			m.manualReason = "setting the nameservers at the registrar failed: " + shortError(msg.err)
+			m.states[stepWriteRecord] = stepFailed
+			m.nextCheckIn = secondsBetweenDNSChecks
+			return m, nil
+		}
+		m.states[stepWriteRecord] = stepOK
+		return m, m.startPropagation()
+
 	case dnsScanStartedMsg:
 		m.scanCh = msg.ch
 		m.scanCancel = msg.cancel
@@ -692,7 +793,11 @@ func (m *dnsSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case dnsPropagationMsg:
 		m.resolverResults = msg.results
+		m.atParent = msg.atParent
 		m.propagateChecking = false
+		// A manual-mode check is over whichever branch below returns; leaving
+		// this set froze the countdown on "checking…" during the settle window.
+		m.checking = false
 		m.propagateIn = secondsBetweenPropagationChecks
 		agreed, _ := countVerdicts(msg.results)
 
@@ -789,7 +894,17 @@ func (m *dnsSetupModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case key.Matches(msg, m.keys.Adopt) && m.manualReason != "":
+	case key.Matches(msg, m.keys.Enter) && m.confirmRegistrar:
+		m.confirmRegistrar = false
+		return m, m.registrarWriteCmd()
+
+	case key.Matches(msg, m.keys.Manual) && m.confirmRegistrar:
+		m.confirmRegistrar = false
+		m.manualReason = "you chose to set the nameservers yourself"
+		m.nextCheckIn = secondsBetweenDNSChecks
+		return m, nil
+
+	case key.Matches(msg, m.keys.Adopt) && m.manualReason != "" && m.parent != "":
 		// The escape hatch for DNS hosts that cannot delegate a subdomain at all:
 		// move the whole domain to Route53, where the delegation is ours to write.
 		m.stopScan()
@@ -890,6 +1005,11 @@ func (m *dnsSetupModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.manualReason != "" && !m.checking {
 			m.checking = true
 			m.nextCheckIn = secondsBetweenDNSChecks
+			// A root domain whose registration was not found may be behind a
+			// profile that was logged out; ask the profiles again as well.
+			if m.parent == "" && m.registration == nil && !m.scanningRegistry {
+				return m, tea.Batch(m.pollPropagationCmd(), m.findRegistrationCmd())
+			}
 			return m, m.pollPropagationCmd()
 		}
 		return m, nil
@@ -923,7 +1043,11 @@ func (m *dnsSetupModel) View() string {
 
 	var b strings.Builder
 	b.WriteString(renderAppHeader("DNS", m.zone, context, clock, w) + "\n\n")
-	b.WriteString(renderStepRail(m.step, m.states, w) + "\n\n")
+	labels := dnsStepLabels
+	if m.parent == "" {
+		labels = rootDomainStepLabels
+	}
+	b.WriteString(renderStepRailWithLabels(m.step, m.states, labels, w) + "\n\n")
 	b.WriteString(m.renderBody(w) + "\n\n")
 	b.WriteString(renderKeyLegend(m.footerHints(), w))
 
@@ -959,6 +1083,25 @@ func (m *dnsSetupModel) renderBody(width int) string {
 			indeterminateRow(inner-4, m.anim,
 				fmt.Sprintf("creating (%ds)", int(m.elapsed.Seconds())))
 		return boxStyle.Width(inner).Render(body)
+
+	case m.step == stepFindParent && m.parent == "":
+		body := titleStyle.Render("Looking for where "+m.zone+" is registered") + "\n" +
+			lipgloss.NewStyle().Foreground(dimColor).
+				Render("asking Route 53 Domains in every local AWS profile") + "\n\n" +
+			indeterminateRow(inner-4, m.anim, "checking profiles")
+		return renderNameserverPanel(m.zone, m.parent, m.nameservers, inner) + "\n\n" +
+			boxStyle.Width(inner).Render(body)
+
+	case m.step == stepWriteRecord && m.confirmRegistrar && m.registration != nil:
+		return m.renderRegistrarConfirm(inner)
+
+	case m.step == stepWriteRecord && m.registration != nil:
+		return boxStyle.Width(inner).Render(
+			titleStyle.Render("Setting the nameservers at the registrar") + "\n" +
+				lipgloss.NewStyle().Foreground(dimColor).Render(fmt.Sprintf(
+					"%s is registered in profile %s (account %s)",
+					m.zone, m.registration.Profile, m.registration.AccountID)) + "\n\n" +
+				indeterminateRow(inner-4, m.anim, "updating Route 53 Domains"))
 
 	case m.step == stepFindParent:
 		body := titleStyle.Render("Looking for the "+m.parent+" zone") + "\n" +
@@ -1038,6 +1181,10 @@ func (m *dnsSetupModel) renderBody(width int) string {
 		if stale > 0 {
 			title = "Some resolvers hold an older delegation"
 			note = staleDelegationNote(stale)
+		}
+		if m.atParent {
+			title = "Delegated — waiting out resolver caches"
+			note = "The registry already lists these nameservers. " + note
 		}
 
 		// Something has to move. At 0/4 the agreement bar is empty and the resolver
@@ -1196,13 +1343,20 @@ func (m *dnsSetupModel) footerHints() []keyHint {
 				keyHint{"c", "copy all"},
 				keyHint{fmt.Sprintf("1-%d", len(m.nameservers)), "copy one"})
 		}
-		return append(hints,
+		hints = append(hints,
 			keyHint{"r", "check now"},
-			keyHint{"w", "check on dnschecker.org"},
-			keyHint{"t", "move to route53"},
+			keyHint{"w", "check on dnschecker.org"})
+		if m.parent != "" {
+			hints = append(hints, keyHint{"t", "move to route53"})
+		}
+		return append(hints,
 			keyHint{"s", "deploy without domain"},
 			keyHint{"esc", "continue anyway"},
 			keyHint{"^C", "abort deploy"})
+
+	case m.confirmRegistrar:
+		return []keyHint{
+			{"enter", "replace the nameservers"}, {"m", "do it myself"}, {"^C", "abort deploy"}}
 
 	case m.step == stepDone:
 		return []keyHint{{"enter", "continue to phase 2"}}
@@ -1301,7 +1455,17 @@ func (m *dnsSetupModel) renderManual(width int) string {
 		rec.WriteString(countdownRow(m.nextCheckIn, secondsBetweenDNSChecks, "rechecking in", half-8))
 	}
 
-	recordPanel := panel("delegation record · add to "+m.parent, rec.String(), half, accentColor)
+	recordTitle := "delegation record · add to " + m.parent
+	where := m.parent + " answers from AWS"
+	addDetail := "Copy it into " + m.parent + " wherever that domain is managed. " +
+		"This screen keeps checking and carries on by itself once it resolves."
+	if m.parent == "" {
+		recordTitle = "nameservers · set at the registrar"
+		where = "the registrar for " + m.zone + " lists these nameservers"
+		addDetail = "Replace the nameservers at the registrar where " + m.zone + " was bought. " +
+			"This screen keeps checking and carries on by itself once they resolve."
+	}
+	recordPanel := panel(recordTitle, rec.String(), half, accentColor)
 
 	// --- what is happening, in the reader's terms ---------------------------
 	//
@@ -1315,7 +1479,7 @@ func (m *dnsSetupModel) renderManual(width int) string {
 		"You asked for the custom domain "+m.zone+", so the deploy has to get an "+
 			"HTTPS certificate for it. AWS only issues one after checking a DNS "+
 			"record that proves you control the name — and meroku can only add that "+
-			"record once "+m.parent+" answers from AWS.", half-6)) + "\n\n")
+			"record once "+where+".", half-6)) + "\n\n")
 
 	why.WriteString(lipgloss.NewStyle().Foreground(mutedColor).Render(wordWrap(
 		m.manualReason, half-6)) + "\n\n")
@@ -1325,22 +1489,24 @@ func (m *dnsSetupModel) renderManual(width int) string {
 			"nothing — no services, no database, none of it.", half-6)))
 
 	// --- the ways out --------------------------------------------------------
-	acts := renderActions([]action{
+	actions := []action{
 		{key: "r", title: "CHECK AGAIN NOW", tone: fgColor,
 			detail: "If you have just added the record, do not wait for the countdown."},
-		{key: "1-4", title: "ADD THE RECORD YOURSELF", tone: successColor,
-			detail: "Copy it into " + m.parent + " wherever that domain is managed. " +
-				"This screen keeps checking and carries on by itself once it resolves."},
-		{key: "t", title: "MOVE " + strings.ToUpper(m.parent) + " TO ROUTE53", tone: accentColor,
+		{key: "1-4", title: "ADD THE RECORD YOURSELF", tone: successColor, detail: addDetail},
+	}
+	if m.parent != "" {
+		actions = append(actions, action{key: "t", title: "MOVE " + strings.ToUpper(m.parent) + " TO ROUTE53", tone: accentColor,
 			detail: "For providers that cannot add an NS record for a subdomain at all. " +
-				"meroku copies your existing records over first, so mail and the website keep working."},
+				"meroku copies your existing records over first, so mail and the website keep working."})
+	}
+	acts := renderActions(append(actions, []action{
 		{key: "s", title: "DEPLOY WITHOUT THE CUSTOM DOMAIN", tone: accentColor,
 			detail: "Everything else goes up now. Turn the domain back on and deploy again whenever you like."},
 		{key: "esc", title: "DEPLOY ANYWAY", tone: warningColor,
 			detail: "It will stop at the certificate about 20 minutes in, having built nothing."},
 		{key: "^C", title: "ABORT", tone: dangerColor,
 			detail: "Stop here and change nothing."},
-	}, half-6)
+	}...), half-6)
 
 	// The record and the explanation together balance the menu, which is always
 	// the longest panel. Stacked, the order is the one you read in: what to add,
@@ -1352,4 +1518,24 @@ func (m *dnsSetupModel) renderManual(width int) string {
 		return joinColumns(left, right)
 	}
 	return left + "\n" + right
+}
+
+// renderRegistrarConfirm asks before replacing nameservers that still serve
+// records: once they change, those records stop resolving.
+func (m *dnsSetupModel) renderRegistrarConfirm(inner int) string {
+	reg := m.registration
+	dim := lipgloss.NewStyle().Foreground(dimColor)
+	warning := fmt.Sprintf("The current nameservers serve %d records (mail, website, verification). "+
+		"They stop resolving once the nameservers change. Copy any you still need into the new zone first.",
+		reg.LiveRecords)
+	if reg.LiveRecords < 0 {
+		warning = "meroku cannot see what the current nameservers serve. Anything they hold " +
+			"(mail, website, verification records) stops resolving once they change."
+	}
+	body := titleStyle.Render("Replace the nameservers of "+m.zone+"?") + "\n" +
+		dim.Render(fmt.Sprintf("registered in profile %s (account %s)", reg.Profile, reg.AccountID)) + "\n\n" +
+		kvRow("NOW", strings.Join(normalizeNameservers(reg.Nameservers), ", "), 7) + "\n" +
+		kvRow("NEW", strings.Join(normalizeNameservers(m.nameservers), ", "), 7) + "\n\n" +
+		lipgloss.NewStyle().Foreground(warningColor).Render(wordWrap("⚠ "+warning, inner-6))
+	return boxStyle.Width(inner).Render(body)
 }

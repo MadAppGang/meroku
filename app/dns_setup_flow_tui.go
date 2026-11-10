@@ -149,6 +149,21 @@ const (
 // see where you are, what already succeeded, and what is left — which the plain
 // text version could not convey at all.
 func renderStepRail(current dnsStep, states map[dnsStep]stepState, width int) string {
+	return renderStepRailWithLabels(current, states, dnsStepLabels, width)
+}
+
+// rootDomainStepLabels names the steps for a root domain, which is delegated by
+// the nameserver list at its registrar rather than by a record in a parent zone.
+var rootDomainStepLabels = map[dnsStep]string{
+	stepCreateZone:      "Create zone",
+	stepShowNameservers: "Nameservers",
+	stepFindParent:      "Find registrar",
+	stepWriteRecord:     "Set nameservers",
+	stepPropagate:       "Propagate",
+	stepDone:            "Done",
+}
+
+func renderStepRailWithLabels(current dnsStep, states map[dnsStep]stepState, labels map[dnsStep]string, width int) string {
 	var parts []string
 
 	for i, s := range dnsStepOrder {
@@ -157,7 +172,7 @@ func renderStepRail(current dnsStep, states map[dnsStep]stepState, width int) st
 			state = stepActive
 		}
 
-		label := dnsStepLabels[s]
+		label := labels[s]
 		var chip string
 		switch state {
 		case stepOK:
@@ -189,7 +204,7 @@ func renderStepRail(current dnsStep, states map[dnsStep]stepState, width int) st
 			}
 		}
 		rail = lipgloss.NewStyle().Foreground(dimColor).
-			Render(fmt.Sprintf("Step %d of %d — %s", idx, len(dnsStepOrder), dnsStepLabels[current]))
+			Render(fmt.Sprintf("Step %d of %d — %s", idx, len(dnsStepOrder), labels[current]))
 	}
 	return rail
 }

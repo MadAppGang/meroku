@@ -1,10 +1,10 @@
 module madappgang.com/meroku
 
-go 1.23.0
+go 1.24
 
 require (
 	github.com/atotto/clipboard v0.1.4
-	github.com/aws/aws-sdk-go-v2 v1.41.0
+	github.com/aws/aws-sdk-go-v2 v1.47.8
 	github.com/aws/aws-sdk-go-v2/config v1.27.31
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.30
 	github.com/aws/aws-sdk-go-v2/service/amplify v1.33.3
@@ -21,13 +21,14 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/pricing v1.34.5
 	github.com/aws/aws-sdk-go-v2/service/rds v1.102.0
 	github.com/aws/aws-sdk-go-v2/service/route53 v1.56.0
+	github.com/aws/aws-sdk-go-v2/service/route53domains v1.46.1
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.61.0
 	github.com/aws/aws-sdk-go-v2/service/servicediscovery v1.35.7
 	github.com/aws/aws-sdk-go-v2/service/ses v1.30.5
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.60.0
 	github.com/aws/aws-sdk-go-v2/service/sts v1.30.5
 	github.com/aws/aws-sdk-go-v2/service/support v1.27.4
-	github.com/aws/smithy-go v1.24.0
+	github.com/aws/smithy-go v1.28.8
 	github.com/aymerick/raymond v2.0.2+incompatible
 	github.com/blang/semver/v4 v4.0.0
 	github.com/charmbracelet/bubbles v0.19.0
@@ -44,6 +45,7 @@ require (
 	github.com/muesli/cancelreader v0.2.2
 	github.com/muesli/termenv v0.15.3-0.20240618155329-98d742f6907a
 	github.com/samber/lo v1.47.0
+	github.com/zclconf/go-cty v1.16.3
 	gopkg.in/ini.v1 v1.67.0
 	gopkg.in/yaml.v2 v2.4.0
 )
@@ -53,8 +55,8 @@ require (
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.6.11 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.16.12 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.16 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.16 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/configsources v1.5.11 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.8.11 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/ini v1.8.1 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/v4a v1.3.36 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.4 // indirect
@@ -80,7 +82,6 @@ require (
 	github.com/muesli/ansi v0.0.0-20230316100256-276c6243b2f6 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/stretchr/testify v1.8.4 // indirect
-	github.com/zclconf/go-cty v1.16.3 // indirect
 	golang.org/x/mod v0.25.0 // indirect
 	golang.org/x/net v0.41.0 // indirect
 	golang.org/x/sync v0.16.0 // indirect
