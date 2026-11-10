@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -14,6 +15,12 @@ import (
 // change, resolvers that saw the old set keep answering with it for up to that
 // long, while the registry has published the new set within minutes. Asking the
 // parent's own servers reads the delegation itself, with no cache in between.
+
+// errPort53Intercepted means something on this network answers DNS queries
+// itself instead of passing them to the server they were sent to. Registries and
+// Route53 nameservers never offer recursion, so an answer that offers it came
+// from a caching proxy, and is no evidence of what the real server holds.
+var errPort53Intercepted = errors.New("DNS on port 53 is intercepted on this network; the real nameservers cannot be asked directly")
 
 // delegationLookup returns the nameservers the parent zone delegates zone to.
 // A variable so tests can replace it.
@@ -46,6 +53,9 @@ func delegationAtParent(zone string) ([]string, error) {
 			if err != nil {
 				lastErr = err
 				continue
+			}
+			if resp.RecursionAvailable {
+				return nil, errPort53Intercepted
 			}
 			if resp.Rcode == dns.RcodeNameError {
 				// The parent does not delegate zone at all (yet).

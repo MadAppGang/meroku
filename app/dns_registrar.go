@@ -143,36 +143,14 @@ func countRecordsBehindNameservers(ctx context.Context, cfg aws.Config, domain s
 	return "", -1
 }
 
-// emptyZoneDeleter deletes a hosted zone that holds only NS and SOA. A variable
-// so tests can replace it.
-var emptyZoneDeleter = func(ctx context.Context, profile, zoneID string) error {
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithSharedConfigProfile(profile))
-	if err != nil {
-		return err
-	}
-	_, err = route53.NewFromConfig(cfg).DeleteHostedZone(ctx,
-		&route53.DeleteHostedZoneInput{Id: aws.String(zoneID)})
-	return err
-}
-
-// switchRegistrarNameservers points the registration at nameservers, then
-// deletes the zone it pointed at before when that zone held nothing.
+// switchRegistrarNameservers points the registration at nameservers.
 //
-// Resolvers keep the previous nameservers for up to the TLD's two-day TTL. While
-// that empty zone exists they get an authoritative "no such record" from it for
-// the certificate validation record. Once it is gone those servers refuse the
-// query, and resolvers go back to the registry for the new delegation.
+// The zone the registrar pointed at before is left alone. Resolvers that cached
+// the old nameservers keep asking them until the TLD's TTL runs out, and get a
+// failure either way: "no such record" while that zone exists, a refusal once it
+// is deleted. Deleting it gains nothing.
 func switchRegistrarNameservers(ctx context.Context, reg domainRegistration, nameservers []string) error {
-	if err := registrarNameserverWriter(ctx, reg.Profile, reg.Domain, nameservers); err != nil {
-		return err
-	}
-	if reg.LiveRecords == 0 && reg.OldZoneID != "" {
-		if err := emptyZoneDeleter(ctx, reg.Profile, reg.OldZoneID); err != nil {
-			return fmt.Errorf("nameservers set, but the old empty zone %s could not be deleted: %w",
-				reg.OldZoneID, err)
-		}
-	}
-	return nil
+	return registrarNameserverWriter(ctx, reg.Profile, reg.Domain, nameservers)
 }
 
 // registrarNameserverWriter replaces the domain's nameservers at Route 53

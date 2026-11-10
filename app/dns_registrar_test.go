@@ -58,16 +58,11 @@ func rootDomainModel() *dnsSetupModel {
 // A root domain whose registration sits in a reachable account is delegated
 // with no keypress when the nameservers it replaces serve nothing.
 func TestRootDomainSwitchesTheRegistrarByItself(t *testing.T) {
-	previous, previousDelete := registrarNameserverWriter, emptyZoneDeleter
-	t.Cleanup(func() { registrarNameserverWriter, emptyZoneDeleter = previous, previousDelete })
+	previous := registrarNameserverWriter
+	t.Cleanup(func() { registrarNameserverWriter = previous })
 	var wrote []string
 	registrarNameserverWriter = func(_ context.Context, profile, domain string, ns []string) error {
 		wrote = append([]string{profile, domain}, ns...)
-		return nil
-	}
-	deleted := ""
-	emptyZoneDeleter = func(_ context.Context, profile, zoneID string) error {
-		deleted = profile + "/" + zoneID
 		return nil
 	}
 
@@ -82,9 +77,6 @@ func TestRootDomainSwitchesTheRegistrarByItself(t *testing.T) {
 	msg := cmd()
 	if len(wrote) != 6 || wrote[0] != "owner" || wrote[1] != "example.work" {
 		t.Fatalf("writer called with %v", wrote)
-	}
-	if deleted != "owner//hostedzone/ZOLD" {
-		t.Errorf("the old empty zone was not deleted (got %q)", deleted)
 	}
 
 	m.Update(msg)

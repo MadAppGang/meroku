@@ -1,0 +1,66 @@
+# Certificate validation and DNS checks
+
+ACM validates a certificate by looking up a CNAME through AWS's own resolvers.
+Nothing outside AWS can query those resolvers or their caches, so meroku reads
+the two things it can: ACM's verdict, and the lookup a resolver with an empty
+cache makes.
+
+## `meroku cert check <env>`
+
+Code: `app/acm_validation_check.go`, `app/cert_cli.go`.
+
+1. Lists the account's `PENDING_VALIDATION` certificates for the environment's
+   zone, in the environment's region and in `us-east-1` (CloudFront, Amplify).
+2. Reads each domain's `ValidationStatus` and validation record from
+   `DescribeCertificate`. `SUCCESS` and `FAILED` are ACM's final word.
+3. For a pending domain, asks the registry which nameservers the zone is
+   delegated to, then asks those nameservers directly for the CNAME.
+
+| Verdict | Meaning |
+|---|---|
+| issued | ACM validated it |
+| failed | ACM gave up; only a new certificate request validates again |
+| not delegated | the registry delegates the zone nowhere, or its nameservers do not answer |
+| record missing | the delegated nameservers have no validation record: ACM reads a different zone than the one meroku wrote to |
+| record wrong | the record exists with another value |
+| waiting on ACM | the record is correct at the authoritative servers; ACM has not looked again |
+| unchecked | port 53 is intercepted on this network (see below) |
+
+When pending, the check also asks the public resolvers over HTTPS. Resolvers
+that hold an older delegation of the zone fail the lookup until the TLD's TTL
+on that delegation expires, and the resolvers ACM uses may do the same.
+
+During an apply the same check runs every 30 s while an
+`aws_acm_certificate_validation` resource is in flight
+(`app/acm_apply_watch.go`). Its one-line summary goes on that resource's status
+line and into the log when it changes.
+
+## Intercepted DNS
+
+Some networks answer every query to port 53 themselves, whatever server it was
+addressed to, over UDP and TCP. An answer from such a proxy is a cached
+recursive answer, not the server's. Registries and Route53 nameservers never
+offer recursion, so `delegationAtParent` and `authoritativeCNAME` reject any
+answer with the RA flag (and the CNAME lookup also requires AA) as
+`errPort53Intercepted`. The propagation screen then relies on the DNS-over-HTTPS
+resolvers alone.
+
+## Root domains: the registrar
+
+A root domain is delegated by the nameserver list at its registrar
+(`app/dns_registrar.go`). The DNS screen asks Route 53 Domains in every local
+profile for the registration. When found, it sets the nameservers without a
+keypress if the zone the registrar points at holds only NS and SOA, and asks
+first when that zone serves other records. The old zone is left alone:
+resolvers that cached the old nameservers fail the lookup either way, with "no
+such record" from the zone or a refusal once it is deleted.
+
+## State lock held by another run
+
+A destroy that fails with "Error acquiring the state lock" shows who holds the
+lock and whether that run is still alive (`app/state_lock.go`). When the lock
+was taken on this machine and a terraform process still runs in `env/<env>`,
+`[s]` interrupts it (terraform cancels cleanly and releases the lock) and the
+destroy runs again. When no such process is left, `[u]` runs
+`terraform force-unlock` and the destroy runs again. A lock taken on another
+machine is only explained.

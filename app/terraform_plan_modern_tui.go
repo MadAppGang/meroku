@@ -1055,7 +1055,7 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.applyState.mu.Lock()
 			if op, exists := m.applyState.currentOps[msg.Address]; exists {
 				op.Progress = msg.Progress
-				op.Status = msg.Status
+				op.Status = withNote(msg.Status, op.Note)
 			}
 			m.applyState.mu.Unlock()
 		}

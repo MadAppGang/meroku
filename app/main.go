@@ -160,6 +160,11 @@ func main() {
 		os.Exit(cliExitCode(handleMigrateCommand(args[1:])))
 	}
 
+	// Certificate validation status (before environment selection).
+	if len(args) > 0 && args[0] == "cert" {
+		os.Exit(cliExitCode(handleCertCommand(args[1:])))
+	}
+
 	// VPC range checks and assignment (before environment selection).
 	if len(args) > 0 && args[0] == "vpc-cidr" {
 		os.Exit(cliExitCode(handleVPCCIDRCommand(args[1:])))

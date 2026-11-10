@@ -50,7 +50,18 @@ type destroyProgressModel struct {
 	showFullError      bool // Track if showing full error view
 	copiedToClip       bool // Track if error was copied
 	lastProcessedLines int  // Track how many lines we've processed
+
+	// lock is set when the destroy failed because another run holds the state
+	// lock; holder is what meroku found about that run, lockNote the outcome of
+	// stopping it or releasing the lock.
+	lock     *stateLock
+	holder   lockHolder
+	envDir   string
+	lockNote string
 }
+
+// destroyLockActionMsg reports stopping the lock holder or releasing the lock.
+type destroyLockActionMsg struct{ err error }
 
 // wrapText wraps a long text string to fit within maxWidth
 // Returns a slice of wrapped lines
@@ -371,8 +382,19 @@ func (m *destroyProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(msg.output) > 0 {
 			m.errorOutput = msg.output
 		}
-		// Stop the animation and wait for user to press a key
+		if lock, ok := parseStateLock(strings.Join(m.errorOutput, "\n")); ok {
+			m.lock = &lock
+			m.envDir, _ = filepath.Abs(filepath.Join("env", m.env))
+			m.holder = findLockHolder(lock, m.envDir)
+		}
 		return m, nil
+
+	case destroyLockActionMsg:
+		if msg.err != nil {
+			m.lockNote = "✗ " + msg.err.Error()
+			return m, nil
+		}
+		return m, m.restartDestroy()
 
 	case tea.KeyMsg:
 		// Handle Ctrl+C during ANY phase
@@ -420,6 +442,25 @@ func (m *destroyProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					})
 				}
 				return m, nil
+			}
+
+			// A held state lock: stop the run holding it, or release a lock
+			// whose run is gone, then destroy again.
+			if m.phase == destroyError && m.lock != nil && !m.showFullError && m.lockNote != "working" {
+				switch {
+				case msg.String() == "s" && m.holder.PID != 0:
+					pid := m.holder.PID
+					m.lockNote = "working"
+					return m, func() tea.Msg {
+						return destroyLockActionMsg{err: stopLockHolder(pid, 5*time.Minute)}
+					}
+				case msg.String() == "u" && m.holder.ThisMachine && m.holder.PID == 0:
+					dir, id := m.envDir, m.lock.ID
+					m.lockNote = "working"
+					return m, func() tea.Msg {
+						return destroyLockActionMsg{err: releaseStaleLock(dir, id)}
+					}
+				}
 			}
 
 			// Fix with AI: leave the TUI and let the caller hand off to
@@ -487,6 +528,19 @@ func (m *destroyProgressModel) View() string {
 	copy(outputCopy, m.outputLines)
 	m.outputMutex.Unlock()
 
+	// A held lock is explained in place of Terraform's raw lock dump, which
+	// stays one key away under [E].
+	if m.phase == destroyError && m.lock != nil {
+		outputCopy = describeStateLock(m.env, *m.lock, m.holder)
+		switch m.lockNote {
+		case "":
+		case "working":
+			outputCopy = append(outputCopy, "", "… waiting for the lock to be released")
+		default:
+			outputCopy = append(outputCopy, "", m.lockNote)
+		}
+	}
+
 	// Calculate content width - leave margins on sides
 	contentWidth := min(m.width-8, 120)
 
@@ -552,6 +606,10 @@ func (m *destroyProgressModel) View() string {
 		} else {
 			statusText = "❌ Destruction failed!"
 			statusColor = theme.Error
+			if m.lock != nil {
+				statusText = "🔒 Another run holds the state lock"
+				statusColor = theme.Warning
+			}
 		}
 	}
 
@@ -706,6 +764,12 @@ func (m *destroyProgressModel) View() string {
 			footerParts = append(footerParts, "✓ Copied!")
 		} else {
 			footerOptions := "[a] Fix with AI (Claude Code) • [E] Full Error • [C] Copy • Q - exit"
+			switch {
+			case m.lock != nil && m.holder.PID != 0:
+				footerOptions = "[s] Stop the running " + strings.TrimPrefix(strings.ToLower(m.lock.Operation), "operationtype") + " • " + footerOptions
+			case m.lock != nil && m.holder.ThisMachine:
+				footerOptions = "[u] Release the lock • " + footerOptions
+			}
 			footerParts = append(footerParts, footerOptions)
 		}
 	} else {
@@ -810,4 +874,21 @@ func destroyRunResult(m *destroyProgressModel, offer func(HandoffContext)) error
 		return fmt.Errorf("terraform destroy failed: %s: %w", errorMsg, errHandedOff)
 	}
 	return fmt.Errorf("terraform destroy failed: %s", errorMsg)
+}
+
+// restartDestroy runs the destroy again from the start, after the lock that
+// stopped it has been released.
+func (m *destroyProgressModel) restartDestroy() tea.Cmd {
+	m.phase = destroyInitializing
+	m.lock = nil
+	m.lockNote = ""
+	m.holder = lockHolder{}
+	m.errorDetails = ""
+	m.errorOutput = nil
+	m.outputMutex.Lock()
+	m.outputLines = nil
+	m.lastProcessedLines = 0
+	m.outputMutex.Unlock()
+	m.startTime = time.Now()
+	return tea.Batch(m.runTerraformDestroy(), m.tickCmd())
 }

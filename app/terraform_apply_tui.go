@@ -41,6 +41,8 @@ type applyState struct {
 	// State
 	isApplying    bool
 	applyComplete bool
+	// certWatchStarted is set once the ACM watch runs for this apply.
+	certWatchStarted bool
 	hasErrors     bool
 	errorCount    int
 	warningCount  int
@@ -94,6 +96,9 @@ type currentOperation struct {
 	Status      string
 	StartTime   time.Time
 	ElapsedTime string // Elapsed time from Terraform messages like "10s"
+	// Note is extra state meroku reads itself, such as ACM's view of a
+	// certificate validation. It stays on the status line across progress hooks.
+	Note string
 }
 
 type logEntry struct {
@@ -672,6 +677,10 @@ func (m *modernPlanModel) handleApplyStart(msg *TerraformJSONMessage) {
 		}
 	}
 
+	if isCertValidationAddress(addr) {
+		m.startCertWatch()
+	}
+
 	// Also send message for UI update
 	m.sendMsg(resourceStartMsg{
 		Address: addr,
@@ -701,6 +710,7 @@ func (m *modernPlanModel) handleApplyProgress(msg *TerraformJSONMessage) {
 		m.applyState.mu.Lock()
 		if op, exists := m.applyState.currentOps[addr]; exists {
 			op.Progress = progress
+			status = withNote(status, op.Note)
 			op.Status = status
 		}
 		m.applyState.mu.Unlock()
