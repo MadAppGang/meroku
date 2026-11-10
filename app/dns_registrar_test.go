@@ -5,6 +5,9 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 var testZoneNS = []string{"ns-833.awsdns-40.net", "ns-1056.awsdns-04.org", "ns-63.awsdns-07.com", "ns-1907.awsdns-46.co.uk"}
@@ -147,5 +150,23 @@ func TestCanaryNamesAreFreshUnderTheWildcard(t *testing.T) {
 	a, b := c.freshName(), c.freshName()
 	if a == b || !strings.HasSuffix(a, "._meroku-check.example.work") {
 		t.Errorf("fresh names %q %q", a, b)
+	}
+}
+
+// [s] on the propagate screen goes on with the deploy; it never cancels it.
+func TestStopWaitingContinuesTheDeploy(t *testing.T) {
+	m := rootDomainModel()
+	m.step = stepPropagate
+	m.firstAgreementAt = time.Now()
+	m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	if !m.Delegated || m.ContinueAnyway {
+		t.Errorf("after agreement: delegated=%v continueAnyway=%v", m.Delegated, m.ContinueAnyway)
+	}
+
+	m = rootDomainModel()
+	m.step = stepPropagate
+	m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	if m.Delegated || !m.ContinueAnyway {
+		t.Errorf("before agreement: delegated=%v continueAnyway=%v", m.Delegated, m.ContinueAnyway)
 	}
 }

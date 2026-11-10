@@ -258,6 +258,30 @@ func checkDNSPreflight(ctx context.Context, e Env) (dnsPreflightResult, error) {
 		}
 	}
 
+	// The registry's own delegation, read without a resolver cache (directly, or
+	// over RDAP where port 53 is intercepted), outranks a resolver's answer.
+	if registryNS, rErr := delegationLookup(res.ZoneName); rErr == nil && len(registryNS) > 0 {
+		switch {
+		case !nameserverSetsMatch(zoneNS, registryNS):
+			res.Plan = dnsPlanBlocked
+			res.Reason = fmt.Sprintf(
+				"the registry delegates %s to %s, which is not this account's Route53 zone (%s)",
+				res.ZoneName,
+				strings.Join(normalizeNameservers(registryNS), ", "),
+				strings.Join(normalizeNameservers(zoneNS), ", "))
+			return res, nil
+		case !nameserverSetsMatch(zoneNS, res.PublicNameservers):
+			// Delegated correctly; resolvers still serve an older answer. The
+			// DNS screen measures whether they read the zone yet, rather than
+			// letting the certificate wait find out.
+			res.Plan = dnsPlanBlocked
+			res.Reason = fmt.Sprintf(
+				"the registry delegates %s to this account's zone %s, but resolvers still answer with an older delegation",
+				res.ZoneName, zoneID)
+			return res, nil
+		}
+	}
+
 	switch {
 	case nameserverSetsMatch(zoneNS, res.PublicNameservers):
 		res.Plan = dnsPlanNormal

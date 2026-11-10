@@ -1063,7 +1063,16 @@ func (m *dnsSetupModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case key.Matches(msg, m.keys.Skip):
+		// Stop waiting means go on with the deploy, not cancel it. Once two
+		// resolvers have read the zone the delegation is live, and only the
+		// stragglers are being waited out; before that, the deploy goes on with
+		// the same warning as "deploy anyway".
 		if m.step == stepPropagate {
+			if m.firstAgreementAt.IsZero() {
+				m.ContinueAnyway = true
+			} else {
+				m.Delegated = true
+			}
 			m.quitting = true
 			return m, tea.Quit
 		}
@@ -1422,7 +1431,7 @@ func (m *dnsSetupModel) footerHints() []keyHint {
 	case m.step == stepPropagate:
 		return []keyHint{
 			{"w", "check on dnschecker.org"},
-			{"s", "stop waiting"},
+			{"s", "continue now"},
 			{"^C", "abort deploy"}}
 
 	default:
