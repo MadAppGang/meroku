@@ -75,6 +75,23 @@
               "repo": "MadAppGang/magus"
             }
           }
+        },
+        "code-search": {
+          "engine": "codegraph",
+          "setup": "active",
+          "engines": {
+            "codegraph": {
+              "command": "codegraph",
+              "args": [
+                "serve",
+                "--mcp"
+              ],
+              "env": {
+                "CODEGRAPH_MCP_TOOLS": "explore,node,search,callers,callees,impact,files,status"
+              },
+              "callTimeoutMs": 30000
+            }
+          }
         }
       },
       "updatedAt": "2026-10-28T08:44:31.952Z"

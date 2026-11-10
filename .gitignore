@@ -124,3 +124,4 @@ project/env/
 # Added by magus
 # Personal Claude settings belong to each developer and should not be shared.
 .claude/settings.local.json
+.codegraph/
