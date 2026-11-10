@@ -12,9 +12,8 @@ module "ses" {
         
         
       zone_id = module.domain.zone_id  # Auto-detected: subdomain of example.com
-          
-      
-                      }
+        
+    }
   ]
 
 

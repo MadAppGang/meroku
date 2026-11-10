@@ -897,18 +897,21 @@ func configureCrossAccountECR(w http.ResponseWriter, r *http.Request) {
 	targetEnv.ECRStrategy = "cross_account"
 	targetEnv.ECRAccountID = sourceEnv.AccountID
 	targetEnv.ECRAccountRegion = sourceEnv.Region
+	targetEnv.ECRImageEvents = true
 
 	// Update source environment: add target to trusted accounts (if not already present)
 	trustedAccount := ECRTrustedAccount{
-		AccountID: targetEnv.AccountID,
-		Env:       targetEnv.Env,
-		Region:    targetEnv.Region,
+		AccountID:          targetEnv.AccountID,
+		Env:                targetEnv.Env,
+		Region:             targetEnv.Region,
+		ForwardImageEvents: true,
 	}
 
 	// Check for duplicates
 	isDuplicate := false
-	for _, ta := range sourceEnv.ECRTrustedAccounts {
+	for i, ta := range sourceEnv.ECRTrustedAccounts {
 		if ta.AccountID == trustedAccount.AccountID && ta.Env == trustedAccount.Env {
+			sourceEnv.ECRTrustedAccounts[i].ForwardImageEvents = true
 			isDuplicate = true
 			break
 		}
@@ -939,10 +942,10 @@ func configureCrossAccountECR(w http.ResponseWriter, r *http.Request) {
 			fmt.Sprintf("%s.yaml", req.TargetEnv),
 		},
 		NextSteps: []string{
-			fmt.Sprintf("1. Generate Terraform configuration: make infra-gen-%s", req.SourceEnv),
-			fmt.Sprintf("2. Deploy source environment: make infra-apply env=%s", req.SourceEnv),
-			fmt.Sprintf("3. Generate Terraform configuration: make infra-gen-%s", req.TargetEnv),
-			fmt.Sprintf("4. Deploy target environment: make infra-apply env=%s", req.TargetEnv),
+			fmt.Sprintf("1. Generate Terraform configuration: make infra-gen-%s", req.TargetEnv),
+			fmt.Sprintf("2. Deploy target environment first, so it can accept image events: make infra-apply env=%s", req.TargetEnv),
+			fmt.Sprintf("3. Generate Terraform configuration: make infra-gen-%s", req.SourceEnv),
+			fmt.Sprintf("4. Deploy source environment: make infra-apply env=%s", req.SourceEnv),
 			"5. Verify cross-account access is working",
 		},
 	}

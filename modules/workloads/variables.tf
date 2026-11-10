@@ -295,8 +295,28 @@ variable "ecr_trusted_accounts" {
     account_id = string
     env        = string
     region     = string
+    # Send this registry's image-push events to that account and region.
+    forward_image_events = optional(bool, false)
   }))
   default = []
+}
+
+variable "ecr_image_events" {
+  description = "With ecr_strategy = cross_account, accept the source registry's image-push events and deploy from them, subject to auto_deploy."
+  type        = bool
+  default     = false
+}
+
+variable "is_prod" {
+  description = "This environment is production, so it accepts the fixed action.production deploy event."
+  type        = bool
+  default     = false
+}
+
+variable "auto_deploy" {
+  description = "Environment-wide default for services without their own auto_deploy."
+  type        = bool
+  default     = false
 }
 
 variable "ecr_url" {
@@ -459,8 +479,8 @@ variable "services" {
     desired_count     = optional(number, 1)
     # May the CI Lambda redeploy this service on its own? See
     # var.backend_auto_deploy for what false does and does not do. Absent means
-    # true, which is how every project behaved before this setting existed.
-    auto_deploy = optional(bool, true)
+    # the environment's var.auto_deploy.
+    auto_deploy = optional(bool)
     # Where this service runs. "fargate" keeps the literal launch_type it has
     # today, byte-identical; "ec2" places it on compute_pool via a capacity
     # provider strategy.
@@ -612,22 +632,18 @@ variable "backend_auto_deploy" {
     unmapped. Manual deploys (detail-type DEPLOY / SERVICE_DEPLOY) are
     unaffected: this governs automatic triggers only.
 
-    Default true, because that is what every project did before this setting
-    existed. meroku's YAML migration writes the value explicitly, defaulting to
-    true in dev and false everywhere else.
+    meroku writes the value into the YAML when it creates an environment.
   EOT
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "scheduled_task_auto_deploy" {
   description = <<-EOT
-    Scheduled task name -> auto-deploy policy. An absent entry means true.
+    Scheduled task name -> auto-deploy policy. An absent entry means false.
 
-    Outside `dev` no automatic trigger reaches a scheduled task at all
-    (modules/ecs_task creates the task's ECR repository only in dev, and an SSM
-    change deliberately never redeploys a task), so `true` there enables only the
-    manual path.
+    An image push is the only automatic trigger for a task: an SSM change
+    deliberately never redeploys one.
   EOT
   type        = map(bool)
   default     = {}

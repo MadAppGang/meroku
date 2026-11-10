@@ -56,7 +56,7 @@ function generateSmartDefaults(config?: YamlInfrastructureConfig): {
 		const baseDomain = config.domain.domain_name;
 		const addEnvPrefix = config.domain.add_env_domain_prefix ?? true;
 
-		if (addEnvPrefix && env !== "prod") {
+		if (addEnvPrefix) {
 			previewDomain = `${suggestedSubdomain}.${env}.${baseDomain}`;
 		} else {
 			previewDomain = `${suggestedSubdomain}.${baseDomain}`;
@@ -85,7 +85,7 @@ function calculateDomainPreview(
 	const addEnvPrefix = config.domain.add_env_domain_prefix ?? true;
 	const env = config.env || "dev";
 
-	if (addEnvPrefix && env !== "prod") {
+	if (addEnvPrefix) {
 		return `${subdomainPrefix}.${env}.${baseDomain}`;
 	}
 	return `${subdomainPrefix}.${baseDomain}`;

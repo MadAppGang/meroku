@@ -107,9 +107,9 @@ resource "null_resource" "build_ci_lambda" {
 
 locals {
   # Backend repository, when this environment has one at all. In
-  # ecr_strategy = "cross_account" there is none, and no local ECR event is
-  # ever emitted for the backend.
-  ci_backend_repo = try(aws_ecr_repository.backend[0].name, "")
+  # ecr_strategy = "cross_account" there is none, so the backend is mapped only
+  # when the source registry's events are connected.
+  ci_backend_repo = try(aws_ecr_repository.backend[0].name, local.ecr_image_events_connected ? "${var.project}_backend" : "")
 
   # Which repository does each service actually pull from?
   #
@@ -134,9 +134,10 @@ locals {
   # with services in it. See modules/workloads/ecr.tf for the full account.
   ci_service_repos = local.service_ecr_repo_names
 
-  # modules/ecs_task creates {project}_task_{name} only when env == "dev";
-  # every other environment pulls from a cross-account URL.
-  ci_task_repos = var.env == "dev" ? {
+  # modules/ecs_task creates {project}_task_{name} under ecr_strategy = "local".
+  # Under cross_account the same name exists in the source registry, and only
+  # connected image events can report a push to it.
+  ci_task_repos = var.ecr_strategy == "local" || local.ecr_image_events_connected ? {
     for name in var.scheduled_task_names : name => "${var.project}_task_${name}"
   } : {}
 
@@ -147,10 +148,9 @@ locals {
     for name in var.scheduled_task_names : name => "/${var.env}/${var.project}/task/${name}"
   }
 
-  # Per-service auto-deploy policy, straight off the service object. Absent is
-  # true (see var.backend_auto_deploy): a project that predates the setting
-  # auto-deploys everything, and it must keep doing so.
-  ci_service_auto_deploy = { for name, service in local.service_names : name => service.auto_deploy }
+  # Per-service auto-deploy policy. A service without its own value follows the
+  # environment's var.auto_deploy.
+  ci_service_auto_deploy = { for name, service in local.service_names : name => service.auto_deploy != null ? service.auto_deploy : var.auto_deploy }
 }
 
 module "ci_identifiers" {
@@ -519,11 +519,9 @@ locals {
   # every other meroku project's rule in the account, and each of those Lambdas
   # redeployed its own backend. Verified live before the fix.
 
-  # Environment names that the legacy prod deploy receipt hardcodes as
-  # "action.production" regardless of what the environment is actually called
-  # (receipts/github/prod-deploy.yml ships with ENV: prod). Only these
-  # environments may accept that source.
-  ci_production_envs = ["prod", "production"]
+  # The legacy prod deploy receipt hardcodes "action.production" regardless of
+  # what the environment is actually called (receipts/github/prod-deploy.yml
+  # ships with ENV: prod). Only an environment flagged is_prod accepts it.
 
   # Scoped sources: the source string itself names the environment, so another
   # environment's deploy event can never reach this rule. Because the rule is
@@ -538,7 +536,7 @@ locals {
       "action.${var.env}",
       "github.actions.${var.env}",
     ],
-    contains(local.ci_production_envs, var.env) ? ["action.production"] : [],
+    var.is_prod ? ["action.production"] : [],
   ))
 
   # Global sources: the source string names no environment, so an event on one

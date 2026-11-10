@@ -4,6 +4,7 @@ export interface InfrastructureConfig {
 	project: string;
 	env: string;
 	is_prod?: boolean;
+	auto_deploy?: boolean;
 	region: string;
 	state_bucket?: string;
 	modules?: string;

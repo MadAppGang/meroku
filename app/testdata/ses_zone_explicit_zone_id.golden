@@ -11,8 +11,7 @@ module "ses" {
       domain = "example.com"
       # Explicit zone_id provided
       zone_id = "Z000000000000A"
-
-                      }
+    }
   ]
 
 

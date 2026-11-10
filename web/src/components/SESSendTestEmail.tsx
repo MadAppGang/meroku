@@ -50,9 +50,11 @@ This email confirms that your SES configuration is working correctly.`);
 	// Determine the from address
 	const sesConfig = config.ses || { enabled: false };
 	const mainDomain = config.domain?.domain_name;
-	const isProd = config.env === "prod" || config.env === "production";
+	const servesRootDomain =
+		config.domain?.add_env_domain_prefix === false &&
+		!config.domain?.root_zone_id;
 	const defaultDomain = mainDomain
-		? isProd
+		? servesRootDomain
 			? `mail.${mainDomain}`
 			: `mail.${config.env}.${mainDomain}`
 		: "";

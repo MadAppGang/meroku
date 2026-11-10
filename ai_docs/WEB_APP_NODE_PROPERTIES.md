@@ -311,7 +311,7 @@ The largest property surface in the app.
 
 | Property | Type | Conditional | Class | Notes |
 |---|---|---|---|---|
-| `workload.backend_auto_deploy` | boolean | absent means `true` | TF | Whether a new image may redeploy without asking. Manual deploy always works. |
+| `workload.backend_auto_deploy` | boolean | absent follows the environment's `auto_deploy` | TF | Whether a new image may redeploy without asking. Manual deploy always works. |
 | `workload.install_pg_admin` | boolean | requires Postgres enabled | TF | Creates the pgAdmin service. |
 | `workload.pg_admin_email` | string | only when pgAdmin installed | TF-DEPLOY | Initial login. |
 | `workload.setup_fcnsns` | boolean | optional | TF | |
@@ -327,7 +327,7 @@ One node per additional service.
 |---|---|---|---|---|
 | `name` | string | required | CREATE / TF-REPLACE | Identity key. Renaming destroys the service, registry, log group, target group and security groups, then creates new ones. |
 | `enabled` | boolean | default `true` | TF-REPLACE | `false` removes the service from AWS entirely. |
-| `auto_deploy` | boolean | absent means `true` | TF | CI/CD policy only. Distinct from `enabled`. |
+| `auto_deploy` | boolean | absent follows the environment's `auto_deploy` | TF | CI/CD policy only. Distinct from `enabled`. |
 | `docker_image` | string | optional | TF-DEPLOY | External image; otherwise the managed registry. |
 | `container_command` | string[] | optional | TF-DEPLOY | |
 | `container_port` | number | — | TF-DEPLOY | |
@@ -489,7 +489,7 @@ One node per scheduled task.
 |---|---|---|---|---|
 | `name` | string | required | CREATE / TF-REPLACE | Identity key; also names the schedule group. |
 | `enabled` | boolean | default `true` | TF | Whether the task exists in AWS at all. |
-| `auto_deploy` | boolean | absent means `true` | TF | Distinct from `enabled`. Outside dev no automatic trigger reaches a scheduled task, so `true` there enables only the manual path. |
+| `auto_deploy` | boolean | absent follows the environment's `auto_deploy` | TF | Distinct from `enabled`. An image push is the only automatic trigger for a task. |
 | `schedule` | string | required | TF | `cron(...)` or `rate(...)`. In-place update. |
 | `docker_image` | string | optional | TF-DEPLOY | |
 | `container_command` | string | optional | TF-DEPLOY | String here, unlike services and event tasks. |

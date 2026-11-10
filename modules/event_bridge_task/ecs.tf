@@ -2,7 +2,7 @@ data "aws_region" "current" {}
 
 resource "aws_ecr_repository" "task" {
   name         = "${var.project}_task_${var.task}"
-  count        = var.env == "dev" ? 1 : 0
+  count        = var.ecr_strategy == "local" ? 1 : 0
   force_delete = true
 
   tags = {
@@ -17,15 +17,15 @@ resource "aws_ecr_repository" "task" {
 
 
 locals {
-  ecr_image    = var.env == "dev" ? join("", aws_ecr_repository.task.*.repository_url) : var.ecr_url
+  ecr_image    = var.ecr_strategy == "local" ? join("", aws_ecr_repository.task.*.repository_url) : var.ecr_url
   docker_image = var.docker_image != "" ? var.docker_image : "${local.ecr_image}:latest"
 }
 
 
 resource "aws_ecr_repository_policy" "task" {
   repository = join("", aws_ecr_repository.task.*.name)
-  policy     = data.aws_iam_policy_document.default_ecr_policy.json
-  count      = var.env == "dev" ? 1 : 0
+  policy     = length(var.ecr_trusted_accounts) > 0 ? data.aws_iam_policy_document.trusted_ecr_policy[0].json : data.aws_iam_policy_document.default_ecr_policy.json
+  count      = var.ecr_strategy == "local" ? 1 : 0
 }
 
 resource "aws_ecs_task_definition" "task" {

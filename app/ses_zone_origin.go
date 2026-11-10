@@ -98,8 +98,7 @@ func sesZoneForDomain(envMap map[string]interface{}, sesDomain map[string]interf
 
 // sesMainZoneOrigin is the origin of module.domain's zone.
 func sesMainZoneOrigin(envMap map[string]interface{}, domain map[string]interface{}) string {
-	env := fmt.Sprintf("%v", envMap["env"])
-	if env != "prod" && computeStringField(domain, "root_zone_id") != "" {
+	if computeStringField(domain, "root_zone_id") != "" {
 		// module.dns_delegation creates <env>.<domain> and module.domain
 		// looks it up.
 		return sesZoneCreated

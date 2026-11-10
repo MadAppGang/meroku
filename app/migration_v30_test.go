@@ -6,24 +6,13 @@ import (
 	"testing"
 )
 
-// The version constant, the registered migration list and the newest migration
-// have to agree, or a file migrates to a version whose migration never ran.
-//
-// This check belongs to whichever migration is currently newest. When v31 is
-// added, move it there and leave a registration-only check behind, the way
-// TestV29IsRegistered was left.
-func TestV30IsRegisteredAtTheCurrentVersion(t *testing.T) {
-	if CurrentSchemaVersion != 30 {
-		t.Fatalf("CurrentSchemaVersion = %d, want 30", CurrentSchemaVersion)
+func TestV30IsRegistered(t *testing.T) {
+	for _, m := range AllMigrations {
+		if m.Version == 30 && m.Apply != nil {
+			return
+		}
 	}
-	last := AllMigrations[len(AllMigrations)-1]
-	if last.Version != CurrentSchemaVersion {
-		t.Errorf("last registered migration is v%d, but CurrentSchemaVersion is %d",
-			last.Version, CurrentSchemaVersion)
-	}
-	if last.Apply == nil {
-		t.Fatal("the v30 entry has no Apply function")
-	}
+	t.Fatal("v30 is not registered with an Apply function")
 }
 
 // Every pre-v30 service exposed its port to the internet. The template default

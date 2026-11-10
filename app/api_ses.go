@@ -268,12 +268,7 @@ func sendTestEmail(w http.ResponseWriter, r *http.Request) {
 	} else if envConfig.Ses.Enabled && envConfig.Ses.DomainName != "" {
 		fromEmail = fmt.Sprintf("noreply@%s", envConfig.Ses.DomainName)
 	} else if envConfig.Domain.Enabled && envConfig.Domain.DomainName != "" {
-		// Apply the same logic as in the Terraform template
-		if envName == "prod" {
-			fromEmail = fmt.Sprintf("noreply@mail.%s", envConfig.Domain.DomainName)
-		} else {
-			fromEmail = fmt.Sprintf("noreply@mail.%s.%s", envName, envConfig.Domain.DomainName)
-		}
+		fromEmail = "noreply@mail." + envZoneName(envName, envConfig.Domain.DomainName, envConfig.Domain.RootZoneID, envConfig.Domain.AddEnvDomainPrefix)
 	}
 
 	// Create the email input
@@ -351,7 +346,7 @@ func submitSESProductionAccess(w http.ResponseWriter, r *http.Request) {
 	// Get environment from query parameter
 	envName := r.URL.Query().Get("env")
 	if envName == "" {
-		envName = "prod" // Default to prod for production access
+		envName = productionEnvName()
 	}
 
 	// Read request body
@@ -497,7 +492,7 @@ func getProductionAccessPrefill(w http.ResponseWriter, r *http.Request) {
 	// Get environment from query parameter
 	envName := r.URL.Query().Get("env")
 	if envName == "" {
-		envName = "prod"
+		envName = productionEnvName()
 	}
 
 	// Load environment config to get domain info

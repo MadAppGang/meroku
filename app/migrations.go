@@ -41,7 +41,8 @@ import (
 // 28: Add workload.github_oidc_create_provider, for sharing one account's GitHub OIDC provider
 // 29: Normalize workload.backend_container_command from a scalar to list(string)
 // 30: Add services[].network_access (public|internal|full_open|none); existing services pinned to full_open
-const CurrentSchemaVersion = 30
+// 31: Write name-based policy as flags: auto_deploy (dev only), is_prod, and prod's domain settings
+const CurrentSchemaVersion = 31
 
 // EnvWithVersion extends Env with a schema version field
 type EnvWithVersion struct {
@@ -202,6 +203,11 @@ var AllMigrations = []Migration{
 		Version:     30,
 		Description: "Add services[].network_access, pinning existing services to full_open (existing behaviour)",
 		Apply:       migrateToV30,
+	},
+	{
+		Version:     31,
+		Description: "Write name-based policy as flags: auto_deploy (dev only), is_prod, and prod's domain settings",
+		Apply:       migrateToV31,
 	},
 }
 

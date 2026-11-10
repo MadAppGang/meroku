@@ -12,7 +12,7 @@ locals {
       ? app.custom_domain
       # If subdomain_prefix is set, auto-construct domain
       : app.subdomain_prefix != null && app.subdomain_prefix != "" && var.base_domain != ""
-      ? (var.add_env_domain_prefix && var.env != "prod"
+      ? (var.add_env_domain_prefix
         ? "${app.subdomain_prefix}.${var.env}.${var.base_domain}" # e.g., app.dev.example.com
         : "${app.subdomain_prefix}.${var.base_domain}"            # e.g., app.example.com
       )

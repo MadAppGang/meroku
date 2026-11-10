@@ -138,6 +138,9 @@ variables {
   project = "acme"
   env     = "dev"
 
+  # Services carry no auto_deploy of their own here, so they follow this.
+  auto_deploy = true
+
   # Required by the module and never dereferenced by anything under test — they
   # are handed to resources the mocked provider accepts without looking.
   vpc_id           = "vpc-00000000000000000"
@@ -292,7 +295,8 @@ run "no_services_plans_and_notifies_nothing" {
   command = plan
 
   variables {
-    services = []
+    services            = []
+    backend_auto_deploy = true
   }
 
   assert {

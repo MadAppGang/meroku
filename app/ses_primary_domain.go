@@ -22,7 +22,7 @@ const sesPrimaryDomainKey = "ses_primary_domain"
 //     for is the first one unless someone reordered the list since.
 //   - ses.domain_name set: that name.
 //   - otherwise the name the template has always derived:
-//     mail.<domain> in prod, mail.<env>.<domain> elsewhere.
+//     mail.<zone>, where the zone is the one envZoneName gives.
 //
 // It writes the in-memory map only, never the user's YAML.
 func assignSESPrimaryDomain(envMap map[string]interface{}) {
@@ -43,14 +43,15 @@ func assignSESPrimaryDomain(envMap map[string]interface{}) {
 		return
 	}
 
-	var root string
+	var root, rootZoneID string
+	var prefix *bool
 	if domain, ok := computeNodeMap(envMap["domain"]); ok {
 		root = computeStringField(domain, "domain_name")
+		rootZoneID = computeStringField(domain, "root_zone_id")
+		if v, ok := domain["add_env_domain_prefix"].(bool); ok {
+			prefix = &v
+		}
 	}
 	env := fmt.Sprintf("%v", envMap["env"])
-	if env == "prod" {
-		envMap[sesPrimaryDomainKey] = "mail." + root
-	} else {
-		envMap[sesPrimaryDomainKey] = "mail." + env + "." + root
-	}
+	envMap[sesPrimaryDomainKey] = "mail." + envZoneName(env, root, rootZoneID, prefix)
 }

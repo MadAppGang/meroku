@@ -94,7 +94,11 @@ export function BackendServiceProperties({
 					</div>
 					<Switch
 						id={`${uid}-backend_auto_deploy`}
-						checked={config.workload?.backend_auto_deploy !== false}
+						checked={
+							config.workload?.backend_auto_deploy ??
+							config.auto_deploy ??
+							false
+						}
 						onCheckedChange={(checked) =>
 							handleWorkloadChange({ backend_auto_deploy: checked })
 						}
@@ -102,7 +106,11 @@ export function BackendServiceProperties({
 					/>
 				</div>
 
-				{config.workload?.backend_auto_deploy === false && (
+				{!(
+					config.workload?.backend_auto_deploy ??
+					config.auto_deploy ??
+					false
+				) && (
 					<div className="p-3 bg-blue-900/20 border border-blue-700 rounded-lg">
 						<div className="flex items-start gap-2">
 							<Info className="w-4 h-4 text-blue-400 mt-0.5 flex-shrink-0" />

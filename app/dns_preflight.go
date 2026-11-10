@@ -3,14 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/route53"
-	"gopkg.in/yaml.v2"
 )
 
 // dnsDebugEnabled gates the verbose resolver tracing in dns_api.go.
@@ -148,90 +146,9 @@ func nameserverSetsMatch(a, b []string) bool {
 // expectedZoneName reproduces the zone name that env/main.hbs will actually
 // generate. It must match, or the preflight inspects the wrong zone.
 //
-// The template has three branches (env/main.hbs):
-//
-//	prod                     -> add_env_domain_prefix = false          (zone = domain_name)
-//	non-prod + root_zone_id  -> domain_zone = "<env>.<domain_name>"    (zone = env.domain_name)
-//	fallback                 -> add_env_domain_prefix =
-//	                            {{default domain.add_env_domain_prefix true}}
-//
-// The last one is the trap: the template defaults the flag to TRUE when the YAML
-// key is absent, while Go's zero value for the bool is false. Reading
-// e.Domain.AddEnvDomainPrefix directly therefore gets the common case exactly
-// backwards — most project YAML files omit the key entirely.
+// The rule lives in envZoneName, shared with the SES defaults.
 func expectedZoneName(e Env) string {
-	base := strings.TrimSuffix(strings.TrimSpace(e.Domain.DomainName), ".")
-	if base == "" {
-		return ""
-	}
-
-	// Production always uses the root domain.
-	if e.Env == "prod" {
-		return base
-	}
-
-	// Cross-account delegation branch: the subdomain is baked into domain_zone.
-	if e.Domain.RootZoneID != "" {
-		return e.Env + "." + base
-	}
-
-	if envDomainPrefixEnabled(e) {
-		return e.Env + "." + base
-	}
-	return base
-}
-
-// envDomainPrefixEnabled resolves add_env_domain_prefix with the template's
-// semantics: present-and-false means no prefix, anything else means prefix.
-//
-// A plain bool cannot distinguish "absent" from "false", so the raw YAML is
-// consulted for key presence. If it cannot be read we fall back to the
-// template's default of true rather than silently choosing the other branch.
-func envDomainPrefixEnabled(e Env) bool {
-	set, ok := yamlBoolIsSet(e.Env+".yaml", "domain", "add_env_domain_prefix")
-	if !ok {
-		return true // template default
-	}
-	return set
-}
-
-// yamlBoolIsSet reports the value of a nested boolean key and whether it was
-// present at all.
-func yamlBoolIsSet(path string, section, key string) (value bool, present bool) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return false, false
-	}
-
-	var doc map[string]interface{}
-	if err := yaml.Unmarshal(data, &doc); err != nil {
-		return false, false
-	}
-
-	raw, ok := doc[section]
-	if !ok {
-		return false, false
-	}
-
-	// gopkg.in/yaml.v2 decodes nested maps as map[interface{}]interface{}.
-	var field interface{}
-	switch m := raw.(type) {
-	case map[string]interface{}:
-		field, ok = m[key]
-	case map[interface{}]interface{}:
-		field, ok = m[key]
-	default:
-		return false, false
-	}
-	if !ok || field == nil {
-		return false, false
-	}
-
-	b, isBool := field.(bool)
-	if !isBool {
-		return false, false
-	}
-	return b, true
+	return envZoneName(e.Env, e.Domain.DomainName, e.Domain.RootZoneID, e.Domain.AddEnvDomainPrefix)
 }
 
 // findHostedZoneByName looks up a public hosted zone by exact name in the

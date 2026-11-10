@@ -14,6 +14,23 @@ variable "task" {
   type = string
 }
 
+variable "ecr_strategy" {
+  description = "local creates this task's ECR repository here; cross_account pulls from var.ecr_url."
+  type        = string
+  default     = "local"
+
+  validation {
+    condition     = contains(["local", "cross_account"], var.ecr_strategy)
+    error_message = "ecr_strategy must be either 'local' or 'cross_account'"
+  }
+}
+
+variable "ecr_trusted_accounts" {
+  description = "AWS account IDs allowed to pull this task's image."
+  type        = list(string)
+  default     = []
+}
+
 variable "ecr_url" {
   type    = string
   default = ""
@@ -198,5 +215,30 @@ data "aws_iam_policy_document" "default_ecr_policy" {
       variable = "aws:PrincipalOrgID"
       values   = [data.aws_organizations_organization.org.id]
     }
+  }
+}
+
+# Pull-only access for accounts named in ecr_trusted_accounts, added to the
+# default policy so that accounts outside the AWS Organization can pull too.
+data "aws_iam_policy_document" "trusted_ecr_policy" {
+  count                   = length(var.ecr_trusted_accounts) > 0 ? 1 : 0
+  source_policy_documents = [data.aws_iam_policy_document.default_ecr_policy.json]
+
+  statement {
+    sid    = "AllowTrustedAccountsPull"
+    effect = "Allow"
+
+    principals {
+      type        = "AWS"
+      identifiers = [for id in var.ecr_trusted_accounts : "arn:aws:iam::${id}:root"]
+    }
+
+    actions = [
+      "ecr:BatchCheckLayerAvailability",
+      "ecr:BatchGetImage",
+      "ecr:GetDownloadUrlForLayer",
+      "ecr:DescribeImages",
+      "ecr:DescribeRepositories",
+    ]
   }
 }

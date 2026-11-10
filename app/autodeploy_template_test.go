@@ -187,22 +187,41 @@ func TestAutoDeployReachesTheWorkloadsModule(t *testing.T) {
 	}
 }
 
-// An absent auto_deploy must render as true, not as false and not as an error.
-// That is the upgrade path: a hand-written or not-yet-migrated YAML has to keep
-// deploying exactly as it does today, in every environment, including prod.
-func TestAbsentAutoDeployRendersAsTrue(t *testing.T) {
-	block := workloadsModuleBlock(t, renderMainHBS(t, autoDeployOverlay(t, false)))
+// With no auto_deploy anywhere, nothing deploys on its own.
+func TestAbsentAutoDeployRendersAsFalse(t *testing.T) {
+	overlay := autoDeployOverlay(t, false)
+	overlay["auto_deploy"] = nil
+	block := workloadsModuleBlock(t, renderMainHBS(t, overlay))
 
+	if !regexp.MustCompile(`backend_auto_deploy\s*=\s*false`).MatchString(block) {
+		t.Errorf("an absent workload.backend_auto_deploy must render as false:\n%s", block)
+	}
+	for _, want := range []string{`"cleanup" = false`, `"archive" = false`} {
+		if !strings.Contains(block, want) {
+			t.Errorf("an absent task auto_deploy must render as false, missing %s:\n%s", want, block)
+		}
+	}
+}
+
+// Targets without their own value follow the environment's auto_deploy.
+func TestEnvAutoDeployIsTheDefaultForTargets(t *testing.T) {
+	overlay := autoDeployOverlay(t, false)
+	overlay["auto_deploy"] = true
+	block := workloadsModuleBlock(t, renderMainHBS(t, overlay))
+
+	if !regexp.MustCompile(`(?m)^\s*auto_deploy\s*=\s*true`).MatchString(block) {
+		t.Errorf("the environment's auto_deploy did not reach the module call:\n%s", block)
+	}
 	if !regexp.MustCompile(`backend_auto_deploy\s*=\s*true`).MatchString(block) {
-		t.Errorf("an absent workload.backend_auto_deploy must render as true:\n%s", block)
+		t.Errorf("the backend must follow the environment's auto_deploy:\n%s", block)
 	}
 	for _, want := range []string{`"cleanup" = true`, `"archive" = true`} {
 		if !strings.Contains(block, want) {
-			t.Errorf("an absent task auto_deploy must render as true, missing %s:\n%s", want, block)
+			t.Errorf("a task must follow the environment's auto_deploy, missing %s:\n%s", want, block)
 		}
 	}
-	// Services carry no key at all, and modules/workloads/variables.tf defaults
-	// the optional attribute to true.
+	// Services carry no key at all, and modules/workloads resolves them from the
+	// same value.
 	if strings.Contains(block, "auto_deploy\":") {
 		t.Errorf("services should carry no auto_deploy key when the YAML has none:\n%s", block)
 	}

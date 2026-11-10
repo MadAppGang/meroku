@@ -203,20 +203,16 @@ every environment auto-deploys its scheduled tasks. It never did.
 
 | Target | ECR push | SSM `Create`/`Update` | S3 env file | Manual `DEPLOY` |
 |---|---|---|---|---|
-| backend, `dev` | yes | yes | yes | yes |
-| backend, other env | only with `ecr_strategy = local` | yes | yes | yes |
-| service, `dev` | yes | yes | yes | yes |
-| service, other env | only with `ecr_strategy = local` | yes | yes | yes |
-| scheduled task, `dev` | yes | **never** | **never** | needs `image_uri` |
-| scheduled task, other env | **never** | **never** | **never** | needs `image_uri` |
+| backend | with `ecr_strategy = local` or `ecr_image_events` | yes | yes | yes |
+| service | with `ecr_strategy = local` or `ecr_image_events` | yes | yes | yes |
+| scheduled task | with `ecr_strategy = local` or `ecr_image_events` | **never** | **never** | needs `image_uri` |
 
 Why the blanks:
 
-- **Scheduled task ECR, outside `dev`.** `modules/ecs_task/main.tf` creates
-  `{project}_task_{name}` only when `env == "dev"`; elsewhere the task pulls from
-  a cross-account URL, so no push into this account concerns it and
-  `local.ci_task_repos` is empty. Nothing is dropped from `ECR_REPO_MAP` by
-  policy here — the repository does not exist.
+- **ECR push under `cross_account`.** ECR emits a push event only in the
+  registry's own account and region. `ecr_image_events` on this environment and
+  `forward_image_events` on the source's `ecr_trusted_accounts` entry connect them
+  (`modules/workloads/ecr_events.tf`). Without them no push concerns this account.
 - **Scheduled task SSM, everywhere.** `internal/handler/ssm.go` skips scheduled
   tasks deliberately, because there is nothing useful this Lambda could do. A
   changed *value* is re-read when the task next starts; an *added* parameter
@@ -232,18 +228,13 @@ Why the blanks:
   carry `image_uri`. No meroku generator emits one, so in practice this is a
   hand-written event.
 
-So on a scheduled task outside `dev`, `auto_deploy: true` enables nothing
-automatic — only the hand-written manual path. `auto_deploy: false` there (the
-migration's default for any non-dev environment) is the accurate statement of
-what was already true.
-
 ### `auto_deploy`
 
 Per-target, in YAML, on the backend (`workload.backend_auto_deploy`), on each
-service and on each scheduled task. The meroku migration writes it explicitly:
-**`true` in `dev`, `false` in every other environment.** An *absent* value means
-`true` — that is what a project from before the setting does, and the upgrade
-must not change it.
+service and on each scheduled task. A target without its own value follows the
+environment's top-level `auto_deploy`, which meroku writes when it creates the
+environment: **`true` in `dev`, `false` in every other environment.** With no value
+at any level the answer is `false`.
 
 It is a **flag, not a filter**. A disabled target stays in every map above and
 its repository stays in the ECR event rule, so the push still invokes the Lambda

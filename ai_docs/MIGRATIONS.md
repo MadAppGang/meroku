@@ -46,8 +46,9 @@ The meroku application includes a comprehensive YAML schema migration system tha
 | 28 | Shared GitHub OIDC | `workload.github_oidc_create_provider`, defaulting to `true` |
 | 29 | backend_container_command list | `workload.backend_container_command` normalized from a scalar to `list(string)` |
 | 30 | Service network access | `services[].network_access` (`public`\|`internal`\|`full_open`\|`none`); existing services pinned to `full_open` |
+| 31 | Name-based policy as flags | Environment `auto_deploy` (`true` only in `dev`), every non-dev target turned off, `is_prod` for `prod` and `production`, and `prod`'s domain settings. See [Environment Policy](./ENVIRONMENT_POLICY.md) |
 
-Current version: **v30**
+Current version: **v31**
 
 ### A note on v30 — the default and the migration disagree on purpose
 

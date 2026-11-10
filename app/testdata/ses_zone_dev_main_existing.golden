@@ -11,11 +11,9 @@ module "ses" {
       domain = "mail.example.com"
         
         
-
-      zone_id = module.domain.zone_id  # Auto-detected: subdomain of dev.example.com
-          
-      
-                      }
+      zone_id = module.domain.zone_id  # Auto-detected: subdomain of example.com
+        
+    }
   ]
 
 

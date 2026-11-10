@@ -10,10 +10,13 @@ import (
 )
 
 type Env struct {
-	SchemaVersion  int    `yaml:"schema_version,omitempty"`
-	Project        string `yaml:"project"`
-	Env            string `yaml:"env"`
-	IsProd         bool   `yaml:"is_prod"`
+	SchemaVersion int    `yaml:"schema_version,omitempty"`
+	Project       string `yaml:"project"`
+	Env           string `yaml:"env"`
+	IsProd        bool   `yaml:"is_prod"`
+	// AutoDeploy is the environment-wide answer to "may a new image or config
+	// redeploy a target on its own?". A target's own auto_deploy overrides it.
+	AutoDeploy     *bool  `yaml:"auto_deploy,omitempty"`
 	Region         string `yaml:"region"`
 	AccountID      string `yaml:"account_id"`
 	AWSProfile     string `yaml:"aws_profile"`
@@ -38,6 +41,10 @@ type Env struct {
 	ECRAccountRegion string `yaml:"ecr_account_region,omitempty"` // For cross-account ECR access
 	// ECR Trusted Accounts (Schema v8)
 	ECRTrustedAccounts []ECRTrustedAccount `yaml:"ecr_trusted_accounts,omitempty"`
+	// ECRImageEvents lets a cross_account environment receive the source
+	// registry's image-push events. The source enables its half with
+	// forward_image_events on the matching ecr_trusted_accounts entry.
+	ECRImageEvents bool `yaml:"ecr_image_events,omitempty"`
 	// Compute (schema v26) declares the EC2 capacity pools ECS may place tasks
 	// on. Absent on every environment written before v26, and that absence is
 	// the point: no pools means no EC2 resources and no plan diff. The v26
@@ -372,8 +379,10 @@ type Domain struct {
 	DelegationRoleArn string `yaml:"delegation_role_arn"`
 
 	// Additional fields from original structure (if missing)
-	APIDomainPrefix    string `yaml:"api_domain_prefix,omitempty"`
-	AddEnvDomainPrefix bool   `yaml:"add_env_domain_prefix,omitempty"`
+	APIDomainPrefix string `yaml:"api_domain_prefix,omitempty"`
+	// AddEnvDomainPrefix is a pointer because false is meaningful and absent
+	// means true: omitempty on a plain bool would drop an explicit false on save.
+	AddEnvDomainPrefix *bool `yaml:"add_env_domain_prefix,omitempty"`
 
 	// NEW DNS MANAGEMENT FIELDS
 	ZoneID        string `yaml:"zone_id,omitempty"`         // For existing zones
@@ -632,6 +641,9 @@ type ECRTrustedAccount struct {
 	AccountID string `yaml:"account_id"`
 	Env       string `yaml:"env"`
 	Region    string `yaml:"region"`
+	// ForwardImageEvents sends this registry's image-push events to the
+	// account and region above.
+	ForwardImageEvents bool `yaml:"forward_image_events,omitempty"`
 }
 
 // ECRConfig defines per-service ECR repository configuration (Schema v9)
@@ -789,11 +801,13 @@ func generateRandomString(length int) string {
 // into the YAML; callers get one from newEnvVPCCIDR so new environments do not
 // all share 10.0.0.0/16.
 func createEnv(name, env, vpcCIDR string) Env {
+	policy := policyForEnvName(env)
 	return Env{
 		SchemaVersion: CurrentSchemaVersion, // Always create with latest schema version
 		Project:       name,
 		Env:           env,
-		IsProd:        false,
+		IsProd:        policy.IsProd,
+		AutoDeploy:    boolPtr(policy.AutoDeploy),
 		Region:        "", // Will be filled when AWS profile is selected
 		AccountID:     "", // Will be filled when AWS profile is selected
 		AWSProfile:    "", // Will be filled when AWS profile is selected
@@ -859,9 +873,10 @@ func createEnv(name, env, vpcCIDR string) Env {
 			BackendComputePool: "",
 		},
 		Domain: Domain{
-			Enabled:          false,
-			CreateDomainZone: true,
-			DomainName:       "",
+			Enabled:            false,
+			CreateDomainZone:   true,
+			DomainName:         "",
+			AddEnvDomainPrefix: policy.domainPrefix(),
 		},
 		Postgres: Postgres{
 			Enabled:       false,

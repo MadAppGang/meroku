@@ -175,20 +175,8 @@ locals {
 }
 
 {{#if domain.enabled}}
-  {{#compare env "==" "prod"}}
-    # PROD: Standard domain configuration
-    module "domain" {
-      source = "{{ modules }}/domain"
-      project = "{{ project }}"
-      domain_zone = "{{ domain.domain_name }}"
-      env = "{{ env }}"
-      create_domain_zone = {{ domain.create_domain_zone }}
-      api_domain_prefix = "{{ domain.api_domain_prefix }}"
-      add_env_domain_prefix = false  # No prefix for production
-    }
-  {{else}}
     {{#if domain.root_zone_id}}
-    # NON-PROD: Create subdomain with delegation
+    # Create subdomain with delegation
     provider "aws" {
       alias = "root"
       assume_role {
@@ -234,7 +222,6 @@ locals {
       add_env_domain_prefix = {{default domain.add_env_domain_prefix true}}
     }
     {{/if}}
-  {{/compare}}
 
   # ------------------------------------------------------------------------------
   # Additional Domains (Route53 zones and certificates)
@@ -583,12 +570,15 @@ module "workloads" {
       account_id = "{{account_id}}"
       env        = "{{env}}"
       region     = "{{region}}"
+      forward_image_events = {{default forward_image_events false}}
     },
     {{/each}}
   ]
   {{else}}
   ecr_trusted_accounts = []
   {{/notEmpty}}
+  ecr_image_events = {{default ecr_image_events false}}
+  is_prod = {{default is_prod false}}
   github_oidc_enabled = {{workload.enable_github_oidc}}
   github_oidc_create_provider = {{default workload.github_oidc_create_provider true}}
   github_push_external_image = {{default workload.github_push_external_image false}}
@@ -643,8 +633,9 @@ module "workloads" {
   # new configuration lands? false does not remove anything from the Lambda's
   # maps: the flag travels to it as data so a push still logs "auto_deploy is
   # disabled for backend" instead of nothing. Manual deploys are unaffected.
-  # Absent means true — that is what a project from before this setting does.
-  backend_auto_deploy = {{default workload.backend_auto_deploy true}}
+  # A target without its own value follows the environment's auto_deploy.
+  auto_deploy = {{default auto_deploy false}}
+  backend_auto_deploy = {{default workload.backend_auto_deploy (default auto_deploy false)}}
 
   # Backend scaling configuration
   backend_cpu = {{default workload.backend_cpu 256}}
@@ -785,13 +776,12 @@ module "workloads" {
   ]
   {{#compare (len scheduled_tasks) ">" 0}}
   scheduled_task_names = [{{#each scheduled_tasks}}"{{name}}"{{#unless @last}}, {{/unless}}{{/each}}]
-  # Per-task auto-deploy policy. Outside dev no automatic trigger reaches a
-  # scheduled task at all (modules/ecs_task creates its ECR repository only in
-  # dev, and an SSM change never redeploys a task), so true there enables only
-  # the manual path -- see modules/workloads/ci_lambda/README.md.
+  # Per-task auto-deploy policy, falling back to the environment's auto_deploy.
+  # An image push is the only automatic trigger for a task: an SSM change never
+  # redeploys one. See modules/workloads/ci_lambda/README.md.
   scheduled_task_auto_deploy = {
     {{#each scheduled_tasks}}
-    "{{name}}" = {{default auto_deploy true}}
+    "{{name}}" = {{default auto_deploy (default @root.auto_deploy false)}}
     {{/each}}
   }
   {{/compare}}
@@ -863,6 +853,12 @@ module "schedule_task_{{name}}" {
   {{#if @root.ses.enabled}}
   ses_enabled = true
   {{/if}}
+  ecr_strategy = "{{default @root.ecr_strategy "local"}}"
+  ecr_trusted_accounts = [
+    {{#each @root.ecr_trusted_accounts}}
+    "{{account_id}}",
+    {{/each}}
+  ]
   {{#if ecr_account_id}}{{#if ecr_account_region}}
   ecr_url = "{{ecr_account_id}}.dkr.ecr.{{ecr_account_region}}.amazonaws.com/{{project}}_task_{{name}}"
   {{/if}}{{/if}}
@@ -917,6 +913,12 @@ module "event_bus_task_{{name}}" {
   {{#if @root.ses.enabled}}
   ses_enabled = true
   {{/if}}
+  ecr_strategy = "{{default @root.ecr_strategy "local"}}"
+  ecr_trusted_accounts = [
+    {{#each @root.ecr_trusted_accounts}}
+    "{{account_id}}",
+    {{/each}}
+  ]
   {{#if ecr_account_id}}{{#if ecr_account_region}}
   ecr_url = "{{ecr_account_id}}.dkr.ecr.{{ecr_account_region}}.amazonaws.com/{{project}}_task_{{name}}"
   {{/if}}{{/if}}
@@ -959,15 +961,9 @@ module "ses" {
         {{/each}}
         {{!-- Then check main domain module --}}
         {{#if ../domain.enabled}}
-          {{#compare ../env "==" "prod"}}
-            {{#if (isSubdomainOf this.domain ../domain.domain_name)}}
+          {{#if (isSubdomainOf this.domain ../domain.domain_name)}}
       zone_id = module.domain.zone_id  # Auto-detected: subdomain of {{../domain.domain_name}}
-            {{/if}}
-          {{else}}
-            {{#if (isSubdomainOf this.domain ../domain.domain_name)}}
-      zone_id = module.domain.zone_id  # Auto-detected: subdomain of {{../env}}.{{../domain.domain_name}}
-            {{/if}}
-          {{/compare}}
+          {{/if}}
         {{/if}}
       {{/if}}
       {{#if (exists this.enable_mail_from)}}

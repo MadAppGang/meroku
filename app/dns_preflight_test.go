@@ -2,9 +2,9 @@ package main
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 	"testing"
+
+	"gopkg.in/yaml.v2"
 )
 
 // Real values captured from a live environment: Route53's DelegationSet returns
@@ -114,9 +114,14 @@ func TestExpectedZoneName(t *testing.T) {
 			want: "dev.coretechx.dev",
 		},
 		{
-			name: "prod never prefixes",
-			env:  Env{Env: "prod", Domain: Domain{DomainName: "coretechx.dev", AddEnvDomainPrefix: true}},
+			name: "add_env_domain_prefix false serves the root domain, whatever the name",
+			env:  Env{Env: "live", Domain: Domain{DomainName: "coretechx.dev", AddEnvDomainPrefix: boolPtr(false)}},
 			want: "coretechx.dev",
+		},
+		{
+			name: "prod with a prefix is prefixed: the name decides nothing",
+			env:  Env{Env: "prod", Domain: Domain{DomainName: "coretechx.dev", AddEnvDomainPrefix: boolPtr(true)}},
+			want: "prod.coretechx.dev",
 		},
 		{
 			name: "cross-account delegation branch is prefixed",
@@ -146,49 +151,24 @@ func TestExpectedZoneName(t *testing.T) {
 
 // An explicit `add_env_domain_prefix: false` in the YAML must suppress the
 // prefix, while an absent key must not.
-func TestEnvDomainPrefixEnabled_ReadsYAMLKeyPresence(t *testing.T) {
-	dir := t.TempDir()
-	wd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
+func TestAddEnvDomainPrefixSurvivesYAML(t *testing.T) {
+	cases := map[string]string{
+		"add_env_domain_prefix: false\n": "example.com",
+		"add_env_domain_prefix: true\n":  "staging.example.com",
+		"":                               "staging.example.com",
 	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
-	defer os.Chdir(wd)
-
-	write := func(name, body string) {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
-			t.Fatalf("write %s: %v", name, err)
+	for line, want := range cases {
+		var e Env
+		doc := "env: staging\ndomain:\n  enabled: true\n  domain_name: example.com\n"
+		if line != "" {
+			doc += "  " + line
 		}
-	}
-
-	write("explicitfalse.yaml", "domain:\n  enabled: true\n  domain_name: example.com\n  add_env_domain_prefix: false\n")
-	write("explicittrue.yaml", "domain:\n  enabled: true\n  domain_name: example.com\n  add_env_domain_prefix: true\n")
-	write("absent.yaml", "domain:\n  enabled: true\n  domain_name: example.com\n")
-
-	cases := map[string]bool{
-		"explicitfalse": false,
-		"explicittrue":  true,
-		"absent":        true, // template default
-		"nosuchfile":    true, // unreadable -> template default, never the other branch
-	}
-
-	for envName, want := range cases {
-		t.Run(envName, func(t *testing.T) {
-			e := Env{Env: envName, Domain: Domain{DomainName: "example.com"}}
-			if got := envDomainPrefixEnabled(e); got != want {
-				t.Errorf("expected %v, got %v", want, got)
-			}
-
-			wantZone := "example.com"
-			if want {
-				wantZone = envName + ".example.com"
-			}
-			if got := expectedZoneName(e); got != wantZone {
-				t.Errorf("expected zone %q, got %q", wantZone, got)
-			}
-		})
+		if err := yaml.Unmarshal([]byte(doc), &e); err != nil {
+			t.Fatal(err)
+		}
+		if got := expectedZoneName(e); got != want {
+			t.Errorf("%q: zone = %q, want %q", line, got, want)
+		}
 	}
 }
 

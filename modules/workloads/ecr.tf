@@ -166,19 +166,41 @@ data "aws_iam_policy_document" "ecr_trusted_accounts_policy" {
 
 # Create local variables for ECR management
 locals {
-  # Services that need ECR repositories created (mode = create_ecr)
+  # Under ecr_strategy = "cross_account", create_ecr names the project's standard
+  # repository, and that repository lives in the source registry: nothing is
+  # created here. manual_repo and use_existing mean the same in both strategies.
+  service_ecr_mode = {
+    for svc in var.services :
+    svc.name => (
+      try(svc.ecr_config.mode, "create_ecr") == "create_ecr" && var.ecr_strategy == "cross_account"
+      ? "shared"
+      : try(svc.ecr_config.mode, "create_ecr")
+    )
+  }
+
+  # Services that need ECR repositories created here
   services_needing_ecr = [
     for svc in var.services :
-    svc if try(svc.ecr_config.mode, "create_ecr") == "create_ecr"
+    svc if local.service_ecr_mode[svc.name] == "create_ecr"
   ]
+
+  services_in_shared_ecr = [
+    for svc in var.services :
+    svc if local.service_ecr_mode[svc.name] == "shared"
+  ]
+
+  shared_ecr_registry = "${var.ecr_account_id}.dkr.ecr.${var.ecr_account_region}.amazonaws.com"
 
   # Build a map of all ECR repository URLs (for lookup by use_existing services)
   # Format: { "services-api" = "123456789012.dkr.ecr.us-east-1.amazonaws.com/project_service_api", ... }
   ecr_repository_map = merge(
-    # Service repositories
     {
       for svc in local.services_needing_ecr :
       "services-${svc.name}" => aws_ecr_repository.services[svc.name].repository_url
+    },
+    {
+      for svc in local.services_in_shared_ecr :
+      "services-${svc.name}" => "${local.shared_ecr_registry}/${var.project}_service_${svc.name}"
     }
   )
 
@@ -187,11 +209,15 @@ locals {
     for svc in var.services :
     svc.name => (
       # Mode: create_ecr - use the repository we created
-      try(svc.ecr_config.mode, "create_ecr") == "create_ecr" ?
+      local.service_ecr_mode[svc.name] == "create_ecr" ?
       aws_ecr_repository.services[svc.name].repository_url :
 
+      # Shared: the same repository name in the source registry
+      local.service_ecr_mode[svc.name] == "shared" ?
+      "${local.shared_ecr_registry}/${var.project}_service_${svc.name}" :
+
       # Mode: manual_repo - use the provided URI
-      try(svc.ecr_config.mode, "create_ecr") == "manual_repo" ?
+      local.service_ecr_mode[svc.name] == "manual_repo" ?
       svc.ecr_config.repository_uri :
 
       # Mode: use_existing - lookup from the repository map
@@ -224,10 +250,16 @@ locals {
   # repository a second time from "${var.project}_service_${name}" is exactly the
   # drift that defect D1 was, so each mode still reads the same authority as the
   # URL above, one attribute across.
-  ecr_repository_name_map = {
-    for svc in local.services_needing_ecr :
-    "services-${svc.name}" => aws_ecr_repository.services[svc.name].name
-  }
+  ecr_repository_name_map = merge(
+    {
+      for svc in local.services_needing_ecr :
+      "services-${svc.name}" => aws_ecr_repository.services[svc.name].name
+    },
+    {
+      for svc in local.services_in_shared_ecr :
+      "services-${svc.name}" => "${var.project}_service_${svc.name}"
+    }
+  )
 
   # A configured URI carries a registry host and may carry a :tag or @digest;
   # an ECR event carries neither.
@@ -244,10 +276,15 @@ locals {
   service_ecr_repo_names = {
     for svc in var.services :
     svc.name => (
-      try(svc.ecr_config.mode, "create_ecr") == "create_ecr" ?
+      local.service_ecr_mode[svc.name] == "create_ecr" ?
       aws_ecr_repository.services[svc.name].name :
 
-      try(svc.ecr_config.mode, "create_ecr") == "manual_repo" ?
+      # A push to the source registry reaches this account only through
+      # connected image events, so the name is mapped only then.
+      local.service_ecr_mode[svc.name] == "shared" ?
+      (local.ecr_image_events_connected ? "${var.project}_service_${svc.name}" : "") :
+
+      local.service_ecr_mode[svc.name] == "manual_repo" ?
       local.manual_ecr_repo_names[svc.name] :
 
       lookup(

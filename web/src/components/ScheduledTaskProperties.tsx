@@ -267,7 +267,7 @@ export function ScheduledTaskProperties({
 						</div>
 						<Switch
 							id={`${uid}-auto-deploy`}
-							checked={task.auto_deploy !== false}
+							checked={task.auto_deploy ?? config.auto_deploy ?? false}
 							onCheckedChange={(checked) =>
 								handleTaskChange({ auto_deploy: checked })
 							}
@@ -275,7 +275,7 @@ export function ScheduledTaskProperties({
 						/>
 					</div>
 
-					{task.auto_deploy === false && (
+					{!(task.auto_deploy ?? config.auto_deploy ?? false) && (
 						<Alert className="border-blue-600 bg-blue-900/20">
 							<AlertDescription className="text-xs text-gray-300">
 								Automatic deploys are <strong>off</strong> for this task. A push
@@ -288,22 +288,20 @@ export function ScheduledTaskProperties({
 						</Alert>
 					)}
 
-					{task.auto_deploy !== false && config.env !== "dev" && (
-						<Alert className="border-yellow-600 bg-yellow-900/20">
-							<AlertTriangle className="h-4 w-4 text-yellow-400" />
-							<AlertDescription className="text-xs text-gray-300">
-								Auto-deploy is on, but{" "}
-								<strong>
-									no automatic trigger reaches a scheduled task outside{" "}
-									<code>dev</code>
-								</strong>
-								: its ECR repository is only created in the dev environment, and
-								an SSM change never redeploys a task. In{" "}
-								<code>{config.env}</code> this setting enables the manual deploy
-								path only.
-							</AlertDescription>
-						</Alert>
-					)}
+					{(task.auto_deploy ?? config.auto_deploy ?? false) &&
+						config.ecr_strategy === "cross_account" &&
+						!config.ecr_image_events && (
+							<Alert className="border-yellow-600 bg-yellow-900/20">
+								<AlertTriangle className="h-4 w-4 text-yellow-400" />
+								<AlertDescription className="text-xs text-gray-300">
+									Auto-deploy is on, but{" "}
+									<strong>no image push reaches this task</strong>:{" "}
+									<code>{config.env}</code> uses another environment's ECR and
+									is not connected to its image events, and an SSM change never
+									redeploys a task. Connect the ECR source to deploy on push.
+								</AlertDescription>
+							</Alert>
+						)}
 
 					<Separator />
 

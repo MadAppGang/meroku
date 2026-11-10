@@ -18,8 +18,6 @@ import (
 	"madappgang.com/meroku/recommend"
 )
 
-func boolPtr(v bool) *bool { return &v }
-
 // utilizationOutput builds n hourly datapoints at a fixed average and maximum.
 func utilizationOutput(n int, avg, max float64) *cloudwatch.GetMetricStatisticsOutput {
 	out := &cloudwatch.GetMetricStatisticsOutput{}

@@ -11,10 +11,8 @@ module "ses" {
       domain = "example.org"
         
         
-
-          
-      
-                      }
+        
+                            }
   ]
 
 

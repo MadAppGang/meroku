@@ -92,12 +92,10 @@ variable "service_auto_deploy" {
 
 variable "task_auto_deploy" {
   description = <<-EOT
-    Scheduled task name -> auto-deploy policy. An absent entry means true.
+    Scheduled task name -> auto-deploy policy. An absent entry means false.
 
-    Note that outside `dev` there is no event that can reach a scheduled task in
-    the first place (modules/ecs_task creates its ECR repository only in dev, and
-    a scheduled task is deliberately skipped on an SSM change), so `true` there
-    enables only the manual path.
+    A scheduled task is deliberately skipped on an SSM change, so an image push
+    is the only event that deploys one.
   EOT
   type        = map(bool)
   default     = {}

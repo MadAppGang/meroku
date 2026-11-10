@@ -129,6 +129,8 @@ export interface YamlInfrastructureConfig {
 	project: string;
 	env: string;
 	is_prod: boolean;
+	/** Default for targets without their own auto_deploy. Absent means false. */
+	auto_deploy?: boolean;
 	region: string;
 	account_id?: string;
 	state_bucket: string;
@@ -151,7 +153,10 @@ export interface YamlInfrastructureConfig {
 		account_id: string;
 		env: string;
 		region: string;
+		forward_image_events?: boolean;
 	}>;
+	/** Receive the source registry's image-push events (cross_account only). */
+	ecr_image_events?: boolean;
 
 	// EC2 Compute Pools (Schema v26)
 	compute?: ComputeConfig;

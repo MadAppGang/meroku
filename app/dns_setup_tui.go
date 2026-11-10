@@ -90,6 +90,7 @@ type DNSSetupModel struct {
 
 type DNSEnvironment struct {
 	Name      string
+	IsProd    bool
 	Profile   string
 	AccountID string
 }
@@ -666,7 +667,7 @@ func (m DNSSetupModel) viewSelectRootAccount() string {
 
 	if len(m.environments) > 0 {
 		env := m.environments[0] // Should only be production
-		if env.Name == "prod" {
+		if env.IsProd {
 			line := fmt.Sprintf("▸ %s (%s)", env.Name, env.AccountID)
 			b.WriteString(selectedStyle.Render(line))
 			b.WriteString(recommendedStyle.Render(" (Required)"))
@@ -1143,7 +1144,7 @@ func (m DNSSetupModel) viewCheckIAMPermissions() string {
 
 	hasIssues := false
 	for _, env := range m.environments {
-		if env.Name == "prod" {
+		if env.IsProd {
 			continue // Skip production
 		}
 
@@ -1266,7 +1267,7 @@ func (m DNSSetupModel) viewDNSDetails() string {
 	if len(m.environments) > 0 {
 		for _, env := range m.environments {
 			subdomain := env.Name
-			if env.Name == "prod" {
+			if env.IsProd {
 				subdomain = m.rootDomain
 			} else {
 				subdomain = fmt.Sprintf("%s.%s", env.Name, m.rootDomain)
@@ -1407,11 +1408,9 @@ func (m DNSSetupModel) viewComplete() string {
 	b.WriteString(successStyle.Render("✓") + " DNS config saved to: " + commandStyle.Render(DNSConfigFile) + "\n")
 
 	// Check for environment files
-	envFiles := []string{"prod.yaml", "dev.yaml", "staging.yaml"}
-	for _, file := range envFiles {
-		if _, err := os.Stat(file); err == nil {
-			b.WriteString(successStyle.Render("✓") + " Environment file: " + commandStyle.Render(file) + "\n")
-		}
+	envNames, _ := listEnvironmentNames()
+	for _, name := range envNames {
+		b.WriteString(successStyle.Render("✓") + " Environment file: " + commandStyle.Render(name+".yaml") + "\n")
 	}
 	b.WriteString("\n")
 
@@ -1708,7 +1707,7 @@ func (m DNSSetupModel) handleEnter() (DNSSetupModel, tea.Cmd) {
 			selected := m.environments[0] // Should only be prod at this point
 
 			// Double-check this is production
-			if selected.Name != "prod" {
+			if !selected.IsProd {
 				m.state = StateError
 				m.errorMsg = "Root DNS zone must be created in production environment.\nPlease configure a production environment first."
 				return m, nil
@@ -2144,7 +2143,8 @@ func (m DNSSetupModel) handleDNSOperation(msg dnsOperationMsg) (DNSSetupModel, t
 
 		// Set up environment info
 		m.environments = []DNSEnvironment{{
-			Name:      "prod",
+			Name:      productionEnvName(),
+			IsProd:    true,
 			Profile:   m.selectedProfile,
 			AccountID: m.selectedAccountID,
 		}}
@@ -2185,7 +2185,8 @@ func (m DNSSetupModel) handleDNSOperation(msg dnsOperationMsg) (DNSSetupModel, t
 
 		// Set up environments for DNS creation
 		m.environments = []DNSEnvironment{{
-			Name:      "prod",
+			Name:      productionEnvName(),
+			IsProd:    true,
 			Profile:   m.selectedProfile,
 			AccountID: m.selectedAccountID,
 		}}
@@ -2216,7 +2217,7 @@ func (m DNSSetupModel) handleDNSOperation(msg dnsOperationMsg) (DNSSetupModel, t
 			if len(m.environments) > 0 {
 				// Set first non-prod environment as checking
 				for i, env := range m.environments {
-					if env.Name != "prod" {
+					if !env.IsProd {
 						m.checkingEnvironment = env.Name
 						return m, tea.Batch(
 							m.spinner.Tick,
@@ -2270,7 +2271,7 @@ func (m DNSSetupModel) handleDNSOperation(msg dnsOperationMsg) (DNSSetupModel, t
 			if nextIndex < totalEnvs {
 				nextEnv := m.environments[nextIndex]
 				// Skip to next non-prod environment
-				for nextIndex < totalEnvs && nextEnv.Name == "prod" {
+				for nextIndex < totalEnvs && nextEnv.IsProd {
 					nextIndex++
 					if nextIndex < totalEnvs {
 						nextEnv = m.environments[nextIndex]
@@ -2491,7 +2492,10 @@ func (m DNSSetupModel) validateExistingZone() tea.Cmd {
 func (m DNSSetupModel) loadProductionEnvironment() tea.Cmd {
 	return func() tea.Msg {
 		// Try to load production environment
-		env, err := loadEnv("prod")
+		env, err := loadEnv(productionEnvName())
+		if err == nil && !env.IsProd {
+			err = fmt.Errorf("no environment is flagged is_prod")
+		}
 		if err != nil {
 			// Production environment doesn't exist - we'll need to create it
 			// Go directly to production setup flow
@@ -2537,7 +2541,8 @@ func (m DNSSetupModel) loadProductionEnvironment() tea.Cmd {
 
 		// Create the production environment entry
 		envs := []DNSEnvironment{{
-			Name:      "prod",
+			Name:      productionEnvName(),
+			IsProd:    true,
 			Profile:   profile,
 			AccountID: accountID,
 		}}
@@ -2556,9 +2561,7 @@ func (m DNSSetupModel) loadEnvironments() tea.Cmd {
 		// Get list of project YAML files
 		envs := []DNSEnvironment{}
 
-		// Check for common environment files in current working directory
-		// For DNS setup, we handle dev, staging, and prod environments
-		envFiles := []string{"dev", "staging", "prod"}
+		envFiles, _ := listEnvironmentNames()
 		for _, envName := range envFiles {
 			// Try to load the environment file from current directory
 			env, err := loadEnv(envName)
@@ -2590,6 +2593,7 @@ func (m DNSSetupModel) loadEnvironments() tea.Cmd {
 			if accountID != "" || profile != "" {
 				envs = append(envs, DNSEnvironment{
 					Name:      envName,
+					IsProd:    env.IsProd,
 					Profile:   profile,
 					AccountID: accountID,
 				})
@@ -2610,7 +2614,7 @@ func (m DNSSetupModel) loadEnvironments() tea.Cmd {
 		subdomains := []string{}
 		for _, env := range envs {
 			// Only suggest subdomains for non-production environments
-			if env.Name != "prod" && env.Name != m.selectedProfile {
+			if !env.IsProd && env.Name != m.selectedProfile {
 				subdomains = append(subdomains, fmt.Sprintf("%s.%s", env.Name, m.rootDomain))
 			}
 		}
@@ -2820,8 +2824,7 @@ func (m DNSSetupModel) checkIAMPermissions() tea.Cmd {
 	return func() tea.Msg {
 		// Load environments to check
 		envs := []DNSEnvironment{}
-		envFiles := []string{"dev", "staging", "prod"}
-
+		envFiles, _ := listEnvironmentNames()
 		for _, envName := range envFiles {
 			env, err := loadEnv(envName)
 			if err != nil {
@@ -2841,6 +2844,7 @@ func (m DNSSetupModel) checkIAMPermissions() tea.Cmd {
 			if accountID != "" || profile != "" {
 				envs = append(envs, DNSEnvironment{
 					Name:      envName,
+					IsProd:    env.IsProd,
 					Profile:   profile,
 					AccountID: accountID,
 				})
@@ -2879,7 +2883,7 @@ func (m DNSSetupModel) checkIAMPermissions() tea.Cmd {
 func (m DNSSetupModel) checkSingleEnvironmentPermission(env DNSEnvironment, delegationRoleArn string, envIndex int, totalEnvs int) tea.Cmd {
 	return func() tea.Msg {
 		// Skip production environment
-		if env.Name == "prod" {
+		if env.IsProd {
 			return dnsOperationMsg{
 				Type:    "iam_check_progress",
 				Success: true,
@@ -2934,7 +2938,7 @@ func (m DNSSetupModel) fixIAMPermissions() tea.Cmd {
 		accountsToFix := make(map[string]string) // env name -> account ID
 
 		for _, env := range m.environments {
-			if env.Name != "prod" {
+			if !env.IsProd {
 				// Check if this env is in missing permissions
 				for _, missing := range m.missingPermissions {
 					if missing == env.Name {
@@ -3078,7 +3082,7 @@ func (m DNSSetupModel) updateDelegationRole() tea.Cmd {
 		// Collect account IDs that need IAM trust relationship
 		var trustedAccounts []string
 		for _, env := range m.environments {
-			if env.Name != "prod" && env.AccountID != "" && env.AccountID != m.selectedAccountID {
+			if !env.IsProd && env.AccountID != "" && env.AccountID != m.selectedAccountID {
 				// Add all non-production accounts to trust relationship
 				trustedAccounts = append(trustedAccounts, env.AccountID)
 			}
@@ -3354,7 +3358,8 @@ func (m DNSSetupModel) copyToClipboard(text string) tea.Cmd {
 
 // ensureProductionEnvironmentWithAccountID creates prod.yaml with provided account ID
 func ensureProductionEnvironmentWithAccountID(rootDomain, accountID, profile string) error {
-	prodPath := "prod.yaml"
+	prodName := productionEnvName()
+	prodPath := prodName + ".yaml"
 
 	// Get project name from existing files or use a default
 	projectName := getProjectNameForDNS()
@@ -3369,11 +3374,11 @@ func ensureProductionEnvironmentWithAccountID(rootDomain, accountID, profile str
 	}
 
 	// Create new production environment
-	vpcCIDR, err := newEnvVPCCIDR("prod")
+	vpcCIDR, err := newEnvVPCCIDR(prodName)
 	if err != nil {
 		return err
 	}
-	env := createEnv(projectName, "prod", vpcCIDR)
+	env := createEnv(projectName, prodName, vpcCIDR)
 	env.IsProd = true
 	env.AccountID = accountID
 	env.AWSProfile = profile
@@ -3382,8 +3387,8 @@ func ensureProductionEnvironmentWithAccountID(rootDomain, accountID, profile str
 	// Set up domain configuration (zone will be created later)
 	env.Domain.Enabled = true
 	env.Domain.DomainName = rootDomain
-	env.Domain.CreateDomainZone = true    // Will be created
-	env.Domain.AddEnvDomainPrefix = false // No prefix for production
+	env.Domain.CreateDomainZone = true             // Will be created
+	env.Domain.AddEnvDomainPrefix = boolPtr(false) // No prefix for production
 
 	// Save the configuration
 	return saveEnvToFile(env, prodPath)
@@ -3392,7 +3397,7 @@ func ensureProductionEnvironmentWithAccountID(rootDomain, accountID, profile str
 // getProjectNameForDNS gets the project name from existing environment files
 func getProjectNameForDNS() string {
 	// Try to load any existing environment file to get project name
-	envFiles := []string{"dev", "staging", "prod"}
+	envFiles, _ := listEnvironmentNames()
 	for _, envName := range envFiles {
 		env, err := loadEnv(envName)
 		if err == nil && env.Project != "" {
@@ -3405,7 +3410,8 @@ func getProjectNameForDNS() string {
 
 // ensureProductionEnvironment creates or updates prod.yaml with DNS configuration
 func ensureProductionEnvironment(rootDomain, zoneID, accountID string) error {
-	prodPath := "prod.yaml"
+	prodName := productionEnvName()
+	prodPath := prodName + ".yaml"
 
 	// Try to load existing prod.yaml
 	var env Env
@@ -3416,11 +3422,11 @@ func ensureProductionEnvironment(rootDomain, zoneID, accountID string) error {
 		}
 	} else {
 		// File doesn't exist, create new environment
-		vpcCIDR, err := newEnvVPCCIDR("prod")
+		vpcCIDR, err := newEnvVPCCIDR(prodName)
 		if err != nil {
 			return err
 		}
-		env = createEnv("project", "prod", vpcCIDR)
+		env = createEnv("project", prodName, vpcCIDR)
 		env.IsProd = true
 	}
 
@@ -3428,8 +3434,8 @@ func ensureProductionEnvironment(rootDomain, zoneID, accountID string) error {
 	env.Domain.Enabled = true
 	env.Domain.DomainName = rootDomain
 	env.Domain.ZoneID = zoneID
-	env.Domain.CreateDomainZone = false   // We already have the zone
-	env.Domain.AddEnvDomainPrefix = false // No prefix for production
+	env.Domain.CreateDomainZone = false            // We already have the zone
+	env.Domain.AddEnvDomainPrefix = boolPtr(false) // No prefix for production
 
 	// Save the updated configuration
 	return saveEnvToFile(env, prodPath)
@@ -3437,8 +3443,18 @@ func ensureProductionEnvironment(rootDomain, zoneID, accountID string) error {
 
 // propagateRootZoneInfo updates all environment files with root zone information
 func propagateRootZoneInfo(dnsConfig *DNSConfig) error {
-	// Only update dev environment, prod already has the root zone
-	envFiles := []string{"dev"}
+	// Every environment except production gets a delegated subdomain. With none
+	// yet, meroku creates dev.
+	var envFiles []string
+	names, _ := listEnvironmentNames()
+	for _, name := range names {
+		if env, err := loadEnv(name); err == nil && !env.IsProd {
+			envFiles = append(envFiles, name)
+		}
+	}
+	if len(envFiles) == 0 {
+		envFiles = []string{"dev"}
+	}
 
 	for _, envName := range envFiles {
 		path := fmt.Sprintf("%s.yaml", envName)
@@ -3464,8 +3480,8 @@ func propagateRootZoneInfo(dnsConfig *DNSConfig) error {
 		// CRITICAL: Keep domain_name as root domain!
 		env.Domain.Enabled = true
 		env.Domain.DomainName = dnsConfig.RootDomain
-		env.Domain.CreateDomainZone = true   // Will create subdomain zone
-		env.Domain.AddEnvDomainPrefix = true // This makes it dev.example.com
+		env.Domain.CreateDomainZone = true            // Will create subdomain zone
+		env.Domain.AddEnvDomainPrefix = boolPtr(true) // This makes it dev.example.com
 
 		// Add DNS info for delegation
 		env.Domain.RootZoneID = dnsConfig.RootAccount.ZoneID

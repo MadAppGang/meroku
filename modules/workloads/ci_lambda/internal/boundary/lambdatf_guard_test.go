@@ -199,7 +199,7 @@ func TestLambdaTFManualSourcesAreEnvironmentScoped(t *testing.T) {
 
 	require.Contains(t, block[1], `"action.${var.env}"`)
 	require.Contains(t, block[1], `"github.actions.${var.env}"`)
-	require.Regexp(t, `contains\(local\.ci_production_envs, var\.env\)\s*\?\s*\["action\.production"\]\s*:\s*\[\]`,
+	require.Regexp(t, `var\.is_prod\s*\?\s*\["action\.production"\]\s*:\s*\[\]`,
 		block[1],
 		"\"action.production\" must be conditional on the environment being a production one; "+
 			"listing it unconditionally is what made a production deploy redeploy dev and staging")

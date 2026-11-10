@@ -34,7 +34,7 @@ function calculateDomainPreview(
 	const addEnvPrefix = config.domain.add_env_domain_prefix ?? true;
 	const env = config.env || "dev";
 
-	if (addEnvPrefix && env !== "prod") {
+	if (addEnvPrefix) {
 		return `${subdomainPrefix}.${env}.${baseDomain}`;
 	}
 	return `${subdomainPrefix}.${baseDomain}`;

@@ -85,14 +85,17 @@ export function ServiceProperties({
 		(service) => service.name === serviceName,
 	);
 
-	// Generate the ECR repository name based on config
-	const ecrRepoName = `${config.project}_${serviceName}`;
+	const ecrRepoName = `${config.project}_service_${serviceName}`;
 
-	// Use accountInfo if available, otherwise fall back to config values
-	const accountId = accountInfo?.accountId || config.ecr_account_id;
-	const region = config.ecr_account_region || config.region;
+	// Under cross_account the repository is the one in the source registry.
+	const usesSharedEcr = config.ecr_strategy === "cross_account";
+	const accountId = usesSharedEcr
+		? config.ecr_account_id
+		: accountInfo?.accountId || config.account_id;
+	const region = usesSharedEcr
+		? config.ecr_account_region || config.region
+		: config.region;
 
-	// ECR URI - note that ECR repos for additional services are only created in dev environment
 	const ecrUri = `${accountId || "<YOUR_ACCOUNT_ID>"}.dkr.ecr.${region}.amazonaws.com/${ecrRepoName}`;
 
 	const handleServiceChange = (
@@ -168,7 +171,7 @@ export function ServiceProperties({
 					</div>
 					<Switch
 						id={`${uid}-auto-deploy`}
-						checked={serviceConfig.auto_deploy !== false}
+						checked={serviceConfig.auto_deploy ?? config.auto_deploy ?? false}
 						onCheckedChange={(checked) =>
 							handleServiceChange({ auto_deploy: checked })
 						}
@@ -176,7 +179,7 @@ export function ServiceProperties({
 					/>
 				</div>
 
-				{serviceConfig.auto_deploy === false && (
+				{!(serviceConfig.auto_deploy ?? config.auto_deploy ?? false) && (
 					<Alert className="border-blue-600 bg-blue-900/20">
 						<Info className="h-4 w-4 text-blue-400" />
 						<AlertDescription className="text-xs text-gray-300">
@@ -292,7 +295,9 @@ export function ServiceProperties({
 										</Label>
 										{serviceConfig.ecr_config.mode === "create_ecr" && (
 											<Badge variant="default" className="text-xs">
-												Dedicated Repository
+												{usesSharedEcr
+													? "Source Environment Repository"
+													: "Dedicated Repository"}
 											</Badge>
 										)}
 										{serviceConfig.ecr_config.mode === "manual_repo" && (
@@ -321,8 +326,9 @@ export function ServiceProperties({
 												{ecrUri}
 											</p>
 											<p className="text-xs text-gray-500 mt-1">
-												A dedicated ECR repository will be created for this
-												service
+												{usesSharedEcr
+													? "Pulled from the source environment's ECR. Nothing is created here."
+													: "A dedicated ECR repository will be created for this service"}
 											</p>
 										</div>
 									)}

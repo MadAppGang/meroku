@@ -39,7 +39,7 @@ func TestCheckDNSPreflight_Live(t *testing.T) {
 			Enabled:            true,
 			CreateDomainZone:   true,
 			DomainName:         domain,
-			AddEnvDomainPrefix: true,
+			AddEnvDomainPrefix: boolPtr(true),
 		},
 	}
 

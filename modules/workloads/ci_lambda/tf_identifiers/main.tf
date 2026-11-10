@@ -70,7 +70,7 @@ locals {
   # setting looks like, and such a project auto-deploys everything today.
   auto_deploy = merge(
     { (local.backend_id) = var.backend_auto_deploy },
-    { for n in var.service_names : n => lookup(var.service_auto_deploy, n, true) },
-    { for n in var.scheduled_task_names : (local.task_ids[n]) => lookup(var.task_auto_deploy, n, true) },
+    { for n in var.service_names : n => lookup(var.service_auto_deploy, n, false) },
+    { for n in var.scheduled_task_names : (local.task_ids[n]) => lookup(var.task_auto_deploy, n, false) },
   )
 }

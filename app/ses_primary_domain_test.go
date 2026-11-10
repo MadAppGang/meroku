@@ -69,10 +69,10 @@ func TestSESLegacyMovesFollowTheModuleDomain(t *testing.T) {
 			want: "mail.dev.example.com",
 		},
 		{
-			name: "derived name in prod",
+			name: "derived name on the root domain",
 			overlay: map[string]interface{}{
 				"env":    "prod",
-				"domain": map[string]interface{}{"enabled": false, "domain_name": "example.com"},
+				"domain": map[string]interface{}{"enabled": false, "domain_name": "example.com", "add_env_domain_prefix": false},
 				"ses":    map[string]interface{}{"enabled": true},
 			},
 			want: "mail.example.com",

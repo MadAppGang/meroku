@@ -149,6 +149,25 @@ module "naming" {
       parts  = [k]
       limit  = 32
     } },
+    # ---- ECR image-event forwarding, 64 characters -----------------------
+    { for k, d in local.ecr_forward_destinations : "ecr_forward_rule_${k}" => {
+      parts     = ["ecr", "forward", d.account_id, d.region]
+      limit     = 64
+      separator = "_"
+    } },
+    {
+      ecr_forward_role = {
+        parts     = ["ecr", "forward"]
+        limit     = 64
+        separator = "_"
+      }
+      ecr_events_permission = {
+        parts     = ["ecr", "events"]
+        limit     = 64
+        separator = "_"
+      }
+    },
+
     { for k in keys(local.service_names) : "service_tg_instance_${k}" => {
       legacy = "${var.project}-svc-${k}-i-${var.env}"
       parts  = [k, "i"]
