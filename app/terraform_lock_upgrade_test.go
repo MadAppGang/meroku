@@ -121,3 +121,40 @@ func TestTerraformErrorLockedProviderAsksForUpgrade(t *testing.T) {
 		}
 	}
 }
+
+func TestUpgradeLockedProviderIfBehindInitsWithoutALock(t *testing.T) {
+	for name, lockContent := range map[string]string{
+		"no lock file":     "",
+		"lock without aws": "# This file is maintained automatically by \"terraform init\".\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			lock, _ := writeLockFixtures(t, "", "~> 6.0")
+			if lockContent != "" {
+				if err := os.WriteFile(lock, []byte(lockContent), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			previousDir, err := os.Getwd()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chdir(filepath.Dir(lock)); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = os.Chdir(previousDir) })
+
+			inits, upgrades := 0, 0
+			previousInit, previousUpgrade := lockInit, lockUpgradeInit
+			lockInit = func() error { inits++; return nil }
+			lockUpgradeInit = func() error { upgrades++; return nil }
+			t.Cleanup(func() { lockInit, lockUpgradeInit = previousInit, previousUpgrade })
+
+			if err := upgradeLockedProviderIfBehind(); err != nil {
+				t.Fatal(err)
+			}
+			if inits != 1 || upgrades != 0 {
+				t.Errorf("init ran %d times and init -upgrade %d times, want 1 and 0", inits, upgrades)
+			}
+		})
+	}
+}

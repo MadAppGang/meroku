@@ -50,9 +50,35 @@ var lockUpgradeInit = func() error {
 	return err
 }
 
-// upgradeLockedProviderIfBehind runs `terraform init -upgrade` in the current
-// directory when the lock file is a provider major behind main.tf.
+// lockSelectsAWS reports whether the lock file selects a hashicorp/aws version.
+// A .terraform directory can outlive its lock: an init stopped before it wrote
+// one, or the lock was deleted. Every terraform command then fails with
+// "Inconsistent dependency lock file ... no version is selected", and a plain
+// init writes the lock again.
+func lockSelectsAWS(lockPath string) bool {
+	lock, err := os.ReadFile(lockPath)
+	if err != nil {
+		return false
+	}
+	return lockAWSVersion.Match(lock)
+}
+
+// lockInit is the init run when the lock selects no aws version. A variable
+// so tests can replace it.
+var lockInit = func() error {
+	_, err := terraformInit("-input=false")
+	return err
+}
+
+// upgradeLockedProviderIfBehind runs `terraform init` in the current directory
+// when the lock file is missing or selects no aws version, and
+// `terraform init -upgrade` when it is a provider major behind main.tf.
 func upgradeLockedProviderIfBehind() error {
+	if !lockSelectsAWS(".terraform.lock.hcl") {
+		fmt.Println("🔄 .terraform.lock.hcl is missing or selects no AWS provider version.")
+		fmt.Println("   Running terraform init to write it.")
+		return lockInit()
+	}
 	behind, locked, wanted := lockedProviderMajorBehind(".terraform.lock.hcl", "main.tf")
 	if !behind {
 		return nil
