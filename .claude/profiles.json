@@ -38,7 +38,10 @@
         "madbench@magus": "latest",
         "code-search@magus": "latest",
         "bunjs@magus": "latest",
-        "ralph-loop@claude-code-plugins": "latest"
+        "ralph-loop@claude-code-plugins": "latest",
+        "orchestrator@magus": "latest",
+        "go@magus": "latest",
+        "aside@magus": "latest"
       },
       "createdAt": "2026-08-27T13:13:42.118Z",
       "mcpServers": {
