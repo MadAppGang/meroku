@@ -268,6 +268,14 @@ resource "aws_autoscaling_group" "pool" {
   max_size            = each.value.max_size
   health_check_type   = "EC2"
 
+  # "0" turns off the provider's capacity wait. That wait ends the apply on the
+  # FIRST failed scaling activity and taints the group, even when the failure is
+  # temporary: in an account's first ASG the first launch fails with
+  # "Authentication Failure" while the Auto Scaling service-linked role AWS has
+  # just created propagates, and the group's own retry succeeds a minute later.
+  # terraform_data.pool_capacity below waits instead, through such failures.
+  wait_for_capacity_timeout = "0"
+
   # MUST match the capacity provider's managed_termination_protection =
   # "ENABLED" below. Enabling one without the other leaves instances stuck in
   # DRAINING forever.
@@ -395,6 +403,37 @@ resource "aws_autoscaling_group" "pool" {
 
   # Same instance-profile propagation window as the launch template.
   depends_on = [aws_iam_instance_profile.ecs_instance]
+}
+
+# 4b. Wait for the group's minimum to be in service.
+#
+#    scripts/asg-capacity-wait.sh polls the group until min_size instances are
+#    InService. A failed launch is printed and waited out, because the group
+#    retries it by itself; only a group still short at the deadline fails the
+#    apply, with the last reason AWS gave (a missing AMI, no capacity for the
+#    instance types). Needs /bin/sh and AWS CLI v2, as modules/ses does.
+#
+#    It runs when the group is created or replaced, or min_size changes, never
+#    on an apply that leaves the group alone, so a second plan stays empty. A
+#    pool with min_size 0 has nothing to wait for and gets no instance.
+resource "terraform_data" "pool_capacity" {
+  for_each = { for k, p in local.pools : k => p if p.min_size > 0 }
+
+  triggers_replace = {
+    asg      = aws_autoscaling_group.pool[each.key].arn
+    min_size = each.value.min_size
+  }
+
+  provisioner "local-exec" {
+    interpreter = ["/bin/sh", "${path.module}/scripts/asg-capacity-wait.sh"]
+    command     = "wait"
+    environment = {
+      ASG_NAME           = aws_autoscaling_group.pool[each.key].name
+      ASG_MIN_IN_SERVICE = tostring(each.value.min_size)
+      ASG_TIMEOUT        = "900"
+      AWS_REGION         = data.aws_region.current.region
+    }
+  }
 }
 
 # 5. The capacity provider.

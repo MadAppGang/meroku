@@ -144,6 +144,15 @@ jobs:
         run: terraform test
         working-directory: modules/workloads
 
+      # terraform_data.pool_capacity runs scripts/asg-capacity-wait.sh after a
+      # compute pool's ASG is created. The plans above never run a provisioner,
+      # so the script is only exercised here, against a fake AWS CLI
+      # (scripts/test/fakebin/aws): no account, no network.
+      - name: Test the pool capacity wait script
+        run: |
+          shellcheck --shell=sh modules/workloads/scripts/asg-capacity-wait.sh modules/workloads/scripts/test/run.sh modules/workloads/scripts/test/fakebin/aws
+          sh modules/workloads/scripts/test/run.sh
+
       # modules/naming decides what every capped AWS name is called, and its
       # first contract is that nothing already deployed gets renamed — a rename
       # is ForceNew, and for a target group attached to a listener rule the
