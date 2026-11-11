@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -62,8 +63,11 @@ type HandoffContext struct {
 type HandoffResult struct {
 	// BriefingPath is the absolute path of the written briefing.
 	BriefingPath string
-	// PaneOpened is true when Claude Code was started in a tmux split.
+	// PaneOpened is true when Claude Code was started in a side pane.
 	PaneOpened bool
+	// PaneHost is the multiplexer that hosts the pane, or was tried: "tmux",
+	// "herdr", or "" when meroku runs in neither.
+	PaneHost string
 	// ManualCommand starts Claude Code on the briefing from any shell.
 	ManualCommand string
 	// PaneError is why opening the pane failed, when it was attempted.
@@ -79,24 +83,70 @@ const maxBriefingErrorOutput = 16 * 1024
 type handoffDeps struct {
 	getenv   func(string) string
 	lookPath func(string) (string, error)
-	run      func(name string, args ...string) error
+	// run executes a command and returns its stdout.
+	run   func(name string, args ...string) ([]byte, error)
+	sleep func(time.Duration)
 }
 
 var handoffSystem = handoffDeps{
 	getenv:   os.Getenv,
 	lookPath: exec.LookPath,
 	run:      runHandoffCommand,
+	sleep:    time.Sleep,
 }
 
-func runHandoffCommand(name string, args ...string) error {
-	out, err := exec.Command(name, args...).CombinedOutput()
-	if err != nil {
-		if msg := strings.TrimSpace(string(out)); msg != "" {
-			return fmt.Errorf("%w: %s", err, msg)
+func runHandoffCommand(name string, args ...string) ([]byte, error) {
+	var stdout, stderr bytes.Buffer
+	cmd := exec.Command(name, args...)
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		if msg := strings.TrimSpace(stderr.String() + " " + stdout.String()); msg != "" {
+			return nil, fmt.Errorf("%w: %s", err, msg)
 		}
-		return err
+		return nil, err
 	}
-	return nil
+	return stdout.Bytes(), nil
+}
+
+// merokuPlugin is the Claude Code plugin with meroku's skills, from the magus
+// marketplace (github.com/MadAppGang/magus).
+const merokuPlugin = "meroku@magus"
+
+// merokuPluginSettings enables merokuPlugin for the one Claude session meroku
+// starts. Claude starts normally when the plugin is not installed; the
+// briefing then tells the user how to install it.
+const merokuPluginSettings = `{"enabledPlugins":{"` + merokuPlugin + `":true}}`
+
+// Pane hosts meroku can open a side pane in.
+const (
+	paneHostTmux  = "tmux"
+	paneHostHerdr = "herdr"
+)
+
+// detectPaneHost names the terminal multiplexer meroku runs in, or "".
+// When one runs inside the other both sets of variables are inherited, so
+// TERM_PROGRAM, which the innermost one sets, decides. Without a matching
+// TERM_PROGRAM, herdr wins: its variables name one exact pane.
+func detectPaneHost(getenv func(string) string) string {
+	inTmux := getenv("TMUX") != ""
+	inHerdr := getenv("HERDR_ENV") == "1" && getenv("HERDR_PANE_ID") != ""
+	switch getenv("TERM_PROGRAM") {
+	case "tmux":
+		if inTmux {
+			return paneHostTmux
+		}
+	case "herdr":
+		if inHerdr {
+			return paneHostHerdr
+		}
+	}
+	switch {
+	case inHerdr:
+		return paneHostHerdr
+	case inTmux:
+		return paneHostTmux
+	}
+	return ""
 }
 
 var briefingTemplate = template.Must(
@@ -231,8 +281,9 @@ func indentBlock(s string) string {
 
 // LaunchClaudeHandoff writes the briefing to
 // <ProjectRoot>/.meroku/claude/<YYYYMMDD-HHMMSS>-<operation>.md and, inside
-// tmux with claude on PATH, opens Claude Code on it in a split to the right.
-// Otherwise nothing is executed and the result carries the command to run.
+// tmux or herdr with claude on PATH, opens Claude Code on it in a split to the
+// right, at the project root, with the meroku plugin enabled. Otherwise
+// nothing is executed and the result carries the command to run.
 //
 // A failure to open the pane is not an error: the briefing exists, and the
 // manual command still works. Only a failure to write the briefing is.
@@ -257,13 +308,13 @@ func LaunchClaudeHandoff(ctx HandoffContext) (HandoffResult, error) {
 		return HandoffResult{}, err
 	}
 
-	prompt := handoffPrompt(path)
+	claudeArgs := []string{"--settings", merokuPluginSettings, handoffPrompt(path)}
 	res := HandoffResult{
 		BriefingPath:  path,
-		ManualCommand: "cd " + shellQuote(root) + " && claude " + shellQuote(prompt),
+		PaneHost:      detectPaneHost(handoffSystem.getenv),
+		ManualCommand: "cd " + shellQuote(root) + " && claude " + shellArgs(claudeArgs),
 	}
-
-	if handoffSystem.getenv("TMUX") == "" {
+	if res.PaneHost == "" {
 		return res, nil
 	}
 	claudePath, err := handoffSystem.lookPath("claude")
@@ -271,16 +322,133 @@ func LaunchClaudeHandoff(ctx HandoffContext) (HandoffResult, error) {
 		return res, nil
 	}
 
-	// tmux hands a single command argument to its default shell with -c, so
-	// this is the one string that needs quoting. The resolved path is used
-	// because the tmux server's PATH can differ from meroku's.
-	paneCommand := shellQuote(claudePath) + " " + shellQuote(prompt)
-	if err := handoffSystem.run("tmux", "split-window", "-h", "-c", root, paneCommand); err != nil {
+	// Both hosts hand the command to a shell, so it is one quoted string. The
+	// resolved path is used because the multiplexer's PATH can differ from
+	// meroku's.
+	paneCommand := shellCommand(claudePath, claudeArgs...)
+	switch res.PaneHost {
+	case paneHostTmux:
+		_, err = handoffSystem.run("tmux", "split-window", "-h", "-c", root, paneCommand)
+	case paneHostHerdr:
+		err = openHerdrPane(root, paneCommand)
+	}
+	if err != nil {
 		res.PaneError = err.Error()
 		return res, nil
 	}
 	res.PaneOpened = true
 	return res, nil
+}
+
+// openHerdrPane splits the pane meroku runs in, to the right, and runs
+// command in the new pane's shell at root. herdr recognises Claude Code there
+// as an agent and shows its state.
+func openHerdrPane(root, command string) error {
+	herdr := handoffSystem.getenv("HERDR_BIN_PATH")
+	if herdr == "" {
+		p, err := handoffSystem.lookPath("herdr")
+		if err != nil {
+			return errors.New("herdr is not on PATH")
+		}
+		herdr = p
+	}
+	out, err := handoffSystem.run(herdr, "pane", "split", "--current",
+		"--direction", "right", "--cwd", root, "--focus")
+	if err != nil {
+		return fmt.Errorf("herdr pane split: %w", err)
+	}
+	var split struct {
+		Result struct {
+			Pane struct {
+				PaneID string `json:"pane_id"`
+			} `json:"pane"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(out, &split); err != nil || split.Result.Pane.PaneID == "" {
+		return fmt.Errorf("herdr pane split returned no pane id: %s", strings.TrimSpace(string(out)))
+	}
+	pane := split.Result.Pane.PaneID
+
+	if err := waitForHerdrPrompt(herdr, pane); err != nil {
+		return err
+	}
+	if _, err := handoffSystem.run(herdr, "pane", "run", pane, command); err != nil {
+		return fmt.Errorf("herdr pane run: %w", err)
+	}
+	return waitForHerdrCommand(herdr, pane)
+}
+
+// herdr polling bounds. A shell with a heavy rc file takes seconds to start.
+const (
+	herdrPollInterval  = 100 * time.Millisecond
+	herdrPromptTimeout = 15 * time.Second
+	herdrStartTimeout  = 10 * time.Second
+)
+
+// waitForHerdrPrompt polls a new pane until its shell has drawn a prompt and
+// the screen is the same on two reads in a row. herdr reports no readiness for
+// a plain shell, and text typed before the shell's line editor is up is echoed
+// with its Enter lost, so the command would sit there unrun.
+func waitForHerdrPrompt(herdr, pane string) error {
+	var prev string
+	for range int(herdrPromptTimeout / herdrPollInterval) {
+		out, err := handoffSystem.run(herdr, "pane", "read", pane, "--source", "visible")
+		if err != nil {
+			return fmt.Errorf("herdr pane read: %w", err)
+		}
+		screen := string(out)
+		if strings.TrimSpace(screen) != "" && screen == prev {
+			return nil
+		}
+		prev = screen
+		handoffSystem.sleep(herdrPollInterval)
+	}
+	return fmt.Errorf("the shell in herdr pane %s showed no settled prompt within %s", pane, herdrPromptTimeout)
+}
+
+// waitForHerdrCommand polls until something other than the pane's shell is in
+// the foreground, which means the typed command started.
+func waitForHerdrCommand(herdr, pane string) error {
+	for range int(herdrStartTimeout / herdrPollInterval) {
+		out, err := handoffSystem.run(herdr, "pane", "process-info", "--pane", pane)
+		if err != nil {
+			return fmt.Errorf("herdr pane process-info: %w", err)
+		}
+		var info struct {
+			Result struct {
+				ProcessInfo struct {
+					ShellPID  int `json:"shell_pid"`
+					Processes []struct {
+						PID int `json:"pid"`
+					} `json:"foreground_processes"`
+				} `json:"process_info"`
+			} `json:"result"`
+		}
+		if err := json.Unmarshal(out, &info); err != nil {
+			return fmt.Errorf("herdr pane process-info: %w", err)
+		}
+		for _, p := range info.Result.ProcessInfo.Processes {
+			if p.PID != info.Result.ProcessInfo.ShellPID {
+				return nil
+			}
+		}
+		handoffSystem.sleep(herdrPollInterval)
+	}
+	return fmt.Errorf("Claude Code did not start in herdr pane %s within %s; its command is typed there, press Enter in that pane", pane, herdrStartTimeout)
+}
+
+// shellCommand quotes name and args as one POSIX shell command line.
+func shellCommand(name string, args ...string) string {
+	return shellQuote(name) + " " + shellArgs(args)
+}
+
+// shellArgs quotes each of args as one POSIX shell word, space-separated.
+func shellArgs(args []string) string {
+	words := make([]string, len(args))
+	for i, a := range args {
+		words[i] = shellQuote(a)
+	}
+	return strings.Join(words, " ")
 }
 
 // writeHandoffBriefing creates .meroku/claude/ under the project root, makes
@@ -378,7 +546,8 @@ func handoffMerokuVersion(root string) string {
 // briefing stays in the file: it is long, and it may contain error text.
 func handoffPrompt(briefingPath string) string {
 	return "Read the meroku handoff briefing at " + briefingPath +
-		" and follow it. Investigate and explain first; ask me before any write."
+		" and follow it. If the meroku:troubleshoot skill is available, use it to work the briefing." +
+		" Investigate and explain first; ask me before any write."
 }
 
 // shellQuote quotes s as one POSIX shell word. Inside single quotes nothing is
@@ -390,12 +559,16 @@ func shellQuote(s string) string {
 // FormatHandoffResult is the message callers print after a handoff.
 func FormatHandoffResult(r HandoffResult) string {
 	if r.PaneOpened {
-		return fmt.Sprintf("🤖 Claude Code opened in the right-hand pane. Briefing: %s\n", r.BriefingPath) +
+		where := "the right-hand pane"
+		if r.PaneHost != "" {
+			where = "the right-hand " + r.PaneHost + " pane"
+		}
+		return fmt.Sprintf("🤖 Claude Code opened in %s. Briefing: %s\n", where, r.BriefingPath) +
 			briefingPrivacyNote
 	}
 	var b strings.Builder
 	if r.PaneError != "" {
-		fmt.Fprintf(&b, "⚠️  Could not open a tmux pane for Claude Code: %s\n\n", r.PaneError)
+		fmt.Fprintf(&b, "⚠️  Could not open a %s pane for Claude Code: %s\n\n", r.PaneHost, r.PaneError)
 	}
 	fmt.Fprintf(&b, "🤖 Briefing for Claude Code written to:\n   %s\n\n", r.BriefingPath)
 	fmt.Fprintf(&b, "Start Claude Code on it with:\n   %s\n\n", r.ManualCommand)

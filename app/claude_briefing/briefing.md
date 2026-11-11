@@ -57,6 +57,21 @@ itself before it runs Terraform; this pane may not have inherited it.
 
 If none of these fits, stop and ask the user.
 
+## meroku skills
+
+meroku started this session with the `meroku@magus` Claude Code plugin enabled.
+If its skills are in your skill list, use them: `meroku:troubleshoot` to work this
+failure, `meroku:yaml` for the env YAML, `meroku:meroku` for how meroku works. The
+rules above still apply.
+
+If they are not in your list, the plugin is not installed and this briefing is all
+you have. Tell the user once, then carry on:
+
+```
+claude plugin marketplace add MadAppGang/magus
+claude plugin install meroku@magus
+```
+
 ## Where it ran
 
 | | |

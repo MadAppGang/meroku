@@ -432,9 +432,13 @@ meroku to read it.
 1. meroku writes the briefing to `<project root>/.meroku/claude/<YYYYMMDD-HHMMSS>-<operation>.md`
    and creates `.meroku/.gitignore` containing `*` so the directory never gets committed.
    The briefing can contain raw Terraform/AWS error output.
-2. Inside tmux with `claude` on PATH: meroku runs `tmux split-window -h -c <project root>`
-   and starts `claude` in the new right-hand pane with a one-line prompt that points at
-   the briefing file. The briefing itself is never put on the command line.
+2. Inside herdr or tmux with `claude` on PATH (`TERM_PROGRAM` picks the inner one when
+   nested): meroku opens a pane to the right at the project root and starts `claude`
+   there with a one-line prompt that points at the briefing file, plus
+   `--settings '{"enabledPlugins":{"meroku@magus":true}}'` so the meroku skills from
+   the magus marketplace load when installed. In herdr it waits for the new shell's
+   prompt before typing, and checks that Claude started. The briefing itself is never
+   put on the command line.
 3. Otherwise: meroku prints the briefing's absolute path and the command to start
    Claude Code on it, and waits for Enter.
 
