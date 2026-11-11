@@ -496,7 +496,8 @@ func applyTemplate(env string) error {
 // synthesizeDefaultComputePool, assignSESPrimaryDomain, resolveSESZones,
 // normalizeHealthCheckCommands, then validateSESDNSConfigMap,
 // validateNetworkAccessConfigMap, validateBackendHealthConfigMap,
-// validateReservedEnvNamesConfigMap and validateComputeConfigMap. Path and
+// validateReservedEnvNamesConfigMap, validateGitHubRunnersConfigMap and
+// validateComputeConfigMap. Path and
 // custom-module flags stay with each caller, because they differ.
 //
 // resolveSESZones runs after assignSESPrimaryDomain because it reads the
@@ -532,6 +533,9 @@ func preprocessEnvMap(envMap map[string]interface{}) error {
 		return err
 	}
 	if err := validateReservedEnvNamesConfigMap(envMap); err != nil {
+		return err
+	}
+	if err := validateGitHubRunnersConfigMap(envMap); err != nil {
 		return err
 	}
 	return validateComputeConfigMap(envMap)

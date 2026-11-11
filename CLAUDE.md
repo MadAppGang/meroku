@@ -426,6 +426,19 @@ service) are optional; absent keys render nothing. A breaker is turned off with
 `enable: false`, never by removing the key (provider 6.x suppresses that diff).
 [Backend Health Check](./ai_docs/BACKEND_HEALTH_CHECK.md).
 
+## GitHub Actions runners (CodeBuild)
+
+`github_runners` (optional; absent or `enabled: false` renders nothing, no
+migration) creates one CodeBuild project per runner, with a `WORKFLOW_JOB_QUEUED`
+webhook, in `modules/github_runners`. Workflows use
+`runs-on: codebuild-<project>-gh-<runner>-<env>-${{ github.run_id }}-${{ github.run_attempt }}`
+(env output `github_runner_labels`). The GitHub token lives in a Secrets Manager
+secret created outside Terraform and is set per project, never as an
+account-wide `aws_codebuild_source_credential`. `vpc_access: true` requires a NAT
+`egress_strategy` (CodeBuild in a VPC gets no public IP); `app/github_runners.go`
+refuses otherwise on every generate. The runner role cannot deploy; deploys use
+the GitHub OIDC role. [GitHub Runners](./ai_docs/GITHUB_RUNNERS.md).
+
 ## Fix with AI (Claude Code handoff)
 
 meroku has no AI of its own and needs no API key. "Fix with AI" writes a briefing
