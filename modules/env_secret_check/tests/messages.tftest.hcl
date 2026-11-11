@@ -271,3 +271,43 @@ run "a_non_workloads_caller_gets_its_own_file_paths" {
     error_message = "No message may name modules/workloads unless its own caller asked for it; an event task's reader has no env_services.tf to read. Got: ${output.message["ingest"]}"
   }
 }
+
+# ENV is the one name whose SSM side meroku owns: every caller creates
+# <ssm_path>/env as a runtime placeholder, so "delete the SSM parameter" cannot
+# work for it. The message must send the reader to the YAML and to put-parameter.
+run "env_collision_points_at_the_reserved_parameter" {
+  command = apply
+
+  variables {
+    workloads = {
+      env_clash = {
+        subject         = "Service \"bridge\""
+        ssm_path        = "/dev/acme/bridge"
+        yaml_field      = "env_vars"
+        yaml_file       = "project/dev.yaml"
+        defaults_source = "modules/workloads/env_services.tf"
+        environment     = ["AWS_REGION", "ENV"]
+        secrets         = ["ENV"]
+      }
+    }
+  }
+
+  assert {
+    condition     = strcontains(output.message["env_clash"], "ENV is reserved")
+    error_message = "An ENV collision must say ENV is reserved. Got: ${output.message["env_clash"]}"
+  }
+
+  assert {
+    condition     = strcontains(output.message["env_clash"], "put-parameter --name /dev/acme/bridge/env")
+    error_message = "An ENV collision must name the placeholder parameter to set. Got: ${output.message["env_clash"]}"
+  }
+}
+
+run "the_reserved_paragraph_is_absent_without_env" {
+  command = apply
+
+  assert {
+    condition     = !strcontains(output.message["colliding"], "ENV is reserved")
+    error_message = "Only an ENV collision gets the reserved paragraph. Got: ${output.message["colliding"]}"
+  }
+}

@@ -165,6 +165,16 @@ env_variables: array               # Array of {name, value}
 env_files_s3: array                # Array of {bucket, key}
 ```
 
+#### Reserved Names
+```
+env_vars MUST NOT contain ENV (also backend_env_variables and the
+environment_variables of scheduled and event processor tasks).
+meroku creates the SSM parameter /<env>/<project>/<workload>/env, which reaches
+the container as the secret ENV. Enforced at generate time by
+validateReservedEnvNamesConfigMap (app/env_reserved.go).
+See CONTAINER_ENV_AND_SSM.md.
+```
+
 #### Cross-Field Validation
 ```
 IF host_port is specified THEN:

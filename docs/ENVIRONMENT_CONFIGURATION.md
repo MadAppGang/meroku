@@ -195,7 +195,8 @@ The `workload` section configures your main backend application and related infr
     LOG_LEVEL: debug
     API_TIMEOUT: "30000"
   ```
-- **Notes**: For secrets, use AWS Systems Manager Parameter Store instead.
+- **Notes**: For secrets, use AWS Systems Manager Parameter Store instead: every parameter under `/<env>/<project>/backend/` reaches the container as a secret named after its upper-cased last segment.
+- **Reserved**: `ENV` cannot be set here. meroku creates the parameter `/<env>/<project>/backend/env` and passes it as `ENV`; set its value with `aws ssm put-parameter --name /<env>/<project>/backend/env --value <value> --overwrite` and restart the tasks. The same applies to `env_vars` on services and `environment_variables` on tasks.
 
 #### `env_files_s3`
 - **Type**: Array of objects

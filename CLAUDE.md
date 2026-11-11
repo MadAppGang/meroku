@@ -401,6 +401,16 @@ v2) and refuses at plan to replace a foreign SPF or DMARC value the YAML does
 not set. Origin: `app/ses_zone_origin.go`. Full rules, migration and destroy
 behaviour: [SES DNS Ownership](./ai_docs/SES_DNS_OWNERSHIP.md).
 
+## Container env vars and SSM secrets
+
+A container's `environment` comes from the YAML (`env_vars`, `backend_env_variables`,
+tasks' `environment_variables`, all maps) plus meroku's own variables; its `secrets`
+come from every SSM parameter under the workload's path, named by the upper-cased last
+segment. A name in both is refused by ECS. **`ENV` is reserved**: meroku creates
+`<path>/env` for every workload, so `ENV` is set with `aws ssm put-parameter`, never in
+YAML; `meroku generate` refuses it (`app/env_reserved.go`).
+[Container Env and SSM](./ai_docs/CONTAINER_ENV_AND_SSM.md).
+
 ## Backend health check and circuit breaker
 
 `workload.backend_health_check` (container `healthCheck`) and

@@ -61,7 +61,11 @@ locals {
         the better home for anything sensitive anyway, and it can be
         changed without a terraform apply.
 
-    If the name is one meroku sets itself — AWS_REGION and the rest of the list in ${w.defaults_source} — only the first option is open, because it is not in ${w.yaml_file} to remove.
+    If the name is one meroku sets itself — AWS_REGION and the rest of the list in ${w.defaults_source} — only the first option is open, because it is not in ${w.yaml_file} to remove.%{if contains(local.collisions[k], "ENV")}
+
+    ENV is reserved and only the second option is open for it. meroku creates ${w.ssm_path}/env itself and Terraform recreates it if it is deleted; it is the variable you set at runtime. Remove ENV from ${w.yaml_field} in ${w.yaml_file}, then set the value with
+      aws ssm put-parameter --name ${w.ssm_path}/env --value <value> --overwrite
+    and restart the tasks. No new task definition is needed.%{endif}
   EOT
   }
 }
