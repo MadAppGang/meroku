@@ -1,5 +1,27 @@
 # Changelog
 
+## v5.4.2
+
+### A temporary EC2 launch failure no longer fails the deploy
+
+Creating a compute pool no longer fails the apply when the ASG's first launch
+fails and its retry succeeds. The common case is the first pool in an AWS
+account: AWS creates the Auto Scaling service-linked role as the ASG is
+created, and the launch a few seconds later fails with `Authentication Failure.
+Launching EC2 instance failed.` while that role propagates. The provider's
+capacity wait ended the apply on that first failure and tainted the ASG.
+
+The provider's wait is now off (`wait_for_capacity_timeout = "0"`), and
+`terraform_data.pool_capacity` runs `modules/workloads/scripts/asg-capacity-wait.sh`
+instead. It polls until `min_size` instances are InService, prints each failed
+launch and waits it out, and fails only if the ASG is still short after 15
+minutes, with the last reason AWS gave. It needs `/bin/sh` and AWS CLI v2, as
+the SES merge script does.
+
+An environment that already hit the failure has a tainted ASG: once it has an
+InService instance, run `terraform untaint` on it before the next apply. See
+[ai_docs/EC2_COMPUTE_POOLS.md](./ai_docs/EC2_COMPUTE_POOLS.md#waiting-for-capacity).
+
 ## v5.4.1
 
 ### `ENV` is reserved for the SSM parameter meroku creates
