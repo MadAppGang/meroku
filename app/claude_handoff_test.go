@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -208,12 +209,239 @@ func fakeHandoffSystem(t *testing.T, env map[string]string, claudePath string, r
 			}
 			return "", exec.ErrNotFound
 		},
-		run: func(name string, args ...string) error {
+		run: func(name string, args ...string) ([]byte, error) {
 			*calls = append(*calls, runCall{name, append([]string(nil), args...)})
-			return runErr
+			if runErr != nil {
+				return nil, runErr
+			}
+			return fakeHerdrReply(args, fakeHerdrStarted), nil
 		},
+		sleep: func(time.Duration) {},
 	}
 	return calls
+}
+
+// Trimmed shapes of what herdr prints.
+const (
+	fakeHerdrSplitOutput = `{"id":"cli:pane:split","result":{"pane":{"pane_id":"w1:p9","tab_id":"w1:t1"},"type":"pane_info"}}`
+	fakeHerdrStarted     = `{"result":{"process_info":{"shell_pid":100,"foreground_processes":[{"pid":200,"argv0":"claude"}]}}}`
+	fakeHerdrShellOnly   = `{"result":{"process_info":{"shell_pid":100,"foreground_processes":[{"pid":100,"argv0":"zsh"}]}}}`
+)
+
+// fakeHerdrReply answers a herdr subcommand: a settled prompt on every read,
+// processInfo for process-info.
+func fakeHerdrReply(args []string, processInfo string) []byte {
+	if len(args) < 2 || args[0] != "pane" {
+		return nil
+	}
+	switch args[1] {
+	case "split":
+		return []byte(fakeHerdrSplitOutput)
+	case "read":
+		return []byte("jack@m5 ~/proj % \n")
+	case "process-info":
+		return []byte(processInfo)
+	}
+	return nil
+}
+
+// herdrSubcommands lists the `herdr pane <sub>` calls in order.
+func herdrSubcommands(calls []runCall) []string {
+	var subs []string
+	for _, c := range calls {
+		if len(c.args) >= 2 && c.args[0] == "pane" {
+			subs = append(subs, c.args[1])
+		}
+	}
+	return subs
+}
+
+var herdrEnv = map[string]string{
+	"HERDR_ENV":      "1",
+	"HERDR_PANE_ID":  "w1:p1",
+	"HERDR_BIN_PATH": "/opt/herdr/bin/herdr",
+	"TERM_PROGRAM":   "herdr",
+}
+
+func TestDetectPaneHost(t *testing.T) {
+	cases := []struct {
+		name string
+		env  map[string]string
+		want string
+	}{
+		{"neither", map[string]string{}, ""},
+		{"tmux", map[string]string{"TMUX": "/tmp/tmux-501/default,1,0", "TERM_PROGRAM": "tmux"}, paneHostTmux},
+		{"tmux without TERM_PROGRAM", map[string]string{"TMUX": "x"}, paneHostTmux},
+		{"herdr", herdrEnv, paneHostHerdr},
+		{"herdr without TERM_PROGRAM", map[string]string{"HERDR_ENV": "1", "HERDR_PANE_ID": "w1:p1"}, paneHostHerdr},
+		{"tmux inside herdr", map[string]string{"HERDR_ENV": "1", "HERDR_PANE_ID": "w1:p1", "TMUX": "x", "TERM_PROGRAM": "tmux"}, paneHostTmux},
+		{"herdr inside tmux", map[string]string{"HERDR_ENV": "1", "HERDR_PANE_ID": "w1:p1", "TMUX": "x", "TERM_PROGRAM": "herdr"}, paneHostHerdr},
+		{"herdr env without a pane id", map[string]string{"HERDR_ENV": "1", "TERM_PROGRAM": "herdr"}, ""},
+		{"other terminal", map[string]string{"TERM_PROGRAM": "iTerm.app"}, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := detectPaneHost(func(k string) string { return tc.env[k] })
+			if got != tc.want {
+				t.Errorf("detectPaneHost = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestLaunchClaudeHandoff_InHerdrSplitsThenRunsClaude(t *testing.T) {
+	root := t.TempDir()
+	calls := fakeHandoffSystem(t, herdrEnv, "/usr/local/bin/claude", nil)
+
+	res, err := LaunchClaudeHandoff(sampleHandoffContext(root))
+	if err != nil {
+		t.Fatalf("LaunchClaudeHandoff: %v", err)
+	}
+	if !res.PaneOpened || res.PaneHost != paneHostHerdr {
+		t.Fatalf("PaneOpened=%v PaneHost=%q, want true/herdr (error %q)", res.PaneOpened, res.PaneHost, res.PaneError)
+	}
+	// Split, read until two identical screens, type, confirm it started.
+	want := "split read read run process-info"
+	if got := strings.Join(herdrSubcommands(*calls), " "); got != want {
+		t.Fatalf("herdr calls = %q, want %q", got, want)
+	}
+
+	split := (*calls)[0]
+	wantSplit := []string{"pane", "split", "--current", "--direction", "right", "--cwd", root, "--focus"}
+	if split.name != "/opt/herdr/bin/herdr" || strings.Join(split.args, " ") != strings.Join(wantSplit, " ") {
+		t.Errorf("split = %s %q, want /opt/herdr/bin/herdr %q", split.name, split.args, wantSplit)
+	}
+
+	run := (*calls)[3]
+	if run.name != "/opt/herdr/bin/herdr" || len(run.args) != 4 || run.args[0] != "pane" || run.args[1] != "run" || run.args[2] != "w1:p9" {
+		t.Fatalf("run = %s %q, want herdr pane run w1:p9 <command>", run.name, run.args)
+	}
+	command := run.args[3]
+	if !strings.HasPrefix(command, "'/usr/local/bin/claude' ") || !strings.Contains(command, res.BriefingPath) {
+		t.Errorf("pane command %q does not start claude on the briefing", command)
+	}
+}
+
+func TestLaunchClaudeHandoff_HerdrSplitWithoutPaneIDFallsBackToManual(t *testing.T) {
+	root := t.TempDir()
+	calls := fakeHandoffSystem(t, herdrEnv, "/usr/local/bin/claude", nil)
+	handoffSystem.run = func(name string, args ...string) ([]byte, error) {
+		*calls = append(*calls, runCall{name, args})
+		return []byte(`{"error":"no space"}`), nil
+	}
+
+	res, err := LaunchClaudeHandoff(sampleHandoffContext(root))
+	if err != nil {
+		t.Fatalf("LaunchClaudeHandoff: %v", err)
+	}
+	if res.PaneOpened {
+		t.Error("PaneOpened = true after a split with no pane id")
+	}
+	if !strings.Contains(res.PaneError, "no pane id") {
+		t.Errorf("PaneError = %q, want it to say the split returned no pane id", res.PaneError)
+	}
+	if len(*calls) != 1 {
+		t.Errorf("got %d runner calls, want only the split: %+v", len(*calls), *calls)
+	}
+	if !strings.Contains(FormatHandoffResult(res), res.ManualCommand) {
+		t.Error("result message does not offer the manual command")
+	}
+}
+
+func TestLaunchClaudeHandoff_HerdrWaitsForTheShellBeforeTyping(t *testing.T) {
+	root := t.TempDir()
+	calls := fakeHandoffSystem(t, herdrEnv, "/usr/local/bin/claude", nil)
+	// The screen is blank, then the prompt draws, then it settles.
+	screens := []string{"", "", "jack@m5 ~ %", "jack@m5 ~/proj % ", "jack@m5 ~/proj % "}
+	handoffSystem.run = func(name string, args ...string) ([]byte, error) {
+		*calls = append(*calls, runCall{name, args})
+		if args[1] == "read" {
+			s := screens[0]
+			screens = screens[1:]
+			return []byte(s), nil
+		}
+		return fakeHerdrReply(args, fakeHerdrStarted), nil
+	}
+
+	res, err := LaunchClaudeHandoff(sampleHandoffContext(root))
+	if err != nil {
+		t.Fatalf("LaunchClaudeHandoff: %v", err)
+	}
+	if !res.PaneOpened {
+		t.Fatalf("PaneOpened = false: %s", res.PaneError)
+	}
+	want := "split read read read read read run process-info"
+	if got := strings.Join(herdrSubcommands(*calls), " "); got != want {
+		t.Errorf("herdr calls = %q, want %q", got, want)
+	}
+}
+
+func TestLaunchClaudeHandoff_HerdrPromptThatNeverSettlesIsReported(t *testing.T) {
+	root := t.TempDir()
+	calls := fakeHandoffSystem(t, herdrEnv, "/usr/local/bin/claude", nil)
+	handoffSystem.run = func(name string, args ...string) ([]byte, error) {
+		*calls = append(*calls, runCall{name, args})
+		if args[1] == "read" {
+			return []byte(""), nil
+		}
+		return fakeHerdrReply(args, fakeHerdrStarted), nil
+	}
+
+	res, _ := LaunchClaudeHandoff(sampleHandoffContext(root))
+	if res.PaneOpened {
+		t.Fatal("PaneOpened = true although the shell never drew a prompt")
+	}
+	if !strings.Contains(res.PaneError, "no settled prompt") {
+		t.Errorf("PaneError = %q", res.PaneError)
+	}
+	for _, s := range herdrSubcommands(*calls) {
+		if s == "run" {
+			t.Error("typed the command into a shell that never became ready")
+		}
+	}
+}
+
+func TestLaunchClaudeHandoff_HerdrCommandThatNeverStartsIsReported(t *testing.T) {
+	root := t.TempDir()
+	calls := fakeHandoffSystem(t, herdrEnv, "/usr/local/bin/claude", nil)
+	handoffSystem.run = func(name string, args ...string) ([]byte, error) {
+		*calls = append(*calls, runCall{name, args})
+		return fakeHerdrReply(args, fakeHerdrShellOnly), nil
+	}
+
+	res, _ := LaunchClaudeHandoff(sampleHandoffContext(root))
+	if res.PaneOpened {
+		t.Fatal("PaneOpened = true although only the shell ever ran")
+	}
+	if !strings.Contains(res.PaneError, "press Enter in that pane") {
+		t.Errorf("PaneError = %q, want it to tell the user how to recover", res.PaneError)
+	}
+}
+
+func TestLaunchClaudeHandoff_EnablesTheMerokuPlugin(t *testing.T) {
+	for _, env := range []map[string]string{{"TMUX": "x"}, herdrEnv} {
+		root := t.TempDir()
+		calls := fakeHandoffSystem(t, env, "/usr/local/bin/claude", nil)
+		res, err := LaunchClaudeHandoff(sampleHandoffContext(root))
+		if err != nil {
+			t.Fatalf("LaunchClaudeHandoff: %v", err)
+		}
+		var command string
+		for _, c := range *calls {
+			if c.name == "tmux" || (len(c.args) > 1 && c.args[1] == "run") {
+				command = c.args[len(c.args)-1]
+			}
+		}
+		want := "'--settings' " + shellQuote(merokuPluginSettings)
+		for _, got := range []string{command, res.ManualCommand} {
+			if !strings.Contains(got, want) {
+				t.Errorf("%s: command %q does not contain %q", res.PaneHost, got, want)
+			}
+		}
+	}
+	if !json.Valid([]byte(merokuPluginSettings)) {
+		t.Errorf("merokuPluginSettings is not valid JSON: %s", merokuPluginSettings)
+	}
 }
 
 func TestLaunchClaudeHandoff_InTmuxOpensOneSplitPane(t *testing.T) {
@@ -419,14 +647,14 @@ func TestLaunchClaudeHandoff_PaneCommandQuotesHostilePaths(t *testing.T) {
 	}
 
 	words := shellWords(t, (*calls)[0].args[4])
-	if len(words) != 2 {
-		t.Fatalf("pane command parsed into %d words, want 2: %q", len(words), words)
+	want := []string{claudePath, "--settings", merokuPluginSettings, handoffPrompt(res.BriefingPath)}
+	if len(words) != len(want) {
+		t.Fatalf("pane command parsed into %d words, want %d: %q", len(words), len(want), words)
 	}
-	if words[0] != claudePath {
-		t.Errorf("word 0 = %q, want %q", words[0], claudePath)
-	}
-	if words[1] != handoffPrompt(res.BriefingPath) {
-		t.Errorf("prompt did not round-trip:\n got %q\nwant %q", words[1], handoffPrompt(res.BriefingPath))
+	for i := range want {
+		if words[i] != want[i] {
+			t.Errorf("word %d did not round-trip:\n got %q\nwant %q", i, words[i], want[i])
+		}
 	}
 }
 
@@ -443,7 +671,7 @@ func TestLaunchClaudeHandoff_ManualCommandQuotesHostilePaths(t *testing.T) {
 	// its exact shape, then round-trip each quoted word on its own.
 	quotedRoot := shellQuote(root)
 	quotedPrompt := shellQuote(handoffPrompt(res.BriefingPath))
-	if want := "cd " + quotedRoot + " && claude " + quotedPrompt; res.ManualCommand != want {
+	if want := "cd " + quotedRoot + " && claude '--settings' " + shellQuote(merokuPluginSettings) + " " + quotedPrompt; res.ManualCommand != want {
 		t.Fatalf("ManualCommand =\n %q\nwant\n %q", res.ManualCommand, want)
 	}
 	if got := shellWords(t, quotedRoot); len(got) != 1 || got[0] != root {

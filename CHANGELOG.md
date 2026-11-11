@@ -1,5 +1,29 @@
 # Changelog
 
+## v5.4.0
+
+### Fix with AI opens Claude Code in herdr as well as tmux, with the meroku skills
+
+"Fix with AI" now opens Claude Code in a pane to the right inside
+herdr as well as tmux. When one runs inside the other,
+`TERM_PROGRAM` picks the inner one. In herdr, meroku waits for the new shell's
+prompt before it types the command and checks that Claude Code started; if it
+did not, it says so and leaves the command typed in that pane.
+
+Claude Code starts with the `meroku@magus` plugin enabled for that session, so
+the `meroku:troubleshoot`, `meroku:yaml` and `meroku:meroku` skills load when the
+plugin is installed. Without it, Claude tells you once how to install it:
+
+```
+claude plugin marketplace add MadAppGang/magus
+claude plugin install meroku@magus
+```
+
+The briefing still holds the full rules, so nothing changes when the plugin is
+missing. Outside herdr and tmux, meroku prints the briefing path and the
+`claude` command to run, as before. See
+[ai_docs/CLAUDE_CODE_HANDOFF.md](./ai_docs/CLAUDE_CODE_HANDOFF.md).
+
 ## v4.13.0
 
 ### Backend container health check and deployment circuit breaker

@@ -94,13 +94,45 @@ Read-only inspection (`describe`/`list`/`get`, `aws sts get-caller-identity`,
    (mode 0600). Creates `.meroku/.gitignore` with `*` if there is none, so the directory
    ignores itself in git. The briefing can contain raw error output; the printed
    message says so.
-2. If `$TMUX` is set and `claude` is on PATH, runs
-   `tmux split-window -h -c <project root> '<claude path>' '<prompt>'`. The prompt is one
-   sentence pointing at the briefing file; the briefing is never on the command line.
-   Every word is single-quoted for the shell, so paths with spaces, quotes, `$` or
-   backticks are safe.
-3. Otherwise, or if tmux fails, nothing is executed. meroku prints the briefing path
-   and `cd '<root>' && claude '<prompt>'`, then waits for Enter.
+2. Picks the pane host with `detectPaneHost`: **herdr** (`HERDR_ENV=1` and
+   `HERDR_PANE_ID` set) or **tmux** (`$TMUX` set). When one runs inside the other, both
+   sets of variables are inherited, and `TERM_PROGRAM` (set by the innermost) decides.
+   Without a matching `TERM_PROGRAM`, herdr wins.
+3. With a host and `claude` on PATH, starts
+   `'<claude path>' '--settings' '{"enabledPlugins":{"meroku@magus":true}}' '<prompt>'`
+   at the project root in a pane to the right:
+   - **tmux**: `tmux split-window -h -c <project root> <command>`.
+   - **herdr**: `herdr pane split --current --direction right --cwd <root> --focus`,
+     then polls `herdr pane read` until the new shell's screen is non-empty and the
+     same on two reads, then `herdr pane run <pane> <command>`, then polls
+     `herdr pane process-info` until something other than the shell is in the
+     foreground. herdr reports no readiness for a plain shell, and text typed before
+     zsh's line editor is up is echoed with its Enter lost. `herdr agent start` has
+     the same race. Bounds: 15 s for the prompt, 10 s for the start, polled every
+     100 ms. herdr then shows Claude in that pane as an agent.
+
+   The prompt is one sentence pointing at the briefing file; the briefing is never on
+   the command line. Every word is single-quoted for the shell, so paths with spaces,
+   quotes, `$` or backticks are safe.
+4. Otherwise, or if the pane fails, meroku prints the briefing path and
+   `cd '<root>' && claude '--settings' '<settings>' '<prompt>'`, then waits for Enter.
+
+### meroku skills
+
+The `--settings` flag enables the `meroku@magus` plugin (magus marketplace) for that
+one session. Claude starts normally when the plugin is not installed. meroku does not
+check whether it is installed, because `claude plugin list` takes several seconds. The
+briefing's "meroku skills" section tells Claude to use `meroku:troubleshoot`,
+`meroku:yaml` and `meroku:meroku` when they are in its skill list. If they are not, it
+gives the user the install commands once:
+
+```
+claude plugin marketplace add MadAppGang/magus
+claude plugin install meroku@magus
+```
+
+The briefing keeps the full rules and "How meroku works", so it works without the
+plugin.
 
 ## Changing the briefing
 
@@ -124,8 +156,9 @@ program. Tests must never spawn tmux or claude: replace the package variable
 
 ## Tests
 
-- `app/claude_handoff_test.go`: briefing content, rules, quoting, file layout, tmux and
-  non-tmux paths.
+- `app/claude_handoff_test.go`: briefing content, rules, quoting, file layout, pane host
+  detection, the tmux and herdr paths (including a prompt that never settles and a
+  command that never starts), the plugin flag, and the manual path.
 - `app/claude_handoff_context_test.go`: context extraction from the apply, plan and
   destroy models, menu and SSO contexts, and the `a` / `s` / `e` key behaviour and
   footers.
