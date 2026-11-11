@@ -66,7 +66,8 @@ For project `myapp`, environment `dev`, pool `general`:
 | Terraform resource | AWS name | Notes |
 |---|---|---|
 | `aws_launch_template.pool["general"]` | `myapp_general_dev` | IMDSv2 required, encrypted gp3 root volume, no `instance_type` (the ASG supplies them) |
-| `aws_autoscaling_group.pool["general"]` | `myapp_general_dev` | `protect_from_scale_in = true`, `desired_capacity` unmanaged by Terraform |
+| `aws_autoscaling_group.pool["general"]` | `myapp_general_dev` | `protect_from_scale_in = true`, `desired_capacity` unmanaged by Terraform, `wait_for_capacity_timeout = "0"` |
+| `terraform_data.pool_capacity["general"]` | — | Waits until `min_size` instances are InService; see [Waiting for capacity](#waiting-for-capacity). Absent when `min_size` is 0 |
 | `aws_ecs_capacity_provider.pool["general"]` | `myapp_general_dev` | managed scaling, managed draining and managed termination protection all `ENABLED` |
 | `aws_iam_role.ecs_instance` | `myapp_ecs_instance_dev` | shared by every pool in the environment |
 | `aws_iam_instance_profile.ecs_instance` | `myapp_ecs_instance_dev` | shared |
@@ -80,6 +81,28 @@ An environment with no `compute:` block is unaffected by all of this. Every reso
 `ec2_capacity.tf` is guarded on the pool list being non-empty after the `enabled` filter, so a
 Fargate-only environment plans `0 to add, 0 to change, 0 to destroy` on the first apply after
 upgrading to schema v26.
+
+### Waiting for capacity
+
+The AWS provider's own ASG wait (`wait_for_capacity_timeout`) is turned off. It ends the apply on
+the **first** failed scaling activity and marks the ASG tainted, even when the failure is temporary.
+The usual case is the first ASG in an AWS account: AWS creates the Auto Scaling service-linked role
+as the ASG is created, and the first launch, seconds later, fails with
+`Authentication Failure. Launching EC2 instance failed.` while that role and the new instance
+profile propagate. The ASG retries by itself and the next launch, about a minute later, succeeds.
+
+`terraform_data.pool_capacity` waits instead. Its provisioner runs
+`modules/workloads/scripts/asg-capacity-wait.sh`, which polls the ASG every 10 seconds until
+`min_size` instances are InService:
+
+- A failed launch is printed once (`launch failed, the group retries by itself: …`) and waited out.
+- If the ASG is still short after 15 minutes, the apply fails with the last reason AWS gave, such
+  as a missing AMI or no capacity for the instance types. The ASG itself is not tainted.
+- It runs when the ASG is created or replaced, or when `min_size` changes. An apply that leaves the
+  ASG alone does not run it, so a second plan stays empty.
+
+It needs `/bin/sh` and AWS CLI v2 where Terraform runs, as the SES merge script does, and uses the
+same credentials as the provider.
 
 ---
 
@@ -446,6 +469,29 @@ for.
 ## Troubleshooting
 
 Each entry leads with the message you actually see, because none of them says what is wrong.
+
+### `waiting for Auto Scaling Group (…) capacity satisfied: … Authentication Failure`
+
+**Symptom.** Before v5.4.2, the first apply of a pool in a new account failed with:
+
+```
+Error: waiting for Auto Scaling Group (myapp_general_dev) capacity satisfied:
+  scaling activity (…): Failed: Authentication Failure. Launching EC2 instance failed.
+```
+
+**Cause.** IAM propagation, not configuration: the Auto Scaling service-linked role was created
+seconds before the launch. The ASG retries and its next launch succeeds, but the provider has
+already ended the apply and tainted the ASG. See [Waiting for capacity](#waiting-for-capacity).
+
+**Fix.** Upgrade to v5.4.2 or later. On an environment that already hit it, check that the ASG now
+has an InService instance, then remove the taint so the next apply keeps the ASG instead of
+replacing it:
+
+```bash
+aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names myapp_general_dev \
+  --query 'AutoScalingGroups[0].Instances[].[InstanceId,LifecycleState]' --output text
+terraform untaint 'module.workloads.aws_autoscaling_group.pool["general"]'
+```
 
 ### `AccessDenied: You are not authorized to use launch template: lt-EXAMPLE`
 

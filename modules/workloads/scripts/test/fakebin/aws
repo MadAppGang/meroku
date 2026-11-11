@@ -1,0 +1,45 @@
+#!/bin/sh
+# A stand-in for the AWS CLI v2, for testing asg-capacity-wait.sh without AWS.
+#
+# It answers the two Auto Scaling calls the script makes, with the --query
+# already applied, as the real CLI prints them with --output text.
+#
+# State lives under $FAKE_ASG_DIR:
+#   inservice    one number per line; each describe-auto-scaling-groups call
+#                consumes the first line, and the last line keeps repeating.
+#                A line "ERR" makes that call fail as the CLI does.
+#   activity     the latest scaling activity: "<id>\t<status>\t<message>"
+#   calls.log    one line per call: "groups" or "activities"
+#
+# FAKE_AWS_VERSION overrides the `aws --version` text (to test the v1 refusal).
+set -u
+
+if [ "${1:-}" = --version ]; then
+	echo "${FAKE_AWS_VERSION:-aws-cli/2.17.0 Python/3.12.0 Linux/6.0 exe/x86_64}"
+	exit 0
+fi
+
+d=${FAKE_ASG_DIR:?fake aws: FAKE_ASG_DIR is not set}
+
+case "${1:-} ${2:-}" in
+"autoscaling describe-auto-scaling-groups")
+	echo groups >>"$d/calls.log"
+	line=$(head -n 1 "$d/inservice")
+	if [ "$(wc -l <"$d/inservice")" -gt 1 ]; then
+		tail -n +2 "$d/inservice" >"$d/inservice.next" && mv "$d/inservice.next" "$d/inservice"
+	fi
+	if [ "$line" = ERR ]; then
+		echo "An error occurred (Throttling) when calling the DescribeAutoScalingGroups operation: Rate exceeded" >&2
+		exit 254
+	fi
+	echo "$line"
+	;;
+"autoscaling describe-scaling-activities")
+	echo activities >>"$d/calls.log"
+	if [ -s "$d/activity" ]; then cat "$d/activity"; else echo None; fi
+	;;
+*)
+	echo "fake aws: unexpected call: $*" >&2
+	exit 255
+	;;
+esac
