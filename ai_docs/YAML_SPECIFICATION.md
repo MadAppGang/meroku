@@ -77,9 +77,8 @@ workload:
   bucket_public: <boolean>                   # Make backend S3 bucket publicly accessible (default: true)
 
   # Environment configuration
-  backend_env_variables: <list>              # Environment variables for backend
-    - name: <string>
-      value: <string>
+  backend_env_variables: <map>               # NAME: value; ENV is reserved, see CONTAINER_ENV_AND_SSM.md
+    <NAME>: <string>
   env_files_s3: <list>                       # S3-stored environment files
     - bucket: <string>                       # S3 bucket name
       key: <string>                          # S3 object key (e.g., "config/app.env")
@@ -297,9 +296,8 @@ services: <list>
     essential: <boolean>                     # Mark as essential container
 
     # Environment configuration
-    env_vars: <list>                         # Environment variables
-      - name: <string>
-        value: <string>
+    env_vars: <map>                          # NAME: value; ENV is reserved, see CONTAINER_ENV_AND_SSM.md
+      <NAME>: <string>
     env_files_s3: <list>                     # S3-stored environment files
       - bucket: <string>
         key: <string>
@@ -350,10 +348,8 @@ workload:
   backend_autoscaling_target_memory: 80
   
   backend_env_variables:
-    - name: NODE_ENV
-      value: production
-    - name: LOG_LEVEL
-      value: info
+    NODE_ENV: production
+    LOG_LEVEL: info
   slack_webhook: "https://hooks.slack.com/services/XXX/YYY/ZZZ"
   enable_github_oidc: true
   github_oidc_subjects:
@@ -411,8 +407,7 @@ services:
     memory: 1024
     desired_count: 2
     env_vars:
-      - name: WORKER_TYPE
-        value: background
+      WORKER_TYPE: background
 ```
 
 ## Important Notes
@@ -427,7 +422,7 @@ services:
 
 5. **IAM Policies**: Follow the principle of least privilege. Only grant necessary permissions.
 
-6. **Secrets**: Never put secrets in YAML files. Use AWS Secrets Manager or Parameter Store.
+6. **Secrets**: Never put secrets in YAML files. Put them in Parameter Store under the workload's path; each parameter reaches the container as a secret. `ENV` is reserved for the parameter `<path>/env` that meroku creates, so it cannot be set in YAML. See [Container Environment Variables and SSM Secrets](./CONTAINER_ENV_AND_SSM.md).
 
 7. **Domain Setup**: Requires valid DNS configuration. Certificate validation may take up to 30 minutes.
 

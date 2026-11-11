@@ -1,5 +1,26 @@
 # Changelog
 
+## v5.4.1
+
+### `ENV` is reserved for the SSM parameter meroku creates
+
+meroku creates the SSM parameter `/<env>/<project>/<service>/env` for every
+service (and `.../backend/env`, `.../task/<task>/env`). It reaches the container
+as the secret `ENV`, and its value is set at runtime with `aws ssm put-parameter`
+and picked up when the tasks restart, without a new task definition.
+
+Setting `ENV` in `env_vars` as well puts the name in both the container's
+environment and its secrets, which ECS refuses. Until now that surfaced as a
+plan failure whose advice, to delete the parameter, could not work: Terraform
+recreates it. `meroku generate` now refuses `ENV` in `env_vars`,
+`backend_env_variables` and task `environment_variables`, and names the
+parameter to set instead. The plan-time message says the same for `ENV`.
+
+`ai_docs/YAML_SPECIFICATION.md` showed `env_vars` as a list of `name`/`value`
+entries. That form renders as variables literally called `name` and `value`;
+the spec now shows the map form. See
+[ai_docs/CONTAINER_ENV_AND_SSM.md](./ai_docs/CONTAINER_ENV_AND_SSM.md).
+
 ## v5.4.0
 
 ### Fix with AI opens Claude Code in herdr as well as tmux, with the meroku skills
