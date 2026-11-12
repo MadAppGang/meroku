@@ -79,7 +79,7 @@ that.
 
 - The validation blocks need **Terraform ≥ 1.2.6**. Each function call is wrapped in `can()` or
   `try()`.
-- The module's `.tftest.hcl` tests use `mock_provider` and need **Terraform ≥ 1.7**. CI runs 1.9.8.
+- The module's `.tftest.hcl` tests use `mock_provider` and need **Terraform ≥ 1.7**. CI runs 1.10.5.
 - The module default stays `10.0.0.0/16`. Changing it would replace the VPC of every environment
   whose YAML never set the key.
 

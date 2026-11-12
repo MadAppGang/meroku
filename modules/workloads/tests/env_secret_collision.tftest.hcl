@@ -74,7 +74,7 @@
 # the only run that applies, which keeps the surface for such an error small.
 #
 # `override_during = plan` would let the overrides resolve earlier and make all
-# of this moot. It is deliberately not used: CI pins Terraform 1.9.8
+# of this moot. It is deliberately not used: CI pins Terraform 1.10.5
 # (.github/workflows/ci.yml), which rejects the argument outright and would fail
 # to parse this file in the one place it must run.
 # ---------------------------------------------------------------------------

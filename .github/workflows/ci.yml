@@ -33,9 +33,9 @@ env:
   # The lower of the two modules' `go` directives (ci_lambda: 1.22,
   # app: 1.23.0), so both are built with a toolchain each accepts.
   GO_VERSION: '1.23'
-  TERRAFORM_VERSION: '1.9.8'
+  TERRAFORM_VERSION: '1.10.5'
   # The Neon modules declare required_version >= 1.14.0 (ephemeral variables and
-  # write-only arguments), so 1.9.8 refuses to init them. They get their own job,
+  # write-only arguments), so 1.10.5 refuses to init them. They get their own job,
   # pinned to that floor.
   NEON_TERRAFORM_VERSION: '1.14.0'
   # Matches release.yml. The pnpm version is deliberately not pinned here — the
@@ -315,7 +315,7 @@ jobs:
 
   # modules/neon, modules/neon_access and modules/neon_ssm need Terraform 1.14 or
   # later. The repository-wide Format step in the job above still parses them
-  # under 1.9.8, which is why they use no syntax newer than that; this job is
+  # under TERRAFORM_VERSION, which is why they use no syntax newer than that; this job is
   # where they are formatted and validated against the version they require.
   terraform-neon:
     name: Terraform (Neon modules)

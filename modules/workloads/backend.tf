@@ -1025,7 +1025,7 @@ resource "aws_iam_role_policy" "ecs_exec_policy" {
 resource "aws_iam_policy" "backend_custom_policy" {
   # try(), not `length(var.backend_policy) > 0 && ...[0]...`. Terraform
   # evaluates both operands of && on the versions this repository supports
-  # (required_version >= 1.2.6; CI pins 1.9.8), so the guard did not stop the
+  # (required_version >= 1.2.6; CI pins 1.10.5), so the guard did not stop the
   # index and an empty list raised "Invalid index". env/main.hbs renders
   # `backend_policy = []` whenever a project has no workload.policy, which is
   # most of them, so this was the generated default. Terraform 1.16
@@ -1058,7 +1058,7 @@ resource "aws_iam_policy" "backend_custom_policy" {
 resource "aws_iam_role_policy_attachment" "backend_custom_policy_attachment" {
   # try(), not `length(var.backend_policy) > 0 && ...[0]...`. Terraform
   # evaluates both operands of && on the versions this repository supports
-  # (required_version >= 1.2.6; CI pins 1.9.8), so the guard did not stop the
+  # (required_version >= 1.2.6; CI pins 1.10.5), so the guard did not stop the
   # index and an empty list raised "Invalid index". env/main.hbs renders
   # `backend_policy = []` whenever a project has no workload.policy, which is
   # most of them, so this was the generated default. Terraform 1.16
