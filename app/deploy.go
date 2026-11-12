@@ -527,6 +527,14 @@ func preprocessEnvMap(envMap map[string]interface{}) error {
 	normalizeHealthCheckCommands(envMap)
 	assignGitHubRunnersOwner(envMap)
 
+	// Validate every policy block first, then take the services' statements
+	// out of the service maps; the order is required, the validator reads them
+	// where the user wrote them.
+	if err := validateWorkloadPolicyConfigMap(envMap); err != nil {
+		return err
+	}
+	moveServicePoliciesOut(envMap)
+
 	if err := validateSESDNSConfigMap(envMap); err != nil {
 		return err
 	}

@@ -1428,6 +1428,7 @@ jobs:
 					config &&
 					onConfigChange && (
 						<BackendIAMPermissions
+							key={selectedNode.id}
 							config={config}
 							node={selectedNode}
 							onConfigChange={onConfigChange}
@@ -1501,7 +1502,12 @@ jobs:
 				{activeTab === "iam" &&
 					selectedNode.type === "scheduled-task" &&
 					config && (
-						<ScheduledTaskIAMPermissions config={config} node={selectedNode} />
+						<ScheduledTaskIAMPermissions
+							key={selectedNode.id}
+							config={config}
+							node={selectedNode}
+							onConfigChange={onConfigChange}
+						/>
 					)}
 
 				{activeTab === "cloudwatch" &&
@@ -1547,7 +1553,12 @@ jobs:
 				{activeTab === "iam" &&
 					selectedNode.type === "event-task" &&
 					config && (
-						<ScheduledTaskIAMPermissions config={config} node={selectedNode} />
+						<ScheduledTaskIAMPermissions
+							key={selectedNode.id}
+							config={config}
+							node={selectedNode}
+							onConfigChange={onConfigChange}
+						/>
 					)}
 
 				{activeTab === "cloudwatch" &&

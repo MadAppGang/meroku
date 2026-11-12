@@ -546,18 +546,50 @@ locals {
   }
 }
 
+# The user's own IAM statements, from workload.policy and services[].policy.
+# Both render through hclArray in env/main.hbs. effect defaults to Allow, and a
+# statement with no conditions renders no Condition key, so a policy written
+# before effect and conditions existed produces the document it always did.
 variable "backend_policy" {
   type = list(object({
+    effect    = optional(string, "Allow")
     actions   = list(string)
     resources = list(string)
+    conditions = optional(list(object({
+      test     = string
+      variable = string
+      values   = list(string)
+    })), [])
   }))
-  default = [
-    {
-      actions   = []
-      resources = ["*"]
-    }
-  ]
-  description = "Custom IAM policy for the backend task"
+  default     = []
+  description = "Custom IAM statements for the backend task role, created as one customer-managed policy"
+
+  validation {
+    condition     = alltrue([for s in var.backend_policy : contains(["Allow", "Deny"], s.effect)])
+    error_message = "backend_policy[].effect must be Allow or Deny."
+  }
+}
+
+variable "service_policies" {
+  type = map(list(object({
+    effect    = optional(string, "Allow")
+    actions   = list(string)
+    resources = list(string)
+    conditions = optional(list(object({
+      test     = string
+      variable = string
+      values   = list(string)
+    })), [])
+  })))
+  default     = {}
+  description = "Service name -> custom IAM statements for that service's task role, one customer-managed policy per service. A service with no entry gets no policy."
+
+  validation {
+    condition = alltrue(flatten([
+      for statements in values(var.service_policies) : [for s in statements : contains(["Allow", "Deny"], s.effect)]
+    ]))
+    error_message = "service_policies[*][].effect must be Allow or Deny."
+  }
 }
 
 # Backend service scaling configuration

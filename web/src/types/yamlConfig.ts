@@ -194,6 +194,25 @@ export interface BackendCircuitBreaker {
 /**
  * Complete YAML configuration interface based on YAML_SPECIFICATION.md
  */
+/** One condition of an IAM statement: a test applied to a condition key. */
+export interface IAMCondition {
+	test: string;
+	variable: string;
+	values: string[];
+}
+
+/**
+ * One statement of a `policy` block on the backend (`workload.policy`), a
+ * service, a scheduled task or an event task. Absent `effect` means Allow.
+ * `conditions` are edited in YAML only; editors must carry them through.
+ */
+export interface IAMStatement {
+	effect?: "Allow" | "Deny";
+	actions: string[];
+	resources: string[];
+	conditions?: IAMCondition[];
+}
+
 export interface YamlInfrastructureConfig {
 	// Core Settings (Required)
 	project: string;
@@ -304,10 +323,7 @@ export interface YamlInfrastructureConfig {
 		pg_admin_email?: string;
 
 		// IAM policies
-		policy?: Array<{
-			actions: string[];
-			resources: string[];
-		}>;
+		policy?: IAMStatement[];
 
 		// EFS mounts
 		efs?: Array<{
@@ -425,6 +441,8 @@ export interface YamlInfrastructureConfig {
 		max_retry_attempts?: number;
 		/** SQS queue ARN for failed invocations. Absent disables the DLQ. */
 		dlq_arn?: string;
+		/** The task role's own IAM statements. */
+		policy?: IAMStatement[];
 	}>;
 
 	// Event-driven Tasks
@@ -566,6 +584,8 @@ export interface YamlInfrastructureConfig {
 		 * form such as ["CMD", "/app/healthcheck"] for images with no shell.
 		 */
 		health_check_command?: string | string[];
+		/** The service task role's own IAM statements. */
+		policy?: IAMStatement[];
 	}>;
 
 	// S3 Buckets
@@ -724,6 +744,8 @@ export interface EventProcessorTask {
 	memory?: number;
 	environment_variables?: Record<string, string>;
 	ecr_config?: ECRConfig;
+	/** The task role's own IAM statements. */
+	policy?: IAMStatement[];
 }
 
 /**

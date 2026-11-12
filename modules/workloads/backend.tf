@@ -1016,27 +1016,22 @@ resource "aws_iam_role_policy" "ecs_exec_policy" {
 }
 
 
-// Create custom IAM policy from backend_policy if actions are specified
+// The user's workload.policy as one customer-managed policy on the backend task
+// role. One statement per entry, with the entry's own effect and conditions;
+// see local.backend_custom_policy_statements in custom_policy.tf. app/
+// workload_policy.go refuses a statement with empty actions or resources, so
+// any entry at all is a policy to create.
 resource "aws_iam_policy" "backend_custom_policy" {
-  # try(), not `length(var.backend_policy) > 0 && ...[0]...`. Terraform
-  # evaluates both operands of && on the versions this repository supports
-  # (required_version >= 1.2.6; CI pins 1.10.5), so the guard did not stop the
-  # index and an empty list raised "Invalid index". env/main.hbs renders
-  # `backend_policy = []` whenever a project has no workload.policy, which is
-  # most of them, so this was the generated default. Terraform 1.16
-  # short-circuits and hides it.
-  count = length(try(var.backend_policy[0].actions, [])) > 0 ? 1 : 0
+  # length() of the list itself, never an index into it: env/main.hbs renders
+  # `backend_policy = []` for a project without workload.policy, and Terraform
+  # before 1.16 evaluates both operands of &&, so `[0]` behind a guard raised
+  # "Invalid index" on that default.
+  count = length(var.backend_policy) > 0 ? 1 : 0
 
   name = "${var.project}_backend_custom_policy_${var.env}"
   policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      for policy in var.backend_policy : {
-        Effect   = "Allow"
-        Action   = policy.actions
-        Resource = policy.resources
-      }
-    ]
+    Version   = "2012-10-17"
+    Statement = local.backend_custom_policy_statements
   })
 
   tags = {
@@ -1051,14 +1046,11 @@ resource "aws_iam_policy" "backend_custom_policy" {
 
 // Attach the custom policy to the backend task role if it exists
 resource "aws_iam_role_policy_attachment" "backend_custom_policy_attachment" {
-  # try(), not `length(var.backend_policy) > 0 && ...[0]...`. Terraform
-  # evaluates both operands of && on the versions this repository supports
-  # (required_version >= 1.2.6; CI pins 1.10.5), so the guard did not stop the
-  # index and an empty list raised "Invalid index". env/main.hbs renders
-  # `backend_policy = []` whenever a project has no workload.policy, which is
-  # most of them, so this was the generated default. Terraform 1.16
-  # short-circuits and hides it.
-  count = length(try(var.backend_policy[0].actions, [])) > 0 ? 1 : 0
+  # length() of the list itself, never an index into it: env/main.hbs renders
+  # `backend_policy = []` for a project without workload.policy, and Terraform
+  # before 1.16 evaluates both operands of &&, so `[0]` behind a guard raised
+  # "Invalid index" on that default.
+  count = length(var.backend_policy) > 0 ? 1 : 0
 
   role       = aws_iam_role.backend_task.name
   policy_arn = aws_iam_policy.backend_custom_policy[0].arn
