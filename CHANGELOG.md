@@ -1,5 +1,19 @@
 # Changelog
 
+## v5.4.3
+
+### Moving a service onto an EC2 pool no longer fails at UpdateService
+
+ECS now turns Availability Zone rebalancing on for new services by default, and
+refuses it with any placement strategy but spread by availability zone. Pool
+workloads bin-pack on memory, so moving a deployed Fargate service onto a pool
+failed mid-apply with `InvalidParameterException: ... Availability Zone
+Rebalancing only supports availability zone spread as task placement strategy`.
+
+The backend and every service on a pool now set
+`availability_zone_rebalancing = "DISABLED"`. Fargate workloads are unchanged.
+See [ai_docs/EC2_COMPUTE_POOLS.md](./ai_docs/EC2_COMPUTE_POOLS.md#az-rebalancing-is-off-on-pool-workloads).
+
 ## v5.4.2
 
 ### A temporary EC2 launch failure no longer fails the deploy

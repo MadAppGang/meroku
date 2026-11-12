@@ -151,6 +151,10 @@ resource "aws_ecs_service" "backend" {
     }
   }
 
+  # Binpack and AZ rebalancing cannot be combined; see the same attribute in
+  # services.tf. null on Fargate leaves it to AWS, as before.
+  availability_zone_rebalancing = local.backend_pool == null ? null : "DISABLED"
+
   # Registered with Cloud Map in BOTH ingress modes. This is deliberately NOT gated on
   # enable_alb: AWS rejects removing service_registries from an existing service, so toggling
   # it would strand the migration (see aws_service_discovery_service.backend below). A task can
