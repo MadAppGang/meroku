@@ -30,6 +30,21 @@ export type ComputeRuntime = "fargate" | "ec2";
 export type ServiceNetworkAccess = "public" | "internal" | "full_open" | "none";
 
 /**
+ * amplify_apps[].custom_rules entry. Exactly one of `target` and `workload` is
+ * set. A workload rule proxies to "backend" or a public service; `path`
+ * replaces the source path on the workload, and its status is always 200.
+ */
+export type AmplifyRewriteStatus = "200" | "301" | "302" | "404-200";
+
+export interface AmplifyRewriteRule {
+	source: string;
+	target?: string;
+	workload?: string;
+	path?: string;
+	status?: AmplifyRewriteStatus;
+}
+
+/**
  * A pool's task networking mode (schema v26).
  *
  * A union rather than `string` so the editor's control and the type cannot
@@ -583,6 +598,7 @@ export interface YamlInfrastructureConfig {
 		custom_domain?: string;
 		environment_variables?: Record<string, string>;
 		spa_mode?: boolean; // Enable SPA routing (200 rewrite instead of 404-200)
+		custom_rules?: AmplifyRewriteRule[];
 	}>;
 
 	// CloudFront CDN Configuration (Schema v14 -> v15: changed to array)

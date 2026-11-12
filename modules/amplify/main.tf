@@ -84,6 +84,21 @@ resource "aws_amplify_app" "apps" {
   # for custom build configurations. Amplify will auto-detect the framework and
   # use appropriate default build settings if amplify.yml is not present.
 
+  # Rules from the YAML come first: Amplify applies the first rule that matches,
+  # and the SPA rules below match almost every path.
+  dynamic "custom_rule" {
+    for_each = each.value.custom_rules
+    content {
+      source = custom_rule.value.source
+      target = (
+        custom_rule.value.workload != ""
+        ? "${lookup(var.workload_urls, custom_rule.value.workload, "")}${custom_rule.value.target_path}"
+        : custom_rule.value.target
+      )
+      status = custom_rule.value.status
+    }
+  }
+
   # SPA routing: conditionally use modern 200 rewrite or legacy 404-200 pattern
   dynamic "custom_rule" {
     for_each = each.value.spa_mode ? [1] : []
@@ -116,6 +131,22 @@ resource "aws_amplify_app" "apps" {
     Project     = var.project
     Application = each.value.name
     ManagedBy   = "meroku"
+  }
+
+  lifecycle {
+    precondition {
+      condition = alltrue([
+        for r in each.value.custom_rules : contains(keys(var.workload_urls), r.workload)
+        if r.workload != ""
+      ])
+      error_message = "amplify app ${each.value.name}: a custom rule names a workload with no entry in workload_urls (${join(", ", [for r in each.value.custom_rules : r.workload if r.workload != "" && !contains(keys(var.workload_urls), r.workload)])})."
+    }
+    precondition {
+      condition = alltrue([
+        for r in each.value.custom_rules : (r.workload == "") != (r.target == "")
+      ])
+      error_message = "amplify app ${each.value.name}: every custom rule sets exactly one of target and workload."
+    }
   }
 }
 

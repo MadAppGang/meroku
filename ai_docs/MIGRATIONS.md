@@ -76,6 +76,9 @@ write that would change what the next apply deploys. `github_runners`
 ([GITHUB_RUNNERS.md](./GITHUB_RUNNERS.md)) is one. Its struct field is a
 pointer with `omitempty`, so a save of a file without the block writes none.
 
+`amplify_apps[].custom_rules` ([amplify.md](./amplify.md#rewrites-and-the-api-proxy))
+is another: an app without rules renders no rule and no `workload_urls`.
+
 ### A note on v23's two defaults
 
 v23 is the one migration that does **not** write the safer of two values

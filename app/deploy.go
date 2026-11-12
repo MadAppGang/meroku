@@ -443,6 +443,9 @@ func applyTemplate(env string) error {
 	for _, w := range githubExternalImageWarnings(envMap) {
 		fmt.Printf("⚠️  %s\n", w)
 	}
+	for _, w := range amplifyRewriteWarnings(envMap) {
+		fmt.Printf("⚠️  %s\n", w)
+	}
 
 	envMap["modules"] = "../../infrastructure/modules"
 	envMap["custom_modules"] = "../../custom"
@@ -496,8 +499,8 @@ func applyTemplate(env string) error {
 // synthesizeDefaultComputePool, assignSESPrimaryDomain, resolveSESZones,
 // normalizeHealthCheckCommands, assignGitHubRunnersOwner, then validateSESDNSConfigMap,
 // validateNetworkAccessConfigMap, validateBackendHealthConfigMap,
-// validateReservedEnvNamesConfigMap, validateGitHubRunnersConfigMap and
-// validateComputeConfigMap. Path and
+// validateReservedEnvNamesConfigMap, validateGitHubRunnersConfigMap,
+// prepareAmplifyRewriteRules and validateComputeConfigMap. Path and
 // custom-module flags stay with each caller, because they differ.
 //
 // resolveSESZones runs after assignSESPrimaryDomain because it reads the
@@ -537,6 +540,9 @@ func preprocessEnvMap(envMap map[string]interface{}) error {
 		return err
 	}
 	if err := validateGitHubRunnersConfigMap(envMap); err != nil {
+		return err
+	}
+	if err := prepareAmplifyRewriteRules(envMap); err != nil {
 		return err
 	}
 	return validateComputeConfigMap(envMap)

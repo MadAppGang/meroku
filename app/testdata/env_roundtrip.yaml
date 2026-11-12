@@ -234,3 +234,12 @@ amplify_apps:
     environment_variables:
       REACT_APP_ENV: development
   subdomain_prefix: app.example.com
+  custom_rules:
+  - source: /api/<*>
+    workload: backend
+  - source: /r/<*>
+    workload: reports
+    path: /<*>
+  - source: /old-pricing
+    target: /pricing
+    status: "301"
