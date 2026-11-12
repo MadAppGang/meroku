@@ -85,7 +85,10 @@ func assertAutoscalingTargets(t *testing.T, rendered, cpu, memory string) {
 // The two halves fail differently. Dropping a set value silently resets a
 // project's scaling targets to 70 and 80 at the next generate. Writing 0 for an
 // unset one is worse: the `default` helper returns 0 for 0 rather than falling
-// back, so the policy renders target_value = 0 and the apply fails.
+// back, so the policy renders target_value = 0. The template passes all five
+// arguments unconditionally while both policies are
+// count = var.backend_autoscaling_enabled ? 1 : 0, so that 0 reaches AWS only in
+// a config that turned autoscaling on — and there the apply fails on it.
 func TestBackendAutoscalingTargetsRenderTheSameAfterASave(t *testing.T) {
 	cases := []struct {
 		name        string
@@ -134,6 +137,35 @@ backend_autoscaling_target_memory: 65
 	}
 }
 
+// The reason the two fields are *int32 rather than int32 with omitempty, pinned.
+//
+// Nothing else here can tell the two shapes apart: neither one drops a value the
+// cases above set, and neither one writes a key into a config that never set it.
+// An explicit 0 is the only value that separates them, because omitempty on an
+// int32 treats it as absent while a non-nil pointer keeps it. Only the round trip
+// is asserted — what it renders is target_value = 0, which is not a
+// configuration anybody should apply.
+func TestBackendAutoscalingTargetZeroSurvivesASave(t *testing.T) {
+	m := roundTripWorkload(t, `
+backend_autoscaling_enabled: true
+backend_autoscaling_target_cpu: 0
+`)
+
+	got, present := m["backend_autoscaling_target_cpu"]
+	if !present {
+		t.Fatal("an explicit backend_autoscaling_target_cpu: 0 did not survive a save: omitempty on a plain int32 drops it, which is why the field is *int32")
+	}
+	if got != 0 {
+		t.Errorf("backend_autoscaling_target_cpu: 0 saved as %#v, want 0", got)
+	}
+}
+
+// An unset key stays unset through a save. This says nothing about the fields
+// still existing — deleting either one leaves it green. Deletion is caught by
+// TestEnvRoundTrip_FixtureCoversTheGuardedFields, which names both fields and so
+// fails to compile without them, and by
+// TestBackendAutoscalingTargetsSurviveASave, which fails when a key it set comes
+// back absent.
 func TestBackendAutoscalingTargetsStayAbsentWhenUnset(t *testing.T) {
 	m := roundTripWorkload(t, "backend_autoscaling_enabled: true\n")
 

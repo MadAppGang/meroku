@@ -110,6 +110,7 @@ workload:
   efs: <list>                                # EFS volumes to mount in backend
     - name: <string>                         # EFS config name (must match EFS definition)
       mount_point: <string>                  # Container mount path (e.g., "/data")
+      read_only: <boolean>                   # Mount the filesystem read-only (default: false)
 
   # ALB configuration (requires alb.enabled)
   backend_alb_domain_name: <string>          # Custom domain for ALB (e.g., "api.example.com")

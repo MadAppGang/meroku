@@ -764,6 +764,9 @@ module "workloads" {
     {
       efs_name = "{{name}}"
       mount_point = "{{mount_point}}"
+      {{#if read_only}}
+      read_only = true
+      {{/if}}
     },
     {{/each}}
   ]
