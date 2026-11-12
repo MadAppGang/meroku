@@ -793,9 +793,12 @@ resource "aws_iam_role_policy_attachment" "services_sqs_access" {
 }
 
 
-# S3 env files access for services
+# S3 env files access for services. Each service is granted its OWN files and
+# nothing else, and only a service that declares any gets a policy at all. On
+# the execution role, because ECS is what reads --env-file: it fetches the files
+# while it assembles the container definition, before the container runs.
 resource "aws_iam_role_policy" "services_s3_env" {
-  for_each = { for k, v in local.service_names : k => v if length(local.env_files_s3) > 0 }
+  for_each = { for k, v in local.services_env_files_s3 : k => v if length(v) > 0 }
 
   name = "${var.project}_${each.key}_s3_env_${var.env}"
   role = aws_iam_role.services_task_execution[each.key].name
@@ -806,10 +809,11 @@ resource "aws_iam_role_policy" "services_s3_env" {
       {
         Effect = "Allow"
         Action = [
-          "s3:*"
+          "s3:GetObject",
+          "s3:GetBucketLocation"
         ]
         Resource = [
-          for file in local.env_files_s3 :
+          for file in each.value :
           "arn:aws:s3:::${file.bucket}/${file.key}"
         ]
       }
