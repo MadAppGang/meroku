@@ -328,7 +328,11 @@ type Workload struct {
 	// BackendNeon is the backend's Neon database access. nil means none.
 	BackendNeon *NeonAccess `yaml:"backend_neon,omitempty"`
 
-	// Policy is the inline policy on the backend's task role, the `policy` key.
+	// Policy is the user's own `policy` block: statements meroku adds to the
+	// backend task role on top of the grants it builds itself. It renders into
+	// backend_policy, which modules/workloads/backend.tf creates as a
+	// customer-managed aws_iam_policy and attaches to the role.
+	//
 	// Not BackendPolicies above: that one's Policy type carries no effect and no
 	// conditions.
 	Policy []IAMStatement `yaml:"policy,omitempty"`
@@ -368,8 +372,8 @@ type Policy struct {
 	Resources []string `yaml:"resources"`
 }
 
-// IAMStatement is one statement of a `policy` block: the inline IAM policy a
-// workload, service or task carries in its own config.
+// IAMStatement is one statement of a `policy` block: the IAM policy a workload,
+// service or task carries in its own config.
 //
 // It is deliberately not the Policy type above, which serves `backend_policies`
 // and `instance_policies`. That type has neither an effect nor conditions, so it
@@ -678,8 +682,8 @@ type ScheduledTask struct {
 	// SQS queue ARN for failed invocations. Empty disables the DLQ and the
 	// scoped sqs:SendMessage grant that comes with it.
 	DLQArn string `yaml:"dlq_arn,omitempty"`
-	// Policy is the inline policy on this task's role, for the grants meroku
-	// does not build itself.
+	// Policy is the user's own `policy` block: statements meroku adds to this
+	// task's role on top of the grants it builds itself.
 	Policy []IAMStatement `yaml:"policy,omitempty"`
 }
 
@@ -710,8 +714,8 @@ type EventProcessorTask struct {
 	CPU                  int               `yaml:"cpu,omitempty"`
 	Memory               int               `yaml:"memory,omitempty"`
 	ECRConfig            *ECRConfig        `yaml:"ecr_config,omitempty"` // Schema v9
-	// Policy is the inline policy on this task's role, for the grants meroku
-	// does not build itself.
+	// Policy is the user's own `policy` block: statements meroku adds to this
+	// task's role on top of the grants it builds itself.
 	Policy []IAMStatement `yaml:"policy,omitempty"`
 }
 
@@ -761,8 +765,8 @@ type Service struct {
 	// Neon is this service's Neon database access. nil means none.
 	Neon *NeonAccess `yaml:"neon,omitempty"`
 
-	// Policy is the inline policy on this service's task role, for the grants
-	// meroku does not build itself.
+	// Policy is the user's own `policy` block: statements meroku adds to this
+	// service's role on top of the grants it builds itself.
 	Policy []IAMStatement `yaml:"policy,omitempty"`
 }
 
