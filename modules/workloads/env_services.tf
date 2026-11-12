@@ -34,11 +34,14 @@ data "aws_ssm_parameters_by_path" "services" {
 
 locals {
   # SSM parameters for each service
+  # The /env parameter's name is a configured value, so ENV is in each list
+  # whatever the read returns. Discovered names come first, so where /env is
+  # already discovered the list is unchanged.
   services_env_ssm = {
     for service_name, service in local.service_names : service_name => [
-      for i in range(length(data.aws_ssm_parameters_by_path.services[service_name].names)) : {
-        name      = upper(reverse(split("/", data.aws_ssm_parameters_by_path.services[service_name].names[i]))[0])
-        valueFrom = data.aws_ssm_parameters_by_path.services[service_name].names[i]
+      for name in distinct(concat(data.aws_ssm_parameters_by_path.services[service_name].names, [aws_ssm_parameter.services_env[service_name].name])) : {
+        name      = upper(reverse(split("/", name))[0])
+        valueFrom = name
       }
     ]
   }

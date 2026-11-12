@@ -32,10 +32,15 @@ data "aws_ssm_parameters_by_path" "backend" {
 
 
 locals {
+  # The /env parameter's name is a configured value, so ENV is in the list
+  # whatever the read returns. Discovered names come first, so where /env is
+  # already discovered the list is unchanged.
+  backend_ssm_names = distinct(concat(data.aws_ssm_parameters_by_path.backend.names, [aws_ssm_parameter.backend_env.name]))
+
   backend_env_ssm = [
-    for i in range(length(data.aws_ssm_parameters_by_path.backend.names)) : {
-      name      = upper(reverse(split("/", data.aws_ssm_parameters_by_path.backend.names[i]))[0])
-      valueFrom = data.aws_ssm_parameters_by_path.backend.names[i]
+    for name in local.backend_ssm_names : {
+      name      = upper(reverse(split("/", name))[0])
+      valueFrom = name
     }
   ]
 
