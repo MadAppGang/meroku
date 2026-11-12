@@ -100,11 +100,18 @@ workload:
   pg_admin_email: <string>                   # pgAdmin admin email address
 
   # IAM policies
-  policy: <list>                             # Additional IAM policies for backend task
-    - actions: <list>                        # IAM actions (e.g., ["s3:GetObject", "s3:PutObject"])
+  policy: <list>                             # Extra IAM statements for the backend task role,
+                                             #   one managed policy. See ai_docs/WORKLOAD_IAM.md
+    - effect: <Allow|Deny>                   # Optional. Absent means Allow
+      actions: <list>                        # Required, non-empty (e.g., ["s3:GetObject", "s3:PutObject"])
         - <string>
-      resources: <list>                      # IAM resources (e.g., ["arn:aws:s3:::my-bucket/*"])
+      resources: <list>                      # Required, non-empty (e.g., ["arn:aws:s3:::my-bucket/*"])
         - <string>
+      conditions: <list>                     # Optional; edited in YAML only (the web UI keeps them)
+        - test: <string>                     # IAM condition operator, e.g. StringEquals
+          variable: <string>                 # Condition key, e.g. aws:RequestedRegion
+          values: <list>                     # Non-empty
+            - <string>
 
   # EFS mounts
   efs: <list>                                # EFS volumes to mount in backend
@@ -206,6 +213,8 @@ scheduled_tasks: <list>
     docker_image: <string>                   # Docker image (optional, uses backend if empty)
     container_command: <string>              # Command in JSON array format: '["cmd", "arg1"]' (uses image default if not set)
     allow_public_access: <boolean>           # Assign public IP to task
+    policy: <list>                           # Extra IAM statements for the task role; same shape
+                                             #   as workload.policy (ai_docs/WORKLOAD_IAM.md)
 
 # Schedule expression examples:
 # - "rate(5 minutes)"      - Every 5 minutes
@@ -228,6 +237,8 @@ event_processor_tasks: <list>
     docker_image: <string>                   # Docker image (optional)
     container_command: <string>              # Command in JSON array format
     allow_public_access: <boolean>           # Assign public IP to task
+    policy: <list>                           # Extra IAM statements for the task role; same shape
+                                             #   as workload.policy (ai_docs/WORKLOAD_IAM.md)
 
 # ===================================
 # GRAPHQL API CONFIGURATION
@@ -306,6 +317,10 @@ services: <list>
     env_files_s3: <list>                     # S3-stored environment files
       - bucket: <string>
         key: <string>
+
+    # IAM
+    policy: <list>                           # Extra IAM statements for the service task role;
+                                             #   same shape as workload.policy (ai_docs/WORKLOAD_IAM.md)
 
 # ===================================
 # GITHUB ACTIONS RUNNERS (CodeBuild)

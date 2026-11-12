@@ -687,6 +687,30 @@ network_access: public; remove the webhooks or keep the gateway.
 
 ---
 
+### 17. WORKLOAD IAM POLICIES (`policy`)
+
+**Implemented** in `app/workload_policy.go` (`validateWorkloadPolicyConfigMap`), called from
+`preprocessEnvMap`, so it runs on every generate. Applies to `workload.policy`,
+`services[].policy`, `scheduled_tasks[].policy` and `event_processor_tasks[].policy`.
+Every message names the workload, the statement index and the field.
+See [WORKLOAD_IAM.md](./WORKLOAD_IAM.md).
+
+| Field | Rule | Level |
+|-------|------|-------|
+| `policy` | A list of statements (absent or null: no statements) | Error |
+| `policy[]` | A map | Error |
+| `effect` | `Allow` or `Deny`, case-sensitive; absent means Allow; `""` is refused | Error |
+| `actions` | Non-empty list of non-empty strings | Error |
+| `resources` | Non-empty list of non-empty strings | Error |
+| `conditions[]` | `test`, `variable` and a non-empty `values` list all set | Error |
+| `conditions[]` | No two with the same `test` and `variable` in one statement (IAM would keep one) | Error |
+| `actions[]` | `*` or `*:*` allows every action on the listed resources | Warning |
+
+The Terraform variables (`backend_policy`, `service_policies`, the task modules'
+`custom_policy`) repeat the `effect` rule as variable validations.
+
+---
+
 ## Implementation Recommendations
 
 ### Library Comparison

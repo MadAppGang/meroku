@@ -1,19 +1,11 @@
-import {
-	AlertCircle,
-	Check,
-	ChevronDown,
-	ChevronUp,
-	Edit2,
-	Plus,
-	Shield,
-	Trash2,
-	X,
-} from "lucide-react";
-import { useId, useState } from "react";
+import { Check, Shield, X } from "lucide-react";
 import type { ComponentNode } from "../types";
-import type { YamlInfrastructureConfig } from "../types/yamlConfig";
+import type {
+	IAMStatement,
+	YamlInfrastructureConfig,
+} from "../types/yamlConfig";
+import { withPolicy } from "../utils/workloadPolicy";
 import { Badge } from "./ui/badge";
-import { Button } from "./ui/button";
 import {
 	Card,
 	CardContent,
@@ -21,8 +13,7 @@ import {
 	CardHeader,
 	CardTitle,
 } from "./ui/card";
-import { Label } from "./ui/label";
-import { Textarea } from "./ui/textarea";
+import { WorkloadPolicyEditor } from "./WorkloadPolicyEditor";
 
 interface BackendIAMPermissionsProps {
 	config: YamlInfrastructureConfig;
@@ -35,7 +26,6 @@ export function BackendIAMPermissions({
 	node,
 	onConfigChange,
 }: BackendIAMPermissionsProps) {
-	const uid = useId();
 	// Determine if this is for a service or backend
 	const isService = node?.type === "service";
 	const serviceName = isService ? node.id.replace("service-", "") : null;
@@ -43,78 +33,28 @@ export function BackendIAMPermissions({
 		isService && serviceName
 			? config.services?.find((s) => s.name === serviceName)
 			: null;
-	// Custom policies from YAML config (only for backend)
-	const [customPolicies, setCustomPolicies] = useState(
-		!isService ? config.workload?.policy || [] : [],
-	);
-	const [showNewPolicy, setShowNewPolicy] = useState(false);
-	const [newActions, setNewActions] = useState("");
-	const [newResources, setNewResources] = useState("");
-	const [editingIndex, setEditingIndex] = useState<number | null>(null);
-	const [editActions, setEditActions] = useState("");
-	const [editResources, setEditResources] = useState("");
-	const [expandedPolicies, setExpandedPolicies] = useState<number[]>([]);
+	const taskRoleName = isService
+		? `${config.project}_service_${serviceName}_task_${config.env}`
+		: `${config.project}_backend_task_${config.env}`;
+	const policyStatements: IAMStatement[] =
+		(isService ? serviceConfig?.policy : config.workload?.policy) ?? [];
 
-	const handleAddPolicy = () => {
-		if (newActions && newResources) {
-			const actions = newActions.split("\n").filter((a) => a.trim());
-			const resources = newResources.split("\n").filter((r) => r.trim());
-			const updatedPolicies = [...customPolicies, { actions, resources }];
-
-			setCustomPolicies(updatedPolicies);
-			setNewActions("");
-			setNewResources("");
-			setShowNewPolicy(false);
-
-			// Update the config
-			if (onConfigChange && !isService) {
-				onConfigChange({
-					workload: {
-						policy: updatedPolicies,
-					},
-				});
-			}
-		}
-	};
-
-	const handleUpdatePolicy = (index: number) => {
-		const actions = editActions.split("\n").filter((a) => a.trim());
-		const resources = editResources.split("\n").filter((r) => r.trim());
-		const updated = [...customPolicies];
-		updated[index] = { actions, resources };
-
-		setCustomPolicies(updated);
-		setEditingIndex(null);
-
-		// Update the config
-		if (onConfigChange && !isService) {
+	// The editor hands back the whole list with every field it does not edit
+	// (conditions included) carried through, so only the list is replaced here.
+	const handlePolicyChange = (policy: IAMStatement[]) => {
+		if (!onConfigChange) return;
+		if (!isService) {
 			onConfigChange({
-				workload: {
-					policy: updated,
-				},
+				workload: { policy: policy.length > 0 ? policy : undefined },
 			});
+			return;
 		}
-	};
-
-	const handleDeletePolicy = (index: number) => {
-		const updated = customPolicies.filter((_, i) => i !== index);
-
-		setCustomPolicies(updated);
-
-		// Update the config
-		if (onConfigChange && !isService) {
-			onConfigChange({
-				workload: {
-					policy: updated,
-				},
-			});
-		}
-	};
-
-	const toggleExpanded = (index: number) => {
-		setExpandedPolicies((prev) =>
-			prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index],
-		);
+		if (!config.services) return;
+		onConfigChange({
+			services: config.services.map((service) =>
+				service.name === serviceName ? withPolicy(service, policy) : service,
+			),
+		});
 	};
 
 	// Unconditional permissions (always applied)
@@ -414,252 +354,11 @@ export function BackendIAMPermissions({
 				</CardContent>
 			</Card>
 
-			{/* Custom Policies Section - Only for backend */}
-			{!isService && (
-				<Card>
-					<CardHeader>
-						<div className="flex items-center justify-between">
-							<div>
-								<CardTitle>Custom IAM Policies</CardTitle>
-								<CardDescription>
-									Additional permissions for specific AWS services
-								</CardDescription>
-							</div>
-							<Button
-								size="sm"
-								onClick={() => setShowNewPolicy(true)}
-								disabled={showNewPolicy}
-							>
-								<Plus className="w-4 h-4 mr-1" />
-								Add Policy
-							</Button>
-						</div>
-					</CardHeader>
-					<CardContent>
-						<div className="space-y-3">
-							{/* New Policy Form */}
-							{showNewPolicy && (
-								<div className="border border-blue-700 bg-blue-900/10 rounded-lg p-4 space-y-3">
-									<h4 className="text-sm font-medium text-blue-400">
-										Add New Policy
-									</h4>
-									<div className="space-y-3">
-										<div>
-											<Label htmlFor={`${uid}-new-actions`} className="text-xs">
-												Actions (one per line)
-											</Label>
-											<Textarea
-												id={`${uid}-new-actions`}
-												placeholder="s3:GetObject\ns3:PutObject\ndynamodb:GetItem"
-												value={newActions}
-												onChange={(e) => setNewActions(e.target.value)}
-												className="mt-1 h-24 font-mono text-xs"
-											/>
-										</div>
-										<div>
-											<Label
-												htmlFor={`${uid}-new-resources`}
-												className="text-xs"
-											>
-												Resources (one per line)
-											</Label>
-											<Textarea
-												id={`${uid}-new-resources`}
-												placeholder="arn:aws:s3:::my-bucket/*\narn:aws:dynamodb:*:*:table/my-table"
-												value={newResources}
-												onChange={(e) => setNewResources(e.target.value)}
-												className="mt-1 h-24 font-mono text-xs"
-											/>
-										</div>
-									</div>
-									<div className="flex justify-end gap-2">
-										<Button
-											size="sm"
-											variant="ghost"
-											onClick={() => {
-												setShowNewPolicy(false);
-												setNewActions("");
-												setNewResources("");
-											}}
-										>
-											Cancel
-										</Button>
-										<Button
-											size="sm"
-											onClick={handleAddPolicy}
-											disabled={!newActions || !newResources}
-										>
-											<Check className="w-4 h-4 mr-1" />
-											Add Policy
-										</Button>
-									</div>
-								</div>
-							)}
-
-							{/* Custom Policies List */}
-							{customPolicies.map((policy, index) => {
-								const isEditing = editingIndex === index;
-								const isExpanded = expandedPolicies.includes(index);
-
-								return (
-									<div
-										// biome-ignore lint/suspicious/noArrayIndexKey: custom policies are persisted to config.workload.policy as bare {actions, resources} with no id, and every operation here (edit, expand, delete) addresses them by array position, so the index is the identity; giving them stable ids would require a YAML schema migration
-										key={index}
-										className="border border-gray-700 rounded-lg p-3"
-									>
-										{isEditing ? (
-											<div className="space-y-3">
-												<div>
-													<Label className="text-xs">Actions</Label>
-													<Textarea
-														value={editActions}
-														onChange={(e) => setEditActions(e.target.value)}
-														className="mt-1 h-24 font-mono text-xs"
-													/>
-												</div>
-												<div>
-													<Label className="text-xs">Resources</Label>
-													<Textarea
-														value={editResources}
-														onChange={(e) => setEditResources(e.target.value)}
-														className="mt-1 h-24 font-mono text-xs"
-													/>
-												</div>
-												<div className="flex justify-end gap-2">
-													<Button
-														size="sm"
-														variant="ghost"
-														onClick={() => setEditingIndex(null)}
-													>
-														<X className="w-3 h-3" />
-													</Button>
-													<Button
-														size="sm"
-														onClick={() => handleUpdatePolicy(index)}
-													>
-														<Check className="w-3 h-3 mr-1" />
-														Save
-													</Button>
-												</div>
-											</div>
-										) : (
-											<div>
-												<div className="flex items-start justify-between mb-2">
-													<div className="flex items-center gap-2">
-														<Shield className="w-4 h-4 text-purple-400" />
-														<span className="text-sm font-medium">
-															Custom Policy {index + 1}
-														</span>
-													</div>
-													<div className="flex items-center gap-1">
-														<Button
-															size="sm"
-															variant="ghost"
-															onClick={() => toggleExpanded(index)}
-															className="h-6 w-6 p-0"
-														>
-															{isExpanded ? (
-																<ChevronUp className="w-3 h-3" />
-															) : (
-																<ChevronDown className="w-3 h-3" />
-															)}
-														</Button>
-														<Button
-															size="sm"
-															variant="ghost"
-															onClick={() => {
-																setEditingIndex(index);
-																setEditActions(policy.actions.join("\n"));
-																setEditResources(policy.resources.join("\n"));
-															}}
-															className="h-6 w-6 p-0"
-														>
-															<Edit2 className="w-3 h-3" />
-														</Button>
-														<Button
-															size="sm"
-															variant="ghost"
-															onClick={() => handleDeletePolicy(index)}
-															className="h-6 w-6 p-0 text-red-400 hover:text-red-300"
-														>
-															<Trash2 className="w-3 h-3" />
-														</Button>
-													</div>
-												</div>
-
-												<div className="space-y-2">
-													<div>
-														<p className="text-xs font-medium text-gray-400 mb-1">
-															Actions:
-														</p>
-														<div className="flex flex-wrap gap-1">
-															{(isExpanded
-																? policy.actions
-																: policy.actions.slice(0, 3)
-															).map((action) => (
-																<Badge
-																	key={action}
-																	variant="secondary"
-																	className="text-xs font-mono"
-																>
-																	{action}
-																</Badge>
-															))}
-															{!isExpanded && policy.actions.length > 3 && (
-																<Badge variant="outline" className="text-xs">
-																	+{policy.actions.length - 3} more
-																</Badge>
-															)}
-														</div>
-													</div>
-
-													{isExpanded && (
-														<div>
-															<p className="text-xs font-medium text-gray-400 mb-1">
-																Resources:
-															</p>
-															<div className="space-y-1">
-																{policy.resources.map((resource) => (
-																	<code
-																		key={resource}
-																		className="text-xs text-gray-300 block font-mono"
-																	>
-																		{resource}
-																	</code>
-																))}
-															</div>
-														</div>
-													)}
-												</div>
-											</div>
-										)}
-									</div>
-								);
-							})}
-
-							{customPolicies.length === 0 && !showNewPolicy && (
-								<div className="text-center py-8 text-gray-400">
-									<Shield className="w-8 h-8 mx-auto mb-2 opacity-50" />
-									<p className="text-sm">No custom policies configured</p>
-									<p className="text-xs mt-1">
-										Click "Add Policy" to grant additional permissions
-									</p>
-								</div>
-							)}
-						</div>
-
-						{customPolicies.length > 0 && (
-							<div className="mt-4 p-3 bg-yellow-900/20 border border-yellow-700 rounded">
-								<p className="text-xs text-yellow-300">
-									<AlertCircle className="w-3 h-3 inline mr-1" />
-									Custom policies are added to the task role. Ensure resources
-									follow the principle of least privilege.
-								</p>
-							</div>
-						)}
-					</CardContent>
-				</Card>
-			)}
+			<WorkloadPolicyEditor
+				statements={policyStatements}
+				onChange={handlePolicyChange}
+				roleName={taskRoleName}
+			/>
 
 			{/* Optional Permissions */}
 			<Card>

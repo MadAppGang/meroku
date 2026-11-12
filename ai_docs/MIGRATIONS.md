@@ -80,6 +80,12 @@ pointer with `omitempty`, so a save of a file without the block writes none.
 `amplify_apps[].custom_rules` ([amplify.md](./amplify.md#rewrites-and-the-api-proxy))
 is another: an app without rules renders no rule and no `workload_urls`.
 
+The same holds for `policy` on `services[]`, `scheduled_tasks[]` and
+`event_processor_tasks[]` ([WORKLOAD_IAM.md](./WORKLOAD_IAM.md)): absent renders
+no policy, and the struct fields use `omitempty`. `workload.policy` gained
+optional `effect` and `conditions`; a statement without them renders the
+document it always did.
+
 ### A note on v23's two defaults
 
 v23 is the one migration that does **not** write the safer of two values
