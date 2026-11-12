@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"gopkg.in/yaml.v2"
 )
 
 // envRoundTripFixture is a full-feature environment config. Every YAML key in it
@@ -24,24 +26,44 @@ const (
 	envRoundTripFixtureBase = "testdata/env_roundtrip"
 )
 
-func TestEnvRoundTrip_SavedFileMatchesFixtureByteForByte(t *testing.T) {
+// loadRoundTripFixture returns the fixture's bytes and the Env they load into.
+//
+// The schema version has to be checked on the bytes, before loadEnv sees the
+// file. loadEnvWithMigration backs a stale config up under testdata/backup/,
+// applies the migration chain and writes the result over the path it read from,
+// so the version it hands back is CurrentSchemaVersion exactly when the fixture
+// was behind. Checking the loaded struct therefore cannot catch the case the
+// check exists for, and by the time it could, a test run has already rewritten a
+// committed fixture and left a backup directory beside it. A stale fixture also
+// makes the byte comparison report migration formatting instead of a dropped key.
+func loadRoundTripFixture(t *testing.T) ([]byte, Env) {
+	t.Helper()
+
 	fixture, err := os.ReadFile(envRoundTripFixture)
 	if err != nil {
 		t.Fatalf("reading %s: %v", envRoundTripFixture, err)
+	}
+
+	var declared struct {
+		SchemaVersion int `yaml:"schema_version"`
+	}
+	if err := yaml.Unmarshal(fixture, &declared); err != nil {
+		t.Fatalf("parsing %s: %v", envRoundTripFixture, err)
+	}
+	if declared.SchemaVersion != CurrentSchemaVersion {
+		t.Fatalf("%s declares schema_version %d while CurrentSchemaVersion is v%d: a load would migrate the fixture and rewrite it. Bump schema_version in the fixture and add whatever the newer migrations expect.",
+			envRoundTripFixture, declared.SchemaVersion, CurrentSchemaVersion)
 	}
 
 	loaded, err := loadEnv(envRoundTripFixtureBase)
 	if err != nil {
 		t.Fatalf("loading %s: %v", envRoundTripFixture, err)
 	}
+	return fixture, loaded
+}
 
-	// A migration rewrites the file it loads, so a stale fixture would be
-	// compared against its own migrated form and report formatting noise instead
-	// of a dropped key. Fail on the cause instead.
-	if loaded.SchemaVersion != CurrentSchemaVersion {
-		t.Fatalf("%s is at schema v%d while CurrentSchemaVersion is v%d: loading it ran the migration chain. Bump schema_version in the fixture and add whatever the newer migrations expect.",
-			envRoundTripFixture, loaded.SchemaVersion, CurrentSchemaVersion)
-	}
+func TestEnvRoundTrip_SavedFileMatchesFixtureByteForByte(t *testing.T) {
+	fixture, loaded := loadRoundTripFixture(t)
 
 	savedPath := filepath.Join(t.TempDir(), loaded.Env+".yaml")
 	if err := saveEnvToFile(loaded, savedPath); err != nil {
@@ -64,10 +86,7 @@ func TestEnvRoundTrip_SavedFileMatchesFixtureByteForByte(t *testing.T) {
 // drop a key from it and the round trip goes green again while the struct field
 // silently rots. These are the assertions that fail in that case.
 func TestEnvRoundTrip_FixtureCoversThePolicyFields(t *testing.T) {
-	loaded, err := loadEnv(envRoundTripFixtureBase)
-	if err != nil {
-		t.Fatalf("loading %s: %v", envRoundTripFixture, err)
-	}
+	_, loaded := loadRoundTripFixture(t)
 
 	t.Run("workload policy", func(t *testing.T) {
 		policy := loaded.Workload.Policy
