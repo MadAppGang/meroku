@@ -42,6 +42,7 @@ export interface ComponentNode {
 		| "postgres"
 		| "neon"
 		| "sqs"
+		| "valkey"
 		| "efs"
 		| "alb"
 		| "appsync"

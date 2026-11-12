@@ -34,6 +34,7 @@ export const NESTED_CONFIG_KEYS = [
 	"compute",
 	"data_bucket",
 	"event_bus",
+	"valkey",
 ] as const;
 
 export type NestedConfigKey = (typeof NESTED_CONFIG_KEYS)[number];

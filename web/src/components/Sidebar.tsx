@@ -109,6 +109,7 @@ import { Label } from "./ui/label";
 import { Switch } from "./ui/switch";
 import { VaultsProperties } from "./VaultsProperties";
 import { WorkloadVaults } from "./WorkloadVaults";
+import { ValkeyNodeProperties } from "./ValkeyNodeProperties";
 
 interface SidebarProps {
 	selectedNode: ComponentNode | null;
@@ -190,6 +191,8 @@ export function Sidebar({
 					{ id: "databases", label: "Databases", icon: Database },
 				];
 			case "sqs":
+				return [{ id: "settings", label: "Settings", icon: Settings }];
+			case "valkey":
 				return [{ id: "settings", label: "Settings", icon: Settings }];
 			case "eventbridge":
 				return [
@@ -612,6 +615,11 @@ export function Sidebar({
 							config={config}
 							onConfigChange={onConfigChange}
 							accountInfo={accountInfo}
+						/>
+					) : selectedNode.type === "valkey" && config && onConfigChange ? (
+						<ValkeyNodeProperties
+							config={config}
+							onConfigChange={onConfigChange}
 						/>
 					) : selectedNode.type === "scheduled-task" &&
 						config &&

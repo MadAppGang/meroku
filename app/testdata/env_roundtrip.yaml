@@ -298,3 +298,10 @@ vaults:
 - name: payments
 event_bus:
   enabled: true
+valkey:
+  enabled: true
+  engine_version: "8"
+  max_storage_gb: 2
+  access:
+  - service1
+  - cleanup

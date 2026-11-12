@@ -212,10 +212,20 @@ const eventSourceReferences: ReferenceRewriter = (config, mapName) => {
 	return updates;
 };
 
+/** `valkey.access`. */
+const valkeyAccessReferences: ReferenceRewriter = (config, mapName) => {
+	const access = config.valkey?.access;
+	if (!config.valkey || !access || access.length === 0) return {};
+	const rewritten = mapNames(access, mapName);
+	if (JSON.stringify(rewritten) === JSON.stringify(access)) return {};
+	return { valkey: { ...config.valkey, access: rewritten } };
+};
+
 const REFERENCE_REWRITERS: ReferenceRewriter[] = [
 	dataBucketSharedReferences,
 	vaultConnectionReferences,
 	eventSourceReferences,
+	valkeyAccessReferences,
 ];
 
 function rewriteReferences(

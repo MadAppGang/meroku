@@ -1101,6 +1101,9 @@ locals {
   workload_extra_env = { for name in keys(local.workload_roles) : name => concat(
     module.data_bucket.environment[name],
     module.events.environment[name],
+{{#if _valkey}}
+    module.valkey.environment[name],
+{{/if}}
   ) }
   workload_extra_secrets = { for name in keys(local.workload_roles) : name => concat(
     module.vaults.secrets[name],
@@ -1120,6 +1123,23 @@ module "data_bucket" {
   backend_bucket_name    = module.workloads.backend_bucket_name
   backend_bucket_arn     = module.workloads.backend_bucket_arn
 }
+{{#if _valkey}}
+
+# Serverless Valkey, reachable by security group from the workloads listed in
+# valkey.access. See ai_docs/VALKEY.md.
+module "valkey" {
+  source  = "{{modules}}/valkey"
+  project = "{{project}}"
+  env     = "{{env}}"
+
+  vpc_id         = local.vpc_id
+  subnet_ids     = local.subnet_ids
+  engine_version = "{{_valkey.engine_version}}"
+  max_storage_gb = {{_valkey.max_storage_gb}}
+  workloads      = local.workload_roles
+  access         = {{{hclArray _valkey.access}}}
+}
+{{/if}}
 
 # Shared SSM vaults, /{{env}}/{{project}}/vault/<name>/: every parameter of a
 # connected vault becomes a secret of the workload. See ai_docs/VAULTS.md.

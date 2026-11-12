@@ -592,8 +592,8 @@ func applyTemplate(env string) error {
 // validateReservedEnvNamesConfigMap, validateGitHubRunnersConfigMap,
 // prepareAmplifyRewriteRules, validateWorkloadNamesConfigMap, normalizeEvents,
 // validateWorkloadReservedEnvConfigMap, validateDataBucketConfigMap,
-// validateVaultsConfigMap, moveServiceVaultsOut and validateComputeConfigMap.
-// Path and custom-module flags stay with each caller,
+// validateVaultsConfigMap, moveServiceVaultsOut, validateValkeyConfigMap and
+// validateComputeConfigMap. Path and custom-module flags stay with each caller,
 // because they differ.
 //
 // resolveSESZones runs after assignSESPrimaryDomain because it reads the
@@ -677,6 +677,9 @@ func preprocessEnvMap(envMap map[string]interface{}) error {
 		return err
 	}
 	moveServiceVaultsOut(envMap)
+	if err := validateValkeyConfigMap(envMap); err != nil {
+		return err
+	}
 	return validateComputeConfigMap(envMap)
 }
 
@@ -997,6 +1000,24 @@ locals {
 	}
 
 	bridge += eventsBridgeBlock(envMap)
+	// Add Valkey outputs if enabled. validateValkeyConfigMap writes valkeyKey
+	// only for an enabled block, and the template renders module.valkey on the
+	// same key, so the two never disagree.
+	if _, valkeyEnabled := envMap[valkeyKey]; valkeyEnabled {
+		bridge += `
+    # Valkey module outputs (valkey.enabled = true)
+    valkey_address           = module.valkey.address
+    valkey_port              = module.valkey.port
+    valkey_security_group_id = module.valkey.security_group_id
+`
+	} else {
+		bridge += `
+    # Valkey module outputs (valkey.enabled = false)
+    valkey_address           = ""
+    valkey_port              = ""
+    valkey_security_group_id = ""
+`
+	}
 
 	// Add VPC-specific outputs
 	if !useDefaultVPC {
