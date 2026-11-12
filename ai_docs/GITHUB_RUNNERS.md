@@ -206,6 +206,25 @@ AWS-managed keys (`aws/ssm`, `aws/secretsmanager`) need nothing extra.
 - Per-job overrides in the `runs-on` label (`image:`, `instance-size:`). The
   image and size are the project's.
 
+## Known issue: the first apply can fail once
+
+On the apply that creates the runner's service role, the webhook can fail with:
+
+```
+creating CodeBuild Webhook (<project>-gh-<runner>-<env>): ... InvalidInputException:
+Project service role does not have access to retrieve secret arn:aws:secretsmanager:...
+```
+
+The role's policy is correct. `CreateWebhook` checks the role's access to the token
+secret seconds after IAM created the role, before the change has propagated. The AWS
+provider handles this delay for `aws_codebuild_project` (it retries on IAM propagation
+errors up to its `propagationTimeout`) but not for `aws_codebuild_webhook`. A fix is
+proposed upstream in `hashicorp/terraform-provider-aws`; once released, raise the
+provider floor in `modules/github_runners/versions.tf` and delete this section.
+
+Until then: run the apply again. The role exists by then, and the webhook is created.
+Seen on 2026-11-12 in a live deploy in ap-southeast-2.
+
 ## Tests
 
 ```bash
