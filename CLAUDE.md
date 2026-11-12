@@ -229,6 +229,13 @@ The infrastructure supports two ingress patterns, switched by `alb.enabled` in t
 
 The API Gateway API and the Cloud Map service exist in both modes. The ALB (`modules/alb`, `count = var.enabled`) exists only when enabled, and the backend's API Gateway integration and route only when it is not.
 
+One Route 53 record (`aws_route53_record.backend`, `domain.tf`) serves `api_domain` in both
+modes, so flipping `alb.enabled` updates its alias in place. Optional keys `alb.ssl_policy`,
+`alb.deregistration_delay`, `workload.backend_health_check_grace_period` and
+`alb.remove_api_gateway` (drops the API Gateway API, stage, log group and VPC Link; refused with
+the ALB off, a `full_open` service or SNS webhooks) default to today's behaviour.
+[ALB Settings](./ai_docs/ALB_SETTINGS.md).
+
 ## AWS Resource Naming Conventions
 
 This section documents the naming patterns used for AWS resources created by meroku.

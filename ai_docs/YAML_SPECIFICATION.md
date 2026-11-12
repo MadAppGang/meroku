@@ -113,6 +113,7 @@ workload:
 
   # ALB configuration (requires alb.enabled)
   backend_alb_domain_name: <string>          # Custom domain for ALB (e.g., "api.example.com")
+  backend_health_check_grace_period: <integer> # Optional. Seconds ECS ignores ALB health checks on a new backend task; ALB only (default 0 = not set)
 
 # ===================================
 # DOMAIN CONFIGURATION
@@ -190,6 +191,9 @@ buckets: <list>
 
 alb:
   enabled: <boolean>                         # Enable Application Load Balancer
+  ssl_policy: <string>                       # Optional. HTTPS listener TLS policy (default "ELBSecurityPolicy-2016-08")
+  deregistration_delay: <integer>            # Optional. Target group draining seconds, 0-3600 (default 300)
+  remove_api_gateway: <boolean>              # Optional. With enabled: true, do not create API Gateway (default false). See ALB_SETTINGS.md
 
 # ===================================
 # SCHEDULED TASKS (CRON JOBS)

@@ -11,6 +11,9 @@ locals {
   #   internal   no                no                  the VPC CIDR
   #   none       no                no                  nobody
   #
+  # API Gateway route: never while remove_api_gateway is on with the ALB
+  # (local.api_gateway_enabled in api_gateway.tf), whatever the value.
+  #
   # "ALB rule + LB" is the listener rule and the service's load_balancer block.
   # The target group is NOT in this table: it exists for every service while
   # enable_alb is on, whatever network_access says (MTL-359, see
@@ -33,7 +36,7 @@ locals {
   }
 
   service_on_api_gateway = { for k, a in local.service_network_access :
-    k => a == "full_open" || (a == "public" && !var.enable_alb)
+    k => local.api_gateway_enabled && (a == "full_open" || (a == "public" && !var.enable_alb))
   }
 
   # The security-group ingress per mode, in attribute form, so every field must
@@ -170,6 +173,8 @@ resource "aws_lb_target_group" "services" {
   vpc_id      = var.vpc_id
   target_type = "ip"
 
+  deregistration_delay = var.alb_deregistration_delay
+
   # Repeated on the instance twin below rather than hoisted into a `check`
   # block: `check` only warns, and this must stop the apply. Between the two
   # resources every service with a target group is covered.
@@ -224,6 +229,8 @@ resource "aws_lb_target_group" "services_instance" {
   protocol    = "HTTP"
   vpc_id      = var.vpc_id
   target_type = "instance"
+
+  deregistration_delay = var.alb_deregistration_delay
 
   lifecycle {
     precondition {

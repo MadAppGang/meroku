@@ -530,6 +530,9 @@ func preprocessEnvMap(envMap map[string]interface{}) error {
 	if err := validateNetworkAccessConfigMap(envMap); err != nil {
 		return err
 	}
+	if err := validateALBSettingsConfigMap(envMap); err != nil {
+		return err
+	}
 	if err := validateBackendHealthConfigMap(envMap); err != nil {
 		return err
 	}

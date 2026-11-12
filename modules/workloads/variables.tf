@@ -457,6 +457,42 @@ variable "enable_alb" {
   default     = false
 }
 
+variable "alb_ssl_policy" {
+  description = "TLS policy of the ALB's HTTPS listener."
+  type        = string
+  default     = "ELBSecurityPolicy-2016-08"
+  validation {
+    condition     = can(regex("^[A-Za-z0-9-]+$", var.alb_ssl_policy))
+    error_message = "alb_ssl_policy must be an ELB security policy name, e.g. ELBSecurityPolicy-TLS13-1-2-2021-06."
+  }
+}
+
+variable "alb_deregistration_delay" {
+  description = "Seconds the ALB's target groups keep draining a deregistering target."
+  type        = number
+  default     = 300
+  validation {
+    condition     = var.alb_deregistration_delay >= 0 && var.alb_deregistration_delay <= 3600 && floor(var.alb_deregistration_delay) == var.alb_deregistration_delay
+    error_message = "alb_deregistration_delay must be a whole number from 0 to 3600."
+  }
+}
+
+variable "backend_health_check_grace_period" {
+  description = "Seconds ECS ignores failing ALB health checks on a new backend task. 0 = not set. Applies only while enable_alb is on."
+  type        = number
+  default     = 0
+  validation {
+    condition     = var.backend_health_check_grace_period >= 0 && var.backend_health_check_grace_period <= 2147483647 && floor(var.backend_health_check_grace_period) == var.backend_health_check_grace_period
+    error_message = "backend_health_check_grace_period must be a whole number of seconds, 0 or more."
+  }
+}
+
+variable "remove_api_gateway" {
+  description = "With enable_alb on, do not create the API Gateway API, stage, access-log group or backend VPC Link. Ignored while enable_alb is off."
+  type        = bool
+  default     = false
+}
+
 
 variable "backend_remote_access" {
   type    = bool

@@ -140,6 +140,10 @@ resource "aws_ecs_service" "backend" {
     }
   }
 
+  # Without the ALB there is no load-balancer health check to ignore, so the
+  # value is null and the service keeps whatever AWS holds (0 by default).
+  health_check_grace_period_seconds = var.enable_alb && var.backend_health_check_grace_period > 0 ? var.backend_health_check_grace_period : null
+
   # EC2 only, so the Fargate plan is unchanged. AWS: "the binpack strategy is the
   # most efficient strategy in terms of capacity" — which is the entire point of
   # paying for instances by the hour instead of by the task.
