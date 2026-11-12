@@ -1518,9 +1518,45 @@ module "amplify" {
       custom_domain = "{{custom_domain}}"
       {{/if}}
       spa_mode = {{default spa_mode true}}
+      {{#if environment_variables}}
+      environment_variables = {
+        {{#each (sortedPairs environment_variables)}}
+        {{hclString key}} = {{hclString value}}
+        {{/each}}
+      }
+      {{/if}}
+      {{!-- status, _workload_rule and _target_path are set by
+            prepareAmplifyRewriteRules. --}}
+      {{#if custom_rules}}
+      custom_rules = [
+        {{#each custom_rules}}
+        {
+          source = {{hclString source}}
+          {{#if _workload_rule}}
+          workload    = {{hclString workload}}
+          target_path = {{hclString _target_path}}
+          {{else}}
+          target = {{hclString target}}
+          {{/if}}
+          status = {{hclString status}}
+        }{{#unless @last}},{{/unless}}
+        {{/each}}
+      ]
+      {{/if}}
     }{{#unless @last}},{{/unless}}
     {{/each}}
   ]
+  {{!-- Base URL of each workload a rewrite rule names: the API domain in ALB
+        mode and in API Gateway mode with an api_domain_prefix, otherwise the
+        execute-api endpoint with its stage. A service adds /<service>, the
+        path both ingresses route to it. --}}
+  {{#if _amplify_workload_urls}}
+  workload_urls = {
+    {{#each _amplify_workload_urls}}
+    {{hclString name}} = "{{#if @root._amplify_base_via_domain}}https://${module.domain.api_domain_name}{{else}}${module.workloads.api_gateway_endpoint}{{/if}}{{path}}"
+    {{/each}}
+  }
+  {{/if}}
 }
 {{/compare}}
 

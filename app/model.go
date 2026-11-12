@@ -875,6 +875,21 @@ type AmplifyApp struct {
 	CustomDomain     string            `yaml:"custom_domain,omitempty"`         // For manual override
 	EnvVariables     map[string]string `yaml:"environment_variables,omitempty"` // App-level env vars
 	SPAMode          bool              `yaml:"spa_mode,omitempty"`              // Enable SPA routing (200 rewrite instead of 404-200)
+	// CustomRules are rewrites and redirects applied before the SPA rule, in
+	// order. See amplify_rewrites.go.
+	CustomRules []AmplifyRewriteRule `yaml:"custom_rules,omitempty"`
+}
+
+// AmplifyRewriteRule is one amplify_apps[].custom_rules entry. Exactly one of
+// Target and Workload is set. Workload is "backend" or a public service, and
+// the request is proxied to that workload's base URL plus Path (or the source
+// path when Path is empty). Status is 200, 301, 302 or 404-200; empty means 200.
+type AmplifyRewriteRule struct {
+	Source   string `yaml:"source"`
+	Target   string `yaml:"target,omitempty"`
+	Workload string `yaml:"workload,omitempty"`
+	Path     string `yaml:"path,omitempty"`
+	Status   string `yaml:"status,omitempty"`
 }
 
 // AmplifyBranch represents a branch configuration for an Amplify app

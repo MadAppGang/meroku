@@ -135,6 +135,94 @@ This creates:
 - https://dev.example.com → develop branch
 - https://api-dev.example.com → develop branch
 
+## Rewrites and the /api proxy
+
+`amplify_apps[].custom_rules` adds Amplify rewrite and redirect rules. They are
+applied in the order written, **before** the SPA rule (`spa_mode`), and Amplify
+uses the first rule that matches.
+
+```yaml
+amplify_apps:
+  - name: web
+    environment_variables:
+      AMPLIFY_MONOREPO_APP_ROOT: apps/web
+    custom_rules:
+      - { source: "/api/<*>", workload: backend }              # → <backend base>/api/<*>
+      - { source: "/reports/<*>", workload: reports }          # → <base>/reports/<*>
+      - { source: "/r/<*>", workload: reports, path: "/<*>" }  # → <base>/reports/<*>
+      - { source: "/old-pricing", target: "/pricing", status: "301" }
+```
+
+A rule sets exactly one of:
+
+- `target`: a fixed path or URL. `status` is `200` (rewrite, the default), `301`,
+  `302` or `404-200` (serve the target only when the source path does not exist).
+- `workload`: `backend` or a service with `network_access` `public` (the default)
+  or `full_open`. meroku fills in the workload's base URL. The status is always
+  `200`: Amplify fetches the response from the workload and returns it on the
+  app's own host, so the frontend calls `/api/...` with no CORS setup.
+  `path` (optional) replaces the source path on the workload.
+
+`<*>` may appear once, at the end of `source`.
+
+### The base URL of a workload
+
+| Ingress | Domain | Base URL |
+|---|---|---|
+| `alb.enabled: true` | `domain.enabled` (required) | `https://<api domain>` |
+| `alb.enabled: false` | `domain.enabled` and `domain.api_domain_prefix` set | `https://<api domain>` |
+| `alb.enabled: false` | otherwise | the API Gateway execute-api endpoint, with its stage |
+
+`<api domain>` is `<api_domain_prefix>.<env domain>`, or the env domain itself
+when the prefix is empty. In ALB mode its alias record and certificate always
+exist. The ALB's own `*.elb.amazonaws.com` hostname is never used, because it
+does not match the certificate. In API Gateway mode the API domain has a DNS
+record only when `api_domain_prefix` is set, so without one the rule points at
+the execute-api endpoint.
+
+The backend's URL is the base. A service's URL is the base plus `/<service>`,
+the path both the ALB and API Gateway route to that service.
+
+### How the target path is built
+
+meroku joins the path at generate time (`app/amplify_rewrites.go`) and the module
+only concatenates `workload_urls[workload] + target_path`:
+
+| Rule | Target |
+|---|---|
+| `path` set | `<workload URL><path>` |
+| backend, no `path` | `<base><source>` |
+| service `s`, source starts with `/s/` | `<base>/s` + source without `/s`, so `/s/<*>` → `<base>/s/<*>` (no double prefix) |
+| service `s`, any other source | `<base>/s<source>` |
+
+### What generate refuses
+
+`meroku generate` fails, naming the app and the rule, when:
+
+- a rule sets both or neither of `target` and `workload`;
+- `status` is not `200`, `301`, `302` or `404-200`, or a workload rule's status is not `200`;
+- `<*>` appears more than once in `source`, or not at the end;
+- the workload is not `backend` or a `public`/`full_open` service;
+- `path` is set on a `target` rule, or does not start with `/`;
+- a workload rule's `source` is not a path (a regex such as `</^...$/>`) and no `path` is set;
+- a workload rule is used with `alb.enabled: true` and `domain.enabled: false`;
+- the resolved API host is the host of an Amplify app (`subdomain_prefix.<env domain>`
+  or `custom_domain`), because the rewrite would send the app's requests back to itself.
+
+A rule placed after a `/<*>` catch-all never matches; generate prints a warning.
+
+### Limits of the proxy
+
+- Server-sent events and WebSockets do not work through Amplify's `200` rewrite.
+  The frontend calls `https://<api domain>` directly for those.
+- Amplify does not publish its proxy timeout or its request body limit. The live
+  check records what was measured; treat long requests and large uploads as
+  candidates for calling the API domain directly.
+- Amplify's CDN may cache a proxied response. API responses that must never be
+  cached send `Cache-Control: no-store`.
+- In a monorepo, set `AMPLIFY_MONOREPO_APP_ROOT` in the app-level
+  `environment_variables`, as above. App-level values reach Amplify as written;
+  `${...}` in them is not interpolated.
 
 ## Build Configuration
 

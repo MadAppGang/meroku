@@ -1,5 +1,6 @@
 import {
 	Activity,
+	ArrowRightLeft,
 	BarChart,
 	Bell,
 	BookOpen,
@@ -40,6 +41,7 @@ import { AmplifyBranchManagement } from "./AmplifyBranchManagement";
 import { AmplifyBuildSettings } from "./AmplifyBuildSettings";
 import { AmplifyDomainSettings } from "./AmplifyDomainSettings";
 import { AmplifyNodeProperties } from "./AmplifyNodeProperties";
+import { AmplifyRewrites } from "./AmplifyRewrites";
 import { APIGatewayProperties } from "./APIGatewayProperties";
 import { AuroraNodeProperties } from "./AuroraNodeProperties";
 import { BackendAlerts } from "./BackendAlerts";
@@ -251,6 +253,7 @@ export function Sidebar({
 					{ id: "branches", label: "Branches", icon: GitBranch },
 					{ id: "build", label: "Build", icon: Code },
 					{ id: "domain", label: "Domain", icon: Globe },
+					{ id: "rewrites", label: "Rewrites", icon: ArrowRightLeft },
 				];
 			default:
 				return [
@@ -1675,6 +1678,17 @@ jobs:
 					config &&
 					onConfigChange && (
 						<AmplifyBranchManagement
+							config={config}
+							nodeId={selectedNode.id}
+							onConfigChange={onConfigChange}
+						/>
+					)}
+
+				{activeTab === "rewrites" &&
+					selectedNode.type === "amplify" &&
+					config &&
+					onConfigChange && (
+						<AmplifyRewrites
 							config={config}
 							nodeId={selectedNode.id}
 							onConfigChange={onConfigChange}
