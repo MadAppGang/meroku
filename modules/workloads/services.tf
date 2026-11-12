@@ -734,11 +734,13 @@ resource "aws_iam_role_policy_attachment" "service_task_bucket" {
   policy_arn = aws_iam_policy.full_access_to_backend_bucket.arn
 }
 
-# SES access for all services
+# SES access for all services. On the task role, not the execution role: the
+# container's own code calls SES, and the execution role is ECS's — it pulls the
+# image, writes logs and reads SSM, and never sends an email.
 resource "aws_iam_role_policy_attachment" "service_task_ses" {
   for_each = local.service_names
 
-  role       = aws_iam_role.services_task_execution[each.key].name
+  role       = aws_iam_role.services_task[each.key].name
   policy_arn = aws_iam_policy.send_emails.arn
 }
 
