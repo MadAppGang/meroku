@@ -53,8 +53,8 @@ module "task_env_secret_check" {
       yaml_file       = "project/${var.env}.yaml"
       defaults_source = "modules/event_bridge_task/env.tf"
 
-      environment = [for e in local.environment_variables : e.name]
-      secrets     = [for s in local.task_env_ssm : s.name]
+      environment = [for e in local.container_environment : e.name]
+      secrets     = [for s in local.container_secrets : s.name]
     }
   }
 }

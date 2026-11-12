@@ -446,6 +446,15 @@ func applyTemplate(env string) error {
 	for _, w := range amplifyRewriteWarnings(envMap) {
 		fmt.Printf("⚠️  %s\n", w)
 	}
+	for _, w := range generateWarnings(envMap) {
+		fmt.Printf("⚠️  %s\n", w)
+	}
+
+	// Custom files share main.tf's root namespace; refuse one that redeclares a
+	// name the template uses before rendering anything.
+	if err := validateCustomTerraformRootNames(env); err != nil {
+		return err
+	}
 
 	envMap["modules"] = "../../infrastructure/modules"
 	envMap["custom_modules"] = "../../custom"
@@ -495,13 +504,16 @@ func applyTemplate(env string) error {
 }
 
 // preprocessEnvMap runs everything applyTemplate does to envMap between
-// loading and rendering, in order: filterDisabledItems x3, then
+// loading and rendering, in order: collectDisabledWorkloadNames,
+// filterDisabledItems x3, then
 // synthesizeDefaultComputePool, assignSESPrimaryDomain, resolveSESZones,
 // normalizeHealthCheckCommands, assignGitHubRunnersOwner, then validateSESDNSConfigMap,
 // validateNetworkAccessConfigMap, validateBackendHealthConfigMap,
 // validateReservedEnvNamesConfigMap, validateGitHubRunnersConfigMap,
-// prepareAmplifyRewriteRules and validateComputeConfigMap. Path and
-// custom-module flags stay with each caller, because they differ.
+// prepareAmplifyRewriteRules, validateWorkloadNamesConfigMap,
+// validateWorkloadReservedEnvConfigMap, validateDataBucketConfigMap and
+// validateComputeConfigMap. Path and custom-module flags stay with each caller,
+// because they differ.
 //
 // resolveSESZones runs after assignSESPrimaryDomain because it reads the
 // ses_primary_domain that step stores for the legacy single-domain form.
@@ -517,6 +529,9 @@ func applyTemplate(env string) error {
 // means the FR-58 zero-config case — runtime: ec2 and nothing else — is the one
 // case the validator never sees as broken. DEV-9.
 func preprocessEnvMap(envMap map[string]interface{}) error {
+	// Before the filter, which removes what it records.
+	collectDisabledWorkloadNames(envMap)
+
 	filterDisabledItems(envMap, "services")
 	filterDisabledItems(envMap, "scheduled_tasks")
 	filterDisabledItems(envMap, "event_processor_tasks")
@@ -551,6 +566,16 @@ func preprocessEnvMap(envMap map[string]interface{}) error {
 		return err
 	}
 	if err := prepareAmplifyRewriteRules(envMap); err != nil {
+		return err
+	}
+	// Names first: the two after it resolve references against them.
+	if err := validateWorkloadNamesConfigMap(envMap); err != nil {
+		return err
+	}
+	if err := validateWorkloadReservedEnvConfigMap(envMap); err != nil {
+		return err
+	}
+	if err := validateDataBucketConfigMap(envMap); err != nil {
 		return err
 	}
 	return validateComputeConfigMap(envMap)
@@ -829,6 +854,11 @@ locals {
     backend_ecr_repo_url = module.workloads.backend_ecr_repo_url
     backend_task_role    = module.workloads.backend_task_role_name
     backend_cloud_map_arn = module.workloads.backend_cloud_map_arn
+    backend_bucket_arn    = module.workloads.backend_bucket_arn
+
+    # Data bucket (always created)
+    data_bucket_name = module.data_bucket.bucket_name
+    data_bucket_arn  = module.data_bucket.bucket_arn
 `, project, env, region, accountID)
 
 	// Add domain outputs if enabled

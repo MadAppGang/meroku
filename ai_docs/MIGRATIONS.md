@@ -85,6 +85,12 @@ no policy, and the struct fields use `omitempty`. `workload.policy` gained
 optional `effect` and `conditions`; a statement without them renders the
 document it always did.
 
+`data_bucket` ([DATA_BUCKET.md](./DATA_BUCKET.md)) is another, with one
+difference: the bucket it configures exists in every environment whether or not
+the block is present. The block only lists shared folders, so absent means "no
+shared folders" and there is still nothing to write. Its struct field is a
+pointer with `omitempty` too.
+
 ### A note on v23's two defaults
 
 v23 is the one migration that does **not** write the safer of two values

@@ -11,6 +11,7 @@ import {
 	Cpu,
 	Database,
 	FileText,
+	FolderLock,
 	Gauge,
 	GitBranch,
 	Globe,
@@ -57,6 +58,7 @@ import { BackendSSHAccess } from "./BackendSSHAccess";
 import { BackendXRayConfiguration } from "./BackendXRayConfiguration";
 import { CloudFrontNodeProperties } from "./CloudFrontNodeProperties";
 import { ComputePoolProperties } from "./ComputePoolProperties";
+import { DataBucketProperties } from "./DataBucketProperties";
 import { ECRNodeProperties } from "./ECRNodeProperties";
 import { ECRPushInstructions } from "./ECRPushInstructions";
 import { ECRRepositoryList } from "./ECRRepositoryList";
@@ -161,7 +163,10 @@ export function Sidebar({
 					{ id: "send", label: "Send Email", icon: Send },
 				];
 			case "s3":
-				return [{ id: "settings", label: "Buckets", icon: HardDrive }];
+				return [
+					{ id: "settings", label: "Buckets", icon: HardDrive },
+					{ id: "data-bucket", label: "Data bucket", icon: FolderLock },
+				];
 			case "sns":
 				return [{ id: "settings", label: "Settings", icon: Settings }];
 			case "postgres":
@@ -1212,6 +1217,16 @@ jobs:
 						</div>
 					</div>
 				)}
+
+				{activeTab === "data-bucket" &&
+					selectedNode.type === "s3" &&
+					config &&
+					onConfigChange && (
+						<DataBucketProperties
+							config={config}
+							onConfigChange={onConfigChange}
+						/>
+					)}
 
 				{activeTab === "repos" && selectedNode.type === "ecr" && config && (
 					<ECRRepositoryList config={config} accountInfo={accountInfo} />

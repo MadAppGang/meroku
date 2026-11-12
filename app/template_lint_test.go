@@ -189,7 +189,8 @@ func fixtureRootKeys(t *testing.T) map[string]bool {
 
 	// Set by applyTemplate and preprocessEnvMap rather than by the config file.
 	for _, injected := range []string{"modules", "custom_modules", "has_custom_pre", "has_custom_post", sesPrimaryDomainKey,
-		sesLegacyZoneOriginKey, sesMergeDomainsKey, sesMergeAnyKey, amplifyWorkloadURLsKey, amplifyBaseViaDomainKey, servicePoliciesKey} {
+		sesLegacyZoneOriginKey, sesMergeDomainsKey, sesMergeAnyKey, amplifyWorkloadURLsKey, amplifyBaseViaDomainKey, servicePoliciesKey,
+		dataBucketSharedKey, ownBackendBucketEnvKey} {
 		keys[injected] = true
 	}
 	return keys

@@ -19,6 +19,7 @@ import { usePricing } from "./hooks/use-pricing";
 import type { ComponentNode } from "./types";
 import type { YamlInfrastructureConfig } from "./types/yamlConfig";
 import { mergeConfigUpdates } from "./utils/configMerge";
+import { removeWorkloadReferences } from "./utils/workloadReferences";
 
 export default function App() {
 	const [selectedNode, setSelectedNode] = useState<ComponentNode | null>(null);
@@ -293,23 +294,37 @@ export default function App() {
 			return;
 		}
 
-		const updatedConfig = { ...config };
+		let updatedConfig = { ...config };
 
+		// A deleted workload takes every reference to it along, so the saved YAML
+		// never names a workload that no longer exists.
 		if (nodeType === "service") {
 			const serviceName = nodeId.replace("service-", "");
 			updatedConfig.services = (config.services || []).filter(
 				(s) => s.name !== serviceName,
 			);
+			updatedConfig = {
+				...updatedConfig,
+				...removeWorkloadReferences(updatedConfig, serviceName),
+			};
 		} else if (nodeType === "scheduled-task") {
 			const taskName = nodeId.replace("scheduled-", "");
 			updatedConfig.scheduled_tasks = (config.scheduled_tasks || []).filter(
 				(t) => t.name !== taskName,
 			);
+			updatedConfig = {
+				...updatedConfig,
+				...removeWorkloadReferences(updatedConfig, taskName),
+			};
 		} else if (nodeType === "event-task") {
 			const taskName = nodeId.replace("event-", "");
 			updatedConfig.event_processor_tasks = (
 				config.event_processor_tasks || []
 			).filter((t) => t.name !== taskName);
+			updatedConfig = {
+				...updatedConfig,
+				...removeWorkloadReferences(updatedConfig, taskName),
+			};
 		} else if (nodeType === "amplify") {
 			const appName = nodeId.replace("amplify-", "");
 			updatedConfig.amplify_apps = (config.amplify_apps || []).filter(
