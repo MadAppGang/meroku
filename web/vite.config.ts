@@ -5,6 +5,10 @@ import { defineConfig } from "vite";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
+// The meroku server the dev server proxies /api and /ws to. The Playwright
+// harness points it at a meroku started on its own port.
+const apiTarget = process.env.MEROKU_API_URL ?? "http://localhost:8080";
+
 // https://vite.dev/config/
 export default defineConfig({
 	plugins: [react()],
@@ -13,13 +17,13 @@ export default defineConfig({
 		allowedHosts: true,
 		proxy: {
 			"/api": {
-				target: "http://localhost:8080",
+				target: apiTarget,
 				changeOrigin: true,
 				secure: false,
 				autoRewrite: true,
 			},
 			"/ws": {
-				target: "http://localhost:8080",
+				target: apiTarget,
 				changeOrigin: true,
 				secure: false,
 				ws: true,

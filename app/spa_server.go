@@ -284,6 +284,16 @@ func findAvailablePort(preferredPort string) (string, bool) {
 	return "", false
 }
 
+// serveWebOnPort serves the web app on 127.0.0.1 at exactly the given port and
+// blocks. Unlike startSPAServer it never moves to another port, so a caller
+// that already knows the URL (a test runner, a script) cannot end up talking
+// to a different meroku instance that holds the preferred port.
+func serveWebOnPort(port string) error {
+	addr := net.JoinHostPort("127.0.0.1", port)
+	fmt.Printf("Serving the web app on http://%s\n", addr)
+	return http.ListenAndServe(addr, mainRouter())
+}
+
 func startSPAServer(preferredPort string) {
 	// Find an available port
 	port, portWasInUse := findAvailablePort(preferredPort)
