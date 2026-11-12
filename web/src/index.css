@@ -22,6 +22,8 @@
 		--destructive-foreground: 0 0% 98%;
 		/* Error text/icons/borders: #ef4444 on the dark card, about 5.3:1 contrast. */
 		--danger: 0 84.2% 60.2%;
+		/* Canvas node fill for database components (Postgres, Neon): #4f46e5. */
+		--node-database: 243.4 75.4% 58.6%;
 		--border: 0 0% 14.9%;
 		--input: 0 0% 14.9%;
 		--ring: 0 0% 83.1%;

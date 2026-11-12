@@ -17,8 +17,23 @@ terraform {
       version = "~> 6.0"
     }
     {{/if}}
+{{#if neon_render}}
+    neon = {
+      source  = "kislerdm/neon"
+      version = "0.18.0"
+    }
+    postgresql = {
+      source  = "cyrilgdn/postgresql"
+      version = "1.27.0"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
+    }
+{{/if}}
   }
-  required_version = ">= 1.10.0"
+{{!-- Neon needs Terraform 1.14 (ephemeral variables, write-only arguments); an environment without Neon keeps its floor. --}}
+  required_version = "{{#if neon_render}}>= 1.14.0{{else}}>= 1.10.0{{/if}}"
 }
 
 # Stamp every resource in this environment with identifying tags, so the whole
@@ -803,8 +818,100 @@ module "workloads" {
     {{/each}}
   }
   {{/compare}}
+{{#if neon_render}}
+  # A new or changed database_url reaches the task definitions in the apply
+  # that writes it.
+  ssm_dependencies = module.neon_ssm.dependency_tokens
+{{/if}}
 }
-{{#if cognito.enabled}} 
+{{#if neon_render}}
+
+# Neon Postgres. The postgresql providers connect as the Neon owner role with
+# credentials meroku passes at plan and apply time through the ephemeral
+# variable below, so they never appear in this file, a saved plan or the state.
+# The Neon API token reaches the neon provider as NEON_API_KEY.
+variable "neon_pg_credentials" {
+  type = map(object({
+    host       = string
+    user       = string
+    password   = string
+    pg_version = string
+  }))
+  default   = {}
+  sensitive = true
+  ephemeral = true
+}
+
+module "neon" {
+  source     = "{{modules}}/neon"
+  mode       = {{{hclString neon_render.mode}}}
+  project_id = {{{hclString neon_render.project_id}}}
+{{#if neon_render.project}}
+  project = {
+    name       = {{{hclString neon_render.project.name}}}
+    org_id     = {{{hclString neon_render.project.org_id}}}
+    region_id  = {{{hclString neon_render.project.region_id}}}
+    pg_version = {{neon_render.project.pg_version}}
+  }
+{{/if}}
+  owner_role = {{{hclString neon_render.owner_role}}}
+  databases  = {{{hclJSON neon_render.databases}}}
+}
+{{#each neon_render.connections}}
+
+# Database {{database}}. A plan that only reads the Neon project has no
+# credentials: the provider gets placeholders and is never configured, because
+# nothing that uses it is in that plan.
+provider "postgresql" {
+  alias            = "{{alias}}"
+  host             = try(var.neon_pg_credentials[{{{hclString database}}}].host, "unresolved.invalid")
+  port             = 5432
+  database         = {{{hclString database}}}
+  username         = try(var.neon_pg_credentials[{{{hclString database}}}].user, "unresolved")
+  password         = try(var.neon_pg_credentials[{{{hclString database}}}].password, "")
+  sslmode          = "require"
+  superuser        = false
+  connect_timeout  = 30
+  expected_version = try(var.neon_pg_credentials[{{{hclString database}}}].pg_version, "{{@root.neon_render.pg_version}}")
+}
+
+module "neon_access_{{alias}}" {
+  source = "{{@root.modules}}/neon_access"
+  providers = {
+    postgresql = postgresql.{{alias}}
+    random     = random
+  }
+  depends_on = [module.neon]
+
+  env           = {{{hclString @root.env}}}
+  project_id    = module.neon.project_id
+  branch_id     = module.neon.default_branch_id
+  database      = {{{hclString database}}}
+  admin_role    = {{{hclString @root.neon_render.owner_role}}}
+  pooler_host   = module.neon.pooler_host
+  revoke_public = {{revoke_public}}
+  services      = {{{hclJSON services}}}
+}
+{{/each}}
+
+# One database_url SSM parameter per service that uses Neon, on the same path
+# as the service's other secrets.
+module "neon_ssm" {
+  source   = "{{modules}}/neon_ssm"
+  project  = {{{hclString project}}}
+  env      = {{{hclString env}}}
+  services = {{{hclArray neon_render.ssm_services}}}
+  urls     = merge({}{{#each neon_render.connections}}, module.neon_access_{{alias}}.database_urls{{/each}})
+}
+
+output "neon" {
+  value = {
+    project_id = module.neon.project_id
+  }
+}
+
+{{/if}}
+{{#if cognito.enabled}}
 module "cognito" {
   source                  = "{{modules}}/cognito"
   project                 = "{{project}}"
@@ -1167,7 +1274,7 @@ removed {
   }
   provisioner "local-exec" {
     when        = destroy
-    interpreter = ["/bin/sh", self.input.script]
+    interpreter = ["env", "-u", "NEON_API_KEY", "-u", "TF_VAR_neon_pg_credentials", "/bin/sh", self.input.script]
     command     = "remove"
     environment = {
       R53_ZONE_ID = self.input.zone_id
@@ -1187,7 +1294,7 @@ removed {
   }
   provisioner "local-exec" {
     when        = destroy
-    interpreter = ["/bin/sh", self.input.script]
+    interpreter = ["env", "-u", "NEON_API_KEY", "-u", "TF_VAR_neon_pg_credentials", "/bin/sh", self.input.script]
     command     = "remove"
     environment = {
       R53_ZONE_ID = self.input.zone_id

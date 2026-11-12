@@ -1,0 +1,47 @@
+# Neon in create mode, laid over project/dev.yaml for render tests.
+#
+# Merge rule: a mapping merges into the base key by key; any other value,
+# lists included, replaces the base value. So `services` below is the whole
+# list, and `workload` only adds backend_neon.
+#
+# Every id is a placeholder. No real project, organization or host.
+neon:
+  mode: create
+  project:
+    name: instagram-dev
+    org_id: org-fake-000000
+    region_id: aws-us-east-1
+    pg_version: 17
+  owner_role: neondb_owner
+  databases:
+    # The project creates neondb itself, so it is read as data.
+    - name: neondb
+      create: false
+    - name: app
+      create: true
+    # Created with no service using it: it still gets a connection, which
+    # revokes PUBLIC's CONNECT and TEMPORARY.
+    - name: archive
+      create: true
+
+workload:
+  backend_neon:
+    database: app
+    access: readwrite
+
+services:
+  - name: service1
+    enabled: true
+    auto_deploy: true
+    container_port: 3000
+    host_port: 3000
+    cpu: 256
+    memory: 512
+    desired_count: 1
+    runtime: fargate
+    ecr_config:
+      mode: create_ecr
+    neon:
+      database: neondb
+      schemas: [public]
+      access: readonly

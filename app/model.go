@@ -79,6 +79,62 @@ type Env struct {
 	// the module's default is false, and an explicit false means the same thing
 	// while a missing key means "let the module decide".
 	ManageDNSRecords *bool `yaml:"manage_dns_records,omitempty"`
+	// Neon (schema v32) is a Neon Postgres project and the databases on its
+	// default branch. nil renders nothing; see ai_docs/NEON.md.
+	Neon *Neon `yaml:"neon,omitempty"`
+}
+
+// Neon is the env's top-level `neon:` block. A Neon project is the trust zone:
+// every role meroku makes lives on the project's default branch.
+type Neon struct {
+	// Mode is "create" (meroku creates the project) or "reuse" (an existing
+	// project, read as data and never changed).
+	Mode string `yaml:"mode"`
+	// ProjectID names the existing project. Reuse mode only.
+	ProjectID string `yaml:"project_id,omitempty"`
+	// PGVersion is the reused project's Postgres major version, checked
+	// against the project at deploy. Reuse mode only; create mode uses
+	// Project.PGVersion.
+	PGVersion int `yaml:"pg_version,omitempty"`
+	// Project describes the project meroku creates. Create mode only.
+	Project *NeonProject `yaml:"project,omitempty"`
+	// OwnerRole owns every database meroku creates and every table, sequence
+	// and schema in them; Terraform connects as it. Empty means neondb_owner.
+	OwnerRole string `yaml:"owner_role,omitempty"`
+	// Databases live on the project's default branch.
+	Databases []NeonDatabase `yaml:"databases,omitempty"`
+}
+
+// NeonProject is `neon.project`, the project meroku creates.
+type NeonProject struct {
+	Name     string `yaml:"name"`
+	OrgID    string `yaml:"org_id"`
+	RegionID string `yaml:"region_id"`
+	// PGVersion is 15, 16 or 17; 0 means 17.
+	PGVersion int `yaml:"pg_version,omitempty"`
+}
+
+// NeonDatabase is one `neon.databases[]` entry. Create true: meroku creates it
+// and never deletes it. False: it exists and is read as data.
+type NeonDatabase struct {
+	Name   string `yaml:"name"`
+	Create bool   `yaml:"create"`
+}
+
+// NeonAccess is a service's database access: `workload.backend_neon` or
+// `services[].neon`. meroku gives the service its own LOGIN role and writes
+// its DATABASE_URL to the service's SSM path.
+type NeonAccess struct {
+	// Database names an entry of neon.databases.
+	Database string `yaml:"database"`
+	// Schemas the role gets rights on, also its search_path. Empty means
+	// ["public"].
+	Schemas []string `yaml:"schemas,omitempty"`
+	// Access is "readonly" or "readwrite".
+	Access string `yaml:"access"`
+	// PasswordVersion 0 means 1. Raising it generates a new password for the
+	// same role.
+	PasswordVersion int `yaml:"password_version,omitempty"`
 }
 
 // AppSync auth modes (schema v23). These are the values accepted by
@@ -261,6 +317,8 @@ type Workload struct {
 	// health_check_grace_period_seconds, used only while the ALB is on. nil or 0
 	// sets nothing.
 	BackendHealthCheckGracePeriod *int `yaml:"backend_health_check_grace_period,omitempty"`
+	// BackendNeon is the backend's Neon database access. nil means none.
+	BackendNeon *NeonAccess `yaml:"backend_neon,omitempty"`
 }
 
 // BackendHealthCheck is workload.backend_health_check. Command takes the same
@@ -610,6 +668,8 @@ type Service struct {
 	// shell. See health_check_command.go. It runs inside the container, so the
 	// tool must exist in the image.
 	HealthCheckCommand HealthCheckCommand `yaml:"health_check_command,omitempty"`
+	// Neon is this service's Neon database access. nil means none.
+	Neon *NeonAccess `yaml:"neon,omitempty"`
 }
 
 type DNSConfig struct {
@@ -1061,6 +1121,9 @@ func loadEnvToMap(name string) (map[string]interface{}, error) {
 	err = yaml.Unmarshal(data, &e)
 	if err != nil {
 		return nil, fmt.Errorf("error unmarshaling YAML: %v", err)
+	}
+	if err := checkSchemaNotNewer(name, detectSchemaVersion(e)); err != nil {
+		return nil, err
 	}
 
 	// Convert to JSON-compatible format for template rendering

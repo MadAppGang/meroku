@@ -70,6 +70,7 @@ import { EventTaskEnvVars } from "./EventTaskEnvVars";
 import { EventTaskProperties } from "./EventTaskProperties";
 import { EventTaskTestEvent } from "./EventTaskTestEvent";
 import { GitHubNodeProperties } from "./GitHubNodeProperties";
+import { NeonNodeProperties } from "./NeonNodeProperties";
 import { NodeConfigProperties } from "./NodeConfigProperties";
 import { ParameterStoreDescription } from "./ParameterStoreDescription";
 import { ParameterStoreNodeProperties } from "./ParameterStoreNodeProperties";
@@ -86,6 +87,7 @@ import { SESNodeProperties } from "./SESNodeProperties";
 import { SESSendTestEmail } from "./SESSendTestEmail";
 import { SESStatus } from "./SESStatus";
 import ServiceCICDConfiguration from "./ServiceCICDConfiguration";
+import { ServiceDatabaseTab } from "./ServiceDatabaseTab";
 import { ServiceEnvironmentVariables } from "./ServiceEnvironmentVariables";
 import { ServiceLogs } from "./ServiceLogs";
 import { ServiceParameterStore } from "./ServiceParameterStore";
@@ -125,7 +127,7 @@ export function Sidebar({
 	const tabButtonRefs = useRef<{ [key: string]: HTMLButtonElement | null }>({});
 
 	// Function to get available tabs for the current node type
-	const getAvailableTabs = useCallback((node: ComponentNode | null) => {
+	const getBaseTabs = useCallback((node: ComponentNode | null) => {
 		if (!node) return [];
 
 		switch (node.type) {
@@ -166,6 +168,11 @@ export function Sidebar({
 				return [
 					{ id: "settings", label: "Settings", icon: Settings },
 					{ id: "connection", label: "Connection", icon: Link },
+				];
+			case "neon":
+				return [
+					{ id: "settings", label: "Project", icon: Settings },
+					{ id: "databases", label: "Databases", icon: Database },
 				];
 			case "sqs":
 				return [{ id: "settings", label: "Settings", icon: Settings }];
@@ -255,6 +262,25 @@ export function Sidebar({
 				];
 		}
 	}, []);
+
+	// The backend and named services get a Database tab, after Env Vars, once
+	// the env has a Neon project.
+	const hasNeon = config?.neon !== undefined;
+	const getAvailableTabs = useCallback(
+		(node: ComponentNode | null) => {
+			const tabs = getBaseTabs(node);
+			if (!hasNeon || (node?.type !== "backend" && node?.type !== "service")) {
+				return tabs;
+			}
+			const at = tabs.findIndex((tab) => tab.id === "env") + 1;
+			return [
+				...tabs.slice(0, at),
+				{ id: "database", label: "Database", icon: Database },
+				...tabs.slice(at),
+			];
+		},
+		[getBaseTabs, hasNeon],
+	);
 
 	// Effect to validate and update activeTab when selectedNode changes
 	useEffect(() => {
@@ -496,6 +522,12 @@ export function Sidebar({
 							accountInfo={accountInfo}
 						/>
 					) : null
+				) : selectedNode.type === "neon" && config && onConfigChange ? (
+					<NeonNodeProperties
+						config={config}
+						onConfigChange={onConfigChange}
+						section={activeTab === "databases" ? "databases" : "settings"}
+					/>
 				) : (
 					activeTab === "settings" &&
 					(selectedNode.type === "ecs" && config && onConfigChange ? (
@@ -1329,6 +1361,26 @@ jobs:
 							config={config}
 							accountInfo={accountInfo}
 							onConfigChange={onConfigChange}
+						/>
+					)}
+
+				{activeTab === "database" &&
+					(selectedNode.type === "backend" ||
+						selectedNode.type === "service") &&
+					config &&
+					onConfigChange && (
+						<ServiceDatabaseTab
+							key={selectedNode.id}
+							config={config}
+							onConfigChange={onConfigChange}
+							target={
+								selectedNode.type === "backend"
+									? { kind: "backend" }
+									: {
+											kind: "service",
+											name: selectedNode.id.replace("service-", ""),
+										}
+							}
 						/>
 					)}
 

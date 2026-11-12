@@ -47,8 +47,9 @@ The meroku application includes a comprehensive YAML schema migration system tha
 | 29 | backend_container_command list | `workload.backend_container_command` normalized from a scalar to `list(string)` |
 | 30 | Service network access | `services[].network_access` (`public`\|`internal`\|`full_open`\|`none`); existing services pinned to `full_open` |
 | 31 | Name-based policy as flags | Environment `auto_deploy` (`true` only in `dev`), every non-dev target turned off, `is_prod` for `prod` and `production`, and `prod`'s domain settings. See [Environment Policy](./ENVIRONMENT_POLICY.md) |
+| 32 | Neon Postgres (opt-in) | Top-level `neon` block and per-service `workload.backend_neon` / `services[].neon`. Only an env that already has `neon:` changes: `owner_role: neondb_owner`, `create: false` on every `databases[]` entry, and in create mode `project.pg_version: 17`, each written only where absent. A file with a `schema_version` newer than the binary is refused by every loader and left unchanged |
 
-Current version: **v31**
+Current version: **v32**
 
 ### A note on v30 — the default and the migration disagree on purpose
 

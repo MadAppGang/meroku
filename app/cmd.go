@@ -13,7 +13,13 @@ import (
 func runCommandWithOutput(name string, args ...string) (string, error) {
 	fmt.Println("▶️ runCommandWithOutput:", name, args)
 	cmd := exec.Command(name, args...)
+	cmd.Env = childEnv()
+	return runCmdWithOutput(cmd)
+}
 
+// runCmdWithOutput runs a prepared command, streaming its stdout and stderr
+// to the terminal. It returns stdout on success and stderr on failure.
+func runCmdWithOutput(cmd *exec.Cmd) (string, error) {
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		fmt.Println("Error creating stdout pipe:", err)

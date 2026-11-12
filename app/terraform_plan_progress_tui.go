@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -47,6 +48,62 @@ type planProgressModel struct {
 	done         chan bool
 	ticker       *time.Ticker
 	spinnerFrame int
+	// opts are the plan's targets, plan file and title; zero is today's
+	// untargeted plan into tfplan.
+	opts planStepOptions
+}
+
+// planStepOptions shape one plan run. Targets limit it with -target;
+// PlanFile defaults to tfplan; Title replaces the screen title; Dir defaults
+// to the working directory.
+type planStepOptions struct {
+	Targets  []string
+	PlanFile string
+	Title    string
+	Dir      string
+}
+
+func (o planStepOptions) planFile() string {
+	if o.PlanFile == "" {
+		return "tfplan"
+	}
+	return o.PlanFile
+}
+
+func (o planStepOptions) dir() string {
+	if o.Dir == "" {
+		return workingDir()
+	}
+	return o.Dir
+}
+
+func (o planStepOptions) isZero() bool {
+	return len(o.Targets) == 0 && o.PlanFile == "" && o.Title == "" && o.Dir == ""
+}
+
+// planArgs are the terraform arguments of the plan.
+func (o planStepOptions) planArgs() []string {
+	args := []string{"plan", "-no-color", "-out=" + o.planFile()}
+	for _, t := range o.Targets {
+		args = append(args, "-target="+t)
+	}
+	return args
+}
+
+// planOutputWriter appends what is written to it to the plan screen's
+// output, line by line. The Neon token wait writes its countdown here.
+type planOutputWriter struct{ m *planProgressModel }
+
+func (w planOutputWriter) Write(p []byte) (int, error) {
+	w.m.outputMutex.Lock()
+	defer w.m.outputMutex.Unlock()
+	for _, line := range strings.Split(strings.TrimRight(string(p), "\n"), "\n") {
+		w.m.outputLines = append(w.m.outputLines, line)
+	}
+	if len(w.m.outputLines) > 100 {
+		w.m.outputLines = w.m.outputLines[len(w.m.outputLines)-100:]
+	}
+	return len(p), nil
 }
 
 type progressMsg struct {
@@ -91,8 +148,15 @@ type tickMsg time.Time
 
 func (m *planProgressModel) runTerraformPlan() tea.Cmd {
 	return func() tea.Msg {
+		// A Neon token must outlive the plan: wait for a refresh first.
+		if err := ensureActiveNeonSessionFresh(context.Background(), planOutputWriter{m}); err != nil {
+			return planErrorMsg{err: err, output: []string{err.Error()}}
+		}
 		// Create the terraform plan command with no color output for easier parsing
-		cmd := exec.Command("terraform", "plan", "-no-color", "-out=tfplan")
+		cmd, err := newTerraformCmd(context.Background(), tfConfig, m.opts.dir(), m.opts.planArgs()...)
+		if err != nil {
+			return planErrorMsg{err: err, output: []string{err.Error()}}
+		}
 		m.cmd = cmd
 
 		// Create pipes for stdout and stderr
@@ -246,6 +310,17 @@ func (m *planProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			errorText = msg.err.Error()
 		}
 
+		// Terraform refusing to replace a created Neon project or database:
+		// say why and what to revert, never recover by re-running.
+		if address, ok := neonPreventDestroyError(errorText); ok {
+			refusal := neonRefusalMessage(address, m.envFileName())
+			m.errorDetails = refusal
+			m.errorOutput = append([]string{refusal, ""}, msg.output...)
+			m.isRecoverable = false
+			m.phase = phaseError
+			return m, nil
+		}
+
 		_, recoverErr := terraformError(errorText)
 		if recoverErr == nil {
 			// Error is recoverable - don't show error screen, just quit
@@ -313,7 +388,11 @@ func (m *planProgressModel) View() string {
 		Align(lipgloss.Center).
 		Width(contentWidth)
 
-	content.WriteString(titleStyle.Render("🔄 Terraform Plan Progress"))
+	title := "🔄 Terraform Plan Progress"
+	if m.opts.Title != "" {
+		title = "🔄 " + m.opts.Title
+	}
+	content.WriteString(titleStyle.Render(title))
 	content.WriteString("\n\n")
 
 	// ═══════════════════════════════════════
@@ -661,13 +740,32 @@ func (m *planProgressModel) getErrorSuggestions() string {
 // target is the environment being planned; it feeds the Claude Code handoff
 // offered when the plan fails.
 func runTerraformPlanWithProgress(target handoffTarget) error {
+	return runTerraformPlanWithOptions(target, planStepOptions{})
+}
+
+// runTerraformPlanWithOptions is runTerraformPlanWithProgress for a targeted
+// plan, another plan file or another title.
+func runTerraformPlanWithOptions(target handoffTarget, opts planStepOptions) error {
 	m := newPlanProgressModel(target)
+	m.opts = opts
 	p := tea.NewProgram(m, tea.WithAltScreen())
 
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("error running plan progress TUI: %w", err)
 	}
 	return planRunResult(m, offerClaudeHandoff)
+}
+
+// envFileName is the env YAML's file name, for messages.
+func (m *planProgressModel) envFileName() string {
+	name := m.target.EnvName
+	if name == "" {
+		name = m.target.Env.Env
+	}
+	if name == "" {
+		return "the env YAML"
+	}
+	return name + ".yaml"
 }
 
 // planRunResult is what a finished plan TUI returns, after handing off to

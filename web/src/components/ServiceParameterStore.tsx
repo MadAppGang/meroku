@@ -18,6 +18,10 @@ import {
 } from "../api/infrastructure";
 import type { ComponentNode } from "../types";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
+import {
+	NEON_DATABASE_URL_PARAM,
+	NeonDatabaseUrlNote,
+} from "./NeonDatabaseUrlNote";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -83,7 +87,13 @@ export function ServiceParameterStore({
 	const [creating, setCreating] = useState(false);
 
 	// Auto-created parameters (detected by convention)
-	const autoCreatedParams = ["env"];
+	const neonAccess = config.neon
+		? config.services?.find((service) => service.name === serviceName)?.neon
+		: undefined;
+	const autoCreatedParams = [
+		"env",
+		...(neonAccess ? [NEON_DATABASE_URL_PARAM] : []),
+	];
 
 	const loadParameters = useCallback(async () => {
 		try {
@@ -269,6 +279,21 @@ export function ServiceParameterStore({
 					</Alert>
 				</CardContent>
 			</Card>
+
+			{neonAccess && (
+				<Card>
+					<CardContent className="pt-6">
+						<NeonDatabaseUrlNote
+							access={neonAccess}
+							parameterPath={parameterPath}
+							deployed={parameters.some(
+								(param) =>
+									getParamDisplayName(param.name) === NEON_DATABASE_URL_PARAM,
+							)}
+						/>
+					</CardContent>
+				</Card>
+			)}
 
 			{error && (
 				<Alert variant="destructive">

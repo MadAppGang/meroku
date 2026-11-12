@@ -44,7 +44,25 @@ func (t handoffTarget) context(operation, goal string) HandoffContext {
 	if t.EnvLoadError != "" {
 		ctx.Diagnostics = []string{t.EnvLoadError}
 	}
+	if n := t.Env.Neon; n != nil {
+		ctx.NeonMode = n.Mode
+		ctx.NeonProjectID = n.ProjectID
+		ctx.NeonAuthSource = string(handoffNeonAuthSource())
+	}
 	return ctx
+}
+
+// handoffNeonAuthSource is the source of the Neon token the current run uses,
+// or of the one it would use: NEON_API_KEY when meroku was started with it,
+// else the Neon CLI login.
+func handoffNeonAuthSource() NeonTokenSource {
+	if src := activeNeonTokenSource(); src != "" {
+		return src
+	}
+	if neonUserKey != "" {
+		return neonTokenFromEnv
+	}
+	return neonTokenFromNeonctl
 }
 
 // handoffTargetFromProjectRoot builds a target for code that runs at the

@@ -1,11 +1,6 @@
-import { cva } from "class-variance-authority";
 import {
-	AlertTriangle,
-	Ban,
-	CheckCircle2,
 	ChevronDown,
 	Cloud,
-	Info,
 	Loader2,
 	Network,
 	RefreshCw,
@@ -42,6 +37,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "./ui/select";
+import { NoteCode, NoteDetail, StatusNote } from "./ui/status-note";
 
 /**
  * "Network range" — the env's private address range (YAML `vpc_cidr`).
@@ -66,71 +62,11 @@ export interface VPCRangeCardProps {
 
 const SUGGESTION_COUNT = 5;
 
-type Tone = "success" | "warning" | "error" | "neutral" | "pending";
-
-const toneIcon = cva("mt-0.5 size-4 shrink-0", {
-	variants: {
-		tone: {
-			success: "text-tech-success",
-			warning: "text-tech-warning",
-			error: "text-danger",
-			neutral: "text-muted-foreground",
-			pending: "text-muted-foreground animate-spin motion-reduce:animate-none",
-		},
-	},
-});
-
-/** The headline line takes the tone's colour only for errors; others stay neutral text. */
-const toneText = cva("min-w-0 flex-1 space-y-1", {
-	variants: {
-		tone: {
-			success: "text-card-foreground",
-			warning: "text-card-foreground",
-			error: "text-danger",
-			neutral: "text-card-foreground",
-			pending: "text-card-foreground",
-		},
-	},
-});
-
-const TONE_ICONS = {
-	success: CheckCircle2,
-	warning: AlertTriangle,
-	error: Ban,
-	neutral: Info,
-	pending: Loader2,
-} as const;
-
-function StatusNote({
-	tone,
-	title,
-	id,
-	children,
-}: {
-	tone: Tone;
-	/** Technical detail, shown as a native tooltip. */
-	title?: string;
-	id?: string;
-	children: ReactNode;
-}) {
-	const Icon = TONE_ICONS[tone];
-	return (
-		<div id={id} className="flex items-start gap-2 text-sm" title={title}>
-			<Icon className={toneIcon({ tone })} aria-hidden="true" />
-			<div className={toneText({ tone })}>{children}</div>
-		</div>
-	);
-}
-
 function Range({ value }: { value: string }) {
-	return (
-		<code className="font-mono text-xs text-muted-foreground">{value}</code>
-	);
+	return <NoteCode>{value}</NoteCode>;
 }
 
-function Detail({ children }: { children: ReactNode }) {
-	return <p className="text-xs text-muted-foreground">{children}</p>;
-}
+const Detail = NoteDetail;
 
 function WarningList({ warnings }: { warnings: VPCCIDRWarning[] }) {
 	return (
@@ -517,7 +453,8 @@ export function VPCRangeCard({ env, value, onApply }: VPCRangeCardProps) {
 					</Button>
 				</div>
 				<Detail>
-					Also avoids networks that already exist in the AWS accounts your environments use.
+					Also avoids networks that already exist in the AWS accounts your
+					environments use.
 				</Detail>
 				{pickError && (
 					<StatusNote tone="error">

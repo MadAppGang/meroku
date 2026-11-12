@@ -785,10 +785,27 @@ func terraformPlanInDir(dir string) (planSummary, error) {
 		return planSummary{}, errTerraformNotInstalled
 	}
 
+	dir = terraformDirOrCwd(dir)
 	const planFile = ".meroku-reconnect.tfplan"
 	defer os.Remove(filepath.Join(dir, planFile))
 
-	out, err := exec.Command("terraform", terraformArgs(dir, "plan", "-input=false", "-no-color", "-out="+planFile)...).CombinedOutput()
+	// A Neon env plans only with a Neon login and the Postgres credentials.
+	if isNeonDir(dir) || neonStateMayExist(dir) {
+		done, err := ensureNeonTerraformSession(context.Background(), neonTargetForDir(dir))
+		if err != nil {
+			return planSummary{}, err
+		}
+		defer done()
+		if err := ensureActiveNeonSessionFresh(context.Background(), os.Stdout); err != nil {
+			return planSummary{}, err
+		}
+	}
+
+	planCmd, err := newTerraformCmd(context.Background(), tfConfig, dir, "plan", "-input=false", "-no-color", "-out="+planFile)
+	if err != nil {
+		return planSummary{}, err
+	}
+	out, err := planCmd.CombinedOutput()
 	clean := stripAnsiEscapeCodes(string(out))
 	if err != nil {
 		if m := stateLockIDRe.FindStringSubmatch(clean); isStateLockFailure(clean) {
@@ -798,10 +815,14 @@ func terraformPlanInDir(dir string) (planSummary, error) {
 			}
 			return planSummary{}, locked
 		}
-		return planSummary{}, fmt.Errorf("%w: %s", err, lastMeaningfulLines(clean, 12))
+		return planSummary{}, fmt.Errorf("%w: %s", err, redactSecrets(lastMeaningfulLines(clean, 12)))
 	}
 
-	jsonOut, showErr := exec.Command("terraform", terraformArgs(dir, "show", "-json", planFile)...).Output()
+	var jsonOut []byte
+	showCmd, showErr := newTerraformCmd(context.Background(), tfState, dir, "show", "-json", planFile)
+	if showErr == nil {
+		jsonOut, showErr = showCmd.Output()
+	}
 	if showErr != nil {
 		// The plan itself succeeded, so fall back to its printed summary rather
 		// than reporting a failure we do not have.
@@ -810,8 +831,18 @@ func terraformPlanInDir(dir string) (planSummary, error) {
 	return summarizePlanJSON(jsonOut)
 }
 
+// terraformDirOrCwd is dir, or the working directory when dir is "" or ".":
+// newTerraformCmd always needs a directory to run in and to inspect.
+func terraformDirOrCwd(dir string) string {
+	if dir == "" || dir == "." {
+		return workingDir()
+	}
+	return dir
+}
+
 // terraformArgs builds an argv with -chdir in front, which has to precede the
-// subcommand.
+// subcommand. No terraform call uses it any more: commands run in their
+// directory through newTerraformCmd.
 func terraformArgs(dir string, args ...string) []string {
 	if dir == "" || dir == "." {
 		return args
@@ -908,13 +939,10 @@ func terraformInitInDir(dir string) error {
 		return errTerraformNotInstalled
 	}
 
-	args := []string{}
-	if dir != "" && dir != "." {
-		args = append(args, "-chdir="+dir)
+	cmd, err := newTerraformCmd(context.Background(), tfState, terraformDirOrCwd(dir), "init", "-input=false")
+	if err != nil {
+		return err
 	}
-	args = append(args, "init", "-input=false")
-
-	cmd := exec.Command("terraform", args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {

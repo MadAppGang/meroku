@@ -34,6 +34,10 @@ env:
   # app: 1.23.0), so both are built with a toolchain each accepts.
   GO_VERSION: '1.23'
   TERRAFORM_VERSION: '1.9.8'
+  # The Neon modules declare required_version >= 1.14.0 (ephemeral variables and
+  # write-only arguments), so 1.9.8 refuses to init them. They get their own job,
+  # pinned to that floor.
+  NEON_TERRAFORM_VERSION: '1.14.0'
   # Matches release.yml. The pnpm version is deliberately not pinned here — the
   # web job reads it from web/package.json's `packageManager` instead.
   NODE_VERSION: '20'
@@ -304,6 +308,35 @@ jobs:
         run: |
           set -e
           for m in alb s3 postgres sqs ecs_task event_bridge_task appsync dns-root github_runners; do
+            echo "==> modules/$m"
+            terraform -chdir="modules/$m" init -backend=false -input=false
+            terraform -chdir="modules/$m" validate
+          done
+
+  # modules/neon, modules/neon_access and modules/neon_ssm need Terraform 1.14 or
+  # later. The repository-wide Format step in the job above still parses them
+  # under 1.9.8, which is why they use no syntax newer than that; this job is
+  # where they are formatted and validated against the version they require.
+  terraform-neon:
+    name: Terraform (Neon modules)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.NEON_TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: Format
+        run: terraform fmt -check -recursive -diff modules/neon modules/neon_access modules/neon_ssm
+
+      - name: Validate
+        run: |
+          set -e
+          for m in neon neon_access neon_ssm; do
             echo "==> modules/$m"
             terraform -chdir="modules/$m" init -backend=false -input=false
             terraform -chdir="modules/$m" validate

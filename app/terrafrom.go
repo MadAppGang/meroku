@@ -1,14 +1,12 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
-	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -18,7 +16,11 @@ import (
 func terraformInit(flags ...string) (string, error) {
 	var e error
 	action := func() {
-		cmd := exec.Command("terraform", append([]string{"init"}, flags...)...)
+		cmd, err := newTerraformCmd(context.Background(), tfState, workingDir(), append([]string{"init"}, flags...)...)
+		if err != nil {
+			e = fmt.Errorf("error initializing terraform: %w", err)
+			return
+		}
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			lines := strings.Split(string(output), "\n")
@@ -102,6 +104,11 @@ func terraformInitIfNeeded() error {
 // re-plan racing Claude for the state lock and .terraform/.
 var errHandedOff = errors.New("handed off to Claude Code")
 
+// errApplyFailed is an apply that ran and failed. Its error screen has
+// already shown Terraform's diagnostics and offered the handoff, so callers
+// stop without printing it again.
+var errApplyFailed = errors.New("terraform apply failed")
+
 // applyPlanStep and applyPlanRecovery are the plan and the recovery-command
 // lookup runTerraformApply uses. Variables so tests can drive the flow without
 // running Terraform.
@@ -114,8 +121,35 @@ var (
 // directory (env/<env>). target names that environment and the project root;
 // it is captured before the chdir and only feeds the Claude Code handoff.
 func runTerraformApply(target handoffTarget) error {
+	return runTerraformApplyWithOptions(target, applyRunOptions{})
+}
+
+// applyRunOptions shape one plan-and-apply. Zero is today's untargeted run
+// on tfplan. Title names the run on both screens.
+type applyRunOptions struct {
+	Targets []string
+	Title   string
+}
+
+// runTerraformApplyWithOptions is runTerraformApply limited to Targets and
+// titled Title. In a Neon dir [r] is hidden, a changed role search_path is
+// explained after the apply, and a role Postgres could not drop gets its
+// remedy printed.
+func runTerraformApplyWithOptions(target handoffTarget, opts applyRunOptions) error {
+	dir := workingDir()
+	// The plan file can hold provider-stored secrets: it never outlives this
+	// call, whatever path the call returns by.
+	defer os.Remove(filepath.Join(dir, "tfplan"))
+
+	planStep := applyPlanStep
+	if len(opts.Targets) > 0 || opts.Title != "" {
+		planStep = func(t handoffTarget) error {
+			return runTerraformPlanWithOptions(t, planStepOptions{Targets: opts.Targets, Title: opts.Title, Dir: dir})
+		}
+	}
+
 	// Run the new progress TUI for terraform plan
-	err := applyPlanStep(target)
+	err := planStep(target)
 	if errors.Is(err, errHandedOff) {
 		// The user chose Claude Code over automatic recovery.
 		return err
@@ -134,8 +168,8 @@ func runTerraformApply(target handoffTarget) error {
 				// Cannot recover, error was already shown in TUI
 				return fmt.Errorf("terraform plan failed: %w", err)
 			}
-			fmt.Printf("✳️ terraform error recovery attempt %d/%d suggests to run: %v\n", retryCount+1, maxRetries, commands)
-			recoveryOutput, err2 := runCommandWithOutput(commands[0], commands[1:]...)
+			fmt.Printf("✳️ terraform error recovery attempt %d/%d suggests to run: terraform %s\n", retryCount+1, maxRetries, strings.Join(commands, " "))
+			recoveryOutput, err2 := runTerraformRecovery(dir, commands)
 			if err2 != nil {
 				fmt.Printf("❌ Attempt %d failed. Error: %v\n", retryCount+1, err2)
 				err = err2
@@ -143,7 +177,7 @@ func runTerraformApply(target handoffTarget) error {
 			} else {
 				fmt.Printf("✅ Attempt %d succeeded.\n", retryCount+1)
 				// Retry the plan with progress TUI
-				return runTerraformApply(target)
+				return runTerraformApplyWithOptions(target, opts)
 			}
 			retryCount++
 		}
@@ -155,7 +189,10 @@ func runTerraformApply(target handoffTarget) error {
 
 	// Parse and format the plan
 	// Run terraform show to get JSON output
-	cmd := exec.Command("terraform", "show", "-json", "tfplan")
+	cmd, err := newTerraformCmd(context.Background(), tfState, dir, "show", "-json", "tfplan")
+	if err != nil {
+		return fmt.Errorf("error running terraform show: %w", err)
+	}
 	jsonOutput, err := cmd.Output()
 	if err != nil {
 		return fmt.Errorf("error running terraform show: %w", err)
@@ -164,7 +201,16 @@ func runTerraformApply(target handoffTarget) error {
 	// Parse the JSON to filter only changes
 	var fullPlan TerraformPlanVisual
 	err = json.Unmarshal(jsonOutput, &fullPlan)
+	// rawChanges keeps the values as Terraform reported them, for checks that
+	// read attributes after the plan screen. maskPlanSensitive replaces masked
+	// maps with copies, so it never reaches into these.
+	var rawChanges []ResourceChange
 	if err == nil {
+		rawChanges = append([]ResourceChange(nil), fullPlan.ResourceChanges...)
+		for i := range fullPlan.ResourceChanges {
+			maskPlanSensitive(&fullPlan.ResourceChanges[i])
+		}
+
 		// Create a filtered version with only changes
 		filteredPlan := struct {
 			TerraformVersion string           `json:"terraform_version"`
@@ -211,9 +257,10 @@ func runTerraformApply(target handoffTarget) error {
 		}
 		filteredPlan.Summary.Total = len(filteredPlan.ResourceChanges)
 
-		// Save the filtered JSON
+		// Save the filtered JSON: sensitive values already masked, registered
+		// secrets redacted, readable only by the user.
 		filteredJSON, _ := json.MarshalIndent(filteredPlan, "", "  ")
-		err = os.WriteFile("terraform-plan-changes.json", filteredJSON, 0o644)
+		err = writePrivateFile(filepath.Join(dir, "terraform-plan-changes.json"), []byte(redactSecrets(string(filteredJSON))))
 		if err == nil {
 			fmt.Printf("💾 Changes saved to terraform-plan-changes.json (%d resources)\n", filteredPlan.Summary.Total)
 		}
@@ -223,15 +270,61 @@ func runTerraformApply(target handoffTarget) error {
 	fmt.Println("✅ Terraform plan generated successfully")
 
 	// Show interactive TUI
-	err = showModernTerraformPlanTUI(string(jsonOutput), target)
+	result, err := showModernTerraformPlanTUIWithOptions(string(jsonOutput), target, planTUIOptions{
+		Targets:      opts.Targets,
+		AllowReplace: !isNeonDir(dir),
+		Title:        opts.Title,
+	})
 	if err != nil {
 		return fmt.Errorf("error showing plan TUI: %w", err)
 	}
-	os.Remove("tfplan")
+	ownerRole := ""
+	if n := normalizeNeon(target.Env.Neon); n != nil {
+		ownerRole = n.OwnerRole
+	}
+	if result.Applied {
+		if notice := neonSearchPathNotice(neonSearchPathChanges(rawChanges), ownerRole); notice != "" {
+			fmt.Println()
+			fmt.Print(notice)
+		}
+	}
+	if result.Failed {
+		if remedy := neonRoleInUseRemedy(result.FailureOutput, ownerRole); remedy != "" {
+			fmt.Println()
+			fmt.Print(remedy)
+		}
+	}
 	fmt.Println("Returning to main menu...")
+	if result.Failed {
+		return errApplyFailed
+	}
 	return nil
 }
 
+// runTerraformRecovery runs the terraform arguments terraformError suggested
+// in dir. In a Neon dir, newTerraformCmd refuses init -upgrade unless the
+// Neon providers are pinned to their exact releases.
+func runTerraformRecovery(dir string, args []string) (string, error) {
+	cmd, err := newTerraformCmd(context.Background(), tfState, dir, args...)
+	if err != nil {
+		return err.Error(), err
+	}
+	return runCmdWithOutput(cmd)
+}
+
+// writePrivateFile writes data to path with mode 0600, also tightening the
+// mode of a file an earlier version wrote world-readable.
+func writePrivateFile(path string, data []byte) error {
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0o600)
+}
+
+// terraformError maps a failed command's output to the terraform arguments
+// that recover from it (no "terraform" element), or an error when there is no
+// known recovery. It only ever suggests init variants: never apply, plan or
+// destroy.
 func terraformError(output string) ([]string, error) {
 	fmt.Println("Recovering from error ... ")
 
@@ -243,7 +336,7 @@ func terraformError(output string) ([]string, error) {
 	// with a plain init that fails the same way.
 	if strings.Contains(clean, "does not match configured version constraint") ||
 		strings.Contains(clean, "terraform init -upgrade") {
-		return []string{"terraform", "init", "-upgrade", "-input=false"}, nil
+		return []string{"init", "-upgrade", "-input=false"}, nil
 	}
 
 	// Check for errors that require terraform init -reconfigure
@@ -260,7 +353,7 @@ func terraformError(output string) ([]string, error) {
 
 	for _, pattern := range reconfigurePatterns {
 		if strings.Contains(clean, pattern) {
-			return []string{"terraform", "init", "-reconfigure"}, nil
+			return []string{"init", "-reconfigure"}, nil
 		}
 	}
 
@@ -287,30 +380,9 @@ func terraformError(output string) ([]string, error) {
 		if strings.Contains(clean, pattern) {
 			// Check if terraform suggests -reconfigure specifically
 			if strings.Contains(clean, "\"-reconfigure\"") || strings.Contains(clean, "\"-migrate-state\"") {
-				return []string{"terraform", "init", "-reconfigure"}, nil
+				return []string{"init", "-reconfigure"}, nil
 			}
-			return []string{"terraform", "init"}, nil
-		}
-	}
-
-	// Check for archive creation errors (missing files for lambda, etc.)
-	// These typically occur during destroy when lambda source files have been moved/deleted
-	archiveErrorPatterns := []string{
-		"Error: Archive creation error",
-		"error creating archive",
-		"could not archive missing file",
-		"error archiving file",
-	}
-
-	for _, pattern := range archiveErrorPatterns {
-		if strings.Contains(clean, pattern) {
-			fmt.Println("\n⚠️  Detected missing file error for archive creation.")
-			fmt.Println("💡 This usually means a lambda function references files that no longer exist.")
-			fmt.Println("🔄 Attempting destroy with -refresh=false to skip validation...")
-
-			// During destroy, we don't need to validate/create archives
-			// Skip refresh phase which tries to read these files
-			return []string{"terraform", "apply", "-destroy", "-refresh=false", "-auto-approve"}, nil
+			return []string{"init"}, nil
 		}
 	}
 
@@ -328,95 +400,4 @@ func stripAnsiEscapeCodes(input string) string {
 	// This regex matches ANSI escape codes
 	re := regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
 	return re.ReplaceAllString(input, "")
-}
-
-// Destroy needs no build artifact. modules/workloads/lambda.tf carries no
-// data.archive_file (asserted by ci_lambda/internal/boundary/lambdatf_guard_test.go)
-// and reads the zip only through aws_lambda_function.filename, which the
-// provider touches on Create/Update and never on a destroy plan. meroku used to
-// write a stand-in binary here for an archive_file that no longer exists.
-func runTerraformDestroy() error {
-	return runTerraformDestroyWithRetry(0)
-}
-
-func runTerraformDestroyWithRetry(retryCount int) error {
-	const maxRetries = 3
-
-	fmt.Println("\n🔍 Running terraform plan -destroy to preview changes...")
-
-	// First, run terraform plan -destroy to show what will be destroyed
-	// Use -refresh=false to skip data source reads and prevent errors from already-deleted resources
-	// Use a combined output buffer to capture errors for recovery
-	var stderrBuf bytes.Buffer
-	cmd := exec.Command("terraform", "plan", "-destroy", "-out=destroy.tfplan", "-refresh=false")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = io.MultiWriter(os.Stderr, &stderrBuf)
-
-	if err := cmd.Run(); err != nil {
-		// Try to recover from errors
-		stderrOutput := stderrBuf.String()
-
-		// Check if this is a recoverable error
-		if retryCount < maxRetries {
-			commands, recoverErr := terraformError(stderrOutput)
-			if recoverErr == nil {
-				fmt.Printf("\n✳️ Detected recoverable error. Running recovery command (attempt %d/%d): %v\n", retryCount+1, maxRetries, commands)
-
-				// Run the recovery command
-				recoveryOutput, err2 := runCommandWithOutput(commands[0], commands[1:]...)
-				if err2 != nil {
-					fmt.Printf("❌ Recovery attempt %d failed: %v\n", retryCount+1, err2)
-					fmt.Printf("Output: %s\n", recoveryOutput)
-				} else {
-					fmt.Printf("✅ Recovery successful. Retrying destroy operation...\n\n")
-					// Retry the destroy operation
-					return runTerraformDestroyWithRetry(retryCount + 1)
-				}
-			}
-		}
-
-		return fmt.Errorf("terraform plan -destroy failed: %w", err)
-	}
-
-	fmt.Println("\n📊 Destroy plan created successfully.")
-	fmt.Println("🔥 Proceeding with destruction...")
-
-	// Now run terraform apply with the destroy plan
-	// Use -auto-approve since we already confirmed multiple times
-	destroyCmd := exec.Command("terraform", "apply", "-auto-approve", "destroy.tfplan")
-	destroyCmd.Stdout = os.Stdout
-	destroyCmd.Stderr = os.Stderr
-
-	if err := destroyCmd.Run(); err != nil {
-		// Try to recover from errors
-		errString := err.Error()
-		var recoverErr error
-		retryCount := 0
-		maxRetries := 3
-		var commands []string
-
-		for recoverErr == nil && retryCount < maxRetries {
-			commands, recoverErr = terraformError(errString)
-			if recoverErr != nil {
-				return fmt.Errorf("terraform destroy failed: %w", err)
-			}
-			fmt.Printf("✳️ terraform error recovery attempt %d/%d suggests to run: %v\n", retryCount+1, maxRetries, commands)
-			recoveryOutput, err2 := runCommandWithOutput(commands[0], commands[1:]...)
-			if err2 != nil {
-				fmt.Printf("❌ Attempt %d failed. Error: %v\n", retryCount+1, err2)
-				errString = recoveryOutput
-			} else {
-				fmt.Printf("✅ Attempt %d succeeded. Retrying destroy...\n", retryCount+1)
-				return runTerraformDestroy()
-			}
-			retryCount++
-		}
-
-		return fmt.Errorf("terraform destroy failed after %d recovery attempts: %w", retryCount, err)
-	}
-
-	// Clean up the destroy plan file
-	os.Remove("destroy.tfplan")
-
-	return nil
 }

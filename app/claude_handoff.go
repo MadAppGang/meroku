@@ -57,6 +57,15 @@ type HandoffContext struct {
 	Diagnostics []string
 	// ErrorOutput is raw stderr / the error chain. Only its tail is kept.
 	ErrorOutput string
+
+	// NeonMode is the env's neon.mode ("create" or "reuse"); empty when the
+	// env has no Neon project.
+	NeonMode string
+	// NeonProjectID is the reused project's id, when known.
+	NeonProjectID string
+	// NeonAuthSource is where the Neon token came from: "env" (NEON_API_KEY)
+	// or "neonctl" (the Neon CLI login).
+	NeonAuthSource string
 }
 
 // HandoffResult says what LaunchClaudeHandoff did, for the caller to print.
@@ -98,6 +107,7 @@ var handoffSystem = handoffDeps{
 func runHandoffCommand(name string, args ...string) ([]byte, error) {
 	var stdout, stderr bytes.Buffer
 	cmd := exec.Command(name, args...)
+	cmd.Env = childEnv()
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
 		if msg := strings.TrimSpace(stderr.String() + " " + stdout.String()); msg != "" {
@@ -176,11 +186,41 @@ type briefingView struct {
 	TimeDisplay        string
 	Truncated          bool
 	HasFailureData     bool
+	NeonProjectDisplay string
+	NeonAuthDisplay    string
 }
 
 // BuildBriefing renders the briefing for ctx. Pure: no clock, no environment,
-// no files beyond the embedded template.
+// no files beyond the embedded template. Every registered secret is redacted:
+// error output and diagnostics are raw Terraform text.
 func BuildBriefing(ctx HandoffContext) string {
+	return redactSecrets(buildBriefing(redactHandoffContext(ctx)))
+}
+
+// redactHandoffContext redacts the free-text fields of ctx before they are
+// cut or rendered, so the tail cut can never split a secret.
+func redactHandoffContext(ctx HandoffContext) HandoffContext {
+	ctx.ErrorOutput = redactSecrets(ctx.ErrorOutput)
+	if len(ctx.Diagnostics) > 0 {
+		diags := make([]string, len(ctx.Diagnostics))
+		for i, d := range ctx.Diagnostics {
+			diags[i] = redactSecrets(d)
+		}
+		ctx.Diagnostics = diags
+	}
+	if len(ctx.Failures) > 0 {
+		failures := make([]HandoffFailure, len(ctx.Failures))
+		for i, f := range ctx.Failures {
+			f.Summary = redactSecrets(f.Summary)
+			f.Detail = redactSecrets(f.Detail)
+			failures[i] = f
+		}
+		ctx.Failures = failures
+	}
+	return ctx
+}
+
+func buildBriefing(ctx HandoffContext) string {
 	const unknown = "(not recorded)"
 	or := func(s, fallback string) string {
 		if strings.TrimSpace(s) == "" {
@@ -207,6 +247,8 @@ func BuildBriefing(ctx HandoffContext) string {
 	}
 	v.ErrorOutput, v.Truncated = tailOf(strings.TrimRight(ctx.ErrorOutput, "\n"), maxBriefingErrorOutput)
 	v.HasFailureData = len(ctx.Failures) > 0 || len(ctx.Diagnostics) > 0 || v.ErrorOutput != ""
+	v.NeonProjectDisplay = or(ctx.NeonProjectID, "(created by meroku, or not recorded)")
+	v.NeonAuthDisplay = or(ctx.NeonAuthSource, unknown)
 
 	var buf bytes.Buffer
 	if err := briefingTemplate.Execute(&buf, v); err != nil {
@@ -312,7 +354,7 @@ func LaunchClaudeHandoff(ctx HandoffContext) (HandoffResult, error) {
 	res := HandoffResult{
 		BriefingPath:  path,
 		PaneHost:      detectPaneHost(handoffSystem.getenv),
-		ManualCommand: "cd " + shellQuote(root) + " && claude " + shellArgs(claudeArgs),
+		ManualCommand: "cd " + shellQuote(root) + " && " + handoffEnvUnset + " claude " + shellArgs(claudeArgs),
 	}
 	if res.PaneHost == "" {
 		return res, nil
@@ -325,10 +367,18 @@ func LaunchClaudeHandoff(ctx HandoffContext) (HandoffResult, error) {
 	// Both hosts hand the command to a shell, so it is one quoted string. The
 	// resolved path is used because the multiplexer's PATH can differ from
 	// meroku's.
-	paneCommand := shellCommand(claudePath, claudeArgs...)
+	//
+	// A pane takes its environment from the multiplexer's server, not from
+	// meroku, so env -u removes the Neon secrets the server or the pane
+	// shell's startup files may hold. For tmux, -e also blanks them in the
+	// pane itself; tmux older than 3.0 rejects -e, and the manual command is
+	// the fallback then.
+	paneCommand := handoffEnvUnset + " " + shellCommand(claudePath, claudeArgs...)
 	switch res.PaneHost {
 	case paneHostTmux:
-		_, err = handoffSystem.run("tmux", "split-window", "-h", "-c", root, paneCommand)
+		_, err = handoffSystem.run("tmux", "split-window", "-h",
+			"-e", neonAPIKeyEnvName+"=", "-e", neonPGCredentialsEnvName+"=",
+			"-c", root, paneCommand)
 	case paneHostHerdr:
 		err = openHerdrPane(root, paneCommand)
 	}
@@ -454,19 +504,15 @@ func shellArgs(args []string) string {
 // writeHandoffBriefing creates .meroku/claude/ under the project root, makes
 // .meroku ignore itself, and writes the briefing there.
 func writeHandoffBriefing(ctx HandoffContext) (string, error) {
-	meroku := filepath.Join(ctx.ProjectRoot, ".meroku")
+	// The briefing can hold raw error output, so .meroku/ is kept out of git
+	// by its own .gitignore.
+	meroku, err := ensureMerokuDir(ctx.ProjectRoot)
+	if err != nil {
+		return "", fmt.Errorf("claude handoff: %w", err)
+	}
 	dir := filepath.Join(meroku, "claude")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", fmt.Errorf("claude handoff: creating %s: %w", dir, err)
-	}
-
-	// The briefing can hold raw error output, so .meroku/ is kept out of git
-	// by its own .gitignore. An existing one is the user's and is left alone.
-	ignore := filepath.Join(meroku, ".gitignore")
-	if _, err := os.Stat(ignore); errors.Is(err, os.ErrNotExist) {
-		if err := os.WriteFile(ignore, []byte("*\n"), 0o644); err != nil {
-			return "", fmt.Errorf("claude handoff: writing %s: %w", ignore, err)
-		}
 	}
 
 	// The SSO fix-up hands off one profile after another, so its briefings are
@@ -549,6 +595,10 @@ func handoffPrompt(briefingPath string) string {
 		" and follow it. If the meroku:troubleshoot skill is available, use it to work the briefing." +
 		" Investigate and explain first; ask me before any write."
 }
+
+// handoffEnvUnset prefixes the Claude Code command so it never inherits the
+// Neon secrets from the shell that runs it.
+const handoffEnvUnset = "env -u " + neonAPIKeyEnvName + " -u " + neonPGCredentialsEnvName
 
 // shellQuote quotes s as one POSIX shell word. Inside single quotes nothing is
 // special, so only the quote itself needs handling.

@@ -22,6 +22,13 @@ These rules come from the user. They apply for the whole session.
 3. **Investigate and explain first; ask before any write.** Tell the user what you
    found and what you propose, and wait for a yes before you change a file, run a
    command that changes AWS or Terraform state, or rerun meroku.
+{{- if .NeonMode}}
+4. **Do NOT write to Neon directly.** No Neon console changes and no Neon API or
+   Neon CLI (`neon`, `neonctl`) writes (create, update, delete of projects,
+   branches, databases or roles), and no SQL that creates, alters or drops roles or grants. Fix it in the
+   env YAML's `neon:` block or the services' `neon` blocks, or in meroku, and rerun
+   meroku.
+{{- end}}
 
 Read-only inspection is fine at any time:
 
@@ -84,9 +91,22 @@ claude plugin install meroku@magus
 | AWS region | {{.RegionDisplay}} |
 | meroku version | {{.VersionDisplay}} |
 | Time | {{.TimeDisplay}} |
+{{- if .NeonMode}}
+| Neon mode | {{.NeonMode}} |
+| Neon project | {{cell .NeonProjectDisplay}} |
+| Neon auth source | {{.NeonAuthDisplay}} |
+{{- end}}
 
 The profile, region and account come from the env YAML meroku loaded, not from the
 shell environment.
+{{- if .NeonMode}}
+
+This environment uses Neon Postgres. meroku passes the Neon token and the database
+credentials only to the Terraform processes it starts, so this pane does not have
+them, and a plain `terraform plan` in `env/{{.EnvName}}/` fails on the Neon
+providers. Read the state with `terraform state list` / `terraform state show`
+instead, and rerun meroku for a plan.
+{{- end}}
 
 ## What failed
 {{if not .HasFailureData}}

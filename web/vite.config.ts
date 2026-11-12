@@ -1,9 +1,15 @@
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react-swc";
-import { defineConfig } from "vite";
+import { defineConfig, searchForWorkspaceRoot } from "vite";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
+
+// Generate-time Neon validation cases, shared with the Go validator.
+const neonVectors = resolve(
+	__dirname,
+	"../app/testdata/neon_validation_vectors.json",
+);
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -11,6 +17,9 @@ export default defineConfig({
 	server: {
 		host: "0.0.0.0",
 		allowedHosts: true,
+		fs: {
+			allow: [searchForWorkspaceRoot(process.cwd()), neonVectors],
+		},
 		proxy: {
 			"/api": {
 				target: "http://localhost:8080",
@@ -32,6 +41,7 @@ export default defineConfig({
 			"@": resolve(__dirname, "./src"),
 			"@components": resolve(__dirname, "./src/components"),
 			"@ui": resolve(__dirname, "./src/components/ui"),
+			"@neon-vectors": neonVectors,
 		},
 		// Explicitly tell Vite to look for index files
 		mainFields: ["module", "jsnext:main", "jsnext", "main"],

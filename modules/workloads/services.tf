@@ -830,7 +830,8 @@ resource "null_resource" "create_services_env_files" {
   }
 
   provisioner "local-exec" {
-    command = <<-EOT
+    interpreter = ["env", "-u", "NEON_API_KEY", "-u", "TF_VAR_neon_pg_credentials", "/bin/sh", "-c"]
+    command     = <<-EOT
       set -e
       echo "Checking if file exists: ${each.value.bucket}/${each.value.key}"
       touch empty.tmp

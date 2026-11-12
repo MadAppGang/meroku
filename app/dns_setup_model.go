@@ -5,8 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/url"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -337,8 +337,14 @@ func (m *dnsSetupModel) animTick() tea.Cmd {
 func (m *dnsSetupModel) createZoneCmd() tea.Cmd {
 	env := m.env
 	return func() tea.Msg {
-		cmd := exec.Command("terraform", append([]string{
+		if err := ensureActiveNeonSessionFresh(context.Background(), io.Discard); err != nil {
+			return dnsZoneCreatedMsg{err: err}
+		}
+		cmd, err := newTerraformCmd(context.Background(), tfConfig, workingDir(), append([]string{
 			"apply", "-no-color", "-auto-approve"}, phaseOneTargets()...)...)
+		if err != nil {
+			return dnsZoneCreatedMsg{err: err}
+		}
 
 		stdout, err := cmd.StdoutPipe()
 		if err != nil {

@@ -16,6 +16,10 @@ import {
 	type SSMParameterMetadata,
 } from "../api/infrastructure";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
+import {
+	NEON_DATABASE_URL_PARAM,
+	NeonDatabaseUrlNote,
+} from "./NeonDatabaseUrlNote";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -73,11 +77,14 @@ export function BackendParameterStore({ config }: BackendParameterStoreProps) {
 	const [newParamDescription, setNewParamDescription] = useState("");
 	const [creating, setCreating] = useState(false);
 
+	const neonAccess = config.neon ? config.workload?.backend_neon : undefined;
+
 	// Auto-created parameters (detected by convention)
 	const autoCreatedParams = [
 		"env",
 		"pg_database_password",
 		...(config.workload?.setup_fcnsns ? ["gcm-server-key"] : []),
+		...(neonAccess ? [NEON_DATABASE_URL_PARAM] : []),
 	];
 
 	const loadParameters = useCallback(async () => {
@@ -238,6 +245,21 @@ export function BackendParameterStore({ config }: BackendParameterStoreProps) {
 					</div>
 				</CardContent>
 			</Card>
+
+			{neonAccess && (
+				<Card>
+					<CardContent className="pt-6">
+						<NeonDatabaseUrlNote
+							access={neonAccess}
+							parameterPath={parameterPath}
+							deployed={parameters.some(
+								(param) =>
+									param.name === `${parameterPath}/${NEON_DATABASE_URL_PARAM}`,
+							)}
+						/>
+					</CardContent>
+				</Card>
+			)}
 
 			{error && (
 				<Alert variant="destructive">

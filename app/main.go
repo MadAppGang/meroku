@@ -83,6 +83,9 @@ func printMerokuUsage() {
 	fmt.Println("  vpc-cidr <check|suggest|assign> <env> [--aws] [--force]")
 	fmt.Println("                   Validate an environment's VPC range, suggest a free one,")
 	fmt.Println("                   or write one (only for environments not yet deployed)")
+	fmt.Println("  neon kept <env> [--forget]")
+	fmt.Println("                   List the Neon objects meroku released and kept, with the")
+	fmt.Println("                   commands to delete them; --forget clears the list")
 	fmt.Println("  monitor [env]    Open the infrastructure monitor dashboard")
 	fmt.Println("  help             Show this message")
 	fmt.Println("")
@@ -91,6 +94,10 @@ func printMerokuUsage() {
 }
 
 func main() {
+	// Before anything can start a child process: move NEON_API_KEY into
+	// memory and drop both Neon secret variables from meroku's environment.
+	captureNeonEnv(os.Getenv, os.Unsetenv)
+
 	// Parse command line flags
 	flag.Usage = printMerokuUsage
 	flag.Parse()
@@ -169,6 +176,11 @@ func main() {
 	// VPC range checks and assignment (before environment selection).
 	if len(args) > 0 && args[0] == "vpc-cidr" {
 		os.Exit(cliExitCode(handleVPCCIDRCommand(args[1:])))
+	}
+
+	// Neon objects meroku released and kept (before environment selection).
+	if len(args) > 0 && args[0] == "neon" {
+		os.Exit(cliExitCode(handleNeonCommand(args[1:])))
 	}
 
 	// Handle generate commands (before environment selection). Non-interactive:

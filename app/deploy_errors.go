@@ -104,7 +104,7 @@ func deployProjectRoot(getwd func() (string, error), out io.Writer) string {
 // deploy steps, offers the handoff. Plan and apply failures are not offered
 // again: their TUI error screens already did, with Terraform's diagnostics.
 func reportDeployFailure(err error, t handoffTarget, in io.Reader, offer func(HandoffContext)) {
-	if errors.Is(err, errDeployStopped) {
+	if errors.Is(err, errDeployStopped) || errors.Is(err, errApplyFailed) {
 		return
 	}
 	fmt.Printf("\n❌ %v\n", err)

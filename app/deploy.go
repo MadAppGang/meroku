@@ -71,6 +71,10 @@ func runCommandToDeploy(env string) error {
 		return stepErr("setup", fmt.Errorf("getting the current working directory: %w", err))
 	}
 	defer os.Chdir(wd)
+	// State reads are shared within this deploy only: the apply below can
+	// change what state holds without changing the lock file.
+	resetNeonStateCache()
+	defer resetNeonStateCache()
 
 	if err := createFolderIfNotExists("env"); err != nil {
 		return stepErr("setup", fmt.Errorf("creating the env directory: %w", err))
@@ -105,6 +109,42 @@ func runCommandToDeploy(env string) error {
 	fmt.Printf("\n🚀 Starting deployment for environment: %s\n", env)
 	if err := deployPreflight(ctx, e); err != nil {
 		return stepErr("preflight", err)
+	}
+
+	// Neon objects released earlier stay listed until they are deleted or
+	// used again.
+	printNeonKeptReport(wd, env)
+
+	// A Neon run gets its login before any terraform command: the DNS zone
+	// import and bootstrap below run terraform in this dir too.
+	envDir := filepath.Join(wd, "env", env)
+	var neonSess *neonSession
+	neonClear := func() {}
+	defer func() { neonClear() }()
+	if isNeonRun(e, envDir) {
+		sess, clear, err := beginNeonRunSession(ctx, e, interactiveTerminal())
+		if err != nil {
+			return stepErr("neon", err)
+		}
+		neonSess, neonClear = sess, clear
+	}
+	// Neon state found only after an init (a fresh checkout, or `neon:`
+	// removed) gets its session there. The pre-flight could not see that
+	// state, so it accepted the Terraform an env without Neon needs; the
+	// Neon minimum is checked before anything else runs.
+	neonSessionAfterInit := func() error {
+		if neonSess != nil || !neonStateMayExist(envDir) {
+			return nil
+		}
+		if err := checkTerraformVersion(terraformMinVersionNeon); err != nil {
+			return stepErr("neon", fmt.Errorf("this env has Neon resources in its Terraform state: %w", err))
+		}
+		sess, clear, err := beginNeonRunSession(ctx, e, interactiveTerminal())
+		if err != nil {
+			return stepErr("neon", err)
+		}
+		neonSess, neonClear = sess, clear
+		return nil
 	}
 
 	// An account holds one GitHub OIDC provider, so a second project sharing the
@@ -199,6 +239,9 @@ func runCommandToDeploy(env string) error {
 	if err := terraformInitIfNeeded(); err != nil {
 		return err
 	}
+	if err := neonSessionAfterInit(); err != nil {
+		return err
+	}
 
 	// Phase 1 of a two-phase deploy: create the hosted zone on its own, set up
 	// delegation, and only then run the full apply. Splitting is what makes a
@@ -230,6 +273,9 @@ func runCommandToDeploy(env string) error {
 			if err := terraformInitIfNeeded(); err != nil {
 				return err
 			}
+			if err := neonSessionAfterInit(); err != nil {
+				return err
+			}
 		} else if _, err := applyDNSOutcome(env, &e, outcome); err != nil {
 			return stepErr("dns", err)
 		}
@@ -241,7 +287,29 @@ func runCommandToDeploy(env string) error {
 	// loaded env, including any DNS outcome applied to it. The Claude Code
 	// handoff on a failed plan or apply reads both from here, never from the
 	// working directory or $AWS_PROFILE.
-	return runTerraformApply(handoffTarget{ProjectRoot: wd, EnvName: env, Env: e})
+	target := handoffTarget{ProjectRoot: wd, EnvName: env, Env: e}
+	if neonSess == nil {
+		return runTerraformApply(target)
+	}
+
+	// Neon: releases, step 1, credentials and deploy-time files, then step 2.
+	res, err := prepareNeonForDeploy(ctx, target, newNeonAPI(neonSessionToken(neonSess)), terraformOutputRunner, neonSess, neonDeployOptions{
+		Interactive: interactiveTerminal(),
+	})
+	defer res.Cleanup()
+	if err != nil {
+		if errors.Is(err, errNeonStopped) {
+			return errDeployStopped
+		}
+		return stepErr("neon", err)
+	}
+	// A failed step 2 skips the Kept report: the next deploy prints it before
+	// anything else runs.
+	if err := runTerraformApplyWithOptions(target, applyRunOptions{Targets: res.Step2Targets, Title: res.Step2Title}); err != nil {
+		return err
+	}
+	printNeonKeptReport(wd, env)
+	return nil
 }
 
 // envFileSearchPaths is where a config named <env> may live, in the order
@@ -488,11 +556,17 @@ func applyTemplate(env string) error {
 	if err := os.WriteFile(mainTf, []byte(result), 0o644); err != nil {
 		return fmt.Errorf("could not write %s: %w", mainTf, err)
 	}
+	// Deploy-time Neon files describe the state of one run; a freshly
+	// generated main.tf never inherits them.
+	if err := removeNeonDeployFiles(filepath.Join("env", env)); err != nil {
+		return fmt.Errorf("removing deploy-time Neon files in env/%s: %w", env, err)
+	}
 	return nil
 }
 
 // preprocessEnvMap runs everything applyTemplate does to envMap between
-// loading and rendering, in order: filterDisabledItems x3, then
+// loading and rendering, in order: applyNeonPreprocess (Neon snapshot,
+// validation and neon_render), filterDisabledItems x3, then
 // synthesizeDefaultComputePool, assignSESPrimaryDomain, resolveSESZones,
 // normalizeHealthCheckCommands, assignGitHubRunnersOwner, then validateSESDNSConfigMap,
 // validateNetworkAccessConfigMap, validateBackendHealthConfigMap,
@@ -514,6 +588,12 @@ func applyTemplate(env string) error {
 // means the FR-58 zero-config case — runtime: ec2 and nothing else — is the one
 // case the validator never sees as broken. DEV-9.
 func preprocessEnvMap(envMap map[string]interface{}) error {
+	// Before filterDisabledItems: a disabled service keeps its Neon role and
+	// SSM parameter. Sets neon_render and strips the service neon keys.
+	if err := applyNeonPreprocess(envMap); err != nil {
+		return err
+	}
+
 	filterDisabledItems(envMap, "services")
 	filterDisabledItems(envMap, "scheduled_tasks")
 	filterDisabledItems(envMap, "event_processor_tasks")

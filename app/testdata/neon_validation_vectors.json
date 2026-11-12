@@ -1,0 +1,1878 @@
+{
+  "_comment": [
+    "Generate-time Neon validation rules, shared by Go (validateNeonConfigMap)",
+    "and the web UI (web/src/utils/neonValidation.ts).",
+    "",
+    "config is an env document, as loaded from YAML, with only the keys the",
+    "rules read. want is the set of rule ids the config breaks: empty means",
+    "valid. A validator reports every problem at once, so a case may name",
+    "several rules. Order in want carries no meaning.",
+    "",
+    "V-N16 (two equal role names) is not here: a 32-bit id collision cannot be",
+    "written as a plain config, and the web UI does not check it.",
+    "All ids are placeholders."
+  ],
+  "vectors": [
+    {
+      "name": "valid reuse config",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "reuse",
+          "project_id": "fake-project-000000",
+          "pg_version": 17,
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            },
+            {
+              "name": "analytics",
+              "create": false
+            }
+          ]
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [
+              "app",
+              "public"
+            ],
+            "access": "readwrite"
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "analytics",
+              "access": "readonly"
+            }
+          }
+        ]
+      },
+      "want": []
+    },
+    {
+      "name": "valid create config",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "create",
+          "project": {
+            "name": "myapp-dev",
+            "org_id": "org-fake-000000",
+            "region_id": "aws-us-east-1",
+            "pg_version": 17
+          },
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            }
+          ]
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [
+              "app",
+              "public"
+            ],
+            "access": "readwrite"
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "app",
+              "access": "readonly"
+            }
+          }
+        ]
+      },
+      "want": []
+    },
+    {
+      "name": "no neon anywhere",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "workload": {},
+        "services": [
+          {
+            "name": "reports"
+          }
+        ]
+      },
+      "want": []
+    },
+    {
+      "name": "valid: optional fields omitted (owner_role, schemas, password_version)",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "reuse",
+          "project_id": "fake-project-000000",
+          "pg_version": 17,
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            },
+            {
+              "name": "analytics",
+              "create": false
+            }
+          ]
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "access": "readwrite"
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "analytics",
+              "access": "readonly"
+            }
+          }
+        ]
+      },
+      "want": []
+    },
+    {
+      "name": "valid: password_version 2",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "reuse",
+          "project_id": "fake-project-000000",
+          "pg_version": 17,
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            },
+            {
+              "name": "analytics",
+              "create": false
+            }
+          ]
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [
+              "app",
+              "public"
+            ],
+            "access": "readwrite",
+            "password_version": 2
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "analytics",
+              "access": "readonly"
+            }
+          }
+        ]
+      },
+      "want": []
+    },
+    {
+      "name": "valid: reuse pg_version 14 with no service",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "reuse",
+          "project_id": "fake-project-000000",
+          "pg_version": 14,
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            },
+            {
+              "name": "analytics",
+              "create": false
+            }
+          ]
+        },
+        "workload": {},
+        "services": [
+          {
+            "name": "reports"
+          }
+        ]
+      },
+      "want": []
+    },
+    {
+      "name": "valid: reuse pg_version 18 with no service",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "reuse",
+          "project_id": "fake-project-000000",
+          "pg_version": 18,
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            },
+            {
+              "name": "analytics",
+              "create": false
+            }
+          ]
+        },
+        "workload": {},
+        "services": [
+          {
+            "name": "reports"
+          }
+        ]
+      },
+      "want": []
+    },
+    {
+      "name": "V-N2 reuse pg_version 19",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "reuse",
+          "project_id": "fake-project-000000",
+          "pg_version": 19,
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            },
+            {
+              "name": "analytics",
+              "create": false
+            }
+          ]
+        },
+        "workload": {},
+        "services": [
+          {
+            "name": "reports"
+          }
+        ]
+      },
+      "want": [
+        "V-N2"
+      ]
+    },
+    {
+      "name": "valid: postgres and neon coexist",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "reuse",
+          "project_id": "fake-project-000000",
+          "pg_version": 17,
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            },
+            {
+              "name": "analytics",
+              "create": false
+            }
+          ]
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [
+              "app",
+              "public"
+            ],
+            "access": "readwrite"
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "analytics",
+              "access": "readonly"
+            }
+          }
+        ],
+        "postgres": {
+          "enabled": true
+        }
+      },
+      "want": []
+    },
+    {
+      "name": "V-N1 unknown mode",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "adopt",
+          "project_id": "fake-project-000000",
+          "pg_version": 17,
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            },
+            {
+              "name": "analytics",
+              "create": false
+            }
+          ]
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [
+              "app",
+              "public"
+            ],
+            "access": "readwrite"
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "analytics",
+              "access": "readonly"
+            }
+          }
+        ]
+      },
+      "want": [
+        "V-N1"
+      ]
+    },
+    {
+      "name": "V-N1 missing mode",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "project_id": "fake-project-000000",
+          "pg_version": 17,
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            },
+            {
+              "name": "analytics",
+              "create": false
+            }
+          ]
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [
+              "app",
+              "public"
+            ],
+            "access": "readwrite"
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "analytics",
+              "access": "readonly"
+            }
+          }
+        ]
+      },
+      "want": [
+        "V-N1"
+      ]
+    },
+    {
+      "name": "V-N2 reuse without project_id",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "reuse",
+          "pg_version": 17,
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            },
+            {
+              "name": "analytics",
+              "create": false
+            }
+          ]
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [
+              "app",
+              "public"
+            ],
+            "access": "readwrite"
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "analytics",
+              "access": "readonly"
+            }
+          }
+        ]
+      },
+      "want": [
+        "V-N2"
+      ]
+    },
+    {
+      "name": "V-N2 reuse project_id not a Neon id",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "reuse",
+          "project_id": "Bad_Project",
+          "pg_version": 17,
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            },
+            {
+              "name": "analytics",
+              "create": false
+            }
+          ]
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [
+              "app",
+              "public"
+            ],
+            "access": "readwrite"
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "analytics",
+              "access": "readonly"
+            }
+          }
+        ]
+      },
+      "want": [
+        "V-N2"
+      ]
+    },
+    {
+      "name": "V-N2 reuse without pg_version",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "reuse",
+          "project_id": "fake-project-000000",
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            },
+            {
+              "name": "analytics",
+              "create": false
+            }
+          ]
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [
+              "app",
+              "public"
+            ],
+            "access": "readwrite"
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "analytics",
+              "access": "readonly"
+            }
+          }
+        ]
+      },
+      "want": [
+        "V-N2"
+      ]
+    },
+    {
+      "name": "V-N2 reuse pg_version 13 (with services, so V-N28 too)",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "reuse",
+          "project_id": "fake-project-000000",
+          "pg_version": 13,
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            },
+            {
+              "name": "analytics",
+              "create": false
+            }
+          ]
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [
+              "app",
+              "public"
+            ],
+            "access": "readwrite"
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "analytics",
+              "access": "readonly"
+            }
+          }
+        ]
+      },
+      "want": [
+        "V-N2",
+        "V-N28"
+      ]
+    },
+    {
+      "name": "V-N2 reuse with a project block",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "reuse",
+          "project_id": "fake-project-000000",
+          "pg_version": 17,
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            },
+            {
+              "name": "analytics",
+              "create": false
+            }
+          ],
+          "project": {
+            "name": "myapp-dev",
+            "org_id": "org-fake-000000",
+            "region_id": "aws-us-east-1",
+            "pg_version": 17
+          }
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [
+              "app",
+              "public"
+            ],
+            "access": "readwrite"
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "analytics",
+              "access": "readonly"
+            }
+          }
+        ]
+      },
+      "want": [
+        "V-N2"
+      ]
+    },
+    {
+      "name": "V-N2 create with top-level pg_version",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "create",
+          "project": {
+            "name": "myapp-dev",
+            "org_id": "org-fake-000000",
+            "region_id": "aws-us-east-1",
+            "pg_version": 17
+          },
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            }
+          ],
+          "pg_version": 17
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [
+              "app",
+              "public"
+            ],
+            "access": "readwrite"
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "app",
+              "access": "readonly"
+            }
+          }
+        ]
+      },
+      "want": [
+        "V-N2"
+      ]
+    },
+    {
+      "name": "V-N3 create without project",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "create",
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            }
+          ]
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [
+              "app",
+              "public"
+            ],
+            "access": "readwrite"
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "app",
+              "access": "readonly"
+            }
+          }
+        ]
+      },
+      "want": [
+        "V-N3"
+      ]
+    },
+    {
+      "name": "V-N3 create with empty project name",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "create",
+          "project": {
+            "name": "",
+            "org_id": "org-fake-000000",
+            "region_id": "aws-us-east-1",
+            "pg_version": 17
+          },
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            }
+          ]
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [
+              "app",
+              "public"
+            ],
+            "access": "readwrite"
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "app",
+              "access": "readonly"
+            }
+          }
+        ]
+      },
+      "want": [
+        "V-N3"
+      ]
+    },
+    {
+      "name": "V-N3 create with a bad org_id",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "create",
+          "project": {
+            "name": "myapp-dev",
+            "org_id": "fake-org",
+            "region_id": "aws-us-east-1",
+            "pg_version": 17
+          },
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            }
+          ]
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [
+              "app",
+              "public"
+            ],
+            "access": "readwrite"
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "app",
+              "access": "readonly"
+            }
+          }
+        ]
+      },
+      "want": [
+        "V-N3"
+      ]
+    },
+    {
+      "name": "V-N3 create with a bad region_id",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "create",
+          "project": {
+            "name": "myapp-dev",
+            "org_id": "org-fake-000000",
+            "region_id": "us-east-1",
+            "pg_version": 17
+          },
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            }
+          ]
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [
+              "app",
+              "public"
+            ],
+            "access": "readwrite"
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "app",
+              "access": "readonly"
+            }
+          }
+        ]
+      },
+      "want": [
+        "V-N3"
+      ]
+    },
+    {
+      "name": "V-N3 create with pg_version 14",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "create",
+          "project": {
+            "name": "myapp-dev",
+            "org_id": "org-fake-000000",
+            "region_id": "aws-us-east-1",
+            "pg_version": 14
+          },
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            }
+          ]
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [
+              "app",
+              "public"
+            ],
+            "access": "readwrite"
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "app",
+              "access": "readonly"
+            }
+          }
+        ]
+      },
+      "want": [
+        "V-N3"
+      ]
+    },
+    {
+      "name": "V-N3 create with project_id",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "create",
+          "project": {
+            "name": "myapp-dev",
+            "org_id": "org-fake-000000",
+            "region_id": "aws-us-east-1",
+            "pg_version": 17
+          },
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            }
+          ],
+          "project_id": "fake-project-000000"
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [
+              "app",
+              "public"
+            ],
+            "access": "readwrite"
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "app",
+              "access": "readonly"
+            }
+          }
+        ]
+      },
+      "want": [
+        "V-N3"
+      ]
+    },
+    {
+      "name": "V-N8 database name not an identifier",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "reuse",
+          "project_id": "fake-project-000000",
+          "pg_version": 17,
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            },
+            {
+              "name": "Analytics-DB",
+              "create": false
+            }
+          ]
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [
+              "app",
+              "public"
+            ],
+            "access": "readwrite"
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "analytics",
+              "access": "readonly"
+            }
+          }
+        ]
+      },
+      "want": [
+        "V-N8"
+      ]
+    },
+    {
+      "name": "V-N8 duplicate database name",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "reuse",
+          "project_id": "fake-project-000000",
+          "pg_version": 17,
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            },
+            {
+              "name": "app",
+              "create": false
+            }
+          ]
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [
+              "app",
+              "public"
+            ],
+            "access": "readwrite"
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "analytics",
+              "access": "readonly"
+            }
+          }
+        ]
+      },
+      "want": [
+        "V-N8"
+      ]
+    },
+    {
+      "name": "V-N9 create mode creating neondb",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "create",
+          "project": {
+            "name": "myapp-dev",
+            "org_id": "org-fake-000000",
+            "region_id": "aws-us-east-1",
+            "pg_version": 17
+          },
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            },
+            {
+              "name": "neondb",
+              "create": true
+            }
+          ]
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [
+              "app",
+              "public"
+            ],
+            "access": "readwrite"
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "app",
+              "access": "readonly"
+            }
+          }
+        ]
+      },
+      "want": [
+        "V-N9"
+      ]
+    },
+    {
+      "name": "V-N10 unknown access",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "reuse",
+          "project_id": "fake-project-000000",
+          "pg_version": 17,
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            },
+            {
+              "name": "analytics",
+              "create": false
+            }
+          ]
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [
+              "app",
+              "public"
+            ],
+            "access": "owner"
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "analytics",
+              "access": "readonly"
+            }
+          }
+        ]
+      },
+      "want": [
+        "V-N10"
+      ]
+    },
+    {
+      "name": "V-N10 missing access",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "reuse",
+          "project_id": "fake-project-000000",
+          "pg_version": 17,
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            },
+            {
+              "name": "analytics",
+              "create": false
+            }
+          ]
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [
+              "app",
+              "public"
+            ],
+            "access": "readwrite"
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "analytics"
+            }
+          }
+        ]
+      },
+      "want": [
+        "V-N10"
+      ]
+    },
+    {
+      "name": "V-N10 database not an identifier",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "reuse",
+          "project_id": "fake-project-000000",
+          "pg_version": 17,
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            },
+            {
+              "name": "analytics",
+              "create": false
+            }
+          ]
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [
+              "app",
+              "public"
+            ],
+            "access": "readwrite"
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "Analytics",
+              "access": "readonly"
+            }
+          }
+        ]
+      },
+      "want": [
+        "V-N10"
+      ]
+    },
+    {
+      "name": "V-N10 empty schemas",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "reuse",
+          "project_id": "fake-project-000000",
+          "pg_version": 17,
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            },
+            {
+              "name": "analytics",
+              "create": false
+            }
+          ]
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [],
+            "access": "readwrite"
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "analytics",
+              "access": "readonly"
+            }
+          }
+        ]
+      },
+      "want": [
+        "V-N10"
+      ]
+    },
+    {
+      "name": "V-N10 duplicate schema",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "reuse",
+          "project_id": "fake-project-000000",
+          "pg_version": 17,
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            },
+            {
+              "name": "analytics",
+              "create": false
+            }
+          ]
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [
+              "app",
+              "app"
+            ],
+            "access": "readwrite"
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "analytics",
+              "access": "readonly"
+            }
+          }
+        ]
+      },
+      "want": [
+        "V-N10"
+      ]
+    },
+    {
+      "name": "V-N10 schema not an identifier",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "reuse",
+          "project_id": "fake-project-000000",
+          "pg_version": 17,
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            },
+            {
+              "name": "analytics",
+              "create": false
+            }
+          ]
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [
+              "App-Schema"
+            ],
+            "access": "readwrite"
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "analytics",
+              "access": "readonly"
+            }
+          }
+        ]
+      },
+      "want": [
+        "V-N10"
+      ]
+    },
+    {
+      "name": "V-N10 pg_ schema",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "reuse",
+          "project_id": "fake-project-000000",
+          "pg_version": 17,
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            },
+            {
+              "name": "analytics",
+              "create": false
+            }
+          ]
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [
+              "pg_catalog"
+            ],
+            "access": "readwrite"
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "analytics",
+              "access": "readonly"
+            }
+          }
+        ]
+      },
+      "want": [
+        "V-N10"
+      ]
+    },
+    {
+      "name": "V-N10 information_schema",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "reuse",
+          "project_id": "fake-project-000000",
+          "pg_version": 17,
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            },
+            {
+              "name": "analytics",
+              "create": false
+            }
+          ]
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [
+              "app",
+              "public"
+            ],
+            "access": "readwrite"
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "analytics",
+              "access": "readonly",
+              "schemas": [
+                "information_schema"
+              ]
+            }
+          }
+        ]
+      },
+      "want": [
+        "V-N10"
+      ]
+    },
+    {
+      "name": "V-N10 password_version 0",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "reuse",
+          "project_id": "fake-project-000000",
+          "pg_version": 17,
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            },
+            {
+              "name": "analytics",
+              "create": false
+            }
+          ]
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [
+              "app",
+              "public"
+            ],
+            "access": "readwrite",
+            "password_version": 0
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "analytics",
+              "access": "readonly"
+            }
+          }
+        ]
+      },
+      "want": [
+        "V-N10"
+      ]
+    },
+    {
+      "name": "V-N10 password_version not an integer",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "reuse",
+          "project_id": "fake-project-000000",
+          "pg_version": 17,
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            },
+            {
+              "name": "analytics",
+              "create": false
+            }
+          ]
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [
+              "app",
+              "public"
+            ],
+            "access": "readwrite",
+            "password_version": 1.5
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "analytics",
+              "access": "readonly"
+            }
+          }
+        ]
+      },
+      "want": [
+        "V-N10"
+      ]
+    },
+    {
+      "name": "V-N11 service database not declared",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "reuse",
+          "project_id": "fake-project-000000",
+          "pg_version": 17,
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            },
+            {
+              "name": "analytics",
+              "create": false
+            }
+          ]
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [
+              "app",
+              "public"
+            ],
+            "access": "readwrite"
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "billing",
+              "access": "readonly"
+            }
+          }
+        ]
+      },
+      "want": [
+        "V-N11"
+      ]
+    },
+    {
+      "name": "V-N13 backend neon without top-level neon",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [
+              "app",
+              "public"
+            ],
+            "access": "readwrite"
+          }
+        },
+        "services": [
+          {
+            "name": "reports"
+          }
+        ]
+      },
+      "want": [
+        "V-N13"
+      ]
+    },
+    {
+      "name": "V-N13 named service neon without top-level neon",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "workload": {},
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "analytics",
+              "access": "readonly"
+            }
+          }
+        ]
+      },
+      "want": [
+        "V-N13"
+      ]
+    },
+    {
+      "name": "V-N14 backend sets DATABASE_URL",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "reuse",
+          "project_id": "fake-project-000000",
+          "pg_version": 17,
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            },
+            {
+              "name": "analytics",
+              "create": false
+            }
+          ]
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [
+              "app",
+              "public"
+            ],
+            "access": "readwrite"
+          },
+          "backend_env_variables": {
+            "DATABASE_URL": "postgresql://placeholder.invalid/app"
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "analytics",
+              "access": "readonly"
+            }
+          }
+        ]
+      },
+      "want": [
+        "V-N14"
+      ]
+    },
+    {
+      "name": "V-N14 named service sets DATABASE_URL",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "reuse",
+          "project_id": "fake-project-000000",
+          "pg_version": 17,
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            },
+            {
+              "name": "analytics",
+              "create": false
+            }
+          ]
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [
+              "app",
+              "public"
+            ],
+            "access": "readwrite"
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "analytics",
+              "access": "readonly"
+            },
+            "env_vars": {
+              "DATABASE_URL": "postgresql://placeholder.invalid/app"
+            }
+          }
+        ]
+      },
+      "want": [
+        "V-N14"
+      ]
+    },
+    {
+      "name": "V-N15 owner_role not an identifier",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "reuse",
+          "project_id": "fake-project-000000",
+          "pg_version": 17,
+          "owner_role": "Owner-Role",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            },
+            {
+              "name": "analytics",
+              "create": false
+            }
+          ]
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [
+              "app",
+              "public"
+            ],
+            "access": "readwrite"
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "analytics",
+              "access": "readonly"
+            }
+          }
+        ]
+      },
+      "want": [
+        "V-N15"
+      ]
+    },
+    {
+      "name": "V-N28 reuse pg_version 14 with a service",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "reuse",
+          "project_id": "fake-project-000000",
+          "pg_version": 14,
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            },
+            {
+              "name": "analytics",
+              "create": false
+            }
+          ]
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [
+              "app",
+              "public"
+            ],
+            "access": "readwrite"
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "analytics",
+              "access": "readonly"
+            }
+          }
+        ]
+      },
+      "want": [
+        "V-N28"
+      ]
+    },
+    {
+      "name": "several problems are reported together",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "adopt",
+          "project_id": "fake-project-000000",
+          "pg_version": 17,
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            },
+            {
+              "name": "analytics",
+              "create": false
+            }
+          ]
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "schemas": [
+              "app",
+              "public"
+            ],
+            "access": "write"
+          }
+        },
+        "services": [
+          {
+            "name": "reports",
+            "neon": {
+              "database": "billing",
+              "access": "readonly"
+            }
+          }
+        ]
+      },
+      "want": [
+        "V-N1",
+        "V-N10",
+        "V-N11"
+      ]
+    }
+  ]
+}

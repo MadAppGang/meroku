@@ -88,6 +88,7 @@ const serviceIcons = {
 	"scheduled-task": Timer,
 	"event-task": Zap,
 	postgres: Database,
+	neon: Database,
 	sqs: Bell,
 	efs: HardDrive,
 	alb: Network,
@@ -132,7 +133,8 @@ const serviceColors = {
 	service: "bg-blue-600",
 	"scheduled-task": "bg-purple-600",
 	"event-task": "bg-green-600",
-	postgres: "bg-indigo-600",
+	postgres: "bg-node-database",
+	neon: "bg-node-database",
 	sqs: "bg-yellow-600",
 	efs: "bg-teal-600",
 	alb: "bg-pink-600",
@@ -345,8 +347,13 @@ export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
 								</div>
 							)}
 							{data.configProperties.detailTypes && (
-								<div className="text-gray-300 ml-4 truncate">
-									Types: {data.configProperties.detailTypes.join(", ")}
+								<div className="text-gray-300 ml-4">
+									<div>Types:</div>
+									<ul className="ml-2 font-mono text-[10px] leading-4 text-gray-400">
+										{data.configProperties.detailTypes.map((type: string) => (
+											<li key={type}>{type}</li>
+										))}
+									</ul>
 								</div>
 							)}
 						</div>

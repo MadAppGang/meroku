@@ -58,6 +58,8 @@ export default {
 				danger: {
 					DEFAULT: "hsl(var(--danger))",
 				},
+				// Fill behind the icon of a database node on the canvas.
+				"node-database": "hsl(var(--node-database))",
 				muted: {
 					DEFAULT: "hsl(var(--muted))",
 					foreground: "hsl(var(--muted-foreground))",

@@ -96,6 +96,7 @@ resource "null_resource" "build_ci_lambda" {
   }
 
   provisioner "local-exec" {
+    interpreter = ["env", "-u", "NEON_API_KEY", "-u", "TF_VAR_neon_pg_credentials", "/bin/sh", "-c"]
     working_dir = local.ci_lambda_src_dir
     command     = local.ci_lambda_build_command
   }

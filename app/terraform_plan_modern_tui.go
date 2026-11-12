@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -49,7 +50,108 @@ type ResourceChange struct {
 		Actions []string               `json:"actions"`
 		Before  map[string]interface{} `json:"before"`
 		After   map[string]interface{} `json:"after"`
+		// BeforeSensitive and AfterSensitive are Terraform's sensitivity
+		// masks: true, or an object/list of the value's shape whose true
+		// leaves mark sensitive values. maskPlanSensitive applies them.
+		BeforeSensitive interface{} `json:"before_sensitive"`
+		AfterSensitive  interface{} `json:"after_sensitive"`
 	} `json:"change"`
+}
+
+// planSensitiveMarker replaces a sensitive value in a parsed plan.
+const planSensitiveMarker = "(sensitive)"
+
+// maskPlanSensitive replaces every value Terraform marked sensitive in rc's
+// before and after with planSensitiveMarker. The masks are kept. It runs
+// right after the plan JSON is parsed, so the plan screen, the saved changes
+// file and the clipboard copy never hold the values.
+func maskPlanSensitive(rc *ResourceChange) {
+	rc.Change.Before = maskSensitiveObject(rc.Change.Before, rc.Change.BeforeSensitive)
+	rc.Change.After = maskSensitiveObject(rc.Change.After, rc.Change.AfterSensitive)
+}
+
+// maskSensitiveObject returns a resource's top-level object with mask
+// applied. A mask of true makes every attribute sensitive. obj itself is never
+// changed: anything masked is a deep copy, so a caller still holding obj (or
+// a copy of the ResourceChange that shares its maps) sees the values as
+// Terraform reported them.
+func maskSensitiveObject(obj map[string]interface{}, mask interface{}) map[string]interface{} {
+	if obj == nil {
+		return nil
+	}
+	if b, ok := mask.(bool); ok && b {
+		out := make(map[string]interface{}, len(obj))
+		for k, v := range obj {
+			if v != nil {
+				v = planSensitiveMarker
+			}
+			out[k] = v
+		}
+		return out
+	}
+	if m, ok := mask.(map[string]interface{}); ok && len(m) > 0 {
+		out := deepCopyPlanValue(obj).(map[string]interface{})
+		maskSensitiveMap(out, m)
+		return out
+	}
+	return obj
+}
+
+// deepCopyPlanValue copies a value decoded from plan JSON: nested objects
+// and lists are copied, scalars are shared (they are immutable).
+func deepCopyPlanValue(v interface{}) interface{} {
+	switch t := v.(type) {
+	case map[string]interface{}:
+		out := make(map[string]interface{}, len(t))
+		for k, sub := range t {
+			out[k] = deepCopyPlanValue(sub)
+		}
+		return out
+	case []interface{}:
+		out := make([]interface{}, len(t))
+		for i, sub := range t {
+			out[i] = deepCopyPlanValue(sub)
+		}
+		return out
+	default:
+		return v
+	}
+}
+
+// maskSensitiveValue returns v with mask applied, walking the mask beside the
+// value by object key and list index. A null value stays null: it holds
+// nothing to hide.
+func maskSensitiveValue(v interface{}, mask interface{}) interface{} {
+	if v == nil {
+		return nil
+	}
+	switch m := mask.(type) {
+	case bool:
+		if m {
+			return planSensitiveMarker
+		}
+	case map[string]interface{}:
+		if obj, ok := v.(map[string]interface{}); ok {
+			maskSensitiveMap(obj, m)
+		}
+	case []interface{}:
+		if list, ok := v.([]interface{}); ok {
+			for i := range list {
+				if i < len(m) {
+					list[i] = maskSensitiveValue(list[i], m[i])
+				}
+			}
+		}
+	}
+	return v
+}
+
+func maskSensitiveMap(obj map[string]interface{}, mask map[string]interface{}) {
+	for k, sub := range mask {
+		if v, ok := obj[k]; ok {
+			obj[k] = maskSensitiveValue(v, sub)
+		}
+	}
 }
 
 type TerraformPlanVisual struct {
@@ -127,6 +229,32 @@ type modernPlanModel struct {
 	// launchClaude is set by [a] on a failed apply; the viewer quits and
 	// showModernTerraformPlanTUI starts the handoff.
 	launchClaude bool
+	// planFile is the saved plan the apply runs; "" means tfplan.
+	planFile string
+	// noReplace hides [r]: no resource can be marked and no -replace apply
+	// runs. Set in every Neon dir.
+	noReplace bool
+	// title, when set, is shown above the plan summary.
+	title string
+	// applied is set when an apply finished without errors.
+	applied bool
+}
+
+// planTUIOptions shape one plan screen. Zero is today's screen on tfplan.
+type planTUIOptions struct {
+	PlanFile     string
+	Targets      []string
+	AllowReplace bool
+	Title        string
+}
+
+// planTUIResult is what the plan screen did.
+type planTUIResult struct {
+	Applied bool
+	// Failed is set when an apply ran and failed; FailureOutput is what
+	// terraform reported.
+	Failed        bool
+	FailureOutput string
 }
 
 type modernKeyMap struct {
@@ -533,6 +661,9 @@ func initModernTerraformPlanTUI(planJSON string) (tea.Model, error) {
 	if err := json.Unmarshal([]byte(planJSON), &plan); err != nil {
 		return nil, fmt.Errorf("failed to parse terraform plan JSON: %w", err)
 	}
+	for i := range plan.ResourceChanges {
+		maskPlanSensitive(&plan.ResourceChanges[i])
+	}
 
 	groups := groupResourceChanges(plan.ResourceChanges)
 	stats := calculateStatistics(groups)
@@ -878,7 +1009,7 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case key.Matches(msg, m.keys.Replace):
 			// Toggle replace mode or mark resource for replacement
-			if m.currentView == dashboardView {
+			if m.currentView == dashboardView && !m.noReplace {
 				resource := m.getSelectedResource()
 				if resource != nil {
 					// Toggle the replacement mark for this resource
@@ -978,6 +1109,7 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.applyState != nil {
 			m.applyState.isApplying = false
 			m.applyState.applyComplete = true
+			m.applied = msg.success
 
 			// Terraform has exited, so nothing can still be in flight. Clearing
 			// this makes "Currently Updating (2)" under an "Apply Complete"
@@ -1103,7 +1235,7 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if pendingForAddr == 0 && completedForAddr > 0 {
 				// No more expected completions for this address - skip duplicate
-				if debugFile, err := tuiDebugFile("/tmp/terraform_debug.log", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644); err == nil {
+				if debugFile, err := tuiDebugLog("terraform_debug.log"); err == nil {
 					timestamp := time.Now().Format("2006-01-02 15:04:05.000")
 					fmt.Fprintf(debugFile, "[%s] [DEDUP] Skipping duplicate completion: %s action=%s (no pending, %d already completed)\n", timestamp, msg.Address, action, completedForAddr)
 					debugFile.Close()
@@ -1148,7 +1280,7 @@ func (m *modernPlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			// Debug: Log that we're removing specific operation from currentOps
-			if debugFile, err := tuiDebugFile("/tmp/terraform_debug.log", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644); err == nil {
+			if debugFile, err := tuiDebugLog("terraform_debug.log"); err == nil {
 				timestamp := time.Now().Format("2006-01-02 15:04:05.000")
 				fmt.Fprintf(debugFile, "[%s] [CURRENTOP REMOVED] Resource completed: %s (success: %v), ops remaining: %d\n", timestamp, msg.Address, msg.Success, opsRemaining)
 				debugFile.Close()
@@ -1317,6 +1449,9 @@ func (m *modernPlanModel) renderPlanSummary() string {
 	summary := fmt.Sprintf("Plan: %d to add, %d to change, %d to destroy",
 		adds, changes, destroys,
 	)
+	if m.title != "" {
+		summary = m.title + "\n" + summary
+	}
 
 	return lipgloss.NewStyle().
 		Padding(1, 2).
@@ -1404,6 +1539,9 @@ func (m *modernPlanModel) renderProgressBar(label string, percent float64, color
 
 func (m *modernPlanModel) renderFooter() string {
 	help := "[↑↓] Navigate  [Space/Enter] Expand  [r] Replace  [i] Import  [c] Copy  [a] Apply  [?] Help  [q] Quit"
+	if m.noReplace {
+		help = "[↑↓] Navigate  [Space/Enter] Expand  [i] Import  [c] Copy  [a] Apply  [?] Help  [q] Quit"
+	}
 
 	// Add indicator for marked resources
 	if len(m.markedForReplace) > 0 {
@@ -3686,7 +3824,7 @@ func (m *modernPlanModel) copyChangesToClipboard() {
 	}
 
 	// Copy to clipboard
-	err = clipboard.WriteAll(string(jsonData))
+	err = clipboard.WriteAll(redactSecrets(string(jsonData)))
 	if err == nil {
 		// Show success message (would be better with a toast notification)
 		// For now, we can't show in TUI mode, so this won't be visible
@@ -4017,8 +4155,34 @@ func (m *modernPlanModel) showImportHelp(resource *ResourceChange) {
 	fmt.Printf("\n⏳ Importing %s\n", resource.Address)
 	fmt.Printf("   ID: %s\n\n", importID)
 
+	// In a Neon env the import needs the Neon login and credentials; inside
+	// a deploy they are already set.
+	if isNeonDir(workingDir()) {
+		target := m.target
+		if target.ProjectRoot == "" {
+			target = neonTargetForDir(workingDir())
+		}
+		done, err := ensureNeonTerraformSession(context.Background(), target)
+		if err == nil {
+			defer done()
+			err = ensureActiveNeonSessionFresh(context.Background(), os.Stdout)
+		}
+		if err != nil {
+			fmt.Printf("❌ Cannot run the import: %v\n", err)
+			fmt.Print("\nReturning to plan view in 2 seconds...")
+			time.Sleep(2 * time.Second)
+			return
+		}
+	}
+
 	// Execute the import command with real-time output
-	cmd := exec.Command("terraform", "import", resource.Address, importID)
+	cmd, err := newTerraformCmd(context.Background(), tfConfig, workingDir(), "import", resource.Address, importID)
+	if err != nil {
+		fmt.Printf("❌ Cannot run the import: %v\n", err)
+		fmt.Print("\nReturning to plan view in 2 seconds...")
+		time.Sleep(2 * time.Second)
+		return
+	}
 
 	// Create pipes for stdout and stderr
 	stdout, err := cmd.StdoutPipe()
@@ -4184,7 +4348,7 @@ func (m *modernPlanModel) renderApplyView() string {
 	}
 
 	// DEBUG LOGGING
-	if debugFile, err := tuiDebugFile("/tmp/render_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+	if debugFile, err := tuiDebugLog("render_debug.log"); err == nil {
 		timestamp := time.Now().Format("15:04:05.000")
 		fmt.Fprintf(debugFile, "\n[%s] === RENDER START ===\n", timestamp)
 		fmt.Fprintf(debugFile, "  Terminal size: %dx%d\n", m.width, m.height)
@@ -4224,7 +4388,7 @@ func (m *modernPlanModel) renderApplyView() string {
 		sections = append(sections, progressSection)
 
 		// DEBUG
-		if debugFile, err := tuiDebugFile("/tmp/render_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+		if debugFile, err := tuiDebugLog("render_debug.log"); err == nil {
 			fmt.Fprintf(debugFile, "  Progress section lines: %d\n", strings.Count(progressSection, "\n")+1)
 			debugFile.Close()
 		}
@@ -4236,7 +4400,7 @@ func (m *modernPlanModel) renderApplyView() string {
 		sections = append(sections, currentOpSection)
 
 		// DEBUG
-		if debugFile, err := tuiDebugFile("/tmp/render_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+		if debugFile, err := tuiDebugLog("render_debug.log"); err == nil {
 			fmt.Fprintf(debugFile, "  CurrentOp section lines: %d\n", strings.Count(currentOpSection, "\n")+1)
 			debugFile.Close()
 		}
@@ -4338,7 +4502,7 @@ func (m *modernPlanModel) renderApplyOverallProgress() string {
 	progressLine := fmt.Sprintf("%s: %s %s", statusText, m.progress.ViewAs(percent), stats)
 
 	// DEBUG
-	if debugFile, err := tuiDebugFile("/tmp/render_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+	if debugFile, err := tuiDebugLog("render_debug.log"); err == nil {
 		fmt.Fprintf(debugFile, "  [renderApplyOverallProgress] completed=%d, total=%d, percent=%.2f%%\n", completed, m.applyState.totalResources, percent*100)
 		fmt.Fprintf(debugFile, "  [renderApplyOverallProgress] progressLine: %q\n", progressLine)
 		debugFile.Close()
@@ -4348,7 +4512,7 @@ func (m *modernPlanModel) renderApplyOverallProgress() string {
 	result := boxStyle.Width(m.width - 4).Height(1).Render(progressLine)
 
 	// DEBUG rendered output
-	if debugFile, err := tuiDebugFile("/tmp/render_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+	if debugFile, err := tuiDebugLog("render_debug.log"); err == nil {
 		lineCount := strings.Count(result, "\n") + 1
 		fmt.Fprintf(debugFile, "  [renderApplyOverallProgress] result has %d lines\n", lineCount)
 		debugFile.Close()
@@ -4367,7 +4531,7 @@ func (m *modernPlanModel) renderApplyCurrentOperation() string {
 	m.applyState.mu.Unlock()
 
 	// DEBUG
-	if debugFile, err := tuiDebugFile("/tmp/render_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+	if debugFile, err := tuiDebugLog("render_debug.log"); err == nil {
 		fmt.Fprintf(debugFile, "  [renderApplyCurrentOperation] currentOps count: %d\n", len(currentOps))
 		debugFile.Close()
 	}
@@ -4389,7 +4553,7 @@ func (m *modernPlanModel) renderApplyCurrentOperation() string {
 	}
 
 	// DEBUG
-	if debugFile, err := tuiDebugFile("/tmp/render_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+	if debugFile, err := tuiDebugLog("render_debug.log"); err == nil {
 		fmt.Fprintf(debugFile, "  [renderApplyCurrentOperation] screenHeight=%d, contentHeight=%d\n", screenHeight, contentHeight)
 		debugFile.Close()
 	}
@@ -4494,7 +4658,7 @@ func (m *modernPlanModel) renderApplyCurrentOperation() string {
 	result := box.Render(title + "\n" + content)
 
 	// DEBUG final output
-	if debugFile, err := tuiDebugFile("/tmp/render_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+	if debugFile, err := tuiDebugLog("render_debug.log"); err == nil {
 		lineCount := strings.Count(result, "\n") + 1
 		fmt.Fprintf(debugFile, "  [renderApplyCurrentOperation] result has %d lines (expected ~%d)\n", lineCount, contentHeight+2)
 		// Log first few lines to see the actual content
@@ -5263,23 +5427,42 @@ func isComputedAttribute(key string) bool {
 // environment the plan belongs to; it feeds the Claude Code handoff offered on
 // a failed apply.
 func showModernTerraformPlanTUI(planJSON string, target handoffTarget) error {
+	_, err := showModernTerraformPlanTUIWithOptions(planJSON, target, planTUIOptions{
+		AllowReplace: !isNeonDir(workingDir()),
+	})
+	return err
+}
+
+// showModernTerraformPlanTUIWithOptions shows the plan and runs the apply
+// from opts.PlanFile, and reports whether the apply ran and how it ended.
+// [r] is offered only when opts.AllowReplace is set.
+func showModernTerraformPlanTUIWithOptions(planJSON string, target handoffTarget, opts planTUIOptions) (planTUIResult, error) {
 	model, err := initModernTerraformPlanTUI(planJSON)
 	if err != nil {
-		return err
+		return planTUIResult{}, err
 	}
 
 	m, ok := model.(*modernPlanModel)
 	if !ok {
-		return fmt.Errorf("unexpected plan model type %T", model)
+		return planTUIResult{}, fmt.Errorf("unexpected plan model type %T", model)
 	}
 	m.target = target
+	m.planFile = opts.PlanFile
+	m.noReplace = !opts.AllowReplace
+	m.title = opts.Title
+	result, err := runModernPlanProgram(m)
+	return result, err
+}
 
+// runModernPlanProgram runs the plan screen and hands off to Claude Code
+// when the user asked for it on a failed apply.
+func runModernPlanProgram(m *modernPlanModel) (planTUIResult, error) {
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	// Store program reference for sending messages during apply
 	m.program = p
 
 	if _, err := p.Run(); err != nil {
-		return fmt.Errorf("error running TUI: %w", err)
+		return planTUIResult{}, fmt.Errorf("error running TUI: %w", err)
 	}
 
 	// [a] on a failed apply: hand off to Claude Code now that the alt screen
@@ -5288,7 +5471,38 @@ func showModernTerraformPlanTUI(planJSON string, target handoffTarget) error {
 		offerClaudeHandoff(m.handoffContext())
 	}
 
-	return nil
+	result := planTUIResult{Applied: m.applied}
+	if m.applyState != nil && m.applyState.hasErrors {
+		result.Failed = true
+		result.FailureOutput = m.applyFailureText()
+	}
+	return result, nil
+}
+
+// applyFailureText is everything terraform reported about a failed apply:
+// the per-resource errors, the diagnostics and stderr.
+func (m *modernPlanModel) applyFailureText() string {
+	if m.applyState == nil {
+		return ""
+	}
+	var parts []string
+	if m.applyState.failureCause != "" {
+		parts = append(parts, m.applyState.failureCause)
+	}
+	for _, res := range m.applyState.completed {
+		if !res.Success && res.Error != "" {
+			parts = append(parts, res.Error)
+		}
+	}
+	for _, l := range m.applyState.logs {
+		if l.IsDiagnostic {
+			parts = append(parts, l.Message)
+		}
+	}
+	if m.applyState.stderrOutput != "" {
+		parts = append(parts, m.applyState.stderrOutput)
+	}
+	return strings.Join(parts, "\n")
 }
 
 func (m *modernPlanModel) renderApplyErrorDetailsView(header, elapsed string) string {
