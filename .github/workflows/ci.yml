@@ -286,6 +286,16 @@ jobs:
           terraform test
         working-directory: modules/ecs_task
 
+      # CodeBuild-hosted GitHub Actions runners, under mock_provider: the
+      # environment-variable types, repository vs organization source and
+      # webhook scope, vpc_config only with vpc_access, and the exact IAM
+      # policy the service role gets.
+      - name: Test the GitHub runners module
+        run: |
+          terraform init -backend=false -input=false
+          terraform test
+        working-directory: modules/github_runners
+
       # Every module that consumes modules/naming. Validation was scoped to
       # modules/workloads when it was the only module with a module block; a
       # naming.tf that references a request key nothing declares is a plan-time
@@ -293,7 +303,7 @@ jobs:
       - name: Validate the naming consumers
         run: |
           set -e
-          for m in alb s3 postgres sqs ecs_task event_bridge_task appsync dns-root; do
+          for m in alb s3 postgres sqs ecs_task event_bridge_task appsync dns-root github_runners; do
             echo "==> modules/$m"
             terraform -chdir="modules/$m" init -backend=false -input=false
             terraform -chdir="modules/$m" validate

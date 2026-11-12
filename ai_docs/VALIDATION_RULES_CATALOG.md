@@ -599,6 +599,60 @@ S3 bucket names MUST be globally unique across ALL AWS accounts
 
 ---
 
+### 15. GITHUB ACTIONS RUNNERS (`github_runners`)
+
+**Implemented** in `app/github_runners.go` (`validateGitHubRunnersConfigMap`), called from
+`preprocessEnvMap`, so it runs on every generate. Tests: `app/github_runners_test.go`.
+All rules are errors; an absent block or `enabled: false` is not checked. The module repeats
+the shape rules as variable validations (`modules/github_runners/variables.tf`).
+See [GITHUB_RUNNERS.md](./GITHUB_RUNNERS.md).
+
+#### Conditional Required
+```
+IF github_runners.enabled == true THEN:
+  ✓ token_secret: REQUIRED, non-empty (Secrets Manager secret name or ARN)
+  ✓ runners: REQUIRED, at least one entry
+```
+
+#### Per runner
+| Field | Rule |
+|-------|------|
+| `name` | Required; `^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`, 1-40 characters; unique across runners |
+| `repository` / `organization` | Exactly one is set |
+| `repository` | `owner/repo`: `^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+$` |
+| `organization` | `^[A-Za-z0-9][A-Za-z0-9-]*$` |
+| `compute_type` | One of `BUILD_GENERAL1_SMALL`, `_MEDIUM`, `_LARGE`, `_XLARGE`, `_2XLARGE` (absent = SMALL) |
+| `timeout_minutes` | 5-2160 (CodeBuild's limits; absent = 60) |
+| `secrets[]` | Exactly one of `ssm` / `secrets_manager` |
+| `env_variables[].name`, `secrets[].name` | `^[A-Za-z_][A-Za-z0-9_]*$`; unique across both lists; must not start with `CODEBUILD_` (any case), which CodeBuild reserves |
+
+#### Cross-runner: one GitHub owner
+```
+All runners (and github_runners.owner, when set) MUST name the same GitHub owner:
+the organization, or the owner half of owner/repo. Compared case-insensitively.
+
+Reason: one github provider configuration serves the environment, and it manages
+webhooks for a single owner.
+```
+
+#### Cross-field: vpc_access
+```
+IF github_runners.vpc_access == true THEN:
+  ✓ use_default_vpc: MUST be false
+  ✓ egress_strategy: MUST be "nat_gateway" or "nat_gateway_ha" (absent means public_ip → error)
+
+Reason: CodeBuild gives a build in a VPC no public IP, so without a NAT Gateway the
+build has no internet access and cannot reach GitHub; every job stays queued until it
+times out. The default VPC has no private subnets and no NAT.
+
+Fix offered in the message: set egress_strategy to a NAT mode, or vpc_access: false.
+```
+
+Because the check runs on every generate, switching `egress_strategy` back to
+`public_ip` while `vpc_access` is true is refused by this same rule.
+
+---
+
 ## Implementation Recommendations
 
 ### Library Comparison

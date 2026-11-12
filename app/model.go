@@ -68,6 +68,10 @@ type Env struct {
 	CloudFrontDistributions []CloudFront `yaml:"cloudfront_distributions,omitempty"`
 	// Custom Extensions (for SNS, SQS, Lambda, etc.)
 	Extensions Extensions `yaml:"extensions,omitempty"`
+	// GitHubRunners declares CodeBuild-hosted GitHub Actions runners. A
+	// pointer so an environment without the block saves without one: absent
+	// and `enabled: false` both render nothing. See ai_docs/GITHUB_RUNNERS.md.
+	GitHubRunners *GitHubRunners `yaml:"github_runners,omitempty"`
 	// ManageDNSRecords decides whether Terraform writes the Route53 records for
 	// Amplify domains. Amplify creates them itself when the zone is in the same
 	// account, so this is only turned on for a cross-account or externally
@@ -739,6 +743,53 @@ type CloudFrontAdditionalZone struct {
 	Domain     string `yaml:"domain"`                // The domain name (e.g., "otherdomain.com")
 	ZoneID     string `yaml:"zone_id,omitempty"`     // Existing zone ID (if not creating)
 	CreateZone bool   `yaml:"create_zone,omitempty"` // Whether to create a new Route 53 zone
+}
+
+// ============================================================================
+// GITHUB ACTIONS RUNNERS (CodeBuild-hosted)
+// ============================================================================
+
+// GitHubRunners is the github_runners block: one CodeBuild project per runner,
+// each registered with GitHub through a webhook that fires on queued workflow
+// jobs. Generation reads the raw map, not this struct; the struct exists so a
+// TUI or API save round-trips the block instead of dropping it.
+type GitHubRunners struct {
+	Enabled bool `yaml:"enabled"`
+	// TokenSecret is the NAME (or ARN) of a Secrets Manager secret holding the
+	// GitHub token CodeBuild uses. It is created outside Terraform.
+	TokenSecret string `yaml:"token_secret,omitempty"`
+	// Owner is the GitHub user or organization the runners' webhooks live
+	// under. Usually left unset: generate derives it from the runners.
+	Owner string `yaml:"owner,omitempty"`
+	// VPCAccess runs the builds inside the environment's private subnets.
+	// Requires a NAT egress strategy; see validateGitHubRunnersConfigMap.
+	VPCAccess bool           `yaml:"vpc_access,omitempty"`
+	Runners   []GitHubRunner `yaml:"runners,omitempty"`
+}
+
+// GitHubRunner is one CodeBuild project serving one repository or one
+// organization. Exactly one of Repository and Organization is set.
+type GitHubRunner struct {
+	Name         string `yaml:"name"`
+	Repository   string `yaml:"repository,omitempty"`
+	Organization string `yaml:"organization,omitempty"`
+	ComputeType  string `yaml:"compute_type,omitempty"`
+	Image        string `yaml:"image,omitempty"`
+	Docker       bool   `yaml:"docker,omitempty"`
+	// TimeoutMinutes is a pointer so an explicit value survives a round-trip
+	// distinguishable from an absent key, which the template defaults to 60.
+	TimeoutMinutes *int                 `yaml:"timeout_minutes,omitempty"`
+	EnvVariables   []EnvVariable        `yaml:"env_variables,omitempty"`
+	Secrets        []GitHubRunnerSecret `yaml:"secrets,omitempty"`
+}
+
+// GitHubRunnerSecret is an environment variable CodeBuild resolves at build
+// start. Exactly one of SSM (a Parameter Store name) and SecretsManager
+// (name-or-arn[:json-key]) is set.
+type GitHubRunnerSecret struct {
+	Name           string `yaml:"name"`
+	SSM            string `yaml:"ssm,omitempty"`
+	SecretsManager string `yaml:"secrets_manager,omitempty"`
 }
 
 // ============================================================================

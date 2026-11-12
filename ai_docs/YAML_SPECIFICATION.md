@@ -301,6 +301,43 @@ services: <list>
     env_files_s3: <list>                     # S3-stored environment files
       - bucket: <string>
         key: <string>
+
+# ===================================
+# GITHUB ACTIONS RUNNERS (CodeBuild)
+# ===================================
+# Optional. Absent or enabled: false renders nothing. No schema migration.
+# Full guide: ai_docs/GITHUB_RUNNERS.md
+
+github_runners:
+  enabled: <boolean>                         # Required when the block is present
+  token_secret: <string>                     # Required when enabled. NAME (or ARN) of a Secrets
+                                             #   Manager secret holding the GitHub token, created
+                                             #   outside Terraform
+  owner: <string>                            # Optional. GitHub user or organization of every
+                                             #   runner; derived from the runners when unset
+  vpc_access: <boolean>                      # Default false. true runs builds in the private
+                                             #   subnets; needs egress_strategy nat_gateway or
+                                             #   nat_gateway_ha and use_default_vpc: false
+  runners: <list>                            # Required when enabled, at least one
+    - name: <string>                         # [a-z0-9-], 1-40 chars, unique. Project name is
+                                             #   <project>-gh-<name>-<env>
+      repository: <string>                   # owner/repo. Exactly one of repository | organization
+      organization: <string>                 # Org-level webhook: every repo in the organization
+      compute_type: <string>                 # BUILD_GENERAL1_SMALL (default) | _MEDIUM | _LARGE |
+                                             #   _XLARGE | _2XLARGE
+      image: <string>                        # Default aws/codebuild/amazonlinux-x86_64-standard:5.0.
+                                             #   An image containing "aarch64" runs on ARM
+      docker: <boolean>                      # privileged_mode, default false
+      timeout_minutes: <number>              # 5-2160, default 60
+      env_variables: <list>                  # PLAINTEXT
+        - name: <string>
+          value: <string>
+      secrets: <list>                        # Exactly one of ssm | secrets_manager per entry
+        - name: <string>
+          ssm: <string>                      # Parameter Store name -> PARAMETER_STORE
+          secrets_manager: <string>          # name-or-arn[:json-key] -> SECRETS_MANAGER
+                                             # Names are unique across env_variables and secrets,
+                                             #   and may not start with CODEBUILD_
 ```
 
 ## Examples
@@ -534,3 +571,5 @@ The generated Terraform configuration provides these outputs:
 - `region` - AWS region
 - `backend_task_role_name` - IAM role name for backend ECS tasks
 - `backend_cloud_map_arn` - Service discovery ARN for the backend service
+- `github_runner_projects` - Runner name => CodeBuild project name (only with `github_runners.enabled`)
+- `github_runner_labels` - Runner name => the `runs-on` value a workflow job uses (only with `github_runners.enabled`)

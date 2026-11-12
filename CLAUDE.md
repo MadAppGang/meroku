@@ -154,18 +154,32 @@ min_capacity = {{default postgres.min_capacity 0.5}}
 
 ### VPC Configuration
 
-**Default VPC Strategy**: New projects use **custom VPCs with 2 public subnets** for ultimate simplicity and cost optimization.
+**Default VPC Strategy**: New projects use **custom VPCs with 2 public subnets**, and every ECS
+task gets its own public IP. Private subnets and a NAT Gateway exist only when an environment
+opts into a NAT egress strategy.
 
 Key decisions:
 - **Custom VPC by default** (`use_default_vpc: false`) - Better isolation and control
-- **Hardcoded to 2 AZs** - Covers 99% of use cases, minimum for HA
-- **Public subnets only** - All resources are internet-accessible via Internet Gateway
-- **NO private subnets** - Removed from codebase (keeps architecture simple)
-- **NO NAT Gateway** - Removed from codebase (not needed, saves ~$32/month)
-- **NO AZ count option** - Removed from codebase (hardcoded to 2)
+- **Hardcoded to 2 AZs** (`local.az_count` in `modules/vpc/main.tf`) - minimum for HA, no option
+- **Egress strategy** (`egress_strategy`, schema v27) decides how tasks reach the internet:
 
-Configuration options (minimal):
+  | Value | Network | Cost |
+  |---|---|---|
+  | `public_ip` (default) | Public subnets only, a public IPv4 per task | $3.65/mo per address |
+  | `nat_gateway` | Adds private subnets + one NAT; tasks lose their public IPs | ~$32.85/mo + $0.045/GB |
+  | `nat_gateway_ha` | One NAT per AZ, survives an AZ loss | ~$65.70/mo + $0.045/GB |
+
+  `app/egress_advisor.go` (web UI: `EgressAdvisor.tsx`) recommends a NAT from 6 services in
+  non-prod and 11 in prod, where it becomes cheaper than per-task addresses. Switching is a
+  one-line change and a rolling redeploy. Cost model: [Egress Cost Model](./ai_docs/EGRESS_COST_MODEL.md).
+- **S3 gateway endpoint** is always created (free). In NAT environments it keeps S3 traffic,
+  including every ECR image layer, off the NAT.
+- Anything AWS will not give a public IP (CodeBuild or Lambda attached to the VPC) has internet
+  access only in a NAT environment, from the private subnets.
+
+Configuration options:
 - `use_default_vpc`: `true` (use AWS default VPC) or `false` (create custom VPC)
+- `egress_strategy`: `public_ip` | `nat_gateway` | `nat_gateway_ha` (see above)
 - `vpc_cidr`: CIDR block for the custom VPC. New environments get a **random free /16** from
   10.0.0.0/8 (never 10.0.0.0/15 or 10.99.0.0/16, never a range a sibling env uses), written
   explicitly into the YAML. An unset key still builds the module default `10.0.0.0/16`.
@@ -181,16 +195,11 @@ and everything in it. Rules (errors at `meroku generate`): IPv4 network address,
 account and in every sibling env's account; `assign` writes only for environments not yet deployed). Code: `app/vpc_cidr*.go`,
 `GET /api/vpc-cidr`. Full design: [VPC CIDR Allocation](./ai_docs/VPC_CIDR_ALLOCATION.md).
 
-This architecture is the simplest possible while maintaining high availability:
+The default (`public_ip`) is the simplest layout that keeps high availability:
 - **2 Availability Zones** - Minimum for HA, covers regional failures
-- **Public subnets only** - Direct internet access, no NAT overhead
-- **Security groups** - Proper access control without network complexity
-- **Cost-effective** - No NAT Gateway (~$32/month saved), no VPC endpoints (~$27/month saved)
-
-Sufficient for most use cases where:
-- ECS tasks need direct internet access
-- RDS can use security groups for access control
-- No strict requirement for private subnet isolation
+- **Public subnets only** - Direct internet access, no NAT charge
+- **Security groups** - Access control without network complexity
+- **Cost-effective** - No NAT until the service count makes one cheaper, no interface VPC endpoints
 
 **Why 2 AZs is hardcoded:**
 - 2 AZs is the minimum for high availability
@@ -201,26 +210,24 @@ Sufficient for most use cases where:
 
 **Migration Note**:
 - Existing projects migrating from before schema v6 will keep `use_default_vpc: true` for backward compatibility
-- The migration automatically removes deprecated fields: `az_count`, `create_private_subnets`, `enable_nat_gateway`
+- The v6 migration removed the old fields `az_count`, `create_private_subnets`, `enable_nat_gateway`.
+  Private subnets and NAT now come only from `egress_strategy` (v27), never from those keys.
 
-### VPC Endpoints (Deprecated)
+### Interface VPC Endpoints (Not Used)
 
-**Note**: VPC endpoints are NO LONGER USED in this infrastructure due to cost considerations (~$27/month per interface endpoint). Instead, we rely on:
-
-- Security groups for access control
-- Internet Gateway for outbound connectivity
-- Service-to-service communication through the VPC
-
-All VPC endpoint code in `modules/workloads/ecs_endpoints.tf` is commented out and should remain so.
+Interface endpoints (~$7.30/mo per AZ each) are not used. The interface endpoint code in
+`modules/workloads/ecs_endpoints.tf` is commented out and should remain so. The free S3
+**gateway** endpoint in `modules/vpc` is the one endpoint meroku creates.
 
 ### API Gateway vs ALB
 
-The infrastructure supports two ingress patterns:
+The infrastructure supports two ingress patterns, switched by `alb.enabled` in the YAML
+(rendered as `enable_alb`):
 
-- **Default (enable_alb: false)**: API Gateway → ECS Services
-- **Alternative (enable_alb: true)**: ALB → ECS Services
+- **Default (`alb.enabled: false`)**: API Gateway → ECS Services
+- **Alternative (`alb.enabled: true`)**: ALB → ECS Services, serving the same `api_domain`
 
-Note: Currently, both resources are created regardless of the setting, but only one is used for traffic routing.
+The API Gateway API and the Cloud Map service exist in both modes. The ALB (`modules/alb`, `count = var.enabled`) exists only when enabled, and the backend's API Gateway integration and route only when it is not.
 
 ## AWS Resource Naming Conventions
 
@@ -419,6 +426,23 @@ service) are optional; absent keys render nothing. A breaker is turned off with
 `enable: false`, never by removing the key (provider 6.x suppresses that diff).
 [Backend Health Check](./ai_docs/BACKEND_HEALTH_CHECK.md).
 
+## GitHub Actions runners (CodeBuild)
+
+`github_runners` (optional; absent or `enabled: false` renders nothing, no
+migration) creates one CodeBuild project per runner, with a `WORKFLOW_JOB_QUEUED`
+webhook, in `modules/github_runners`. The CodeBuild webhook uses `manual_creation`
+and the GitHub side is a `github_repository_webhook`/`github_organization_webhook`
+(provider `integrations/github`, token read ephemerally from `token_secret`);
+letting CodeBuild create the GitHub hook fails on the first apply because the new
+service role has not propagated in IAM yet. All runners share one GitHub owner. Workflows use
+`runs-on: codebuild-<project>-gh-<runner>-<env>-${{ github.run_id }}-${{ github.run_attempt }}`
+(env output `github_runner_labels`). The GitHub token lives in a Secrets Manager
+secret created outside Terraform and is set per project, never as an
+account-wide `aws_codebuild_source_credential`. `vpc_access: true` requires a NAT
+`egress_strategy` (CodeBuild in a VPC gets no public IP); `app/github_runners.go`
+refuses otherwise on every generate. The runner role cannot deploy; deploys use
+the GitHub OIDC role. [GitHub Runners](./ai_docs/GITHUB_RUNNERS.md).
+
 ## Fix with AI (Claude Code handoff)
 
 meroku has no AI of its own and needs no API key. "Fix with AI" writes a briefing
@@ -571,14 +595,15 @@ they resolve `^` ranges differently than what CI ships.
 ## Project Structure
 
 ```
-infrastructure/
+meroku/
 ├── modules/          # Terraform modules for AWS services
-├── env/             # Environment-specific Terraform configurations
-├── project/         # YAML configuration files (dev.yaml, prod.yaml)
-├── templates/       # Handlebars templates for Terraform generation
-├── app/            # Go CLI application (meroku)
-├── web/            # React+TypeScript frontend
-└── scripts/        # Utility scripts
+├── env/              # main.hbs: the Handlebars template every env's Terraform is rendered from
+├── project/          # Example YAML configuration (dev.yaml)
+├── app/              # Go CLI application (meroku); app/webapp holds the built web UI
+├── web/              # React+TypeScript frontend
+├── ai_docs/          # Documentation by and for AI agents
+├── docs/             # Human documentation (DNS, ECR, CI/CD patterns)
+└── scripts/          # Release and dev utility scripts
 ```
 
 ## Key Configuration Files
@@ -593,14 +618,16 @@ infrastructure/
 1. **Making Infrastructure Changes**: Edit YAML files in `project/`, then run `task infra-gen-dev` or `task infra-gen-prod`
 2. **Adding New Services**: Update the `services` array in YAML configuration
 3. **Modifying Terraform Modules**: Edit files in `modules/` directory
-4. **Updating Templates**: Modify Handlebars templates in `templates/`
+4. **Updating Templates**: Modify the Handlebars template `env/main.hbs`
 
 ## Testing Guidelines
 
 - Always run `task infra-plan env={env}` before applying changes
 - Test infrastructure changes in dev environment first
 - Use `task test` to run Go tests
-- Frontend tests: none exist yet — `web/` has no test runner installed. `task test:web` is a placeholder until vitest is added.
+- Use `task ci` to run everything CI runs (both Go modules + Terraform), `task lambda:test` for the CI Lambda
+- Frontend: there are no application tests; `task test:web` only prints that. Component stories are
+  tested with `pnpm test-storybook` (vitest + Playwright) in `web/`.
 
 ## Terraform Plan Viewer
 
@@ -671,7 +698,8 @@ The infrastructure includes a comprehensive DNS management system that handles c
 
 For comprehensive DNS management details, refer to:
 - [DNS Architecture Design](./docs/DNS_ARCHITECTURE.md) - System design and architecture documentation
-- [DNS Management Instructions](./DNS_MANAGEMENT_INSTRUCTIONS.md) - Step-by-step operational guide
+- [DNS Setup](./docs/DNS_SETUP.md) - Step-by-step operational guide
+- [DNS Troubleshooting](./docs/DNS_TROUBLESHOOTING.md)
 
 ## Cross-Account ECR Configuration
 
@@ -840,38 +868,27 @@ For detailed migration information, refer to:
 
 - Never commit secrets or credentials
 - Use AWS SSM Parameter Store for sensitive values
-- Security groups control service access (no VPC endpoints needed)
+- Security groups control service access (no interface VPC endpoints needed)
 - Enable encryption at rest for all data stores
 - Use IAM roles for service authentication
 
 ## Cost Optimization
 
-- VPC endpoints are disabled to save costs
+- Interface VPC endpoints are not used; the S3 gateway endpoint is free
+- Stay on `egress_strategy: public_ip` until the egress advisor says a NAT is cheaper
 - Use appropriate instance sizes for ECS tasks
 - Enable auto-scaling where appropriate
-- Monitor CloudWatch costs (logs retention is set to 30 days)
-- when we bump version number,we need to create tag and change version.txt file content
--
+- CloudWatch log retention: 7 days for backend, services, scheduled tasks, the CI Lambda and X-Ray;
+  1 day for pgAdmin; 30 days for the domain log group (`modules/workloads/domain.tf`)
 
-# Codebase Navigation Rule
+## Releases
 
-**ALWAYS use CodebaseDetective subagent when finding or locating code.**
+A version bump creates a git tag and changes the content of `version.txt`. `task version` prints it.
 
-When you need to:
+## Layout reminder
 
-- Find any function, class, or implementation
-- Locate endpoints, configs, or specific logic
-- Understand code flow or dependencies
+The meroku app is in `app/`; the web interface it serves is built from `web/`.
 
-Do this:
-
-1. Activate Detective mode: `[Detective Mode: Finding X]`
-2. Index: `index_codebase` (if MCP available)
-3. Search: `search_code with query: "semantic description"`
-4. Fallback to grep/find only if MCP unavailable
-
-Never manually browse files randomly. Always use Detective for systematic code navigation.
-- or app is located in app folder and web interface it serve in web app.
 ## Code Search
 
 Added by the `code-search` plugin.

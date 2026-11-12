@@ -106,6 +106,61 @@ export interface ComputeConfig {
 	pools?: ComputePool[];
 }
 
+export type GitHubRunnerComputeType =
+	| "BUILD_GENERAL1_SMALL"
+	| "BUILD_GENERAL1_MEDIUM"
+	| "BUILD_GENERAL1_LARGE"
+	| "BUILD_GENERAL1_XLARGE"
+	| "BUILD_GENERAL1_2XLARGE";
+
+/**
+ * An environment variable CodeBuild resolves when the build starts. Exactly one
+ * of `ssm` (a Parameter Store name) and `secrets_manager`
+ * (`name-or-arn[:json-key]`) is set.
+ */
+export interface GitHubRunnerSecret {
+	name: string;
+	ssm?: string;
+	secrets_manager?: string;
+}
+
+/**
+ * One CodeBuild project acting as a GitHub Actions runner. Exactly one of
+ * `repository` (owner/repo) and `organization` is set. Mirrors `GitHubRunner`
+ * in `app/model.go`.
+ */
+export interface GitHubRunner {
+	/** `[a-z0-9-]`, at most 40 characters, unique. Part of the project name. */
+	name: string;
+	repository?: string;
+	organization?: string;
+	/** Defaults to BUILD_GENERAL1_SMALL. */
+	compute_type?: GitHubRunnerComputeType;
+	/** Defaults to aws/codebuild/amazonlinux-x86_64-standard:5.0. */
+	image?: string;
+	/** Privileged mode, needed to run Docker. Defaults to false. */
+	docker?: boolean;
+	/** 5..2160, defaults to 60. */
+	timeout_minutes?: number;
+	env_variables?: Array<{ name: string; value: string }>;
+	secrets?: GitHubRunnerSecret[];
+}
+
+/**
+ * `github_runners`: CodeBuild-hosted GitHub Actions runners. Absent, or
+ * `enabled: false`, renders nothing. See ai_docs/GITHUB_RUNNERS.md.
+ */
+export interface GitHubRunnersConfig {
+	enabled: boolean;
+	/** Name of the Secrets Manager secret holding the GitHub token. */
+	token_secret?: string;
+	/** GitHub user or organization of every runner; derived when unset. */
+	owner?: string;
+	/** Run in the private subnets. Needs egress_strategy nat_gateway(_ha). */
+	vpc_access?: boolean;
+	runners?: GitHubRunner[];
+}
+
 /** `workload.backend_health_check`. The command runs inside the container. */
 export interface BackendHealthCheck {
 	command: string | string[];
@@ -532,6 +587,9 @@ export interface YamlInfrastructureConfig {
 
 	// CloudFront CDN Configuration (Schema v14 -> v15: changed to array)
 	cloudfront_distributions?: CloudFrontConfig[];
+
+	// GitHub Actions runners on CodeBuild
+	github_runners?: GitHubRunnersConfig;
 }
 
 /**

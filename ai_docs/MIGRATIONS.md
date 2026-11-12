@@ -68,6 +68,14 @@ the constant there disagree, the constant is right and this table is behind —
 which is what happened to CLAUDE.md, where the same number sat at "Version 8"
 for twenty versions.
 
+### Optional blocks that need no migration
+
+A new top-level block that is absent on every existing file, and whose absence
+renders nothing, needs no migration and no version bump: there is no value to
+write that would change what the next apply deploys. `github_runners`
+([GITHUB_RUNNERS.md](./GITHUB_RUNNERS.md)) is one. Its struct field is a
+pointer with `omitempty`, so a save of a file without the block writes none.
+
 ### A note on v23's two defaults
 
 v23 is the one migration that does **not** write the safer of two values

@@ -1,5 +1,59 @@
 # Changelog
 
+## v5.5.0
+
+### GitHub Actions runners on CodeBuild
+
+A new optional `github_runners` block gives an environment its own GitHub
+Actions runners. Each job runs in a fresh CodeBuild container in the
+environment's AWS account, and nothing runs or is billed between jobs.
+
+```yaml
+github_runners:
+  enabled: true
+  token_secret: meroku/github-runners/myapp-dev   # Secrets Manager secret with the GitHub token
+  vpc_access: false
+  runners:
+    - name: default
+      repository: example-org/some-repo           # or organization: example-org
+      compute_type: BUILD_GENERAL1_SMALL
+      docker: true
+      env_variables:
+        - name: FOO
+          value: bar
+      secrets:
+        - name: DB_PASSWORD
+          ssm: /myapp/dev/db_password
+        - name: API_KEY
+          secrets_manager: myapp/dev/api:key
+```
+
+A workflow job selects a runner with the label the environment outputs as
+`github_runner_labels`:
+
+```yaml
+runs-on: codebuild-myapp-gh-default-dev-${{ github.run_id }}-${{ github.run_attempt }}
+```
+
+- Each runner is a CodeBuild project with a webhook on queued workflow jobs.
+  Terraform creates the GitHub webhook with the `integrations/github` provider.
+  The token is read from `token_secret` through an ephemeral resource, so it is
+  in neither the plan nor the state.
+- A repository runner needs a token with `repo`; an organization runner also
+  needs `admin:org_hook`. All runners in an environment belong to one GitHub
+  owner.
+- `secrets` resolve from Parameter Store or Secrets Manager when the build
+  starts, and their values never reach Terraform state.
+- `vpc_access: true` runs builds in the private subnets, for jobs that must
+  reach RDS or internal services. CodeBuild gives a build in a VPC no public IP,
+  so `meroku generate` refuses it unless `egress_strategy` is `nat_gateway` or
+  `nat_gateway_ha`.
+- The runner's IAM role cannot deploy. Deploys keep using the GitHub OIDC role.
+- To remove runners, set `enabled: false` and apply before deleting the block.
+
+No schema migration: the block is optional. See
+[ai_docs/GITHUB_RUNNERS.md](./ai_docs/GITHUB_RUNNERS.md).
+
 ## v5.4.3
 
 ### Moving a service onto an EC2 pool no longer fails at UpdateService
