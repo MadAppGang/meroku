@@ -80,12 +80,12 @@ func TestEnvRoundTrip_SavedFileMatchesFixtureByteForByte(t *testing.T) {
 	}
 }
 
-// TestEnvRoundTrip_FixtureCoversThePolicyFields keeps the test above honest. A
+// TestEnvRoundTrip_FixtureCoversTheGuardedFields keeps the test above honest. A
 // byte-exact fixed point is also satisfied by a smaller fixture, so without this
 // the protection could be undone by editing the fixture instead of the model:
 // drop a key from it and the round trip goes green again while the struct field
 // silently rots. These are the assertions that fail in that case.
-func TestEnvRoundTrip_FixtureCoversThePolicyFields(t *testing.T) {
+func TestEnvRoundTrip_FixtureCoversTheGuardedFields(t *testing.T) {
 	_, loaded := loadRoundTripFixture(t)
 
 	t.Run("workload policy", func(t *testing.T) {
@@ -192,6 +192,23 @@ func TestEnvRoundTrip_FixtureCoversThePolicyFields(t *testing.T) {
 		}
 		if *loaded.Workload.BackendRemoteAccess {
 			t.Error("the fixture sets workload.backend_remote_access to false; true here means the value did not survive")
+		}
+	})
+
+	t.Run("backend autoscaling targets", func(t *testing.T) {
+		// 55 and 65, not the template's 70 and 80: a fixture that repeated the
+		// defaults could not tell a preserved value from a reset one.
+		cpu := loaded.Workload.BackendAutoscalingTargetCPU
+		if cpu == nil {
+			t.Error("workload.backend_autoscaling_target_cpu did not load")
+		} else if *cpu != 55 {
+			t.Errorf("workload.backend_autoscaling_target_cpu is 55 in the fixture, got %d", *cpu)
+		}
+		memory := loaded.Workload.BackendAutoscalingTargetMemory
+		if memory == nil {
+			t.Error("workload.backend_autoscaling_target_memory did not load")
+		} else if *memory != 65 {
+			t.Errorf("workload.backend_autoscaling_target_memory is 65 in the fixture, got %d", *memory)
 		}
 	})
 }
