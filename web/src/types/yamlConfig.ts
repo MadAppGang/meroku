@@ -647,6 +647,8 @@ export interface YamlInfrastructureConfig {
 	vaults?: VaultDefinition[];
 	// The project bus <project>-<env>. Absent or off keeps everything on the default bus.
 	event_bus?: EventBusConfig;
+	// Serverless Valkey, reachable by the workloads in `access`.
+	valkey?: ValkeyConfig;
 }
 
 /** One shared SSM vault, `/<env>/<project>/vault/<name>/`. */
@@ -667,7 +669,6 @@ export interface VaultConnection {
 	access?: VaultAccess;
 	prefix?: string;
 }
-
 
 /** The bus an events entry or event-task rule is on. Absent follows `event_bus.enabled`. */
 export type EventBusChoice = "project" | "default";
@@ -711,6 +712,21 @@ export interface WorkloadEvents {
 	subscribes?: EventSubscription[];
 	queue?: EventQueueSettings;
 	produces?: EventProduce[];
+}
+
+/** Major versions serverless Valkey offers. */
+export type ValkeyEngineVersion = "7" | "8" | "9";
+
+/**
+ * The optional serverless Valkey cache. `max_storage_gb` caps the stored data;
+ * `access` lists the workloads (`backend` or a service or task name) that may
+ * connect and get VALKEY_HOST, VALKEY_PORT and VALKEY_URL.
+ */
+export interface ValkeyConfig {
+	enabled: boolean;
+	engine_version?: ValkeyEngineVersion;
+	max_storage_gb?: number;
+	access?: string[];
 }
 
 /**

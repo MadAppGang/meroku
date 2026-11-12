@@ -108,6 +108,12 @@ longer granted by default, so a workload that publishes needs an
 migration could write the entry, because only the project knows which
 detail-types each workload publishes.
 
+`valkey` ([VALKEY.md](./VALKEY.md)) is another: absent, or `enabled: false`,
+renders no cache, no security group and no variables. Its defaults
+(`engine_version: "8"`, `max_storage_gb: 1`) apply only to an enabled block and
+live in `app/valkey.go`, so nothing is written to existing files. Its struct
+field is a pointer with `omitempty`.
+
 ### A note on v23's two defaults
 
 v23 is the one migration that does **not** write the safer of two values

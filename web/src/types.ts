@@ -41,6 +41,7 @@ export interface ComponentNode {
 		| "event-task"
 		| "postgres"
 		| "sqs"
+		| "valkey"
 		| "efs"
 		| "alb"
 		| "appsync"

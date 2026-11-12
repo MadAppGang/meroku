@@ -295,6 +295,21 @@ const initialNodes: Node[] = [
 		deletable: false,
 	},
 	{
+		id: "valkey",
+		type: "service",
+		position: { x: 1030, y: 620 },
+		data: {
+			id: "valkey",
+			type: "valkey",
+			name: "Valkey",
+			description: "Serverless cache",
+			status: "running",
+			deletable: false,
+			disabled: true,
+		},
+		deletable: false,
+	},
+	{
 		id: "s3",
 		type: "service",
 		position: { x: 880, y: 620 },

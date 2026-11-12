@@ -239,6 +239,19 @@ export const nodeStateMapping: NodeStateConfig[] = [
 		description: "Simple Queue Service for async task processing",
 	},
 	{
+		id: "valkey",
+		name: "Valkey",
+		type: "valkey",
+		enabled: (config) => config.valkey?.enabled === true,
+		properties: (config) => ({
+			engineVersion: config.valkey?.engine_version || "8",
+			maxStorageGb: config.valkey?.max_storage_gb || 1,
+			access: config.valkey?.access || [],
+		}),
+		description:
+			"Serverless Valkey, reachable by the workloads listed in access",
+	},
+	{
 		id: "ses",
 		name: "Amazon SES",
 		type: "ses",

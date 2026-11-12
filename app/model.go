@@ -92,6 +92,9 @@ type Env struct {
 	// EventBus turns on the project bus <project>-<env>. A pointer so an
 	// environment without the block saves without one. See ai_docs/EVENTS.md.
 	EventBus *EventBus `yaml:"event_bus,omitempty"`
+	// Valkey is the optional serverless Valkey cache. A pointer so an
+	// environment without the block saves without one. See ai_docs/VALKEY.md.
+	Valkey *Valkey `yaml:"valkey,omitempty"`
 }
 
 // Vault is one entry of the top-level vaults list.
@@ -148,6 +151,15 @@ type EventProduce struct {
 	Any           *bool    `yaml:"any,omitempty"`
 	OwnSourceOnly *bool    `yaml:"own_source_only,omitempty"`
 	Bus           string   `yaml:"bus,omitempty"`
+}
+
+// Valkey is the optional valkey block. EngineVersion is a major version, "7",
+// "8" or "9"; MaxStorageGB caps the stored data and is never a minimum.
+type Valkey struct {
+	Enabled       bool     `yaml:"enabled"`
+	EngineVersion string   `yaml:"engine_version,omitempty"`
+	MaxStorageGB  int      `yaml:"max_storage_gb,omitempty"`
+	Access        []string `yaml:"access,omitempty"`
 }
 
 // DataBucket is the optional data_bucket block.
