@@ -61,9 +61,12 @@ type Env struct {
 	ScheduledTasks      []ScheduledTask      `yaml:"scheduled_tasks"`
 	EventProcessorTasks []EventProcessorTask `yaml:"event_processor_tasks"`
 	AppSyncPubSub       AppSync              `yaml:"pubsub_appsync"`
-	Buckets             []BucketConfig       `yaml:"buckets"`
-	Services            []Service            `yaml:"services"`
-	AmplifyApps         []AmplifyApp         `yaml:"amplify_apps,omitempty"`
+	// EFS is the top-level `efs` list: the filesystems modules/efs creates,
+	// which the backend mounts through Workload.EFS. Absent renders no module.
+	EFS         []EFSConfig    `yaml:"efs,omitempty"`
+	Buckets     []BucketConfig `yaml:"buckets"`
+	Services    []Service      `yaml:"services"`
+	AmplifyApps []AmplifyApp   `yaml:"amplify_apps,omitempty"`
 	// CloudFront CDN Configuration (Schema v14 -> v15: changed to array)
 	CloudFrontDistributions []CloudFront `yaml:"cloudfront_distributions,omitempty"`
 	// Custom Extensions (for SNS, SQS, Lambda, etc.)
@@ -329,6 +332,11 @@ type Workload struct {
 	// Not BackendPolicies above: that one's Policy type carries no effect and no
 	// conditions.
 	Policy []IAMStatement `yaml:"policy,omitempty"`
+
+	// EFS is workload.efs: the filesystems from the environment's top-level efs
+	// list that the backend container mounts. Absent renders neither
+	// available_efs nor backend_efs_mounts.
+	EFS []EFSMount `yaml:"efs,omitempty"`
 }
 
 // BackendHealthCheck is workload.backend_health_check. Command takes the same
@@ -601,6 +609,37 @@ type ALB struct {
 	// RemoveAPIGateway drops the API Gateway API, stage, access-log group and
 	// backend VPC Link while the ALB is on.
 	RemoveAPIGateway bool `yaml:"remove_api_gateway,omitempty"`
+}
+
+// EFSConfig is one entry of the top-level `efs` list, shaped by the efs_configs
+// variable in modules/efs/variable.tf.
+//
+// UID and GID are pointers because 0 and absent mean different things here:
+// uid: 0 makes the access point root-owned, while an absent uid takes the
+// module's default of 1000. A plain int would break one way or the other — with
+// omitempty it drops an explicit 0 and hands the filesystem to 1000, without
+// omitempty it writes 0 into every config that never set one. Either way the
+// owner of every file on a mounted filesystem changes at the next apply, and
+// the plan shows it as one number moving.
+//
+// Permissions and Path are plain strings: neither "" nor absent is a POSIX mode
+// or a root directory anybody can mean, so the two collapse onto the module's
+// defaults ("755" and "/") and nothing is lost — the call ComputePool makes for
+// NetworkMode.
+type EFSConfig struct {
+	Name        string `yaml:"name"`
+	UID         *int   `yaml:"uid,omitempty"`
+	GID         *int   `yaml:"gid,omitempty"`
+	Permissions string `yaml:"permissions,omitempty"`
+	Path        string `yaml:"path,omitempty"`
+}
+
+// EFSMount is one entry of workload.efs: a filesystem the backend container
+// mounts. Name has to be the Name of an EFSConfig in the same environment,
+// which is how the template resolves the mount to module.efs.efs_configs.
+type EFSMount struct {
+	Name       string `yaml:"name"`
+	MountPoint string `yaml:"mount_point"`
 }
 
 type ScheduledTask struct {

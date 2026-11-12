@@ -69,6 +69,9 @@ workload:
       variable: aws:RequestedRegion
       values:
       - us-east-1
+  efs:
+  - name: uploads
+    mount_point: /data
 domain:
   enabled: true
   create_domain_zone: false
@@ -164,6 +167,13 @@ pubsub_appsync:
   jwks_uri: ""
   jwt_issuer: ""
   jwt_audience: ""
+efs:
+- name: shared
+- name: uploads
+  uid: 0
+  gid: 0
+  permissions: "770"
+  path: /uploads
 buckets:
 - name: uploads
   public: false
