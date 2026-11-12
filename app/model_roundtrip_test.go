@@ -1,0 +1,141 @@
+package main
+
+import (
+	"bytes"
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+// envRoundTripFixture is a full-feature environment config. Every YAML key in it
+// must be claimed by a field on Env or one of the structs it contains, because
+// the test below loads it and saves it again through the same pair of functions
+// the TUI, the web API and the selectors use.
+//
+// A key no struct declares is dropped by loadEnv and never comes back out of
+// saveEnvToFile, so the saved file differs from the fixture and the test fails
+// naming the missing key. That is the whole point of the fixture: it is the only
+// thing that turns "someone added a YAML key and forgot the struct field" from a
+// silent data loss on the user's next save into a red test on the commit that
+// introduced it. A feature commit adds its keys here and its fields to the model
+// in the same commit.
+const (
+	envRoundTripFixture     = "testdata/env_roundtrip.yaml"
+	envRoundTripFixtureBase = "testdata/env_roundtrip"
+)
+
+func TestEnvRoundTrip_SavedFileMatchesFixtureByteForByte(t *testing.T) {
+	fixture, err := os.ReadFile(envRoundTripFixture)
+	if err != nil {
+		t.Fatalf("reading %s: %v", envRoundTripFixture, err)
+	}
+
+	loaded, err := loadEnv(envRoundTripFixtureBase)
+	if err != nil {
+		t.Fatalf("loading %s: %v", envRoundTripFixture, err)
+	}
+
+	// A migration rewrites the file it loads, so a stale fixture would be
+	// compared against its own migrated form and report formatting noise instead
+	// of a dropped key. Fail on the cause instead.
+	if loaded.SchemaVersion != CurrentSchemaVersion {
+		t.Fatalf("%s is at schema v%d while CurrentSchemaVersion is v%d: loading it ran the migration chain. Bump schema_version in the fixture and add whatever the newer migrations expect.",
+			envRoundTripFixture, loaded.SchemaVersion, CurrentSchemaVersion)
+	}
+
+	savedPath := filepath.Join(t.TempDir(), loaded.Env+".yaml")
+	if err := saveEnvToFile(loaded, savedPath); err != nil {
+		t.Fatalf("saving the loaded environment: %v", err)
+	}
+	saved, err := os.ReadFile(savedPath)
+	if err != nil {
+		t.Fatalf("reading the saved file: %v", err)
+	}
+
+	if !bytes.Equal(fixture, saved) {
+		t.Errorf("saveEnvToFile did not reproduce %s byte for byte.\n\nEach difference is either a YAML key no struct field claims -- dropped on load, so gone from the saved file -- or fixture formatting that yaml.Marshal does not produce. Reconcile the formatting in the fixture; never by deleting a feature key from it.\n\n--- fixture ---\n%s\n--- saved ---\n%s",
+			envRoundTripFixture, fixture, saved)
+	}
+}
+
+// TestEnvRoundTrip_FixtureCoversThePolicyFields keeps the test above honest. A
+// byte-exact fixed point is also satisfied by a smaller fixture, so without this
+// the protection could be undone by editing the fixture instead of the model:
+// drop a key from it and the round trip goes green again while the struct field
+// silently rots. These are the assertions that fail in that case.
+func TestEnvRoundTrip_FixtureCoversThePolicyFields(t *testing.T) {
+	loaded, err := loadEnv(envRoundTripFixtureBase)
+	if err != nil {
+		t.Fatalf("loading %s: %v", envRoundTripFixture, err)
+	}
+
+	t.Run("workload policy", func(t *testing.T) {
+		policy := loaded.Workload.Policy
+		if len(policy) != 2 {
+			t.Fatalf("want 2 statements under workload.policy, got %d", len(policy))
+		}
+		if policy[0].Effect != "Allow" || len(policy[0].Actions) != 1 || len(policy[0].Resources) != 1 {
+			t.Errorf("the Allow statement did not load whole: %+v", policy[0])
+		}
+		if policy[1].Effect != "Deny" {
+			t.Errorf("the Deny statement lost its effect: %+v", policy[1])
+		}
+		if len(policy[1].Conditions) != 1 {
+			t.Fatalf("want 1 condition on the Deny statement, got %d", len(policy[1].Conditions))
+		}
+		condition := policy[1].Conditions[0]
+		if condition.Test == "" || condition.Variable == "" || len(condition.Values) != 1 {
+			t.Errorf("the condition did not load whole: %+v", condition)
+		}
+	})
+
+	t.Run("service policy", func(t *testing.T) {
+		if len(loaded.Services) != 1 {
+			t.Fatalf("want 1 service in the fixture, got %d", len(loaded.Services))
+		}
+		if len(loaded.Services[0].Policy) != 1 {
+			t.Errorf("services[0].policy did not load: %+v", loaded.Services[0].Policy)
+		}
+	})
+
+	t.Run("scheduled task policy and environment_variables", func(t *testing.T) {
+		if len(loaded.ScheduledTasks) != 1 {
+			t.Fatalf("want 1 scheduled task in the fixture, got %d", len(loaded.ScheduledTasks))
+		}
+		task := loaded.ScheduledTasks[0]
+		if len(task.Policy) != 1 {
+			t.Errorf("scheduled_tasks[0].policy did not load: %+v", task.Policy)
+		}
+		if len(task.EnvironmentVariables) != 1 {
+			t.Errorf("scheduled_tasks[0].environment_variables did not load: %+v", task.EnvironmentVariables)
+		}
+	})
+
+	t.Run("event processor task policy and environment_variables", func(t *testing.T) {
+		if len(loaded.EventProcessorTasks) != 1 {
+			t.Fatalf("want 1 event processor task in the fixture, got %d", len(loaded.EventProcessorTasks))
+		}
+		task := loaded.EventProcessorTasks[0]
+		if len(task.Policy) != 1 {
+			t.Fatalf("event_processor_tasks[0].policy did not load: %+v", task.Policy)
+		}
+		if len(task.Policy[0].Conditions) != 1 {
+			t.Errorf("event_processor_tasks[0].policy[0].conditions did not load: %+v", task.Policy[0])
+		}
+		if len(task.EnvironmentVariables) != 1 {
+			t.Errorf("event_processor_tasks[0].environment_variables did not load: %+v", task.EnvironmentVariables)
+		}
+	})
+
+	t.Run("backend_remote_access", func(t *testing.T) {
+		// A pointer because the template defaults an absent key to true, so an
+		// explicit false has to survive a save as false rather than become
+		// absent and re-enable itself.
+		if loaded.Workload.BackendRemoteAccess == nil {
+			t.Fatal("workload.backend_remote_access did not load")
+		}
+		if *loaded.Workload.BackendRemoteAccess {
+			t.Error("the fixture sets workload.backend_remote_access to false; true here means the value did not survive")
+		}
+	})
+}
