@@ -127,6 +127,43 @@ func TestEnvRoundTrip_FixtureCoversThePolicyFields(t *testing.T) {
 		}
 	})
 
+	t.Run("efs", func(t *testing.T) {
+		if len(loaded.EFS) != 2 {
+			t.Fatalf("want 2 filesystems under efs, got %d", len(loaded.EFS))
+		}
+		// The minimal entry has to stay minimal: a nil uid is what lets
+		// modules/efs apply its own default of 1000, so a struct that cannot
+		// tell absent from 0 turns this into an ownership change on save.
+		if minimal := loaded.EFS[0]; minimal.Name != "shared" || minimal.UID != nil || minimal.GID != nil ||
+			minimal.Permissions != "" || minimal.Path != "" {
+			t.Errorf("the filesystem that sets only a name loaded extra values: %+v", minimal)
+		}
+		full := loaded.EFS[1]
+		if full.Name != "uploads" || full.Permissions != "770" || full.Path != "/uploads" {
+			t.Errorf("the fully specified filesystem did not load whole: %+v", full)
+		}
+		// uid: 0 and gid: 0 mean root, a value that has to survive as 0 rather
+		// than be dropped and replaced by the module's default of 1000.
+		if full.UID == nil {
+			t.Error("efs[1].uid is 0 in the fixture and loaded as absent, so the module would apply its default of 1000")
+		} else if *full.UID != 0 {
+			t.Errorf("efs[1].uid is 0 in the fixture, got %d", *full.UID)
+		}
+		if full.GID == nil {
+			t.Error("efs[1].gid is 0 in the fixture and loaded as absent, so the module would apply its default of 1000")
+		} else if *full.GID != 0 {
+			t.Errorf("efs[1].gid is 0 in the fixture, got %d", *full.GID)
+		}
+
+		if len(loaded.Workload.EFS) != 1 {
+			t.Fatalf("want 1 mount under workload.efs, got %d", len(loaded.Workload.EFS))
+		}
+		mount := loaded.Workload.EFS[0]
+		if mount.Name != "uploads" || mount.MountPoint != "/data" {
+			t.Errorf("workload.efs[0] did not load whole: %+v", mount)
+		}
+	})
+
 	t.Run("backend_remote_access", func(t *testing.T) {
 		// A pointer because the template defaults an absent key to true, so an
 		// explicit false has to survive a save as false rather than become
