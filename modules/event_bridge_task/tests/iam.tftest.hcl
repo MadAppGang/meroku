@@ -55,13 +55,16 @@
 #      its two roles.
 #      (the_launch_policy_grants_nothing_beyond_launching)
 #
-# Every run PLANS. Computed attributes of a resource the mock provider is
-# creating are unknown during a plan, so the three this file asserts on — both
-# role ARNs and the task definition's arn_without_revision — are pinned with
-# `override_resource` + `override_during = plan`. That also gives the two roles
-# DIFFERENT ARNs: left to the mock they would share one generated value, and a
-# PassRole statement covering only the task role would pass an assertion that
-# both ARNs are present.
+# Run 1 plans; runs 2-4 APPLY against the mocks. Computed attributes of a
+# resource the mock provider is creating are unknown during a plan, so the three
+# this file asserts on — both role ARNs and the task definition's
+# arn_without_revision — are pinned with `override_resource`, which takes effect
+# at apply. `override_during = plan` would do it at plan, but it needs Terraform
+# >= 1.11 and CI pins an older one (.github/workflows/ci.yml), which rejects the
+# argument and fails the whole file. Pinning also gives the two roles DIFFERENT
+# ARNs: left to the mock they would share one generated value, and a PassRole
+# statement covering only the task role would pass an assertion that both ARNs
+# are present. No AWS is reached; the apply and its teardown are mocked.
 #
 # Run: terraform test  (from modules/event_bridge_task)
 
@@ -94,9 +97,8 @@ mock_provider "aws" {
       # The launch policy's RunTask resource is built from this attribute and
       # not from `arn`, so that the grant covers the whole family: a new
       # revision, which every deploy registers, then needs no new grant. A
-      # mock's defaults do not reach a resource the plan is still creating, so
-      # the runs below pin it with override_during = plan; this is the value an
-      # apply-mode run would see.
+      # mock's defaults do not reach a resource the plan is still creating; this
+      # is the value an apply-mode run without an override sees.
       arn_without_revision = "arn:aws:ecs:us-east-1:000000000000:task-definition/mock"
     }
   }
@@ -213,7 +215,7 @@ run "the_ssm_grant_names_a_real_parameter_arn" {
 # ---------------------------------------------------------------------------
 
 run "the_ssm_policy_is_attached_to_both_roles" {
-  command = plan
+  command = apply
 
   override_data {
     target = data.aws_ssm_parameters_by_path.task
@@ -226,8 +228,7 @@ run "the_ssm_policy_is_attached_to_both_roles" {
   # attachments' policy_arn are unknown. Pinning it is what lets this run assert
   # the two halves point at the SAME policy rather than at two different ones.
   override_resource {
-    target          = aws_iam_policy.ssm_parameter_access
-    override_during = plan
+    target = aws_iam_policy.ssm_parameter_access
     values = {
       arn = "arn:aws:iam::000000000000:policy/TaskingestSSMAccessPolicy_acme_dev"
     }
@@ -264,7 +265,7 @@ run "the_ssm_policy_is_attached_to_both_roles" {
 # ---------------------------------------------------------------------------
 
 run "eventbridge_can_launch_the_task_as_the_execution_role" {
-  command = plan
+  command = apply
 
   override_data {
     target = data.aws_ssm_parameters_by_path.task
@@ -277,16 +278,14 @@ run "eventbridge_can_launch_the_task_as_the_execution_role" {
   # generated value, and a PassRole statement naming only one of them would pass
   # an assertion that both are present.
   override_resource {
-    target          = aws_iam_role.task
-    override_during = plan
+    target = aws_iam_role.task
     values = {
       arn = "arn:aws:iam::000000000000:role/acme_ingest_task_dev"
     }
   }
 
   override_resource {
-    target          = aws_iam_role.task_execution
-    override_during = plan
+    target = aws_iam_role.task_execution
     values = {
       arn = "arn:aws:iam::000000000000:role/acme_scheduler_ingest_task_execution_dev"
     }
@@ -297,8 +296,7 @@ run "eventbridge_can_launch_the_task_as_the_execution_role" {
   # at plan and fail this run outright, which is the point — that grant stops
   # working at the next revision.
   override_resource {
-    target          = aws_ecs_task_definition.task
-    override_during = plan
+    target = aws_ecs_task_definition.task
     values = {
       arn_without_revision = "arn:aws:ecs:us-east-1:000000000000:task-definition/acme_event_task_ingest_dev"
     }
@@ -362,7 +360,7 @@ run "eventbridge_can_launch_the_task_as_the_execution_role" {
 # ---------------------------------------------------------------------------
 
 run "the_launch_policy_grants_nothing_beyond_launching" {
-  command = plan
+  command = apply
 
   override_data {
     target = data.aws_ssm_parameters_by_path.task
@@ -372,24 +370,21 @@ run "the_launch_policy_grants_nothing_beyond_launching" {
   }
 
   override_resource {
-    target          = aws_iam_role.task
-    override_during = plan
+    target = aws_iam_role.task
     values = {
       arn = "arn:aws:iam::000000000000:role/acme_ingest_task_dev"
     }
   }
 
   override_resource {
-    target          = aws_iam_role.task_execution
-    override_during = plan
+    target = aws_iam_role.task_execution
     values = {
       arn = "arn:aws:iam::000000000000:role/acme_scheduler_ingest_task_execution_dev"
     }
   }
 
   override_resource {
-    target          = aws_ecs_task_definition.task
-    override_during = plan
+    target = aws_ecs_task_definition.task
     values = {
       arn_without_revision = "arn:aws:ecs:us-east-1:000000000000:task-definition/acme_event_task_ingest_dev"
     }
