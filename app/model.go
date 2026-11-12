@@ -195,16 +195,21 @@ type Workload struct {
 	BackendExternalDockerImage string `yaml:"backend_external_docker_image"`
 	// list(string) in modules/workloads/variables.tf, and a scalar here for most
 	// of its life. Schema v29 converts the scalar form. See ScheduledTask.
-	BackendContainerCommand []string          `yaml:"backend_container_command,omitempty"`
-	BucketPostfix           string            `yaml:"bucket_postfix"`
-	BucketPublic            bool              `yaml:"bucket_public"`
-	BackendImagePort        int               `yaml:"backend_image_port"`
-	SetupFCNSNS             bool              `yaml:"setup_fcnsns"`
-	XrayEnabled             bool              `yaml:"xray_enabled"`
-	BackendEnvVariables     map[string]string `yaml:"backend_env_variables"`
-	Policies                []string          `yaml:"policies"`
-	BackendPolicies         []Policy          `yaml:"backend_policies"`
-	EnvFilesS3              []S3EnvFile       `yaml:"env_files_s3"`
+	BackendContainerCommand []string `yaml:"backend_container_command,omitempty"`
+	BucketPostfix           string   `yaml:"bucket_postfix"`
+	BucketPublic            bool     `yaml:"bucket_public"`
+	BackendImagePort        int      `yaml:"backend_image_port"`
+	// BackendRemoteAccess turns on ECS Exec for the backend container and the IAM
+	// policy it needs. A *bool because the template defaults an absent key to
+	// true: an operator's explicit false has to survive a save as false, or the
+	// next save silently re-enables shell access to the container.
+	BackendRemoteAccess *bool             `yaml:"backend_remote_access,omitempty"`
+	SetupFCNSNS         bool              `yaml:"setup_fcnsns"`
+	XrayEnabled         bool              `yaml:"xray_enabled"`
+	BackendEnvVariables map[string]string `yaml:"backend_env_variables"`
+	Policies            []string          `yaml:"policies"`
+	BackendPolicies     []Policy          `yaml:"backend_policies"`
+	EnvFilesS3          []S3EnvFile       `yaml:"env_files_s3"`
 
 	SlackWebhook     string `yaml:"slack_webhook"`
 	EnableGithubOIDC bool   `yaml:"enable_github_oidc"`
@@ -257,6 +262,11 @@ type Workload struct {
 	// BackendCircuitBreaker is the backend service's ECS deployment circuit
 	// breaker. nil renders no block.
 	BackendCircuitBreaker *BackendCircuitBreaker `yaml:"backend_circuit_breaker,omitempty"`
+
+	// Policy is the inline policy on the backend's task role, the `policy` key.
+	// Not BackendPolicies above: that one's Policy type carries no effect and no
+	// conditions.
+	Policy []IAMStatement `yaml:"policy,omitempty"`
 }
 
 // BackendHealthCheck is workload.backend_health_check. Command takes the same
@@ -286,6 +296,31 @@ type S3EnvFile struct {
 type Policy struct {
 	Actions   []string `yaml:"actions"`
 	Resources []string `yaml:"resources"`
+}
+
+// IAMStatement is one statement of a `policy` block: the inline IAM policy a
+// workload, service or task carries in its own config.
+//
+// It is deliberately not the Policy type above, which serves `backend_policies`
+// and `instance_policies`. That type has neither an effect nor conditions, so it
+// cannot express the Deny that keeps a broad grant narrow, nor scope a statement
+// to a region or a transport.
+type IAMStatement struct {
+	// Effect is "Allow" or "Deny". Empty means Allow, which is IAM's own default.
+	Effect    string   `yaml:"effect,omitempty"`
+	Actions   []string `yaml:"actions"`
+	Resources []string `yaml:"resources"`
+	// Conditions restrict when the statement applies, such as a region or a
+	// transport requirement. Empty means the statement is unconditional.
+	Conditions []IAMCondition `yaml:"conditions,omitempty"`
+}
+
+// IAMCondition is one condition block of an IAMStatement: a test applied to the
+// values of a condition key.
+type IAMCondition struct {
+	Test     string   `yaml:"test"`
+	Variable string   `yaml:"variable"`
+	Values   []string `yaml:"values"`
 }
 
 // Compute (schema v26) is the EC2 capacity side of the environment: the pools
@@ -513,10 +548,15 @@ type ScheduledTask struct {
 	ExternalDockerImage string `yaml:"docker_image"`
 	// A list of arguments, matching Terraform's list(string). Was a scalar
 	// string until schema v25, which converts existing values on load.
-	ContainerCommand []string   `yaml:"container_command"`
-	CPU              int        `yaml:"cpu,omitempty"`
-	Memory           int        `yaml:"memory,omitempty"`
-	ECRConfig        *ECRConfig `yaml:"ecr_config,omitempty"` // Schema v9
+	ContainerCommand []string `yaml:"container_command"`
+	// EnvironmentVariables are the container's own environment, rendered as the
+	// task's custom_env_vars. ENV is not a usable name: meroku creates
+	// <path>/env for every workload and ECS refuses a name present in both.
+	// See app/env_reserved.go.
+	EnvironmentVariables map[string]string `yaml:"environment_variables,omitempty"`
+	CPU                  int               `yaml:"cpu,omitempty"`
+	Memory               int               `yaml:"memory,omitempty"`
+	ECRConfig            *ECRConfig        `yaml:"ecr_config,omitempty"` // Schema v9
 	// IANA timezone the schedule is evaluated in. DST-aware, so a job set for
 	// 09:00 stays at 09:00 local across the change. Empty uses the module
 	// default of UTC.
@@ -528,6 +568,9 @@ type ScheduledTask struct {
 	// SQS queue ARN for failed invocations. Empty disables the DLQ and the
 	// scoped sqs:SendMessage grant that comes with it.
 	DLQArn string `yaml:"dlq_arn,omitempty"`
+	// Policy is the inline policy on this task's role, for the grants meroku
+	// does not build itself.
+	Policy []IAMStatement `yaml:"policy,omitempty"`
 }
 
 // EventBridgeRule defines a single EventBridge rule pattern (Schema v13)
@@ -547,11 +590,19 @@ type EventProcessorTask struct {
 	DetailTypes []string `yaml:"detail_types,omitempty"`
 	Sources     []string `yaml:"sources,omitempty"`
 	// Container configuration
-	ExternalDockerImage string     `yaml:"docker_image,omitempty"`
-	ContainerCommand    []string   `yaml:"container_command,omitempty"`
-	CPU                 int        `yaml:"cpu,omitempty"`
-	Memory              int        `yaml:"memory,omitempty"`
-	ECRConfig           *ECRConfig `yaml:"ecr_config,omitempty"` // Schema v9
+	ExternalDockerImage string   `yaml:"docker_image,omitempty"`
+	ContainerCommand    []string `yaml:"container_command,omitempty"`
+	// EnvironmentVariables are the container's own environment, rendered as the
+	// task's custom_env_vars. ENV is not a usable name: meroku creates
+	// <path>/env for every workload and ECS refuses a name present in both.
+	// See app/env_reserved.go.
+	EnvironmentVariables map[string]string `yaml:"environment_variables,omitempty"`
+	CPU                  int               `yaml:"cpu,omitempty"`
+	Memory               int               `yaml:"memory,omitempty"`
+	ECRConfig            *ECRConfig        `yaml:"ecr_config,omitempty"` // Schema v9
+	// Policy is the inline policy on this task's role, for the grants meroku
+	// does not build itself.
+	Policy []IAMStatement `yaml:"policy,omitempty"`
 }
 
 type EnvVariable struct {
@@ -597,6 +648,10 @@ type Service struct {
 	// shell. See health_check_command.go. It runs inside the container, so the
 	// tool must exist in the image.
 	HealthCheckCommand HealthCheckCommand `yaml:"health_check_command,omitempty"`
+
+	// Policy is the inline policy on this service's task role, for the grants
+	// meroku does not build itself.
+	Policy []IAMStatement `yaml:"policy,omitempty"`
 }
 
 type DNSConfig struct {
