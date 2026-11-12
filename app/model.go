@@ -290,12 +290,26 @@ type Workload struct {
 	BackendALBDomainName string `yaml:"backend_alb_domain_name"`
 
 	// Backend scaling configuration
-	BackendDesiredCount           int32  `yaml:"backend_desired_count"`
-	BackendAutoscalingEnabled     bool   `yaml:"backend_autoscaling_enabled"`
-	BackendAutoscalingMinCapacity int32  `yaml:"backend_autoscaling_min_capacity"`
-	BackendAutoscalingMaxCapacity int32  `yaml:"backend_autoscaling_max_capacity"`
-	BackendCPU                    string `yaml:"backend_cpu"`
-	BackendMemory                 string `yaml:"backend_memory"`
+	BackendDesiredCount           int32 `yaml:"backend_desired_count"`
+	BackendAutoscalingEnabled     bool  `yaml:"backend_autoscaling_enabled"`
+	BackendAutoscalingMinCapacity int32 `yaml:"backend_autoscaling_min_capacity"`
+	BackendAutoscalingMaxCapacity int32 `yaml:"backend_autoscaling_max_capacity"`
+	// The two scaling targets are pointers, and the three fields above them are
+	// not, because only those three have something writing a value into every
+	// config: migrateToV4 adds them to an older one and createEnv sets them for a
+	// new one, so a plain int32 there never has to stand for "absent". The targets
+	// have neither — their only default is the template's
+	// {{default workload.backend_autoscaling_target_cpu 70}}.
+	//
+	// A plain int32 here would save an unset target as 0, and the default helper
+	// returns 0 for 0 rather than falling back, so both target-tracking policies
+	// would render target_value = 0 — which AWS rejects, turning a config that
+	// only omitted an optional key into a failed apply. nil keeps the key out of
+	// the YAML and leaves the template's default in force.
+	BackendAutoscalingTargetCPU    *int32 `yaml:"backend_autoscaling_target_cpu,omitempty"`
+	BackendAutoscalingTargetMemory *int32 `yaml:"backend_autoscaling_target_memory,omitempty"`
+	BackendCPU                     string `yaml:"backend_cpu"`
+	BackendMemory                  string `yaml:"backend_memory"`
 
 	// BackendRuntime (schema v26) is fargate | ec2. The v26 migration stamps
 	// "fargate" on every existing environment so a runtime choice is visible in
@@ -618,13 +632,16 @@ type ALB struct {
 // EFSConfig is one entry of the top-level `efs` list, shaped by the efs_configs
 // variable in modules/efs/variable.tf.
 //
-// UID and GID are pointers because 0 and absent mean different things here:
-// uid: 0 makes the access point root-owned, while an absent uid takes the
-// module's default of 1000. A plain int would break one way or the other — with
-// omitempty it drops an explicit 0 and hands the filesystem to 1000, without
-// omitempty it writes 0 into every config that never set one. Either way the
-// owner of every file on a mounted filesystem changes at the next apply, and
-// the plan shows it as one number moving.
+// UID and GID are pointers because 0 and absent mean different things here.
+// Both reach only root_directory.creation_info, which AWS applies when it has to
+// create the access point's root directory; the access point's own posix_user is
+// uid 0 / gid 0 in modules/efs/main.tf whatever the YAML says. An absent uid
+// takes the variable's default of 1000, uid: 0 asks for a root-owned directory.
+// A plain int would break one way or the other — with omitempty it drops an
+// explicit 0 and hands the directory to 1000, without omitempty it writes 0 into
+// every config that never set one. Either way a filesystem created at the next
+// apply gets a differently owned root directory, and in the second case every
+// untuned config also gains a spurious diff at the next plan.
 //
 // Permissions and Path are plain strings: neither "" nor absent is a POSIX mode
 // or a root directory anybody can mean, so the two collapse onto the module's
@@ -641,9 +658,14 @@ type EFSConfig struct {
 // EFSMount is one entry of workload.efs: a filesystem the backend container
 // mounts. Name has to be the Name of an EFSConfig in the same environment,
 // which is how the template resolves the mount to module.efs.efs_configs.
+//
+// MountPoint is omitempty because modules/workloads/variables.tf declares
+// mount_point = optional(string, "/"), so a mount that omits the key has to stay
+// omitted. Without it a save writes mount_point: "" into every config that never
+// set one, and the YAML then claims a mount path nobody chose.
 type EFSMount struct {
 	Name       string `yaml:"name"`
-	MountPoint string `yaml:"mount_point"`
+	MountPoint string `yaml:"mount_point,omitempty"`
 }
 
 type ScheduledTask struct {

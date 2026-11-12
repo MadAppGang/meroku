@@ -40,6 +40,8 @@ workload:
   backend_autoscaling_enabled: true
   backend_autoscaling_min_capacity: 2
   backend_autoscaling_max_capacity: 10
+  backend_autoscaling_target_cpu: 55
+  backend_autoscaling_target_memory: 65
   backend_cpu: "512"
   backend_memory: "1024"
   backend_runtime: fargate

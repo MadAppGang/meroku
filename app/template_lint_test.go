@@ -157,10 +157,11 @@ func registeredHelperNames(t *testing.T) map[string]bool {
 // with: the Env struct's own yaml tags, the keys of the shipped config, and what
 // applyTemplate injects.
 //
-// Both config sources are needed. The struct is the schema, but generation reads
-// the YAML into a plain map and never goes through it, so a key can be real and
-// working without a field — `efs` is one today. The shipped config covers those,
-// and the struct covers optional keys no fixture happens to set.
+// Both sources are unioned because generation reads the YAML into a plain map and
+// never goes through the struct: a root key the shipped config sets is real and
+// working whether or not Env declares a field for it, and a field Env declares is
+// a legitimate root whether or not the shipped config sets it. Neither source on
+// its own covers both halves.
 func fixtureRootKeys(t *testing.T) map[string]bool {
 	t.Helper()
 
