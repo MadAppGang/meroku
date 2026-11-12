@@ -33,6 +33,7 @@ export const NESTED_CONFIG_KEYS = [
 	"pubsub_appsync",
 	"compute",
 	"data_bucket",
+	"event_bus",
 ] as const;
 
 export type NestedConfigKey = (typeof NESTED_CONFIG_KEYS)[number];

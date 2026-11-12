@@ -834,6 +834,8 @@ module "workloads" {
   # Variables and secrets the capability modules add per workload (local.workload_extra_env).
   extra_env     = local.workload_extra_env
   extra_secrets = local.workload_extra_secrets
+  # EVENT_BUS_NAME: the project bus when event_bus.enabled, otherwise "default".
+  event_bus_name = module.events.bus_name
 }
 {{#if neon_render}}
 
@@ -1006,6 +1008,7 @@ module "schedule_task_{{name}}" {
   {{/if}}
   extra_env     = local.workload_extra_env["{{name}}"]
   extra_secrets = local.workload_extra_secrets["{{name}}"]
+  event_bus_name = module.events.bus_name
 }
 {{/each}}
 {{#each event_processor_tasks}}
@@ -1026,6 +1029,8 @@ module "event_bus_task_{{name}}" {
     "{{name}}" = {
       sources      = {{{array sources}}}
       detail_types = {{{array detail_types}}}
+      {{!-- _bus is the rule's resolved bus (app/events.go). --}}
+      event_bus_name = {{#if (eq _bus "project")}}module.events.bus_name{{else}}"default"{{/if}}
     }
     {{/each}}
   }
@@ -1071,6 +1076,7 @@ module "event_bus_task_{{name}}" {
   {{/if}}
   extra_env     = local.workload_extra_env["{{name}}"]
   extra_secrets = local.workload_extra_secrets["{{name}}"]
+  event_bus_name = module.events.bus_name
 }
 {{/each}}
 
@@ -1094,6 +1100,7 @@ locals {
   # What each workload's container gets on top of its own variables and secrets.
   workload_extra_env = { for name in keys(local.workload_roles) : name => concat(
     module.data_bucket.environment[name],
+    module.events.environment[name],
   ) }
   workload_extra_secrets = { for name in keys(local.workload_roles) : name => concat(
     module.vaults.secrets[name],
@@ -1123,6 +1130,21 @@ module "vaults" {
 
   workloads   = local.workload_roles
   connections = {{{hclArray _vault_connections}}}
+}
+
+# Events: the project bus (event_bus.enabled), a queue per workload that
+# subscribes, and PutEvents for each events.produces entry. Without an entry a
+# workload cannot publish. See ai_docs/EVENTS.md.
+module "events" {
+  source  = "{{modules}}/events"
+  project = "{{project}}"
+  env     = "{{env}}"
+
+  bus_enabled = {{#if event_bus.enabled}}true{{else}}false{{/if}}
+  workloads   = local.workload_roles
+  {{!-- Normalised by app/events.go: buses resolved, subscription keys derived. --}}
+  consumers   = {{{hclArray _event_consumers}}}
+  producers   = {{{hclArray _event_producers}}}
 }
 
 

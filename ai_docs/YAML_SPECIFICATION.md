@@ -119,6 +119,23 @@ workload:
       mount_point: <string>                  # Container mount path (e.g., "/data")
       read_only: <boolean>                   # Mount the filesystem read-only (default: false)
 
+  # Events: the backend subscribes and publishes like a service
+  events:                                  # Optional. See ai_docs/EVENTS.md
+    subscribes: <list>                     # Services and the backend only; each is a queue rule
+      - detail_type: <string>              # Exactly one of detail_type | detail_type_prefix
+        detail_type_prefix: <string>
+        source: <string>                   # Optional source filter
+        name: <string>                     # Optional key ^[a-z0-9][a-z0-9-]{0,31}$; derived when unset
+        bus: <project|default>             # Optional; absent follows event_bus.enabled
+    queue:                                 # Optional; only for a workload that subscribes
+      visibility_timeout: <number>         # 0-43200 seconds (default: 30)
+      max_receive_count: <number>          # 1-1000 (default: 5), then the application DLQ
+    produces: <list>                       # PutEvents grants; without one the workload cannot publish
+      - detail_types: <list>               # Exactly one of detail_types | any: true
+        any: <boolean>
+        own_source_only: <boolean>         # Default true: only the workload's own EVENT_SOURCE
+        bus: <project|default>             # Optional; absent follows event_bus.enabled
+
   # ALB configuration (requires alb.enabled)
   backend_alb_domain_name: <string>          # Custom domain for ALB (e.g., "api.example.com")
   backend_health_check_grace_period: <integer> # Optional. Seconds ECS ignores ALB health checks on a new backend task; ALB only (default 0 = not set)
@@ -215,6 +232,8 @@ scheduled_tasks: <list>
     allow_public_access: <boolean>           # Assign public IP to task
     policy: <list>                           # Extra IAM statements for the task role; same shape
                                              #   as workload.policy (ai_docs/WORKLOAD_IAM.md)
+    events:                                  # Optional; a task may only produce
+      produces: <list>                       # Same shape as services[].events.produces
 
 # Schedule expression examples:
 # - "rate(5 minutes)"      - Every 5 minutes
@@ -229,7 +248,12 @@ scheduled_tasks: <list>
 
 event_processor_tasks: <list>
   - name: <string>                           # Task name
-    rule_name: <string>                      # EventBridge rule name
+    rules: <list>                            # Preferred form; one EventBridge rule each
+      - name: <string>                       # Rule key; AWS name <project>_rule_<name>_<env>
+        sources: <list>
+        detail_types: <list>
+        bus: <project|default>               # Optional; absent follows event_bus.enabled
+    rule_name: <string>                      # Legacy single rule; follows event_bus.enabled
     detail_types: <list>                     # Event detail types to match
       - <string>                             # e.g., "Order Created", "User Registered"
     sources: <list>                          # Event sources to match
@@ -239,6 +263,17 @@ event_processor_tasks: <list>
     allow_public_access: <boolean>           # Assign public IP to task
     policy: <list>                           # Extra IAM statements for the task role; same shape
                                              #   as workload.policy (ai_docs/WORKLOAD_IAM.md)
+    events:                                  # Optional; a task may only produce
+      produces: <list>                       # Same shape as services[].events.produces
+
+# ===================================
+# EVENT BUS
+# ===================================
+# Optional. Absent or enabled: false keeps everything on the default bus.
+# Full guide: ai_docs/EVENTS.md
+
+event_bus:
+  enabled: <boolean>                         # true creates <project>-<env>; EVENT_BUS_NAME names it
 
 # ===================================
 # GRAPHQL API CONFIGURATION
@@ -321,6 +356,23 @@ services: <list>
     # IAM
     policy: <list>                           # Extra IAM statements for the service task role;
                                              #   same shape as workload.policy (ai_docs/WORKLOAD_IAM.md)
+
+    # Events
+    events:                                  # Optional. See ai_docs/EVENTS.md
+      subscribes: <list>                     # Services and the backend only; each is a queue rule
+        - detail_type: <string>              # Exactly one of detail_type | detail_type_prefix
+          detail_type_prefix: <string>
+          source: <string>                   # Optional source filter
+          name: <string>                     # Optional key ^[a-z0-9][a-z0-9-]{0,31}$; derived when unset
+          bus: <project|default>             # Optional; absent follows event_bus.enabled
+      queue:                                 # Optional; only for a workload that subscribes
+        visibility_timeout: <number>         # 0-43200 seconds (default: 30)
+        max_receive_count: <number>          # 1-1000 (default: 5), then the application DLQ
+      produces: <list>                       # PutEvents grants; without one the workload cannot publish
+        - detail_types: <list>               # Exactly one of detail_types | any: true
+          any: <boolean>
+          own_source_only: <boolean>         # Default true: only the workload's own EVENT_SOURCE
+          bus: <project|default>             # Optional; absent follows event_bus.enabled
 
 # ===================================
 # GITHUB ACTIONS RUNNERS (CodeBuild)

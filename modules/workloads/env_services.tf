@@ -58,7 +58,7 @@ locals {
       { "name" : "URL", "value" : var.api_domain },
       { "name" : "SQS_QUEUE_URL", "value" : var.sqs_queue_url },
       { "name" : "AWS_QUEUE_URL", "value" : var.sqs_queue_url },
-      { "name" : "EVENT_BUS_NAME", "value" : "default" },
+      { "name" : "EVENT_BUS_NAME", "value" : var.event_bus_name },
       # Domain configuration
       { "name" : "API_DOMAIN", "value" : var.api_domain },
       { "name" : "PRIVATE_DNS_NAMESPACE", "value" : var.private_dns_name },

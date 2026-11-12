@@ -126,9 +126,96 @@ const vaultConnectionReferences: ReferenceRewriter = (config, mapName) => {
 	return updates;
 };
 
+/**
+ * Event sources that name a workload: `<project>.<service>`,
+ * `<project>.task.<task>` and `<project>.event.<task>` (ai_docs/EVENTS.md). A
+ * rename points them at the new name. A delete leaves them: a source that names
+ * nothing is valid and matches no event, and dropping the filter would widen the
+ * subscription instead.
+ */
+function mapEventSource(
+	project: string | undefined,
+	source: string | undefined,
+	mapName: (name: string) => string | null,
+): string | undefined {
+	if (!project || !source) return source;
+	for (const prefix of [
+		`${project}.task.`,
+		`${project}.event.`,
+		`${project}.`,
+	]) {
+		if (!source.startsWith(prefix)) continue;
+		const name = source.slice(prefix.length);
+		if (!name || name.includes(".")) continue;
+		const mapped = mapName(name);
+		return mapped === null ? source : `${prefix}${mapped}`;
+	}
+	return source;
+}
+
+/** `events.subscribes[].source` on the backend and services, and event-task rule sources. */
+const eventSourceReferences: ReferenceRewriter = (config, mapName) => {
+	const project = config.project;
+	const updates: Partial<YamlInfrastructureConfig> = {};
+
+	const backendSubs = config.workload?.events?.subscribes;
+	if (backendSubs && backendSubs.length > 0) {
+		const rewritten = backendSubs.map((s) => ({
+			...s,
+			source: mapEventSource(project, s.source, mapName),
+		}));
+		if (JSON.stringify(rewritten) !== JSON.stringify(backendSubs)) {
+			updates.workload = {
+				...config.workload,
+				events: { ...config.workload?.events, subscribes: rewritten },
+			} as YamlInfrastructureConfig["workload"];
+		}
+	}
+
+	const services = config.services;
+	if (services && services.length > 0) {
+		const rewritten = services.map((svc) =>
+			svc.events?.subscribes
+				? {
+						...svc,
+						events: {
+							...svc.events,
+							subscribes: svc.events.subscribes.map((s) => ({
+								...s,
+								source: mapEventSource(project, s.source, mapName),
+							})),
+						},
+					}
+				: svc,
+		);
+		if (JSON.stringify(rewritten) !== JSON.stringify(services)) {
+			updates.services = rewritten;
+		}
+	}
+
+	const tasks = config.event_processor_tasks;
+	if (tasks && tasks.length > 0) {
+		const mapSources = (sources: string[] | undefined) =>
+			sources?.map((s) => mapEventSource(project, s, mapName) ?? s);
+		const rewritten = tasks.map((task) => ({
+			...task,
+			sources: mapSources(task.sources),
+			rules: task.rules?.map((rule) => ({
+				...rule,
+				sources: mapSources(rule.sources) ?? [],
+			})),
+		}));
+		if (JSON.stringify(rewritten) !== JSON.stringify(tasks)) {
+			updates.event_processor_tasks = rewritten;
+		}
+	}
+	return updates;
+};
+
 const REFERENCE_REWRITERS: ReferenceRewriter[] = [
 	dataBucketSharedReferences,
 	vaultConnectionReferences,
+	eventSourceReferences,
 ];
 
 function rewriteReferences(

@@ -383,6 +383,8 @@ export interface YamlInfrastructureConfig {
 
 		// The backend's vault connections.
 		vaults?: VaultConnection[];
+		/** The backend's events: it subscribes and publishes like a service. */
+		events?: WorkloadEvents;
 
 		// EFS mounts
 		efs?: Array<{
@@ -507,6 +509,8 @@ export interface YamlInfrastructureConfig {
 		policy?: IAMStatement[];
 		/** The task's vault connections. */
 		vaults?: VaultConnection[];
+		/** A task may only produce; `subscribes` is refused at generate. */
+		events?: WorkloadEvents;
 	}>;
 
 	// Event-driven Tasks
@@ -653,6 +657,8 @@ export interface YamlInfrastructureConfig {
 		policy?: IAMStatement[];
 		/** The service's vault connections. */
 		vaults?: VaultConnection[];
+		/** What the service subscribes to and may publish. */
+		events?: WorkloadEvents;
 	}>;
 
 	// S3 Buckets
@@ -699,6 +705,8 @@ export interface YamlInfrastructureConfig {
 
 	// Shared SSM vaults, /<env>/<project>/vault/<name>/.
 	vaults?: VaultDefinition[];
+	// The project bus <project>-<env>. Absent or off keeps everything on the default bus.
+	event_bus?: EventBusConfig;
 }
 
 /** One shared SSM vault, `/<env>/<project>/vault/<name>/`. */
@@ -718,6 +726,51 @@ export interface VaultConnection {
 	name: string;
 	access?: VaultAccess;
 	prefix?: string;
+}
+
+
+/** The bus an events entry or event-task rule is on. Absent follows `event_bus.enabled`. */
+export type EventBusChoice = "project" | "default";
+
+export interface EventBusConfig {
+	enabled?: boolean;
+}
+
+/**
+ * One `events.subscribes` entry. Exactly one of `detail_type` and
+ * `detail_type_prefix` is set. `name`, when set, is the entry's key; without it
+ * the key is derived from the detail-type.
+ */
+export interface EventSubscription {
+	name?: string;
+	detail_type?: string;
+	detail_type_prefix?: string;
+	source?: string;
+	bus?: EventBusChoice;
+}
+
+/** A consumer's queue settings. */
+export interface EventQueueSettings {
+	visibility_timeout?: number;
+	max_receive_count?: number;
+}
+
+/**
+ * One `events.produces` entry: a detail-type list or `any: true`.
+ * `own_source_only` defaults to true.
+ */
+export interface EventProduce {
+	detail_types?: string[];
+	any?: boolean;
+	own_source_only?: boolean;
+	bus?: EventBusChoice;
+}
+
+/** A workload's `events` block. See ai_docs/EVENTS.md. */
+export interface WorkloadEvents {
+	subscribes?: EventSubscription[];
+	queue?: EventQueueSettings;
+	produces?: EventProduce[];
 }
 
 /**
@@ -828,6 +881,8 @@ export interface EventBridgeRule {
 	name: string;
 	sources: string[];
 	detail_types: string[];
+	/** The bus the rule is on. Absent follows `event_bus.enabled`. */
+	bus?: EventBusChoice;
 }
 
 /**
@@ -854,6 +909,8 @@ export interface EventProcessorTask {
 	policy?: IAMStatement[];
 	/** The task's vault connections. */
 	vaults?: VaultConnection[];
+	/** A task may only produce; `subscribes` is refused at generate. */
+	events?: WorkloadEvents;
 }
 
 /**

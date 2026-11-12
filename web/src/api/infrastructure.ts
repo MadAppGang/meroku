@@ -407,6 +407,10 @@ export interface BoardPositions {
 }
 
 export interface TestEventRequest {
+	/** The environment whose profile, region and buses are used. */
+	env: string;
+	/** "default" or the environment's project bus, <project>-<env>. */
+	eventBusName?: string;
 	source: string;
 	detailType: string;
 	detail?: Record<string, unknown>;
@@ -418,11 +422,19 @@ export interface TestEventResponse {
 	message: string;
 }
 
+export interface EventTaskRuleInfo {
+	name: string;
+	sources: string[];
+	detailTypes: string[];
+	eventBusName: string;
+}
+
 export interface EventTaskInfo {
 	name: string;
 	ruleName: string;
 	sources: string[];
 	detailTypes: string[];
+	rules: EventTaskRuleInfo[];
 	dockerImage?: string;
 }
 

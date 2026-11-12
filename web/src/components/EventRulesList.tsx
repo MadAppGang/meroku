@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import type { EventBridgeRule } from "../types/yamlConfig";
+import { EventBusSelect, resolvedBusLabel } from "./EventProducesEditor";
+import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import {
 	Dialog,
@@ -28,9 +30,18 @@ import { Label } from "./ui/label";
 interface EventRulesListProps {
 	rules: EventBridgeRule[];
 	onRulesChange: (rules: EventBridgeRule[]) => void;
+	/** event_bus.enabled; a rule without a bus follows it. */
+	busEnabled?: boolean;
+	/** The project bus, <project>-<env>. */
+	projectBusName?: string;
 }
 
-export function EventRulesList({ rules, onRulesChange }: EventRulesListProps) {
+export function EventRulesList({
+	rules,
+	onRulesChange,
+	busEnabled = false,
+	projectBusName = "",
+}: EventRulesListProps) {
 	const [editingRule, setEditingRule] = useState<EventBridgeRule | null>(null);
 	const [editingIndex, setEditingIndex] = useState<number | null>(null);
 	const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -151,6 +162,12 @@ export function EventRulesList({ rules, onRulesChange }: EventRulesListProps) {
 									</span>
 									<div className="flex items-center gap-2">
 										<span className="font-medium text-white">{rule.name}</span>
+										<Badge
+											variant="outline"
+											data-testid={`rule-bus-${rule.name}`}
+										>
+											{resolvedBusLabel(rule.bus, busEnabled, projectBusName)}
+										</Badge>
 										<span className="text-xs text-gray-500">
 											{rule.sources.length} source
 											{rule.sources.length !== 1 ? "s" : ""} →{" "}
@@ -269,6 +286,8 @@ export function EventRulesList({ rules, onRulesChange }: EventRulesListProps) {
 				rule={editingRule}
 				onSave={handleSaveRule}
 				isNew={editingIndex === null}
+				busEnabled={busEnabled}
+				projectBusName={projectBusName}
 			/>
 		</>
 	);
@@ -280,6 +299,8 @@ interface RuleEditorDialogProps {
 	rule: EventBridgeRule | null;
 	onSave: (rule: EventBridgeRule) => void;
 	isNew: boolean;
+	busEnabled: boolean;
+	projectBusName: string;
 }
 
 function RuleEditorDialog({
@@ -288,6 +309,8 @@ function RuleEditorDialog({
 	rule,
 	onSave,
 	isNew,
+	busEnabled,
+	projectBusName,
 }: RuleEditorDialogProps) {
 	const [localRule, setLocalRule] = useState<EventBridgeRule>({
 		name: "",
@@ -379,6 +402,26 @@ function RuleEditorDialog({
 						/>
 						<p className="text-xs text-gray-500">
 							A unique identifier for this rule in your infrastructure
+						</p>
+					</div>
+
+					{/* Bus */}
+					<div className="space-y-2">
+						<Label>Bus</Label>
+						<EventBusSelect
+							ariaLabel="Rule bus"
+							value={localRule.bus}
+							busEnabled={busEnabled}
+							projectBusName={projectBusName}
+							onChange={(bus) => {
+								const next = { ...localRule };
+								if (bus) next.bus = bus;
+								else delete next.bus;
+								setLocalRule(next);
+							}}
+						/>
+						<p className="text-xs text-muted-foreground">
+							Events from AWS services are published to the default bus only.
 						</p>
 					</div>
 

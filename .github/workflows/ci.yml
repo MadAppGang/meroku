@@ -318,6 +318,15 @@ jobs:
           terraform test
         working-directory: modules/vaults
 
+      # Events, under mock_provider: the queues and their policies, the rules,
+      # delivery retries and dead-letter queues, the PutEvents conditions and
+      # the alerts topic.
+      - name: Test the events module
+        run: |
+          terraform init -backend=false -input=false
+          terraform test
+        working-directory: modules/events
+
       # Every module that consumes modules/naming. Validation was scoped to
       # modules/workloads when it was the only module with a module block; a
       # naming.tf that references a request key nothing declares is a plan-time
@@ -325,7 +334,7 @@ jobs:
       - name: Validate the naming consumers
         run: |
           set -e
-          for m in alb s3 postgres sqs ecs_task event_bridge_task appsync dns-root github_runners data_bucket; do
+          for m in alb s3 postgres sqs ecs_task event_bridge_task appsync dns-root github_runners data_bucket events; do
             echo "==> modules/$m"
             terraform -chdir="modules/$m" init -backend=false -input=false
             terraform -chdir="modules/$m" validate

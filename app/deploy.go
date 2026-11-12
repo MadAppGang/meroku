@@ -503,6 +503,12 @@ func applyTemplate(env string) error {
 	// Everything that happens to envMap between loading and rendering: the
 	// disabled-item filter, the zero-config pool, and the compute refusals that
 	// have to see the result of both.
+	// The bus state main.tf was last generated with, so normalizeEvents can say
+	// what a change of event_bus.enabled moves.
+	if previous, ok := previousEventBusState(env); ok {
+		envMap[eventBusPreviousKey] = previous
+	}
+
 	if err := preprocessEnvMap(envMap); err != nil {
 		return fmt.Errorf("invalid configuration in %s:\n\n%w", envFile, err)
 	}
@@ -584,9 +590,10 @@ func applyTemplate(env string) error {
 // normalizeHealthCheckCommands, assignGitHubRunnersOwner, then validateSESDNSConfigMap,
 // validateNetworkAccessConfigMap, validateBackendHealthConfigMap,
 // validateReservedEnvNamesConfigMap, validateGitHubRunnersConfigMap,
-// prepareAmplifyRewriteRules, validateWorkloadNamesConfigMap,
+// prepareAmplifyRewriteRules, validateWorkloadNamesConfigMap, normalizeEvents,
 // validateWorkloadReservedEnvConfigMap, validateDataBucketConfigMap,
-// validateVaultsConfigMap, moveServiceVaultsOut and validateComputeConfigMap. Path and custom-module flags stay with each caller,
+// validateVaultsConfigMap, moveServiceVaultsOut and validateComputeConfigMap.
+// Path and custom-module flags stay with each caller,
 // because they differ.
 //
 // resolveSESZones runs after assignSESPrimaryDomain because it reads the
@@ -652,6 +659,10 @@ func preprocessEnvMap(envMap map[string]interface{}) error {
 	}
 	// Names first: the two after it resolve references against them.
 	if err := validateWorkloadNamesConfigMap(envMap); err != nil {
+		return err
+	}
+	// Before the reserved-env check, which reads the consumers it records.
+	if err := normalizeEvents(envMap); err != nil {
 		return err
 	}
 	if err := validateWorkloadReservedEnvConfigMap(envMap); err != nil {
@@ -984,6 +995,8 @@ locals {
     db_name     = ""
 `
 	}
+
+	bridge += eventsBridgeBlock(envMap)
 
 	// Add VPC-specific outputs
 	if !useDefaultVPC {

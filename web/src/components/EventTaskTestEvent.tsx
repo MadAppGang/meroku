@@ -7,6 +7,7 @@ import {
 } from "../api/infrastructure";
 import type { ComponentNode } from "../types";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
+import { isEventBusEnabled, projectBusName } from "../utils/workloadEvents";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -27,9 +28,24 @@ export function EventTaskTestEvent({ config, node }: EventTaskTestEventProps) {
 		(task) => task.name === taskName,
 	);
 
+	// The task's first rule: the rules form, or the legacy single rule. The test
+	// event goes to that rule's bus, so it reaches the rule.
+	const busEnabled = isEventBusEnabled(config);
+	const firstRule = eventTask?.rules?.[0];
+	const ruleSources = firstRule ? firstRule.sources : eventTask?.sources;
+	const ruleDetailTypes = firstRule
+		? firstRule.detail_types
+		: eventTask?.detail_types;
+	const ruleBus =
+		firstRule?.bus === "default" || (!firstRule?.bus && !busEnabled)
+			? "default"
+			: projectBusName(config);
+
 	const [testEvent, setTestEvent] = useState<TestEventRequest>({
-		source: "meroku.test",
-		detailType: eventTask?.detail_types?.[0] || "",
+		env: config.env,
+		eventBusName: ruleBus,
+		source: ruleSources?.[0] || "meroku.test",
+		detailType: ruleDetailTypes?.[0] || "",
 		detail: {},
 	});
 	const [detailJson, setDetailJson] = useState(
@@ -42,13 +58,12 @@ export function EventTaskTestEvent({ config, node }: EventTaskTestEventProps) {
 	const [jsonError, setJsonError] = useState<string | null>(null);
 
 	useEffect(() => {
-		if (eventTask) {
-			setTestEvent((prev) => ({
-				...prev,
-				detailType: eventTask.detail_types?.[0] || prev.detailType,
-			}));
-		}
-	}, [eventTask]);
+		setTestEvent((prev) => ({
+			...prev,
+			eventBusName: ruleBus,
+			detailType: ruleDetailTypes?.[0] || prev.detailType,
+		}));
+	}, [ruleBus, ruleDetailTypes]);
 
 	const handleDetailJsonChange = (value: string) => {
 		setDetailJson(value);
@@ -74,7 +89,10 @@ export function EventTaskTestEvent({ config, node }: EventTaskTestEventProps) {
 		setEventResponse(null);
 
 		try {
-			const response = await infrastructureApi.sendTestEvent(testEvent);
+			const response = await infrastructureApi.sendTestEvent({
+				...testEvent,
+				env: config.env,
+			});
 			setEventResponse(response);
 		} catch (error) {
 			setEventResponse({
@@ -108,8 +126,8 @@ export function EventTaskTestEvent({ config, node }: EventTaskTestEventProps) {
 								placeholder="meroku.test"
 								className="font-mono text-sm"
 							/>
-							{eventTask?.sources &&
-								!eventTask.sources.includes(testEvent.source) &&
+							{ruleSources &&
+								!ruleSources.includes(testEvent.source) &&
 								testEvent.source && (
 									<p className="text-xs text-yellow-500">
 										Doesn't match configured sources
@@ -131,8 +149,8 @@ export function EventTaskTestEvent({ config, node }: EventTaskTestEventProps) {
 								placeholder="OrderCreated"
 								className="font-mono text-sm"
 							/>
-							{eventTask?.detail_types &&
-								!eventTask.detail_types.includes(testEvent.detailType) &&
+							{ruleDetailTypes &&
+								!ruleDetailTypes.includes(testEvent.detailType) &&
 								testEvent.detailType && (
 									<p className="text-xs text-yellow-500">
 										Doesn't match configured detail types

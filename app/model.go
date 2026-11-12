@@ -92,6 +92,9 @@ type Env struct {
 	// Vaults are the shared SSM vaults, /<env>/<project>/vault/<name>/, that
 	// workloads connect to through their own vaults key. See ai_docs/VAULTS.md.
 	Vaults []Vault `yaml:"vaults,omitempty"`
+	// EventBus turns on the project bus <project>-<env>. A pointer so an
+	// environment without the block saves without one. See ai_docs/EVENTS.md.
+	EventBus *EventBus `yaml:"event_bus,omitempty"`
 }
 
 // Vault is one entry of the top-level vaults list.
@@ -108,6 +111,46 @@ type VaultConnection struct {
 	Name   string `yaml:"name"`
 	Access string `yaml:"access,omitempty"`
 	Prefix string `yaml:"prefix,omitempty"`
+}
+
+// EventBus is the optional event_bus block.
+type EventBus struct {
+	Enabled *bool `yaml:"enabled,omitempty"`
+}
+
+// WorkloadEvents is a workload's events block: what it subscribes to (backend
+// and services only), its queue settings, and what it may publish.
+type WorkloadEvents struct {
+	Subscribes []EventSubscription `yaml:"subscribes,omitempty"`
+	Queue      *EventQueue         `yaml:"queue,omitempty"`
+	Produces   []EventProduce      `yaml:"produces,omitempty"`
+}
+
+// EventSubscription is one events.subscribes entry: exactly one of DetailType
+// and DetailTypePrefix, an optional Source, and an optional Bus (project or
+// default; absent follows event_bus.enabled). Name, when set, is the key of the
+// entry's rule; without it the key is derived from the detail-type.
+type EventSubscription struct {
+	Name             string `yaml:"name,omitempty"`
+	DetailType       string `yaml:"detail_type,omitempty"`
+	DetailTypePrefix string `yaml:"detail_type_prefix,omitempty"`
+	Source           string `yaml:"source,omitempty"`
+	Bus              string `yaml:"bus,omitempty"`
+}
+
+// EventQueue holds the two settings a consumer's queue exposes.
+type EventQueue struct {
+	VisibilityTimeout *int `yaml:"visibility_timeout,omitempty"`
+	MaxReceiveCount   *int `yaml:"max_receive_count,omitempty"`
+}
+
+// EventProduce is one events.produces entry: a detail-type list or Any, whether
+// the workload may publish only with its own source (default true), and the bus.
+type EventProduce struct {
+	DetailTypes   []string `yaml:"detail_types,omitempty"`
+	Any           *bool    `yaml:"any,omitempty"`
+	OwnSourceOnly *bool    `yaml:"own_source_only,omitempty"`
+	Bus           string   `yaml:"bus,omitempty"`
 }
 
 // DataBucket is the optional data_bucket block.
@@ -400,6 +443,9 @@ type Workload struct {
 
 	// Vaults are the backend's vault connections (workload.vaults).
 	Vaults []VaultConnection `yaml:"vaults,omitempty"`
+	// Events is workload.events: the backend subscribes and publishes like a
+	// service. See ai_docs/EVENTS.md.
+	Events *WorkloadEvents `yaml:"events,omitempty"`
 }
 
 // BackendHealthCheck is workload.backend_health_check. Command takes the same
@@ -762,6 +808,8 @@ type ScheduledTask struct {
 	Policy []IAMStatement `yaml:"policy,omitempty"`
 	// Vaults are this task's vault connections.
 	Vaults []VaultConnection `yaml:"vaults,omitempty"`
+	// Events is the task's events block; a task may only produce.
+	Events *WorkloadEvents `yaml:"events,omitempty"`
 }
 
 // EventBridgeRule defines a single EventBridge rule pattern (Schema v13)
@@ -769,6 +817,8 @@ type EventBridgeRule struct {
 	Name        string   `yaml:"name"`
 	Sources     []string `yaml:"sources"`
 	DetailTypes []string `yaml:"detail_types"`
+	// Bus is project or default; absent follows event_bus.enabled.
+	Bus string `yaml:"bus,omitempty"`
 }
 
 type EventProcessorTask struct {
@@ -796,6 +846,8 @@ type EventProcessorTask struct {
 	Policy []IAMStatement `yaml:"policy,omitempty"`
 	// Vaults are this task's vault connections.
 	Vaults []VaultConnection `yaml:"vaults,omitempty"`
+	// Events is the task's events block; a task may only produce.
+	Events *WorkloadEvents `yaml:"events,omitempty"`
 }
 
 type EnvVariable struct {
@@ -849,6 +901,8 @@ type Service struct {
 	Policy []IAMStatement `yaml:"policy,omitempty"`
 	// Vaults are this service's vault connections.
 	Vaults []VaultConnection `yaml:"vaults,omitempty"`
+	// Events is the service's events block. See ai_docs/EVENTS.md.
+	Events *WorkloadEvents `yaml:"events,omitempty"`
 }
 
 type DNSConfig struct {

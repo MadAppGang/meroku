@@ -71,6 +71,7 @@ import {
 	ECSServicesInfo,
 } from "./ECSNodeProperties";
 import { EventBridgeTestEvent } from "./EventBridgeTestEvent";
+import { EventBusSettings } from "./EventBusSettings";
 import { EventTaskEnvVars } from "./EventTaskEnvVars";
 import { EventTaskProperties } from "./EventTaskProperties";
 import { EventTaskTestEvent } from "./EventTaskTestEvent";
@@ -94,12 +95,14 @@ import { SESStatus } from "./SESStatus";
 import ServiceCICDConfiguration from "./ServiceCICDConfiguration";
 import { ServiceDatabaseTab } from "./ServiceDatabaseTab";
 import { ServiceEnvironmentVariables } from "./ServiceEnvironmentVariables";
+import { ServiceEventsTab } from "./ServiceEventsTab";
 import { ServiceLogs } from "./ServiceLogs";
 import { ServiceParameterStore } from "./ServiceParameterStore";
 import { ServiceProperties } from "./ServiceProperties";
 import { ServiceXRayConfiguration } from "./ServiceXRayConfiguration";
 import { SNSNodeProperties } from "./SNSNodeProperties";
 import { SQSNodeProperties } from "./SQSNodeProperties";
+import { TaskEventsTab } from "./TaskEventsTab";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -189,7 +192,10 @@ export function Sidebar({
 			case "sqs":
 				return [{ id: "settings", label: "Settings", icon: Settings }];
 			case "eventbridge":
-				return [{ id: "test", label: "Test Event", icon: Send }];
+				return [
+					{ id: "bus", label: "Settings", icon: Settings },
+					{ id: "test", label: "Test Event", icon: Send },
+				];
 			case "api-gateway":
 				return [{ id: "settings", label: "Settings", icon: Settings }];
 			case "alb":
@@ -219,6 +225,7 @@ export function Sidebar({
 					{ id: "s3", label: "S3 Buckets", icon: HardDrive },
 					{ id: "sns", label: "SNS", icon: Bell },
 					{ id: "iam", label: "IAM", icon: Shield },
+					{ id: "events", label: "Events", icon: Workflow },
 					{ id: "logs", label: "Logs", icon: FileText },
 					{ id: "cloudwatch", label: "CloudWatch", icon: Cloud },
 					{ id: "alerts", label: "Alerts", icon: Bell },
@@ -231,6 +238,7 @@ export function Sidebar({
 					{ id: "params", label: "Parameters", icon: Key },
 					{ id: "vaults", label: "Vaults", icon: Vault },
 					{ id: "iam", label: "IAM", icon: Shield },
+					{ id: "events", label: "Events", icon: Workflow },
 					{ id: "cloudwatch", label: "CloudWatch", icon: Cloud },
 					{ id: "logs", label: "Logs", icon: FileText },
 				];
@@ -243,6 +251,7 @@ export function Sidebar({
 					{ id: "params", label: "Parameters", icon: Key },
 					{ id: "vaults", label: "Vaults", icon: Vault },
 					{ id: "iam", label: "IAM", icon: Shield },
+					{ id: "events", label: "Events", icon: Workflow },
 					{ id: "cloudwatch", label: "CloudWatch", icon: Cloud },
 					{ id: "logs", label: "Logs", icon: FileText },
 				];
@@ -257,6 +266,7 @@ export function Sidebar({
 					{ id: "params", label: "Parameters", icon: Key },
 					{ id: "vaults", label: "Vaults", icon: Vault },
 					{ id: "iam", label: "IAM", icon: Shield },
+					{ id: "events", label: "Events", icon: Workflow },
 					{ id: "logs", label: "Logs", icon: FileText },
 					{ id: "cloudwatch", label: "CloudWatch", icon: Cloud },
 				];
@@ -1641,6 +1651,113 @@ jobs:
 				{activeTab === "test" &&
 					selectedNode.type === "eventbridge" &&
 					config && <EventBridgeTestEvent config={config} />}
+
+				{activeTab === "bus" &&
+					selectedNode.type === "eventbridge" &&
+					config &&
+					onConfigChange && (
+						<EventBusSettings config={config} onConfigChange={onConfigChange} />
+					)}
+
+				{/* Events tabs. The backend writes only { workload: { events } };
+				    services and tasks map the one entry into the current list. */}
+				{activeTab === "events" &&
+					selectedNode.type === "backend" &&
+					config &&
+					onConfigChange && (
+						<ServiceEventsTab
+							key={selectedNode.id}
+							config={config}
+							workloadName="backend"
+							kind="backend"
+							events={config.workload?.events}
+							onEventsChange={(events) =>
+								onConfigChange({
+									workload: { events } as YamlInfrastructureConfig["workload"],
+								})
+							}
+						/>
+					)}
+
+				{activeTab === "events" &&
+					selectedNode.type === "service" &&
+					config &&
+					onConfigChange &&
+					(() => {
+						const name = selectedNode.id.replace("service-", "");
+						const service = config.services?.find((s) => s.name === name);
+						if (!service) return null;
+						return (
+							<ServiceEventsTab
+								key={selectedNode.id}
+								config={config}
+								workloadName={name}
+								kind="service"
+								events={service.events}
+								onEventsChange={(events) =>
+									onConfigChange({
+										services: (config.services || []).map((s) =>
+											s.name === name ? { ...s, events } : s,
+										),
+									})
+								}
+							/>
+						);
+					})()}
+
+				{activeTab === "events" &&
+					selectedNode.type === "scheduled-task" &&
+					config &&
+					onConfigChange &&
+					(() => {
+						const name = selectedNode.id.replace("scheduled-", "");
+						const task = config.scheduled_tasks?.find((t) => t.name === name);
+						if (!task) return null;
+						return (
+							<TaskEventsTab
+								key={selectedNode.id}
+								config={config}
+								taskName={name}
+								kind="scheduled_task"
+								events={task.events}
+								onEventsChange={(events) =>
+									onConfigChange({
+										scheduled_tasks: (config.scheduled_tasks || []).map((t) =>
+											t.name === name ? { ...t, events } : t,
+										),
+									})
+								}
+							/>
+						);
+					})()}
+
+				{activeTab === "events" &&
+					selectedNode.type === "event-task" &&
+					config &&
+					onConfigChange &&
+					(() => {
+						const name = selectedNode.id.replace("event-", "");
+						const task = config.event_processor_tasks?.find(
+							(t) => t.name === name,
+						);
+						if (!task) return null;
+						return (
+							<TaskEventsTab
+								key={selectedNode.id}
+								config={config}
+								taskName={name}
+								kind="event_task"
+								events={task.events}
+								onEventsChange={(events) =>
+									onConfigChange({
+										event_processor_tasks: (
+											config.event_processor_tasks || []
+										).map((t) => (t.name === name ? { ...t, events } : t)),
+									})
+								}
+							/>
+						);
+					})()}
 
 				{activeTab === "params" &&
 					selectedNode.type === "event-task" &&
