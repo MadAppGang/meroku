@@ -29,6 +29,8 @@ import { Textarea } from "./ui/textarea";
 
 interface EventTestPanelProps {
 	eventTask: EventProcessorTask;
+	/** The environment to publish in; empty uses the server's selected one. */
+	env?: string;
 }
 
 // Generate realistic fake data based on event type
@@ -220,7 +222,7 @@ function getAllRules(task: EventProcessorTask): EventBridgeRule[] {
 	return [];
 }
 
-export function EventTestPanel({ eventTask }: EventTestPanelProps) {
+export function EventTestPanel({ eventTask, env }: EventTestPanelProps) {
 	const rules = getAllRules(eventTask);
 
 	// Find first available source and detail type
@@ -297,6 +299,7 @@ export function EventTestPanel({ eventTask }: EventTestPanelProps) {
 		setEventResponse(null);
 
 		const request: TestEventRequest = {
+			env: env ?? "",
 			source: selectedSource,
 			detailType: selectedDetailType,
 			detail,

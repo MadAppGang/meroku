@@ -207,7 +207,12 @@ export function EventTaskProperties({
 
 			{/* Rules Section - Always visible, primary content */}
 			<div className="space-y-4">
-				<EventRulesList rules={getRules()} onRulesChange={handleRulesChange} />
+				<EventRulesList
+					rules={getRules()}
+					onRulesChange={handleRulesChange}
+					busEnabled={config.event_bus?.enabled === true}
+					projectBusName={`${config.project}-${config.env}`}
+				/>
 			</div>
 
 			{/* Container Configuration - Collapsible */}

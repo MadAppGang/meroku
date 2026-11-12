@@ -98,6 +98,16 @@ nothing, so there is nothing to write. The struct fields (`Env.Vaults` and
 `Vaults` on the backend workload, services, scheduled tasks and event tasks)
 use `omitempty`.
 
+`event_bus`, and `events` on `workload`, `services[]`, `scheduled_tasks[]` and
+`event_processor_tasks[]`, with `event_processor_tasks[].rules[].bus`
+([EVENTS.md](./EVENTS.md)), need no migration either: absent renders the default
+bus, no queue and no PutEvents grant, and the struct fields are pointers or use
+`omitempty`. One change has no migration on purpose: `events:PutEvents` is no
+longer granted by default, so a workload that publishes needs an
+`events.produces` entry. That is a change of permissions, not of the YAML, and no
+migration could write the entry, because only the project knows which
+detail-types each workload publishes.
+
 ### A note on v23's two defaults
 
 v23 is the one migration that does **not** write the safer of two values

@@ -51,7 +51,7 @@ locals {
     },
     {
       name  = "EVENT_BUS_NAME"
-      value = "default"
+      value = var.event_bus_name
     },
     {
       name  = "EVENT_SOURCE"

@@ -1,0 +1,57 @@
+{
+  "_comment": [
+    "Shared truth table for EVENT_SOURCE, the source a workload publishes with.",
+    "",
+    "Four places compute it, one per kind of workload, and they cannot share code:",
+    "  backend        modules/workloads/env.tf             ${project}.backend",
+    "  service        modules/workloads/env_services.tf    ${project}.${service}",
+    "  scheduled_task modules/ecs_task/env.tf              ${project}.task.${task}",
+    "  event_task     modules/event_bridge_task/env.tf     ${project}.event.${task}",
+    "app/events.go (eventSource) computes the same value for the own_source_only",
+    "condition of events.produces, and modules/events checks it against the",
+    "workload contract's event_source. This file is read by a Go test and by a",
+    "test in each of the three owning modules, so a change to one formula fails",
+    "in the others.",
+    "",
+    "The reserved workload name backend keeps a service from taking the backend's",
+    "source: a service named backend would publish as ${project}.backend."
+  ],
+
+  "vectors": [
+    {
+      "name": "the backend",
+      "kind": "backend",
+      "project": "myapp",
+      "workload": "backend",
+      "want": "myapp.backend"
+    },
+    {
+      "name": "a service is the project and its name",
+      "kind": "service",
+      "project": "myapp",
+      "workload": "orders",
+      "want": "myapp.orders"
+    },
+    {
+      "name": "a service name with a hyphen is kept as written",
+      "kind": "service",
+      "project": "myapp",
+      "workload": "order-sync",
+      "want": "myapp.order-sync"
+    },
+    {
+      "name": "a scheduled task sits under task",
+      "kind": "scheduled_task",
+      "project": "myapp",
+      "workload": "nightly",
+      "want": "myapp.task.nightly"
+    },
+    {
+      "name": "an event task sits under event",
+      "kind": "event_task",
+      "project": "myapp",
+      "workload": "mailer",
+      "want": "myapp.event.mailer"
+    }
+  ]
+}

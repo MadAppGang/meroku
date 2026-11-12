@@ -77,6 +77,14 @@ workload:
     read_only: true
   vaults:
   - name: shared
+  events:
+    subscribes:
+    - detail_type: order.created
+    queue:
+      visibility_timeout: 60
+    produces:
+    - detail_types:
+      - user.created
 domain:
   enabled: true
   create_domain_zone: false
@@ -140,6 +148,11 @@ scheduled_tasks:
     - arn:aws:s3:::myapp-backend-dev
   vaults:
   - name: shared
+  events:
+    produces:
+    - any: true
+      own_source_only: false
+      bus: default
 event_processor_tasks:
 - name: deployment-events
   enabled: true
@@ -149,6 +162,7 @@ event_processor_tasks:
     - service1
     detail_types:
     - SERVICE_DEPLOYMENT_COMPLETED
+    bus: default
   environment_variables:
     TASK_STAGE: events
   ecr_config:
@@ -232,6 +246,21 @@ services:
   - name: payments
     access: read_write
     prefix: PAY
+  events:
+    subscribes:
+    - detail_type: payment.completed
+      source: example.payments
+    - name: users
+      detail_type_prefix: user.
+      bus: default
+    queue:
+      visibility_timeout: 30
+      max_receive_count: 5
+    produces:
+    - detail_types:
+      - order.created
+      - order.cancelled
+      own_source_only: true
 amplify_apps:
 - name: main-web
   github_repository: https://github.com/example-org/example-repo
@@ -267,3 +296,5 @@ data_bucket:
 vaults:
 - name: shared
 - name: payments
+event_bus:
+  enabled: true

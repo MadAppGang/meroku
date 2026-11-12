@@ -162,7 +162,8 @@ resource "aws_iam_role_policy_attachment" "ses_access" {
   policy_arn = aws_iam_policy.send_emails[0].arn
 }
 
-# EventBridge permissions to allow scheduled tasks to emit and listen to events
+# EventBridge read access: the buses and rules the task may describe.
+# PutEvents is not here; modules/events grants it per events.produces entry.
 resource "aws_iam_policy" "eventbridge_access" {
   name = "EventBridgeAccess_${var.project}_task_${var.task}_${var.env}"
   policy = jsonencode({
@@ -171,18 +172,13 @@ resource "aws_iam_policy" "eventbridge_access" {
       {
         Effect = "Allow"
         Action = [
-          "events:PutEvents",
           "events:DescribeEventBus",
           "events:ListRules",
           "events:DescribeRule",
           "events:ListTargetsByRule",
           "events:ListEventBuses"
         ]
-        Resource = [
-          "arn:aws:events:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:event-bus/default",
-          "arn:aws:events:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:event-bus/${var.project}-*",
-          "arn:aws:events:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:rule/*"
-        ]
+        Resource = local.eventbridge_read_resources
       }
     ]
   })
