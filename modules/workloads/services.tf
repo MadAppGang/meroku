@@ -373,6 +373,13 @@ resource "aws_ecs_service" "services" {
     }
   }
 
+  # ECS turns AZ rebalancing on for new services by default and refuses it with
+  # any placement strategy but spread by availability zone ("Availability Zone
+  # Rebalancing only supports availability zone spread as task placement
+  # strategy"), so a pool service, which binpacks, turns it off. null on Fargate
+  # leaves the attribute to AWS, as before.
+  availability_zone_rebalancing = local.service_pools[each.key] == null ? null : "DISABLED"
+
   service_registries {
     registry_arn   = aws_service_discovery_service.services[each.key].arn
     container_name = "${var.project}_service_${each.key}_${var.env}"

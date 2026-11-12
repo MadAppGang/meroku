@@ -284,6 +284,21 @@ Two related edits deserve the same caution:
 Read the plan before applying either. If `aws_ecs_service` shows `# forces replacement`, you are in
 the downtime case regardless of what any UI copy says.
 
+### AZ rebalancing is off on pool workloads
+
+ECS turns Availability Zone rebalancing on for new services by default, and allows it only with
+the placement strategy "spread by availability zone". Pool workloads bin-pack on memory, which
+fills as few instances as possible and is the point of paying per instance. So the backend and
+every service on a pool set `availability_zone_rebalancing = "DISABLED"`. Fargate workloads leave
+it to AWS, as before.
+
+Before v5.4.3, moving a deployed service onto a pool failed at `UpdateService` with:
+
+```
+InvalidParameterException: The service couldn't be updated because Availability Zone
+Rebalancing only supports availability zone spread as task placement strategy.
+```
+
 ### The two-apply flip for a service with service discovery
 
 Cloud Map's `dns_records[*].type` is ForceNew, and AWS rejects removing `service_registries` from a

@@ -111,6 +111,40 @@ run "each_pool_with_a_minimum_gets_a_capacity_wait" {
   }
 }
 
+# ECS turns AZ rebalancing on for new services by default, and refuses
+# UpdateService on a service that has it with any placement strategy other than
+# spread by availability zone: "Availability Zone Rebalancing only supports
+# availability zone spread as task placement strategy". Pool workloads binpack
+# on memory, so they must turn it off explicitly — the backend and services
+# alike — or moving a deployed service onto a pool fails mid-apply.
+run "pool_workloads_turn_off_az_rebalancing" {
+  command = plan
+
+  variables {
+    backend_runtime      = "ec2"
+    backend_compute_pool = "general"
+  }
+
+  override_resource {
+    target = null_resource.build_ci_lambda
+  }
+
+  assert {
+    condition     = aws_ecs_service.services["bridge"].availability_zone_rebalancing == "DISABLED"
+    error_message = "A service on a pool must set availability_zone_rebalancing = \"DISABLED\"; it binpacks, and ECS refuses AZ rebalancing with any strategy but AZ spread."
+  }
+
+  assert {
+    condition     = aws_ecs_service.backend.availability_zone_rebalancing == "DISABLED"
+    error_message = "The backend on a pool must set availability_zone_rebalancing = \"DISABLED\" for the same reason."
+  }
+
+  assert {
+    condition     = one(aws_ecs_service.services["bridge"].ordered_placement_strategy).type == "binpack"
+    error_message = "Pool services still binpack on memory; only AZ rebalancing changes."
+  }
+}
+
 run "no_pools_means_no_capacity_wait" {
   command = plan
 
