@@ -33,7 +33,7 @@ env:
   # The lower of the two modules' `go` directives (ci_lambda: 1.22,
   # app: 1.23.0), so both are built with a toolchain each accepts.
   GO_VERSION: '1.23'
-  TERRAFORM_VERSION: '1.9.8'
+  TERRAFORM_VERSION: '1.10.5'
   # Matches release.yml. The pnpm version is deliberately not pinned here — the
   # web job reads it from web/package.json's `packageManager` instead.
   NODE_VERSION: '20'
