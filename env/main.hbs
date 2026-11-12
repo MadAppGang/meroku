@@ -973,7 +973,7 @@ module "schedule_task_{{name}}" {
   api_domain = module.domain.api_domain_name
   {{/if}}
   private_dns_name = "{{@root.project}}_{{@root.env}}.private"
-  {{#if sqs.enabled}}
+  {{#if @root.sqs.enabled}}
   sqs_queue_url = module.sqs.queue_url
   sqs_policy_arn = module.sqs.sqs_access_policy_arn
   sqs_enable = true
@@ -987,8 +987,8 @@ module "schedule_task_{{name}}" {
     "{{account_id}}",
     {{/each}}
   ]
-  {{#if ecr_account_id}}{{#if ecr_account_region}}
-  ecr_url = "{{ecr_account_id}}.dkr.ecr.{{ecr_account_region}}.amazonaws.com/{{project}}_task_{{name}}"
+  {{#if @root.ecr_account_id}}{{#if @root.ecr_account_region}}
+  ecr_url = "{{@root.ecr_account_id}}.dkr.ecr.{{@root.ecr_account_region}}.amazonaws.com/{{@root.project}}_task_{{name}}"
   {{/if}}{{/if}}
   {{#if environment_variables}}
   custom_env_vars = {{{ envArray environment_variables }}}
@@ -1033,7 +1033,7 @@ module "event_bus_task_{{name}}" {
   api_domain = module.domain.api_domain_name
   {{/if}}
   private_dns_name = "{{@root.project}}_{{@root.env}}.private"
-  {{#if sqs.enabled}}
+  {{#if @root.sqs.enabled}}
   sqs_queue_url = module.sqs.queue_url
   sqs_policy_arn = module.sqs.sqs_access_policy_arn
   sqs_enable = true
@@ -1047,8 +1047,8 @@ module "event_bus_task_{{name}}" {
     "{{account_id}}",
     {{/each}}
   ]
-  {{#if ecr_account_id}}{{#if ecr_account_region}}
-  ecr_url = "{{ecr_account_id}}.dkr.ecr.{{ecr_account_region}}.amazonaws.com/{{project}}_task_{{name}}"
+  {{#if @root.ecr_account_id}}{{#if @root.ecr_account_region}}
+  ecr_url = "{{@root.ecr_account_id}}.dkr.ecr.{{@root.ecr_account_region}}.amazonaws.com/{{@root.project}}_task_{{name}}"
   {{/if}}{{/if}}
   {{#if environment_variables}}
   custom_env_vars = {{{ envArray environment_variables }}}
