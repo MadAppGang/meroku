@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v5.6.0
 
 ### ALB settings
 
