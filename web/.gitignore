@@ -32,3 +32,8 @@ bun.lock
 bun.lockb
 package-lock.json
 yarn.lock
+
+# Playwright output: traces, failure screenshots, evidence screenshots, reports.
+/test-results/
+/playwright-report/
+/blob-report/
