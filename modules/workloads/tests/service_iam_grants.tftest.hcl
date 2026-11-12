@@ -173,13 +173,37 @@ run "a_service_reads_its_own_env_files_and_nothing_elses" {
   command = plan
 
   assert {
-    condition     = [for a in jsondecode(aws_iam_role_policy.services_s3_env["orders"].policy).Statement[0].Action : a] == ["s3:GetObject", "s3:GetBucketLocation"]
-    error_message = "A service's env-file grant must be exactly s3:GetObject and s3:GetBucketLocation — reading the one object ECS fetches, and the bucket-region lookup the SDK needs to do it. s3:* on those ARNs also grants PutObject and DeleteObject, so one service can rewrite the configuration of another, and these files are where meroku's own env and secrets wiring is set up. Got ${jsonencode(jsondecode(aws_iam_role_policy.services_s3_env["orders"].policy).Statement[0].Action)}."
+    condition     = [for a in jsondecode(aws_iam_role_policy.services_s3_env["orders"].policy).Statement[0].Action : a] == ["s3:GetObject"]
+    error_message = "A service's env-file object grant must be exactly s3:GetObject — reading the one object ECS fetches. s3:* on those ARNs also grants PutObject and DeleteObject, so one service can rewrite the configuration of another, and these files are where meroku's own env and secrets wiring is set up. Got ${jsonencode(jsondecode(aws_iam_role_policy.services_s3_env["orders"].policy).Statement[0].Action)}."
   }
 
   assert {
-    condition     = [for a in jsondecode(aws_iam_role_policy.services_s3_env["billing"].policy).Statement[0].Action : a] == ["s3:GetObject", "s3:GetBucketLocation"]
-    error_message = "Same rule for the second service: exactly s3:GetObject and s3:GetBucketLocation. Got ${jsonencode(jsondecode(aws_iam_role_policy.services_s3_env["billing"].policy).Statement[0].Action)}."
+    condition     = [for a in jsondecode(aws_iam_role_policy.services_s3_env["billing"].policy).Statement[0].Action : a] == ["s3:GetObject"]
+    error_message = "Same rule for the second service: exactly s3:GetObject on the objects. Got ${jsonencode(jsondecode(aws_iam_role_policy.services_s3_env["billing"].policy).Statement[0].Action)}."
+  }
+
+  # s3:GetBucketLocation is evaluated against the bucket ARN, never an object
+  # ARN, so on the object statement it would match nothing. It has a statement
+  # of its own on each distinct bucket the service's files live in: orders has
+  # two files in one bucket, which must give one bucket ARN, not two.
+  assert {
+    condition     = length(jsondecode(aws_iam_role_policy.services_s3_env["orders"].policy).Statement) == 2
+    error_message = "The env-file policy must hold exactly two statements: s3:GetObject on the objects and s3:GetBucketLocation on their buckets. Got ${aws_iam_role_policy.services_s3_env["orders"].policy}."
+  }
+
+  assert {
+    condition     = [for a in jsondecode(aws_iam_role_policy.services_s3_env["orders"].policy).Statement[1].Action : a] == ["s3:GetBucketLocation"]
+    error_message = "The second statement must be exactly s3:GetBucketLocation, the bucket-region lookup. Got ${jsonencode(jsondecode(aws_iam_role_policy.services_s3_env["orders"].policy).Statement[1].Action)}."
+  }
+
+  assert {
+    condition     = [for r in jsondecode(aws_iam_role_policy.services_s3_env["orders"].policy).Statement[1].Resource : r] == ["arn:aws:s3:::acme-backend-dev"]
+    error_message = "s3:GetBucketLocation must be on the bucket ARN, once per distinct bucket. An object ARN here matches nothing; a repeated bucket ARN means the list was not de-duplicated. Got ${jsonencode(jsondecode(aws_iam_role_policy.services_s3_env["orders"].policy).Statement[1].Resource)}."
+  }
+
+  assert {
+    condition     = [for r in jsondecode(aws_iam_role_policy.services_s3_env["billing"].policy).Statement[1].Resource : r] == ["arn:aws:s3:::acme-backend-dev"]
+    error_message = "billing's s3:GetBucketLocation must be on its one bucket ARN. Got ${jsonencode(jsondecode(aws_iam_role_policy.services_s3_env["billing"].policy).Statement[1].Resource)}."
   }
 
   # Both of orders' files and neither of anybody else's. billing's file and the
@@ -210,12 +234,9 @@ run "a_service_reads_its_own_env_files_and_nothing_elses" {
 # ---------------------------------------------------------------------------
 # 3. A service with no env files of its own gets no grant at all.
 #
-# The condition for creating this policy used to be `does ANY env file exist
-# anywhere` — the backend's, or another service's — which handed every service
-# in the project a policy over files it has no part in. A service that declares
-# no env_files_s3 reads none, so it needs no policy, and an entry for it is
-# either a leftover of that condition or a grant built from somebody else's
-# list.
+# A service that declares no env_files_s3 reads none, so it needs no policy. An
+# entry for it is a grant built from somebody else's list: the backend's files,
+# or another service's.
 # ---------------------------------------------------------------------------
 
 run "a_service_with_no_env_files_of_its_own_gets_no_env_file_grant" {
