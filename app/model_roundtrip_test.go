@@ -181,6 +181,13 @@ func TestEnvRoundTrip_FixtureCoversTheGuardedFields(t *testing.T) {
 		if mount.Name != "uploads" || mount.MountPoint != "/data" {
 			t.Errorf("workload.efs[0] did not load whole: %+v", mount)
 		}
+		// true, not the module's default of false: a mount that asked to be
+		// read-only has to still be read-only after a load.
+		if mount.ReadOnly == nil {
+			t.Error("workload.efs[0].read_only is true in the fixture and loaded as absent, so the container would mount the filesystem read-write")
+		} else if !*mount.ReadOnly {
+			t.Error("workload.efs[0].read_only is true in the fixture, got false")
+		}
 	})
 
 	t.Run("backend_remote_access", func(t *testing.T) {

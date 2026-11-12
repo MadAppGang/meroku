@@ -239,17 +239,23 @@ type Workload struct {
 	BackendAutoscalingMinCapacity int32 `yaml:"backend_autoscaling_min_capacity"`
 	BackendAutoscalingMaxCapacity int32 `yaml:"backend_autoscaling_max_capacity"`
 	// The two scaling targets are pointers, and the three fields above them are
-	// not, because only those three have something writing a value into every
-	// config: migrateToV4 adds them to an older one and createEnv sets them for a
-	// new one, so a plain int32 there never has to stand for "absent". The targets
-	// have neither — their only default is the template's
+	// not, because those three have something writing a value into the configs
+	// meroku itself produces: migrateToV4 adds them to an older one and createEnv
+	// sets them for a new one. That is not every config: a hand-written one that
+	// already declares the current version reaches neither, because
+	// applyMigrations returns before the chain runs, so a plain int32 there can
+	// still stand for "absent", and does, as 0. The targets have no populator on
+	// any path: their only default is the template's
 	// {{default workload.backend_autoscaling_target_cpu 70}}.
 	//
 	// A plain int32 here would save an unset target as 0, and the default helper
 	// returns 0 for 0 rather than falling back, so both target-tracking policies
-	// would render target_value = 0 — which AWS rejects, turning a config that
-	// only omitted an optional key into a failed apply. nil keeps the key out of
-	// the YAML and leaves the template's default in force.
+	// would render target_value = 0. The template passes all five arguments
+	// unconditionally while both policies are
+	// count = var.backend_autoscaling_enabled ? 1 : 0, so that 0 reaches AWS only
+	// in a config that turned autoscaling on — and there AWS rejects it, turning a
+	// config that only omitted an optional key into a failed apply. nil keeps the
+	// key out of the YAML and leaves the template's default in force.
 	BackendAutoscalingTargetCPU    *int32 `yaml:"backend_autoscaling_target_cpu,omitempty"`
 	BackendAutoscalingTargetMemory *int32 `yaml:"backend_autoscaling_target_memory,omitempty"`
 	BackendCPU                     string `yaml:"backend_cpu"`
@@ -592,9 +598,17 @@ type EFSConfig struct {
 // mount_point = optional(string, "/"), so a mount that omits the key has to stay
 // omitted. Without it a save writes mount_point: "" into every config that never
 // set one, and the YAML then claims a mount path nobody chose.
+//
+// ReadOnly is a *bool, the shape Workload.BackendRemoteAccess has, because the
+// module declares read_only = optional(bool, false): absent has to stay absent.
+// A plain bool cannot tell "the user asked for a read-write mount" from "the
+// user said nothing", and a save would then write read_only: false into every
+// config that never set one, so the YAML claims a choice about a mount nobody
+// tuned.
 type EFSMount struct {
 	Name       string `yaml:"name"`
 	MountPoint string `yaml:"mount_point,omitempty"`
+	ReadOnly   *bool  `yaml:"read_only,omitempty"`
 }
 
 type ScheduledTask struct {

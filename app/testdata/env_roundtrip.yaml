@@ -74,6 +74,7 @@ workload:
   efs:
   - name: uploads
     mount_point: /data
+    read_only: true
 domain:
   enabled: true
   create_domain_zone: false
