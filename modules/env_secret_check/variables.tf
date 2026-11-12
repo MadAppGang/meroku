@@ -34,6 +34,21 @@ variable "workloads" {
     nowhere else to look. The last two are the trap: same seven names, same SSM
     prefix, and still different files, because EVENT_SOURCE is
     "<project>.event.<task>" in one and "<project>.task.<task>" in the other.
+
+    The last three feed the split checks behind `valid_known` and
+    `valid_discovered`, and are split by WHEN their values are known:
+
+    `extra_env_names` are the names meroku's capability modules add to
+    `environment` (extra_env). Each must appear in `environment` exactly once.
+    `known_secrets` are the secrets known at plan whatever the SSM reads return:
+    ENV (origin "<ssm_path>/env", which meroku always creates) and every secret
+    the capability modules add, such as vault parameters. `discovered_secrets`
+    are the names read under the workload's own path other than
+    "<ssm_path>/env". That read may be postponed to apply, so nothing computed
+    from it may decide `valid_known`.
+
+    Each entry's `origin` is the parameter the name comes from; the messages
+    name it so the reader knows which one to change.
   EOT
 
   type = map(object({
@@ -44,6 +59,10 @@ variable "workloads" {
     defaults_source = string
     environment     = list(string)
     secrets         = list(string)
+
+    extra_env_names    = optional(list(string), [])
+    known_secrets      = optional(list(object({ name = string, origin = string })), [])
+    discovered_secrets = optional(list(object({ name = string, origin = string })), [])
   }))
 
   default = {}

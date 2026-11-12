@@ -511,8 +511,8 @@ func applyTemplate(env string) error {
 // validateNetworkAccessConfigMap, validateBackendHealthConfigMap,
 // validateReservedEnvNamesConfigMap, validateGitHubRunnersConfigMap,
 // prepareAmplifyRewriteRules, validateWorkloadNamesConfigMap,
-// validateWorkloadReservedEnvConfigMap, validateDataBucketConfigMap and
-// validateComputeConfigMap. Path and custom-module flags stay with each caller,
+// validateWorkloadReservedEnvConfigMap, validateDataBucketConfigMap,
+// validateVaultsConfigMap, moveServiceVaultsOut and validateComputeConfigMap. Path and custom-module flags stay with each caller,
 // because they differ.
 //
 // resolveSESZones runs after assignSESPrimaryDomain because it reads the
@@ -578,6 +578,12 @@ func preprocessEnvMap(envMap map[string]interface{}) error {
 	if err := validateDataBucketConfigMap(envMap); err != nil {
 		return err
 	}
+	// Validate the connections where the user wrote them, then take them out
+	// of the service maps.
+	if err := validateVaultsConfigMap(envMap); err != nil {
+		return err
+	}
+	moveServiceVaultsOut(envMap)
 	return validateComputeConfigMap(envMap)
 }
 

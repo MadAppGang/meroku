@@ -308,6 +308,21 @@ const initialNodes: Node[] = [
 		},
 		deletable: false,
 	},
+	// Always shown, so the first vault can be created from it.
+	{
+		id: "vaults",
+		type: "service",
+		position: { x: 1030, y: 620 },
+		data: {
+			id: "vaults",
+			type: "vaults",
+			name: "Vaults",
+			description: "Shared secrets in Parameter Store",
+			status: "running",
+			deletable: false,
+		},
+		deletable: false,
+	},
 ];
 
 const initialEdges: Edge[] = [

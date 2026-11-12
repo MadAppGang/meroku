@@ -304,6 +304,16 @@ jobs:
           terraform test
         working-directory: modules/data_bucket
 
+      # Shared SSM vaults, under mock_provider: the secrets each connected
+      # workload gets, the read grant on the execution role and the read-write
+      # grant on the task role.
+      - name: Test the vaults module
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate
+          terraform test
+        working-directory: modules/vaults
+
       # Every module that consumes modules/naming. Validation was scoped to
       # modules/workloads when it was the only module with a module block; a
       # naming.tf that references a request key nothing declares is a plan-time

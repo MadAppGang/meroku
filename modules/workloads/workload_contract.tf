@@ -25,20 +25,31 @@ variable "extra_env" {
 }
 
 variable "extra_secrets" {
-  description = "Secrets meroku's capability modules add, keyed by workload name (\"backend\" or a service name). Appended after the secrets discovered under the workload's own SSM path."
+  description = "Secrets meroku's capability modules add, keyed by workload name (\"backend\" or a service name). Appended after the secrets discovered under the workload's own SSM path. `origin` names where the secret comes from in collision messages; it defaults to valueFrom and never reaches the container."
   type = map(list(object({
     name      = string
     valueFrom = string
+    origin    = optional(string)
   })))
   default = {}
 }
 
 locals {
   backend_extra_env     = lookup(var.extra_env, "backend", [])
-  backend_extra_secrets = lookup(var.extra_secrets, "backend", [])
+  backend_extra_secrets = [for s in lookup(var.extra_secrets, "backend", []) : { name = s.name, valueFrom = s.valueFrom }]
 
-  services_extra_env     = { for k in keys(local.service_names) : k => lookup(var.extra_env, k, []) }
-  services_extra_secrets = { for k in keys(local.service_names) : k => lookup(var.extra_secrets, k, []) }
+  services_extra_env = { for k in keys(local.service_names) : k => lookup(var.extra_env, k, []) }
+  services_extra_secrets = { for k in keys(local.service_names) : k => [
+    for s in lookup(var.extra_secrets, k, []) : { name = s.name, valueFrom = s.valueFrom }
+  ] }
+
+  # The same secrets as the collision check sees them: with where each comes from.
+  backend_extra_secret_origins = [for s in lookup(var.extra_secrets, "backend", []) : {
+    name = s.name, origin = coalesce(s.origin, s.valueFrom)
+  }]
+  services_extra_secret_origins = { for k in keys(local.service_names) : k => [
+    for s in lookup(var.extra_secrets, k, []) : { name = s.name, origin = coalesce(s.origin, s.valueFrom) }
+  ] }
 
   # Exactly what lands in each container definition's `secrets`.
   backend_container_secrets = concat(local.backend_env_ssm, local.backend_extra_secrets)

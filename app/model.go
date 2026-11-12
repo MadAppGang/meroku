@@ -86,6 +86,25 @@ type Env struct {
 	// bucket itself always exists; a pointer so an environment without the
 	// block saves without one. See ai_docs/DATA_BUCKET.md.
 	DataBucket *DataBucket `yaml:"data_bucket,omitempty"`
+	// Vaults are the shared SSM vaults, /<env>/<project>/vault/<name>/, that
+	// workloads connect to through their own vaults key. See ai_docs/VAULTS.md.
+	Vaults []Vault `yaml:"vaults,omitempty"`
+}
+
+// Vault is one entry of the top-level vaults list.
+type Vault struct {
+	Name string `yaml:"name"`
+}
+
+// VaultConnection connects a workload to a vault: every parameter directly
+// under the vault becomes a secret of the workload, named after its last path
+// segment, upper-cased, behind Prefix and an underscore. Access is read (the
+// default when empty) or read_write, which also lets the application write the
+// vault's parameters.
+type VaultConnection struct {
+	Name   string `yaml:"name"`
+	Access string `yaml:"access,omitempty"`
+	Prefix string `yaml:"prefix,omitempty"`
 }
 
 // DataBucket is the optional data_bucket block.
@@ -316,6 +335,9 @@ type Workload struct {
 	// list that the backend container mounts. Absent renders neither
 	// available_efs nor backend_efs_mounts.
 	EFS []EFSMount `yaml:"efs,omitempty"`
+
+	// Vaults are the backend's vault connections (workload.vaults).
+	Vaults []VaultConnection `yaml:"vaults,omitempty"`
 }
 
 // BackendHealthCheck is workload.backend_health_check. Command takes the same
@@ -667,6 +689,8 @@ type ScheduledTask struct {
 	// Policy is the user's own `policy` block: statements meroku adds to this
 	// task's role on top of the grants it builds itself.
 	Policy []IAMStatement `yaml:"policy,omitempty"`
+	// Vaults are this task's vault connections.
+	Vaults []VaultConnection `yaml:"vaults,omitempty"`
 }
 
 // EventBridgeRule defines a single EventBridge rule pattern (Schema v13)
@@ -699,6 +723,8 @@ type EventProcessorTask struct {
 	// Policy is the user's own `policy` block: statements meroku adds to this
 	// task's role on top of the grants it builds itself.
 	Policy []IAMStatement `yaml:"policy,omitempty"`
+	// Vaults are this task's vault connections.
+	Vaults []VaultConnection `yaml:"vaults,omitempty"`
 }
 
 type EnvVariable struct {
@@ -748,6 +774,8 @@ type Service struct {
 	// Policy is the user's own `policy` block: statements meroku adds to this
 	// service's role on top of the grants it builds itself.
 	Policy []IAMStatement `yaml:"policy,omitempty"`
+	// Vaults are this service's vault connections.
+	Vaults []VaultConnection `yaml:"vaults,omitempty"`
 }
 
 type DNSConfig struct {

@@ -325,6 +325,9 @@ export interface YamlInfrastructureConfig {
 		// IAM policies
 		policy?: IAMStatement[];
 
+		// The backend's vault connections.
+		vaults?: VaultConnection[];
+
 		// EFS mounts
 		efs?: Array<{
 			name: string;
@@ -443,6 +446,8 @@ export interface YamlInfrastructureConfig {
 		dlq_arn?: string;
 		/** The task role's own IAM statements. */
 		policy?: IAMStatement[];
+		/** The task's vault connections. */
+		vaults?: VaultConnection[];
 	}>;
 
 	// Event-driven Tasks
@@ -586,6 +591,8 @@ export interface YamlInfrastructureConfig {
 		health_check_command?: string | string[];
 		/** The service task role's own IAM statements. */
 		policy?: IAMStatement[];
+		/** The service's vault connections. */
+		vaults?: VaultConnection[];
 	}>;
 
 	// S3 Buckets
@@ -629,6 +636,28 @@ export interface YamlInfrastructureConfig {
 
 	// Shared folders of the private data bucket. The bucket always exists.
 	data_bucket?: DataBucketConfig;
+
+	// Shared SSM vaults, /<env>/<project>/vault/<name>/.
+	vaults?: VaultDefinition[];
+}
+
+/** One shared SSM vault, `/<env>/<project>/vault/<name>/`. */
+export interface VaultDefinition {
+	name: string;
+}
+
+/** `read` (the default when absent) or `read_write`. */
+export type VaultAccess = "read" | "read_write";
+
+/**
+ * A workload's connection to a vault. Every parameter directly under the vault
+ * becomes a secret of the workload, named after its last path segment,
+ * upper-cased, behind `prefix` and an underscore.
+ */
+export interface VaultConnection {
+	name: string;
+	access?: VaultAccess;
+	prefix?: string;
 }
 
 /**
@@ -763,6 +792,8 @@ export interface EventProcessorTask {
 	ecr_config?: ECRConfig;
 	/** The task role's own IAM statements. */
 	policy?: IAMStatement[];
+	/** The task's vault connections. */
+	vaults?: VaultConnection[];
 }
 
 /**

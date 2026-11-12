@@ -27,6 +27,7 @@ import {
 	Terminal,
 	Trash2,
 	Upload,
+	Vault,
 	Workflow,
 	X,
 	Zap,
@@ -101,6 +102,8 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Switch } from "./ui/switch";
+import { VaultsProperties } from "./VaultsProperties";
+import { WorkloadVaults } from "./WorkloadVaults";
 
 interface SidebarProps {
 	selectedNode: ComponentNode | null;
@@ -162,6 +165,8 @@ export function Sidebar({
 					{ id: "status", label: "Status", icon: Activity },
 					{ id: "send", label: "Send Email", icon: Send },
 				];
+			case "vaults":
+				return [{ id: "vaults", label: "Vaults", icon: Vault }];
 			case "s3":
 				return [
 					{ id: "settings", label: "Buckets", icon: HardDrive },
@@ -203,6 +208,7 @@ export function Sidebar({
 					{ id: "ssh", label: "SSH", icon: Terminal },
 					{ id: "env", label: "Env Vars", icon: Zap },
 					{ id: "params", label: "Parameters", icon: Key },
+					{ id: "vaults", label: "Vaults", icon: Vault },
 					{ id: "s3", label: "S3 Buckets", icon: HardDrive },
 					{ id: "sns", label: "SNS", icon: Bell },
 					{ id: "iam", label: "IAM", icon: Shield },
@@ -216,6 +222,7 @@ export function Sidebar({
 					{ id: "cicd", label: "CI/CD", icon: Workflow },
 					{ id: "env", label: "Env Vars", icon: Zap },
 					{ id: "params", label: "Parameters", icon: Key },
+					{ id: "vaults", label: "Vaults", icon: Vault },
 					{ id: "iam", label: "IAM", icon: Shield },
 					{ id: "cloudwatch", label: "CloudWatch", icon: Cloud },
 					{ id: "logs", label: "Logs", icon: FileText },
@@ -227,6 +234,7 @@ export function Sidebar({
 					{ id: "test", label: "Test Event", icon: Send },
 					{ id: "env", label: "Env Vars", icon: Zap },
 					{ id: "params", label: "Parameters", icon: Key },
+					{ id: "vaults", label: "Vaults", icon: Vault },
 					{ id: "iam", label: "IAM", icon: Shield },
 					{ id: "cloudwatch", label: "CloudWatch", icon: Cloud },
 					{ id: "logs", label: "Logs", icon: FileText },
@@ -240,6 +248,7 @@ export function Sidebar({
 					{ id: "ssh", label: "SSH", icon: Terminal },
 					{ id: "env", label: "Env Vars", icon: Zap },
 					{ id: "params", label: "Parameters", icon: Key },
+					{ id: "vaults", label: "Vaults", icon: Vault },
 					{ id: "iam", label: "IAM", icon: Shield },
 					{ id: "logs", label: "Logs", icon: FileText },
 					{ id: "cloudwatch", label: "CloudWatch", icon: Cloud },
@@ -1217,6 +1226,28 @@ jobs:
 						</div>
 					</div>
 				)}
+
+				{activeTab === "vaults" &&
+					selectedNode.type === "vaults" &&
+					config &&
+					onConfigChange && (
+						<VaultsProperties config={config} onConfigChange={onConfigChange} />
+					)}
+
+				{activeTab === "vaults" &&
+					(selectedNode.type === "backend" ||
+						selectedNode.type === "service" ||
+						selectedNode.type === "scheduled-task" ||
+						selectedNode.type === "event-task") &&
+					config &&
+					onConfigChange && (
+						<WorkloadVaults
+							key={selectedNode.id}
+							config={config}
+							node={selectedNode}
+							onConfigChange={onConfigChange}
+						/>
+					)}
 
 				{activeTab === "data-bucket" &&
 					selectedNode.type === "s3" &&

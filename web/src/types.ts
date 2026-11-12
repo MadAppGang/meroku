@@ -45,7 +45,8 @@ export interface ComponentNode {
 		| "alb"
 		| "appsync"
 		| "custom-terraform"
-		| "cloudfront";
+		| "cloudfront"
+		| "vaults";
 	name: string;
 	url?: string;
 	status: "running" | "deploying" | "stopped" | "error" | "external";
