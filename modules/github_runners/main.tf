@@ -12,6 +12,14 @@
 # aws_codebuild_source_credential: that resource is one per account and
 # server type, so two environments in one account would overwrite each
 # other's token.
+#
+# Each webhook has two halves. aws_codebuild_webhook is created with
+# manual_creation, so CodeBuild returns a payload URL and a secret and does
+# not call GitHub. The GitHub half is a github_repository_webhook (or
+# github_organization_webhook) pointed at that URL. When CodeBuild creates the
+# GitHub hook itself, CreateWebhook reads the token through the service role,
+# and on the apply that creates the role IAM has not propagated it yet, so the
+# call fails. With the split, nothing uses the role until a build starts.
 
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
@@ -144,8 +152,9 @@ resource "aws_codebuild_project" "runner" {
 resource "aws_codebuild_webhook" "runner" {
   for_each = local.runners
 
-  project_name = aws_codebuild_project.runner[each.key].name
-  build_type   = "BUILD"
+  project_name    = aws_codebuild_project.runner[each.key].name
+  build_type      = "BUILD"
+  manual_creation = true
 
   filter_group {
     filter {
@@ -160,5 +169,36 @@ resource "aws_codebuild_webhook" "runner" {
       name  = scope_configuration.value
       scope = "GITHUB_ORGANIZATION"
     }
+  }
+}
+
+# The GitHub half of each webhook. The caller (env/main.hbs) configures the
+# github provider with the token from token_secret and the runners' owner.
+resource "github_repository_webhook" "runner" {
+  for_each = { for name, r in local.runners : name => r if r.repository != "" }
+
+  repository = split("/", each.value.repository)[1]
+  events     = ["workflow_job"]
+  active     = true
+
+  configuration {
+    url          = aws_codebuild_webhook.runner[each.key].payload_url
+    secret       = aws_codebuild_webhook.runner[each.key].secret
+    content_type = "json"
+    insecure_ssl = false
+  }
+}
+
+resource "github_organization_webhook" "runner" {
+  for_each = { for name, r in local.runners : name => r if r.organization != "" }
+
+  events = ["workflow_job"]
+  active = true
+
+  configuration {
+    url          = aws_codebuild_webhook.runner[each.key].payload_url
+    secret       = aws_codebuild_webhook.runner[each.key].secret
+    content_type = "json"
+    insecure_ssl = false
   }
 }

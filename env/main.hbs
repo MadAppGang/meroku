@@ -11,6 +11,12 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 6.0"
     }
+    {{#if github_runners.token_secret}}
+    github = {
+      source  = "integrations/github"
+      version = "~> 6.0"
+    }
+    {{/if}}
   }
   required_version = ">= 1.10.0"
 }
@@ -1815,6 +1821,21 @@ resource "aws_s3_bucket_policy" "cloudfront_{{@root.name}}_{{name}}" {
 {{/each}}
 {{/if}}
 {{/each}}
+{{/if}}
+
+{{#if github_runners.token_secret}}
+# The github provider creates the GitHub half of each runner webhook. The token
+# is read through an ephemeral resource, so it is never written to state or to
+# the plan. Rendered whenever token_secret is set, enabled or not: removing
+# runners destroys their GitHub webhooks, and that needs the provider too.
+ephemeral "aws_secretsmanager_secret_version" "github_runners_token" {
+  secret_id = {{{hclString github_runners.token_secret}}}
+}
+
+provider "github" {
+  owner = {{{hclString github_runners.owner}}}
+  token = jsondecode(ephemeral.aws_secretsmanager_secret_version.github_runners_token.secret_string).Token
+}
 {{/if}}
 
 {{#if github_runners.enabled}}

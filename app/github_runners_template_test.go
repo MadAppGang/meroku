@@ -59,10 +59,40 @@ func TestTemplate_GitHubRunners_AbsentOrDisabledRendersNothing(t *testing.T) {
 				env["github_runners"] = block
 			}
 			out := renderGitHubRunners(t, env)
-			if strings.Contains(out, "github_runners") || strings.Contains(out, "github_runner_labels") {
+			if strings.Contains(out, `module "github_runners"`) || strings.Contains(out, "github_runner_labels") {
 				t.Error("a config without enabled github_runners must render no module and no output")
 			}
+			// The provider stays while token_secret is set, so removing runners
+			// can still delete their GitHub webhooks.
+			if got, want := strings.Contains(out, `provider "github"`), label == "disabled"; got != want {
+				t.Errorf("github provider rendered = %v, want %v", got, want)
+			}
 		})
+	}
+}
+
+func TestTemplate_GitHubRunners_ProviderTokenIsEphemeral(t *testing.T) {
+	env := templateEnvWithRunners("", map[string]interface{}{
+		"enabled":      true,
+		"token_secret": "meroku/github-runners/acme-dev",
+		"runners": []interface{}{
+			map[string]interface{}{"name": "default", "repository": "example-org/some-repo"},
+		},
+	})
+	out := renderGitHubRunners(t, env)
+	for _, want := range []string{
+		`ephemeral "aws_secretsmanager_secret_version" "github_runners_token"`,
+		`secret_id = "meroku/github-runners/acme-dev"`,
+		`owner = "example-org"`,
+		`token = jsondecode(ephemeral.aws_secretsmanager_secret_version.github_runners_token.secret_string).Token`,
+		`source  = "integrations/github"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("rendered template lacks %q", want)
+		}
+	}
+	if strings.Contains(out, `data "aws_secretsmanager_secret_version"`) {
+		t.Error("the token must be read ephemerally, never through a data source that stores it in state")
 	}
 }
 

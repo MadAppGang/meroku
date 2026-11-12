@@ -758,6 +758,9 @@ type GitHubRunners struct {
 	// TokenSecret is the NAME (or ARN) of a Secrets Manager secret holding the
 	// GitHub token CodeBuild uses. It is created outside Terraform.
 	TokenSecret string `yaml:"token_secret,omitempty"`
+	// Owner is the GitHub user or organization the runners' webhooks live
+	// under. Usually left unset: generate derives it from the runners.
+	Owner string `yaml:"owner,omitempty"`
 	// VPCAccess runs the builds inside the environment's private subnets.
 	// Requires a NAT egress strategy; see validateGitHubRunnersConfigMap.
 	VPCAccess bool           `yaml:"vpc_access,omitempty"`

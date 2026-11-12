@@ -626,6 +626,15 @@ IF github_runners.enabled == true THEN:
 | `secrets[]` | Exactly one of `ssm` / `secrets_manager` |
 | `env_variables[].name`, `secrets[].name` | `^[A-Za-z_][A-Za-z0-9_]*$`; unique across both lists; must not start with `CODEBUILD_` (any case), which CodeBuild reserves |
 
+#### Cross-runner: one GitHub owner
+```
+All runners (and github_runners.owner, when set) MUST name the same GitHub owner:
+the organization, or the owner half of owner/repo. Compared case-insensitively.
+
+Reason: one github provider configuration serves the environment, and it manages
+webhooks for a single owner.
+```
+
 #### Cross-field: vpc_access
 ```
 IF github_runners.vpc_access == true THEN:

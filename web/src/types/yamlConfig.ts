@@ -154,6 +154,8 @@ export interface GitHubRunnersConfig {
 	enabled: boolean;
 	/** Name of the Secrets Manager secret holding the GitHub token. */
 	token_secret?: string;
+	/** GitHub user or organization of every runner; derived when unset. */
+	owner?: string;
 	/** Run in the private subnets. Needs egress_strategy nat_gateway(_ha). */
 	vpc_access?: boolean;
 	runners?: GitHubRunner[];

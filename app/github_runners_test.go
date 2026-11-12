@@ -129,6 +129,53 @@ func TestGitHubRunners_ExactlyOneOfRepositoryOrOrganization(t *testing.T) {
 	})
 }
 
+func TestGitHubRunners_OneOwnerPerEnvironment(t *testing.T) {
+	t.Run("repository and organization under the same owner, any case", func(t *testing.T) {
+		env := githubRunnersEnv()
+		block := githubRunnersBlock(env)
+		block["runners"] = append(block["runners"].([]interface{}),
+			map[string]interface{}{"name": "org", "organization": "Example-Org"})
+		if err := validateGitHubRunnersConfigMap(env); err != nil {
+			t.Fatalf("same owner refused: %v", err)
+		}
+	})
+	t.Run("two owners", func(t *testing.T) {
+		env := githubRunnersEnv()
+		block := githubRunnersBlock(env)
+		block["runners"] = append(block["runners"].([]interface{}),
+			map[string]interface{}{"name": "other", "repository": "another-org/repo"})
+		requireGitHubRunnersError(t, env, "runner 'other'", `"another-org"`, "same GitHub user or organization")
+	})
+	t.Run("explicit owner that no runner matches", func(t *testing.T) {
+		env := githubRunnersEnv()
+		githubRunnersBlock(env)["owner"] = "another-org"
+		requireGitHubRunnersError(t, env, `"example-org"`)
+	})
+}
+
+func TestGitHubRunners_AssignOwner(t *testing.T) {
+	env := githubRunnersEnv()
+	assignGitHubRunnersOwner(env)
+	if got := githubRunnersBlock(env)["owner"]; got != "example-org" {
+		t.Errorf("owner = %v, want example-org", got)
+	}
+
+	// Disabled runners still get an owner: the provider deletes their webhooks.
+	env = githubRunnersEnv()
+	githubRunnersBlock(env)["enabled"] = false
+	assignGitHubRunnersOwner(env)
+	if got := githubRunnersBlock(env)["owner"]; got != "example-org" {
+		t.Errorf("disabled block: owner = %v, want example-org", got)
+	}
+
+	env = githubRunnersEnv()
+	githubRunnersBlock(env)["owner"] = "kept-org"
+	assignGitHubRunnersOwner(env)
+	if got := githubRunnersBlock(env)["owner"]; got != "kept-org" {
+		t.Errorf("explicit owner overwritten: %v", got)
+	}
+}
+
 func TestGitHubRunners_RepositoryMustBeOwnerSlashRepo(t *testing.T) {
 	for _, repo := range []string{"some-repo", "https://github.com/example-org/some-repo", "a/b/c", "example-org/"} {
 		t.Run(repo, func(t *testing.T) {

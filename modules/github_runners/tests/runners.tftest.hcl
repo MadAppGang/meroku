@@ -43,6 +43,8 @@ mock_provider "aws" {
   }
 }
 
+mock_provider "github" {}
+
 variables {
   project      = "acme"
   env          = "dev"

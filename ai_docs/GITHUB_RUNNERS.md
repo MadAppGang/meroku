@@ -11,8 +11,12 @@ For each runner in the YAML, meroku creates:
 
 - a **CodeBuild project** named `<project>-gh-<runner>-<env>`, with a GitHub
   source and an empty buildspec;
-- a **webhook** on that project that fires on `WORKFLOW_JOB_QUEUED`. CodeBuild
-  creates the matching webhook in GitHub itself, using the token;
+- a **CodeBuild webhook** on that project that fires on `WORKFLOW_JOB_QUEUED`,
+  created with `manual_creation`: CodeBuild returns a payload URL and a secret
+  and does not contact GitHub;
+- a **GitHub webhook** (`github_repository_webhook`, or
+  `github_organization_webhook` for an organization runner) that sends
+  `workflow_job` events to that payload URL, signed with that secret;
 - a **CloudWatch log group** `<project>_gh_runner_<runner>_<env>`, kept 7 days.
 
 Shared by all runners in the environment:
@@ -30,6 +34,21 @@ The GitHub credential is set on each project (`source.auth`, type
 `SECRETS_MANAGER`). meroku never creates an `aws_codebuild_source_credential`:
 that resource is one per account and server type, so two environments in the
 same account would overwrite each other's token.
+
+The GitHub webhook is created by Terraform's `integrations/github` provider,
+which `env/main.hbs` configures from the same token secret. The token is read
+through an `ephemeral "aws_secretsmanager_secret_version"`, so it is in neither
+the plan nor the state. The provider's `owner` is `github_runners.owner`, which
+generate derives from the runners when it is unset; all runners in an
+environment therefore share one GitHub owner.
+
+Why the webhook is split in two: when CodeBuild creates the GitHub webhook
+itself, `CreateWebhook` reads the token through the project's service role. On
+the apply that creates that role, IAM has not propagated it yet, and the call
+fails with `Project service role does not have access to retrieve secret` or
+`CodeBuild is not authorized to perform: sts:AssumeRole`. With
+`manual_creation`, nothing uses the role until the first build, long after the
+apply.
 
 Code: `modules/github_runners/`, wired in `env/main.hbs`; validation in
 `app/github_runners.go`.
@@ -100,9 +119,11 @@ assumes the environment's GitHub OIDC role (`workload.enable_github_oidc`) with
 
 ## The token secret
 
-CodeBuild reads the GitHub token from a Secrets Manager secret that you create
-before the first apply; Terraform only looks it up by name, so the token never
-enters the state file. The apply fails if the secret does not exist.
+One Secrets Manager secret, created before the first apply, holds the GitHub
+token. CodeBuild reads it when a build registers as a runner, and Terraform's
+github provider reads it, ephemerally, to manage the GitHub webhooks. The token
+never enters the plan or the state file. Plan and apply fail if the secret does
+not exist.
 
 The secret value is JSON:
 
@@ -127,7 +148,7 @@ aws secretsmanager create-secret \
 Token scopes (classic personal access token):
 
 - `repo`, for a repository runner. The token's user must be an admin of the
-  repository, because CodeBuild creates the repository webhook with it.
+  repository, because Terraform creates the repository webhook with it.
 - `repo` and `admin:org_hook`, for an organization runner, which needs an
   organization webhook.
 
@@ -206,24 +227,15 @@ AWS-managed keys (`aws/ssm`, `aws/secretsmanager`) need nothing extra.
 - Per-job overrides in the `runs-on` label (`image:`, `instance-size:`). The
   image and size are the project's.
 
-## Known issue: the first apply can fail once
+## Removing runners
 
-On the apply that creates the runner's service role, the webhook can fail with:
+Set `enabled: false` (or delete runners from the list) and apply. That destroys
+the CodeBuild projects, their webhooks and the GitHub webhooks.
 
-```
-creating CodeBuild Webhook (<project>-gh-<runner>-<env>): ... InvalidInputException:
-Project service role does not have access to retrieve secret arn:aws:secretsmanager:...
-```
-
-The role's policy is correct. `CreateWebhook` checks the role's access to the token
-secret seconds after IAM created the role, before the change has propagated. The AWS
-provider handles this delay for `aws_codebuild_project` (it retries on IAM propagation
-errors up to its `propagationTimeout`) but not for `aws_codebuild_webhook`. A fix is
-proposed upstream in `hashicorp/terraform-provider-aws`; once released, raise the
-provider floor in `modules/github_runners/versions.tf` and delete this section.
-
-Until then: run the apply again. The role exists by then, and the webhook is created.
-Seen on 2026-11-12 in a live deploy in ap-southeast-2.
+Keep `token_secret` and, for `enabled: false`, the `runners` list until that
+apply has run. While `token_secret` is set, `env/main.hbs` keeps rendering the
+github provider, which deleting a GitHub webhook needs. Its owner comes from the
+runners or from `owner`. Delete the whole block only after the apply.
 
 ## Tests
 

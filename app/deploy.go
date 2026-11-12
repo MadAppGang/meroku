@@ -494,7 +494,7 @@ func applyTemplate(env string) error {
 // preprocessEnvMap runs everything applyTemplate does to envMap between
 // loading and rendering, in order: filterDisabledItems x3, then
 // synthesizeDefaultComputePool, assignSESPrimaryDomain, resolveSESZones,
-// normalizeHealthCheckCommands, then validateSESDNSConfigMap,
+// normalizeHealthCheckCommands, assignGitHubRunnersOwner, then validateSESDNSConfigMap,
 // validateNetworkAccessConfigMap, validateBackendHealthConfigMap,
 // validateReservedEnvNamesConfigMap, validateGitHubRunnersConfigMap and
 // validateComputeConfigMap. Path and
@@ -522,6 +522,7 @@ func preprocessEnvMap(envMap map[string]interface{}) error {
 	assignSESPrimaryDomain(envMap)
 	resolveSESZones(envMap)
 	normalizeHealthCheckCommands(envMap)
+	assignGitHubRunnersOwner(envMap)
 
 	if err := validateSESDNSConfigMap(envMap); err != nil {
 		return err

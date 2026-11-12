@@ -313,6 +313,8 @@ github_runners:
   token_secret: <string>                     # Required when enabled. NAME (or ARN) of a Secrets
                                              #   Manager secret holding the GitHub token, created
                                              #   outside Terraform
+  owner: <string>                            # Optional. GitHub user or organization of every
+                                             #   runner; derived from the runners when unset
   vpc_access: <boolean>                      # Default false. true runs builds in the private
                                              #   subnets; needs egress_strategy nat_gateway or
                                              #   nat_gateway_ha and use_default_vpc: false

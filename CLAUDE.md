@@ -430,7 +430,11 @@ service) are optional; absent keys render nothing. A breaker is turned off with
 
 `github_runners` (optional; absent or `enabled: false` renders nothing, no
 migration) creates one CodeBuild project per runner, with a `WORKFLOW_JOB_QUEUED`
-webhook, in `modules/github_runners`. Workflows use
+webhook, in `modules/github_runners`. The CodeBuild webhook uses `manual_creation`
+and the GitHub side is a `github_repository_webhook`/`github_organization_webhook`
+(provider `integrations/github`, token read ephemerally from `token_secret`);
+letting CodeBuild create the GitHub hook fails on the first apply because the new
+service role has not propagated in IAM yet. All runners share one GitHub owner. Workflows use
 `runs-on: codebuild-<project>-gh-<runner>-<env>-${{ github.run_id }}-${{ github.run_attempt }}`
 (env output `github_runner_labels`). The GitHub token lives in a Secrets Manager
 secret created outside Terraform and is set per project, never as an

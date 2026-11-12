@@ -64,6 +64,12 @@ func validateGitHubRunnersConfigMap(envMap map[string]interface{}) error {
 		problems = append(problems, gitHubRunnerProblems(i, runner, seen)...)
 	}
 
+	if len(problems) == 0 {
+		if problem := gitHubRunnersOwnerProblem(block); problem != "" {
+			problems = append(problems, problem)
+		}
+	}
+
 	if vpcAccess, _ := computeBoolField(block, "vpc_access"); vpcAccess {
 		if problem := gitHubRunnerVPCProblem(envMap); problem != "" {
 			problems = append(problems, problem)
@@ -74,6 +80,54 @@ func validateGitHubRunnersConfigMap(envMap map[string]interface{}) error {
 		return fmt.Errorf("invalid github_runners settings:\n  %s", strings.Join(problems, "\n  "))
 	}
 	return nil
+}
+
+// gitHubRunnerOwner is the GitHub account a runner's webhook lives under: the
+// organization, or the owner half of owner/repo.
+func gitHubRunnerOwner(runner map[string]interface{}) string {
+	if organization := computeStringField(runner, "organization"); organization != "" {
+		return organization
+	}
+	owner, _, _ := strings.Cut(computeStringField(runner, "repository"), "/")
+	return owner
+}
+
+// assignGitHubRunnersOwner stores github_runners.owner, which configures the
+// github provider in env/main.hbs. An explicit owner is kept. Otherwise it
+// comes from the runners, which share one owner when the block is enabled
+// (gitHubRunnersOwnerProblem). It runs for a disabled block too: the provider
+// is still rendered then, to delete the GitHub webhooks of removed runners.
+func assignGitHubRunnersOwner(envMap map[string]interface{}) {
+	block, ok := yamlSubMap(envMap, "github_runners")
+	if !ok || computeStringField(block, "owner") != "" {
+		return
+	}
+	for _, runner := range computeMapList(block, "runners") {
+		if owner := gitHubRunnerOwner(runner); owner != "" {
+			block["owner"] = owner
+			return
+		}
+	}
+}
+
+// gitHubRunnersOwnerProblem refuses runners under more than one GitHub owner.
+// One github provider configuration serves the environment, and a provider
+// manages webhooks for a single owner. GitHub owner names are case-insensitive.
+func gitHubRunnersOwnerProblem(block map[string]interface{}) string {
+	owner := computeStringField(block, "owner")
+	for _, runner := range computeMapList(block, "runners") {
+		runnerOwner := gitHubRunnerOwner(runner)
+		if owner == "" {
+			owner = runnerOwner
+			continue
+		}
+		if !strings.EqualFold(runnerOwner, owner) {
+			return fmt.Sprintf("runner '%s' is under GitHub owner %q, but this environment's runners are under %q.\n"+
+				"    All runners in one environment must belong to the same GitHub user or organization.",
+				computeStringField(runner, "name"), runnerOwner, owner)
+		}
+	}
+	return ""
 }
 
 // gitHubRunnerProblems checks one runner. seen carries the names of the
