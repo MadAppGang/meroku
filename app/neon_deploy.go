@@ -328,7 +328,7 @@ func prepareNeonForDeploy(ctx context.Context, target handoffTarget, api neonAPI
 		if err != nil {
 			return result, err
 		}
-		if err := initIfLockIncomplete(ctx, envDir, os.Stdout); err != nil {
+		if err := initIfLockIncompleteWith(ctx, envDir, os.Stdout, tf); err != nil {
 			return result, err
 		}
 	}
@@ -394,7 +394,7 @@ func prepareNeonForDeploy(ctx context.Context, target handoffTarget, api neonAPI
 	if err != nil {
 		return result, err
 	}
-	if err := initIfLockIncomplete(ctx, envDir, os.Stdout); err != nil {
+	if err := initIfLockIncompleteWith(ctx, envDir, os.Stdout, tf); err != nil {
 		return result, err
 	}
 
@@ -582,7 +582,7 @@ func neonDestroyPrep(ctx context.Context, out io.Writer, target handoffTarget, t
 	if err != nil {
 		return nil, cleanup, err
 	}
-	if err := initIfLockIncomplete(ctx, envDir, out); err != nil {
+	if err := initIfLockIncompleteWith(ctx, envDir, out, tf); err != nil {
 		return nil, cleanup, err
 	}
 	if !degraded {

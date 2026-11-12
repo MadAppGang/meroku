@@ -197,6 +197,13 @@ func modulesMissing(dir string) bool {
 // (never -upgrade) when the lock lacks a required provider or a module is not
 // installed.
 func initIfLockIncomplete(ctx context.Context, dir string, out io.Writer) error {
+	return initIfLockIncompleteWith(ctx, dir, out, combinedInitRunner)
+}
+
+// initIfLockIncompleteWith is initIfLockIncomplete with the terraform runner
+// given, so a caller that runs every other terraform command through one
+// runner runs init through it too.
+func initIfLockIncompleteWith(ctx context.Context, dir string, out io.Writer, run terraformRunner) error {
 	missing := lockMissingProviders(dir)
 	if len(missing) == 0 && !modulesMissing(dir) {
 		return nil
@@ -206,12 +213,20 @@ func initIfLockIncomplete(ctx context.Context, dir string, out io.Writer) error 
 	} else {
 		fmt.Fprintln(out, "🔄 A module is not installed yet. Running terraform init.")
 	}
-	cmd, err := newTerraformCmd(ctx, tfState, dir, "init", "-input=false", "-no-color")
+	_, err := run(ctx, tfState, dir, "init", "-input=false", "-no-color")
+	return err
+}
+
+// combinedInitRunner runs terraform and reports the last lines of its
+// combined output on failure, redacted.
+func combinedInitRunner(ctx context.Context, purpose tfPurpose, dir string, args ...string) ([]byte, error) {
+	cmd, err := newTerraformCmd(ctx, purpose, dir, args...)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("terraform init: %w\n%s", err, lastLines(redactSecrets(string(output)), 12))
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return output, fmt.Errorf("terraform init: %w\n%s", err, lastLines(redactSecrets(string(output)), 12))
 	}
-	return nil
+	return output, nil
 }
