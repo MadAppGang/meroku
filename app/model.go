@@ -257,6 +257,10 @@ type Workload struct {
 	// BackendCircuitBreaker is the backend service's ECS deployment circuit
 	// breaker. nil renders no block.
 	BackendCircuitBreaker *BackendCircuitBreaker `yaml:"backend_circuit_breaker,omitempty"`
+	// BackendHealthCheckGracePeriod is the backend service's
+	// health_check_grace_period_seconds, used only while the ALB is on. nil or 0
+	// sets nothing.
+	BackendHealthCheckGracePeriod *int `yaml:"backend_health_check_grace_period,omitempty"`
 }
 
 // BackendHealthCheck is workload.backend_health_check. Command takes the same
@@ -495,6 +499,15 @@ type ALB struct {
 	// API Gateway at all: API Gateway's 30s integration timeout is fixed and
 	// cannot stream. 0/absent uses the module default of 60.
 	IdleTimeout int `yaml:"idle_timeout,omitempty"`
+	// SSLPolicy is the HTTPS listener's ELB security policy. "" uses the module
+	// default, ELBSecurityPolicy-2016-08.
+	SSLPolicy string `yaml:"ssl_policy,omitempty"`
+	// DeregistrationDelay is the target groups' draining time in seconds. A
+	// pointer, because 0 is valid and must survive a load and save.
+	DeregistrationDelay *int `yaml:"deregistration_delay,omitempty"`
+	// RemoveAPIGateway drops the API Gateway API, stage, access-log group and
+	// backend VPC Link while the ALB is on.
+	RemoveAPIGateway bool `yaml:"remove_api_gateway,omitempty"`
 }
 
 type ScheduledTask struct {

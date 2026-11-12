@@ -45,13 +45,13 @@ output "service_ecr_url_map" {
 # ============================================================================
 
 output "api_gateway_endpoint" {
-  description = "API Gateway default endpoint URL with stage"
-  value       = "${aws_apigatewayv2_api.api_gateway.api_endpoint}/${aws_apigatewayv2_stage.backend.name}"
+  description = "API Gateway default endpoint URL with stage, or \"\" when the gateway is not created (remove_api_gateway with the ALB on)"
+  value       = length(aws_apigatewayv2_api.api_gateway) > 0 ? "${aws_apigatewayv2_api.api_gateway[0].api_endpoint}/${aws_apigatewayv2_stage.backend[0].name}" : ""
 }
 
 output "api_gateway_id" {
-  description = "API Gateway ID"
-  value       = aws_apigatewayv2_api.api_gateway.id
+  description = "API Gateway ID, or \"\" when the gateway is not created"
+  value       = length(aws_apigatewayv2_api.api_gateway) > 0 ? aws_apigatewayv2_api.api_gateway[0].id : ""
 }
 
 output "api_gateway_custom_domain_enabled" {

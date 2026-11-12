@@ -1,9 +1,4 @@
 locals {
-  # The ALB and API Gateway are mutually exclusive ingress paths for the backend, so the
-  # ALB serves the SAME hostname API Gateway would have served (var.api_domain). Flipping
-  # enable_alb therefore does not change the public API URL — no client has to be repointed.
-  alb_primary_domain = var.api_domain
-
   # Optional extra hostname (backend_alb_domain_name), qualified with the env-resolved
   # domain from the domain module. Never re-derive the "<env>." prefix here: that rule
   # lives in modules/domain (add_env_domain_prefix) and must stay in one place, or the
@@ -45,7 +40,7 @@ resource "aws_lb_listener" "https" {
   load_balancer_arn = var.alb_arn
   port              = "443"
   protocol          = "HTTPS"
-  ssl_policy        = "ELBSecurityPolicy-2016-08"
+  ssl_policy        = var.alb_ssl_policy
   certificate_arn   = var.subdomains_certificate_arn
 
   # Catch-all to the backend, mirroring API Gateway's `ANY /{proxy+}` backend route.
@@ -106,6 +101,8 @@ resource "aws_lb_target_group" "backend" {
   vpc_id      = var.vpc_id
   target_type = "ip"
 
+  deregistration_delay = var.alb_deregistration_delay
+
   dynamic "health_check" {
     for_each = var.backend_health_endpoint != "" ? [1] : []
     content {
@@ -155,6 +152,8 @@ resource "aws_lb_target_group" "backend_instance" {
   vpc_id      = var.vpc_id
   target_type = "instance"
 
+  deregistration_delay = var.alb_deregistration_delay
+
   dynamic "health_check" {
     for_each = var.backend_health_endpoint != "" ? [1] : []
     content {
@@ -182,26 +181,12 @@ resource "aws_lb_target_group" "backend_instance" {
 }
 
 
+# The api_domain record itself lives in domain.tf (aws_route53_record.backend), one
+# resource for both ingress modes; it reads this data source while enable_alb is on.
 data "aws_lb" "alb" {
   count = var.enable_alb ? 1 : 0
 
   arn = var.alb_arn
-}
-
-# The API hostname points at the ALB instead of API Gateway. domain.tf drops its own
-# record for the same name when enable_alb is set, so exactly one of them exists.
-resource "aws_route53_record" "alb_alias" {
-  count = var.enable_alb && local.alb_primary_domain != "" ? 1 : 0
-
-  zone_id = var.domain_zone_id
-  name    = local.alb_primary_domain
-  type    = "A"
-
-  alias {
-    name                   = data.aws_lb.alb[0].dns_name
-    zone_id                = data.aws_lb.alb[0].zone_id
-    evaluate_target_health = true
-  }
 }
 
 resource "aws_route53_record" "alb_extra_alias" {

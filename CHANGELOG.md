@@ -1,5 +1,42 @@
 # Changelog
 
+## v5.6.0
+
+### ALB settings
+
+Four optional keys tune the ALB. Each defaults to what meroku did before, so an
+environment that sets none of them plans no change.
+
+```yaml
+alb:
+  enabled: true
+  ssl_policy: ELBSecurityPolicy-TLS13-1-2-2021-06   # default ELBSecurityPolicy-2016-08
+  deregistration_delay: 30                          # 0-3600, default 300
+  remove_api_gateway: true                          # default false
+workload:
+  backend_health_check_grace_period: 120            # used only with the ALB on
+```
+
+- `ssl_policy` sets the HTTPS listener's TLS policy.
+- `deregistration_delay` sets the draining time of every ALB target group.
+- `backend_health_check_grace_period` sets the backend service's health check grace
+  period, so a slow-starting backend is not stopped by its first ALB health checks.
+- `remove_api_gateway` stops creating the API Gateway API, stage, access-log group and
+  VPC Link while the ALB serves the API. `meroku generate` refuses it with the ALB off,
+  with a `network_access: full_open` service, or with SNS webhooks. The
+  `api_gateway_endpoint` and `api_gateway_id` outputs become `""`. Turning it back off
+  creates a new API with a new execute-api URL.
+
+### api_domain no longer stops resolving when the ALB is switched
+
+`api_domain` is now one Route 53 record in both ingress modes. Turning `alb.enabled` on
+or off updates its alias in place, where it used to delete one record and create
+another. Existing ALB environments see `aws_route53_record.alb_alias has moved to
+aws_route53_record.backend` and no change. The API Gateway API, stage, log group and
+backend VPC Link likewise move to `[0]` addresses with no change.
+
+See `ai_docs/ALB_SETTINGS.md`.
+
 ## v5.5.0
 
 ### GitHub Actions runners on CodeBuild

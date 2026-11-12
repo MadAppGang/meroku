@@ -620,6 +620,9 @@ module "workloads" {
 {{/if}}
   }
 {{/if}}
+{{#if (exists workload.backend_health_check_grace_period)}}
+  backend_health_check_grace_period = {{workload.backend_health_check_grace_period}}
+{{/if}}
   xray_enabled = {{workload.xray_enabled}}
   pgadmin_enabled = {{workload.install_pg_admin}}
   pgadmin_email = "{{workload.pg_admin_email}}"
@@ -763,6 +766,15 @@ module "workloads" {
   # while the backend rule still pointed at it.
   alb_arn = module.alb.alb_arn
   alb_security_group_id = module.alb.alb_security_group_id
+{{#if (exists alb.ssl_policy)}}
+  alb_ssl_policy = "{{alb.ssl_policy}}"
+{{/if}}
+{{#if (exists alb.deregistration_delay)}}
+  alb_deregistration_delay = {{alb.deregistration_delay}}
+{{/if}}
+{{#if (exists alb.remove_api_gateway)}}
+  remove_api_gateway = {{alb.remove_api_gateway}}
+{{/if}}
   enable_alb = {{#if alb.enabled}}true{{else}}false{{/if}}
   {{#if alb.enabled}}
   {{#if workload.backend_alb_domain_name}}
@@ -1274,6 +1286,7 @@ module "appsync" {
 # HTTP(S) subscriptions to SNS topics (requires API Gateway endpoint)
 # ============================================================================
 {{#each extensions.sns_topics}}
+{{!-- The endpoint is the API Gateway URL; alb.remove_api_gateway is refused while any webhook exists (app/alb_settings.go). --}}
 {{#each webhooks}}
 resource "aws_sns_topic_subscription" "ext_{{../name}}_webhook_{{@index}}" {
   topic_arn              = aws_sns_topic.ext_{{../name}}.arn

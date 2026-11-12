@@ -653,6 +653,40 @@ Because the check runs on every generate, switching `egress_strategy` back to
 
 ---
 
+### 16. ALB SETTINGS (`alb.*`, `workload.backend_health_check_grace_period`)
+
+**Implemented** in `app/alb_settings.go` (`validateALBSettingsConfigMap`), called from
+`preprocessEnvMap` after disabled items are filtered out, so it runs on every generate.
+All rules are errors and all problems are reported together. Absent keys are not
+checked. The module repeats the range rules as variable validations
+(`modules/workloads/variables.tf`). See [ALB_SETTINGS.md](./ALB_SETTINGS.md).
+
+| Field | Rule |
+|-------|------|
+| `alb.ssl_policy` | String matching `^[A-Za-z0-9-]+$` |
+| `alb.deregistration_delay` | Whole number, 0-3600 |
+| `workload.backend_health_check_grace_period` | Whole number, 0-2147483647 |
+| `alb.remove_api_gateway` | `true` or `false` |
+
+`ssl_policy`, `deregistration_delay` and the grace period are accepted with the ALB
+off; the module ignores them there.
+
+#### Cross-field: remove_api_gateway
+```
+IF alb.remove_api_gateway == true THEN:
+  ✓ alb.enabled: MUST be true
+  ✓ services[] (enabled ones): none may have network_access: full_open
+  ✓ extensions.sns_topics[]: none may have webhooks
+
+Reason: with the ALB off, API Gateway is the only ingress; full_open always has an
+API Gateway route; SNS webhooks are delivered to the API Gateway URL.
+
+Fix offered in the message: turn the ALB on or remove the key; set the service to
+network_access: public; remove the webhooks or keep the gateway.
+```
+
+---
+
 ## Implementation Recommendations
 
 ### Library Comparison
