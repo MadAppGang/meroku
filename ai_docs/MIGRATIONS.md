@@ -92,6 +92,13 @@ the block is present. The block only lists shared folders, so absent means "no
 shared folders" and there is still nothing to write. Its struct field is a
 pointer with `omitempty` too.
 
+`vaults` ([VAULTS.md](./VAULTS.md)) is another: the top-level list and each
+workload's `vaults` connections are optional. Absent means no vaults and no
+connections, which renders a `vaults` module that reads nothing and grants
+nothing, so there is nothing to write. The struct fields (`Env.Vaults` and
+`Vaults` on the backend workload, services, scheduled tasks and event tasks)
+use `omitempty`.
+
 ### A note on v23's two defaults
 
 v23 is the one migration that does **not** write the safer of two values

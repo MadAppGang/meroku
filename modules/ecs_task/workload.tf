@@ -16,10 +16,11 @@ variable "extra_env" {
 }
 
 variable "extra_secrets" {
-  description = "Secrets meroku's capability modules add to this task. Appended after the secrets discovered under the task's own SSM path."
+  description = "Secrets meroku's capability modules add to this task. Appended after the secrets discovered under the task's own SSM path. `origin` names where the secret comes from in collision messages; it defaults to valueFrom and never reaches the container."
   type = list(object({
     name      = string
     valueFrom = string
+    origin    = optional(string)
   }))
   default = []
 }
@@ -27,7 +28,13 @@ variable "extra_secrets" {
 locals {
   # Exactly what lands in the container definition.
   container_environment = concat(local.environment_variables, var.extra_env)
-  container_secrets     = concat(local.task_env_ssm, var.extra_secrets)
+  container_secrets = concat(local.task_env_ssm, [
+    for s in var.extra_secrets : { name = s.name, valueFrom = s.valueFrom }
+  ])
+
+  # The same extra secrets as the collision check sees them: with where each
+  # comes from.
+  extra_secret_origins = [for s in var.extra_secrets : { name = s.name, origin = coalesce(s.origin, s.valueFrom) }]
 }
 
 output "workload" {

@@ -554,9 +554,17 @@ resource "aws_ecs_task_definition" "services" {
   # Every subsequent plan, which is where a parameter added out of band shows up,
   # evaluates it at plan.
   lifecycle {
+    # Two halves, so the one that can always be decided at plan never waits
+    # for the one that may not be: ENV and vault collisions are refused at plan,
+    # own-path collisions as soon as the own-path read is known.
     precondition {
-      condition     = module.service_env_secret_check.valid[each.key]
-      error_message = module.service_env_secret_check.message[each.key]
+      condition     = module.service_env_secret_check.valid_known[each.key]
+      error_message = module.service_env_secret_check.message_known[each.key]
+    }
+
+    precondition {
+      condition     = module.service_env_secret_check.valid_discovered[each.key]
+      error_message = module.service_env_secret_check.message_discovered[each.key]
     }
   }
 }

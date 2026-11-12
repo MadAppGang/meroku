@@ -75,6 +75,8 @@ workload:
   - name: uploads
     mount_point: /data
     read_only: true
+  vaults:
+  - name: shared
 domain:
   enabled: true
   create_domain_zone: false
@@ -136,6 +138,8 @@ scheduled_tasks:
     - s3:ListBucket
     resources:
     - arn:aws:s3:::myapp-backend-dev
+  vaults:
+  - name: shared
 event_processor_tasks:
 - name: deployment-events
   enabled: true
@@ -160,6 +164,9 @@ event_processor_tasks:
       variable: aws:SecureTransport
       values:
       - "false"
+  vaults:
+  - name: payments
+    access: read_write
 pubsub_appsync:
   enabled: false
   schema: false
@@ -219,6 +226,12 @@ services:
     - ses:SendEmail
     resources:
     - '*'
+  vaults:
+  - name: shared
+    access: read
+  - name: payments
+    access: read_write
+    prefix: PAY
 amplify_apps:
 - name: main-web
   github_repository: https://github.com/example-org/example-repo
@@ -251,3 +264,6 @@ data_bucket:
     - backend
     read:
     - cleanup
+vaults:
+- name: shared
+- name: payments

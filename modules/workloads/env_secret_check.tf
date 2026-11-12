@@ -42,6 +42,12 @@
 # releases.
 #
 # The two instances differ only in the words and in where the reader is sent.
+#
+# Each also hands over the same names split by when they are known (see
+# ../env_secret_check/split.tf): ENV and the capability modules' secrets are
+# known at plan, the names read under the workload's own path may not be. The
+# task definitions put one precondition on each half, so ENV and vault
+# collisions are always refused at plan.
 
 module "service_env_secret_check" {
   source = "../env_secret_check"
@@ -55,6 +61,17 @@ module "service_env_secret_check" {
 
     environment = [for e in local.services_container_env[k] : e.name]
     secrets     = [for s in local.services_container_secrets[k] : s.name]
+
+    extra_env_names = [for e in local.services_extra_env[k] : e.name]
+    known_secrets = concat(
+      [{ name = "ENV", origin = "/${var.env}/${var.project}/${k}/env" }],
+      local.services_extra_secret_origins[k],
+    )
+    discovered_secrets = [
+      for n in data.aws_ssm_parameters_by_path.services[k].names : {
+        name = upper(reverse(split("/", n))[0]), origin = n
+      } if n != "/${var.env}/${var.project}/${k}/env"
+    ]
   } }
 }
 
@@ -78,6 +95,17 @@ module "backend_env_secret_check" {
       # points at the check rather than at the element.
       environment = compact([for e in local.backend_container_env : try(e.name, "")])
       secrets     = [for s in local.backend_container_secrets : s.name]
+
+      extra_env_names = [for e in local.backend_extra_env : e.name]
+      known_secrets = concat(
+        [{ name = "ENV", origin = "/${var.env}/${var.project}/backend/env" }],
+        local.backend_extra_secret_origins,
+      )
+      discovered_secrets = [
+        for n in data.aws_ssm_parameters_by_path.backend.names : {
+          name = upper(reverse(split("/", n))[0]), origin = n
+        } if n != "/${var.env}/${var.project}/backend/env"
+      ]
     }
   }
 }

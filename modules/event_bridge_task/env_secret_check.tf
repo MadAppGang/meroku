@@ -55,6 +55,19 @@ module "task_env_secret_check" {
 
       environment = [for e in local.container_environment : e.name]
       secrets     = [for s in local.container_secrets : s.name]
+
+      # The same names split by when they are known; see
+      # ../env_secret_check/split.tf.
+      extra_env_names = [for e in var.extra_env : e.name]
+      known_secrets = concat(
+        [{ name = "ENV", origin = aws_ssm_parameter.task_env.name }],
+        local.extra_secret_origins,
+      )
+      discovered_secrets = [
+        for n in data.aws_ssm_parameters_by_path.task.names : {
+          name = upper(reverse(split("/", n))[0]), origin = n
+        } if n != aws_ssm_parameter.task_env.name
+      ]
     }
   }
 }

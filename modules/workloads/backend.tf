@@ -412,9 +412,17 @@ resource "aws_ecs_task_definition" "backend" {
   # what the collision is and how a project acquires one without editing
   # anything.
   lifecycle {
+    # Two halves, so the one that can always be decided at plan never waits
+    # for the one that may not be: ENV and vault collisions are refused at plan,
+    # own-path collisions as soon as the own-path read is known.
     precondition {
-      condition     = module.backend_env_secret_check.valid["backend"]
-      error_message = module.backend_env_secret_check.message["backend"]
+      condition     = module.backend_env_secret_check.valid_known["backend"]
+      error_message = module.backend_env_secret_check.message_known["backend"]
+    }
+
+    precondition {
+      condition     = module.backend_env_secret_check.valid_discovered["backend"]
+      error_message = module.backend_env_secret_check.message_discovered["backend"]
     }
   }
 }

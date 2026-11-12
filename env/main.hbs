@@ -1095,7 +1095,9 @@ locals {
   workload_extra_env = { for name in keys(local.workload_roles) : name => concat(
     module.data_bucket.environment[name],
   ) }
-  workload_extra_secrets = { for name in keys(local.workload_roles) : name => [] }
+  workload_extra_secrets = { for name in keys(local.workload_roles) : name => concat(
+    module.vaults.secrets[name],
+  ) }
 }
 
 # The private data bucket: a folder per workload, plus the shared folders listed
@@ -1110,6 +1112,17 @@ module "data_bucket" {
   own_backend_bucket_env = {{{hclArray _data_bucket_own_backend_bucket_env}}}
   backend_bucket_name    = module.workloads.backend_bucket_name
   backend_bucket_arn     = module.workloads.backend_bucket_arn
+}
+
+# Shared SSM vaults, /{{env}}/{{project}}/vault/<name>/: every parameter of a
+# connected vault becomes a secret of the workload. See ai_docs/VAULTS.md.
+module "vaults" {
+  source  = "{{modules}}/vaults"
+  project = "{{project}}"
+  env     = "{{env}}"
+
+  workloads   = local.workload_roles
+  connections = {{{hclArray _vault_connections}}}
 }
 
 

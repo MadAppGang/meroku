@@ -27,6 +27,7 @@ import {
 	Siren,
 	Timer,
 	Users,
+	Vault,
 	Workflow,
 	Zap,
 } from "lucide-react";
@@ -95,6 +96,7 @@ const serviceIcons = {
 	appsync: Network,
 	"custom-terraform": FileCode,
 	cloudfront: Cloud,
+	vaults: Vault,
 };
 
 const serviceColors = {
@@ -141,6 +143,8 @@ const serviceColors = {
 	appsync: "bg-purple-600",
 	"custom-terraform": "bg-blue-600",
 	cloudfront: "bg-orange-600",
+	// The Parameter Store node's colour: a vault is a path in Parameter Store.
+	vaults: "bg-red-500",
 };
 
 export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {

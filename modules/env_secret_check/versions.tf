@@ -8,8 +8,9 @@
 # possible — see tests/messages.tftest.hcl for what that blind spot cost once
 # already (v4.2.0, four releases).
 #
-# The floor matches env/main.hbs, the root every caller of this module is
-# planned from, so raising it asks no environment for a newer Terraform.
+# variables.tf uses optional() object attributes, which need 1.3. The floor
+# matches env/main.hbs, the root every caller of this module is planned from,
+# so it asks no environment for a newer Terraform.
 terraform {
   required_version = ">= 1.10.0"
 }

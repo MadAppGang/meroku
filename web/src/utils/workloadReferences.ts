@@ -1,4 +1,7 @@
-import type { YamlInfrastructureConfig } from "../types/yamlConfig";
+import type {
+	VaultConnection,
+	YamlInfrastructureConfig,
+} from "../types/yamlConfig";
 
 /**
  * Workload references across the config.
@@ -9,10 +12,25 @@ import type { YamlInfrastructureConfig } from "../types/yamlConfig";
  * the same save. Each field that can hold a reference has one rewriter below;
  * the delete and rename paths run all of them, so a new field is covered once its
  * rewriter is in the list.
+ *
+ * A vault is referenced the same way, by the workloads' `vaults[].name`, so
+ * deleting a vault runs the same rewriters. `mapName` takes the kind of name it
+ * is asked about; a rewriter that holds workload names never passes a kind, and
+ * the vault rewriter passes "vault", so deleting a vault named like a workload
+ * touches only vault references.
  */
 
 /** The name the backend has as a workload. */
 export const BACKEND_WORKLOAD_NAME = "backend";
+
+/** What a reference names. */
+export type ReferenceKind = "workload" | "vault";
+
+/**
+ * Maps a referenced name to its new name, or `null` to remove the reference.
+ * `kind` defaults to "workload".
+ */
+type NameMapper = (name: string, kind?: ReferenceKind) => string | null;
 
 /**
  * Given the current config and a mapping function, returns the updates that
@@ -21,7 +39,7 @@ export const BACKEND_WORKLOAD_NAME = "backend";
  */
 type ReferenceRewriter = (
 	config: YamlInfrastructureConfig,
-	mapName: (name: string) => string | null,
+	mapName: NameMapper,
 ) => Partial<YamlInfrastructureConfig>;
 
 function mapNames(
@@ -50,11 +68,72 @@ const dataBucketSharedReferences: ReferenceRewriter = (config, mapName) => {
 	return { data_bucket: { ...config.data_bucket, shared: rewritten } };
 };
 
-const REFERENCE_REWRITERS: ReferenceRewriter[] = [dataBucketSharedReferences];
+function mapVaultConnections(
+	connections: VaultConnection[] | undefined,
+	mapName: NameMapper,
+): VaultConnection[] | undefined {
+	if (!connections) return connections;
+	const out: VaultConnection[] = [];
+	for (const connection of connections) {
+		const mapped = mapName(connection.name, "vault");
+		if (mapped !== null) out.push({ ...connection, name: mapped });
+	}
+	// An emptied list is dropped, so the YAML keeps no `vaults: []`.
+	return out.length > 0 ? out : undefined;
+}
+
+function withMappedVaults<T extends { vaults?: VaultConnection[] }>(
+	item: T,
+	mapName: NameMapper,
+): T {
+	if (!item.vaults) return item;
+	return { ...item, vaults: mapVaultConnections(item.vaults, mapName) };
+}
+
+/**
+ * `workload.vaults[].name`, `services[].vaults[].name`,
+ * `scheduled_tasks[].vaults[].name` and `event_processor_tasks[].vaults[].name`.
+ */
+const vaultConnectionReferences: ReferenceRewriter = (config, mapName) => {
+	const updates: Partial<YamlInfrastructureConfig> = {};
+	const same = (a: unknown, b: unknown) =>
+		JSON.stringify(a) === JSON.stringify(b);
+
+	if (config.workload?.vaults) {
+		const vaults = mapVaultConnections(config.workload.vaults, mapName);
+		if (!same(vaults, config.workload.vaults)) {
+			updates.workload = { ...config.workload, vaults };
+		}
+	}
+	if (config.services) {
+		const services = config.services.map((s) => withMappedVaults(s, mapName));
+		if (!same(services, config.services)) updates.services = services;
+	}
+	if (config.scheduled_tasks) {
+		const tasks = config.scheduled_tasks.map((t) =>
+			withMappedVaults(t, mapName),
+		);
+		if (!same(tasks, config.scheduled_tasks)) updates.scheduled_tasks = tasks;
+	}
+	if (config.event_processor_tasks) {
+		const tasks = config.event_processor_tasks.map((t) =>
+			withMappedVaults(t, mapName),
+		);
+		if (!same(tasks, config.event_processor_tasks)) {
+			updates.event_processor_tasks = tasks;
+		}
+	}
+	return updates;
+};
+
+const REFERENCE_REWRITERS: ReferenceRewriter[] = [
+	dataBucketSharedReferences,
+	vaultConnectionReferences,
+];
 
 function rewriteReferences(
 	config: YamlInfrastructureConfig,
-	mapName: (name: string) => string | null,
+	mapName: NameMapper,
 ): Partial<YamlInfrastructureConfig> {
 	let updates: Partial<YamlInfrastructureConfig> = {};
 	for (const rewrite of REFERENCE_REWRITERS) {
@@ -68,7 +147,9 @@ export function removeWorkloadReferences(
 	config: YamlInfrastructureConfig,
 	name: string,
 ): Partial<YamlInfrastructureConfig> {
-	return rewriteReferences(config, (n) => (n === name ? null : n));
+	return rewriteReferences(config, (n, kind = "workload") =>
+		kind === "workload" && n === name ? null : n,
+	);
 }
 
 /** The updates that point every reference to `from` at `to` instead. */
@@ -77,7 +158,19 @@ export function renameWorkloadReferences(
 	from: string,
 	to: string,
 ): Partial<YamlInfrastructureConfig> {
-	return rewriteReferences(config, (n) => (n === from ? to : n));
+	return rewriteReferences(config, (n, kind = "workload") =>
+		kind === "workload" && n === from ? to : n,
+	);
+}
+
+/** The updates that remove every workload's connection to a deleted vault. */
+export function removeVaultReferences(
+	config: YamlInfrastructureConfig,
+	name: string,
+): Partial<YamlInfrastructureConfig> {
+	return rewriteReferences(config, (n, kind = "workload") =>
+		kind === "vault" && n === name ? null : n,
+	);
 }
 
 /**
