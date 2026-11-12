@@ -686,6 +686,23 @@ export interface YamlInfrastructureConfig {
 
 	// GitHub Actions runners on CodeBuild
 	github_runners?: GitHubRunnersConfig;
+
+	// Shared folders of the private data bucket. The bucket always exists.
+	data_bucket?: DataBucketConfig;
+}
+
+/**
+ * One shared folder of the data bucket, `shared/<name>/`, and the workloads
+ * (`backend` or a service or task name) that may use it.
+ */
+export interface DataBucketSharedFolder {
+	name: string;
+	read_write?: string[];
+	read?: string[];
+}
+
+export interface DataBucketConfig {
+	shared?: DataBucketSharedFolder[];
 }
 
 /**

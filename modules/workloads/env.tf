@@ -98,5 +98,6 @@ locals {
   # these names against the discovered secret names and must compare the ones
   # ECS will compare, and a second copy of the expression is a copy that can
   # drift into reporting success on the config that fails.
-  backend_container_env = concat(local.backend_env, var.backend_env)
+  # The extras from the capability modules (workload_contract.tf) come last.
+  backend_container_env = concat(local.backend_env, var.backend_env, local.backend_extra_env)
 }

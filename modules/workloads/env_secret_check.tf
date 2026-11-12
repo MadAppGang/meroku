@@ -54,7 +54,7 @@ module "service_env_secret_check" {
     defaults_source = "modules/workloads/env_services.tf"
 
     environment = [for e in local.services_container_env[k] : e.name]
-    secrets     = [for s in local.services_env_ssm[k] : s.name]
+    secrets     = [for s in local.services_container_secrets[k] : s.name]
   } }
 }
 
@@ -77,7 +77,7 @@ module "backend_env_secret_check" {
       # ECS will say so; it must not turn this check into a plan-time crash that
       # points at the check rather than at the element.
       environment = compact([for e in local.backend_container_env : try(e.name, "")])
-      secrets     = [for s in local.backend_env_ssm : s.name]
+      secrets     = [for s in local.backend_container_secrets : s.name]
     }
   }
 }

@@ -95,6 +95,7 @@ locals {
         { name = "SERVICE_INTERNAL_URL", value = local.services_internal_domain[service_name] },
         { name = "SERVICE_NAME", value = service_name },
       ],
+      local.services_extra_env[service_name],
     )
   }
 

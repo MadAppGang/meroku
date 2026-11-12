@@ -85,6 +85,23 @@ type Env struct {
 	// Neon (schema v32) is a Neon Postgres project and the databases on its
 	// default branch. nil renders nothing; see ai_docs/NEON.md.
 	Neon *Neon `yaml:"neon,omitempty"`
+	// DataBucket lists the shared folders of the private data bucket. The
+	// bucket itself always exists; a pointer so an environment without the
+	// block saves without one. See ai_docs/DATA_BUCKET.md.
+	DataBucket *DataBucket `yaml:"data_bucket,omitempty"`
+}
+
+// DataBucket is the optional data_bucket block.
+type DataBucket struct {
+	Shared []DataBucketShared `yaml:"shared,omitempty"`
+}
+
+// DataBucketShared is one shared folder, shared/<name>/ in the data bucket, and
+// the workloads that may use it.
+type DataBucketShared struct {
+	Name      string   `yaml:"name"`
+	ReadWrite []string `yaml:"read_write,omitempty"`
+	Read      []string `yaml:"read,omitempty"`
 }
 
 // Neon is the env's top-level `neon:` block. A Neon project is the trust zone:

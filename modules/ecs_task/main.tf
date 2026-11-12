@@ -119,9 +119,9 @@ resource "aws_ecs_task_definition" "task" {
       cpu         = var.cpu
       memory      = var.memory
       image       = local.docker_image
-      secrets     = local.task_env_ssm
+      secrets     = local.container_secrets
       essential   = true
-      environment = local.environment_variables
+      environment = local.container_environment
 
       logConfiguration = {
         logDriver = "awslogs"

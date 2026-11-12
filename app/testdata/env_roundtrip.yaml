@@ -243,3 +243,11 @@ amplify_apps:
   - source: /old-pricing
     target: /pricing
     status: "301"
+data_bucket:
+  shared:
+  - name: uploads
+    read_write:
+    - service1
+    - backend
+    read:
+    - cleanup

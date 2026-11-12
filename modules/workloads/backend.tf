@@ -353,7 +353,7 @@ resource "aws_ecs_task_definition" "backend" {
       cpu     = local.backend_pool == null ? max(var.backend_cpu, 256) : var.backend_cpu
       memory  = local.backend_pool == null ? max(var.backend_memory, 512) : var.backend_memory
       image   = local.docker_image
-      secrets = local.backend_env_ssm
+      secrets = local.backend_container_secrets
 
       # Assembled in env.tf, not here, so that the precondition below compares
       # the list this argument actually carries. Byte-identical to the inline

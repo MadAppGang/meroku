@@ -478,7 +478,7 @@ resource "aws_ecs_task_definition" "services" {
       // 1. from SSM
       // 2. from env_files_s3
       // 3. from env_vars variable
-      secrets = local.services_env_ssm[each.key]
+      secrets = local.services_container_secrets[each.key]
 
       # Assembled in env_services.tf, not here, so that the precondition below
       # compares the list this argument actually carries. Byte-identical to the
@@ -731,14 +731,6 @@ resource "aws_iam_role_policy_attachment" "services_task_cloudwatch" {
 
   role       = aws_iam_role.services_task[each.key].name
   policy_arn = "arn:aws:iam::aws:policy/CloudWatchFullAccess"
-}
-
-# S3 bucket access
-resource "aws_iam_role_policy_attachment" "service_task_bucket" {
-  for_each = local.service_names
-
-  role       = aws_iam_role.services_task_execution[each.key].name
-  policy_arn = aws_iam_policy.full_access_to_backend_bucket.arn
 }
 
 # SES access for all services. On the task role, not the execution role: the

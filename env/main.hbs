@@ -831,6 +831,9 @@ module "workloads" {
   # that writes it.
   ssm_dependencies = module.neon_ssm.dependency_tokens
 {{/if}}
+  # Variables and secrets the capability modules add per workload (local.workload_extra_env).
+  extra_env     = local.workload_extra_env
+  extra_secrets = local.workload_extra_secrets
 }
 {{#if neon_render}}
 
@@ -1001,6 +1004,8 @@ module "schedule_task_{{name}}" {
   {{#if environment_variables}}
   custom_env_vars = {{{ envArray environment_variables }}}
   {{/if}}
+  extra_env     = local.workload_extra_env["{{name}}"]
+  extra_secrets = local.workload_extra_secrets["{{name}}"]
 }
 {{/each}}
 {{#each event_processor_tasks}}
@@ -1064,8 +1069,48 @@ module "event_bus_task_{{name}}" {
   {{#if environment_variables}}
   custom_env_vars = {{{ envArray environment_variables }}}
   {{/if}}
+  extra_env     = local.workload_extra_env["{{name}}"]
+  extra_secrets = local.workload_extra_secrets["{{name}}"]
 }
 {{/each}}
+
+# Every workload of the environment, keyed by name, with the role names, security
+# group, SSM path and event source the capability modules grant against. Names are
+# unique across all kinds (app/workload_names.go), so the merge never overwrites.
+locals {
+  workload_roles = merge(
+    { backend = module.workloads.backend_workload },
+    module.workloads.service_workloads,
+    {
+{{#each scheduled_tasks}}
+      "{{name}}" = module.schedule_task_{{name}}.workload
+{{/each}}
+{{#each event_processor_tasks}}
+      "{{name}}" = module.event_bus_task_{{name}}.workload
+{{/each}}
+    },
+  )
+
+  # What each workload's container gets on top of its own variables and secrets.
+  workload_extra_env = { for name in keys(local.workload_roles) : name => concat(
+    module.data_bucket.environment[name],
+  ) }
+  workload_extra_secrets = { for name in keys(local.workload_roles) : name => [] }
+}
+
+# The private data bucket: a folder per workload, plus the shared folders listed
+# under data_bucket.shared. See ai_docs/DATA_BUCKET.md.
+module "data_bucket" {
+  source  = "{{modules}}/data_bucket"
+  project = "{{project}}"
+  env     = "{{env}}"
+
+  workloads              = local.workload_roles
+  shared                 = {{{hclArray _data_bucket_shared}}}
+  own_backend_bucket_env = {{{hclArray _data_bucket_own_backend_bucket_env}}}
+  backend_bucket_name    = module.workloads.backend_bucket_name
+  backend_bucket_arn     = module.workloads.backend_bucket_arn
+}
 
 
 # Email domain configuration (Schema v17: Multi-domain support)

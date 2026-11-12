@@ -300,6 +300,14 @@ jobs:
           terraform test
         working-directory: modules/github_runners
 
+      # The private data bucket, under mock_provider: the bucket settings and the
+      # exact per-workload policy each task role gets.
+      - name: Test the data bucket module
+        run: |
+          terraform init -backend=false -input=false
+          terraform test
+        working-directory: modules/data_bucket
+
       # Every module that consumes modules/naming. Validation was scoped to
       # modules/workloads when it was the only module with a module block; a
       # naming.tf that references a request key nothing declares is a plan-time
@@ -307,7 +315,7 @@ jobs:
       - name: Validate the naming consumers
         run: |
           set -e
-          for m in alb s3 postgres sqs ecs_task event_bridge_task appsync dns-root github_runners; do
+          for m in alb s3 postgres sqs ecs_task event_bridge_task appsync dns-root github_runners data_bucket; do
             echo "==> modules/$m"
             terraform -chdir="modules/$m" init -backend=false -input=false
             terraform -chdir="modules/$m" validate
