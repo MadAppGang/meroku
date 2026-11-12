@@ -38,6 +38,52 @@ resource "aws_iam_role_policy_attachment" "task_execution" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
+# EventBridge launches this task, and it launches it as the execution role:
+# aws_cloudwatch_event_target.target (main.tf) passes
+# role_arn = aws_iam_role.task_execution.arn. The managed policy attached above
+# carries image pull, log writes and SSM reads — neither ecs:RunTask nor
+# iam:PassRole — so without this grant the rule exists, matches every event, and
+# starts nothing.
+#
+# Inline rather than managed: an inline policy's name is scoped to its role, so
+# unlike the account-global aws_iam_policy names in this file it cannot collide
+# with modules/ecs_task when one task name is used for both kinds of task.
+#
+# RunTask is granted on the task definition's family with a ":*" revision
+# suffix, so registering a new revision — which every deploy does — needs no new
+# grant, and the ecs:cluster condition keeps it to the cluster these rules
+# target. PassRole covers both roles because ECS is handed both when it starts
+# the task, and iam:PassedToService confines it to handing them to ECS.
+resource "aws_iam_role_policy" "event_task_launch" {
+  name = "EventTaskLaunch_${var.project}_${var.task}_${var.env}"
+  role = aws_iam_role.task_execution.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["ecs:RunTask"]
+        Resource = ["${aws_ecs_task_definition.task.arn_without_revision}:*"]
+        Condition = {
+          ArnEquals = {
+            "ecs:cluster" = [var.cluster]
+          }
+        }
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["iam:PassRole"]
+        Resource = [aws_iam_role.task.arn, aws_iam_role.task_execution.arn]
+        Condition = {
+          StringEquals = {
+            "iam:PassedToService" = ["ecs-tasks.amazonaws.com"]
+          }
+        }
+      },
+    ]
+  })
+}
 
 data "aws_iam_policy_document" "ecs_tasks_assume_role" {
   statement {
@@ -63,6 +109,16 @@ data "aws_iam_policy_document" "ecs_tasks_assume_role" {
 // SSM IAM access policy
 resource "aws_iam_role_policy_attachment" "ssm_parameter_access" {
   role       = aws_iam_role.task.name
+  policy_arn = aws_iam_policy.ssm_parameter_access.arn
+}
+
+# The same policy on the execution role, because ECS resolves every entry in the
+# container's `secrets` AS THE EXECUTION ROLE — while it assembles the container
+# definition, before any of the task's own code runs. The attachment above
+# covers the container reading parameters itself; without this one the task
+# stops with "unable to pull secrets or registry auth: access denied".
+resource "aws_iam_role_policy_attachment" "ssm_parameter_access_task_execution" {
+  role       = aws_iam_role.task_execution.name
   policy_arn = aws_iam_policy.ssm_parameter_access.arn
 }
 
@@ -161,7 +217,10 @@ resource "aws_iam_policy" "ssm_parameter_access" {
 
 data "aws_iam_policy_document" "ssm_parameter_access" {
   statement {
-    actions   = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
-    resources = ["arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:/${var.env}/${var.project}/task/${var.task}/*"]
+    actions = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
+    # `parameter` is the resource-type segment of an SSM parameter ARN. Without
+    # it the ARN denotes nothing SSM has, the statement matches no parameter in
+    # the account, and IAM still accepts the policy.
+    resources = ["arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.env}/${var.project}/task/${var.task}/*"]
   }
 }
