@@ -43,11 +43,14 @@ data "aws_ssm_parameters_by_path" "backend" {
 
 
 locals {
-  # Parameters named in ssm_exclude_names are deleted in this same apply; the
-  # by-path read still lists them, and a secret pointing at a deleted parameter
-  # would stop the task from starting.
+  # The /env parameter's name is a configured value, so ENV is in the list
+  # whatever the read returns. Discovered names come first, so where /env is
+  # already discovered the list is unchanged. Parameters named in
+  # ssm_exclude_names are deleted in this same apply; the by-path read still
+  # lists them, and a secret pointing at a deleted parameter would stop the
+  # task from starting.
   backend_ssm_names = [
-    for n in data.aws_ssm_parameters_by_path.backend.names : n
+    for n in distinct(concat(data.aws_ssm_parameters_by_path.backend.names, [aws_ssm_parameter.backend_env.name])) : n
     if !contains(var.ssm_exclude_names, n)
   ]
 
