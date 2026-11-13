@@ -1454,8 +1454,14 @@ module "amplify" {
   {{#if domain.domain_name}}
   base_domain = "{{domain.domain_name}}"
   {{/if}}
+  {{!-- The same rule as module "domain": a delegated subdomain (root_zone_id)
+        is always <env>.<domain>, whatever add_env_domain_prefix says. --}}
+  {{#if domain.root_zone_id}}
+  add_env_domain_prefix = true
+  {{else}}
   {{#if (exists domain.add_env_domain_prefix)}}
   add_env_domain_prefix = {{domain.add_env_domain_prefix}}
+  {{/if}}
   {{/if}}
 
   # Route53 zone ID for creating DNS records (ACM validation + subdomain CNAME)
@@ -1492,7 +1498,7 @@ module "amplify" {
           {{#if environment_variables}}
           environment_variables = {
             {{#each (sortedPairs environment_variables)}}
-            {{key}} = "{{value}}"{{#unless @last}},{{/unless}}
+            {{key}} = {{{hclString value}}}{{#unless @last}},{{/unless}}
             {{/each}}
           }
           {{/if}}
@@ -1512,7 +1518,7 @@ module "amplify" {
       {{#if environment_variables}}
       environment_variables = {
         {{#each (sortedPairs environment_variables)}}
-        {{hclString key}} = {{hclString value}}
+        {{{hclString key}}} = {{{hclString value}}}
         {{/each}}
       }
       {{/if}}
@@ -1522,14 +1528,14 @@ module "amplify" {
       custom_rules = [
         {{#each custom_rules}}
         {
-          source = {{hclString source}}
+          source = {{{hclString source}}}
           {{#if _workload_rule}}
-          workload    = {{hclString workload}}
-          target_path = {{hclString _target_path}}
+          workload    = {{{hclString workload}}}
+          target_path = {{{hclString _target_path}}}
           {{else}}
-          target = {{hclString target}}
+          target = {{{hclString target}}}
           {{/if}}
-          status = {{hclString status}}
+          status = {{{hclString status}}}
         }{{#unless @last}},{{/unless}}
         {{/each}}
       ]
@@ -1544,7 +1550,7 @@ module "amplify" {
   {{#if _amplify_workload_urls}}
   workload_urls = {
     {{#each _amplify_workload_urls}}
-    {{hclString name}} = "{{#if @root._amplify_base_via_domain}}https://${module.domain.api_domain_name}{{else}}${module.workloads.api_gateway_endpoint}{{/if}}{{path}}"
+    {{{hclString name}}} = "{{#if @root._amplify_base_via_domain}}https://${module.domain.api_domain_name}{{else}}${module.workloads.api_gateway_endpoint}{{/if}}{{path}}"
     {{/each}}
   }
   {{/if}}

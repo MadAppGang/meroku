@@ -572,11 +572,11 @@ func preprocessEnvMap(envMap map[string]interface{}) error {
 	if err := validateGitHubRunnersConfigMap(envMap); err != nil {
 		return err
 	}
-	if err := prepareAmplifyRewriteRules(envMap); err != nil {
+	// Names first: the validators after it resolve references against them.
+	if err := validateWorkloadNamesConfigMap(envMap); err != nil {
 		return err
 	}
-	// Names first: the two after it resolve references against them.
-	if err := validateWorkloadNamesConfigMap(envMap); err != nil {
+	if err := prepareAmplifyRewriteRules(envMap); err != nil {
 		return err
 	}
 	// Before the reserved-env check, which reads the consumers it records.
@@ -755,7 +755,10 @@ func filterDisabledItems(envMap map[string]interface{}, key string) {
 
 	filtered := make([]interface{}, 0, len(items))
 	for _, item := range items {
-		itemMap, ok := item.(map[string]interface{})
+		// Either map type: yaml.v2 decodes a list item as
+		// map[interface{}]interface{}, and a switched-off workload must be left
+		// out whichever loader produced it.
+		itemMap, ok := computeNodeMap(item)
 		if !ok {
 			filtered = append(filtered, item)
 			continue

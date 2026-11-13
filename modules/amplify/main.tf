@@ -10,7 +10,9 @@ locals {
       # If custom_domain is set, use it directly (manual override)
       app.custom_domain != null && app.custom_domain != ""
       ? app.custom_domain
-      # If subdomain_prefix is set, auto-construct domain
+      # If subdomain_prefix is set, auto-construct domain. add_env_domain_prefix
+      # is true for a delegated subdomain (the env's zone is <env>.<base_domain>),
+      # which env/main.hbs passes whenever domain.root_zone_id is set.
       : app.subdomain_prefix != null && app.subdomain_prefix != "" && var.base_domain != ""
       ? (var.add_env_domain_prefix
         ? "${app.subdomain_prefix}.${var.env}.${var.base_domain}" # e.g., app.dev.example.com
