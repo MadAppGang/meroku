@@ -1580,31 +1580,9 @@ func backupFile(filepath string) error {
 func loadEnvWithMigration(name string) (Env, error) {
 	var e Env
 
-	// Try loading from multiple possible paths
-	possiblePaths := []string{
-		name + ".yaml",
-		"project/" + name + ".yaml",
-		"../../project/" + name + ".yaml",
-		"../" + name + ".yaml",
-	}
-
-	var yamlPath string
-	var data []byte
-	var lastErr error
-
-	for _, path := range possiblePaths {
-		var err error
-		data, err = os.ReadFile(path)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		yamlPath = path
-		break
-	}
-
-	if yamlPath == "" {
-		return e, fmt.Errorf("error reading YAML file from any location: %v", lastErr)
+	yamlPath, data, err := readEnvYAML(name)
+	if err != nil {
+		return e, err
 	}
 
 	// First unmarshal to map to detect version
@@ -1654,6 +1632,59 @@ func loadEnvWithMigration(name string) (Env, error) {
 		return e, fmt.Errorf("error unmarshaling YAML to Env struct: %v", err)
 	}
 
+	return e, nil
+}
+
+// readEnvYAML finds <name>.yaml in the places loadEnvWithMigration has always
+// looked, and returns its path and content.
+func readEnvYAML(name string) (string, []byte, error) {
+	possiblePaths := []string{
+		name + ".yaml",
+		"project/" + name + ".yaml",
+		"../../project/" + name + ".yaml",
+		"../" + name + ".yaml",
+	}
+
+	var lastErr error
+	for _, path := range possiblePaths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		return path, data, nil
+	}
+	return "", nil, fmt.Errorf("error reading YAML file from any location: %v", lastErr)
+}
+
+// loadEnvReadOnly loads an environment as loadEnvWithMigration does, but
+// migrates it in memory only: no backup and no write. It is for callers that
+// only read the config, such as a GET handler, which must not rewrite the
+// user's YAML as a side effect.
+func loadEnvReadOnly(name string) (Env, error) {
+	var e Env
+
+	_, data, err := readEnvYAML(name)
+	if err != nil {
+		return e, err
+	}
+
+	var dataMap map[string]interface{}
+	if err := yaml.Unmarshal(data, &dataMap); err != nil {
+		return e, fmt.Errorf("error unmarshaling YAML: %v", err)
+	}
+	if currentVersion := detectSchemaVersion(dataMap); currentVersion < CurrentSchemaVersion {
+		if err := applyMigrations(dataMap, currentVersion); err != nil {
+			return e, fmt.Errorf("migration failed: %w", err)
+		}
+		if data, err = yaml.Marshal(dataMap); err != nil {
+			return e, fmt.Errorf("error marshaling migrated data: %v", err)
+		}
+	}
+
+	if err := yaml.Unmarshal(data, &e); err != nil {
+		return e, fmt.Errorf("error unmarshaling YAML to Env struct: %v", err)
+	}
 	return e, nil
 }
 
