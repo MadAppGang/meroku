@@ -47,9 +47,9 @@ const MOCK_ROLES: IAMRole[] = [
 		policies: [
 			{
 				id: "p1",
-				name: "CloudWatchFullAccess",
-				type: "Managed",
-				accessLevel: "Full",
+				name: "cloudwatch",
+				type: "Inline",
+				accessLevel: "Write",
 			},
 			{
 				id: "p2",
