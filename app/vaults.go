@@ -161,11 +161,13 @@ func validateVaultsConfigMap(envMap map[string]interface{}) error {
 
 			access := vaultAccessRead
 			if rawAccess, has := entry["access"]; has && rawAccess != nil {
-				s, _ := rawAccess.(string)
-				switch s {
-				case vaultAccessRead, vaultAccessReadWrite:
+				// A non-string (a number, a list) is refused rather than read as
+				// the default, which would quietly downgrade read_write to read.
+				s, isString := rawAccess.(string)
+				switch {
+				case isString && (s == vaultAccessRead || s == vaultAccessReadWrite):
 					access = s
-				case "":
+				case isString && s == "":
 				default:
 					problems = append(problems, fmt.Sprintf(
 						"%s access %s: use read or read_write", where, formatYAMLValue(rawAccess)))

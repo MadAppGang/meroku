@@ -49,7 +49,17 @@ func validateValkeyConfigMap(envMap map[string]interface{}) error {
 	if !ok {
 		return fmt.Errorf("valkey must be a mapping with enabled, engine_version, max_storage_gb and access")
 	}
-	if enabled, _ := block["enabled"].(bool); !enabled {
+	// Absent or null means off. Any other value must be a boolean: a quoted
+	// "true" read as off would leave out, or remove, the cache the user asked for.
+	rawEnabled := block["enabled"]
+	if rawEnabled == nil {
+		return nil
+	}
+	enabled, isBool := rawEnabled.(bool)
+	if !isBool {
+		return fmt.Errorf("valkey.enabled is %s; use true or false, without quotes", formatYAMLValue(rawEnabled))
+	}
+	if !enabled {
 		return nil
 	}
 

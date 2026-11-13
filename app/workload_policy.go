@@ -46,8 +46,11 @@ type workloadPolicyOwner struct {
 // its test, variable or values, and two conditions in one statement with the
 // same test and variable (IAM keeps only one of them).
 //
-// Warnings, printed and not returned: an action of "*" or "*:*", which grants
-// every action on the listed resources.
+// Warnings, recorded with addGenerateWarning and not returned: an action of "*"
+// or "*:*", which grants every action on the listed resources.
+//
+// Every mapping is read through computeNodeMap, so a YAML decoded by yaml.v2
+// (map[interface{}]interface{}) is validated the same as a converted one.
 func validateWorkloadPolicyConfigMap(envMap map[string]interface{}) error {
 	var problems, warnings []string
 	for _, owner := range workloadPolicyOwners(envMap) {
@@ -57,7 +60,7 @@ func validateWorkloadPolicyConfigMap(envMap map[string]interface{}) error {
 	}
 
 	for _, w := range warnings {
-		fmt.Printf("⚠️  %s\n", w)
+		addGenerateWarning(envMap, w)
 	}
 	if len(problems) == 0 {
 		return nil
@@ -70,7 +73,7 @@ func validateWorkloadPolicyConfigMap(envMap map[string]interface{}) error {
 func workloadPolicyOwners(envMap map[string]interface{}) []workloadPolicyOwner {
 	var owners []workloadPolicyOwner
 
-	if workload, ok := envMap["workload"].(map[string]interface{}); ok {
+	if workload, ok := computeNodeMap(envMap["workload"]); ok {
 		if raw, exists := workload["policy"]; exists {
 			owners = append(owners, workloadPolicyOwner{subject: "workload", raw: raw})
 		}
@@ -82,7 +85,7 @@ func workloadPolicyOwners(envMap map[string]interface{}) []workloadPolicyOwner {
 			continue
 		}
 		for i, rawItem := range items {
-			item, ok := rawItem.(map[string]interface{})
+			item, ok := computeNodeMap(rawItem)
 			if !ok {
 				continue
 			}
@@ -116,7 +119,7 @@ func workloadPolicyProblems(subject string, raw interface{}) (problems, warnings
 
 	for i, rawStatement := range statements {
 		where := fmt.Sprintf("%s: policy[%d]", subject, i)
-		statement, ok := rawStatement.(map[string]interface{})
+		statement, ok := computeNodeMap(rawStatement)
 		if !ok {
 			problems = append(problems, fmt.Sprintf("%s must be a map with actions and resources", where))
 			continue
@@ -185,7 +188,7 @@ func workloadPolicyConditionProblems(where string, raw interface{}) []string {
 	seen := make(map[string]int, len(conditions))
 	for k, rawCondition := range conditions {
 		at := fmt.Sprintf("%s.conditions[%d]", where, k)
-		condition, ok := rawCondition.(map[string]interface{})
+		condition, ok := computeNodeMap(rawCondition)
 		if !ok {
 			problems = append(problems, fmt.Sprintf("%s must be a map with test, variable and values", at))
 			continue
@@ -243,7 +246,7 @@ func moveServicePoliciesOut(envMap map[string]interface{}) {
 	}
 	if services, ok := envMap["services"].([]interface{}); ok {
 		for _, raw := range services {
-			service, ok := raw.(map[string]interface{})
+			service, ok := computeNodeMap(raw)
 			if !ok {
 				continue
 			}
@@ -251,7 +254,14 @@ func moveServicePoliciesOut(envMap map[string]interface{}) {
 			if !exists {
 				continue
 			}
-			delete(service, "policy")
+			// Delete from the map stored in the list, whichever type it is;
+			// computeNodeMap returns a copy of a yaml.v2 map.
+			switch stored := raw.(type) {
+			case map[string]interface{}:
+				delete(stored, "policy")
+			case map[interface{}]interface{}:
+				delete(stored, "policy")
+			}
 			name, _ := service["name"].(string)
 			if statements, ok := policy.([]interface{}); ok && len(statements) > 0 && name != "" {
 				policies[name] = statements
