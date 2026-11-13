@@ -1,5 +1,23 @@
 # Changelog
 
+## v5.7.1
+
+### Neon
+- An existing database whose name has hyphens or upper case (`chekku-bridge-dev`) can be
+  used. A database meroku creates still takes lower-case letters, digits and underscores.
+- The Database tab lists the database's existing schemas to pick from, and still lets you
+  add a new one. It also shows the login role meroku creates for the service.
+- "Remove Neon" is now "Disconnect Neon": the project and its data stay in Neon.
+
+### Pricing
+- EC2 capacity pools are costed at the region's live on-demand prices, which meroku already
+  reads from AWS for the instance-type list. Before, only a dozen types had a price, at
+  us-east-1 rates, and any other type (`t3.small`) showed as unknown.
+
+### Web UI
+- Removed the per-service "API Gateway Custom Domain" switches. They wrote a setting
+  nothing reads, so they never changed anything.
+
 ## v5.7.0
 
 ### Neon Postgres
