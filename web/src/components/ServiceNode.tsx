@@ -140,14 +140,14 @@ const serviceColors = {
 	postgres: "bg-node-database",
 	neon: "bg-node-database",
 	sqs: "bg-yellow-600",
-	valkey: "bg-red-600",
+	valkey: "bg-node-cache",
 	efs: "bg-teal-600",
 	alb: "bg-pink-600",
 	appsync: "bg-purple-600",
 	"custom-terraform": "bg-blue-600",
 	cloudfront: "bg-orange-600",
-	// The Parameter Store node's colour: a vault is a path in Parameter Store.
-	vaults: "bg-red-500",
+	// Red like the Parameter Store node: a vault is a path in Parameter Store.
+	vaults: "bg-node-vault",
 };
 
 export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {

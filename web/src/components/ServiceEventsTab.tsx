@@ -205,13 +205,9 @@ export function ServiceEventsTab({
 						<Badge variant={busEnabled ? "default" : "secondary"}>
 							{busEnabled ? `Project bus ${busName}` : "Default bus"}
 						</Badge>
-						<Badge variant="outline" className="font-mono">
-							EVENT_SOURCE {source}
-						</Badge>
+						<Badge variant="code">EVENT_SOURCE {source}</Badge>
 						{subscribes.length > 0 && (
-							<Badge variant="outline" className="font-mono">
-								EVENT_QUEUE_URL
-							</Badge>
+							<Badge variant="code">EVENT_QUEUE_URL</Badge>
 						)}
 					</div>
 					{!busEnabled && (
@@ -246,7 +242,9 @@ export function ServiceEventsTab({
 									<TableHead>Source</TableHead>
 									<TableHead>Bus</TableHead>
 									<TableHead>Key</TableHead>
-									<TableHead />
+									<TableHead>
+										<span className="sr-only">Actions</span>
+									</TableHead>
 								</TableRow>
 							</TableHeader>
 							<TableBody>
@@ -257,16 +255,16 @@ export function ServiceEventsTab({
 											key={key || index}
 											data-testid={`subscription-${key}`}
 										>
-											<TableCell className="font-mono text-xs">
+											<TableCell variant="code">
 												{sub.detail_type ?? `${sub.detail_type_prefix}*`}
 											</TableCell>
-											<TableCell className="font-mono text-xs">
+											<TableCell variant="code">
 												{sub.source || "any"}
 											</TableCell>
-											<TableCell className="text-xs">
+											<TableCell variant="compact">
 												{resolvedBusLabel(sub.bus, busEnabled, busName)}
 											</TableCell>
-											<TableCell className="font-mono text-xs">{key}</TableCell>
+											<TableCell variant="code">{key}</TableCell>
 											<TableCell>
 												<Button
 													variant="ghost"
@@ -335,9 +333,7 @@ export function ServiceEventsTab({
 								Add
 							</Button>
 						</div>
-						{draftError && (
-							<p className="text-sm text-destructive">{draftError}</p>
-						)}
+						{draftError && <p className="text-sm text-danger">{draftError}</p>}
 						<p className="text-xs text-muted-foreground">
 							Events from AWS services are published to the default bus only.
 						</p>
@@ -396,9 +392,7 @@ export function ServiceEventsTab({
 											onBlur={commitQueue}
 										/>
 										{visibilityError && (
-											<p className="text-sm text-destructive">
-												{visibilityError}
-											</p>
+											<p className="text-sm text-danger">{visibilityError}</p>
 										)}
 									</div>
 									<div className="space-y-1">
@@ -415,9 +409,7 @@ export function ServiceEventsTab({
 											onBlur={commitQueue}
 										/>
 										{maxReceiveError && (
-											<p className="text-sm text-destructive">
-												{maxReceiveError}
-											</p>
+											<p className="text-sm text-danger">{maxReceiveError}</p>
 										)}
 									</div>
 								</div>

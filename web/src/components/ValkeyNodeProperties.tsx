@@ -121,7 +121,7 @@ export function ValkeyNodeProperties({
 				<CardContent>
 					<div className="flex items-center justify-between">
 						<div className="space-y-1">
-							<Label htmlFor={`${uid}-enabled`} className="text-base">
+							<Label htmlFor={`${uid}-enabled`} size="lg">
 								Enable Valkey
 							</Label>
 							<p className="text-sm text-muted-foreground">
@@ -177,9 +177,7 @@ export function ValkeyNodeProperties({
 									onChange={(e) => handleStorageChange(e.target.value.trim())}
 								/>
 								{currentStorageError ? (
-									<p className="text-sm text-destructive">
-										{currentStorageError}
-									</p>
+									<p className="text-sm text-danger">{currentStorageError}</p>
 								) : (
 									<p className="text-xs text-muted-foreground">
 										The most data the cache may hold. Writes past it fail;

@@ -134,7 +134,7 @@ export function WorkloadPolicyEditor({
 
 	const form = (
 		<Card data-testid="policy-statement-form">
-			<CardContent className="space-y-3 pt-6">
+			<CardContent inset="standalone" className="space-y-3">
 				<div className="space-y-1">
 					<Label htmlFor={`${uid}-effect`}>Effect</Label>
 					<Select
@@ -234,7 +234,7 @@ export function WorkloadPolicyEditor({
 							key={index}
 							data-testid="policy-statement"
 						>
-							<CardContent className="space-y-2 pt-6">
+							<CardContent inset="standalone" className="space-y-2">
 								<div className="flex items-center justify-between gap-2">
 									<div className="flex items-center gap-2">
 										<Badge

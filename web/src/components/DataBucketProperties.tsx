@@ -4,6 +4,7 @@ import type {
 	DataBucketSharedFolder,
 	YamlInfrastructureConfig,
 } from "../types/yamlConfig";
+import { dataBucketName } from "../utils/dataBucket";
 import {
 	unknownWorkloadNames,
 	workloadNames,
@@ -100,7 +101,7 @@ export function DataBucketProperties({
 	const workloads = workloadNames(config);
 	const newFolderError = sharedFolderNameError(newFolderName, shared);
 
-	const bucketName = `${config.project}-data-${config.env}-${config.account_id || "<account>"}`;
+	const bucketName = dataBucketName(config);
 
 	const saveShared = (next: DataBucketSharedFolder[]) => {
 		onConfigChange({ data_bucket: { shared: next } });
@@ -186,7 +187,7 @@ export function DataBucketProperties({
 							{workloads.map((name) => (
 								<TableRow key={name}>
 									<TableCell>{name}</TableCell>
-									<TableCell className="font-mono">{name}/</TableCell>
+									<TableCell variant="code">{name}/</TableCell>
 								</TableRow>
 							))}
 						</TableBody>
@@ -222,10 +223,10 @@ export function DataBucketProperties({
 								<CardHeader>
 									<div className="flex items-center justify-between gap-2">
 										<div>
-											<CardTitle className="font-mono text-sm">
+											<CardTitle variant="code">
 												shared/{folder.name}/
 											</CardTitle>
-											<CardDescription className="font-mono">
+											<CardDescription variant="code">
 												{sharedEnvName(folder.name)}
 											</CardDescription>
 										</div>
@@ -326,7 +327,7 @@ export function DataBucketProperties({
 							</Button>
 						</div>
 						{newFolderError && (
-							<p className="text-sm text-destructive">{newFolderError}</p>
+							<p className="text-sm text-danger">{newFolderError}</p>
 						)}
 					</div>
 				</CardContent>

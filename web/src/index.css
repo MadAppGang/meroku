@@ -24,6 +24,13 @@
 		--danger: 0 84.2% 60.2%;
 		/* Canvas node fill for database components (Postgres, Neon): #4f46e5. */
 		--node-database: 243.4 75.4% 58.6%;
+		/* Caution text: #f59e0b on the dark card, about 8.6:1. */
+		--warning: 37.7 92.1% 50.2%;
+		/* Success text and borders: #10b981 on the dark card, about 7.4:1. */
+		--success: 160.1 84.1% 39.4%;
+		/* Canvas node accents behind a white icon. */
+		--node-cache: 0 72.2% 50.6%;
+		--node-vault: 0 84.2% 60.2%;
 		--border: 0 0% 14.9%;
 		--input: 0 0% 14.9%;
 		--ring: 0 0% 83.1%;
@@ -40,6 +47,10 @@
 	.light,
 	[data-theme="light"] {
 		--danger: 0 73.7% 41.8%;
+		/* #b45309, about 5:1 on white. */
+		--warning: 26 90.5% 37.1%;
+		/* #047857, about 5.5:1 on white. */
+		--success: 163.1 93.5% 24.3%;
 	}
 }
 
