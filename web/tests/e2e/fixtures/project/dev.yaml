@@ -1,4 +1,4 @@
-schema_version: 31
+schema_version: 32
 project: myapp
 env: dev
 is_prod: false
