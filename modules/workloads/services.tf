@@ -734,13 +734,6 @@ resource "aws_iam_role_policy_attachment" "services_task_execution" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
-resource "aws_iam_role_policy_attachment" "services_task_cloudwatch" {
-  for_each = local.service_names
-
-  role       = aws_iam_role.services_task[each.key].name
-  policy_arn = "arn:aws:iam::aws:policy/CloudWatchFullAccess"
-}
-
 # SES access for all services. On the task role, not the execution role: the
 # container's own code calls SES, and the execution role is ECS's — it pulls the
 # image, writes logs and reads SSM, and never sends an email.

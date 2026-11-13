@@ -807,11 +807,6 @@ resource "aws_iam_role_policy_attachment" "backend_task_execution_cloudwatch" {
   policy_arn = "arn:aws:iam::aws:policy/CloudWatchFullAccess"
 }
 
-resource "aws_iam_role_policy_attachment" "backend_task_cloudwatch" {
-  role       = aws_iam_role.backend_task.name
-  policy_arn = "arn:aws:iam::aws:policy/CloudWatchFullAccess"
-}
-
 resource "aws_iam_role_policy_attachment" "backend_task_backend_bucket" {
   role       = aws_iam_role.backend_task.name
   policy_arn = aws_iam_policy.full_access_to_backend_bucket.arn

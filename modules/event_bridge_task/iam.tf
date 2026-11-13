@@ -14,9 +14,30 @@ resource "aws_iam_role" "task" {
   }
 }
 
-resource "aws_iam_role_policy_attachment" "task_cloudwatch" {
-  role       = aws_iam_role.task.name
-  policy_arn = "arn:aws:iam::aws:policy/CloudWatchFullAccess"
+# What the task's container may do in CloudWatch: publish custom metrics and
+# write to its own log group. In place of the AWS-managed CloudWatchFullAccess,
+# which also carries events:* and so would let the task call PutEvents on any
+# bus whatever its events.produces says (modules/events).
+resource "aws_iam_role_policy" "task_cloudwatch" {
+  name = "cloudwatch"
+  role = aws_iam_role.task.name
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "PutMetrics"
+        Effect   = "Allow"
+        Action   = ["cloudwatch:PutMetricData"]
+        Resource = "*"
+      },
+      {
+        Sid      = "OwnLogs"
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogStream", "logs:PutLogEvents", "logs:DescribeLogStreams"]
+        Resource = [aws_cloudwatch_log_group.task.arn, "${aws_cloudwatch_log_group.task.arn}:*"]
+      },
+    ]
+  })
 }
 
 resource "aws_iam_role" "task_execution" {
