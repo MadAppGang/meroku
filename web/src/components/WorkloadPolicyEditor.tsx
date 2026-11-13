@@ -160,7 +160,8 @@ export function WorkloadPolicyEditor({
 						value={draft.actions}
 						onChange={(e) => setDraft({ ...draft, actions: e.target.value })}
 						aria-invalid={draft.actions !== "" && draftActions.length === 0}
-						className="h-24 font-mono"
+						variant="code"
+						className="h-24"
 					/>
 				</div>
 				<div className="space-y-1">
@@ -171,7 +172,8 @@ export function WorkloadPolicyEditor({
 						value={draft.resources}
 						onChange={(e) => setDraft({ ...draft, resources: e.target.value })}
 						aria-invalid={draft.resources !== "" && draftResources.length === 0}
-						className="h-24 font-mono"
+						variant="code"
+						className="h-24"
 					/>
 				</div>
 				{!draftValid && (
@@ -274,11 +276,7 @@ export function WorkloadPolicyEditor({
 								</div>
 								<div className="flex flex-wrap gap-1">
 									{statement.actions.map((action) => (
-										<Badge
-											key={action}
-											variant="secondary"
-											className="font-mono"
-										>
+										<Badge key={action} variant="code">
 											{action}
 										</Badge>
 									))}
