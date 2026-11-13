@@ -318,79 +318,6 @@ export function Route53NodeProperties({
 									</div>
 								)}
 
-							{/* Per-Service API Domain Configuration */}
-							{config.services && config.services.length > 0 && (
-								<div className="space-y-3 mt-4 p-4 bg-gray-900/50 border border-gray-700 rounded-lg">
-									<h4 className="text-sm font-medium text-gray-300">
-										Additional Services API Domains
-									</h4>
-									{config.services.map((service, index) => (
-										<div key={service.name} className="space-y-2">
-											<div className="flex items-center justify-between">
-												<div className="flex-1">
-													<Label htmlFor={`create-api-domain-${service.name}`}>
-														{service.name}
-													</Label>
-													<p className="text-xs text-gray-500 mt-1">
-														API Gateway custom domain for this service
-													</p>
-												</div>
-												<Switch
-													id={`create-api-domain-${service.name}`}
-													checked={
-														service.api_domain_prefix !== undefined &&
-														service.api_domain_prefix !== null &&
-														service.api_domain_prefix !== ""
-													}
-													onCheckedChange={(checked) => {
-														const updatedServices = [
-															...(config.services || []),
-														];
-														updatedServices[index] = {
-															...service,
-															api_domain_prefix: checked ? service.name : "",
-														};
-														onConfigChange({ services: updatedServices });
-													}}
-												/>
-											</div>
-
-											{service.api_domain_prefix &&
-												service.api_domain_prefix !== "" && (
-													<div className="space-y-2 ml-4">
-														<Label htmlFor={`api-prefix-${service.name}`}>
-															API Domain Prefix
-														</Label>
-														<Input
-															id={`api-prefix-${service.name}`}
-															value={service.api_domain_prefix}
-															onChange={(
-																e: React.ChangeEvent<HTMLInputElement>,
-															) => {
-																const updatedServices = [
-																	...(config.services || []),
-																];
-																updatedServices[index] = {
-																	...service,
-																	api_domain_prefix:
-																		e.target.value || service.name,
-																};
-																onConfigChange({ services: updatedServices });
-															}}
-															placeholder={service.name}
-															className="bg-gray-800 border-gray-600 text-white"
-														/>
-														<p className="text-xs text-gray-400">
-															Subdomain prefix for this service (default:{" "}
-															{service.name})
-														</p>
-													</div>
-												)}
-										</div>
-									))}
-								</div>
-							)}
-
 							{/* Domain Preview */}
 							{domainName && (
 								<div className="bg-blue-900/20 border border-blue-700 rounded-lg p-4">
@@ -445,45 +372,6 @@ export function Route53NodeProperties({
 															</span>
 														</div>
 													)}
-
-													{/* Additional Services */}
-													{config.services
-														?.filter(
-															(s) =>
-																s.api_domain_prefix &&
-																s.api_domain_prefix !== "",
-														)
-														.map((service) => (
-															<div
-																key={service.name}
-																className="flex items-start gap-2 mb-1"
-															>
-																<Info className="w-3 h-3 text-green-400 mt-0.5" />
-																<div className="flex-1">
-																	<code className="text-green-300">
-																		{service.api_domain_prefix}.{fullDomain}
-																	</code>
-																	<span className="text-gray-500 ml-2">
-																		({service.name})
-																	</span>
-																</div>
-															</div>
-														))}
-
-													{(!config.domain?.api_domain_prefix ||
-														config.domain.api_domain_prefix === "") &&
-														!config.services?.some(
-															(s) =>
-																s.api_domain_prefix &&
-																s.api_domain_prefix !== "",
-														) && (
-															<div className="flex items-start gap-2">
-																<Info className="w-3 h-3 text-yellow-400 mt-0.5" />
-																<span className="text-gray-400">
-																	No API Gateway custom domains configured
-																</span>
-															</div>
-														)}
 												</div>
 											</div>
 										</div>

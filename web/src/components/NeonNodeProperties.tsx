@@ -1,4 +1,11 @@
-import { ChevronDown, Database, Plus, RefreshCw, Trash2 } from "lucide-react";
+import {
+	ChevronDown,
+	Database,
+	Plus,
+	RefreshCw,
+	Trash2,
+	Unlink,
+} from "lucide-react";
 import { type ReactNode, useEffect, useId, useState } from "react";
 import { infrastructureApi } from "../api/infrastructure";
 import type { NeonLookupOptions, NeonLookupResponse } from "../types/neon";
@@ -934,12 +941,12 @@ export function NeonNodeProperties({
 
 			{saved && (
 				<PanelCard
-					title="Remove Neon"
+					title="Disconnect Neon"
 					description="Stops using Neon in this environment. meroku never deletes Neon data: the project and its databases stay in Neon."
 				>
 					{servicesBlocking && (
 						<NoteDetail>
-							Remove the database access of{" "}
+							Turn off the database access of{" "}
 							{accessEntries
 								.map((entry) =>
 									entry.target.kind === "backend"
@@ -956,14 +963,14 @@ export function NeonNodeProperties({
 						disabled={servicesBlocking}
 						onClick={() => setRemoveOpen(true)}
 					>
-						<Trash2 aria-hidden="true" />
-						Remove Neon from this environment
+						<Unlink aria-hidden="true" />
+						Disconnect Neon from this environment
 					</Button>
 					<AlertDialog open={removeOpen} onOpenChange={setRemoveOpen}>
 						<AlertDialogContent>
 							<AlertDialogHeader>
 								<AlertDialogTitle>
-									Remove Neon from this environment?
+									Disconnect Neon from this environment?
 								</AlertDialogTitle>
 								<AlertDialogDescription>
 									The project and its databases stay in Neon with their data. At
@@ -974,7 +981,7 @@ export function NeonNodeProperties({
 							<AlertDialogFooter>
 								<AlertDialogCancel>Cancel</AlertDialogCancel>
 								<AlertDialogAction onClick={removeNeon}>
-									Remove
+									Disconnect
 								</AlertDialogAction>
 							</AlertDialogFooter>
 						</AlertDialogContent>
