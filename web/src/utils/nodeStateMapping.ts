@@ -281,6 +281,21 @@ export const nodeStateMapping: NodeStateConfig[] = [
 			"Serverless Valkey, reachable by the workloads listed in access",
 	},
 	{
+		// Always on: the node is where the first vault is created.
+		id: "vaults",
+		name: "Vaults",
+		type: "vaults",
+		enabled: () => true,
+		properties: (config) => ({
+			vaults: (config.vaults || []).map((v) => v.name),
+		}),
+		description: (config) => {
+			const count = config.vaults?.length || 0;
+			if (count === 0) return "Shared secrets in Parameter Store";
+			return `${count} shared ${count === 1 ? "vault" : "vaults"} in Parameter Store`;
+		},
+	},
+	{
 		id: "ses",
 		name: "Amazon SES",
 		type: "ses",

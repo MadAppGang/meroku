@@ -107,9 +107,9 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Switch } from "./ui/switch";
+import { ValkeyNodeProperties } from "./ValkeyNodeProperties";
 import { VaultsProperties } from "./VaultsProperties";
 import { WorkloadVaults } from "./WorkloadVaults";
-import { ValkeyNodeProperties } from "./ValkeyNodeProperties";
 
 interface SidebarProps {
 	selectedNode: ComponentNode | null;
@@ -409,6 +409,10 @@ export function Sidebar({
 
 	if (!isOpen || !selectedNode) return null;
 
+	// Panels that hold a draft in local state remount when the environment or
+	// the node changes, so no draft carries over to another workload or env.
+	const panelKey = `${config?.env ?? ""}:${selectedNode.id}`;
+
 	return (
 		<div className="fixed right-0 top-0 h-full w-[768px] bg-gray-900 border-l border-gray-700 shadow-xl z-50 flex flex-col">
 			<div className="flex items-start justify-between p-4 border-b border-gray-700 flex-shrink-0">
@@ -618,6 +622,7 @@ export function Sidebar({
 						/>
 					) : selectedNode.type === "valkey" && config && onConfigChange ? (
 						<ValkeyNodeProperties
+							key={panelKey}
 							config={config}
 							onConfigChange={onConfigChange}
 						/>
@@ -625,7 +630,7 @@ export function Sidebar({
 						config &&
 						onConfigChange ? (
 						<ScheduledTaskProperties
-							key={selectedNode.id}
+							key={panelKey}
 							config={config}
 							onConfigChange={onConfigChange}
 							accountInfo={accountInfo}
@@ -633,7 +638,7 @@ export function Sidebar({
 						/>
 					) : selectedNode.type === "event-task" && config && onConfigChange ? (
 						<EventTaskProperties
-							key={selectedNode.id}
+							key={panelKey}
 							config={config}
 							onConfigChange={onConfigChange}
 							accountInfo={accountInfo}
@@ -641,7 +646,7 @@ export function Sidebar({
 						/>
 					) : selectedNode.type === "service" && config && onConfigChange ? (
 						<ServiceProperties
-							key={selectedNode.id}
+							key={panelKey}
 							config={config}
 							onConfigChange={onConfigChange}
 							accountInfo={accountInfo}
@@ -1281,7 +1286,11 @@ jobs:
 					selectedNode.type === "vaults" &&
 					config &&
 					onConfigChange && (
-						<VaultsProperties config={config} onConfigChange={onConfigChange} />
+						<VaultsProperties
+							key={panelKey}
+							config={config}
+							onConfigChange={onConfigChange}
+						/>
 					)}
 
 				{activeTab === "vaults" &&
@@ -1292,7 +1301,7 @@ jobs:
 					config &&
 					onConfigChange && (
 						<WorkloadVaults
-							key={selectedNode.id}
+							key={panelKey}
 							config={config}
 							node={selectedNode}
 							onConfigChange={onConfigChange}
@@ -1304,6 +1313,7 @@ jobs:
 					config &&
 					onConfigChange && (
 						<DataBucketProperties
+							key={panelKey}
 							config={config}
 							onConfigChange={onConfigChange}
 						/>
@@ -1471,6 +1481,7 @@ jobs:
 					config &&
 					onConfigChange && (
 						<BackendIAMPermissions
+							key={panelKey}
 							config={config}
 							onConfigChange={onConfigChange}
 						/>
@@ -1544,7 +1555,7 @@ jobs:
 					config &&
 					onConfigChange && (
 						<BackendIAMPermissions
-							key={selectedNode.id}
+							key={panelKey}
 							config={config}
 							node={selectedNode}
 							onConfigChange={onConfigChange}
@@ -1619,7 +1630,7 @@ jobs:
 					selectedNode.type === "scheduled-task" &&
 					config && (
 						<ScheduledTaskIAMPermissions
-							key={selectedNode.id}
+							key={panelKey}
 							config={config}
 							node={selectedNode}
 							onConfigChange={onConfigChange}
@@ -1654,7 +1665,13 @@ jobs:
 
 				{activeTab === "test" &&
 					selectedNode.type === "event-task" &&
-					config && <EventTaskTestEvent config={config} node={selectedNode} />}
+					config && (
+						<EventTaskTestEvent
+							key={panelKey}
+							config={config}
+							node={selectedNode}
+						/>
+					)}
 
 				{activeTab === "test" &&
 					selectedNode.type === "eventbridge" &&
@@ -1664,7 +1681,11 @@ jobs:
 					selectedNode.type === "eventbridge" &&
 					config &&
 					onConfigChange && (
-						<EventBusSettings config={config} onConfigChange={onConfigChange} />
+						<EventBusSettings
+							key={panelKey}
+							config={config}
+							onConfigChange={onConfigChange}
+						/>
 					)}
 
 				{/* Events tabs. The backend writes only { workload: { events } };
@@ -1674,7 +1695,7 @@ jobs:
 					config &&
 					onConfigChange && (
 						<ServiceEventsTab
-							key={selectedNode.id}
+							key={panelKey}
 							config={config}
 							workloadName="backend"
 							kind="backend"
@@ -1697,7 +1718,7 @@ jobs:
 						if (!service) return null;
 						return (
 							<ServiceEventsTab
-								key={selectedNode.id}
+								key={panelKey}
 								config={config}
 								workloadName={name}
 								kind="service"
@@ -1723,7 +1744,7 @@ jobs:
 						if (!task) return null;
 						return (
 							<TaskEventsTab
-								key={selectedNode.id}
+								key={panelKey}
 								config={config}
 								taskName={name}
 								kind="scheduled_task"
@@ -1751,7 +1772,7 @@ jobs:
 						if (!task) return null;
 						return (
 							<TaskEventsTab
-								key={selectedNode.id}
+								key={panelKey}
 								config={config}
 								taskName={name}
 								kind="event_task"
@@ -1777,7 +1798,7 @@ jobs:
 					selectedNode.type === "event-task" &&
 					config && (
 						<ScheduledTaskIAMPermissions
-							key={selectedNode.id}
+							key={panelKey}
 							config={config}
 							node={selectedNode}
 							onConfigChange={onConfigChange}
@@ -1871,6 +1892,7 @@ jobs:
 					config &&
 					onConfigChange && (
 						<AmplifyRewrites
+							key={panelKey}
 							config={config}
 							nodeId={selectedNode.id}
 							onConfigChange={onConfigChange}
