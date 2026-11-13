@@ -241,7 +241,7 @@ function derivedRulePath(workload: string, source: string): string {
  * a rename pins that derived path: the rule keeps sending the same request
  * path, now to the renamed workload. An empty derived path becomes "/".
  */
-function renamedAmplifyRule(
+export function renamedAmplifyRule(
 	rule: AmplifyRewriteRule,
 	from: string,
 	to: string,
