@@ -203,7 +203,7 @@ function VaultConnectionRow({
 						}}
 					/>
 					{prefixError ? (
-						<p className="text-sm text-destructive">{prefixError}</p>
+						<p className="text-sm text-danger">{prefixError}</p>
 					) : (
 						<p className="text-xs text-muted-foreground">
 							{vaultPath(config, connection.name)}database_url becomes{" "}

@@ -58,6 +58,20 @@ export default {
 				danger: {
 					DEFAULT: "hsl(var(--danger))",
 				},
+				// Text, icons and borders for a caution that is not an error (a
+				// value that will not match), and for a confirmed success.
+				warning: {
+					DEFAULT: "hsl(var(--warning))",
+				},
+				success: {
+					DEFAULT: "hsl(var(--success))",
+				},
+				// Canvas node accents, one per capability, so a node's colour is
+				// chosen in the theme and not in the node component.
+				node: {
+					cache: "hsl(var(--node-cache))",
+					vault: "hsl(var(--node-vault))",
+				},
 				muted: {
 					DEFAULT: "hsl(var(--muted))",
 					foreground: "hsl(var(--muted-foreground))",

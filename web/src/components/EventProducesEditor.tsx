@@ -148,7 +148,9 @@ export function EventProducesEditor({
 							<TableHead>Detail-types</TableHead>
 							<TableHead>Own source only</TableHead>
 							<TableHead>Bus</TableHead>
-							<TableHead />
+							<TableHead>
+								<span className="sr-only">Actions</span>
+							</TableHead>
 						</TableRow>
 					</TableHeader>
 					<TableBody>
@@ -158,7 +160,7 @@ export function EventProducesEditor({
 								key={index}
 								data-testid={`produces-row-${index}`}
 							>
-								<TableCell className="font-mono text-xs">
+								<TableCell variant="code">
 									{entry.any ? (
 										<Badge variant="destructive">any detail-type</Badge>
 									) : (
@@ -241,7 +243,7 @@ export function EventProducesEditor({
 					</Button>
 				</div>
 				{newAny && (
-					<p className="text-sm text-destructive">
+					<p className="text-sm text-danger">
 						Any detail-type lets the workload publish every event type to the
 						bus; generate warns about it.
 					</p>

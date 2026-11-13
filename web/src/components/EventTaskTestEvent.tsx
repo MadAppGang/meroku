@@ -111,7 +111,6 @@ export function EventTaskTestEvent({ config, node }: EventTaskTestEventProps) {
 				title="Send Test Event"
 				description="Trigger this task via EventBridge"
 				icon={Send}
-				iconColor="text-violet-400"
 			>
 				<div className="space-y-4">
 					<div className="grid grid-cols-2 gap-4">
@@ -129,7 +128,7 @@ export function EventTaskTestEvent({ config, node }: EventTaskTestEventProps) {
 							{ruleSources &&
 								!ruleSources.includes(testEvent.source) &&
 								testEvent.source && (
-									<p className="text-xs text-yellow-500">
+									<p className="text-xs text-warning">
 										Doesn't match configured sources
 									</p>
 								)}
@@ -152,7 +151,7 @@ export function EventTaskTestEvent({ config, node }: EventTaskTestEventProps) {
 							{ruleDetailTypes &&
 								!ruleDetailTypes.includes(testEvent.detailType) &&
 								testEvent.detailType && (
-									<p className="text-xs text-yellow-500">
+									<p className="text-xs text-warning">
 										Doesn't match configured detail types
 									</p>
 								)}
@@ -166,10 +165,10 @@ export function EventTaskTestEvent({ config, node }: EventTaskTestEventProps) {
 							value={detailJson}
 							onChange={(e) => handleDetailJsonChange(e.target.value)}
 							placeholder='{"orderId": "123"}'
-							className="font-mono text-sm min-h-[120px]"
+							className="font-mono text-sm min-h-32"
 							rows={6}
 						/>
-						{jsonError && <p className="text-xs text-red-400">{jsonError}</p>}
+						{jsonError && <p className="text-xs text-danger">{jsonError}</p>}
 					</div>
 
 					<Button
@@ -196,15 +195,11 @@ export function EventTaskTestEvent({ config, node }: EventTaskTestEventProps) {
 					</Button>
 
 					{eventResponse && (
-						<Alert
-							className={
-								eventResponse.success ? "border-green-600" : "border-red-600"
-							}
-						>
+						<Alert variant={eventResponse.success ? "success" : "danger"}>
 							{eventResponse.success ? (
-								<CheckCircle className="h-4 w-4 text-green-600" />
+								<CheckCircle className="h-4 w-4" />
 							) : (
-								<XCircle className="h-4 w-4 text-red-600" />
+								<XCircle className="h-4 w-4" />
 							)}
 							<AlertDescription>
 								{eventResponse.message}

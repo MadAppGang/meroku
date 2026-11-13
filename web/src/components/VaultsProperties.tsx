@@ -142,7 +142,7 @@ export function VaultsProperties({
 							</Button>
 						</div>
 						{newNameError && (
-							<p className="text-sm text-destructive">{newNameError}</p>
+							<p className="text-sm text-danger">{newNameError}</p>
 						)}
 					</div>
 				</CardContent>
