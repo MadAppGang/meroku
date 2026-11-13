@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"reflect"
 	"strings"
 	"testing"
@@ -123,7 +124,7 @@ func TestNeonSQLOverHTTPSendsTheQueryAndReadsTheRows(t *testing.T) {
 	}))
 	defer server.Close()
 
-	cred := PGCredential{Host: "ep-fake.example.invalid", User: "neondb_owner", Password: "p@ss/word"}
+	cred := PGCredential{Host: "ep-fake.example.invalid", User: "neondb_owner", Password: "x@y/z"}
 	got, err := neonSchemasOverHTTP(context.Background(), server.Client(), server.URL, cred, "chekku-bridge-dev")
 	if err != nil {
 		t.Fatal(err)
@@ -134,9 +135,17 @@ func TestNeonSQLOverHTTPSendsTheQueryAndReadsTheRows(t *testing.T) {
 	if gotMethod != http.MethodPost || gotPath != "/sql" {
 		t.Errorf("request = %s %s, want POST /sql", gotMethod, gotPath)
 	}
-	want := "postgresql://neondb_owner:p%40ss%2Fword@ep-fake.example.invalid/chekku-bridge-dev?sslmode=require"
-	if gotConn != want {
-		t.Errorf("Neon-Connection-String = %q, want %q", gotConn, want)
+	u, err := url.Parse(gotConn)
+	if err != nil {
+		t.Fatalf("Neon-Connection-String %q does not parse: %v", gotConn, err)
+	}
+	pw, _ := u.User.Password()
+	if u.Scheme != "postgresql" || u.User.Username() != cred.User || pw != cred.Password ||
+		u.Host != cred.Host || u.Path != "/chekku-bridge-dev" || u.RawQuery != "sslmode=require" {
+		t.Errorf("Neon-Connection-String = %q, want the owner on the host, database chekku-bridge-dev, sslmode=require", gotConn)
+	}
+	if strings.Contains(gotConn, cred.Password) {
+		t.Errorf("the password must be escaped in the connection string: %q", gotConn)
 	}
 	if q, _ := gotBody["query"].(string); !strings.Contains(q, "pg_namespace") {
 		t.Errorf("query = %q, want a pg_namespace read", q)
