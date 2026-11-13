@@ -72,8 +72,12 @@ resource "aws_iam_role_policy" "workload" {
   })
 
   lifecycle {
+    # lookup, not local.producers[each.key]: Terraform before 1.12 evaluates
+    # both sides of ||, so an index guarded only by !contains(...) fails with
+    # "Invalid index" for a workload that consumes and does not produce. A
+    # consumer-only workload compares its own source with itself.
     precondition {
-      condition     = !contains(keys(local.producers), each.key) || local.producers[each.key].source == var.workloads[each.key].event_source
+      condition     = lookup(local.producers, each.key, { source = var.workloads[each.key].event_source }).source == var.workloads[each.key].event_source
       error_message = "The producer ${each.key} was given the source ${try(local.producers[each.key].source, "")}, but its EVENT_SOURCE is ${var.workloads[each.key].event_source}; the two event source formulas have drifted (app/testdata/event_source_vectors.json)."
     }
   }
