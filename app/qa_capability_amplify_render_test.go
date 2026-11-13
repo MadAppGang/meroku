@@ -24,7 +24,7 @@ func TestQACapabilityAmplifyRendersIngressBaseURLs(t *testing.T) {
 			domain["enabled"] = tt.domain
 			domain["api_domain_prefix"] = tt.prefix
 			m["amplify_apps"] = qaCapabilityList(qaCapabilityAmplifyApp(
-				qaCapabilityMap{"source": "/api/<*>", "workload": "backend"},
+				qaCapabilityMap{"source": "/backend-api/<*>", "workload": "backend"},
 				qaCapabilityMap{"source": "/reports/<*>", "workload": "api"},
 			))
 			rendered := renderMainHBS(t, m)
@@ -39,7 +39,7 @@ func TestQACapabilityAmplifyRendersIngressBaseURLs(t *testing.T) {
 func TestQACapabilityAmplifyRendersRulesAndAppEnvironment(t *testing.T) {
 	m := qaCapabilityEnv()
 	app := qaCapabilityAmplifyApp(
-		qaCapabilityMap{"source": "/api/<*>", "workload": "backend"},
+		qaCapabilityMap{"source": "/backend-api/<*>", "workload": "backend"},
 		qaCapabilityMap{"source": "/api/<*>", "workload": "api"},
 		qaCapabilityMap{"source": "/r/<*>", "workload": "api", "path": "/<*>"},
 		qaCapabilityMap{"source": "/alias/<*>", "workload": "api"},
@@ -55,7 +55,7 @@ func TestQACapabilityAmplifyRendersRulesAndAppEnvironment(t *testing.T) {
 	if len(rules) != 5 {
 		t.Fatalf("got %d rules, want 5", len(rules))
 	}
-	for i, path := range []string{"/api/<*>", "/<*>", "/<*>", "/alias/<*>"} {
+	for i, path := range []string{"/backend-api/<*>", "/<*>", "/<*>", "/alias/<*>"} {
 		rule := qaCapabilityObject(t, rules[i])
 		qaCapabilityEqual(t, rule["target_path"], path)
 		qaCapabilityEqual(t, rule["status"], "200")
