@@ -10,10 +10,12 @@
 #   1. No events:* or sns:* action on any of these task roles' CloudWatch
 #      policies, and PutMetricData plus the own log group on each.
 #      (task_roles_get_metrics_and_their_own_logs_and_no_events)
-#   2. X-Ray: the backend's ADOT collector gets the Container Insights log
-#      groups, a service with the X-Ray daemon gets the X-Ray write actions,
-#      and neither appears when X-Ray is off.
-#      (xray_adds_only_what_the_collector_and_daemon_use)
+#   2. X-Ray: the backend's ADOT collector gets both EMF destinations, the
+#      Container Insights log groups and /aws/ecs/application/metrics, a
+#      service with the X-Ray daemon gets the X-Ray write actions, and neither
+#      appears when X-Ray is off.
+#      (xray_adds_only_what_the_collector_and_daemon_use,
+#      no_xray_no_collector_log_groups)
 #
 # The modules' source is also checked statically by
 # app/iam_scope_test.go: no CloudWatchFullAccess on a task role anywhere, and
@@ -175,6 +177,42 @@ run "xray_adds_only_what_the_collector_and_daemon_use" {
     error_message = "With xray_enabled the backend's ADOT collector needs the Container Insights log groups."
   }
 
+  # The collector's config (otel-task-metrics-config.yaml) has two EMF
+  # exporters: awsemf/performance writes Container Insights metrics to
+  # /aws/ecs/containerinsights/<cluster>/performance, awsemf/application writes
+  # what the app sends over OTLP or StatsD to /aws/ecs/application/metrics. Each
+  # concrete log group and stream ARN must be matched by a statement allowing
+  # every call the exporter makes. An IAM `*` is turned into a regex `.*`.
+  assert {
+    condition = alltrue(flatten([
+      for arn in [
+        "arn:aws:logs:us-east-1:000000000000:log-group:/aws/ecs/containerinsights/acme_cluster_dev/performance",
+        "arn:aws:logs:us-east-1:000000000000:log-group:/aws/ecs/containerinsights/acme_cluster_dev/performance:log-stream:mock",
+        "arn:aws:logs:us-east-1:000000000000:log-group:/aws/ecs/application/metrics",
+        "arn:aws:logs:us-east-1:000000000000:log-group:/aws/ecs/application/metrics:log-stream:mock",
+        ] : [
+        for action in ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents", "logs:DescribeLogStreams"] :
+        length([
+          for s in jsondecode(aws_iam_role_policy.backend_task_cloudwatch.policy).Statement : s
+          if s.Effect == "Allow" && contains(flatten([s.Action]), action) && anytrue([
+            for r in flatten([s.Resource]) :
+            can(regex("^${replace(replace(r, ".", "\\."), "*", ".*")}$", arn))
+          ])
+        ]) > 0
+      ]
+    ]))
+    error_message = "With xray_enabled the ADOT collector writes EMF to both the Container Insights performance log group and /aws/ecs/application/metrics; the backend's task role must allow every call on both."
+  }
+
+  assert {
+    condition = !anytrue([
+      for s in jsondecode(aws_iam_role_policy.backend_task_cloudwatch.policy).Statement :
+      anytrue([for r in flatten([s.Resource]) : r == "*" || startswith(r, "arn:aws:logs:us-east-1:000000000000:log-group:*")])
+      if anytrue([for a in flatten([s.Action]) : startswith(a, "logs:")])
+    ])
+    error_message = "Log writes stay on named log groups; none may cover every log group."
+  }
+
   assert {
     condition = contains(
       [for s in jsondecode(aws_iam_role_policy.services_task_cloudwatch["traced"].policy).Statement : s.Sid],
@@ -189,5 +227,21 @@ run "xray_adds_only_what_the_collector_and_daemon_use" {
       "XRayWrite",
     )
     error_message = "A service without xray_enabled gets no X-Ray grant."
+  }
+}
+
+run "no_xray_no_collector_log_groups" {
+  command = apply
+
+  override_resource {
+    target = null_resource.build_ci_lambda
+  }
+
+  assert {
+    condition = length([
+      for s in jsondecode(aws_iam_role_policy.backend_task_cloudwatch.policy).Statement : s
+      if contains(["ContainerInsightsLogs", "ApplicationMetricsLogs"], s.Sid)
+    ]) == 0
+    error_message = "Without xray_enabled no ADOT collector runs, so the backend gets neither EMF log group."
   }
 }
