@@ -1,8 +1,9 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
+import { E2E_ROOT_MARKER } from "./tests/e2e/support/global-teardown";
 
 const webDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -10,7 +11,15 @@ const webDir = path.dirname(fileURLToPath(import.meta.url));
 // and empty AWS config files live under it. The config is evaluated again in
 // every worker, and workers inherit the runner's environment, so only the
 // runner creates the directory.
-process.env.MEROKU_E2E_ROOT ??= mkdtempSync(path.join(tmpdir(), "meroku-e2e-"));
+// The teardown deletes the root only when this run created it: it checks
+// MEROKU_E2E_ROOT_OWNED and the marker file written here, so a root passed in
+// from outside is never removed.
+if (!process.env.MEROKU_E2E_ROOT) {
+	const root = mkdtempSync(path.join(tmpdir(), "meroku-e2e-"));
+	writeFileSync(path.join(root, E2E_ROOT_MARKER), `${process.pid}\n`);
+	process.env.MEROKU_E2E_ROOT = root;
+	process.env.MEROKU_E2E_ROOT_OWNED = root;
+}
 
 const apiPort = process.env.MEROKU_E2E_API_PORT ?? "18080";
 const webPort = process.env.MEROKU_E2E_WEB_PORT ?? "15173";
