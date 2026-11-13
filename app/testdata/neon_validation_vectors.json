@@ -964,7 +964,7 @@
       ]
     },
     {
-      "name": "V-N8 database name not an identifier",
+      "name": "V-N8 new database name not an identifier",
       "config": {
         "project": "myapp",
         "env": "dev",
@@ -980,7 +980,7 @@
             },
             {
               "name": "Analytics-DB",
-              "create": false
+              "create": true
             }
           ]
         },
@@ -1005,6 +1005,87 @@
         ]
       },
       "want": [
+        "V-N8"
+      ]
+    },
+    {
+      "name": "valid: existing database name with hyphens, used by a service",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "reuse",
+          "project_id": "fake-project-000000",
+          "pg_version": 17,
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            },
+            {
+              "name": "chekku-bridge-dev",
+              "create": false
+            }
+          ]
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "access": "readwrite"
+          }
+        },
+        "services": [
+          {
+            "name": "bridge",
+            "neon": {
+              "database": "chekku-bridge-dev",
+              "access": "readonly"
+            }
+          }
+        ]
+      },
+      "want": []
+    },
+    {
+      "name": "V-N8 existing database name with a space",
+      "config": {
+        "project": "myapp",
+        "env": "dev",
+        "neon": {
+          "mode": "reuse",
+          "project_id": "fake-project-000000",
+          "pg_version": 17,
+          "owner_role": "neondb_owner",
+          "databases": [
+            {
+              "name": "app",
+              "create": true
+            },
+            {
+              "name": "bridge dev",
+              "create": false
+            }
+          ]
+        },
+        "workload": {
+          "backend_neon": {
+            "database": "app",
+            "access": "readwrite"
+          }
+        },
+        "services": [
+          {
+            "name": "bridge",
+            "neon": {
+              "database": "bridge dev",
+              "access": "readonly"
+            }
+          }
+        ]
+      },
+      "want": [
+        "V-N10",
         "V-N8"
       ]
     },
@@ -1226,7 +1307,7 @@
           {
             "name": "reports",
             "neon": {
-              "database": "Analytics",
+              "database": "analytics db",
               "access": "readonly"
             }
           }

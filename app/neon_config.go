@@ -50,6 +50,10 @@ var (
 	neonReOrg     = regexp.MustCompile(`^org-[a-z0-9-]{3,64}$`)
 	neonReRegion  = regexp.MustCompile(`^(aws|azure)-[a-z0-9-]+$`)
 	neonReIdent   = regexp.MustCompile(`^[a-z_][a-z0-9_]{0,62}$`)
+	// neonReExistingDB is a database that already exists in Neon, which allows
+	// hyphens and upper case. meroku quotes the name wherever it uses it and
+	// derives role names and aliases through neonSanitize.
+	neonReExistingDB = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_-]{0,62}$`)
 
 	neonSanitizeChars = regexp.MustCompile(`[^a-z0-9]`)
 	neonSanitizeRuns  = regexp.MustCompile(`_+`)
@@ -498,10 +502,17 @@ func neonDatabaseProblems(neon map[string]interface{}, mode string) (map[string]
 			continue
 		}
 		name, _, isStr := neonString(db, "name")
-		if !isStr || !neonReIdent.MatchString(name) {
+		if isNew, _ := db["create"].(bool); isNew {
+			if !isStr || !neonReIdent.MatchString(name) {
+				out = append(out, NeonProblem{Rule: "V-N8", Path: path + ".name",
+					Problem: fmt.Sprintf("%s is not a name meroku can create a database with", formatYAMLValue(db["name"])),
+					Fix:     "use lower-case letters, digits and underscores, starting with a letter or underscore"})
+				continue
+			}
+		} else if !isStr || !neonReExistingDB.MatchString(name) {
 			out = append(out, NeonProblem{Rule: "V-N8", Path: path + ".name",
-				Problem: fmt.Sprintf("%s is not a Postgres database name", formatYAMLValue(db["name"])),
-				Fix:     "use lower-case letters, digits and underscores, starting with a letter or underscore"})
+				Problem: fmt.Sprintf("%s is not a database name meroku can use", formatYAMLValue(db["name"])),
+				Fix:     "use up to 63 letters, digits, underscores and hyphens"})
 			continue
 		}
 		if declared[name] {
@@ -535,7 +546,7 @@ func neonDatabaseProblems(neon map[string]interface{}, mode string) (map[string]
 // database name and whether that name is valid.
 func neonAccessProblems(path string, access map[string]interface{}, add func(rule, path, problem, fix string)) (string, bool) {
 	dbName, _, isStr := neonString(access, "database")
-	dbOK := isStr && neonReIdent.MatchString(dbName)
+	dbOK := isStr && neonReExistingDB.MatchString(dbName)
 	if !dbOK {
 		problem := "database is missing"
 		if v, present := access["database"]; present && v != nil {

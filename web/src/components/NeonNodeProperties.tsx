@@ -23,6 +23,7 @@ import {
 	neonReplacingChanges,
 } from "../utils/neonConfigUpdate";
 import {
+	checkNeonDatabaseName,
 	checkNeonIdentifier,
 	checkNeonOrgId,
 	checkNeonProjectId,
@@ -351,7 +352,7 @@ export function NeonNodeProperties({
 				? null
 				: taken.has(manualName)
 					? "This database is already in the list."
-					: checkNeonIdentifier(manualName, "database name");
+					: checkNeonDatabaseName(manualName, false);
 
 		function addDatabase(value: string) {
 			update((d) => {
@@ -388,9 +389,9 @@ export function NeonNodeProperties({
 							const savedHere = saved?.databases?.some(
 								(entry) => entry.name === database.name,
 							);
-							const nameError = checkNeonIdentifier(
+							const nameError = checkNeonDatabaseName(
 								database.name,
-								"database name",
+								database.create === true,
 							);
 							const rowId = `${uid}-database-${index}`;
 							return (

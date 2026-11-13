@@ -107,6 +107,29 @@ export function checkNeonIdentifier(
 	return null;
 }
 
+/**
+ * A database that already exists in Neon: Neon allows hyphens and upper case,
+ * and meroku quotes the name wherever it uses it.
+ */
+export const NEON_EXISTING_DATABASE_PATTERN =
+	/^[A-Za-z0-9_][A-Za-z0-9_-]{0,62}$/;
+
+/**
+ * A database name. One meroku creates follows the identifier rule; an existing
+ * one, or a service's reference to a database, may also use hyphens.
+ */
+export function checkNeonDatabaseName(
+	value: string,
+	isNew: boolean,
+): string | null {
+	if (isNew) return checkNeonIdentifier(value, "database name");
+	if (value === "") return "Enter a database name.";
+	if (!NEON_EXISTING_DATABASE_PATTERN.test(value)) {
+		return "A database name has up to 63 letters, digits, underscores and hyphens.";
+	}
+	return null;
+}
+
 export function checkNeonSchemaName(value: string): string | null {
 	const identifier = checkNeonIdentifier(value, "schema name");
 	if (identifier) return identifier;
@@ -330,7 +353,7 @@ function validateDatabases(neon: Doc, problems: NeonProblem[]): Set<string> {
 			return;
 		}
 		const name = isString(database.name) ? database.name : "";
-		const nameProblem = checkNeonIdentifier(name, "database name");
+		const nameProblem = checkNeonDatabaseName(name, database.create === true);
 		if (nameProblem) {
 			problems.push({
 				rule: "V-N8",
@@ -403,7 +426,7 @@ function validateAccess(
 	}
 
 	const database = isString(access.database) ? access.database : "";
-	const databaseProblem = checkNeonIdentifier(database, "database name");
+	const databaseProblem = checkNeonDatabaseName(database, false);
 	if (databaseProblem) {
 		problems.push({
 			rule: "V-N10",
