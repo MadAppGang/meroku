@@ -109,6 +109,80 @@ func TestQACapabilityAmplifyAcceptsSupportedRules(t *testing.T) {
 	})
 }
 
+// Backend rewrites must not resolve to a public service's route.
+func TestQACapabilityAmplifyRejectsBackendPathsShadowedByServices(t *testing.T) {
+	for _, alb := range []bool{false, true} {
+		for _, access := range []string{"public", "full_open"} {
+			for _, path := range []string{"/api", "/api/", "/api/orders/<*>", "/api<*>"} {
+				for _, explicit := range []bool{false, true} {
+					ingress := map[bool]string{false: "API Gateway", true: "ALB"}[alb]
+					form := map[bool]string{false: "source-derived", true: "explicit path"}[explicit]
+					t.Run(ingress+"/"+access+"/"+form+path, func(t *testing.T) {
+						m := qaCapabilityEnv()
+						m["alb"] = qaCapabilityMap{"enabled": alb}
+						qaCapabilityOwner(m, "service")["network_access"] = access
+						rule := qaCapabilityMap{"source": path, "workload": "backend"}
+						if explicit {
+							rule["source"] = "/frontend/<*>"
+							rule["path"] = path
+						}
+						m["amplify_apps"] = qaCapabilityList(qaCapabilityAmplifyApp(
+							qaCapabilityMap{"source": "/old", "target": "/new", "status": "301"},
+							rule,
+						))
+
+						err := preprocessEnvMap(m)
+
+						qaCapabilityRequireError(t, err, "amplify_apps 'web'", "custom_rules[1]",
+							"target path \""+path+"\"", "backend reaches service 'api'")
+					})
+				}
+			}
+		}
+	}
+}
+
+// Only the resolved backend path and routed services cause shadowing.
+func TestQACapabilityAmplifyAcceptsUnshadowedBackendAndServicePaths(t *testing.T) {
+	tests := []struct {
+		name, access, workload, source, path, wantPath string
+	}{
+		{"internal exact path", "internal", "backend", "/api", "", "/api"},
+		{"internal child path", "internal", "backend", "/api/orders/<*>", "", "/api/orders/<*>"},
+		{"internal adjacent wildcard", "internal", "backend", "/api<*>", "", "/api<*>"},
+		{"none exact path", "none", "backend", "/api", "", "/api"},
+		{"none child path", "none", "backend", "/api/orders/<*>", "", "/api/orders/<*>"},
+		{"none adjacent wildcard", "none", "backend", "/api<*>", "", "/api<*>"},
+		{"public similar segment", "public", "backend", "/apiculture/<*>", "", "/apiculture/<*>"},
+		{"full open similar segment", "full_open", "backend", "/apiculture/<*>", "", "/apiculture/<*>"},
+		{"public later segment", "public", "backend", "/v1/api/<*>", "", "/v1/api/<*>"},
+		{"full open root path", "full_open", "backend", "/", "", "/"},
+		{"public service destination", "public", "api", "/api/<*>", "", "/<*>"},
+		{"full open service destination", "full_open", "api", "/api/<*>", "", "/<*>"},
+		{"explicit safe path overrides shadowed source", "public", "backend", "/api/<*>", "/health", "/health"},
+	}
+	for _, alb := range []bool{false, true} {
+		for _, tt := range tests {
+			ingress := map[bool]string{false: "API Gateway", true: "ALB"}[alb]
+			t.Run(ingress+"/"+tt.name, func(t *testing.T) {
+				m := qaCapabilityEnv()
+				m["alb"] = qaCapabilityMap{"enabled": alb}
+				qaCapabilityOwner(m, "service")["network_access"] = tt.access
+				rule := qaCapabilityMap{"source": tt.source, "workload": tt.workload}
+				if tt.path != "" {
+					rule["path"] = tt.path
+				}
+				m["amplify_apps"] = qaCapabilityList(qaCapabilityAmplifyApp(rule))
+
+				qaCapabilityNoError(t, preprocessEnvMap(m))
+
+				qaCapabilityEqual(t, rule[amplifyTargetPathKey], tt.wantPath)
+				qaCapabilityEqual(t, rule["status"], "200")
+			})
+		}
+	}
+}
+
 func TestQACapabilityAmplifyWarnsAfterCatchAll(t *testing.T) {
 	m := qaCapabilityEnv()
 	m["amplify_apps"] = qaCapabilityList(qaCapabilityAmplifyApp(
@@ -155,7 +229,7 @@ func TestQACapabilityAmplifyRefusesSelfHostAndALBWithoutDomain(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			m := qaCapabilityEnv()
-			app := qaCapabilityAmplifyApp(qaCapabilityMap{"source": "/api/<*>", "workload": "backend"})
+			app := qaCapabilityAmplifyApp(qaCapabilityMap{"source": "/backend-api/<*>", "workload": "backend"})
 			m["amplify_apps"] = qaCapabilityList(app)
 			tt.change(m, app)
 			qaCapabilityPrepareNames(t, m)
@@ -165,7 +239,7 @@ func TestQACapabilityAmplifyRefusesSelfHostAndALBWithoutDomain(t *testing.T) {
 	t.Run("execute-api cannot self-host on env domain", func(t *testing.T) {
 		m := qaCapabilityEnv()
 		m["domain"].(qaCapabilityMap)["api_domain_prefix"] = ""
-		app := qaCapabilityAmplifyApp(qaCapabilityMap{"source": "/api/<*>", "workload": "backend"})
+		app := qaCapabilityAmplifyApp(qaCapabilityMap{"source": "/backend-api/<*>", "workload": "backend"})
 		app["custom_domain"] = "dev.example.com"
 		m["amplify_apps"] = qaCapabilityList(app)
 		qaCapabilityPrepareNames(t, m)
@@ -175,7 +249,7 @@ func TestQACapabilityAmplifyRefusesSelfHostAndALBWithoutDomain(t *testing.T) {
 
 func TestQACapabilityAmplifyJoinsWorkloadPaths(t *testing.T) {
 	tests := []struct{ workload, source, path, want string }{
-		{"backend", "/api/<*>", "", "/api/<*>"},
+		{"backend", "/backend-api/<*>", "", "/backend-api/<*>"},
 		{"api", "/api/<*>", "", "/<*>"},
 		{"api", "/alias/<*>", "", "/alias/<*>"},
 		{"api", "/apiculture/<*>", "", "/apiculture/<*>"},

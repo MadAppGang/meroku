@@ -94,7 +94,7 @@ func TestQACapabilityBridgeExposesOnAndOffValues(t *testing.T) {
 					owner["events"] = qaCapabilityMap{"produces": qaCapabilityList(qaCapabilityMap{"detail_types": []interface{}{"order.created"}})}
 				}
 				qaCapabilityOwner(m, "service")["events"].(qaCapabilityMap)["subscribes"] = qaCapabilityList(qaCapabilityMap{"detail_type": "order.created"})
-				app := qaCapabilityAmplifyApp(qaCapabilityMap{"source": "/api/<*>", "workload": "backend"})
+				app := qaCapabilityAmplifyApp(qaCapabilityMap{"source": "/backend-api/<*>", "workload": "backend"})
 				app["environment_variables"] = qaCapabilityMap{"AMPLIFY_MONOREPO_APP_ROOT": "apps/web"}
 				m["amplify_apps"] = qaCapabilityList(app)
 			}
