@@ -207,8 +207,3 @@ resource "aws_iam_role_policy_attachment" "pgadmin_task_execution" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
-resource "aws_iam_role_policy_attachment" "pgadmin_task_cloudwatch" {
-  count      = var.pgadmin_enabled ? 1 : 0
-  role       = aws_iam_role.pgadmin_task[0].name
-  policy_arn = "arn:aws:iam::aws:policy/CloudWatchFullAccess"
-}

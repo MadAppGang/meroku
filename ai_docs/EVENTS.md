@@ -105,6 +105,18 @@ requires it. `any: true` drops the detail-type condition (generate warns). `own_
 false` drops the source condition. A batch with one entry outside the list is denied as a
 whole.
 
+IAM allows add up, so this holds only while nothing else on the task role grants
+`events:*`. The task roles of the backend, services, pgAdmin and both task kinds no longer
+carry the AWS-managed `CloudWatchFullAccess` (which includes `events:*` and `sns:*`); an
+inline `cloudwatch` policy grants `cloudwatch:PutMetricData` and writes to the workload's
+own log group, plus the Container Insights log groups for the backend's ADOT collector and
+X-Ray writes for a service's X-Ray daemon when `xray_enabled`. Execution roles keep their
+attachment; a container never sees their credentials. `app/iam_scope_test.go` refuses a
+`CloudWatchFullAccess` attachment on a task role and a `events:PutEvents` grant outside
+`modules/events` (except the ECR-forwarding rule role and the GitHub deploy role). Code
+that used `CloudWatchFullAccess` for anything else (SNS, reading logs or alarms) needs a
+`policy` block now.
+
 `EVENT_SOURCE` per kind, pinned by `app/testdata/event_source_vectors.json`:
 
 | Kind | `EVENT_SOURCE` |
