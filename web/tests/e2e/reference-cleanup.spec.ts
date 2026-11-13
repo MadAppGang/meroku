@@ -1,13 +1,21 @@
 import { expect, test } from "./support/harness";
 import { seed, workload, openPanel, reopen } from "./support/config-editors";
 
-test("Service deletion · removes its shared-folder, cache and vault references without changing survivors", async ({ page, app, envYaml, evidence }) => {
+const fixedRule = { source: "/old-pricing", target: "https://example.com/pricing", status: "301" };
+const amplifyApp = {
+  name: "web", github_repository: "example/web", branches: [{ name: "main" }],
+  environment_variables: { AMPLIFY_MONOREPO_APP_ROOT: "apps/web" }, spa_mode: true,
+  custom_rules: [fixedRule, { source: "/api/<*>", workload: "api" }],
+};
+
+test("Service deletion · removes its shared-folder, cache, vault and Amplify references without changing survivors", async ({ page, app, envYaml, evidence }) => {
   test.setTimeout(120_000);
   const config = seed(envYaml, {
     vaults: [{ name: "shared" }],
     data_bucket: { shared: [{ name: "uploads", read_write: ["api", "backend"], read: ["reports"] },
       { name: "exports", read: ["api", "reports"] }] },
     valkey: { enabled: true, engine_version: "8", max_storage_gb: 1, access: ["api", "reports"] },
+    amplify_apps: [amplifyApp],
   });
   workload(config, "services", "api").vaults = [{ name: "shared", access: "read_write", prefix: "PAY" }];
   workload(config, "services", "reports").vaults = [{ name: "shared", access: "read" }];
@@ -25,6 +33,10 @@ test("Service deletion · removes its shared-folder, cache and vault references 
   expect(shared()[0]).toMatchObject({ name: "uploads", read_write: ["backend"], read: ["reports"] });
   expect(shared()[1]).toMatchObject({ name: "exports", read: ["reports"] });
   expect(workload(envYaml.read(), "services", "reports").vaults).toEqual([{ name: "shared", access: "read" }]);
+  // The rule proxying to api is dropped; the fixed-target rule and the rest of the app are kept.
+  const { custom_rules: _rules, ...appFields } = amplifyApp;
+  await expect.poll(() => (envYaml.read().amplify_apps as any[])[0].custom_rules).toEqual([fixedRule]);
+  expect((envYaml.read().amplify_apps as any[])[0]).toMatchObject(appFields);
 
   await reopen(page, app, "Vaults", "Vaults");
   await expect(page.getByRole("heading", { name: "shared", exact: true })).toBeVisible();
@@ -38,4 +50,11 @@ test("Service deletion · removes its shared-folder, cache and vault references 
   await expect(page.getByRole("checkbox", { name: "api", exact: true })).toHaveCount(0);
   await expect(page.getByRole("checkbox", { name: "reports", exact: true })).toBeChecked();
   await evidence("service-delete-valkey-access-clean");
+  await reopen(page, app, "web", "Rewrites");
+  const rules = page.getByRole("list", { name: "Rewrite rules", exact: true }).getByRole("listitem");
+  await expect(rules).toHaveCount(1);
+  await expect(rules.first().getByRole("textbox", { name: "Source", exact: true })).toHaveValue("/old-pricing");
+  await expect(rules.first().getByRole("textbox", { name: /target/i })).toHaveValue("https://example.com/pricing");
+  expect((envYaml.read().amplify_apps as any[])[0]).toMatchObject({ ...appFields, custom_rules: [fixedRule] });
+  await evidence("service-delete-amplify-rule-dropped");
 });
