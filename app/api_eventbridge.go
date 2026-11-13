@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -59,9 +60,19 @@ var newEventBridgeClient = func(ctx context.Context, e Env) (eventBridgeAPI, err
 	return eventbridge.NewFromConfig(cfg), nil
 }
 
-// loadEnvForTestEvent loads <project dir>/<env>.yaml. A variable so tests can
-// replace it.
-var loadEnvForTestEvent = loadEnv
+// loadEnvForTestEvent loads <project dir>/<env>.yaml without rewriting it. A
+// variable so tests can replace it.
+var loadEnvForTestEvent = loadEnvReadOnly
+
+// eventAPIEnvNamePattern is what an env name from a request may look like. The
+// name becomes part of a file path, so a separator or ".." is refused before
+// anything is read.
+var eventAPIEnvNamePattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+
+// validEventAPIEnvName reports whether a request's env name is safe to load.
+func validEventAPIEnvName(name string) bool {
+	return eventAPIEnvNamePattern.MatchString(name)
+}
 
 // projectEventBusName is the name modules/events gives the project bus.
 func projectEventBusName(e Env) string {
@@ -129,6 +140,10 @@ func sendTestEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	if envName == "" {
 		writeTestEventResponse(w, http.StatusBadRequest, TestEventResponse{Message: "env is required"})
+		return
+	}
+	if !validEventAPIEnvName(envName) {
+		writeTestEventResponse(w, http.StatusBadRequest, TestEventResponse{Message: "invalid env name: use letters, digits, hyphens and underscores"})
 		return
 	}
 
@@ -274,6 +289,11 @@ func getEventTaskInfo(w http.ResponseWriter, r *http.Request) {
 	if envName == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(ErrorResponse{Error: "env parameter is required"})
+		return
+	}
+	if !validEventAPIEnvName(envName) {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "invalid env parameter format"})
 		return
 	}
 
