@@ -10,6 +10,7 @@ import {
 import { useCallback, useEffect, useId, useState } from "react";
 import { infrastructureApi } from "../api/infrastructure";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
+import { envDomainName } from "../utils/envDomain";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import { Input } from "./ui/input";
@@ -30,14 +31,7 @@ function calculateDomainPreview(
 		return "";
 	}
 
-	const baseDomain = config.domain.domain_name;
-	const addEnvPrefix = config.domain.add_env_domain_prefix ?? true;
-	const env = config.env || "dev";
-
-	if (addEnvPrefix) {
-		return `${subdomainPrefix}.${env}.${baseDomain}`;
-	}
-	return `${subdomainPrefix}.${baseDomain}`;
+	return `${subdomainPrefix}.${envDomainName(config)}`;
 }
 
 interface AmplifyNodePropertiesProps {

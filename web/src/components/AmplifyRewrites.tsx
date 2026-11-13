@@ -5,6 +5,7 @@ import type {
 	AmplifyRewriteStatus,
 	YamlInfrastructureConfig,
 } from "../types/yamlConfig";
+import { amplifyAppHost, workloadApiHost } from "../utils/envDomain";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -53,18 +54,21 @@ function routableWorkloads(config: YamlInfrastructureConfig): string[] {
  * API Gateway endpoint, which is only known after deploy.
  */
 function workloadBaseLabel(config: YamlInfrastructureConfig): string {
-	const domain = config.domain;
-	const prefix = domain?.api_domain_prefix ?? "";
-	const albEnabled = config.alb?.enabled === true;
-	if (!domain?.enabled || !domain.domain_name || (!albEnabled && !prefix)) {
-		return "<API Gateway endpoint>";
-	}
-	const addEnvPrefix = domain.add_env_domain_prefix ?? true;
-	const envDomain =
-		domain.root_zone_id || addEnvPrefix
-			? `${config.env}.${domain.domain_name}`
-			: domain.domain_name;
-	return `https://${prefix ? `${prefix}.` : ""}${envDomain}`;
+	const host = workloadApiHost(config);
+	return host ? `https://${host}` : "<API Gateway endpoint>";
+}
+
+/**
+ * The Amplify app whose own host the API host is, if any: generate refuses a
+ * workload rule then, because the rewrite would point the app at itself.
+ */
+function selfHostApp(config: YamlInfrastructureConfig): string | null {
+	const apiHost = workloadApiHost(config);
+	if (!apiHost) return null;
+	const app = (config.amplify_apps ?? []).find(
+		(a) => amplifyAppHost(config, a) === apiHost,
+	);
+	return app ? app.name : null;
 }
 
 /** Mirrors amplifyTargetPath in app/amplify_rewrites.go. */
@@ -114,6 +118,12 @@ function ruleErrors(
 		if (config.alb?.enabled && !config.domain?.enabled) {
 			errors.push(
 				"With the ALB on, proxying to a workload needs a domain: turn the domain on first.",
+			);
+		}
+		const loopApp = selfHostApp(config);
+		if (loopApp) {
+			errors.push(
+				`The API host is the host of the Amplify app "${loopApp}", so this rule would send the app to itself. Give the API its own prefix.`,
 			);
 		}
 	} else if (!rule.target?.trim()) {
@@ -375,11 +385,7 @@ export function AmplifyRewrites({
 										</p>
 									)}
 									{errors.map((e) => (
-										<p
-											key={e}
-											className="text-xs text-destructive"
-											role="alert"
-										>
+										<p key={e} className="text-xs text-danger" role="alert">
 											{e}
 										</p>
 									))}

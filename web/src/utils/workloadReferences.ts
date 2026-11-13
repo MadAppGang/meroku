@@ -1,4 +1,5 @@
 import type {
+	AmplifyRewriteRule,
 	VaultConnection,
 	YamlInfrastructureConfig,
 } from "../types/yamlConfig";
@@ -221,11 +222,76 @@ const valkeyAccessReferences: ReferenceRewriter = (config, mapName) => {
 	return { valkey: { ...config.valkey, access: rewritten } };
 };
 
+/**
+ * The path a workload rule without `path` sends to on its workload, as
+ * amplifyTargetPath in app/amplify_rewrites.go derives it: a service's own
+ * `/<name>` prefix is taken off the source.
+ */
+function derivedRulePath(workload: string, source: string): string {
+	if (workload === BACKEND_WORKLOAD_NAME) return source;
+	const prefix = `/${workload}`;
+	if (source === prefix) return "";
+	if (source.startsWith(`${prefix}/`)) return source.slice(prefix.length);
+	return source;
+}
+
+/**
+ * Rewrites one Amplify rule for a workload whose name maps to `mapped`. A rule
+ * with no `path` derives it from the source minus the old `/<name>` prefix, so
+ * a rename pins that derived path: the rule keeps sending the same request
+ * path, now to the renamed workload. An empty derived path becomes "/".
+ */
+function renamedAmplifyRule(
+	rule: AmplifyRewriteRule,
+	from: string,
+	to: string,
+): AmplifyRewriteRule {
+	if (rule.path || from === BACKEND_WORKLOAD_NAME) {
+		return { ...rule, workload: to };
+	}
+	const derived = derivedRulePath(from, rule.source);
+	if (derived === rule.source) return { ...rule, workload: to };
+	return { ...rule, workload: to, path: derived || "/" };
+}
+
+/**
+ * `amplify_apps[].custom_rules[].workload`. A delete drops the rule, since a
+ * proxy to nothing cannot be kept; a rename points the rule at the new name.
+ * Rules with a fixed `target` are never touched.
+ */
+const amplifyRuleReferences: ReferenceRewriter = (config, mapName) => {
+	const apps = config.amplify_apps;
+	if (!apps || apps.length === 0) return {};
+	const rewritten = apps.map((app) => {
+		if (!app.custom_rules || app.custom_rules.length === 0) return app;
+		const rules: AmplifyRewriteRule[] = [];
+		for (const rule of app.custom_rules) {
+			if (rule.workload === undefined || rule.workload === "") {
+				rules.push(rule);
+				continue;
+			}
+			const mapped = mapName(rule.workload);
+			if (mapped === null) continue;
+			rules.push(
+				mapped === rule.workload
+					? rule
+					: renamedAmplifyRule(rule, rule.workload, mapped),
+			);
+		}
+		const { custom_rules: _omit, ...rest } = app;
+		// An emptied list is dropped, as the Rewrites tab does.
+		return rules.length > 0 ? { ...rest, custom_rules: rules } : rest;
+	});
+	if (JSON.stringify(rewritten) === JSON.stringify(apps)) return {};
+	return { amplify_apps: rewritten };
+};
+
 const REFERENCE_REWRITERS: ReferenceRewriter[] = [
 	dataBucketSharedReferences,
 	vaultConnectionReferences,
 	eventSourceReferences,
 	valkeyAccessReferences,
+	amplifyRuleReferences,
 ];
 
 function rewriteReferences(

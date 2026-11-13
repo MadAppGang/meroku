@@ -10,6 +10,7 @@ import { amplifyApi } from "../api";
 import type { AmplifyAppInfo } from "../types/amplify";
 import type { UpdateHandler } from "../types/components";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
+import { envDomainName } from "../utils/envDomain";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 
@@ -28,14 +29,7 @@ function calculateDomainPreview(
 		return "";
 	}
 
-	const baseDomain = config.domain.domain_name;
-	const addEnvPrefix = config.domain.add_env_domain_prefix ?? true;
-	const env = config.env || "dev";
-
-	if (addEnvPrefix) {
-		return `${subdomainPrefix}.${env}.${baseDomain}`;
-	}
-	return `${subdomainPrefix}.${baseDomain}`;
+	return `${subdomainPrefix}.${envDomainName(config)}`;
 }
 
 interface AmplifyDomainSettingsProps {
