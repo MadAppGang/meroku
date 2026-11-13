@@ -179,8 +179,17 @@ func prepareAmplifyRewriteRules(envMap map[string]interface{}) error {
 				}
 			}
 
+			targetPath := amplifyTargetPath(workload, source, path)
+			if workload == backendWorkloadName {
+				if svc := amplifyShadowingService(targetPath, services); svc != "" {
+					problems = append(problems, fmt.Sprintf(
+						"%s: target path %q on the backend reaches service '%s', because the API routes /%s/... to that service before the backend; target workload %s instead, or set path to one that does not start with /%s",
+						where, targetPath, svc, svc, svc, svc))
+				}
+			}
+
 			rule["status"] = amplifyStatusRewrite
-			rule[amplifyTargetPathKey] = amplifyTargetPath(workload, source, path)
+			rule[amplifyTargetPathKey] = targetPath
 			used[workload] = true
 			kept = append(kept, rule)
 		}
@@ -267,6 +276,29 @@ func amplifyTargetPath(workload, source, path string) string {
 		return strings.TrimPrefix(source, prefix)
 	}
 	return source
+}
+
+// amplifyShadowingService names the routed service a backend target path
+// reaches instead of the backend, or "" when there is none.
+//
+// The API Gateway routes ANY /<service>/{proxy+} and the ALB /<service>/* to
+// each public or full_open service, and both prefer that route to the
+// backend's catch-all. A path that is /<service>, starts with /<service>/, or
+// is /<service><*> (the wildcard can stand for /...) therefore never reaches
+// the backend.
+func amplifyShadowingService(targetPath string, services map[string]struct{}) string {
+	names := make([]string, 0, len(services))
+	for name := range services {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		prefix := "/" + name
+		if targetPath == prefix || targetPath == prefix+amplifyWildcard || strings.HasPrefix(targetPath, prefix+"/") {
+			return name
+		}
+	}
+	return ""
 }
 
 // amplifyRuleStatus reads a rule's status as YAML gives it back — a string or,

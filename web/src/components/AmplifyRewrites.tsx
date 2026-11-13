@@ -5,6 +5,12 @@ import type {
 	AmplifyRewriteStatus,
 	YamlInfrastructureConfig,
 } from "../types/yamlConfig";
+import {
+	AMPLIFY_BACKEND,
+	AMPLIFY_WILDCARD,
+	amplifyTargetPath,
+	shadowingService,
+} from "../utils/amplifyRewrites";
 import { amplifyAppHost, workloadApiHost } from "../utils/envDomain";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
@@ -19,8 +25,8 @@ import {
 } from "./ui/select";
 import { StyledSection } from "./ui/styled-section";
 
-const WILDCARD = "<*>";
-const BACKEND = "backend";
+const WILDCARD = AMPLIFY_WILDCARD;
+const BACKEND = AMPLIFY_BACKEND;
 const KIND_WORKLOAD = "workload";
 const KIND_TARGET = "target";
 
@@ -71,19 +77,6 @@ function selfHostApp(config: YamlInfrastructureConfig): string | null {
 	return app ? app.name : null;
 }
 
-/** Mirrors amplifyTargetPath in app/amplify_rewrites.go. */
-function targetPath(rule: AmplifyRewriteRule): string {
-	if (rule.path) return rule.path;
-	const workload = rule.workload ?? "";
-	if (workload === BACKEND) return rule.source;
-	const prefix = `/${workload}`;
-	if (rule.source === prefix) return "";
-	if (rule.source.startsWith(`${prefix}/`)) {
-		return rule.source.slice(prefix.length);
-	}
-	return rule.source;
-}
-
 function ruleErrors(
 	rule: AmplifyRewriteRule,
 	workloads: string[],
@@ -119,6 +112,17 @@ function ruleErrors(
 			errors.push(
 				"With the ALB on, proxying to a workload needs a domain: turn the domain on first.",
 			);
+		}
+		if (rule.workload === BACKEND) {
+			const service = shadowingService(
+				amplifyTargetPath(rule),
+				workloads.filter((w) => w !== BACKEND),
+			);
+			if (service) {
+				errors.push(
+					`This path reaches service "${service}", not the backend, because the API sends /${service}/... to that service. Pick ${service} as the workload instead, or set a path on the workload that does not start with /${service}.`,
+				);
+			}
 		}
 		const loopApp = selfHostApp(config);
 		if (loopApp) {
@@ -378,7 +382,7 @@ export function AmplifyRewrites({
 										<p className="text-xs text-muted-foreground font-mono">
 											→ {base}
 											{rule.workload === BACKEND ? "" : `/${rule.workload}`}
-											{targetPath(rule)} (status 200)
+											{amplifyTargetPath(rule)} (status 200)
 										</p>
 									)}
 									{afterCatchAll && (

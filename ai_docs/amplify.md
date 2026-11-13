@@ -147,7 +147,7 @@ amplify_apps:
     environment_variables:
       AMPLIFY_MONOREPO_APP_ROOT: apps/web
     custom_rules:
-      - { source: "/api/<*>", workload: backend }              # → <backend base>/api/<*>
+      - { source: "/api/<*>", workload: backend }              # → <backend base>/api/<*> (no public service named api)
       - { source: "/reports/<*>", workload: reports }          # → <base>/reports/<*>
       - { source: "/r/<*>", workload: reports, path: "/<*>" }  # → <base>/reports/<*>
       - { source: "/old-pricing", target: "/pricing", status: "301" }
@@ -207,7 +207,16 @@ only concatenates `workload_urls[workload] + target_path`:
 - a workload rule's `source` is not a path (a regex such as `</^...$/>`) and no `path` is set;
 - a workload rule is used with `alb.enabled: true` and `domain.enabled: false`;
 - the resolved API host is the host of an Amplify app (`subdomain_prefix.<env domain>`
-  or `custom_domain`), because the rewrite would send the app's requests back to itself.
+  or `custom_domain`), because the rewrite would send the app's requests back to itself;
+- a `backend` rule's target path is `/<s>`, starts with `/<s>/`, or is `/<s><*>`, where
+  `<s>` is a `public` or `full_open` service. Both ingresses route `/<s>/...` to that
+  service before the backend's catch-all (API Gateway `ANY /<s>/{proxy+}` over
+  `ANY /{proxy+}`, ALB listener rule `/<s>/*`), so the request reaches the service with
+  `/<s>` stripped, never the backend. `{source: "/api/<*>", workload: backend}` next to
+  a public service `api` is the common case. Fix it by naming the service as the
+  workload, or by setting `path` to one that does not start with `/<s>`
+  (`{source: "/api/<*>", workload: backend, path: "/v1/<*>"}`). A service with
+  `network_access` `internal` or `none` gets no route and does not collide.
 
 A rule placed after a `/<*>` catch-all never matches; generate prints a warning.
 
