@@ -1,5 +1,6 @@
 import type {
 	EventBusChoice,
+	EventProduce,
 	EventSubscription,
 	WorkloadEvents,
 	YamlInfrastructureConfig,
@@ -40,6 +41,26 @@ export function projectBusName(config: YamlInfrastructureConfig): string {
 
 export function isEventBusEnabled(config: YamlInfrastructureConfig): boolean {
 	return config.event_bus?.enabled === true;
+}
+
+/**
+ * What one `events.produces` entry lets the workload publish, as
+ * modules/events/iam.tf builds its condition: `any: true` lifts the
+ * detail-type restriction, and `own_source_only: false` lifts the source one.
+ */
+export function describeProduceEntry(
+	entry: EventProduce,
+	busName: string,
+	ownSource: string,
+): string {
+	const types = entry.any
+		? "any detail-type"
+		: (entry.detail_types ?? []).length > 0
+			? `detail-type ${(entry.detail_types ?? []).join(", ")}`
+			: "no detail-type";
+	const source =
+		entry.own_source_only === false ? "any source" : `source ${ownSource}`;
+	return `${busName}: ${types}, ${source}`;
 }
 
 /** Same rule as app/events.go for an explicit subscription name. */
