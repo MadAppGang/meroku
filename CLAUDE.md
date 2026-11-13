@@ -450,6 +450,19 @@ account-wide `aws_codebuild_source_credential`. `vpc_access: true` requires a NA
 refuses otherwise on every generate. The runner role cannot deploy; deploys use
 the GitHub OIDC role. [GitHub Runners](./ai_docs/GITHUB_RUNNERS.md).
 
+## Neon Postgres
+
+Opt-in. An env's top-level `neon:` block creates or reuses a Neon project and databases
+on its default branch. `workload.backend_neon` / `services[].neon` give a service its own
+login role (`readonly` or `readwrite` on listed schemas, `search_path` set on the role) and
+a `DATABASE_URL` SSM SecureString on the pooled host. The deploy runs in two Terraform
+steps and needs Terraform >= 1.14. Auth is `NEON_API_KEY` or the Neon CLI login (`neon`,
+or the older `neonctl`); the token is never stored and reaches only terraform children.
+meroku never deletes a Neon project or database: released objects go to
+`.meroku/neon-kept/<env>.json` (`meroku neon kept <env>`). Code: `app/neon_*.go`,
+`modules/neon`, `modules/neon_access`, `modules/neon_ssm`, `env/main.hbs`. Added in schema v32.
+[Neon Postgres](./ai_docs/NEON.md).
+
 ## Fix with AI (Claude Code handoff)
 
 meroku has no AI of its own and needs no API key. "Fix with AI" writes a briefing

@@ -71,7 +71,8 @@ resource "null_resource" "auth_lambda_build" {
   )
 
   provisioner "local-exec" {
-    command = local.auth_lambda_build_command
+    interpreter = ["env", "-u", "NEON_API_KEY", "-u", "TF_VAR_neon_pg_credentials", "/bin/sh", "-c"]
+    command     = local.auth_lambda_build_command
   }
 }
 

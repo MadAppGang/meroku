@@ -42,7 +42,8 @@ import (
 // 29: Normalize workload.backend_container_command from a scalar to list(string)
 // 30: Add services[].network_access (public|internal|full_open|none); existing services pinned to full_open
 // 31: Write name-based policy as flags: auto_deploy (dev only), is_prod, and prod's domain settings
-const CurrentSchemaVersion = 31
+// 32: Neon Postgres: neon block and per-service neon access (opt-in); defaults owner_role, databases[].create, project.pg_version
+const CurrentSchemaVersion = 32
 
 // EnvWithVersion extends Env with a schema version field
 type EnvWithVersion struct {
@@ -208,6 +209,11 @@ var AllMigrations = []Migration{
 		Version:     31,
 		Description: "Write name-based policy as flags: auto_deploy (dev only), is_prod, and prod's domain settings",
 		Apply:       migrateToV31,
+	},
+	{
+		Version:     32,
+		Description: "Neon Postgres: neon block and per-service neon access (opt-in)",
+		Apply:       migrateToV32,
 	},
 }
 
@@ -1615,6 +1621,9 @@ func loadEnvWithMigration(name string) (Env, error) {
 
 	// Detect and apply migrations
 	currentVersion := detectSchemaVersion(dataMap)
+	if err := checkSchemaNotNewer(yamlPath, currentVersion); err != nil {
+		return e, err
+	}
 
 	if currentVersion < CurrentSchemaVersion {
 		fmt.Printf("\n═══════════════════════════════════════════════════════════\n")
@@ -1703,6 +1712,9 @@ func MigrateYAMLFile(filepath string) error {
 
 	// Detect version
 	currentVersion := detectSchemaVersion(dataMap)
+	if err := checkSchemaNotNewer(filepath, currentVersion); err != nil {
+		return err
+	}
 
 	if currentVersion >= CurrentSchemaVersion {
 		fmt.Printf("File %s is already at current version (v%d)\n", filepath, currentVersion)

@@ -986,7 +986,8 @@ resource "null_resource" "create_env_files" {
   for_each = { for file in local.env_files_s3 : "${file.bucket}-${file.key}" => file }
 
   provisioner "local-exec" {
-    command = <<-EOT
+    interpreter = ["env", "-u", "NEON_API_KEY", "-u", "TF_VAR_neon_pg_credentials", "/bin/sh", "-c"]
+    command     = <<-EOT
       echo "Checking if file exists: ${each.value.bucket}/${each.value.key}"
       touch empty.tmp
       aws s3api head-object --bucket ${each.value.bucket} --key ${each.value.key} || \

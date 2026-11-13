@@ -111,7 +111,8 @@ func TestTerraformErrorLockedProviderAsksForUpgrade(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"terraform", "init", "-upgrade", "-input=false"}
+	// REQ-20 / TEST-17: recovery returns argv only; the caller owns the executable.
+	want := []string{"init", "-upgrade", "-input=false"}
 	if len(got) != len(want) {
 		t.Fatalf("terraformError = %v, want %v", got, want)
 	}

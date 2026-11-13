@@ -19,7 +19,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -183,16 +182,18 @@ func envTerraformDir(env string) string {
 var zoneIDInState = regexp.MustCompile(`(?m)^\s*zone_id\s*=\s*"([^"]+)"`)
 
 // terraformInEnv runs terraform in dir with the environment's profile.
-func terraformInEnv(dir, profile string, args ...string) (string, error) {
-	cmd := exec.Command("terraform", append([]string{"-chdir=" + dir}, args...)...)
-	cmd.Env = os.Environ()
+func terraformInEnv(purpose tfPurpose, dir, profile string, args ...string) (string, error) {
+	cmd, err := newTerraformCmd(context.Background(), purpose, terraformDirOrCwd(dir), args...)
+	if err != nil {
+		return err.Error(), err
+	}
 	if profile != "" {
 		cmd.Env = append(cmd.Env, "AWS_PROFILE="+profile)
 	}
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
-	err := cmd.Run()
+	err = cmd.Run()
 	return out.String(), err
 }
 
@@ -202,14 +203,14 @@ var stateZoneLookup = func(e Env) stateZone {
 	if _, err := os.Stat(filepath.Join(dir, ".terraform")); err != nil {
 		return stateZone{}
 	}
-	list, err := terraformInEnv(dir, e.AWSProfile, "state", "list")
+	list, err := terraformInEnv(tfState, dir, e.AWSProfile, "state", "list")
 	if err != nil {
 		return stateZone{}
 	}
 	if !stateHasAddress(list, zoneTargetAddress) {
 		return stateZone{Known: true}
 	}
-	show, err := terraformInEnv(dir, e.AWSProfile, "state", "show", "-no-color", zoneTargetAddress)
+	show, err := terraformInEnv(tfState, dir, e.AWSProfile, "state", "show", "-no-color", zoneTargetAddress)
 	if err != nil {
 		return stateZone{}
 	}
@@ -245,7 +246,7 @@ func zoneImportBlock(zoneID string) string {
 var zoneImporter = func(e Env, zoneID, replaces string) error {
 	dir := envTerraformDir(e.Env)
 	if replaces != "" {
-		if out, err := terraformInEnv(dir, e.AWSProfile, "state", "rm", zoneTargetAddress); err != nil {
+		if out, err := terraformInEnv(tfState, dir, e.AWSProfile, "state", "rm", zoneTargetAddress); err != nil {
 			return fmt.Errorf("terraform state rm %s: %w\n%s", zoneTargetAddress, err, lastLines(out, 12))
 		}
 	}
@@ -254,7 +255,7 @@ var zoneImporter = func(e Env, zoneID, replaces string) error {
 		return fmt.Errorf("writing %s: %w", path, err)
 	}
 	defer os.Remove(path)
-	out, err := terraformInEnv(dir, e.AWSProfile, "apply", "-input=false", "-no-color", "-auto-approve",
+	out, err := terraformInEnv(tfConfig, dir, e.AWSProfile, "apply", "-input=false", "-no-color", "-auto-approve",
 		"-target="+zoneTargetAddress)
 	if err != nil {
 		return fmt.Errorf("importing %s as %s: %w\n%s", zoneID, zoneTargetAddress, err, lastLines(out, 12))
@@ -274,10 +275,24 @@ func lastLines(s string, n int) string {
 // initialised env/<env>, so it runs terraform init there first when needed.
 func adoptDomainZone(e Env, res dnsPreflightResult) error {
 	dir := envTerraformDir(e.Env)
+	// Deploy-time Neon files left by a killed run would make this a Neon dir
+	// (isNeonDir) when main.tf is not one, and the import below would then
+	// demand a Neon login. Every Neon flow writes them afresh, so they go.
+	if err := removeNeonDeployFiles(dir); err != nil {
+		return fmt.Errorf("neon: removing old deploy-time files: %w", err)
+	}
 	if _, err := os.Stat(filepath.Join(dir, ".terraform")); err != nil {
-		if out, err := terraformInEnv(dir, e.AWSProfile, "init", "-input=false", "-no-color"); err != nil {
+		if out, err := terraformInEnv(tfState, dir, e.AWSProfile, "init", "-input=false", "-no-color"); err != nil {
 			return fmt.Errorf("terraform init: %w\n%s", err, lastLines(out, 12))
 		}
+	}
+	// The import is a targeted apply: every provider main.tf requires must
+	// be locked and every module installed first.
+	if err := initIfLockIncomplete(context.Background(), terraformDirOrCwd(dir), os.Stdout); err != nil {
+		return err
+	}
+	if err := ensureActiveNeonSessionFresh(context.Background(), os.Stdout); err != nil {
+		return err
 	}
 	if res.AdoptReplaces != "" {
 		fmt.Printf("   terraform state rm %s   (was %s)\n", zoneTargetAddress, res.AdoptReplaces)

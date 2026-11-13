@@ -3,6 +3,10 @@ import type {
 	ComputeRuntime,
 	YamlInfrastructureConfig,
 } from "../types/yamlConfig";
+import {
+	NEON_DEFAULT_CREATE_PG_VERSION,
+	NEON_DEFAULT_OWNER_ROLE,
+} from "./neonValidation";
 
 export interface NodeStateConfig {
 	id: string;
@@ -194,6 +198,31 @@ export const nodeStateMapping: NodeStateConfig[] = [
 			config.postgres?.aurora
 				? "AWS Aurora PostgreSQL Serverless v2"
 				: "AWS RDS PostgreSQL Instance",
+	},
+	{
+		id: "neon",
+		name: "Neon Postgres",
+		type: "neon",
+		enabled: (config) => !!config.neon,
+		properties: (config) => ({
+			mode: config.neon?.mode || "create",
+			projectId: config.neon?.project_id || "",
+			projectName: config.neon?.project?.name || "",
+			regionId: config.neon?.project?.region_id || "",
+			pgVersion:
+				config.neon?.mode === "reuse"
+					? (config.neon?.pg_version ?? 0)
+					: (config.neon?.project?.pg_version ??
+						NEON_DEFAULT_CREATE_PG_VERSION),
+			ownerRole: config.neon?.owner_role || NEON_DEFAULT_OWNER_ROLE,
+			databases: (config.neon?.databases ?? []).map(
+				(database) => database.name,
+			),
+		}),
+		description: (config) =>
+			config.neon?.mode === "reuse"
+				? "Existing Neon Postgres project"
+				: "Neon Postgres project created by meroku",
 	},
 
 	// Storage Layer

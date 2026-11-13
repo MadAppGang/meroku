@@ -70,7 +70,7 @@ Recovery steps:
 
 	// Step 3: Check Terraform version
 	fmt.Println("🔧 Checking Terraform version...")
-	if err := checkTerraformVersion(); err != nil {
+	if err := checkTerraformVersion(terraformMinVersionFor(env)); err != nil {
 		return fmt.Errorf(`❌ Terraform check failed: %v
 
 Recovery steps:
@@ -276,11 +276,35 @@ func checkAWSCLIVersion() error {
 	return nil
 }
 
-// checkTerraformVersion validates that Terraform is installed and meets minimum version requirement
-func checkTerraformVersion() error {
-	const minVersion = "1.13.4"
+const (
+	// terraformMinVersion is what every env needs.
+	terraformMinVersion = "1.13.4"
+	// terraformMinVersionNeon is what an env with Neon needs: the Postgres
+	// credentials reach the providers through an ephemeral variable.
+	terraformMinVersionNeon = "1.14.0"
+)
 
-	output, err := runCommandWithOutput("terraform", "version")
+// terraformMinVersionFor is the minimum Terraform for env: higher when it
+// has `neon:` or Neon state may exist [V-N27].
+func terraformMinVersionFor(env Env) string {
+	if env.Neon != nil || (env.Env != "" && neonStateMayExist(envTerraformDir(env.Env))) {
+		return terraformMinVersionNeon
+	}
+	return terraformMinVersion
+}
+
+// checkTerraformVersion validates that Terraform is installed and meets minimum version requirement
+func checkTerraformVersion(minVersion string) error {
+	if minVersion == "" {
+		minVersion = terraformMinVersion
+	}
+
+	cmd, err := newTerraformCmd(context.Background(), tfState, workingDir(), "version")
+	if err != nil {
+		return err
+	}
+	fmt.Println("▶️ terraform version")
+	output, err := runCmdWithOutput(cmd)
 	if err != nil {
 		return fmt.Errorf("Terraform not found - please install Terraform (minimum version %s)", minVersion)
 	}

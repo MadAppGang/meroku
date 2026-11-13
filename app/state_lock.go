@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -160,8 +161,10 @@ func stopLockHolder(pid int, timeout time.Duration) error {
 
 // releaseStaleLock force-unlocks a lock whose run is gone.
 func releaseStaleLock(envDir, id string) error {
-	cmd := exec.Command("terraform", "force-unlock", "-force", id)
-	cmd.Dir = envDir
+	cmd, err := newTerraformCmd(context.Background(), tfState, terraformDirOrCwd(envDir), "force-unlock", "-force", id)
+	if err != nil {
+		return fmt.Errorf("terraform force-unlock: %w", err)
+	}
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("terraform force-unlock: %w\n%s", err, strings.TrimSpace(string(out)))
 	}

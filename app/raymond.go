@@ -340,6 +340,24 @@ func registerCustomHelpersOnce() {
 		return raymond.SafeString(encoded)
 	})
 
+	// hclJSON is json for a value written into HCL as an object or list
+	// constructor rather than handed to jsonencode. HCL reads every quoted key
+	// and string there as a template, so `${` and `%{` in a YAML string would
+	// become an interpolation or a directive; they are doubled first, the way
+	// hclString and hclArray do it. Terraform reads `$${` back as a literal
+	// `${`, so the value Terraform sees is the value in the YAML.
+	raymond.RegisterHelper("hclJSON", func(value interface{}) raymond.SafeString {
+		if value == nil {
+			return "null"
+		}
+
+		encoded, err := json.Marshal(escapeHCLTemplateOpeners(convertToJSONCompatible(value)))
+		if err != nil {
+			panic(fmt.Errorf("%s: cannot render %s as JSON: %w", jsonHelperErr, formatYAMLValue(value), err))
+		}
+		return raymond.SafeString(encoded)
+	})
+
 	//   [{ "name" : "PG_DATABASE_HOST", "value" : var.db_endpoint }, ...]
 	raymond.RegisterHelper("envToEnvArray", func(t any) raymond.SafeString {
 		text, ok := t.(string)

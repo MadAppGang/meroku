@@ -511,7 +511,7 @@ resource "terraform_data" "dns_slot" {
   }
 
   provisioner "local-exec" {
-    interpreter = ["/bin/sh", self.input.script]
+    interpreter = ["env", "-u", "NEON_API_KEY", "-u", "TF_VAR_neon_pg_credentials", "/bin/sh", self.input.script]
     command     = "add"
     environment = {
       R53_ZONE_ID = self.input.zone_id
@@ -526,7 +526,7 @@ resource "terraform_data" "dns_slot" {
 
   provisioner "local-exec" {
     when        = destroy
-    interpreter = ["/bin/sh", self.input.script]
+    interpreter = ["env", "-u", "NEON_API_KEY", "-u", "TF_VAR_neon_pg_credentials", "/bin/sh", self.input.script]
     command     = "remove"
     environment = {
       R53_ZONE_ID = self.input.zone_id
@@ -558,7 +558,7 @@ resource "terraform_data" "dns_value" {
   }
 
   provisioner "local-exec" {
-    interpreter = ["/bin/sh", self.input.script]
+    interpreter = ["env", "-u", "NEON_API_KEY", "-u", "TF_VAR_neon_pg_credentials", "/bin/sh", self.input.script]
     command     = "add"
     environment = {
       R53_ZONE_ID = self.input.zone_id
@@ -573,7 +573,7 @@ resource "terraform_data" "dns_value" {
 
   provisioner "local-exec" {
     when        = destroy
-    interpreter = ["/bin/sh", self.input.script]
+    interpreter = ["env", "-u", "NEON_API_KEY", "-u", "TF_VAR_neon_pg_credentials", "/bin/sh", self.input.script]
     command     = "remove"
     environment = {
       R53_ZONE_ID = self.input.zone_id
@@ -607,7 +607,7 @@ resource "terraform_data" "dns_ttl" {
   depends_on = [terraform_data.dns_slot, terraform_data.dns_value]
 
   provisioner "local-exec" {
-    interpreter = ["/bin/sh", self.input.script]
+    interpreter = ["env", "-u", "NEON_API_KEY", "-u", "TF_VAR_neon_pg_credentials", "/bin/sh", self.input.script]
     command     = "ttl"
     environment = {
       R53_ZONE_ID = self.input.zone_id

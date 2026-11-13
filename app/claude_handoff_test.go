@@ -317,7 +317,7 @@ func TestLaunchClaudeHandoff_InHerdrSplitsThenRunsClaude(t *testing.T) {
 		t.Fatalf("run = %s %q, want herdr pane run w1:p9 <command>", run.name, run.args)
 	}
 	command := run.args[3]
-	if !strings.HasPrefix(command, "'/usr/local/bin/claude' ") || !strings.Contains(command, res.BriefingPath) {
+	if !strings.HasPrefix(command, handoffEnvUnset+" '/usr/local/bin/claude' ") || !strings.Contains(command, res.BriefingPath) {
 		t.Errorf("pane command %q does not start claude on the briefing", command)
 	}
 }
@@ -444,6 +444,51 @@ func TestLaunchClaudeHandoff_EnablesTheMerokuPlugin(t *testing.T) {
 	}
 }
 
+// qaHandoffSplitCommand checks the external tmux argv contract without assigning
+// fixed offsets to options. The command is the sole operand after the options.
+func qaHandoffSplitCommand(t *testing.T, args []string, root string) string {
+	t.Helper()
+	if len(args) == 0 || args[0] != "split-window" {
+		t.Fatalf("tmux args = %q, want split-window", args)
+	}
+	horizontal, directories := 0, 0
+	cleared := map[string]int{}
+	command := ""
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "-h":
+			horizontal++
+		case "-c", "-e":
+			flag := args[i]
+			if i+1 >= len(args) {
+				t.Fatalf("tmux %s has no value: %q", flag, args)
+			}
+			i++
+			if flag == "-c" {
+				directories++
+				if args[i] != root {
+					t.Errorf("tmux -c = %q, want raw root %q", args[i], root)
+				}
+			} else {
+				cleared[args[i]]++
+			}
+		default:
+			if i != len(args)-1 || strings.HasPrefix(args[i], "-") {
+				t.Fatalf("unexpected tmux argument %q in %q", args[i], args)
+			}
+			command = args[i]
+		}
+	}
+	if horizontal != 1 || directories != 1 || len(cleared) != 2 ||
+		cleared["NEON_API_KEY="] != 1 || cleared["TF_VAR_neon_pg_credentials="] != 1 {
+		t.Fatalf("tmux args = %q, want one rooted horizontal split with both secret variables cleared", args)
+	}
+	if !strings.HasPrefix(command, "env -u NEON_API_KEY -u TF_VAR_neon_pg_credentials ") {
+		t.Fatalf("pane command = %q, want both secrets removed before launching Claude Code", command)
+	}
+	return command
+}
+
 func TestLaunchClaudeHandoff_InTmuxOpensOneSplitPane(t *testing.T) {
 	root := t.TempDir()
 	calls := fakeHandoffSystem(t, map[string]string{"TMUX": "/tmp/tmux-501/default,1,0"}, "/usr/local/bin/claude", nil)
@@ -464,10 +509,8 @@ func TestLaunchClaudeHandoff_InTmuxOpensOneSplitPane(t *testing.T) {
 	if c.name != "tmux" {
 		t.Fatalf("runner called %q, want tmux", c.name)
 	}
-	if len(c.args) != 5 || c.args[0] != "split-window" || c.args[1] != "-h" || c.args[2] != "-c" || c.args[3] != root {
-		t.Fatalf("tmux args = %q, want [split-window -h -c %s <command>]", c.args, root)
-	}
-	command := c.args[4]
+	// REQ-3 / TEST-4: inspect tmux options by flag, not their offsets.
+	command := qaHandoffSplitCommand(t, c.args, root)
 	if !strings.Contains(command, "claude") {
 		t.Errorf("pane command %q does not start claude", command)
 	}
@@ -548,8 +591,8 @@ func TestLaunchClaudeHandoff_OutsideTmuxReturnsManualCommand(t *testing.T) {
 	if !filepath.IsAbs(res.BriefingPath) {
 		t.Errorf("BriefingPath %q is not absolute", res.BriefingPath)
 	}
-	if !strings.HasPrefix(res.ManualCommand, "cd ") || !strings.Contains(res.ManualCommand, "&& claude ") {
-		t.Errorf("ManualCommand = %q, want `cd <root> && claude <prompt>`", res.ManualCommand)
+	if !strings.HasPrefix(res.ManualCommand, "cd ") || !strings.Contains(res.ManualCommand, "&& env -u NEON_API_KEY -u TF_VAR_neon_pg_credentials claude ") {
+		t.Errorf("ManualCommand = %q, want `cd <root> && env -u NEON_API_KEY -u TF_VAR_neon_pg_credentials claude <prompt>`", res.ManualCommand)
 	}
 	if !strings.Contains(res.ManualCommand, res.BriefingPath) {
 		t.Errorf("ManualCommand %q does not reference the briefing", res.ManualCommand)
@@ -618,6 +661,14 @@ var onlyQuotedWords = regexp.MustCompile(`^'[^']*'(\\''[^']*')*( '[^']*'(\\''[^'
 // quoting bug cannot find claude or tmux to execute.
 func shellWords(t *testing.T, words string) []string {
 	t.Helper()
+	// Strip only this fixed safe prefix; the remaining command must still be
+	// plain quoted words before the shell sees it. Neither env nor claude runs.
+	var prefix []string
+	const unsetPrefix = "env -u NEON_API_KEY -u TF_VAR_neon_pg_credentials "
+	if strings.HasPrefix(words, unsetPrefix) {
+		words = strings.TrimPrefix(words, unsetPrefix)
+		prefix = []string{"env", "-u", "NEON_API_KEY", "-u", "TF_VAR_neon_pg_credentials"}
+	}
 	if !onlyQuotedWords.MatchString(words) {
 		t.Fatalf("shellWords given %q, which is not only single-quoted words; refusing to evaluate it", words)
 	}
@@ -627,7 +678,7 @@ func shellWords(t *testing.T, words string) []string {
 	if err != nil {
 		t.Fatalf("sh could not parse %q: %v", words, err)
 	}
-	return strings.Split(strings.TrimSuffix(string(out), "\n"), "\n")
+	return append(prefix, strings.Split(strings.TrimSuffix(string(out), "\n"), "\n")...)
 }
 
 func TestLaunchClaudeHandoff_PaneCommandQuotesHostilePaths(t *testing.T) {
@@ -642,12 +693,11 @@ func TestLaunchClaudeHandoff_PaneCommandQuotesHostilePaths(t *testing.T) {
 	if len(*calls) != 1 {
 		t.Fatalf("got %d runner calls, want 1", len(*calls))
 	}
-	if got := (*calls)[0].args[3]; got != root {
-		t.Errorf("tmux -c got %q, want %q (passed as an argv element, unquoted)", got, root)
-	}
-
-	words := shellWords(t, (*calls)[0].args[4])
-	want := []string{claudePath, "--settings", merokuPluginSettings, handoffPrompt(res.BriefingPath)}
+	// REQ-3 / TEST-4: -c takes the raw root as one argv element.
+	command := qaHandoffSplitCommand(t, (*calls)[0].args, root)
+	words := shellWords(t, command)
+	want := []string{"env", "-u", "NEON_API_KEY", "-u", "TF_VAR_neon_pg_credentials",
+		claudePath, "--settings", merokuPluginSettings, handoffPrompt(res.BriefingPath)}
 	if len(words) != len(want) {
 		t.Fatalf("pane command parsed into %d words, want %d: %q", len(words), len(want), words)
 	}
@@ -671,7 +721,7 @@ func TestLaunchClaudeHandoff_ManualCommandQuotesHostilePaths(t *testing.T) {
 	// its exact shape, then round-trip each quoted word on its own.
 	quotedRoot := shellQuote(root)
 	quotedPrompt := shellQuote(handoffPrompt(res.BriefingPath))
-	if want := "cd " + quotedRoot + " && claude '--settings' " + shellQuote(merokuPluginSettings) + " " + quotedPrompt; res.ManualCommand != want {
+	if want := "cd " + quotedRoot + " && env -u NEON_API_KEY -u TF_VAR_neon_pg_credentials claude '--settings' " + shellQuote(merokuPluginSettings) + " " + quotedPrompt; res.ManualCommand != want {
 		t.Fatalf("ManualCommand =\n %q\nwant\n %q", res.ManualCommand, want)
 	}
 	if got := shellWords(t, quotedRoot); len(got) != 1 || got[0] != root {
@@ -767,10 +817,10 @@ func TestLaunchClaudeHandoff_SameSecondSameOperationGetDistinctFiles(t *testing.
 	if len(*calls) != 2 {
 		t.Fatalf("got %d runner calls, want 2", len(*calls))
 	}
-	if cmd := (*calls)[0].args[4]; !strings.Contains(cmd, r1.BriefingPath+" ") || strings.Contains(cmd, r2.BriefingPath) {
+	if cmd := (*calls)[0].args[8]; !strings.Contains(cmd, r1.BriefingPath+" ") || strings.Contains(cmd, r2.BriefingPath) {
 		t.Errorf("first pane command %q does not reference only %q", cmd, r1.BriefingPath)
 	}
-	if cmd := (*calls)[1].args[4]; !strings.Contains(cmd, r2.BriefingPath+" ") {
+	if cmd := (*calls)[1].args[8]; !strings.Contains(cmd, r2.BriefingPath+" ") {
 		t.Errorf("second pane command %q does not reference %q", cmd, r2.BriefingPath)
 	}
 	if got := filepath.Base(r2.BriefingPath); got != "20261029-140509-apply-2.md" {
@@ -836,12 +886,12 @@ func TestFormatHandoffResult_PaneOpenedWarnsAboutRawErrorOutput(t *testing.T) {
 func TestFormatHandoffResult_NotOpened(t *testing.T) {
 	out := FormatHandoffResult(HandoffResult{
 		BriefingPath:  "/projects/fake-app/.meroku/claude/x.md",
-		ManualCommand: "cd '/projects/fake-app' && claude 'Read ...'",
+		ManualCommand: "cd '/projects/fake-app' && env -u NEON_API_KEY -u TF_VAR_neon_pg_credentials claude 'Read ...'",
 	})
 
 	for _, want := range []string{
 		"/projects/fake-app/.meroku/claude/x.md",
-		"cd '/projects/fake-app' && claude 'Read ...'",
+		"cd '/projects/fake-app' && env -u NEON_API_KEY -u TF_VAR_neon_pg_credentials claude 'Read ...'",
 		"may contain raw error",
 	} {
 		if !strings.Contains(out, want) {

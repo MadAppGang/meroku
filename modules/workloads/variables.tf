@@ -776,3 +776,30 @@ variable "compute_pools" {
     error_message = "compute_pools[*].network_mode must be \"bridge\" or \"awsvpc\"."
   }
 }
+
+# ---------------------------------------------------------------------------
+# SSM parameters written outside this module under a service's path.
+# ---------------------------------------------------------------------------
+
+variable "ssm_dependencies" {
+  description = <<-EOT
+    Service name ("backend" for the backend) => token ("<parameter name>@<version>")
+    of an SSM parameter another module writes under that service's path, such
+    as modules/neon_ssm's database_url. That service's by-path read waits on
+    its token, so a new or changed value reaches its task definition in the
+    apply that writes it, and no other service's. Empty (the default) adds
+    nothing to the plan.
+  EOT
+  type        = map(string)
+  default     = {}
+}
+
+variable "ssm_exclude_names" {
+  description = <<-EOT
+    Full SSM parameter names left out of the by-path secret lists: parameters
+    deleted in the same apply, which the by-path read would still list. Empty
+    (the default) leaves the lists exactly as read.
+  EOT
+  type        = list(string)
+  default     = []
+}

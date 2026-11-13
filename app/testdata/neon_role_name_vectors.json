@@ -1,0 +1,90 @@
+{
+  "_comment": [
+    "Pins neonRoleName(project, env, service, database).",
+    "",
+    "id     = hex(sha256(project + NUL + env + NUL + service + NUL + database))[:8]",
+    "prefix = join('_', sanitize(project), sanitize(env), sanitize(service), sanitize(database))",
+    "         sanitize: lower-case, [^a-z0-9] -> '_', runs of '_' collapsed to one",
+    "if prefix starts with a digit: prefix = 'r_' + prefix   (before truncation)",
+    "name   = trimRight(prefix[:min(len, 54)], '_') + '_' + id",
+    "",
+    "Every name is at most 63 bytes and matches ^[a-z_][a-z0-9_]*$, the",
+    "role_name validation in modules/neon_access/variables.tf. The raw",
+    "names, not the sanitized ones, go into the hash, so tuples whose",
+    "readable prefixes coincide still get different names."
+  ],
+  "vectors": [
+    {
+      "name": "plain names",
+      "project": "myapp",
+      "env": "dev",
+      "service": "backend",
+      "database": "app",
+      "want": "myapp_dev_backend_app_f0819dbc"
+    },
+    {
+      "name": "named service, another database",
+      "project": "myapp",
+      "env": "dev",
+      "service": "reports",
+      "database": "analytics",
+      "want": "myapp_dev_reports_analytics_010562fd"
+    },
+    {
+      "name": "same service and database in another env",
+      "project": "myapp",
+      "env": "prod",
+      "service": "backend",
+      "database": "app",
+      "want": "myapp_prod_backend_app_f96ca12b"
+    },
+    {
+      "name": "upper case and hyphens are sanitized",
+      "project": "My-App",
+      "env": "Staging",
+      "service": "Order-Sync",
+      "database": "app_db",
+      "want": "my_app_staging_order_sync_app_db_538fe819"
+    },
+    {
+      "name": "readable prefix collides with the sanitized project above",
+      "project": "my_app",
+      "env": "staging",
+      "service": "order_sync",
+      "database": "app_db",
+      "want": "my_app_staging_order_sync_app_db_3226d256"
+    },
+    {
+      "name": "repeated separators collapse",
+      "project": "my--app",
+      "env": "dev",
+      "service": "api..v2",
+      "database": "app",
+      "want": "my_app_dev_api_v2_app_dba7ba8f"
+    },
+    {
+      "name": "digit-leading project gets the r_ prefix",
+      "project": "9lives",
+      "env": "dev",
+      "service": "backend",
+      "database": "app",
+      "want": "r_9lives_dev_backend_app_b0a819a8"
+    },
+    {
+      "name": "long names are truncated to 63 bytes",
+      "project": "a-very-long-project-name-for-truncation",
+      "env": "production-eu",
+      "service": "payments-reconciliation-worker",
+      "database": "ledger_main",
+      "want": "a_very_long_project_name_for_truncation_production_eu_7eb2c5c8"
+    },
+    {
+      "name": "digit-leading long project, truncated after the r_ prefix",
+      "project": "2024-quarterly-reporting-platform",
+      "env": "preview-env-0001",
+      "service": "export-scheduler",
+      "database": "warehouse",
+      "want": "r_2024_quarterly_reporting_platform_preview_env_0001_e_c0ad801a"
+    }
+  ]
+}

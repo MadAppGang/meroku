@@ -233,6 +233,22 @@ const initialNodes: Node[] = [
 		deletable: false,
 	},
 
+	// Neon Postgres (standalone - not in ECS cluster), next to PostgreSQL
+	{
+		id: "neon",
+		type: "service",
+		position: { x: 900, y: 110 },
+		data: {
+			id: "neon",
+			type: "neon",
+			name: "Neon Postgres",
+			description: "Serverless Postgres from Neon",
+			status: "running",
+			deletable: false,
+		},
+		deletable: false,
+	},
+
 	// EventBridge (standalone - not in ECS cluster)
 	{
 		id: "eventbridge",
@@ -679,6 +695,34 @@ export function DeploymentCanvas({
 					style: { stroke: "#f59e0b", strokeWidth: 2 },
 					markerEnd: { type: MarkerType.ArrowClosed, color: "#d97706" },
 				});
+			});
+		}
+
+		// Add edges from services that use Neon to the Neon node, labelled with the
+		// database and access level each one has
+		if (config?.neon) {
+			const neonEdge = (
+				source: string,
+				access: { database: string; access: string },
+			): Edge => ({
+				id: `${source}-neon`,
+				source,
+				target: "neon",
+				type: "smoothstep",
+				animated: true,
+				label: `${access.database} · ${access.access === "readwrite" ? "read/write" : "read only"}`,
+				style: { stroke: "#10b981", strokeWidth: 2 },
+				markerEnd: { type: MarkerType.ArrowClosed, color: "#10b981" },
+			});
+			if (config.workload?.backend_neon) {
+				allEdges.push(
+					neonEdge("backend-service", config.workload.backend_neon),
+				);
+			}
+			config.services?.forEach((service) => {
+				if (service.neon) {
+					allEdges.push(neonEdge(`service-${service.name}`, service.neon));
+				}
 			});
 		}
 

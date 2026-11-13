@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"strings"
 )
 
@@ -57,7 +56,13 @@ func bootstrapDNSZone() error {
 		"-auto-approve",
 	}, phaseOneTargets()...)
 
-	cmd := exec.Command("terraform", args...)
+	if err := ensureActiveNeonSessionFresh(context.Background(), os.Stdout); err != nil {
+		return err
+	}
+	cmd, err := newTerraformCmd(context.Background(), tfConfig, workingDir(), args...)
+	if err != nil {
+		return fmt.Errorf("failed to start terraform: %w", err)
+	}
 	cmd.Stdin = os.Stdin
 
 	stdout, err := cmd.StdoutPipe()

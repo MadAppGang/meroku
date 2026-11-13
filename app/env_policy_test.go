@@ -11,9 +11,10 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-func TestV31IsRegisteredAtTheCurrentVersion(t *testing.T) {
-	if CurrentSchemaVersion != 31 {
-		t.Fatalf("CurrentSchemaVersion = %d, want 31", CurrentSchemaVersion)
+// REQ-18 / TEST-15: v32 is the current opt-in Neon schema.
+func TestV32IsRegisteredAtTheCurrentVersion(t *testing.T) {
+	if CurrentSchemaVersion != 32 {
+		t.Fatalf("CurrentSchemaVersion = %d, want 32", CurrentSchemaVersion)
 	}
 	last := AllMigrations[len(AllMigrations)-1]
 	if last.Version != CurrentSchemaVersion || last.Apply == nil {

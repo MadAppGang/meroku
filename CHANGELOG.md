@@ -1,5 +1,43 @@
 # Changelog
 
+## v5.7.0
+
+### Neon Postgres
+
+An environment can create or reuse a [Neon](https://neon.com) project and its
+databases, and give each service its own database login.
+
+```yaml
+neon:
+  mode: create              # or reuse, with project_id and pg_version (14-18)
+  project:
+    name: myapp-dev
+    org_id: "org-placeholder-000"
+    region_id: aws-us-east-1
+    pg_version: 17          # 15-18, default 17
+  databases:
+    - name: app
+      create: true
+workload:
+  backend_neon:
+    database: app
+    access: readwrite     # or readonly
+    schemas: [public]
+```
+
+- Each service with `neon` (`workload.backend_neon`, `services[].neon`) gets its own
+  role with the access it asks for on its schemas, and a `DATABASE_URL` SecureString
+  in SSM at `/<env>/<project>/<service>/database_url`, on the pooled host with
+  `sslmode=require`.
+- Login is `NEON_API_KEY` or the Neon CLI login (`neon auth`). The token is never
+  written to disk.
+- meroku never deletes a Neon project or database. What it stops managing is listed by
+  `meroku neon kept <env>`, with the command to delete it by hand.
+- The deploy runs in two Terraform steps and needs Terraform 1.14 or later.
+- Web UI: a Neon node, a Database tab on each service, lines from services to Neon, and
+  `DATABASE_URL` shown on the Parameters tab.
+- Schema v32. Full guide: `ai_docs/NEON.md`.
+
 ## v5.6.0
 
 ### ALB settings

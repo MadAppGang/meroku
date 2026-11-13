@@ -1,5 +1,6 @@
 import type { PricingResponse } from "../hooks/use-pricing";
 import type { SESDNSIssue } from "../lib/sesDnsValidation";
+import type { NeonLookupOptions, NeonLookupResponse } from "../types/neon";
 import { fetchWithTokenRetry } from "../utils/fetchWithRetry";
 
 export interface Environment {
@@ -1039,6 +1040,35 @@ export const infrastructureApi = {
 				.json()
 				.catch(() => ({}));
 			throw new Error(error.error || "Failed to check the network range");
+		}
+		return response.json();
+	},
+
+	/**
+	 * GET /api/neon/lookup — live Neon choices for the Neon panels: the
+	 * login state, organizations, projects, and the default branch's databases
+	 * and roles. Neon failures come back as 200 with `note`; a thrown error
+	 * means the request itself was refused (unknown env, foreign origin).
+	 *
+	 * The server answers same-origin requests only, so this always uses a
+	 * relative URL and never `VITE_API_URL`.
+	 */
+	async getNeonLookup(
+		env: string,
+		opts: NeonLookupOptions = {},
+	): Promise<NeonLookupResponse> {
+		const params = new URLSearchParams({ env });
+		if (opts.projectId) params.set("project_id", opts.projectId);
+		if (opts.orgId) params.set("org_id", opts.orgId);
+		const response = await fetch(`/api/neon/lookup?${params}`, {
+			credentials: "same-origin",
+			signal: opts.signal,
+		});
+		if (!response.ok) {
+			const error: Partial<ErrorResponse> = await response
+				.json()
+				.catch(() => ({}));
+			throw new Error(error.error || "Failed to read your Neon projects");
 		}
 		return response.json();
 	},

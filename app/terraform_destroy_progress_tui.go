@@ -2,6 +2,8 @@ package main
 
 import (
 	"bufio"
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -170,23 +172,58 @@ func (m *destroyProgressModel) runTerraformDestroy() tea.Cmd {
 		// No build artifact is needed to plan or run a destroy: lambda.tf has no
 		// data.archive_file, and the zip is reached only through
 		// aws_lambda_function.filename, which the provider reads on Create/Update.
-		// See runTerraformDestroy in terrafrom.go.
 
 		envPath := filepath.Join("env", m.env)
 		if err := os.Chdir(envPath); err != nil {
 			return destroyErrorMsg{err: err, output: []string{err.Error()}}
 		}
 
+		envDir := filepath.Join(wd, envPath)
+
 		// Initialize terraform first
-		initCmd := exec.Command("terraform", "init", "-reconfigure")
+		initCmd, err := newTerraformCmd(context.Background(), tfState, envDir, "init", "-reconfigure")
+		if err != nil {
+			return destroyErrorMsg{err: err, output: []string{err.Error()}}
+		}
 		initOut, _ := initCmd.CombinedOutput()
 		m.outputMutex.Lock()
 		m.outputLines = append(m.outputLines, strings.Split(string(initOut), "\n")...)
 		m.outputMutex.Unlock()
 
+		// Neon: state found only now (a fresh checkout) cannot be logged in
+		// to from inside this screen; otherwise release what must survive
+		// the destroy and hand the credentials to terraform.
+		ctx := context.Background()
+		sess := currentNeonSession()
+		if sess == nil && neonStateMayExist(envDir) {
+			msg := "this env has Neon state in its backend. Run destroy again; meroku will ask you to log in to Neon first."
+			return destroyErrorMsg{err: errors.New(msg), output: []string{msg}}
+		}
+		if sess != nil {
+			out := destroyOutputWriter{m}
+			var api neonAPI
+			if tok := neonSessionToken(sess); tok != "" {
+				api = newNeonAPI(tok)
+			}
+			kept, cleanup, err := neonDestroyPrep(ctx, out, m.target, terraformOutputRunner, api, sess)
+			defer cleanup()
+			if err != nil {
+				return destroyErrorMsg{err: err, output: strings.Split(err.Error(), "\n")}
+			}
+			for _, l := range kept {
+				fmt.Fprintln(out, l)
+			}
+			if err := sess.EnsureFresh(ctx, out); err != nil {
+				return destroyErrorMsg{err: err, output: []string{err.Error()}}
+			}
+		}
+
 		// Run terraform destroy with no color output for easier parsing
 		// Use -refresh=false to skip data source reads and prevent errors from already-deleted resources
-		cmd := exec.Command("terraform", "destroy", "-auto-approve", "-no-color", "-refresh=false")
+		cmd, err := newTerraformCmd(context.Background(), tfConfig, envDir, "destroy", "-auto-approve", "-no-color", "-refresh=false")
+		if err != nil {
+			return destroyErrorMsg{err: err, output: []string{err.Error()}}
+		}
 
 		// Store command reference for interrupt handling
 		m.terraformCmd = cmd
@@ -848,13 +885,53 @@ func (m *destroyProgressModel) renderFullErrorView() string {
 // from the project root. target also feeds the Claude Code handoff offered
 // when the destroy fails.
 func runTerraformDestroyWithProgress(target handoffTarget) error {
+	envName := neonEnvName(target)
+	// State reads are shared within this destroy only.
+	resetNeonStateCache()
+	defer resetNeonStateCache()
+	printNeonKeptReport(target.ProjectRoot, envName)
+
+	// A Neon env gets its login (or the choice to destroy without one)
+	// before the destroy screen, which cannot prompt.
+	_, clear, err := beginNeonDestroySession(context.Background(), target)
+	if err != nil {
+		return fmt.Errorf("neon: %w", err)
+	}
+	defer clear()
+
 	m := newDestroyProgressModel(target)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("error running destroy progress TUI: %w", err)
 	}
-	return destroyRunResult(m, offerClaudeHandoff)
+	result := destroyRunResult(m, offerClaudeHandoff)
+	printNeonKeptReport(target.ProjectRoot, envName)
+	if result != nil {
+		ownerRole := ""
+		if n := normalizeNeon(target.Env.Neon); n != nil {
+			ownerRole = n.OwnerRole
+		}
+		if remedy := neonRoleInUseRemedy(strings.Join(m.errorOutput, "\n"), ownerRole); remedy != "" {
+			fmt.Println()
+			fmt.Print(remedy)
+		}
+	}
+	return result
+}
+
+// destroyOutputWriter appends what is written to it to the destroy screen's
+// output, line by line.
+type destroyOutputWriter struct{ m *destroyProgressModel }
+
+func (w destroyOutputWriter) Write(p []byte) (int, error) {
+	w.m.outputMutex.Lock()
+	defer w.m.outputMutex.Unlock()
+	w.m.outputLines = append(w.m.outputLines, strings.Split(strings.TrimRight(string(p), "\n"), "\n")...)
+	if len(w.m.outputLines) > 100 {
+		w.m.outputLines = w.m.outputLines[len(w.m.outputLines)-100:]
+	}
+	return len(p), nil
 }
 
 // destroyRunResult is what a finished destroy TUI returns, after handing off

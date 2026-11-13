@@ -25,7 +25,7 @@ resource "aws_ssm_parameter" "services_env" {
 data "aws_ssm_parameters_by_path" "services" {
   for_each = local.service_names
 
-  path      = "/${var.env}/${var.project}/${each.key}"
+  path      = "/${var.env}/${var.project}/${each.key}${lookup(local.ssm_path_gate, each.key, "")}"
   recursive = true
   depends_on = [
     aws_ssm_parameter.services_env
@@ -33,13 +33,15 @@ data "aws_ssm_parameters_by_path" "services" {
 }
 
 locals {
-  # SSM parameters for each service
+  # SSM parameters for each service, without the names in ssm_exclude_names
+  # (see local.backend_ssm_names in env.tf).
   services_env_ssm = {
     for service_name, service in local.service_names : service_name => [
-      for i in range(length(data.aws_ssm_parameters_by_path.services[service_name].names)) : {
-        name      = upper(reverse(split("/", data.aws_ssm_parameters_by_path.services[service_name].names[i]))[0])
-        valueFrom = data.aws_ssm_parameters_by_path.services[service_name].names[i]
+      for n in data.aws_ssm_parameters_by_path.services[service_name].names : {
+        name      = upper(reverse(split("/", n))[0])
+        valueFrom = n
       }
+      if !contains(var.ssm_exclude_names, n)
     ]
   }
 

@@ -1,10 +1,16 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
+	"strings"
 )
 
 // An environment initialised under one major of hashicorp/aws keeps that major
@@ -81,9 +87,146 @@ func upgradeLockedProviderIfBehind() error {
 	}
 	behind, locked, wanted := lockedProviderMajorBehind(".terraform.lock.hcl", "main.tf")
 	if !behind {
+		if missing := lockMissingProviders("."); len(missing) > 0 || modulesMissing(".") {
+			fmt.Println("🔄 The provider lock or installed modules do not cover main.tf yet. Running terraform init.")
+			return lockInit()
+		}
 		return nil
 	}
 	fmt.Printf("🔄 The AWS provider lock is on version %d.x and this meroku generates for %d.x.\n", locked, wanted)
 	fmt.Println("   Running terraform init -upgrade to move the lock to the new version.")
 	return lockUpgradeInit()
+}
+
+var (
+	reRequiredSource = regexp.MustCompile(`source\s*=\s*"([^"]+)"`)
+	reModuleBlock    = regexp.MustCompile(`(?m)^\s*module\s+"([^"]+)"`)
+)
+
+// lockMissingProviders lists the provider sources dir's configuration
+// (main.tf and the deploy-time Neon files) requires that the lock file does
+// not select. A fresh init picks the newest version of a provider only state
+// requires, so this runs after the deploy-time files with their exact pins
+// are written.
+func lockMissingProviders(dir string) []string {
+	lock, _ := os.ReadFile(filepath.Join(dir, ".terraform.lock.hcl"))
+	lockText := strings.ToLower(string(lock))
+	seen := map[string]bool{}
+	var missing []string
+	for _, name := range []string{"main.tf", neonRetiredFile, neonRetiredOverrideFile} {
+		data, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			continue
+		}
+		for _, m := range reRequiredSource.FindAllSubmatch(requiredProvidersBlocks(data), -1) {
+			src := strings.ToLower(string(m[1]))
+			if strings.Count(src, "/") == 1 {
+				src = "registry.terraform.io/" + src
+			}
+			if seen[src] || strings.Count(src, "/") != 2 {
+				continue
+			}
+			seen[src] = true
+			if !strings.Contains(lockText, `provider "`+src+`"`) {
+				missing = append(missing, src)
+			}
+		}
+	}
+	sort.Strings(missing)
+	return missing
+}
+
+var reRequiredProviders = regexp.MustCompile(`required_providers\s*\{`)
+
+// requiredProvidersBlocks is the bodies of every required_providers block in
+// data, so module sources never count as providers.
+func requiredProvidersBlocks(data []byte) []byte {
+	var out []byte
+	for _, loc := range reRequiredProviders.FindAllIndex(data, -1) {
+		depth := 0
+		for i := loc[1] - 1; i < len(data); i++ {
+			switch data[i] {
+			case '{':
+				depth++
+			case '}':
+				depth--
+			}
+			if depth == 0 {
+				out = append(out, data[loc[1]:i]...)
+				out = append(out, '\n')
+				break
+			}
+		}
+	}
+	return out
+}
+
+// modulesMissing reports whether main.tf in dir declares a module that
+// .terraform/modules/modules.json does not list. Without main.tf or a
+// .terraform directory it reports false: init decides those cases elsewhere.
+func modulesMissing(dir string) bool {
+	mainTF, err := os.ReadFile(filepath.Join(dir, "main.tf"))
+	if err != nil {
+		return false
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".terraform")); err != nil {
+		return false
+	}
+	installed := map[string]bool{}
+	if data, err := os.ReadFile(filepath.Join(dir, ".terraform", "modules", "modules.json")); err == nil {
+		var manifest struct {
+			Modules []struct {
+				Key string `json:"Key"`
+			} `json:"Modules"`
+		}
+		if json.Unmarshal(data, &manifest) == nil {
+			for _, m := range manifest.Modules {
+				installed[m.Key] = true
+			}
+		}
+	}
+	for _, m := range reModuleBlock.FindAllSubmatch(mainTF, -1) {
+		if !installed[string(m[1])] {
+			return true
+		}
+	}
+	return false
+}
+
+// initIfLockIncomplete runs a plain `terraform init -input=false` in dir
+// (never -upgrade) when the lock lacks a required provider or a module is not
+// installed.
+func initIfLockIncomplete(ctx context.Context, dir string, out io.Writer) error {
+	return initIfLockIncompleteWith(ctx, dir, out, combinedInitRunner)
+}
+
+// initIfLockIncompleteWith is initIfLockIncomplete with the terraform runner
+// given, so a caller that runs every other terraform command through one
+// runner runs init through it too.
+func initIfLockIncompleteWith(ctx context.Context, dir string, out io.Writer, run terraformRunner) error {
+	missing := lockMissingProviders(dir)
+	if len(missing) == 0 && !modulesMissing(dir) {
+		return nil
+	}
+	if len(missing) > 0 {
+		fmt.Fprintf(out, "🔄 The provider lock does not select %s yet. Running terraform init.\n", strings.Join(missing, ", "))
+	} else {
+		fmt.Fprintln(out, "🔄 A module is not installed yet. Running terraform init.")
+	}
+	_, err := run(ctx, tfState, dir, "init", "-input=false", "-no-color")
+	return err
+}
+
+// combinedInitRunner runs terraform and reports the last lines of its
+// combined output on failure, redacted.
+func combinedInitRunner(ctx context.Context, purpose tfPurpose, dir string, args ...string) ([]byte, error) {
+	cmd, err := newTerraformCmd(ctx, purpose, dir, args...)
+	if err != nil {
+		return nil, err
+	}
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return output, fmt.Errorf("terraform init: %w\n%s", err, lastLines(redactSecrets(string(output)), 12))
+	}
+	return output, nil
 }

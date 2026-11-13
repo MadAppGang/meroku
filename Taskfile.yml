@@ -30,6 +30,16 @@ tasks:
     dir: '{{.APP_DIR}}'
     cmd: go test ./...
 
+  neon:e2e:
+    desc: >-
+      Real-Neon end-to-end test (creates and deletes throwaway meroku-e2e-* Neon
+      projects; needs a Neon CLI login, never AWS). Optional MEROKU_NEON_E2E_ORG,
+      MEROKU_NEON_E2E_EVIDENCE=<dir>.
+    dir: '{{.APP_DIR}}'
+    env:
+      MEROKU_NEON_E2E: '1'
+    cmd: go test -tags neon_e2e -run TestNeonE2E -count=1 -timeout 180m -v ./
+
   test:web:
     desc: Run web frontend tests
     dir: '{{.WEB_DIR}}'

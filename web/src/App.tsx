@@ -19,6 +19,7 @@ import { usePricing } from "./hooks/use-pricing";
 import type { ComponentNode } from "./types";
 import type { YamlInfrastructureConfig } from "./types/yamlConfig";
 import { mergeConfigUpdates } from "./utils/configMerge";
+import { pruneUndefined } from "./utils/pruneUndefined";
 
 export default function App() {
 	const [selectedNode, setSelectedNode] = useState<ComponentNode | null>(null);
@@ -151,7 +152,9 @@ export default function App() {
 			setSaveStatus("saving");
 
 			try {
-				const yamlContent = yaml.dump(updatedConfig, {
+				// Editors remove a key by setting it to undefined; the YAML has no
+				// such value, so the key is left out of the file.
+				const yamlContent = yaml.dump(pruneUndefined(updatedConfig), {
 					indent: 2,
 					lineWidth: -1,
 					noRefs: true,

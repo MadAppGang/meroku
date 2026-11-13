@@ -40,6 +40,7 @@ export interface ComponentNode {
 		| "scheduled-task"
 		| "event-task"
 		| "postgres"
+		| "neon"
 		| "sqs"
 		| "efs"
 		| "alb"

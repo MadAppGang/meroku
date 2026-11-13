@@ -74,6 +74,14 @@ export const defaultNodePositions = {
 			type: "service",
 		},
 		{
+			id: "neon",
+			position: {
+				x: 1000,
+				y: 120,
+			},
+			type: "service",
+		},
+		{
 			id: "eventbridge",
 			position: {
 				x: 310,

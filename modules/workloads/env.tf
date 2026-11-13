@@ -21,8 +21,19 @@ resource "aws_ssm_parameter" "backend_env" {
 
 
 
+locals {
+  # One entry per service path in var.ssm_dependencies: always "", but unknown
+  # while that service's token is unknown, that is while a parameter another
+  # module writes under the path is created or changes value in this plan. An
+  # unknown path defers that one by-path read to apply, after the write, so the
+  # new value reaches that service's task definition in the same apply and no
+  # other service is touched. A service without a token reads at plan, as
+  # before.
+  ssm_path_gate = { for svc, token in var.ssm_dependencies : svc => substr(token, 0, 0) }
+}
+
 data "aws_ssm_parameters_by_path" "backend" {
-  path      = "/${var.env}/${var.project}/backend"
+  path      = "/${var.env}/${var.project}/backend${lookup(local.ssm_path_gate, "backend", "")}"
   recursive = true
   depends_on = [
     aws_ssm_parameter.backend_env
@@ -32,10 +43,18 @@ data "aws_ssm_parameters_by_path" "backend" {
 
 
 locals {
+  # Parameters named in ssm_exclude_names are deleted in this same apply; the
+  # by-path read still lists them, and a secret pointing at a deleted parameter
+  # would stop the task from starting.
+  backend_ssm_names = [
+    for n in data.aws_ssm_parameters_by_path.backend.names : n
+    if !contains(var.ssm_exclude_names, n)
+  ]
+
   backend_env_ssm = [
-    for i in range(length(data.aws_ssm_parameters_by_path.backend.names)) : {
-      name      = upper(reverse(split("/", data.aws_ssm_parameters_by_path.backend.names[i]))[0])
-      valueFrom = data.aws_ssm_parameters_by_path.backend.names[i]
+    for n in local.backend_ssm_names : {
+      name      = upper(reverse(split("/", n))[0])
+      valueFrom = n
     }
   ]
 

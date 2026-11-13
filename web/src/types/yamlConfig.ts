@@ -176,6 +176,60 @@ export interface BackendCircuitBreaker {
 	rollback?: boolean;
 }
 
+/** Postgres major versions a reused Neon project may run. */
+export type NeonReusePgVersion = 14 | 15 | 16 | 17;
+
+/** Postgres major versions meroku creates a Neon project with. */
+export type NeonCreatePgVersion = 15 | 16 | 17;
+
+/** A database on the Neon project's default branch. */
+export interface YamlNeonDatabase {
+	name: string;
+	/** `true`: meroku creates it. `false`: it exists and is read as data. */
+	create: boolean;
+}
+
+/** Create mode: the project meroku creates. */
+export interface YamlNeonProject {
+	name: string;
+	org_id: string;
+	region_id: string;
+	/** Absent means 17. */
+	pg_version?: NeonCreatePgVersion;
+}
+
+/**
+ * The env's top-level `neon` block (schema v32): a Neon project and the
+ * databases on its default branch.
+ */
+export interface YamlNeonConfig {
+	/** `create`: meroku creates the project. `reuse`: an existing one, read as data. */
+	mode: "create" | "reuse";
+	/** Reuse mode only. */
+	project_id?: string;
+	/** Reuse mode only: the project's Postgres major version. */
+	pg_version?: NeonReusePgVersion;
+	/** Create mode only. */
+	project?: YamlNeonProject;
+	/** Owns every database, table, sequence and schema. Absent means `neondb_owner`. */
+	owner_role?: string;
+	databases?: YamlNeonDatabase[];
+}
+
+/**
+ * A service's Neon database access: `workload.backend_neon` or
+ * `services[].neon`. The service gets its own role and a `DATABASE_URL`.
+ */
+export interface YamlNeonAccess {
+	/** Names an entry of `neon.databases`. */
+	database: string;
+	/** Schemas the role gets rights on, also its search_path. Absent means `["public"]`. */
+	schemas?: string[];
+	access: "readonly" | "readwrite";
+	/** Absent means 1. Raising it rotates the role's password. */
+	password_version?: number;
+}
+
 /**
  * Complete YAML configuration interface based on YAML_SPECIFICATION.md
  */
@@ -236,6 +290,8 @@ export interface YamlInfrastructureConfig {
 		 * service without one.
 		 */
 		backend_circuit_breaker?: BackendCircuitBreaker;
+		/** The backend's Neon database access. Absent means none. */
+		backend_neon?: YamlNeonAccess;
 		backend_image_port?: number;
 		backend_remote_access?: boolean;
 		backend_cpu?: string;
@@ -320,6 +376,9 @@ export interface YamlInfrastructureConfig {
 		// Additional domains for CloudFront and other services
 		additional_domains?: AdditionalDomain[];
 	};
+
+	// Neon Postgres (schema v32)
+	neon?: YamlNeonConfig;
 
 	// Database Configuration
 	postgres?: {
@@ -551,6 +610,8 @@ export interface YamlInfrastructureConfig {
 		 * form such as ["CMD", "/app/healthcheck"] for images with no shell.
 		 */
 		health_check_command?: string | string[];
+		/** This service's Neon database access. Absent means none. */
+		neon?: YamlNeonAccess;
 	}>;
 
 	// S3 Buckets
