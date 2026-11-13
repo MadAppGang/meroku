@@ -7,10 +7,13 @@
 # narrower: publish custom metrics, and write to its own log group (a logging
 # library that ships logs itself rather than through stdout).
 #
-# The ADOT collector the backend runs with xray_enabled exports ECS Container
-# Insights metrics through the EMF exporter, which creates and writes the
-# /aws/ecs/containerinsights/<cluster>/performance log group. A service's X-Ray
-# daemon sidecar sends traces with the task role's credentials.
+# The ADOT collector the backend runs with xray_enabled has two EMF exporters
+# (otel-task-metrics-config.yaml): one writes ECS Container Insights metrics to
+# /aws/ecs/containerinsights/<cluster>/performance, the other writes the
+# metrics the app sends it over OTLP or StatsD to /aws/ecs/application/metrics.
+# Each creates its log group and streams. A service runs the X-Ray daemon
+# instead of the collector, and the daemon sends traces with the task role's
+# credentials.
 #
 # The execution roles keep their attachments: ECS assumes them to pull images,
 # resolve secrets and write the awslogs streams, and a container never sees
@@ -51,6 +54,23 @@ locals {
     ]
   }
 
+  application_metrics_log_group_arn = "arn:aws:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/ecs/application/metrics"
+
+  application_metrics_statement = {
+    Sid    = "ApplicationMetricsLogs"
+    Effect = "Allow"
+    Action = [
+      "logs:CreateLogGroup",
+      "logs:CreateLogStream",
+      "logs:PutLogEvents",
+      "logs:DescribeLogStreams",
+    ]
+    Resource = [
+      local.application_metrics_log_group_arn,
+      "${local.application_metrics_log_group_arn}:*",
+    ]
+  }
+
   xray_write_statement = {
     Sid    = "XRayWrite"
     Effect = "Allow"
@@ -81,7 +101,7 @@ resource "aws_iam_role_policy" "backend_task_cloudwatch" {
         },
       ],
       # X-Ray writes come from AWSXrayWriteOnlyAccess (backend.tf).
-      var.xray_enabled ? [local.container_insights_statement] : [],
+      var.xray_enabled ? [local.container_insights_statement, local.application_metrics_statement] : [],
     )
   })
 }

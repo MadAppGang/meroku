@@ -114,8 +114,46 @@ X-Ray writes for a service's X-Ray daemon when `xray_enabled`. Execution roles k
 attachment; a container never sees their credentials. `app/iam_scope_test.go` refuses a
 `CloudWatchFullAccess` attachment on a task role and a `events:PutEvents` grant outside
 `modules/events` (except the ECR-forwarding rule role and the GitHub deploy role). Code
-that used `CloudWatchFullAccess` for anything else (SNS, reading logs or alarms) needs a
-`policy` block now.
+that used `CloudWatchFullAccess` for anything else needs a `policy` block now; the list
+below says exactly what is still granted.
+
+### What a task role has instead of `CloudWatchFullAccess`
+
+`CloudWatchFullAccess` granted `cloudwatch:*`, `logs:*`, `sns:*`, autoscaling and
+application-autoscaling `Describe*`, `iam:GetPolicy`/`GetPolicyVersion`/`GetRole` and
+`oam:ListSinks` on every resource. A task role now has:
+
+| Role | Grant | Resource |
+|---|---|---|
+| every task role (backend, service, pgAdmin, scheduled task, event task) | `cloudwatch:PutMetricData` | `*` |
+| every task role | `logs:CreateLogStream`, `PutLogEvents`, `DescribeLogStreams` | its own log group and its streams |
+| backend, `xray_enabled` (ADOT collector) | `logs:CreateLogGroup`, `CreateLogStream`, `PutLogEvents`, `DescribeLogStreams`, `DescribeLogGroups` | `/aws/ecs/containerinsights/*` (the Container Insights `performance` group) |
+| backend, `xray_enabled` (ADOT collector) | `logs:CreateLogGroup`, `CreateLogStream`, `PutLogEvents`, `DescribeLogStreams` | `/aws/ecs/application/metrics` (the EMF group for metrics the app sends the collector over OTLP or StatsD) |
+| backend, `AWSXrayWriteOnlyAccess` (managed) | X-Ray writes | `*` |
+| service, `xray_enabled` (X-Ray daemon) | `xray:PutTraceSegments`, `PutTelemetryRecords`, `GetSamplingRules`, `GetSamplingTargets`, `GetSamplingStatisticSummaries` | `*` |
+| backend, `setup_fcnsns` | `sns:CreatePlatformEndpoint` | the FCM platform application (`app/GCM/<project>-fcm-<env>`) |
+| backend, `setup_fcnsns` | `sns:Publish`, `GetEndpointAttributes`, `SetEndpointAttributes`, `DeleteEndpoint` | that application's endpoints (`endpoint/GCM/<project>-fcm-<env>/*`) |
+| backend, `extensions.sns_topics[]` with `add_to_backend_env` | `sns:Publish` | exactly those topics (inline policy `sns-publish`) |
+
+Everything else the code calls in these services has to be declared in the workload's
+`policy` ([Workload IAM](./WORKLOAD_IAM.md)), for example:
+
+- writing to any other log group (a library that ships to a group of its own name);
+- reading logs (`logs:GetLogEvents`, `FilterLogEvents`, Logs Insights `StartQuery`);
+- reading CloudWatch (`cloudwatch:GetMetricData`, `DescribeAlarms`, `ListMetrics`) or
+  setting alarms (`PutMetricAlarm`);
+- SNS beyond the meroku-managed topics above: publishing to a topic created outside
+  meroku or by custom Terraform, `sns:Subscribe`, `CreateTopic`, SMS (`Publish` to a phone
+  number needs `Resource: "*"`), or a service or task publishing to an extension topic
+  (only the backend receives `add_to_backend_env` ARNs, so only it is granted);
+- the autoscaling, IAM and OAM reads the managed policy carried.
+
+**During the apply that makes the switch**, removing the managed-policy attachment and
+creating the inline policies are independent resources, and Terraform may run the detach
+first. For a few seconds, plus IAM propagation, a running container can get AccessDenied
+on its own `PutLogEvents` or `PutMetricData`; logs shipped through stdout (`awslogs`) are
+unaffected because they use the execution role. No role, task definition or service is
+replaced.
 
 `EVENT_SOURCE` per kind, pinned by `app/testdata/event_source_vectors.json`:
 
