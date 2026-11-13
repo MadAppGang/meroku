@@ -35,9 +35,12 @@ const (
 	amplifyTargetPathKey = "_target_path"
 	// amplifyWorkloadRuleKey tells the template which form a rule has.
 	amplifyWorkloadRuleKey = "_workload_rule"
-	amplifyWildcard        = "<*>"
-	amplifyCatchAll        = "/<*>"
-	amplifyStatusRewrite   = "200"
+	// amplifyRuleIndexKey is the rule's index in the YAML, kept for messages
+	// after rules naming switched-off workloads are left out.
+	amplifyRuleIndexKey  = "_rule_index"
+	amplifyWildcard      = "<*>"
+	amplifyCatchAll      = "/<*>"
+	amplifyStatusRewrite = "200"
 
 	// amplifyWorkloadURLsKey lists the workloads named by any rule, each with
 	// the path appended to the base URL: "" for the backend, "/<service>" for a
@@ -56,9 +59,14 @@ var amplifyRuleStatuses = map[string]bool{"200": true, "301": true, "302": true,
 // and, when they are valid, normalises them for the template: `status` becomes
 // a string (default 200), workload rules gain `_target_path`, and the root map
 // gains the list of workload URLs to render and how the base URL is built.
+//
+// A rule naming a switched-off workload (enabled: false) is dropped with a
+// warning; a rule naming no workload at all is an error. Both are resolved
+// against the names validateWorkloadNamesConfigMap records, so this runs after
+// it.
 func prepareAmplifyRewriteRules(envMap map[string]interface{}) error {
-	apps := amplifyAppMaps(envMap)
-	if len(apps) == 0 {
+	apps, problems := amplifyAppMaps(envMap)
+	if len(apps) == 0 && len(problems) == 0 {
 		return nil
 	}
 
@@ -67,25 +75,40 @@ func prepareAmplifyRewriteRules(envMap map[string]interface{}) error {
 	albEnabled := amplifyALBEnabled(envMap)
 	domainEnabled := amplifyDomainEnabled(envMap)
 
-	var problems []string
 	used := map[string]bool{}
 
 	for _, app := range apps {
 		appName := computeStringField(app, "name")
-		for i, rule := range amplifyRuleMaps(app) {
+		amplifyIsolateBranchEnv(app)
+
+		rules, ruleProblems := amplifyRuleMaps(app, appName)
+		problems = append(problems, ruleProblems...)
+		kept := make([]interface{}, 0, len(rules))
+
+		for i, rule := range rules {
 			where := fmt.Sprintf("amplify_apps '%s' custom_rules[%d]", appName, i)
 			source := computeStringField(rule, "source")
 			target := computeStringField(rule, "target")
 			workload := computeStringField(rule, "workload")
 			path := computeStringField(rule, "path")
 			status, statusOK := amplifyRuleStatus(rule["status"])
+			rule[amplifyRuleIndexKey] = i
 
 			if source == "" {
 				problems = append(problems, where+": source is required")
-			} else if n := strings.Count(source, amplifyWildcard); n > 1 ||
-				(n == 1 && !strings.HasSuffix(source, amplifyWildcard)) {
-				problems = append(problems, fmt.Sprintf(
-					"%s: source %q may use %s only once, at the end", where, source, amplifyWildcard))
+			} else if p := amplifyWildcardProblem(where, "source", source); p != "" {
+				problems = append(problems, p)
+			}
+			for _, field := range []struct{ name, value string }{{"target", target}, {"path", path}} {
+				if !strings.Contains(field.value, amplifyWildcard) {
+					continue
+				}
+				if p := amplifyWildcardProblem(where, field.name, field.value); p != "" {
+					problems = append(problems, p)
+				} else if !strings.Contains(source, amplifyWildcard) {
+					problems = append(problems, fmt.Sprintf(
+						"%s: %s %q uses %s, but source %q has none for it to stand for", where, field.name, field.value, amplifyWildcard, source))
+				}
 			}
 
 			switch {
@@ -110,18 +133,30 @@ func prepareAmplifyRewriteRules(envMap map[string]interface{}) error {
 			rule[amplifyWorkloadRuleKey] = workload != ""
 			if workload == "" {
 				rule["status"] = status
+				kept = append(kept, rule)
 				continue
+			}
+
+			if workload != backendWorkloadName {
+				switch resolveWorkloadReference(envMap, workload) {
+				case workloadReferenceDisabled:
+					addGenerateWarning(envMap, fmt.Sprintf(
+						"%s names workload '%s', which is switched off (enabled: false); the rule is left out until it is switched on", where, workload))
+					continue
+				case workloadReferenceUnknown:
+					problems = append(problems, fmt.Sprintf(
+						"%s: workload '%s' is not a workload; use backend or the name of a service with network_access public or full_open", where, workload))
+					continue
+				}
+				if _, ok := services[workload]; !ok {
+					problems = append(problems, fmt.Sprintf(
+						"%s: workload '%s' must be backend or a service with network_access public or full_open", where, workload))
+				}
 			}
 
 			if statusOK && status != amplifyStatusRewrite {
 				problems = append(problems, fmt.Sprintf(
 					"%s: a workload rule proxies the request and must use status 200, not %s", where, status))
-			}
-			if workload != "backend" {
-				if _, ok := services[workload]; !ok {
-					problems = append(problems, fmt.Sprintf(
-						"%s: workload '%s' must be backend or a service with network_access public or full_open", where, workload))
-				}
 			}
 			if path != "" && !strings.HasPrefix(path, "/") {
 				problems = append(problems, fmt.Sprintf("%s: path %q must start with /", where, path))
@@ -146,6 +181,10 @@ func prepareAmplifyRewriteRules(envMap map[string]interface{}) error {
 			rule["status"] = amplifyStatusRewrite
 			rule[amplifyTargetPathKey] = amplifyTargetPath(workload, source, path)
 			used[workload] = true
+			kept = append(kept, rule)
+		}
+		if _, has := app[amplifyRulesKey]; has {
+			app[amplifyRulesKey] = kept
 		}
 	}
 
@@ -179,10 +218,18 @@ func prepareAmplifyRewriteRules(envMap map[string]interface{}) error {
 // never runs.
 func amplifyRewriteWarnings(envMap map[string]interface{}) []string {
 	var warnings []string
-	for _, app := range amplifyAppMaps(envMap) {
+	apps, _ := amplifyAppMaps(envMap)
+	for _, app := range apps {
 		appName := computeStringField(app, "name")
 		catchAll := -1
-		for i, rule := range amplifyRuleMaps(app) {
+		rules, _ := amplifyRuleMaps(app, appName)
+		for position, rule := range rules {
+			// The index the user wrote, which differs from the position once a
+			// rule naming a switched-off workload has been left out.
+			i := position
+			if written, ok := rule[amplifyRuleIndexKey].(int); ok {
+				i = written
+			}
 			if catchAll >= 0 {
 				warnings = append(warnings, fmt.Sprintf(
 					"amplify_apps '%s' custom_rules[%d] comes after the catch-all custom_rules[%d] (%s) and never matches; move it above",
@@ -286,22 +333,21 @@ func amplifyEnvDomain(envMap map[string]interface{}) string {
 }
 
 // amplifyAppHost mirrors local.app_domains in modules/amplify: custom_domain
-// wins, then subdomain_prefix under the base domain. Empty when the app only
-// has its *.amplifyapp.com host.
+// wins, then subdomain_prefix under the environment's domain. That domain is
+// amplifyEnvDomain's, because env/main.hbs passes module "amplify" the same
+// add_env_domain_prefix rule as module "domain": always true for a delegated
+// subdomain (root_zone_id). Empty when the app only has its *.amplifyapp.com
+// host.
 func amplifyAppHost(envMap map[string]interface{}, app map[string]interface{}) string {
 	if custom := computeStringField(app, "custom_domain"); custom != "" {
 		return strings.TrimSuffix(custom, ".")
 	}
 	prefix := computeStringField(app, "subdomain_prefix")
-	domain, _ := yamlSubMap(envMap, "domain")
-	base := computeStringField(domain, "domain_name")
-	if prefix == "" || base == "" {
+	envDomain := amplifyEnvDomain(envMap)
+	if prefix == "" || envDomain == "" {
 		return ""
 	}
-	if amplifyAddEnvPrefix(domain) {
-		return prefix + "." + stringFromMap(envMap, "env") + "." + base
-	}
-	return prefix + "." + base
+	return prefix + "." + envDomain
 }
 
 func amplifyAddEnvPrefix(domain map[string]interface{}) bool {
@@ -350,26 +396,88 @@ func amplifyPublicServices(envMap map[string]interface{}) map[string]struct{} {
 	return out
 }
 
-func amplifyAppMaps(envMap map[string]interface{}) []map[string]interface{} {
-	list, _ := envMap["amplify_apps"].([]interface{})
-	out := make([]map[string]interface{}, 0, len(list))
-	for _, raw := range list {
-		if app, ok := raw.(map[string]interface{}); ok {
-			out = append(out, app)
-		}
+// amplifyAppMaps returns amplify_apps as the string-keyed maps stored in
+// envMap. yaml.v2 decodes a mapping as map[interface{}]interface{}; such an
+// entry is replaced in the list by its string-keyed copy, so fields written to
+// it later reach the template. An entry that is not a mapping is a problem.
+func amplifyAppMaps(envMap map[string]interface{}) ([]map[string]interface{}, []string) {
+	raw, present := envMap["amplify_apps"]
+	if !present || raw == nil {
+		return nil, nil
 	}
-	return out
+	list, ok := raw.([]interface{})
+	if !ok {
+		return nil, []string{fmt.Sprintf("amplify_apps must be a list of apps, got %s", formatYAMLValue(raw))}
+	}
+	var problems []string
+	out := make([]map[string]interface{}, 0, len(list))
+	for i, item := range list {
+		app, ok := computeNodeMap(item)
+		if !ok {
+			problems = append(problems, fmt.Sprintf(
+				"amplify_apps[%d] must be a mapping with name, github_repository and branches, got %s", i, formatYAMLValue(item)))
+			continue
+		}
+		list[i] = app
+		out = append(out, app)
+	}
+	return out, problems
 }
 
-// amplifyRuleMaps returns the app's rules as the maps stored in envMap, so the
-// normalised fields written to them reach the template.
-func amplifyRuleMaps(app map[string]interface{}) []map[string]interface{} {
-	list, _ := app[amplifyRulesKey].([]interface{})
-	out := make([]map[string]interface{}, 0, len(list))
-	for _, raw := range list {
-		if rule, ok := raw.(map[string]interface{}); ok {
-			out = append(out, rule)
-		}
+// amplifyRuleMaps returns the app's rules as the string-keyed maps stored in
+// envMap, replacing a yaml.v2 map in the list as amplifyAppMaps does, so the
+// normalised fields written to them reach the template. A rules value that is
+// not a list, and a rule that is not a mapping, are problems.
+func amplifyRuleMaps(app map[string]interface{}, appName string) ([]map[string]interface{}, []string) {
+	raw, present := app[amplifyRulesKey]
+	if !present || raw == nil {
+		return nil, nil
 	}
-	return out
+	list, ok := raw.([]interface{})
+	if !ok {
+		return nil, []string{fmt.Sprintf(
+			"amplify_apps '%s' custom_rules must be a list of rules, got %s", appName, formatYAMLValue(raw))}
+	}
+	var problems []string
+	out := make([]map[string]interface{}, 0, len(list))
+	for i, item := range list {
+		rule, ok := computeNodeMap(item)
+		if !ok {
+			problems = append(problems, fmt.Sprintf(
+				"amplify_apps '%s' custom_rules[%d] must be a mapping with source and target or workload, got %s",
+				appName, i, formatYAMLValue(item)))
+			continue
+		}
+		list[i] = rule
+		out = append(out, rule)
+	}
+	return out, problems
+}
+
+// amplifyIsolateBranchEnv gives every branch without environment_variables an
+// empty map. Inside {{#each branches}} raymond resolves a key the branch lacks
+// against the enclosing app, so the app's own environment_variables would
+// otherwise render a second time as each such branch's.
+func amplifyIsolateBranchEnv(app map[string]interface{}) {
+	branches, _ := app["branches"].([]interface{})
+	for i, item := range branches {
+		branch, ok := computeNodeMap(item)
+		if !ok {
+			continue
+		}
+		if branch["environment_variables"] == nil {
+			branch["environment_variables"] = map[string]interface{}{}
+		}
+		branches[i] = branch
+	}
+}
+
+// amplifyWildcardProblem reports a value that uses <*> more than once or
+// anywhere but at the end; Amplify matches and substitutes it only there.
+func amplifyWildcardProblem(where, field, value string) string {
+	n := strings.Count(value, amplifyWildcard)
+	if n > 1 || (n == 1 && !strings.HasSuffix(value, amplifyWildcard)) {
+		return fmt.Sprintf("%s: %s %q may use %s only once, at the end", where, field, value, amplifyWildcard)
+	}
+	return ""
 }

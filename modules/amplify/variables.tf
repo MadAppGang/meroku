@@ -52,7 +52,7 @@ variable "base_domain" {
 }
 
 variable "add_env_domain_prefix" {
-  description = "Whether to add environment prefix to domains (from domain.add_env_domain_prefix)"
+  description = "Whether to add environment prefix to domains (domain.add_env_domain_prefix; always true for a delegated subdomain, domain.root_zone_id)"
   type        = bool
   default     = true
 }

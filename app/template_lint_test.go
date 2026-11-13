@@ -39,6 +39,15 @@ type mustacheToken struct {
 	eachDepth int
 }
 
+// hclEmittingHelpers are the helpers whose output is HCL syntax, quotes
+// included, and which the template must call with a triple-stache.
+var hclEmittingHelpers = map[string]bool{
+	"hclString":  true,
+	"hclArray":   true,
+	"hclEscape":  true,
+	"hclHeredoc": true,
+}
+
 func TestMainHBSLint(t *testing.T) {
 	template := readMainHBS(t)
 	tokens := scanMustaches(t, template)
@@ -63,6 +72,28 @@ func TestMainHBSLint(t *testing.T) {
 					"    A list rendered this way concatenates into one bare word.\n"+
 					"    Use a helper that emits HCL: {{{array %s}}}",
 					token.line, token.body, token.body)
+			}
+		}
+	})
+
+	t.Run("every hcl helper call is a triple-stache", func(t *testing.T) {
+		// hclString, hclArray, hclEscape and hclHeredoc emit HCL that must reach
+		// main.tf byte for byte. They return SafeString today, which raymond does
+		// not escape, but a double-stache call site works only for as long as
+		// that stays true: the day one returns a plain string, {{hclString x}}
+		// writes &quot; into main.tf. One spelling for every call keeps the
+		// template independent of that detail.
+		for _, token := range tokens {
+			if token.raw || isBlockToken(token.body) {
+				continue
+			}
+			invoked, _ := classifyAtoms(bodyAtoms(token.body), helpers)
+			for _, name := range invoked {
+				if hclEmittingHelpers[name] {
+					t.Errorf("env/main.hbs:%d: {{%s}} calls %s with a double-stache.\n"+
+						"    Use {{{%s}}} so the HCL it emits is never HTML-escaped.",
+						token.line, token.body, name, token.body)
+				}
 			}
 		}
 	})
