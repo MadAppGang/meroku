@@ -69,7 +69,7 @@ func renderedRules(t *testing.T, envMap map[string]interface{}) []map[string]int
 // rules are kept in order.
 func TestAmplifyRules_SwitchedOffWorkloadIsDroppedWithWarning(t *testing.T) {
 	envMap := amplifyTestEnv([]interface{}{amplifyApp(
-		amplifyRule("source", "/api/<*>", "workload", "backend"),
+		amplifyRule("source", "/v1/<*>", "workload", "backend"),
 		amplifyRule("source", "/old/<*>", "workload", "old"),
 		amplifyRule("source", "/svc/<*>", "workload", "api"),
 	)})
@@ -143,12 +143,12 @@ func TestAmplifyRules_YAMLv2MapsAreValidatedAndNormalised(t *testing.T) {
 	})
 
 	t.Run("a valid rule is normalised in place", func(t *testing.T) {
-		envMap := amplifyTestEnv([]interface{}{v2App(v2Rule("source", "/api/<*>", "workload", "backend"))})
+		envMap := amplifyTestEnv([]interface{}{v2App(v2Rule("source", "/v1/<*>", "workload", "backend"))})
 		if err := preprocessEnvMap(envMap); err != nil {
 			t.Fatalf("preprocessEnvMap: %v", err)
 		}
 		rules := renderedRules(t, envMap)
-		if len(rules) != 1 || rules[0][amplifyWorkloadRuleKey] != true || rules[0][amplifyTargetPathKey] != "/api/<*>" {
+		if len(rules) != 1 || rules[0][amplifyWorkloadRuleKey] != true || rules[0][amplifyTargetPathKey] != "/v1/<*>" {
 			t.Errorf("rule not normalised: %#v", rules)
 		}
 	})
