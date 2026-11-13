@@ -1,6 +1,10 @@
 package pricing
 
-import "log"
+import (
+	"log"
+	"strings"
+	"sync"
+)
 
 // CalculateRDSPrice calculates monthly cost for RDS instance
 // This calculation MUST match the frontend calculator exactly
@@ -159,6 +163,10 @@ func EC2PoolBasis(config EC2PoolConfig, rates *PriceRates) (string, float64, boo
 	return "", 0, false
 }
 
+// unpricedPoolsLogged keeps the unknown-price line to once per type list;
+// the cost is recomputed on every render.
+var unpricedPoolsLogged sync.Map
+
 // EC2PoolHourly calculates the hourly cost of a whole EC2 capacity pool, in
 // $/hour, blending on-demand and spot instances the way the ASG's
 // instances_distribution actually bills them.
@@ -194,8 +202,10 @@ func EC2PoolHourly(config EC2PoolConfig, rates *PriceRates) (float64, bool) {
 
 	instanceType, onDemandHourly, priced := EC2PoolBasis(config, rates)
 	if !priced {
-		log.Printf("[Pricing] EC2 pool cost: no price for any of %v, reporting unknown",
-			config.InstanceTypes)
+		if _, seen := unpricedPoolsLogged.LoadOrStore(strings.Join(config.InstanceTypes, ","), true); !seen {
+			log.Printf("[Pricing] EC2 pool cost: no price for any of %v, reporting unknown",
+				config.InstanceTypes)
+		}
 		return 0, false
 	}
 
