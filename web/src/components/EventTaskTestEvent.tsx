@@ -165,7 +165,8 @@ export function EventTaskTestEvent({ config, node }: EventTaskTestEventProps) {
 							value={detailJson}
 							onChange={(e) => handleDetailJsonChange(e.target.value)}
 							placeholder='{"orderId": "123"}'
-							className="font-mono text-sm min-h-32"
+							variant="code"
+							className="min-h-32"
 							rows={6}
 						/>
 						{jsonError && <p className="text-xs text-danger">{jsonError}</p>}

@@ -240,7 +240,8 @@ export function AmplifyRewrites({
 													updateRule(index, { ...rule, source: e.target.value })
 												}
 												placeholder="/api/<*>"
-												className="mt-1 font-mono"
+												variant="code"
+												className="mt-1"
 											/>
 										</div>
 										<div className="w-40">
@@ -318,7 +319,8 @@ export function AmplifyRewrites({
 														);
 													}}
 													placeholder="Same as source"
-													className="mt-1 font-mono"
+													variant="code"
+													className="mt-1"
 												/>
 											</div>
 										</div>
@@ -336,7 +338,8 @@ export function AmplifyRewrites({
 														})
 													}
 													placeholder="/pricing or https://example.com/<*>"
-													className="mt-1 font-mono"
+													variant="code"
+													className="mt-1"
 												/>
 											</div>
 											<div className="w-64">
