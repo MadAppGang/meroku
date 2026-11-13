@@ -201,6 +201,33 @@ func TestAmplifyRules_MalformedValuesAreErrors(t *testing.T) {
 	}
 }
 
+// A rule that is not a mapping is left out of the rules validated next, and
+// every later rule's error still names the index written in the YAML, not its
+// position among the mappings.
+func TestAmplifyRules_ErrorsKeepTheIndexWrittenInYAML(t *testing.T) {
+	err := preprocessEnvMap(amplifyTestEnv([]interface{}{amplifyApp(
+		"/api/<*>",
+		amplifyRule("source", "/r", "target", "/new/<*>"),
+		amplifyRule("target", "/x"),
+	)}))
+	if err == nil {
+		t.Fatal("want an error, got none")
+	}
+	msg := err.Error()
+	for _, want := range []string{
+		"custom_rules[0] must be a mapping",
+		`custom_rules[1]: target "/new/<*>" uses <*>`,
+		"custom_rules[2]: source is required",
+	} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("want %q in the error, got:\n%s", want, msg)
+		}
+	}
+	if strings.Contains(msg, "custom_rules[0]: ") {
+		t.Errorf("an error names custom_rules[0], the scalar rule, for a later rule:\n%s", msg)
+	}
+}
+
 // The app host follows module "domain": under a delegated subdomain
 // (root_zone_id) it is <prefix>.<env>.<domain> even with
 // add_env_domain_prefix: false, so the self-loop check compares real hosts.

@@ -85,7 +85,8 @@ func prepareAmplifyRewriteRules(envMap map[string]interface{}) error {
 		problems = append(problems, ruleProblems...)
 		kept := make([]interface{}, 0, len(rules))
 
-		for i, rule := range rules {
+		for _, entry := range rules {
+			i, rule := entry.index, entry.rule
 			where := fmt.Sprintf("amplify_apps '%s' custom_rules[%d]", appName, i)
 			source := computeStringField(rule, "source")
 			target := computeStringField(rule, "target")
@@ -223,10 +224,11 @@ func amplifyRewriteWarnings(envMap map[string]interface{}) []string {
 		appName := computeStringField(app, "name")
 		catchAll := -1
 		rules, _ := amplifyRuleMaps(app, appName)
-		for position, rule := range rules {
-			// The index the user wrote, which differs from the position once a
-			// rule naming a switched-off workload has been left out.
-			i := position
+		for _, entry := range rules {
+			// The index the user wrote. Once prepareAmplifyRewriteRules has left
+			// out a rule naming a switched-off workload, the stored list is
+			// shorter, so the index it recorded on each rule is the one to use.
+			i, rule := entry.index, entry.rule
 			if written, ok := rule[amplifyRuleIndexKey].(int); ok {
 				i = written
 			}
@@ -424,11 +426,19 @@ func amplifyAppMaps(envMap map[string]interface{}) ([]map[string]interface{}, []
 	return out, problems
 }
 
+// amplifyRuleEntry is one custom_rules mapping and its index in the list it
+// was read from, so a message names the entry the user wrote even when an
+// earlier entry was not a mapping and is missing from the result.
+type amplifyRuleEntry struct {
+	index int
+	rule  map[string]interface{}
+}
+
 // amplifyRuleMaps returns the app's rules as the string-keyed maps stored in
 // envMap, replacing a yaml.v2 map in the list as amplifyAppMaps does, so the
 // normalised fields written to them reach the template. A rules value that is
 // not a list, and a rule that is not a mapping, are problems.
-func amplifyRuleMaps(app map[string]interface{}, appName string) ([]map[string]interface{}, []string) {
+func amplifyRuleMaps(app map[string]interface{}, appName string) ([]amplifyRuleEntry, []string) {
 	raw, present := app[amplifyRulesKey]
 	if !present || raw == nil {
 		return nil, nil
@@ -439,7 +449,7 @@ func amplifyRuleMaps(app map[string]interface{}, appName string) ([]map[string]i
 			"amplify_apps '%s' custom_rules must be a list of rules, got %s", appName, formatYAMLValue(raw))}
 	}
 	var problems []string
-	out := make([]map[string]interface{}, 0, len(list))
+	out := make([]amplifyRuleEntry, 0, len(list))
 	for i, item := range list {
 		rule, ok := computeNodeMap(item)
 		if !ok {
@@ -449,7 +459,7 @@ func amplifyRuleMaps(app map[string]interface{}, appName string) ([]map[string]i
 			continue
 		}
 		list[i] = rule
-		out = append(out, rule)
+		out = append(out, amplifyRuleEntry{index: i, rule: rule})
 	}
 	return out, problems
 }
