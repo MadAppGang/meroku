@@ -339,6 +339,12 @@ variable "setup_FCM_SNS" {
   default = false
 }
 
+variable "backend_sns_publish_topic_arns" {
+  description = "ARNs of the SNS topics passed to the backend in its environment; its task role may publish to exactly these."
+  type        = list(string)
+  default     = []
+}
+
 variable "sqs_queue_url" {
   default = ""
 }
