@@ -12,6 +12,7 @@ import {
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { infrastructureApi } from "../api/infrastructure";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
+import { envDomainName } from "../utils/envDomain";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import {
@@ -42,7 +43,6 @@ function generateSmartDefaults(config?: YamlInfrastructureConfig): {
 	previewDomain: string;
 } {
 	const projectName = config?.project || "project";
-	const env = config?.env || "dev";
 
 	// Suggested app name: project-frontend
 	const suggestedName = `${projectName}-frontend`;
@@ -53,14 +53,7 @@ function generateSmartDefaults(config?: YamlInfrastructureConfig): {
 	// Preview domain based on configuration
 	let previewDomain = "";
 	if (config?.domain?.enabled && config?.domain?.domain_name) {
-		const baseDomain = config.domain.domain_name;
-		const addEnvPrefix = config.domain.add_env_domain_prefix ?? true;
-
-		if (addEnvPrefix) {
-			previewDomain = `${suggestedSubdomain}.${env}.${baseDomain}`;
-		} else {
-			previewDomain = `${suggestedSubdomain}.${baseDomain}`;
-		}
+		previewDomain = `${suggestedSubdomain}.${envDomainName(config)}`;
 	}
 
 	return { suggestedName, suggestedSubdomain, previewDomain };
@@ -81,14 +74,7 @@ function calculateDomainPreview(
 		return "";
 	}
 
-	const baseDomain = config.domain.domain_name;
-	const addEnvPrefix = config.domain.add_env_domain_prefix ?? true;
-	const env = config.env || "dev";
-
-	if (addEnvPrefix) {
-		return `${subdomainPrefix}.${env}.${baseDomain}`;
-	}
-	return `${subdomainPrefix}.${baseDomain}`;
+	return `${subdomainPrefix}.${envDomainName(config)}`;
 }
 
 interface AddAmplifyDialogProps {
