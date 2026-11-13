@@ -4,7 +4,14 @@ import type {
 	IAMStatement,
 	YamlInfrastructureConfig,
 } from "../types/yamlConfig";
+import { workloadBucketGrants } from "../utils/dataBucket";
+import {
+	isEventBusEnabled,
+	projectBusName,
+	resolveBus,
+} from "../utils/workloadEvents";
 import { withPolicy } from "../utils/workloadPolicy";
+import { BACKEND_WORKLOAD_NAME } from "../utils/workloadReferences";
 import { Badge } from "./ui/badge";
 import {
 	Card,
@@ -57,6 +64,28 @@ export function BackendIAMPermissions({
 		});
 	};
 
+	const workloadName = isService ? (serviceName ?? "") : BACKEND_WORKLOAD_NAME;
+	const bucketGrants = workloadBucketGrants(config, workloadName).map(
+		(grant) => ({ ...grant, type: "custom" as const }),
+	);
+
+	// events:PutEvents comes only from events.produces, one grant per bus the
+	// entries resolve to.
+	const produces =
+		(isService
+			? serviceConfig?.events?.produces
+			: config.workload?.events?.produces) ?? [];
+	const busEnabled = isEventBusEnabled(config);
+	const producesBuses = [
+		...new Set(
+			produces.map((entry) =>
+				resolveBus(entry.bus, busEnabled) === "project"
+					? projectBusName(config)
+					: "default",
+			),
+		),
+	];
+
 	// Unconditional permissions (always applied)
 	const unconditionalPermissions = [
 		{
@@ -65,16 +94,7 @@ export function BackendIAMPermissions({
 			arn: "arn:aws:iam::aws:policy/CloudWatchFullAccess",
 			description: "Applied to both task role and execution role",
 		},
-		{
-			name: "S3 Backend Bucket Access",
-			type: "custom",
-			actions: ["s3:*"],
-			resources: [
-				`arn:aws:s3:::${config.project}-backend-${config.env}${config.workload?.bucket_postfix || ""}`,
-				`arn:aws:s3:::${config.project}-backend-${config.env}${config.workload?.bucket_postfix || ""}/*`,
-			],
-			description: "Full access to backend S3 bucket",
-		},
+		...bucketGrants,
 		{
 			name: "SES Email Sending",
 			type: "custom",
@@ -116,6 +136,19 @@ export function BackendIAMPermissions({
 
 	// Conditional permissions
 	const conditionalPermissions = [
+		{
+			name: "EventBridge PutEvents",
+			condition: "Events → Produces is not empty",
+			enabled: produces.length > 0,
+			type: "custom",
+			actions: ["events:PutEvents"],
+			resources: producesBuses.map(
+				(bus) =>
+					`arn:aws:events:${config.region}:${config.account_id || "<account>"}:event-bus/${bus}`,
+			),
+			description:
+				"Publish only the detail-types listed under Events → Produces, with this workload's own source",
+		},
 		{
 			name: "SQS Access",
 			condition: "sqs_enable = true",
@@ -301,7 +334,6 @@ export function BackendIAMPermissions({
 									</div>
 									<Badge
 										variant={perm.type === "managed" ? "default" : "secondary"}
-										className="text-xs"
 									>
 										{perm.type === "managed"
 											? "Managed Policy"
@@ -321,11 +353,7 @@ export function BackendIAMPermissions({
 											</p>
 											<div className="flex flex-wrap gap-1 mt-1">
 												{perm.actions?.map((action) => (
-													<Badge
-														key={action}
-														variant="outline"
-														className="text-xs font-mono"
-													>
+													<Badge key={action} variant="code">
 														{action}
 													</Badge>
 												))}
@@ -388,10 +416,7 @@ export function BackendIAMPermissions({
 										)}
 										<span className="font-medium text-sm">{perm.name}</span>
 									</div>
-									<Badge
-										variant={perm.enabled ? "default" : "outline"}
-										className="text-xs"
-									>
+									<Badge variant={perm.enabled ? "default" : "outline"}>
 										{perm.enabled ? "Active" : "Inactive"}
 									</Badge>
 								</div>
@@ -415,11 +440,7 @@ export function BackendIAMPermissions({
 													</p>
 													<div className="flex flex-wrap gap-1 mt-1">
 														{perm.actions.map((action) => (
-															<Badge
-																key={action}
-																variant="outline"
-																className="text-xs font-mono"
-															>
+															<Badge key={action} variant="code">
 																{action}
 															</Badge>
 														))}
@@ -488,7 +509,6 @@ export function BackendIAMPermissions({
 									</div>
 									<Badge
 										variant={perm.type === "managed" ? "default" : "secondary"}
-										className="text-xs"
 									>
 										{perm.type === "managed"
 											? "Managed Policy"
@@ -508,11 +528,7 @@ export function BackendIAMPermissions({
 											</p>
 											<div className="flex flex-wrap gap-1 mt-1">
 												{perm.actions?.map((action) => (
-													<Badge
-														key={action}
-														variant="outline"
-														className="text-xs font-mono"
-													>
+													<Badge key={action} variant="code">
 														{action}
 													</Badge>
 												))}
