@@ -104,6 +104,8 @@ type neonLookupDependencies struct {
 	Tokens  *neonWebTokenCache
 	NewAPI  func(token string) neonAPI
 	LoadEnv func(name string) (Env, error)
+	// QuerySchemas lists a database's schemas, as cred, on cred.Host.
+	QuerySchemas func(ctx context.Context, cred PGCredential, database string) ([]string, error)
 }
 
 func defaultNeonLookupDeps() neonLookupDependencies {
@@ -112,6 +114,8 @@ func defaultNeonLookupDeps() neonLookupDependencies {
 		Tokens:  neonWebTokens,
 		NewAPI:  newNeonAPI,
 		LoadEnv: loadEnv,
+
+		QuerySchemas: queryNeonSchemas,
 	}
 }
 

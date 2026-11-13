@@ -69,6 +69,7 @@ func mainRouter() http.Handler {
 	// Neon: live choices for the Neon panels. No CORS: only a loopback
 	// client with a loopback Host and Origin is answered (see api_neon.go).
 	mux.HandleFunc("/api/neon/lookup", getNeonLookup)
+	mux.HandleFunc("/api/neon/schemas", getNeonSchemas)
 
 	// SES DNS records: zone origin, live apex values, suggested sender record
 	mux.HandleFunc("/api/ses-dns", corsMiddleware(getSESDNSReport))
