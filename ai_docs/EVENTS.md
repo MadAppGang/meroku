@@ -131,8 +131,7 @@ application-autoscaling `Describe*`, `iam:GetPolicy`/`GetPolicyVersion`/`GetRole
 | backend, `xray_enabled` (ADOT collector) | `logs:CreateLogGroup`, `CreateLogStream`, `PutLogEvents`, `DescribeLogStreams` | `/aws/ecs/application/metrics` (the EMF group for metrics the app sends the collector over OTLP or StatsD) |
 | backend, `AWSXrayWriteOnlyAccess` (managed) | X-Ray writes | `*` |
 | service, `xray_enabled` (X-Ray daemon) | `xray:PutTraceSegments`, `PutTelemetryRecords`, `GetSamplingRules`, `GetSamplingTargets`, `GetSamplingStatisticSummaries` | `*` |
-| backend, `setup_fcnsns` | `sns:CreatePlatformEndpoint` | the FCM platform application (`app/GCM/<project>-fcm-<env>`) |
-| backend, `setup_fcnsns` | `sns:Publish`, `GetEndpointAttributes`, `SetEndpointAttributes`, `DeleteEndpoint` | that application's endpoints (`endpoint/GCM/<project>-fcm-<env>/*`) |
+| backend, `setup_fcnsns` | `sns:CreatePlatformEndpoint`, `Publish`, `GetEndpointAttributes`, `SetEndpointAttributes`, `DeleteEndpoint` | the FCM platform application (`app/GCM/<project>-fcm-<env>`). SNS checks all five against the application ARN, endpoint calls included; a grant on `endpoint/GCM/<app>/*` authorises none of them |
 | backend, `extensions.sns_topics[]` with `add_to_backend_env` | `sns:Publish` | exactly those topics (inline policy `sns-publish`) |
 
 Everything else the code calls in these services has to be declared in the workload's

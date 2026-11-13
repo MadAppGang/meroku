@@ -37,29 +37,24 @@ resource "aws_iam_policy" "backend_fcm_policies" {
   # Account-global; was hardcoded while the tags already carried project/env.
   name  = "ManageEndpointsAndPublishFirebaseCloudMessages_${var.project}_${var.env}"
   count = (var.setup_FCM_SNS) ? 1 : 0
-  # A device endpoint is created under the platform application, so
-  # CreatePlatformEndpoint is checked against the application's ARN
-  # (…:app/GCM/<app>). Publishing to a device and reading, updating or deleting
-  # it are checked against the endpoint's own ARN (…:endpoint/GCM/<app>/<id>).
+  # SNS checks every one of these actions against the platform application's
+  # ARN (…:app/GCM/<app>): creating a device endpoint, and publishing to,
+  # reading, updating or deleting one under it. A grant on the endpoint ARNs
+  # (…:endpoint/GCM/<app>/*) authorises none of them.
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
-        Sid      = "CreateEndpoints"
-        Effect   = "Allow"
-        Action   = ["sns:CreatePlatformEndpoint"]
-        Resource = aws_sns_platform_application.fcm_application[0].arn
-      },
-      {
-        Sid    = "UseEndpoints"
+        Sid    = "ManageEndpointsAndPublish"
         Effect = "Allow"
         Action = [
+          "sns:CreatePlatformEndpoint",
           "sns:Publish",
           "sns:GetEndpointAttributes",
           "sns:SetEndpointAttributes",
           "sns:DeleteEndpoint",
         ]
-        Resource = "${replace(aws_sns_platform_application.fcm_application[0].arn, ":app/", ":endpoint/")}/*"
+        Resource = aws_sns_platform_application.fcm_application[0].arn
       },
     ]
   })

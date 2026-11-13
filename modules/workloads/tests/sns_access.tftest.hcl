@@ -3,12 +3,12 @@
 # The task role used to carry the AWS-managed CloudWatchFullAccess, whose sns:*
 # on every resource was the only grant two meroku features had:
 #
-#   1. FCM push (setup_FCM_SNS). Creating a device endpoint is checked against
-#      the platform application ARN, but publishing to a device and reading,
-#      updating or deleting it are checked against the endpoint's own ARN,
-#      arn:aws:sns:<region>:<account>:endpoint/GCM/<app>/<id>. The policy must
-#      name both, and nothing outside this application.
-#      (fcm_policy_covers_the_application_and_its_endpoints)
+#   1. FCM push (setup_FCM_SNS). SNS checks creating a device endpoint, and
+#      publishing to, reading, updating or deleting one, against the platform
+#      application ARN, arn:aws:sns:<region>:<account>:app/GCM/<app>. A grant
+#      on the endpoint ARNs (endpoint/GCM/<app>/*) authorises none of them.
+#      The policy names that application and nothing else.
+#      (fcm_policy_grants_on_the_platform_application)
 #   2. extensions.sns_topics with add_to_backend_env. The backend gets the
 #      topic's ARN in its environment, so it gets sns:Publish on exactly those
 #      topics, and no SNS policy at all when there are none.
@@ -96,7 +96,7 @@ variables {
   github_subjects  = ["repo:acme/acme:ref:refs/heads/main"]
 }
 
-run "fcm_policy_covers_the_application_and_its_endpoints" {
+run "fcm_policy_grants_on_the_platform_application" {
   command = apply
 
   variables {
@@ -110,22 +110,23 @@ run "fcm_policy_covers_the_application_and_its_endpoints" {
   assert {
     condition = length([
       for s in jsondecode(aws_iam_policy.backend_fcm_policies[0].policy).Statement : s
-      if s.Effect == "Allow" && s.Action == ["sns:CreatePlatformEndpoint"] && s.Resource == "arn:aws:sns:us-east-1:000000000000:app/GCM/acme-fcm-dev"
-    ]) == 1
-    error_message = "Creating a device endpoint is authorised against the platform application ARN, and only that application."
-  }
-
-  assert {
-    condition = length([
-      for s in jsondecode(aws_iam_policy.backend_fcm_policies[0].policy).Statement : s
-      if s.Effect == "Allow" && s.Resource == "arn:aws:sns:us-east-1:000000000000:endpoint/GCM/acme-fcm-dev/*" && toset(s.Action) == toset([
+      if s.Effect == "Allow" && s.Resource == "arn:aws:sns:us-east-1:000000000000:app/GCM/acme-fcm-dev" && toset(s.Action) == toset([
+        "sns:CreatePlatformEndpoint",
         "sns:Publish",
         "sns:GetEndpointAttributes",
         "sns:SetEndpointAttributes",
         "sns:DeleteEndpoint",
       ])
     ]) == 1
-    error_message = "Publishing to a device and managing it are authorised against the endpoint ARN, endpoint/GCM/<app>/*; the policy must name this application's endpoints."
+    error_message = "SNS authorises creating, publishing to and managing device endpoints against the platform application ARN, app/GCM/<app>."
+  }
+
+  assert {
+    condition = alltrue([
+      for s in jsondecode(aws_iam_policy.backend_fcm_policies[0].policy).Statement :
+      alltrue([for r in flatten([s.Resource]) : !strcontains(r, ":endpoint/")])
+    ])
+    error_message = "A grant on endpoint ARNs authorises none of the FCM actions; the policy names the application ARN only."
   }
 
   assert {
