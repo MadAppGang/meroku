@@ -327,7 +327,7 @@ const initialNodes: Node[] = [
 	{
 		id: "vaults",
 		type: "service",
-		position: { x: 1030, y: 620 },
+		position: { x: 1320, y: 620 },
 		data: {
 			id: "vaults",
 			type: "vaults",

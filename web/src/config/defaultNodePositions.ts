@@ -98,6 +98,14 @@ export const defaultNodePositions = {
 			type: "service",
 		},
 		{
+			id: "vaults",
+			position: {
+				x: 710,
+				y: 860,
+			},
+			type: "service",
+		},
+		{
 			id: "sns",
 			position: {
 				x: 700,
