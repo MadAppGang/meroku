@@ -652,6 +652,12 @@ module "workloads" {
     [{ name = "{{add_to_backend_env}}", value = aws_sqs_queue.ext_{{name}}.url }]{{/if}}{{#if add_arn_to_backend_env}},
     [{ name = "{{add_arn_to_backend_env}}", value = aws_sqs_queue.ext_{{name}}.arn }]{{/if}}{{/each}}
   )
+{{#compare (len extensions.sns_topics) ">" 0}}
+  # The SNS topics whose ARN the backend receives above; its task role may publish to exactly these.
+  backend_sns_publish_topic_arns = [{{#each extensions.sns_topics}}{{#if add_to_backend_env}}
+    aws_sns_topic.ext_{{name}}.arn,{{/if}}{{/each}}
+  ]
+{{/compare}}
 
   # May the CI/CD Lambda redeploy the backend on its own when a new image or a
   # new configuration lands? false does not remove anything from the Lambda's
