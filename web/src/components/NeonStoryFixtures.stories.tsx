@@ -1,6 +1,6 @@
 // biome-ignore lint/correctness/noUnusedImports: Storybook's browser-test transform requires React in scope for JSX.
 import React, { type ReactNode, useState } from "react";
-import type { NeonLookupResponse } from "../types/neon";
+import type { NeonLookupResponse, NeonSchemasResponse } from "../types/neon";
 import type {
 	YamlInfrastructureConfig,
 	YamlNeonConfig,
@@ -8,6 +8,7 @@ import type {
 import { mergeConfigUpdates } from "../utils/configMerge";
 import { pruneUndefined } from "../utils/pruneUndefined";
 import type { NeonLookupFn } from "./NeonNodeProperties";
+import type { NeonSchemasFn } from "./ServiceDatabaseTab";
 
 /**
  * Synthetic data for the Neon panel stories. Every id is a placeholder.
@@ -107,6 +108,28 @@ export const neverAnswers: NeonLookupFn = () => new Promise(() => {});
 
 export const lookupFails: NeonLookupFn = () =>
 	Promise.reject(new Error("meroku is not running"));
+
+export const schemasLoaded: NeonSchemasResponse = {
+	schemas: ["analytics", "app", "public"],
+	note: "",
+};
+
+export const schemasNotDeployed: NeonSchemasResponse = {
+	schemas: [],
+	note: "The database app is not in Neon yet; meroku creates it at the next deploy.",
+};
+
+export const schemasNoAuth: NeonSchemasResponse = {
+	schemas: [],
+	note: "Log in to Neon to see the schemas (neon login).",
+};
+
+export function answerSchemas(response: NeonSchemasResponse): NeonSchemasFn {
+	return () => Promise.resolve(response);
+}
+
+/** A schema lookup that never answers. */
+export const schemasNeverAnswer: NeonSchemasFn = () => new Promise(() => {});
 
 /**
  * Holds the env config like App does: an update is merged in and undefined

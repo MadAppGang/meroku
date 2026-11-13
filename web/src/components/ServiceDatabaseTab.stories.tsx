@@ -1,16 +1,21 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 // biome-ignore lint/correctness/noUnusedImports: Storybook's browser-test transform requires React in scope for JSX.
 import React from "react";
-import { userEvent, within } from "storybook/test";
+import { expect, userEvent, within } from "storybook/test";
 import type { NeonAccessTarget } from "../types/neon";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import {
+	answerSchemas,
 	createNeon,
 	NeonConfigHarness,
 	neonStoryConfig,
 	reuseNeon,
+	schemasLoaded,
+	schemasNeverAnswer,
+	schemasNoAuth,
+	schemasNotDeployed,
 } from "./NeonStoryFixtures.stories";
-import { ServiceDatabaseTab } from "./ServiceDatabaseTab";
+import { type NeonSchemasFn, ServiceDatabaseTab } from "./ServiceDatabaseTab";
 
 /**
  * The Database tab of the backend and named-service panels, one story per
@@ -20,9 +25,14 @@ import { ServiceDatabaseTab } from "./ServiceDatabaseTab";
 interface HarnessProps {
 	config: YamlInfrastructureConfig;
 	target: NeonAccessTarget;
+	lookupSchemas?: NeonSchemasFn;
 }
 
-function Harness({ config, target }: HarnessProps) {
+function Harness({
+	config,
+	target,
+	lookupSchemas = answerSchemas(schemasLoaded),
+}: HarnessProps) {
 	return (
 		<NeonConfigHarness initial={config}>
 			{(current, onConfigChange) => (
@@ -30,6 +40,7 @@ function Harness({ config, target }: HarnessProps) {
 					config={current}
 					onConfigChange={onConfigChange}
 					target={target}
+					lookupSchemas={lookupSchemas}
 				/>
 			)}
 		</NeonConfigHarness>
@@ -43,6 +54,7 @@ const meta = {
 	argTypes: {
 		config: { control: false },
 		target: { control: false },
+		lookupSchemas: { control: false },
 	},
 } satisfies Meta<typeof Harness>;
 
@@ -81,6 +93,27 @@ export const Connecting: Story = {
 	},
 };
 
+/**
+ * Login role shown under the chosen database before first deploy: matches the
+ * SHA-256 role name for `(myapp, dev, reports, app)` and notes that meroku
+ * creates it at the next deploy.
+ */
+export const RoleNameShown: Story = {
+	args: { config: neonStoryConfig({ neon: reuseNeon }), target: reports },
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await userEvent.click(
+			await canvas.findByRole("switch", { name: /give reports a database/i }),
+		);
+		await expect(
+			await canvas.findByText("myapp_dev_reports_app_e5c4e06a"),
+		).toBeInTheDocument();
+		await expect(
+			canvas.getByText(/meroku creates this role at the next deploy/i),
+		).toBeInTheDocument();
+	},
+};
+
 /** The backend reads and writes the app database. */
 export const BackendReadWrite: Story = {
 	args: {
@@ -89,6 +122,12 @@ export const BackendReadWrite: Story = {
 			workload: { backend_neon: { database: "app", access: "readwrite" } },
 		}),
 		target: backend,
+	},
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await expect(
+			await canvas.findByText("myapp_dev_backend_app_f0819dbc"),
+		).toBeInTheDocument();
 	},
 };
 
@@ -107,11 +146,93 @@ export const ServiceReadOnly: Story = {
 		}),
 		target: reports,
 	},
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await expect(
+			await canvas.findByText("myapp_dev_reports_analytics_010562fd"),
+		).toBeInTheDocument();
+	},
 };
 
 /**
- * Two schemas on one service. `app` comes from the backend, so it is a
- * choice; `audit` is new and meroku creates it.
+ * Existing database schemas loaded from `/api/neon/schemas` as selectable
+ * checkboxes; `public` is selected by default and another existing schema can
+ * be toggled on.
+ */
+export const SchemasLoaded: Story = {
+	args: {
+		config: neonStoryConfig({
+			neon: reuseNeon,
+			workload: { backend_neon: { database: "app", access: "readwrite" } },
+		}),
+		target: backend,
+		lookupSchemas: answerSchemas(schemasLoaded),
+	},
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		const appCheckbox = await canvas.findByRole("checkbox", { name: "app" });
+		await userEvent.click(appCheckbox);
+		await expect(appCheckbox).toBeChecked();
+	},
+};
+
+/** Quiet loading state while `/api/neon/schemas` is still running. */
+export const SchemasLoading: Story = {
+	args: {
+		config: neonStoryConfig({
+			neon: reuseNeon,
+			workload: { backend_neon: { database: "app", access: "readonly" } },
+		}),
+		target: backend,
+		lookupSchemas: schemasNeverAnswer,
+	},
+};
+
+/**
+ * Schemas could not be read (`note` non-empty, e.g. database not deployed yet
+ * or user not logged in): shows the `StatusNote` and falls back to manual
+ * schema entry.
+ */
+export const SchemasUnavailable: Story = {
+	args: {
+		config: neonStoryConfig({
+			neon: createNeon,
+			workload: {
+				backend_neon: {
+					database: "app",
+					schemas: ["app", "public"],
+					access: "readwrite",
+				},
+			},
+			services: [
+				{
+					name: "reports",
+					container_port: 8080,
+					neon: { database: "app", access: "readonly" },
+				},
+			],
+		}),
+		target: reports,
+		lookupSchemas: answerSchemas(schemasNotDeployed),
+	},
+};
+
+/** Not logged in to Neon: `note` explains how to log in, manual fallback stays usable. */
+export const SchemasNoAuth: Story = {
+	args: {
+		config: neonStoryConfig({
+			neon: reuseNeon,
+			workload: { backend_neon: { database: "app", access: "readonly" } },
+		}),
+		target: backend,
+		lookupSchemas: answerSchemas(schemasNoAuth),
+	},
+};
+
+/**
+ * Two schemas on one service when live schemas are loaded: `app` is in the
+ * database's existing list, while `audit` is not and is labelled
+ * "new — meroku creates it".
  */
 export const TwoSchemas: Story = {
 	args: {
@@ -137,6 +258,13 @@ export const TwoSchemas: Story = {
 			],
 		}),
 		target: reports,
+		lookupSchemas: answerSchemas(schemasLoaded),
+	},
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await expect(
+			await canvas.findByText("new — meroku creates it"),
+		).toBeInTheDocument();
 	},
 };
 

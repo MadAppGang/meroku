@@ -1,6 +1,12 @@
 import { ChevronDown, Database, KeyRound, X } from "lucide-react";
 import { type ReactNode, useEffect, useId, useState } from "react";
-import type { NeonAccessLevel, NeonAccessTarget } from "../types/neon";
+import { infrastructureApi } from "../api/infrastructure";
+import type {
+	NeonAccessLevel,
+	NeonAccessTarget,
+	NeonSchemasOptions,
+	NeonSchemasResponse,
+} from "../types/neon";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import { neonSchemaChoices, neonTargetLabel } from "../utils/neonChoices";
 import {
@@ -10,6 +16,7 @@ import {
 	type NeonAccessDraft,
 	neonAccessDraftFromConfig,
 } from "../utils/neonConfigUpdate";
+import { neonRoleName, neonTargetKey } from "../utils/neonRoleName";
 import {
 	checkNeonSchemaName,
 	NEON_DEFAULT_OWNER_ROLE,
@@ -26,6 +33,7 @@ import {
 	CardHeader,
 	CardTitle,
 } from "./ui/card";
+import { Checkbox } from "./ui/checkbox";
 import {
 	Collapsible,
 	CollapsibleContent,
@@ -49,14 +57,37 @@ import { Switch } from "./ui/switch";
  * schemas its login gets rights on, and whether it may change data.
  *
  * The service gets its own login and finds the connection string in
- * DATABASE_URL. Choices come from the env's `neon` block; a schema name can be
- * typed under Advanced, with an inline error on every keystroke. Edits are a
- * draft saved with one button, like the env's Neon panel.
+ * DATABASE_URL. Databases come from the env's `neon` block; schemas come live
+ * from `GET /api/neon/schemas` when the database can be read, with manual entry
+ * under Advanced (and as the fallback when live schemas are unavailable). Edits
+ * are a draft saved with one button, like the env's Neon panel.
  */
+
+export type NeonSchemasFn = (
+	env: string,
+	database: string,
+	opts: NeonSchemasOptions,
+) => Promise<NeonSchemasResponse>;
+
 export interface ServiceDatabaseTabProps {
 	config: YamlInfrastructureConfig;
 	onConfigChange: (config: Partial<YamlInfrastructureConfig>) => void;
 	target: NeonAccessTarget;
+	/** Reads a database's existing schemas. Defaults to GET /api/neon/schemas. */
+	lookupSchemas?: NeonSchemasFn;
+}
+
+type SchemasLookupState =
+	| { status: "idle" }
+	| { status: "loading" }
+	| { status: "failed"; error: string }
+	| { status: "done"; data: NeonSchemasResponse };
+
+const defaultLookupSchemas: NeonSchemasFn = (env, database, opts) =>
+	infrastructureApi.getNeonSchemas(env, database, opts);
+
+function isAbort(err: unknown): boolean {
+	return err instanceof DOMException && err.name === "AbortError";
 }
 
 const ACCESS_CHOICES: {
@@ -81,6 +112,7 @@ export function ServiceDatabaseTab({
 	config,
 	onConfigChange,
 	target,
+	lookupSchemas = defaultLookupSchemas,
 }: ServiceDatabaseTabProps) {
 	const uid = useId();
 	const neon = config.neon;
@@ -95,6 +127,10 @@ export function ServiceDatabaseTab({
 	);
 	const [advancedOpen, setAdvancedOpen] = useState(false);
 	const [manualSchema, setManualSchema] = useState("");
+	const [roleName, setRoleName] = useState<string | null>(null);
+	const [schemasLookup, setSchemasLookup] = useState<SchemasLookupState>({
+		status: "idle",
+	});
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: savedKey stands for the saved block by value.
 	useEffect(() => {
@@ -102,6 +138,60 @@ export function ServiceDatabaseTab({
 		setDraft(neonAccessDraftFromConfig(saved, firstDatabase));
 		setManualSchema("");
 	}, [savedKey, firstDatabase]);
+
+	const chosenDatabase = databases.some((d) => d.name === draft.database)
+		? draft.database
+		: "";
+	const serviceKey = neonTargetKey(target);
+	const hasNeon = neon !== undefined;
+
+	useEffect(() => {
+		if (!hasNeon || !enabled || chosenDatabase === "") {
+			setRoleName(null);
+			return;
+		}
+		let cancelled = false;
+		setRoleName(null);
+		neonRoleName(config.project, config.env, serviceKey, chosenDatabase)
+			.then((name) => {
+				if (!cancelled) setRoleName(name);
+			})
+			.catch(() => {
+				if (!cancelled) setRoleName(null);
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [
+		hasNeon,
+		enabled,
+		config.project,
+		config.env,
+		serviceKey,
+		chosenDatabase,
+	]);
+
+	useEffect(() => {
+		if (!hasNeon || !enabled || chosenDatabase === "") {
+			setSchemasLookup({ status: "idle" });
+			return;
+		}
+		const ctrl = new AbortController();
+		setSchemasLookup({ status: "loading" });
+		lookupSchemas(config.env, chosenDatabase, { signal: ctrl.signal })
+			.then((data) => setSchemasLookup({ status: "done", data }))
+			.catch((err) => {
+				if (isAbort(err)) return;
+				setSchemasLookup({
+					status: "failed",
+					error:
+						err instanceof Error && err.message
+							? err.message
+							: "No answer from meroku.",
+				});
+			});
+		return () => ctrl.abort();
+	}, [hasNeon, enabled, config.env, chosenDatabase, lookupSchemas]);
 
 	const label = neonTargetLabel(target);
 
@@ -139,10 +229,24 @@ export function ServiceDatabaseTab({
 		? neonProblemsFor(validateNeonConfig(nextConfig), target)
 		: [];
 
+	const liveSchemas =
+		schemasLookup.status === "done" && schemasLookup.data.note === ""
+			? schemasLookup.data.schemas
+			: null;
+	const liveSchemasSet = liveSchemas ? new Set(liveSchemas) : null;
+	const newLiveSchemas = liveSchemasSet
+		? draft.schemas.filter((schema) => !liveSchemasSet.has(schema))
+		: [];
+	const selectableSchemas = liveSchemas
+		? [...liveSchemas, ...newLiveSchemas]
+		: [];
+
 	const schemaChoices = neonSchemaChoices(config, draft.database, target);
 	const addableSchemas = schemaChoices.filter(
 		(schema) => !draft.schemas.includes(schema),
 	);
+	const isLoadingSchemas = schemasLookup.status === "loading";
+
 	const manualName = manualSchema.trim();
 	const manualError =
 		manualName === ""
@@ -153,6 +257,12 @@ export function ServiceDatabaseTab({
 
 	function setSchemas(schemas: string[]) {
 		setDraft((d) => ({ ...d, schemas }));
+	}
+
+	function addManualSchema() {
+		if (manualName === "" || manualError !== null) return;
+		setSchemas([...draft.schemas, manualName]);
+		setManualSchema("");
 	}
 
 	function save() {
@@ -194,14 +304,10 @@ export function ServiceDatabaseTab({
 
 				{enabled && (
 					<>
-						<div className="space-y-1">
+						<div className="space-y-1.5">
 							<Label htmlFor={`${uid}-database`}>Database</Label>
 							<Select
-								value={
-									databases.some((d) => d.name === draft.database)
-										? draft.database
-										: ""
-								}
+								value={chosenDatabase}
 								onValueChange={(database) =>
 									setDraft((d) => ({ ...d, database }))
 								}
@@ -217,64 +323,160 @@ export function ServiceDatabaseTab({
 									))}
 								</SelectContent>
 							</Select>
+							{chosenDatabase !== "" && roleName !== null && (
+								<div className="space-y-0.5 pt-0.5">
+									<NoteDetail>
+										Login role: <NoteCode>{roleName}</NoteCode>
+									</NoteDetail>
+									<NoteDetail>
+										{saved?.database === chosenDatabase
+											? "meroku creates this role at the next deploy if it does not exist yet. It changes if the database changes."
+											: "meroku creates this role at the next deploy. It changes if the database changes."}
+									</NoteDetail>
+								</div>
+							)}
 						</div>
 
 						<div className="space-y-2">
-							<Label htmlFor={`${uid}-add-schema`}>Schemas</Label>
+							<Label id={`${uid}-schemas`}>Schemas</Label>
 							<NoteDetail>
 								{label} can use the tables in these schemas, and finds them
 								without a schema prefix.
 							</NoteDetail>
-							<ul className="flex flex-wrap gap-2" aria-label="Chosen schemas">
-								{draft.schemas.map((schema) => {
-									const isNew = !schemaChoices.includes(schema);
-									return (
-										<li key={schema} className="flex items-center gap-1">
-											<Badge variant={isNew ? "secondary" : "outline"}>
-												{schema}
-											</Badge>
-											<Button
-												type="button"
-												variant="ghost"
-												size="icon"
-												aria-label={`Remove schema ${schema}`}
-												disabled={draft.schemas.length === 1}
-												onClick={() =>
-													setSchemas(draft.schemas.filter((s) => s !== schema))
-												}
+
+							{liveSchemas !== null ? (
+								<>
+									<ul className="space-y-2" aria-labelledby={`${uid}-schemas`}>
+										{selectableSchemas.map((schema, index) => {
+											const checked = draft.schemas.includes(schema);
+											const isNew = !liveSchemasSet?.has(schema);
+											const checkboxId = `${uid}-schema-${index}`;
+											const badgeId = `${uid}-schema-${index}-new`;
+											return (
+												<li
+													key={schema}
+													className="flex flex-wrap items-center gap-2"
+												>
+													<Checkbox
+														id={checkboxId}
+														checked={checked}
+														disabled={checked && draft.schemas.length === 1}
+														aria-describedby={isNew ? badgeId : undefined}
+														onCheckedChange={(nextChecked) => {
+															if (nextChecked === true) {
+																if (!checked) {
+																	setSchemas([...draft.schemas, schema]);
+																}
+															} else if (checked && draft.schemas.length > 1) {
+																setSchemas(
+																	draft.schemas.filter((s) => s !== schema),
+																);
+															}
+														}}
+													/>
+													<Label
+														htmlFor={checkboxId}
+														className="font-mono font-normal"
+													>
+														{schema}
+													</Label>
+													{isNew && (
+														<Badge id={badgeId} variant="secondary">
+															new — meroku creates it
+														</Badge>
+													)}
+												</li>
+											);
+										})}
+									</ul>
+									{newLiveSchemas.length > 0 && (
+										<NoteDetail>
+											New schemas are owned by <NoteCode>{ownerRole}</NoteCode>.
+										</NoteDetail>
+									)}
+								</>
+							) : (
+								<>
+									{isLoadingSchemas && (
+										<StatusNote tone="pending">
+											<NoteDetail>Loading schemas…</NoteDetail>
+										</StatusNote>
+									)}
+									{schemasLookup.status === "done" &&
+										schemasLookup.data.note !== "" && (
+											<StatusNote tone="neutral">
+												<p>{schemasLookup.data.note}</p>
+											</StatusNote>
+										)}
+									{schemasLookup.status === "failed" && (
+										<StatusNote tone="neutral">
+											<p>We couldn't read this database's schemas just now.</p>
+											<NoteDetail>{schemasLookup.error}</NoteDetail>
+										</StatusNote>
+									)}
+									<ul
+										className="flex flex-wrap gap-2"
+										aria-label="Chosen schemas"
+									>
+										{draft.schemas.map((schema) => {
+											const isNew =
+												!isLoadingSchemas && !schemaChoices.includes(schema);
+											return (
+												<li key={schema} className="flex items-center gap-1">
+													<Badge variant={isNew ? "secondary" : "outline"}>
+														{schema}
+													</Badge>
+													<Button
+														type="button"
+														variant="ghost"
+														size="icon"
+														aria-label={`Remove schema ${schema}`}
+														disabled={draft.schemas.length === 1}
+														onClick={() =>
+															setSchemas(
+																draft.schemas.filter((s) => s !== schema),
+															)
+														}
+													>
+														<X aria-hidden="true" />
+													</Button>
+												</li>
+											);
+										})}
+									</ul>
+									{!isLoadingSchemas &&
+										draft.schemas
+											.filter((schema) => !schemaChoices.includes(schema))
+											.map((schema) => (
+												<NoteDetail key={schema}>
+													<NoteCode>{schema}</NoteCode> is created by meroku if
+													it is missing, owned by{" "}
+													<NoteCode>{ownerRole}</NoteCode>.
+												</NoteDetail>
+											))}
+									{!isLoadingSchemas && addableSchemas.length > 0 && (
+										<Select
+											value=""
+											onValueChange={(schema) =>
+												setSchemas([...draft.schemas, schema])
+											}
+										>
+											<SelectTrigger
+												id={`${uid}-add-schema`}
+												aria-label="Add a schema"
 											>
-												<X aria-hidden="true" />
-											</Button>
-										</li>
-									);
-								})}
-							</ul>
-							{draft.schemas
-								.filter((schema) => !schemaChoices.includes(schema))
-								.map((schema) => (
-									<NoteDetail key={schema}>
-										<NoteCode>{schema}</NoteCode> is created by meroku if it is
-										missing, owned by <NoteCode>{ownerRole}</NoteCode>.
-									</NoteDetail>
-								))}
-							{addableSchemas.length > 0 && (
-								<Select
-									value=""
-									onValueChange={(schema) =>
-										setSchemas([...draft.schemas, schema])
-									}
-								>
-									<SelectTrigger id={`${uid}-add-schema`}>
-										<SelectValue placeholder="Add a schema" />
-									</SelectTrigger>
-									<SelectContent>
-										{addableSchemas.map((schema) => (
-											<SelectItem key={schema} value={schema}>
-												{schema}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
+												<SelectValue placeholder="Add a schema" />
+											</SelectTrigger>
+											<SelectContent>
+												{addableSchemas.map((schema) => (
+													<SelectItem key={schema} value={schema}>
+														{schema}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
+									)}
+								</>
 							)}
 						</div>
 
@@ -345,15 +547,18 @@ export function ServiceDatabaseTab({
 												onChange={(event) =>
 													setManualSchema(event.target.value)
 												}
+												onKeyDown={(event) => {
+													if (event.key === "Enter") {
+														event.preventDefault();
+														addManualSchema();
+													}
+												}}
 											/>
 											<Button
 												type="button"
 												variant="outline"
 												disabled={manualName === "" || manualError !== null}
-												onClick={() => {
-													setSchemas([...draft.schemas, manualName]);
-													setManualSchema("");
-												}}
+												onClick={addManualSchema}
 											>
 												Add
 											</Button>

@@ -1,6 +1,11 @@
 import type { PricingResponse } from "../hooks/use-pricing";
 import type { SESDNSIssue } from "../lib/sesDnsValidation";
-import type { NeonLookupOptions, NeonLookupResponse } from "../types/neon";
+import type {
+	NeonLookupOptions,
+	NeonLookupResponse,
+	NeonSchemasOptions,
+	NeonSchemasResponse,
+} from "../types/neon";
 import { fetchWithTokenRetry } from "../utils/fetchWithRetry";
 
 export interface Environment {
@@ -1071,6 +1076,38 @@ export const infrastructureApi = {
 			throw new Error(error.error || "Failed to read your Neon projects");
 		}
 		return response.json();
+	},
+
+	/**
+	 * GET /api/neon/schemas — non-system schemas of one database on the env's
+	 * Neon project, sorted. When the database cannot be read, the server still
+	 * answers 200 with an empty `schemas` list and a plain-language `note`; a
+	 * thrown error means the request itself was refused.
+	 *
+	 * Like `/api/neon/lookup`, the server answers same-origin requests only,
+	 * so this always uses a relative URL and never `VITE_API_URL`.
+	 */
+	async getNeonSchemas(
+		env: string,
+		database: string,
+		opts: NeonSchemasOptions = {},
+	): Promise<NeonSchemasResponse> {
+		const params = new URLSearchParams({ env, database });
+		const response = await fetch(`/api/neon/schemas?${params}`, {
+			credentials: "same-origin",
+			signal: opts.signal,
+		});
+		if (!response.ok) {
+			const error: Partial<ErrorResponse> = await response
+				.json()
+				.catch(() => ({}));
+			throw new Error(error.error || "Failed to read the database's schemas");
+		}
+		const wire: Partial<NeonSchemasResponse> = await response.json();
+		return {
+			schemas: wire.schemas ?? [],
+			note: wire.note ?? "",
+		};
 	},
 
 	async getSESDNS(

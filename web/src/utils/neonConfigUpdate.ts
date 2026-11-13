@@ -261,7 +261,7 @@ export function neonReplacingChanges(
 				changes.push({
 					kind: "project_field",
 					field,
-					message: `Changing the ${PROJECT_FIELD_LABELS[field]} replaces the project and its data, so a deployed project refuses it. To start over, remove Neon from this environment and deploy first.`,
+					message: `Changing the ${PROJECT_FIELD_LABELS[field]} replaces the project and its data, so a deployed project refuses it. To start over, disconnect Neon from this environment and deploy first.`,
 				});
 			}
 		}

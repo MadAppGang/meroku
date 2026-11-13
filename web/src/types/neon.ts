@@ -44,6 +44,21 @@ export interface NeonLookupOptions {
 	signal?: AbortSignal;
 }
 
+/**
+ * `GET /api/neon/schemas?env=<name>&database=<db>` (app/api_neon_schemas.go).
+ * Non-system schemas of one database on the project's default branch, sorted.
+ * When the database cannot be read, `schemas` is empty and `note` explains why.
+ */
+export interface NeonSchemasResponse {
+	schemas: string[];
+	note: string;
+}
+
+/** Query options for `GET /api/neon/schemas`, beyond env and database. */
+export interface NeonSchemasOptions {
+	signal?: AbortSignal;
+}
+
 /** The two access levels a service can have on its Neon database. */
 export type NeonAccessLevel = "readonly" | "readwrite";
 

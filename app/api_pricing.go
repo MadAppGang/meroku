@@ -141,14 +141,14 @@ func effectiveComputePoolName(poolName string) string {
 func ec2PoolRates(region string) *pricingpkg.PriceRates {
 	if globalPricingService != nil {
 		if rates, err := globalPricingService.GetRates(region); err == nil && rates != nil {
-			return rates
+			return withLiveEC2Prices(rates, region)
 		}
 	}
 	rates, err := pricingpkg.NewAWSPricingClient(nil).FetchRates(region)
 	if err != nil {
 		return nil
 	}
-	return rates
+	return withLiveEC2Prices(rates, region)
 }
 
 // zeroMarginalLevels builds the three levels of a node whose cost is billed
@@ -1394,6 +1394,8 @@ func getPricingRates(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(ErrorResponse{Error: fmt.Sprintf("Failed to get pricing rates: %v", err)})
 		return
 	}
+
+	rates = withLiveEC2Prices(rates, region)
 
 	// Return pricing rates as JSON
 	w.Header().Set("Content-Type", "application/json")
