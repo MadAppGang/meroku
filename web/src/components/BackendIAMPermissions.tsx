@@ -6,6 +6,8 @@ import type {
 } from "../types/yamlConfig";
 import { workloadBucketGrants } from "../utils/dataBucket";
 import {
+	describeProduceEntry,
+	eventSourceOf,
 	isEventBusEnabled,
 	projectBusName,
 	resolveBus,
@@ -76,15 +78,19 @@ export function BackendIAMPermissions({
 			? serviceConfig?.events?.produces
 			: config.workload?.events?.produces) ?? [];
 	const busEnabled = isEventBusEnabled(config);
-	const producesBuses = [
-		...new Set(
-			produces.map((entry) =>
-				resolveBus(entry.bus, busEnabled) === "project"
-					? projectBusName(config)
-					: "default",
-			),
-		),
-	];
+	const busOf = (entry: (typeof produces)[number]) =>
+		resolveBus(entry.bus, busEnabled) === "project"
+			? projectBusName(config)
+			: "default";
+	const producesBuses = [...new Set(produces.map(busOf))];
+	// Each entry is its own statement; `any` and `own_source_only: false` lift
+	// its detail-type and source conditions.
+	const ownSource = isService
+		? eventSourceOf(config.project, "service", serviceName ?? "")
+		: eventSourceOf(config.project, "backend", BACKEND_WORKLOAD_NAME);
+	const producesDescription = `Publish on ${produces
+		.map((entry) => describeProduceEntry(entry, busOf(entry), ownSource))
+		.join("; ")}`;
 
 	// The task role's inline "cloudwatch" policy: custom metrics, and writes to
 	// the workload's own log group. The execution role keeps
@@ -203,8 +209,7 @@ export function BackendIAMPermissions({
 				(bus) =>
 					`arn:aws:events:${config.region}:${config.account_id || "<account>"}:event-bus/${bus}`,
 			),
-			description:
-				"Publish only the detail-types listed under Events → Produces, with this workload's own source",
+			description: producesDescription,
 		},
 		{
 			name: "SQS Access",
