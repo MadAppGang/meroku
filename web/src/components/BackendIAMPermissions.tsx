@@ -86,13 +86,37 @@ export function BackendIAMPermissions({
 		),
 	];
 
+	// The task role's inline "cloudwatch" policy: custom metrics, and writes to
+	// the workload's own log group. The execution role keeps
+	// CloudWatchFullAccess.
+	const logGroupName = isService
+		? `${config.project}_service_${serviceName}_${config.env}`
+		: `${config.project}_backend_${config.env}`;
+	const logGroupArn = `arn:aws:logs:${config.region}:${config.account_id || "<account>"}:log-group:${logGroupName}`;
+	const containerInsightsArn = `arn:aws:logs:${config.region}:${config.account_id || "<account>"}:log-group:/aws/ecs/containerinsights/*`;
+	const xrayEnabled = isService
+		? !!serviceConfig?.xray_enabled
+		: !!config.workload?.xray_enabled;
+
 	// Unconditional permissions (always applied)
 	const unconditionalPermissions = [
 		{
-			name: "CloudWatch Full Access",
-			type: "managed",
-			arn: "arn:aws:iam::aws:policy/CloudWatchFullAccess",
-			description: "Applied to both task role and execution role",
+			name: "CloudWatch Metrics",
+			type: "custom",
+			actions: ["cloudwatch:PutMetricData"],
+			resources: ["*"],
+			description: "Publish custom metrics (inline policy cloudwatch)",
+		},
+		{
+			name: "CloudWatch Logs",
+			type: "custom",
+			actions: [
+				"logs:CreateLogStream",
+				"logs:PutLogEvents",
+				"logs:DescribeLogStreams",
+			],
+			resources: [logGroupArn, `${logGroupArn}:*`],
+			description: `Write to its own log group ${logGroupName} (inline policy cloudwatch)`,
 		},
 		...bucketGrants,
 		{
@@ -136,6 +160,39 @@ export function BackendIAMPermissions({
 
 	// Conditional permissions
 	const conditionalPermissions = [
+		isService
+			? {
+					name: "X-Ray Write",
+					condition: "xray_enabled = true",
+					enabled: xrayEnabled,
+					type: "custom",
+					actions: [
+						"xray:PutTraceSegments",
+						"xray:PutTelemetryRecords",
+						"xray:GetSamplingRules",
+						"xray:GetSamplingTargets",
+						"xray:GetSamplingStatisticSummaries",
+					],
+					resources: ["*"],
+					description:
+						"The X-Ray daemon sidecar sends traces (inline policy cloudwatch)",
+				}
+			: {
+					name: "Container Insights Logs",
+					condition: "xray_enabled = true",
+					enabled: xrayEnabled,
+					type: "custom",
+					actions: [
+						"logs:CreateLogGroup",
+						"logs:CreateLogStream",
+						"logs:PutLogEvents",
+						"logs:DescribeLogStreams",
+						"logs:DescribeLogGroups",
+					],
+					resources: [containerInsightsArn, `${containerInsightsArn}:*`],
+					description:
+						"The ADOT collector writes Container Insights metrics (inline policy cloudwatch)",
+				},
 		{
 			name: "EventBridge PutEvents",
 			condition: "Events → Produces is not empty",
@@ -231,7 +288,7 @@ export function BackendIAMPermissions({
 			name: "CloudWatch Full Access",
 			type: "managed",
 			arn: "arn:aws:iam::aws:policy/CloudWatchFullAccess",
-			description: "Write logs and metrics",
+			description: "Write the container log streams during startup",
 		},
 		{
 			name: "SSM Parameter Access",
