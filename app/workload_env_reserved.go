@@ -14,10 +14,12 @@ import (
 // generate refuses it and names the YAML field. A name is reserved for a workload
 // only when meroku sets it for that workload.
 //
-// AWS_S3_BUCKET is the one exception, on services and tasks only. The backend has
-// always had it (modules/workloads/env.tf), services and tasks never did, so a YAML
-// AWS_S3_BUCKET there most likely names a bucket of the workload's own. Its value is
-// kept, meroku does not add the backend bucket, and generate warns.
+// AWS_S3_BUCKET is reserved for the backend, which has always had it from
+// modules/workloads/env.tf (local.backend_env) rather than from extra_env; a YAML
+// value would put it in the backend's `environment` twice. On services and tasks it
+// is the one exception: they never had it, so a YAML AWS_S3_BUCKET there most likely
+// names a bucket of the workload's own. Its value is kept, meroku does not add the
+// backend bucket, and generate warns.
 //
 // This joins the ENV rule in app/env_reserved.go.
 
@@ -40,8 +42,12 @@ type reservedWorkloadEnv struct {
 
 func everyWorkload(workloadEnvContext) bool { return true }
 
-// reservedWorkloadEnvTable lists every name meroku sets through extra_env.
+func isBackend(ctx workloadEnvContext) bool { return ctx.name == backendWorkloadName }
+
+// reservedWorkloadEnvTable lists every name meroku sets through extra_env, and the
+// backend's AWS_S3_BUCKET.
 var reservedWorkloadEnvTable = []reservedWorkloadEnv{
+	{name: backendBucketEnvName, setBy: "the backend bucket", appliesTo: isBackend},
 	{name: "DATA_BUCKET_NAME", setBy: "the data bucket", appliesTo: everyWorkload},
 	{name: "DATA_BUCKET_PATH", setBy: "the data bucket", appliesTo: everyWorkload},
 	{name: "DATA_BUCKET_SHARED_", prefix: true, setBy: "the data bucket's shared folders", appliesTo: everyWorkload},

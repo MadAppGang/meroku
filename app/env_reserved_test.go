@@ -77,3 +77,28 @@ func TestReservedEnv_RefusesTaskEnv(t *testing.T) {
 		}
 	}
 }
+
+func TestWorkloadReservedEnv_RefusesBackendBucketInBackendEnv(t *testing.T) {
+	err := validateWorkloadReservedEnvConfigMap(reservedEnvMap(map[string]interface{}{"AWS_S3_BUCKET": "myapp-private"}))
+	if err == nil {
+		t.Fatal("AWS_S3_BUCKET in backend_env_variables must be refused: the backend already sets it")
+	}
+	for _, want := range []string{"workload.backend_env_variables", "AWS_S3_BUCKET"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not mention %q", err, want)
+		}
+	}
+}
+
+func TestWorkloadReservedEnv_KeepsServiceOwnBucket(t *testing.T) {
+	m := reservedEnvMap(nil,
+		map[string]interface{}{"name": "api", "env_vars": map[string]interface{}{"AWS_S3_BUCKET": "api-own"}},
+	)
+	if err := validateWorkloadReservedEnvConfigMap(m); err != nil {
+		t.Fatalf("a service's own AWS_S3_BUCKET must be kept, got: %v", err)
+	}
+	own, _ := m[ownBackendBucketEnvKey].([]interface{})
+	if len(own) != 1 || own[0] != "api" {
+		t.Errorf("%s = %v, want [api]", ownBackendBucketEnvKey, own)
+	}
+}
