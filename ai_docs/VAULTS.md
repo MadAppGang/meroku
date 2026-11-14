@@ -153,10 +153,16 @@ Set the values in the web UI's Vaults tab. Until then, a new task of a workload
 connected to this vault cannot start.
 ```
 
-It is a `check` block (`modules/vaults/value_check`), so it never fails a plan
-or an apply, and an error reading SSM is a warning too. The apply registers the
-task definitions anyway; ECS refuses to start a task whose secret has no
-parameter. Set the value and the next task starts.
+It is a `check` block (`modules/vaults/value_check`), so a missing value never
+fails a plan or an apply. The apply registers the task definitions anyway; ECS
+refuses to start a task whose secret has no parameter. Set the value and the
+next task starts.
+
+The parameters are read by an ordinary data source beside the check block, not
+inside it. A data source nested in a check block is read during apply, so every
+plan would list that read and never report `No changes` (and
+`-detailed-exitcode` would always return 2). Read outside, it resolves at plan,
+and an error reading SSM (a missing permission, for example) fails the plan.
 
 ### Changing a value needs a redeploy
 
