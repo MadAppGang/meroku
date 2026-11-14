@@ -43,11 +43,14 @@ data "aws_ssm_parameters_by_path" "backend" {
 
 
 locals {
-  # Parameters named in ssm_exclude_names are deleted in this same apply; the
-  # by-path read still lists them, and a secret pointing at a deleted parameter
-  # would stop the task from starting.
+  # The /env parameter's name is a configured value, so ENV is in the list
+  # whatever the read returns. Discovered names come first, so where /env is
+  # already discovered the list is unchanged. Parameters named in
+  # ssm_exclude_names are deleted in this same apply; the by-path read still
+  # lists them, and a secret pointing at a deleted parameter would stop the
+  # task from starting.
   backend_ssm_names = [
-    for n in data.aws_ssm_parameters_by_path.backend.names : n
+    for n in distinct(concat(data.aws_ssm_parameters_by_path.backend.names, [aws_ssm_parameter.backend_env.name])) : n
     if !contains(var.ssm_exclude_names, n)
   ]
 
@@ -76,7 +79,7 @@ locals {
       { "name" : "URL", "value" : var.api_domain },
       { "name" : "SQS_QUEUE_URL", "value" : var.sqs_queue_url },
       { "name" : "AWS_QUEUE_URL", "value" : var.sqs_queue_url },
-      { "name" : "EVENT_BUS_NAME", "value" : "default" },
+      { "name" : "EVENT_BUS_NAME", "value" : var.event_bus_name },
       { "name" : "EVENT_SOURCE", "value" : "${var.project}.backend" },
       # Domain configuration
       { "name" : "API_DOMAIN", "value" : var.api_domain },
@@ -95,5 +98,6 @@ locals {
   # these names against the discovered secret names and must compare the ones
   # ECS will compare, and a second copy of the expression is a copy that can
   # drift into reporting success on the config that fails.
-  backend_container_env = concat(local.backend_env, var.backend_env)
+  # The extras from the capability modules (workload_contract.tf) come last.
+  backend_container_env = concat(local.backend_env, var.backend_env, local.backend_extra_env)
 }

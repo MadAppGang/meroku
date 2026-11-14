@@ -64,7 +64,7 @@ run "local_strategy_creates_the_repository_under_any_name" {
   override_data {
     target = data.aws_ssm_parameters_by_path.task
     values = {
-      names = ["/dev/acme/task/ingest/env"]
+      names = ["/sandbox/acme/task/ingest/env"]
     }
   }
 

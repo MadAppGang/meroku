@@ -8,9 +8,9 @@
 # possible — see tests/messages.tftest.hcl for what that blind spot cost once
 # already (v4.2.0, four releases).
 #
-# The floor stays at the repository's usual 1.2.6 rather than the 1.3.0 that
-# modules/naming and modules/compute_pool_check carry: neither `optional()` nor
-# anything else newer than 1.2 appears below, so there is no reason to raise it.
+# variables.tf uses optional() object attributes, which need 1.3. The floor
+# matches env/main.hbs, the root every caller of this module is planned from,
+# so it asks no environment for a newer Terraform.
 terraform {
-  required_version = ">= 1.2.6"
+  required_version = ">= 1.10.0"
 }

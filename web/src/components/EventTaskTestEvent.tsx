@@ -7,6 +7,7 @@ import {
 } from "../api/infrastructure";
 import type { ComponentNode } from "../types";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
+import { isEventBusEnabled, projectBusName } from "../utils/workloadEvents";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -27,9 +28,24 @@ export function EventTaskTestEvent({ config, node }: EventTaskTestEventProps) {
 		(task) => task.name === taskName,
 	);
 
+	// The task's first rule: the rules form, or the legacy single rule. The test
+	// event goes to that rule's bus, so it reaches the rule.
+	const busEnabled = isEventBusEnabled(config);
+	const firstRule = eventTask?.rules?.[0];
+	const ruleSources = firstRule ? firstRule.sources : eventTask?.sources;
+	const ruleDetailTypes = firstRule
+		? firstRule.detail_types
+		: eventTask?.detail_types;
+	const ruleBus =
+		firstRule?.bus === "default" || (!firstRule?.bus && !busEnabled)
+			? "default"
+			: projectBusName(config);
+
 	const [testEvent, setTestEvent] = useState<TestEventRequest>({
-		source: "meroku.test",
-		detailType: eventTask?.detail_types?.[0] || "",
+		env: config.env,
+		eventBusName: ruleBus,
+		source: ruleSources?.[0] || "meroku.test",
+		detailType: ruleDetailTypes?.[0] || "",
 		detail: {},
 	});
 	const [detailJson, setDetailJson] = useState(
@@ -42,13 +58,12 @@ export function EventTaskTestEvent({ config, node }: EventTaskTestEventProps) {
 	const [jsonError, setJsonError] = useState<string | null>(null);
 
 	useEffect(() => {
-		if (eventTask) {
-			setTestEvent((prev) => ({
-				...prev,
-				detailType: eventTask.detail_types?.[0] || prev.detailType,
-			}));
-		}
-	}, [eventTask]);
+		setTestEvent((prev) => ({
+			...prev,
+			eventBusName: ruleBus,
+			detailType: ruleDetailTypes?.[0] || prev.detailType,
+		}));
+	}, [ruleBus, ruleDetailTypes]);
 
 	const handleDetailJsonChange = (value: string) => {
 		setDetailJson(value);
@@ -74,7 +89,10 @@ export function EventTaskTestEvent({ config, node }: EventTaskTestEventProps) {
 		setEventResponse(null);
 
 		try {
-			const response = await infrastructureApi.sendTestEvent(testEvent);
+			const response = await infrastructureApi.sendTestEvent({
+				...testEvent,
+				env: config.env,
+			});
 			setEventResponse(response);
 		} catch (error) {
 			setEventResponse({
@@ -93,7 +111,6 @@ export function EventTaskTestEvent({ config, node }: EventTaskTestEventProps) {
 				title="Send Test Event"
 				description="Trigger this task via EventBridge"
 				icon={Send}
-				iconColor="text-violet-400"
 			>
 				<div className="space-y-4">
 					<div className="grid grid-cols-2 gap-4">
@@ -108,10 +125,10 @@ export function EventTaskTestEvent({ config, node }: EventTaskTestEventProps) {
 								placeholder="meroku.test"
 								className="font-mono text-sm"
 							/>
-							{eventTask?.sources &&
-								!eventTask.sources.includes(testEvent.source) &&
+							{ruleSources &&
+								!ruleSources.includes(testEvent.source) &&
 								testEvent.source && (
-									<p className="text-xs text-yellow-500">
+									<p className="text-xs text-warning">
 										Doesn't match configured sources
 									</p>
 								)}
@@ -131,10 +148,10 @@ export function EventTaskTestEvent({ config, node }: EventTaskTestEventProps) {
 								placeholder="OrderCreated"
 								className="font-mono text-sm"
 							/>
-							{eventTask?.detail_types &&
-								!eventTask.detail_types.includes(testEvent.detailType) &&
+							{ruleDetailTypes &&
+								!ruleDetailTypes.includes(testEvent.detailType) &&
 								testEvent.detailType && (
-									<p className="text-xs text-yellow-500">
+									<p className="text-xs text-warning">
 										Doesn't match configured detail types
 									</p>
 								)}
@@ -148,10 +165,11 @@ export function EventTaskTestEvent({ config, node }: EventTaskTestEventProps) {
 							value={detailJson}
 							onChange={(e) => handleDetailJsonChange(e.target.value)}
 							placeholder='{"orderId": "123"}'
-							className="font-mono text-sm min-h-[120px]"
+							variant="code"
+							className="min-h-32"
 							rows={6}
 						/>
-						{jsonError && <p className="text-xs text-red-400">{jsonError}</p>}
+						{jsonError && <p className="text-xs text-danger">{jsonError}</p>}
 					</div>
 
 					<Button
@@ -178,15 +196,11 @@ export function EventTaskTestEvent({ config, node }: EventTaskTestEventProps) {
 					</Button>
 
 					{eventResponse && (
-						<Alert
-							className={
-								eventResponse.success ? "border-green-600" : "border-red-600"
-							}
-						>
+						<Alert variant={eventResponse.success ? "success" : "danger"}>
 							{eventResponse.success ? (
-								<CheckCircle className="h-4 w-4 text-green-600" />
+								<CheckCircle className="h-4 w-4" />
 							) : (
-								<XCircle className="h-4 w-4 text-red-600" />
+								<XCircle className="h-4 w-4" />
 							)}
 							<AlertDescription>
 								{eventResponse.message}

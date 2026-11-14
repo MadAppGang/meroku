@@ -35,9 +35,12 @@ data "aws_ssm_parameters_by_path" "services" {
 locals {
   # SSM parameters for each service, without the names in ssm_exclude_names
   # (see local.backend_ssm_names in env.tf).
+  # The /env parameter's name is a configured value, so ENV is in each list
+  # whatever the read returns. Discovered names come first, so where /env is
+  # already discovered the list is unchanged.
   services_env_ssm = {
     for service_name, service in local.service_names : service_name => [
-      for n in data.aws_ssm_parameters_by_path.services[service_name].names : {
+      for n in distinct(concat(data.aws_ssm_parameters_by_path.services[service_name].names, [aws_ssm_parameter.services_env[service_name].name])) : {
         name      = upper(reverse(split("/", n))[0])
         valueFrom = n
       }
@@ -55,7 +58,7 @@ locals {
       { "name" : "URL", "value" : var.api_domain },
       { "name" : "SQS_QUEUE_URL", "value" : var.sqs_queue_url },
       { "name" : "AWS_QUEUE_URL", "value" : var.sqs_queue_url },
-      { "name" : "EVENT_BUS_NAME", "value" : "default" },
+      { "name" : "EVENT_BUS_NAME", "value" : var.event_bus_name },
       # Domain configuration
       { "name" : "API_DOMAIN", "value" : var.api_domain },
       { "name" : "PRIVATE_DNS_NAMESPACE", "value" : var.private_dns_name },
@@ -92,6 +95,7 @@ locals {
         { name = "SERVICE_INTERNAL_URL", value = local.services_internal_domain[service_name] },
         { name = "SERVICE_NAME", value = service_name },
       ],
+      local.services_extra_env[service_name],
     )
   }
 

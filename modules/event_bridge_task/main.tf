@@ -4,19 +4,25 @@ locals {
   # Convert legacy format to a rule if rule_name is provided
   legacy_rule = var.rule_name != "" ? {
     "${var.rule_name}" = {
-      sources      = var.sources
-      detail_types = var.detail_types
+      sources        = var.sources
+      detail_types   = var.detail_types
+      event_bus_name = var.event_bus_name
     }
   } : {}
 
   # Merge legacy rule with new rules - new rules take precedence
   all_rules = merge(local.legacy_rule, var.rules)
+
+  # The bus each rule is on. A rule without one follows the task's bus, which
+  # is the project bus when it is on.
+  rule_bus_names = { for k, r in local.all_rules : k => coalesce(r.event_bus_name, var.event_bus_name) }
 }
 
 resource "aws_cloudwatch_event_rule" "rule" {
   for_each = local.all_rules
 
-  name = module.naming.names["rule_${each.key}"]
+  name           = module.naming.names["rule_${each.key}"]
+  event_bus_name = local.rule_bus_names[each.key]
 
   event_pattern = jsonencode({
     source      = each.value.sources
@@ -35,9 +41,10 @@ resource "aws_cloudwatch_event_rule" "rule" {
 resource "aws_cloudwatch_event_target" "target" {
   for_each = local.all_rules
 
-  arn      = var.cluster
-  rule     = aws_cloudwatch_event_rule.rule[each.key].name
-  role_arn = aws_iam_role.task_execution.arn
+  arn            = var.cluster
+  rule           = aws_cloudwatch_event_rule.rule[each.key].name
+  event_bus_name = aws_cloudwatch_event_rule.rule[each.key].event_bus_name
+  role_arn       = aws_iam_role.task_execution.arn
 
   ecs_target {
     task_count          = var.task_count

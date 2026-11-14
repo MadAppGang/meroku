@@ -30,6 +30,21 @@ export type ComputeRuntime = "fargate" | "ec2";
 export type ServiceNetworkAccess = "public" | "internal" | "full_open" | "none";
 
 /**
+ * amplify_apps[].custom_rules entry. Exactly one of `target` and `workload` is
+ * set. A workload rule proxies to "backend" or a public service; `path`
+ * replaces the source path on the workload, and its status is always 200.
+ */
+export type AmplifyRewriteStatus = "200" | "301" | "302" | "404-200";
+
+export interface AmplifyRewriteRule {
+	source: string;
+	target?: string;
+	workload?: string;
+	path?: string;
+	status?: AmplifyRewriteStatus;
+}
+
+/**
  * A pool's task networking mode (schema v26).
  *
  * A union rather than `string` so the editor's control and the type cannot
@@ -233,6 +248,25 @@ export interface YamlNeonAccess {
 /**
  * Complete YAML configuration interface based on YAML_SPECIFICATION.md
  */
+/** One condition of an IAM statement: a test applied to a condition key. */
+export interface IAMCondition {
+	test: string;
+	variable: string;
+	values: string[];
+}
+
+/**
+ * One statement of a `policy` block on the backend (`workload.policy`), a
+ * service, a scheduled task or an event task. Absent `effect` means Allow.
+ * `conditions` are edited in YAML only; editors must carry them through.
+ */
+export interface IAMStatement {
+	effect?: "Allow" | "Deny";
+	actions: string[];
+	resources: string[];
+	conditions?: IAMCondition[];
+}
+
 export interface YamlInfrastructureConfig {
 	// Core Settings (Required)
 	project: string;
@@ -345,10 +379,12 @@ export interface YamlInfrastructureConfig {
 		pg_admin_email?: string;
 
 		// IAM policies
-		policy?: Array<{
-			actions: string[];
-			resources: string[];
-		}>;
+		policy?: IAMStatement[];
+
+		// The backend's vault connections.
+		vaults?: VaultConnection[];
+		/** The backend's events: it subscribes and publishes like a service. */
+		events?: WorkloadEvents;
 
 		// EFS mounts
 		efs?: Array<{
@@ -469,6 +505,12 @@ export interface YamlInfrastructureConfig {
 		max_retry_attempts?: number;
 		/** SQS queue ARN for failed invocations. Absent disables the DLQ. */
 		dlq_arn?: string;
+		/** The task role's own IAM statements. */
+		policy?: IAMStatement[];
+		/** The task's vault connections. */
+		vaults?: VaultConnection[];
+		/** A task may only produce; `subscribes` is refused at generate. */
+		events?: WorkloadEvents;
 	}>;
 
 	// Event-driven Tasks
@@ -611,6 +653,12 @@ export interface YamlInfrastructureConfig {
 		health_check_command?: string | string[];
 		/** This service's Neon database access. Absent means none. */
 		neon?: YamlNeonAccess;
+		/** The service task role's own IAM statements. */
+		policy?: IAMStatement[];
+		/** The service's vault connections. */
+		vaults?: VaultConnection[];
+		/** What the service subscribes to and may publish. */
+		events?: WorkloadEvents;
 	}>;
 
 	// S3 Buckets
@@ -643,6 +691,7 @@ export interface YamlInfrastructureConfig {
 		custom_domain?: string;
 		environment_variables?: Record<string, string>;
 		spa_mode?: boolean; // Enable SPA routing (200 rewrite instead of 404-200)
+		custom_rules?: AmplifyRewriteRule[];
 	}>;
 
 	// CloudFront CDN Configuration (Schema v14 -> v15: changed to array)
@@ -650,6 +699,108 @@ export interface YamlInfrastructureConfig {
 
 	// GitHub Actions runners on CodeBuild
 	github_runners?: GitHubRunnersConfig;
+
+	// Shared folders of the private data bucket. The bucket always exists.
+	data_bucket?: DataBucketConfig;
+
+	// Shared SSM vaults, /<env>/<project>/vault/<name>/.
+	vaults?: VaultDefinition[];
+	// The project bus <project>-<env>. Absent or off keeps everything on the default bus.
+	event_bus?: EventBusConfig;
+	// Serverless Valkey, reachable by the workloads in `access`.
+	valkey?: ValkeyConfig;
+}
+
+/** One shared SSM vault, `/<env>/<project>/vault/<name>/`. */
+export interface VaultDefinition {
+	name: string;
+}
+
+/** `read` (the default when absent) or `read_write`. */
+export type VaultAccess = "read" | "read_write";
+
+/**
+ * A workload's connection to a vault. Every parameter directly under the vault
+ * becomes a secret of the workload, named after its last path segment,
+ * upper-cased, behind `prefix` and an underscore.
+ */
+export interface VaultConnection {
+	name: string;
+	access?: VaultAccess;
+	prefix?: string;
+}
+
+/** The bus an events entry or event-task rule is on. Absent follows `event_bus.enabled`. */
+export type EventBusChoice = "project" | "default";
+
+export interface EventBusConfig {
+	enabled?: boolean;
+}
+
+/**
+ * One `events.subscribes` entry. Exactly one of `detail_type` and
+ * `detail_type_prefix` is set. `name`, when set, is the entry's key; without it
+ * the key is derived from the detail-type.
+ */
+export interface EventSubscription {
+	name?: string;
+	detail_type?: string;
+	detail_type_prefix?: string;
+	source?: string;
+	bus?: EventBusChoice;
+}
+
+/** A consumer's queue settings. */
+export interface EventQueueSettings {
+	visibility_timeout?: number;
+	max_receive_count?: number;
+}
+
+/**
+ * One `events.produces` entry: a detail-type list or `any: true`.
+ * `own_source_only` defaults to true.
+ */
+export interface EventProduce {
+	detail_types?: string[];
+	any?: boolean;
+	own_source_only?: boolean;
+	bus?: EventBusChoice;
+}
+
+/** A workload's `events` block. See ai_docs/EVENTS.md. */
+export interface WorkloadEvents {
+	subscribes?: EventSubscription[];
+	queue?: EventQueueSettings;
+	produces?: EventProduce[];
+}
+
+/** Major versions serverless Valkey offers. */
+export type ValkeyEngineVersion = "7" | "8" | "9";
+
+/**
+ * The optional serverless Valkey cache. `max_storage_gb` caps the stored data;
+ * `access` lists the workloads (`backend` or a service or task name) that may
+ * connect and get VALKEY_HOST, VALKEY_PORT and VALKEY_URL.
+ */
+export interface ValkeyConfig {
+	enabled: boolean;
+	engine_version?: ValkeyEngineVersion;
+	max_storage_gb?: number;
+	access?: string[];
+}
+
+/**
+ * One shared folder of the data bucket, `shared/<name>/`, and the workloads
+ * (`backend` or a service or task name) that may use it.
+ */
+export interface DataBucketSharedFolder {
+	name: string;
+	read_write?: string[];
+	read?: string[];
+}
+
+export interface DataBucketConfig {
+	shared?: DataBucketSharedFolder[];
 }
 
 /**
@@ -746,6 +897,8 @@ export interface EventBridgeRule {
 	name: string;
 	sources: string[];
 	detail_types: string[];
+	/** The bus the rule is on. Absent follows `event_bus.enabled`. */
+	bus?: EventBusChoice;
 }
 
 /**
@@ -768,6 +921,12 @@ export interface EventProcessorTask {
 	memory?: number;
 	environment_variables?: Record<string, string>;
 	ecr_config?: ECRConfig;
+	/** The task role's own IAM statements. */
+	policy?: IAMStatement[];
+	/** The task's vault connections. */
+	vaults?: VaultConnection[];
+	/** A task may only produce; `subscribes` is refused at generate. */
+	events?: WorkloadEvents;
 }
 
 /**

@@ -25,10 +25,18 @@ data "aws_ssm_parameters_by_path" "task" {
 }
 
 locals {
+  # The read above runs at plan, so on a new environment it cannot see the /env
+  # parameter created in the same apply. That parameter's name is a configured
+  # value, known at plan, so it is appended here: the first task definition
+  # already carries ENV, and referencing the resource orders its creation
+  # before the task definition. Discovered names come first, so where /env is
+  # already discovered the list is unchanged.
+  task_ssm_names = distinct(concat(data.aws_ssm_parameters_by_path.task.names, [aws_ssm_parameter.task_env.name]))
+
   task_env_ssm = [
-    for i in range(length(data.aws_ssm_parameters_by_path.task.names)) : {
-      name      = upper(reverse(split("/", data.aws_ssm_parameters_by_path.task.names[i]))[0])
-      valueFrom = data.aws_ssm_parameters_by_path.task.names[i]
+    for name in local.task_ssm_names : {
+      name      = upper(reverse(split("/", name))[0])
+      valueFrom = name
     }
   ]
   # Default environment variables always present
@@ -43,7 +51,7 @@ locals {
     },
     {
       name  = "EVENT_BUS_NAME"
-      value = "default"
+      value = var.event_bus_name
     },
     {
       name  = "EVENT_SOURCE"

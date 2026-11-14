@@ -433,6 +433,15 @@ service) are optional; absent keys render nothing. A breaker is turned off with
 `enable: false`, never by removing the key (provider 6.x suppresses that diff).
 [Backend Health Check](./ai_docs/BACKEND_HEALTH_CHECK.md).
 
+## Events (project bus, queues, PutEvents)
+
+`event_bus.enabled` creates `<project>-<env>`; `EVENT_BUS_NAME` then names it, and
+entries and event-task rules without `bus` use it. A workload's `events.subscribes`
+gives it its own SQS queue (`EVENT_QUEUE_URL`), two DLQs and alarms to
+`<project>-<env>-alerts`; `events.produces` is the only source of `events:PutEvents`.
+Normalised in `app/events.go`, built by `modules/events`.
+[Events](./ai_docs/EVENTS.md).
+
 ## GitHub Actions runners (CodeBuild)
 
 `github_runners` (optional; absent or `enabled: false` renders nothing, no
@@ -646,8 +655,12 @@ meroku/
 - Test infrastructure changes in dev environment first
 - Use `task test` to run Go tests
 - Use `task ci` to run everything CI runs (both Go modules + Terraform), `task lambda:test` for the CI Lambda
-- Frontend: there are no application tests; `task test:web` only prints that. Component stories are
-  tested with `pnpm test-storybook` (vitest + Playwright) in `web/`.
+- Frontend: `task test:web` (`pnpm test:e2e` in `web/`) runs the Playwright UI tests in `web/tests/e2e/`.
+  The harness builds meroku, serves it on a throwaway copy of the synthetic YAML in
+  `web/tests/e2e/fixtures/project/` behind the vite dev server, resets that YAML before each test, and
+  lets a test read the file back from disk (`envYaml`) and save evidence screenshots (`evidence`) to
+  `web/test-results/screenshots/` or `MEROKU_E2E_SCREENSHOT_DIR`. First run: `pnpm exec playwright
+  install chromium`. Component stories are tested with `pnpm test-storybook` (vitest + Playwright).
 
 ## Terraform Plan Viewer
 

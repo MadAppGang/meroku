@@ -35,6 +35,7 @@ var (
 	awsConfigFlag  = flag.String("aws-config", "", "Custom AWS config file path (for testing different scenarios)")
 	monitorFlag    = flag.Bool("monitor", false, "Open infrastructure monitor dashboard")
 	themeFlag      = flag.String("theme", "auto", "Color theme: auto | light | dark (auto reads the terminal background)")
+	webPortFlag    = flag.String("web-port", "", "With --web: serve on 127.0.0.1 at exactly this port, open no browser and skip the update prompt (fails if the port is taken)")
 )
 
 // GetVersion returns the actual version, reading from infrastructure/version.txt
@@ -285,6 +286,16 @@ func main() {
 			fmt.Println("Error selecting environment:", err)
 			os.Exit(1)
 		}
+	}
+
+	// A headless web server on a fixed port has nobody to answer the update
+	// prompt, so it serves straight away.
+	if *webFlag && *webPortFlag != "" {
+		if err := serveWebOnPort(*webPortFlag); err != nil {
+			fmt.Fprintf(os.Stderr, "Web server failed: %v\n", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
 	}
 
 	// Check for updates at startup (only in interactive mode)

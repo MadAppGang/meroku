@@ -44,9 +44,9 @@ resource "aws_ecs_task_definition" "task" {
     cpu         = 256
     memory      = 512
     image       = local.docker_image
-    secrets     = local.task_env_ssm
+    secrets     = local.container_secrets
     essential   = true
-    environment = local.environment_variables
+    environment = local.container_environment
 
     logConfiguration = {
       logDriver = "awslogs"
@@ -88,9 +88,17 @@ resource "aws_ecs_task_definition" "task" {
   # creation and the condition is known at plan even on a brand-new environment.
   # There is no first-apply window where it is postponed.
   lifecycle {
+    # Two halves, so the one that can always be decided at plan never waits
+    # for the one that may not be: ENV and vault collisions are refused at plan,
+    # own-path collisions as soon as the own-path read is known.
     precondition {
-      condition     = module.task_env_secret_check.valid["task"]
-      error_message = module.task_env_secret_check.message["task"]
+      condition     = module.task_env_secret_check.valid_known["task"]
+      error_message = module.task_env_secret_check.message_known["task"]
+    }
+
+    precondition {
+      condition     = module.task_env_secret_check.valid_discovered["task"]
+      error_message = module.task_env_secret_check.message_discovered["task"]
     }
   }
 }

@@ -89,10 +89,11 @@ variable "rule_name" {
 
 # New multi-rule support (Schema v13)
 variable "rules" {
-  description = "Map of EventBridge rules. Each rule has sources and detail_types. Preferred over legacy single-rule variables."
+  description = "Map of EventBridge rules. Each rule has sources and detail_types, and the bus it is on (event_bus_name; absent means var.event_bus_name). Preferred over legacy single-rule variables."
   type = map(object({
-    sources      = list(string)
-    detail_types = list(string)
+    sources        = list(string)
+    detail_types   = list(string)
+    event_bus_name = optional(string)
   }))
   default = {}
 }

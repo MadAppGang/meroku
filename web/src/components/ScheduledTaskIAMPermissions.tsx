@@ -1,20 +1,53 @@
 import { Calendar, Cloud, Container, Shield } from "lucide-react";
 import type { ComponentNode } from "../types";
-import type { YamlInfrastructureConfig } from "../types/yamlConfig";
+import type {
+	IAMStatement,
+	YamlInfrastructureConfig,
+} from "../types/yamlConfig";
+import { withPolicy } from "../utils/workloadPolicy";
 import { Badge } from "./ui/badge";
 import { StyledSection } from "./ui/styled-section";
+import { WorkloadPolicyEditor } from "./WorkloadPolicyEditor";
 
 interface ScheduledTaskIAMPermissionsProps {
 	config: YamlInfrastructureConfig;
 	node: ComponentNode;
+	/** Absent shows the roles read-only, without the policy editor. */
+	onConfigChange?: (config: Partial<YamlInfrastructureConfig>) => void;
 }
 
 export function ScheduledTaskIAMPermissions({
 	config,
 	node,
+	onConfigChange,
 }: ScheduledTaskIAMPermissionsProps) {
 	const taskName = node.id.replace(/^(scheduled|event)-/, "");
 	const paramPath = `/${config.env}/${config.project}/task/${taskName}/*`;
+	const isEventTask = node.type === "event-task";
+	const task = isEventTask
+		? config.event_processor_tasks?.find((t) => t.name === taskName)
+		: config.scheduled_tasks?.find((t) => t.name === taskName);
+
+	// Scheduled and event tasks live in two lists; each change rewrites only
+	// this task's entry in its own list.
+	const handlePolicyChange = (policy: IAMStatement[]) => {
+		if (!onConfigChange) return;
+		if (isEventTask) {
+			if (!config.event_processor_tasks) return;
+			onConfigChange({
+				event_processor_tasks: config.event_processor_tasks.map((t) =>
+					t.name === taskName ? withPolicy(t, policy) : t,
+				),
+			});
+			return;
+		}
+		if (!config.scheduled_tasks) return;
+		onConfigChange({
+			scheduled_tasks: config.scheduled_tasks.map((t) =>
+				t.name === taskName ? withPolicy(t, policy) : t,
+			),
+		});
+	};
 
 	const roles = [
 		{
@@ -91,6 +124,14 @@ export function ScheduledTaskIAMPermissions({
 					))}
 				</div>
 			</StyledSection>
+
+			{onConfigChange && task && (
+				<WorkloadPolicyEditor
+					statements={task.policy ?? []}
+					onChange={handlePolicyChange}
+					roleName={roles[0].name}
+				/>
+			)}
 		</div>
 	);
 }

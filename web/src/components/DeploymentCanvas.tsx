@@ -311,6 +311,21 @@ const initialNodes: Node[] = [
 		deletable: false,
 	},
 	{
+		id: "valkey",
+		type: "service",
+		position: { x: 1030, y: 620 },
+		data: {
+			id: "valkey",
+			type: "valkey",
+			name: "Valkey",
+			description: "Serverless cache",
+			status: "running",
+			deletable: false,
+			disabled: true,
+		},
+		deletable: false,
+	},
+	{
 		id: "s3",
 		type: "service",
 		position: { x: 880, y: 620 },
@@ -319,6 +334,21 @@ const initialNodes: Node[] = [
 			type: "s3",
 			name: "Amazon S3",
 			description: "Object storage",
+			status: "running",
+			deletable: false,
+		},
+		deletable: false,
+	},
+	// Always shown, so the first vault can be created from it.
+	{
+		id: "vaults",
+		type: "service",
+		position: { x: 710, y: 860 },
+		data: {
+			id: "vaults",
+			type: "vaults",
+			name: "Vaults",
+			description: "Shared secrets in Parameter Store",
 			status: "running",
 			deletable: false,
 		},

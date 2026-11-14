@@ -1,0 +1,28 @@
+schema_version: 32
+project: myapp
+env: dev
+is_prod: false
+region: us-east-1
+account_id: "000000000000"
+aws_profile: myapp-dev
+state_bucket: myapp-terraform-state-dev
+state_file: state.tfstate
+state_lock_table: myapp-terraform-locks-dev
+use_default_vpc: false
+vpc_cidr: 10.20.0.0/16
+egress_strategy: public_ip
+ecr_strategy: local
+domain:
+  enabled: true
+  create_domain_zone: true
+  domain_name: example.com
+workload:
+  backend_image_port: 8080
+  backend_cpu: "256"
+  backend_memory: "512"
+  backend_desired_count: 1
+  backend_env_variables:
+    LOG_LEVEL: info
+services: []
+scheduled_tasks: []
+event_processor_tasks: []

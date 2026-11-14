@@ -1,0 +1,125 @@
+project: myapp
+env: dev
+region: us-east-1
+account_id: "000000000000"
+workload:
+  backend_remote_access: false
+  policy:
+    - effect: Deny
+      actions: [s3:DeleteObject]
+      resources: ["arn:aws:s3:::myapp-data/${aws:PrincipalTag/team}/*"]
+      conditions:
+        - test: StringEquals
+          variable: aws:PrincipalTag/team
+          values: [payments]
+        - test: StringEquals
+          variable: aws:RequestedRegion
+          values: [us-east-1]
+  vaults:
+    - name: shared
+      access: read_write
+      prefix: PAY
+  events:
+    subscribes:
+      - detail_type: order.created
+        bus: default
+    queue:
+      visibility_timeout: 0
+      max_receive_count: 1
+    produces:
+      - detail_types: [backend.ready]
+        any: false
+        own_source_only: false
+        bus: default
+services:
+  - name: api
+    env_vars:
+      AWS_S3_BUCKET: myapp-custom
+    policy:
+      - actions: [s3:GetObject]
+        resources: ["arn:aws:s3:::myapp-data/*"]
+    vaults:
+      - name: shared
+        prefix: API
+    events:
+      subscribes:
+        - name: users
+          detail_type_prefix: "user."
+          source: myapp.identity
+      queue:
+        visibility_timeout: 43200
+        max_receive_count: 1000
+      produces:
+        - any: true
+          own_source_only: true
+scheduled_tasks:
+  - name: nightly
+    schedule: rate(1 day)
+    environment_variables:
+      TASK_STAGE: nightly
+    policy:
+      - actions: [s3:ListBucket]
+        resources: ["arn:aws:s3:::myapp-data"]
+    vaults:
+      - name: shared
+        access: read
+    events:
+      produces:
+        - detail_types: [job.done]
+          own_source_only: false
+event_processor_tasks:
+  - name: mailer
+    rules:
+      - name: ingest
+        sources: [myapp.api]
+        detail_types: [order.created]
+        bus: default
+    environment_variables:
+      TASK_STAGE: events
+    policy:
+      - effect: Deny
+        actions: [sqs:DeleteQueue]
+        resources: ["arn:aws:sqs:us-east-1:000000000000:myapp-jobs"]
+    vaults:
+      - name: payments
+        access: read_write
+        prefix: MAIL
+    events:
+      produces:
+        - any: true
+          own_source_only: false
+          bus: default
+amplify_apps:
+  - name: web
+    github_repository: https://github.com/example/web
+    branches:
+      - name: main
+        enable_auto_build: true
+        environment_variables:
+          APP_STAGE: dev
+    environment_variables:
+      AMPLIFY_MONOREPO_APP_ROOT: apps/web
+    custom_rules:
+      - source: /api/<*>
+        workload: backend
+      - source: /r/<*>
+        workload: api
+        path: /<*>
+      - source: /old
+        target: /new
+        status: "301"
+data_bucket:
+  shared:
+    - name: uploads
+      read_write: [backend, api]
+      read: [nightly, mailer]
+vaults:
+  - name: shared
+  - name: payments
+event_bus:
+  enabled: false
+valkey:
+  enabled: false
+  engine_version: "7"
+  max_storage_gb: 1
+  access: [api]

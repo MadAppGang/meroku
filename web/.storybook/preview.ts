@@ -25,7 +25,7 @@ const preview: Preview = {
 		layout: "padded",
 		options: {
 			storySort: {
-				order: ["Components", "Layouts", "Panels"],
+				order: ["Components", "Layouts", "Panels", "Editors", "UI"],
 			},
 		},
 	},
