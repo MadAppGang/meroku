@@ -8,6 +8,7 @@ import {
 } from "../api/infrastructure";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import {
+	isVaultSecretName,
 	vaultConnectionsOf,
 	vaultNameError,
 	vaultNames,
@@ -265,6 +266,7 @@ function VaultSecrets({ env, vault, declared, onChange }: VaultSecretsProps) {
 	const [reloadKey, setReloadKey] = useState(0);
 	const [hint, setHint] = useState<Hint>(null);
 	const [actionError, setActionError] = useState<string | null>(null);
+	const [actionWarning, setActionWarning] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [editing, setEditing] = useState<string | null>(null);
 	const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -306,6 +308,7 @@ function VaultSecrets({ env, vault, declared, onChange }: VaultSecretsProps) {
 	const run = async (action: () => Promise<void>) => {
 		setBusy(true);
 		setActionError(null);
+		setActionWarning(null);
 		try {
 			await action();
 		} catch (error) {
@@ -317,7 +320,9 @@ function VaultSecrets({ env, vault, declared, onChange }: VaultSecretsProps) {
 	};
 
 	if (declared === undefined) {
-		const found = ready ? listing.secrets.map((s) => s.name) : [];
+		const inAwsNames = [...inAws.keys()];
+		const found = inAwsNames.filter(isVaultSecretName);
+		const unusable = inAwsNames.filter((n) => !isVaultSecretName(n));
 		return (
 			<div className="space-y-3">
 				<Alert>
@@ -332,8 +337,17 @@ function VaultSecrets({ env, vault, declared, onChange }: VaultSecretsProps) {
 							(found.length > 0 ? (
 								<p>Found in AWS: {found.join(", ")}.</p>
 							) : (
-								<p>AWS has no secrets in this vault yet.</p>
+								unusable.length === 0 && (
+									<p>AWS has no secrets in this vault yet.</p>
+								)
 							))}
+						{ready && unusable.length > 0 && (
+							<p>
+								Not imported, because a secret name must be lower case:{" "}
+								{unusable.join(", ")}. Once the vault has a list, set their
+								values again under lower-case names and delete them from AWS.
+							</p>
+						)}
 					</AlertDescription>
 				</Alert>
 				<ListingNote listing={listing} onRetry={reload} />
@@ -399,6 +413,7 @@ function VaultSecrets({ env, vault, declared, onChange }: VaultSecretsProps) {
 
 			{names.map((name, index) => {
 				const isDeclared = declared.includes(name);
+				const usable = isVaultSecretName(name);
 				const aws = inAws.get(name);
 				return (
 					<Fragment key={name}>
@@ -407,10 +422,14 @@ function VaultSecrets({ env, vault, declared, onChange }: VaultSecretsProps) {
 							<div className="flex flex-wrap items-center justify-between gap-2">
 								<div className="flex flex-wrap items-center gap-2">
 									<Badge variant="code">{name}</Badge>
-									<NoteDetail>becomes</NoteDetail>
-									<Badge variant="code">
-										{vaultSecretName(undefined, name)}
-									</Badge>
+									{usable && (
+										<>
+											<NoteDetail>becomes</NoteDetail>
+											<Badge variant="code">
+												{aws?.envName ?? vaultSecretName(undefined, name)}
+											</Badge>
+										</>
+									)}
 								</div>
 								<div className="flex flex-wrap gap-2">
 									{isDeclared && ready && (
@@ -441,18 +460,20 @@ function VaultSecrets({ env, vault, declared, onChange }: VaultSecretsProps) {
 									)}
 									{!isDeclared && (
 										<>
-											<Button
-												size="sm"
-												variant="outline"
-												disabled={busy}
-												aria-label={`Add ${name} to the YAML`}
-												onClick={() => {
-													onChange([...declared, name]);
-													setHint("apply");
-												}}
-											>
-												Add to YAML
-											</Button>
+											{usable && (
+												<Button
+													size="sm"
+													variant="outline"
+													disabled={busy}
+													aria-label={`Add ${name} to the YAML`}
+													onClick={() => {
+														onChange([...declared, name]);
+														setHint("apply");
+													}}
+												>
+													Add to YAML
+												</Button>
+											)}
 											<Button
 												size="sm"
 												variant="ghost"
@@ -482,9 +503,21 @@ function VaultSecrets({ env, vault, declared, onChange }: VaultSecretsProps) {
 									set.
 								</StatusNote>
 							)}
-							{!isDeclared && (
+							{!isDeclared && usable && (
 								<StatusNote tone="neutral">
 									Not in the YAML. The value is in AWS, but no workload gets it.
+								</StatusNote>
+							)}
+							{!isDeclared && !usable && (
+								<StatusNote tone="warning">
+									<p>
+										This name cannot be used: a secret name must be lower case.
+										No workload gets this value.
+									</p>
+									<NoteDetail>
+										To keep the value, set it again under a lower-case name,
+										then delete this one from AWS.
+									</NoteDetail>
 								</StatusNote>
 							)}
 
@@ -508,6 +541,7 @@ function VaultSecrets({ env, vault, declared, onChange }: VaultSecretsProps) {
 			})}
 
 			{actionError && <StatusNote tone="error">{actionError}</StatusNote>}
+			{actionWarning && <StatusNote tone="warning">{actionWarning}</StatusNote>}
 			{hint === "apply" && (
 				<StatusNote tone="neutral">
 					Apply to give the connected workloads this change.
@@ -593,7 +627,14 @@ function VaultSecrets({ env, vault, declared, onChange }: VaultSecretsProps) {
 								setConfirmDelete(null);
 								if (name === null) return;
 								run(async () => {
-									await infrastructureApi.deleteVaultSecret(env, vault, name);
+									const result = await infrastructureApi.deleteVaultSecret(
+										env,
+										vault,
+										name,
+									);
+									if (result.warning) {
+										setActionWarning(`${name}: ${result.warning}`);
+									}
 								});
 							}}
 						>

@@ -19,7 +19,7 @@ import {
  * never stored or returned, as in the real API. All names are synthetic.
  */
 
-type FakeParameter = Omit<VaultSecretStatus, "declared" | "set">;
+type FakeParameter = Omit<VaultSecretStatus, "declared" | "set" | "envName">;
 
 /** What AWS holds per vault. `"denied"` answers 403, `"pending"` never answers. */
 type FakeVault = FakeParameter[] | "denied" | "pending";
@@ -43,10 +43,20 @@ const AWS_FIXTURE: Record<string, FakeVault> = {
 		{ name: "database_url", type: "SecureString", version: 2 },
 		{ name: "api_key", type: "SecureString", version: 1 },
 	],
+	// Written before secret names were declared: one name is upper case.
+	older: [
+		{ name: "DATABASE_URL", type: "SecureString", version: 5 },
+		{ name: "api_key", type: "SecureString", version: 1 },
+	],
 	empty: [],
 	locked: "denied",
 	slow: "pending",
 };
+
+// The server's name rules: PUT takes a declarable name, DELETE a wider one so
+// an older upper-case parameter can still be deleted.
+const SECRET_NAME = /^[a-z][a-z0-9_]{0,62}$/;
+const DELETABLE_NAME = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/;
 
 let aws: Record<string, FakeVault> = {};
 let realFetch: typeof window.fetch | null = null;
@@ -78,8 +88,18 @@ function installFakeAws() {
 			);
 		}
 		const method = init?.method ?? "GET";
+		if (method !== "GET" && method !== "PUT" && method !== "DELETE") {
+			return json({ error: "method not allowed: use GET, PUT or DELETE" }, 405);
+		}
 		if (method === "PUT") {
-			const { name } = JSON.parse(String(init?.body)) as { name: string };
+			const { name, value } = JSON.parse(String(init?.body)) as {
+				name: string;
+				value: string;
+			};
+			if (!SECRET_NAME.test(name)) {
+				return json({ error: "invalid secret name" }, 400);
+			}
+			if (!value) return json({ error: "value is required" }, 400);
 			const existing = params.find((p) => p.name === name);
 			const version = (existing?.version ?? 0) + 1;
 			if (existing) existing.version = version;
@@ -88,6 +108,12 @@ function installFakeAws() {
 		}
 		if (method === "DELETE") {
 			const name = url.searchParams.get("name") ?? "";
+			if (!DELETABLE_NAME.test(name)) {
+				return json({ error: "invalid secret name" }, 400);
+			}
+			if (!params.some((p) => p.name === name)) {
+				return json({ error: `${name} has no value in vault "${vault}"` }, 404);
+			}
 			aws[vault] = params.filter((p) => p.name !== name);
 			return json({ name, deleted: true });
 		}
@@ -344,5 +370,69 @@ export const Loading: Story = {
 		await expect(
 			within(canvasElement).getByText("Checking AWS…"),
 		).toBeVisible();
+	},
+};
+
+/**
+ * A parameter written before names were declared, under an upper-case name:
+ * it cannot join the YAML, so the row explains why and offers only deletion.
+ */
+export const UpperCaseName: Story = {
+	name: "Upper-case name in AWS",
+	render: () => (
+		<Editor
+			initial={configWith({ vaults: [{ name: "older", secrets: [] }] })}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		const row = await canvas.findByTestId("vault-secret-DATABASE_URL");
+		const inRow = within(row);
+		await expect(
+			inRow.getByText(/a secret name must be lower case/),
+		).toBeVisible();
+		await expect(
+			inRow.getByText(/set it again under a lower-case name/),
+		).toBeVisible();
+		await expect(
+			inRow.queryByRole("button", { name: "Add DATABASE_URL to the YAML" }),
+		).toBeNull();
+		await expect(
+			inRow.getByRole("button", { name: "Delete DATABASE_URL from AWS" }),
+		).toBeVisible();
+		await expect(
+			canvas.getByRole("button", { name: "Add api_key to the YAML" }),
+		).toBeVisible();
+	},
+};
+
+/** Importing names skips one that is not lower case, and says so. */
+export const UpperCaseNameImport: Story = {
+	name: "No secrets list: upper-case name not imported",
+	render: () => (
+		<Editor initial={configWith({ vaults: [{ name: "older" }] })} />
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await expect(
+			await canvas.findByText("Found in AWS: api_key."),
+		).toBeVisible();
+		await expect(
+			canvas.getByText(
+				/Not imported, because a secret name must be lower case/,
+			),
+		).toBeVisible();
+		await userEvent.click(
+			canvas.getByRole("button", { name: "Import names from AWS" }),
+		);
+		await expect(
+			await canvas.findByRole("button", { name: "Replace value of api_key" }),
+		).toBeVisible();
+		await expect(
+			canvas.getByRole("button", { name: "Delete DATABASE_URL from AWS" }),
+		).toBeVisible();
+		await expect(
+			canvas.queryByRole("button", { name: "Add DATABASE_URL to the YAML" }),
+		).toBeNull();
 	},
 };

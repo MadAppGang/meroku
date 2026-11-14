@@ -37,6 +37,14 @@ export function vaultNameError(
 	return null;
 }
 
+/**
+ * Whether `name` can be a vault secret. A parameter written before names were
+ * declared (`DATABASE_URL`, say) can sit in AWS under a name that cannot.
+ */
+export function isVaultSecretName(name: string): boolean {
+	return VAULT_SECRET_PATTERN.test(name);
+}
+
 /** Why a new secret name cannot be used, or `null` when it can. */
 export function vaultSecretNameError(
 	name: string,
@@ -54,7 +62,8 @@ export function vaultSecretNameError(
 
 /** Why a secret value cannot be sent, or `null` when it can. */
 export function vaultSecretValueError(value: string): string | null {
-	if (value.length > VAULT_SECRET_VALUE_MAX) {
+	// Counted in characters (code points), as the server counts them.
+	if ([...value].length > VAULT_SECRET_VALUE_MAX) {
 		return `A value has at most ${VAULT_SECRET_VALUE_MAX} characters.`;
 	}
 	return null;

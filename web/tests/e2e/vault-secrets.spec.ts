@@ -5,7 +5,13 @@ import { seed, openPanel } from "./support/config-editors";
 
 // The vault secrets API is stubbed: AWS is an in-memory map of parameter
 // names and versions. Values are never stored, and no stubbed answer carries
-// one, as in the real API. Every value here is synthetic.
+// one, as in the real API. The stub answers as app/api_vault_secrets.go does:
+// GET, PUT and DELETE only; 404 for a vault the saved YAML does not declare;
+// the same name rules and status codes. Every value here is synthetic.
+
+const SECRET_NAME = /^[a-z][a-z0-9_]{0,62}$/;
+const DELETABLE_NAME = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/;
+const STILL_LISTED = "still listed in the YAML; connected tasks will fail to start until it is set again or removed and applied";
 
 interface Sent {
   method: string;
@@ -40,10 +46,21 @@ async function fakeVaultApi(page: Page, envYaml: EnvYaml, aws: Record<string, Re
     const body = request.postData() ? JSON.parse(request.postData()!) : null;
     const entry: Sent = { method: request.method(), url, body };
     sent.push(entry);
+    const method = request.method();
+    if (method !== "GET" && method !== "PUT" && method !== "DELETE") {
+      return route.fulfill({ status: 405, json: { error: "method not allowed: use GET, PUT or DELETE" } });
+    }
+    if (!vaultsOnDisk(envYaml).some(v => v.name === vault)) {
+      return route.fulfill({ status: 404, json: { error: `vault "${vault}" is not declared in dev.yaml` } });
+    }
     const params = (aws[vault] ??= {});
     const declared = secretsOnDisk(envYaml, vault) ?? [];
-    if (request.method() === "PUT") {
-      const name = String(body.name);
+    if (method === "PUT") {
+      const name = String(body?.name ?? "");
+      if (!SECRET_NAME.test(name)) {
+        return route.fulfill({ status: 400, json: { error: "invalid secret name: use 1 to 63 lower-case letters, digits and underscores, starting with a letter" } });
+      }
+      if (!body?.value) return route.fulfill({ status: 400, json: { error: "value is required" } });
       entry.declaredOnDisk = declared.includes(name);
       if (!entry.declaredOnDisk) {
         return route.fulfill({ status: 409, json: { error: `${name} is not in the vault's secrets list: save it to the YAML first` } });
@@ -51,11 +68,14 @@ async function fakeVaultApi(page: Page, envYaml: EnvYaml, aws: Record<string, Re
       params[name] = (params[name] ?? 0) + 1;
       return route.fulfill({ json: { name, version: params[name] } });
     }
-    if (request.method() === "DELETE") {
+    if (method === "DELETE") {
       const name = url.searchParams.get("name") ?? "";
-      if (!(name in params)) return route.fulfill({ status: 404, json: { error: `${name} not found` } });
+      if (!DELETABLE_NAME.test(name)) {
+        return route.fulfill({ status: 400, json: { error: "invalid secret name: use up to 128 letters, digits, underscores, dots and hyphens" } });
+      }
+      if (!(name in params)) return route.fulfill({ status: 404, json: { error: `${name} has no value in vault "${vault}"` } });
       delete params[name];
-      return route.fulfill({ json: { name, deleted: true } });
+      return route.fulfill({ json: { name, deleted: true, ...(declared.includes(name) ? { warning: STILL_LISTED } : {}) } });
     }
     const names = [...new Set([...declared, ...Object.keys(params)])].sort();
     return route.fulfill({
@@ -205,5 +225,42 @@ test("Vault secrets · a vault without a secrets list imports the names in AWS o
   await evidence("vault-secrets-imported");
 
   expect(api.sent.filter(s => s.method !== "GET")).toEqual([]);
+  expectWriteOnly(api);
+});
+
+test("Vault secrets · an upper-case name in AWS is never added to the YAML, only deleted", async ({ page, app, envYaml, evidence }) => {
+  test.setTimeout(120_000);
+  seed(envYaml, { vaults: [{ name: "payments" }] });
+  const aws = { payments: { DATABASE_URL: 3, api_key: 1 } };
+  const api = await fakeVaultApi(page, envYaml, aws);
+  await app.open();
+  await openPanel(page, app, "Vaults", "Vaults");
+  const card = page.getByTestId("vault-payments");
+
+  // Import takes the lower-case name only, and says why the other stays out.
+  await expect(card.getByText("Found in AWS: api_key.")).toBeVisible();
+  await expect(card.getByText(/Not imported, because a secret name must be lower case: DATABASE_URL/)).toBeVisible();
+  await evidence("vault-secrets-upper-case-import");
+  await card.getByRole("button", { name: "Import names from AWS", exact: true }).click();
+  await expect.poll(() => secretsOnDisk(envYaml, "payments")).toEqual(["api_key"]);
+
+  // The row explains the rule and offers deletion only.
+  const row = card.getByTestId("vault-secret-DATABASE_URL");
+  await expect(row).toContainText("a secret name must be lower case");
+  await expect(row).toContainText("set it again under a lower-case name");
+  await expect(row.getByRole("button", { name: "Add DATABASE_URL to the YAML", exact: true })).toHaveCount(0);
+  await expect(row.getByRole("button", { name: /Set value|Replace value|Remove/ })).toHaveCount(0);
+  await evidence("vault-secrets-upper-case-row");
+
+  await row.getByRole("button", { name: "Delete DATABASE_URL from AWS", exact: true }).click();
+  await page.getByRole("alertdialog", { name: "Delete DATABASE_URL from AWS?" })
+    .getByRole("button", { name: "Delete from AWS", exact: true }).click();
+  await expect.poll(() => api.sent.filter(s => s.method === "DELETE").map(s => s.url.searchParams.get("name")))
+    .toEqual(["DATABASE_URL"]);
+  await expect(card.getByTestId("vault-secret-DATABASE_URL")).toHaveCount(0);
+  expect(aws.payments).not.toHaveProperty("DATABASE_URL");
+  expect(secretsOnDisk(envYaml, "payments")).toEqual(["api_key"]);
+  expect(api.sent.filter(s => s.method === "PUT")).toEqual([]);
+
   expectWriteOnly(api);
 });

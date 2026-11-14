@@ -380,7 +380,8 @@ export interface SSMParameterCreateRequest {
  */
 export interface VaultSecretStatus {
 	name: string;
-	envName?: string;
+	/** The name in upper case: the env var a connection without a prefix gets. */
+	envName: string;
 	/** The name is in the saved YAML's `secrets` list. */
 	declared: boolean;
 	/** A parameter with this name exists under the vault's path. */
@@ -394,6 +395,22 @@ export interface VaultSecretsListing {
 	vault: string;
 	path: string;
 	secrets: VaultSecretStatus[];
+}
+
+/** What a vault secret's PUT answers. */
+export interface VaultSecretWritten {
+	name: string;
+	version: number;
+}
+
+/**
+ * What a vault secret's DELETE answers. `warning` is there when the saved YAML
+ * still lists the name.
+ */
+export interface VaultSecretDeleted {
+	name: string;
+	deleted: boolean;
+	warning?: string;
 }
 
 /** A failed vault secrets request, with the HTTP status the server answered. */
@@ -1580,7 +1597,7 @@ export const infrastructureApi = {
 		vault: string,
 		name: string,
 		value: string,
-	): Promise<{ name: string; version: number }> {
+	): Promise<VaultSecretWritten> {
 		const params = new URLSearchParams({ env, vault });
 		const response = await fetch(
 			`${API_BASE_URL}/api/vaults/secrets?${params}`,
@@ -1597,7 +1614,7 @@ export const infrastructureApi = {
 		env: string,
 		vault: string,
 		name: string,
-	): Promise<{ name: string; deleted: boolean; warning?: string }> {
+	): Promise<VaultSecretDeleted> {
 		const params = new URLSearchParams({ env, vault, name });
 		const response = await fetch(
 			`${API_BASE_URL}/api/vaults/secrets?${params}`,
