@@ -138,7 +138,7 @@ func TestValkey_EnabledMustBeABoolean(t *testing.T) {
 func TestVaults_AccessMustBeAString(t *testing.T) {
 	for _, raw := range []interface{}{1, true, []interface{}{"read"}} {
 		envMap := map[string]interface{}{
-			"vaults":   []interface{}{map[string]interface{}{"name": "shared"}},
+			"vaults":   []interface{}{map[string]interface{}{"name": "shared", "secrets": []interface{}{"api_key"}}},
 			"workload": map[string]interface{}{"vaults": []interface{}{map[string]interface{}{"name": "shared", "access": raw}}},
 		}
 		err := validateVaultsConfigMap(envMap)
@@ -148,7 +148,7 @@ func TestVaults_AccessMustBeAString(t *testing.T) {
 	}
 
 	envMap := map[string]interface{}{
-		"vaults":   []interface{}{map[string]interface{}{"name": "shared"}},
+		"vaults":   []interface{}{map[string]interface{}{"name": "shared", "secrets": []interface{}{"api_key"}}},
 		"workload": map[string]interface{}{"vaults": []interface{}{map[string]interface{}{"name": "shared", "access": ""}}},
 	}
 	if err := validateVaultsConfigMap(envMap); err != nil {

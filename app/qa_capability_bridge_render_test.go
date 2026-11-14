@@ -85,7 +85,7 @@ func TestQACapabilityBridgeExposesOnAndOffValues(t *testing.T) {
 				m["event_bus"] = qaCapabilityMap{"enabled": true}
 				m["sqs"] = qaCapabilityMap{"enabled": true, "name": "jobs"}
 				m["data_bucket"] = qaCapabilityMap{"shared": qaCapabilityList(qaCapabilityMap{"name": "uploads", "read_write": []interface{}{"backend", "api"}, "read": []interface{}{"nightly", "mailer"}})}
-				m["vaults"] = qaCapabilityList(qaCapabilityMap{"name": "shared"})
+				m["vaults"] = qaCapabilityList(qaCapabilityMap{"name": "shared", "secrets": []interface{}{"api_key"}})
 				m["valkey"] = qaCapabilityMap{"enabled": true, "engine_version": "8", "max_storage_gb": 1, "access": []interface{}{"api", "nightly"}}
 				for _, kind := range qaCapabilityKinds() {
 					owner := qaCapabilityOwner(m, kind)

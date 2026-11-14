@@ -19,7 +19,7 @@ func TestQACapabilityPolicyRendersLiteralConditionsForEveryKind(t *testing.T) {
 			},
 		)
 	}
-	m["vaults"] = qaCapabilityList(qaCapabilityMap{"name": "shared"})
+	m["vaults"] = qaCapabilityList(qaCapabilityMap{"name": "shared", "secrets": []interface{}{"api_key"}})
 	service := qaCapabilityOwner(m, "service")
 	service["vaults"] = qaCapabilityList(qaCapabilityMap{"name": "shared", "prefix": "PAY"})
 	service["events"] = qaCapabilityMap{

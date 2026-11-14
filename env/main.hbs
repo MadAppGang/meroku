@@ -1147,14 +1147,17 @@ module "valkey" {
 }
 {{/if}}
 
-# Shared SSM vaults, /{{env}}/{{project}}/vault/<name>/: every parameter of a
-# connected vault becomes a secret of the workload. See ai_docs/VAULTS.md.
+# Shared SSM vaults, /{{env}}/{{project}}/vault/<name>/: every secret a vault
+# declares in the YAML becomes a secret of each workload connected to it. The
+# values live only in SSM, set from the web UI. See ai_docs/VAULTS.md.
 module "vaults" {
   source  = "{{modules}}/vaults"
   project = "{{project}}"
   env     = "{{env}}"
 
   workloads   = local.workload_roles
+  {{!-- Validated by app/vaults.go: vault and secret names are plain lower-case. --}}
+  vaults      = {{{stringListMap _vault_secrets}}}
   connections = {{{hclArray _vault_connections}}}
 }
 

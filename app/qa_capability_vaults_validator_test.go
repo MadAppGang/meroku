@@ -9,7 +9,7 @@ func TestQACapabilityVaultsValidateDeclarationsAndConnections(t *testing.T) {
 	for _, name := range []string{"a", "0", "shared-vault", "shared_vault", strings.Repeat("a", 32)} {
 		t.Run("valid name "+name, func(t *testing.T) {
 			m := qaCapabilityEnv()
-			m["vaults"] = qaCapabilityList(qaCapabilityMap{"name": name})
+			m["vaults"] = qaCapabilityList(qaCapabilityMap{"name": name, "secrets": []interface{}{}})
 			qaCapabilityOwner(m, "backend")["vaults"] = qaCapabilityList(qaCapabilityMap{"name": name})
 			qaCapabilityNoError(t, validateVaultsConfigMap(m))
 		})
@@ -17,13 +17,13 @@ func TestQACapabilityVaultsValidateDeclarationsAndConnections(t *testing.T) {
 	for _, name := range []string{"", "-a", "a-", "_a", "a_", "A", "a/b", strings.Repeat("a", 33)} {
 		t.Run("invalid name "+name, func(t *testing.T) {
 			m := qaCapabilityEnv()
-			m["vaults"] = qaCapabilityList(qaCapabilityMap{"name": name})
+			m["vaults"] = qaCapabilityList(qaCapabilityMap{"name": name, "secrets": []interface{}{}})
 			qaCapabilityRequireError(t, validateVaultsConfigMap(m), "vaults", "name")
 		})
 	}
 	t.Run("duplicate declarations", func(t *testing.T) {
 		m := qaCapabilityEnv()
-		m["vaults"] = qaCapabilityList(qaCapabilityMap{"name": "shared"}, qaCapabilityMap{"name": "shared"})
+		m["vaults"] = qaCapabilityList(qaCapabilityMap{"name": "shared", "secrets": []interface{}{}}, qaCapabilityMap{"name": "shared", "secrets": []interface{}{}})
 		qaCapabilityRequireError(t, validateVaultsConfigMap(m), "shared")
 	})
 	invalid := []struct {
@@ -42,7 +42,7 @@ func TestQACapabilityVaultsValidateDeclarationsAndConnections(t *testing.T) {
 		for _, tt := range invalid {
 			t.Run(kind+"/"+tt.name, func(t *testing.T) {
 				m := qaCapabilityEnv()
-				m["vaults"] = qaCapabilityList(qaCapabilityMap{"name": "shared"})
+				m["vaults"] = qaCapabilityList(qaCapabilityMap{"name": "shared", "secrets": []interface{}{"api_key"}})
 				qaCapabilityOwner(m, kind)["vaults"] = qaCapabilityCloneValue(tt.connections)
 				qaCapabilityRequireError(t, validateVaultsConfigMap(m), tt.field)
 			})
@@ -51,7 +51,7 @@ func TestQACapabilityVaultsValidateDeclarationsAndConnections(t *testing.T) {
 			for _, prefix := range []string{"", "PAY", "PAY_1"} {
 				t.Run(kind+"/valid "+access+"/"+prefix, func(t *testing.T) {
 					m := qaCapabilityEnv()
-					m["vaults"] = qaCapabilityList(qaCapabilityMap{"name": "shared"})
+					m["vaults"] = qaCapabilityList(qaCapabilityMap{"name": "shared", "secrets": []interface{}{"api_key"}})
 					connection := qaCapabilityMap{"name": "shared"}
 					if access != "" {
 						connection["access"] = access
