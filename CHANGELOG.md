@@ -1,5 +1,13 @@
 # Changelog
 
+## v5.7.2
+
+### Pricing
+- The first price request of a region waits up to 15 seconds for the region's live EC2
+  prices instead of answering from the table. In v5.7.1 that first answer had no price for
+  types the table lacks (`t3.small`), and the canvas kept showing it until the next request.
+  Later requests read the cache, which lasts a day.
+
 ## v5.7.1
 
 ### Neon

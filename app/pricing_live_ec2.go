@@ -15,16 +15,20 @@ import (
 // the live ones for region, read from AWS and cached by the compute catalog,
 // over the dated table. The table prices a dozen types at us-east-1 rates;
 // the live map prices every type the region sells. With nothing cached yet
-// it starts one background load and returns rates as they are, so the next
-// request has the region's prices.
+// it starts one load and waits up to liveEC2Wait for it; if the load does
+// not finish in time, rates come back as they are and a later request has
+// the region's prices.
 func withLiveEC2Prices(rates *pricingpkg.PriceRates, region string) *pricingpkg.PriceRates {
 	if rates == nil || region == "" {
 		return rates
 	}
-	live, _, ok := computeOnDemandCache.Peek(pricingpkg.CacheKey(selectedAWSProfile, region))
+	key := pricingpkg.CacheKey(selectedAWSProfile, region)
+	live, _, ok := computeOnDemandCache.Peek(key)
 	if !ok || len(live) == 0 {
 		warmLiveEC2Prices(region)
-		return rates
+		if live, ok = waitLiveEC2Prices(key); !ok {
+			return rates
+		}
 	}
 	out := *rates
 	merged := make(map[string]float64, len(rates.EC2.OnDemandHourly)+len(live))
@@ -38,6 +42,28 @@ func withLiveEC2Prices(rates *pricingpkg.PriceRates, region string) *pricingpkg.
 	}
 	out.EC2.OnDemandHourly = merged
 	return &out
+}
+
+// liveEC2Wait is how long the first request of a region waits for the load
+// it started. The Price List API answers a region in about eight seconds;
+// after that the cache answers for a day.
+var liveEC2Wait = 15 * time.Second
+
+// waitLiveEC2Prices polls the cache for key until it holds prices, the load
+// stops without them, or liveEC2Wait passes.
+func waitLiveEC2Prices(key string) (map[string]float64, bool) {
+	deadline := time.Now().Add(liveEC2Wait)
+	for time.Now().Before(deadline) {
+		if live, _, ok := computeOnDemandCache.Peek(key); ok && len(live) > 0 {
+			return live, true
+		}
+		if _, loading := liveEC2Loading.Load(key); !loading {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	live, _, ok := computeOnDemandCache.Peek(key)
+	return live, ok && len(live) > 0
 }
 
 // warmLiveEC2Prices loads region's live EC2 prices into the compute cache in
