@@ -1,5 +1,13 @@
 # Changelog
 
+## v6.0.1
+
+### Pricing
+- The first price request of a region waits up to 15 seconds for the region's live EC2
+  prices instead of answering from the table. In v5.7.1 that first answer had no price for
+  types the table lacks (`t3.small`), and the canvas kept showing it until the next request.
+  Later requests read the cache, which lasts a day.
+
 ## v6.0.0
 
 Six things projects wrote by hand in `custom/` Terraform are now YAML settings, each with
@@ -89,7 +97,6 @@ DLQ and alarms to the `<project>-<env>-alerts` topic. Event-task rules take a `b
 - A new scheduled or event task has its `ENV` secret on the first apply.
 - Task modules and `env_secret_check` require Terraform 1.10 or newer, as every env
   already did. CI runs Terraform 1.10.5.
-
 
 ## v5.7.1
 

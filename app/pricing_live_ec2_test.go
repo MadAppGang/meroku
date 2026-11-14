@@ -2,12 +2,16 @@ package main
 
 import (
 	"testing"
+	"time"
 
 	pricingpkg "madappgang.com/meroku/pricing"
 )
 
 // No test may reach the AWS Price List API through a pricing call.
-func init() { warmLiveEC2Prices = func(string) {} }
+func init() {
+	warmLiveEC2Prices = func(string) {}
+	liveEC2Wait = 0
+}
 
 func tableRates(t *testing.T) *pricingpkg.PriceRates {
 	t.Helper()
@@ -60,5 +64,32 @@ func TestLiveEC2PricesNotLoadedYetStartsOneLoad(t *testing.T) {
 	}
 	if len(warmed) != 1 || warmed[0] != "ap-test-cold-1" {
 		t.Fatalf("warm calls = %q, want one for the region", warmed)
+	}
+}
+
+// The first request of a region waits for the load it starts, so its answer
+// already has the region's prices instead of "unknown" for every type the
+// table lacks.
+func TestLiveEC2PricesFirstRequestWaitsForTheLoad(t *testing.T) {
+	base := tableRates(t)
+	region := "ap-test-first-1"
+	warmLiveEC2Prices = func(region string) {
+		key := pricingpkg.CacheKey(selectedAWSProfile, region)
+		liveEC2Loading.Store(key, true)
+		go func() {
+			defer liveEC2Loading.Delete(key)
+			time.Sleep(50 * time.Millisecond)
+			_, _, _ = computeOnDemandCache.GetOrFetch(pricingpkg.CacheKey(selectedAWSProfile, region), computeOnDemandTTL, true,
+				func() (map[string]float64, error) { return map[string]float64{"t3.small": 0.0264}, nil })
+		}()
+	}
+	oldWait := liveEC2Wait
+	t.Cleanup(func() { liveEC2Wait = oldWait })
+	liveEC2Wait = 5 * time.Second
+
+	rates := withLiveEC2Prices(base, region)
+
+	if rates.EC2.OnDemandHourly["t3.small"] != 0.0264 {
+		t.Fatalf("t3.small = %v, want the price the load brought", rates.EC2.OnDemandHourly["t3.small"])
 	}
 }
