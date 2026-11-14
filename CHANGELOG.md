@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v6.1.0
 
 ### Breaking
 - Every vault needs a `secrets` list: `vaults: [{ name: shared, secrets: [api_key] }]`.
@@ -13,13 +13,20 @@
 ### Vaults
 - A vault's secret names are declared in the YAML, and only those reach the connected
   workloads; their values are set, replaced and deleted from the Vaults tab and never read
-  back. Terraform no longer reads a vault at plan, so the secret names are known on every
+  back. Terraform no longer discovers a vault's secrets from SSM, so the names are known on every
   plan, and a declared secret with no value yet is a plan warning naming the vault and the
   secret. `meroku destroy` keeps the values.
 - `meroku generate` now refuses the vault name collisions it can see in the YAML: an `env`
   secret on a connection without a prefix, two vaults giving one workload the same
   variable, and a vault secret with the name of the workload's YAML variable or of one
   meroku sets for it.
+
+## v6.0.3
+
+### Pricing
+- The console no longer prints a line for every cost meroku works out (EC2 pool, ECS, RDS,
+  Aurora, S3), which filled it each time the web UI loaded. Failures, such as an instance
+  type with no price, are still reported, once.
 
 ## v6.0.2
 

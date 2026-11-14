@@ -32,9 +32,6 @@ func CalculateRDSPrice(config RDSConfig, rates *PriceRates) float64 {
 
 	totalMonthly := instanceCostMonthly + storageCostMonthly
 
-	log.Printf("[Pricing] RDS cost: instance=%s hourly=%.4f, storage=%dGB, multiAZ=%v, total=%.2f/mo",
-		config.InstanceClass, instanceHourly, config.AllocatedStorage, config.MultiAZ, totalMonthly)
-
 	return totalMonthly
 }
 
@@ -49,9 +46,6 @@ func CalculateAuroraPrice(config AuroraConfig, rates *PriceRates) float64 {
 	avgACU := calculateAverageACU(config)
 	hourlyACUCost := avgACU * rates.Aurora.ACUHourly
 	monthlyPrice := hourlyACUCost * HoursPerMonth
-
-	log.Printf("[Pricing] Aurora cost: level=%s, min=%d, max=%d, avgACU=%.2f, total=%.2f/mo",
-		config.Level, config.MinCapacity, config.MaxCapacity, avgACU, monthlyPrice)
 
 	return monthlyPrice
 }
@@ -134,9 +128,6 @@ func CalculateECSPrice(config ECSConfig, rates *PriceRates) float64 {
 	// Calculate monthly cost
 	monthlyPrice := totalHourlyCost * HoursPerMonth
 
-	log.Printf("[Pricing] ECS cost: cpu=%d, memory=%d, count=%d, total=%.2f/mo",
-		config.CPU, config.Memory, config.DesiredCount, monthlyPrice)
-
 	return monthlyPrice
 }
 
@@ -200,7 +191,7 @@ func EC2PoolHourly(config EC2PoolConfig, rates *PriceRates) (float64, bool) {
 		instances = 0
 	}
 
-	instanceType, onDemandHourly, priced := EC2PoolBasis(config, rates)
+	_, onDemandHourly, priced := EC2PoolBasis(config, rates)
 	if !priced {
 		if _, seen := unpricedPoolsLogged.LoadOrStore(strings.Join(config.InstanceTypes, ","), true); !seen {
 			log.Printf("[Pricing] EC2 pool cost: no price for any of %v, reporting unknown",
@@ -241,9 +232,6 @@ func EC2PoolHourly(config EC2PoolConfig, rates *PriceRates) (float64, bool) {
 	spotInstances := instances - onDemandInstances
 
 	hourly := float64(onDemandInstances)*onDemandHourly + float64(spotInstances)*spotHourly
-
-	log.Printf("[Pricing] EC2 pool cost: type=%s instances=%d (od=%d spot=%d) capacity=%s hourly=%.4f",
-		instanceType, instances, onDemandInstances, spotInstances, config.CapacityType, hourly)
 
 	return hourly, true
 }
@@ -294,9 +282,6 @@ func CalculateS3Price(config S3Config, rates *PriceRates) float64 {
 	requestCost := (monthlyRequests / 1000.0) * rates.S3.RequestsPer1000
 
 	totalMonthly := storageCost + requestCost
-
-	log.Printf("[Pricing] S3 cost: storage=%.1fGB, requests=%d/day, total=%.2f/mo",
-		config.StorageGB, config.RequestsPerDay, totalMonthly)
 
 	return totalMonthly
 }
