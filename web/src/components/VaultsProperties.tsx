@@ -272,6 +272,16 @@ function VaultSecrets({ env, vault, declared, onChange }: VaultSecretsProps) {
 	const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 	const [newName, setNewName] = useState("");
 	const [newValue, setNewValue] = useState("");
+	// A name whose value could not be sent from the add form. The name is in
+	// the YAML by then, so the form may send that name again.
+	const [failedAdd, setFailedAdd] = useState<string | null>(null);
+	// Names the YAML listed when this panel opened, and names removed here. One
+	// of them the YAML no longer lists may still be in the deployed task
+	// definitions: removing a name from the YAML changes nothing in AWS until
+	// an apply.
+	const [listedEarlier, setListedEarlier] = useState<ReadonlySet<string>>(
+		() => new Set(declared ?? []),
+	);
 
 	const reload = useCallback(() => setReloadKey((k) => k + 1), []);
 
@@ -305,14 +315,17 @@ function VaultSecrets({ env, vault, declared, onChange }: VaultSecretsProps) {
 	}
 	const ready = listing.state === "ready";
 
-	const run = async (action: () => Promise<void>) => {
+	/** Runs an AWS action; resolves to whether it succeeded. */
+	const run = async (action: () => Promise<void>): Promise<boolean> => {
 		setBusy(true);
 		setActionError(null);
 		setActionWarning(null);
 		try {
 			await action();
+			return true;
 		} catch (error) {
 			setActionError(messageOf(error));
+			return false;
 		} finally {
 			setBusy(false);
 			reload();
@@ -371,7 +384,17 @@ function VaultSecrets({ env, vault, declared, onChange }: VaultSecretsProps) {
 	}
 
 	const names = [...new Set([...declared, ...inAws.keys()])].sort();
-	const newNameError = vaultSecretNameError(newName, declared);
+	/** Removed from the YAML, and possibly still in the deployed workloads. */
+	const removedNotApplied = (name: string) =>
+		listedEarlier.has(name) && !declared.includes(name);
+	const newNameError =
+		vaultSecretNameError(
+			newName,
+			declared.filter((n) => n !== failedAdd),
+		) ??
+		(inAws.has(newName) && !declared.includes(newName)
+			? `${newName} is already in AWS — use Add to YAML on its row.`
+			: null);
 	const newValueError = vaultSecretValueError(newValue);
 	const canAdd =
 		ready &&
@@ -396,11 +419,17 @@ function VaultSecrets({ env, vault, declared, onChange }: VaultSecretsProps) {
 		if (!canAdd) return;
 		const name = newName;
 		const value = newValue;
-		setNewName("");
-		setNewValue("");
-		onChange([...declared, name]);
+		if (!declared.includes(name)) onChange([...declared, name]);
 		setHint("apply");
-		await setValue(name, value);
+		// The fields keep what was typed until AWS has the value, so a failed
+		// write can be sent again without typing it again.
+		if (await setValue(name, value)) {
+			setFailedAdd(null);
+			setNewName("");
+			setNewValue("");
+		} else {
+			setFailedAdd(name);
+		}
 	};
 
 	return (
@@ -451,6 +480,7 @@ function VaultSecrets({ env, vault, declared, onChange }: VaultSecretsProps) {
 											aria-label={`Remove ${name} from the YAML`}
 											onClick={() => {
 												onChange(declared.filter((n) => n !== name));
+												setListedEarlier((prev) => new Set([...prev, name]));
 												if (editing === name) setEditing(null);
 												setHint("removed");
 											}}
@@ -503,9 +533,20 @@ function VaultSecrets({ env, vault, declared, onChange }: VaultSecretsProps) {
 									set.
 								</StatusNote>
 							)}
-							{!isDeclared && usable && (
+							{!isDeclared && removedNotApplied(name) && (
+								<StatusNote tone="warning">
+									<p>Not in the YAML any more, and not applied yet.</p>
+									<NoteDetail>
+										The deployed workloads still use this secret until you
+										apply. Deleting it now makes their new tasks fail to start:
+										apply first, then delete.
+									</NoteDetail>
+								</StatusNote>
+							)}
+							{!isDeclared && usable && !removedNotApplied(name) && (
 								<StatusNote tone="neutral">
-									Not in the YAML. The value is in AWS, but no workload gets it.
+									Not in the YAML. The value is in AWS; once the YAML without it
+									is applied, no workload gets it.
 								</StatusNote>
 							)}
 							{!isDeclared && !usable && (
@@ -615,9 +656,27 @@ function VaultSecrets({ env, vault, declared, onChange }: VaultSecretsProps) {
 						</AlertDialogTitle>
 						<AlertDialogDescription>
 							The value is deleted from AWS for good and cannot be brought back.
-							The YAML does not list it, so no workload gets it now.
+							{confirmDelete !== null && !removedNotApplied(confirmDelete) && (
+								<>
+									{" "}
+									The YAML does not list it. If the last apply still listed it,
+									the deployed workloads use it until the next apply: apply
+									first, then delete.
+								</>
+							)}
 						</AlertDialogDescription>
 					</AlertDialogHeader>
+					{confirmDelete !== null && removedNotApplied(confirmDelete) && (
+						<StatusNote tone="warning">
+							<p>
+								The deployed workloads still use this secret until you apply.
+							</p>
+							<NoteDetail>
+								Deleting it now makes their new tasks fail to start. Apply
+								first, then delete.
+							</NoteDetail>
+						</StatusNote>
+					)}
 					<AlertDialogFooter>
 						<AlertDialogCancel>Cancel</AlertDialogCancel>
 						<AlertDialogAction

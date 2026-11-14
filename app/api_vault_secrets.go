@@ -10,12 +10,12 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	ssmtypes "github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/aws/smithy-go"
 )
 
@@ -39,11 +39,28 @@ type vaultSecretsSSMAPI interface {
 	DeleteParameter(ctx context.Context, in *ssm.DeleteParameterInput, optFns ...func(*ssm.Options)) (*ssm.DeleteParameterOutput, error)
 }
 
-// newVaultSecretsClient builds an SSM client for the environment's own AWS
-// profile and region, never the shell's ambient credentials or the profile
-// selected elsewhere in the UI: the value must land in the account the
-// environment deploys to. A variable so tests can replace it.
-var newVaultSecretsClient = func(ctx context.Context, e Env) (vaultSecretsSSMAPI, error) {
+// vaultSecretsSTSAPI is the part of the STS client the vault secrets API uses:
+// it asks which account the credentials belong to, nothing more.
+type vaultSecretsSTSAPI interface {
+	GetCallerIdentity(ctx context.Context, in *sts.GetCallerIdentityInput, optFns ...func(*sts.Options)) (*sts.GetCallerIdentityOutput, error)
+}
+
+// vaultSecretsClients are the AWS clients of one request, built from one config.
+type vaultSecretsClients struct {
+	ssm vaultSecretsSSMAPI
+	sts vaultSecretsSTSAPI
+}
+
+// newVaultSecretsClients builds the SSM and STS clients from the environment's
+// aws_profile and region, not from the profile selected elsewhere in the UI.
+// When the YAML leaves either out, the SDK's default chain fills the gap: an
+// empty aws_profile means AWS_PROFILE, the AWS_ACCESS_KEY_ID family or the
+// default profile of the shell meroku runs in; an empty region means
+// AWS_REGION or the profile's region. Those credentials can belong to another
+// account, which is why every request first compares the caller's account with
+// the env's account_id (vaultSecretsClient). A variable so tests can replace
+// it.
+var newVaultSecretsClients = func(ctx context.Context, e Env) (vaultSecretsClients, error) {
 	var opts []func(*config.LoadOptions) error
 	if e.AWSProfile != "" {
 		opts = append(opts, config.WithSharedConfigProfile(e.AWSProfile))
@@ -53,9 +70,9 @@ var newVaultSecretsClient = func(ctx context.Context, e Env) (vaultSecretsSSMAPI
 	}
 	cfg, err := config.LoadDefaultConfig(ctx, opts...)
 	if err != nil {
-		return nil, err
+		return vaultSecretsClients{}, err
 	}
-	return ssm.NewFromConfig(cfg), nil
+	return vaultSecretsClients{ssm: ssm.NewFromConfig(cfg), sts: sts.NewFromConfig(cfg)}, nil
 }
 
 // loadEnvForVaultSecrets loads <env>.yaml without rewriting it. A variable so
@@ -68,11 +85,12 @@ var loadEnvForVaultSecrets = loadEnvReadOnly
 // single path segment, never a separator or "..".
 var vaultSecretDeletableNamePattern = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$`)
 
-// vaultSecretMaxValueLength is the standard-tier parameter value limit.
-const vaultSecretMaxValueLength = 4096
+// vaultSecretMaxValueBytes is the standard-tier parameter value limit. AWS
+// counts it in bytes, so a multi-byte character counts more than once.
+const vaultSecretMaxValueBytes = 4096
 
-// vaultSecretMaxBodyBytes caps a request body: a value of the maximum length in
-// multi-byte characters, plus the name and JSON framing.
+// vaultSecretMaxBodyBytes caps a request body: a value of the maximum size,
+// JSON-escaped (up to six bytes per byte), plus the name and framing.
 const vaultSecretMaxBodyBytes = 64 << 10
 
 // vaultSecretStillListedWarning is added to a DELETE answer for a declared name.
@@ -122,6 +140,12 @@ func writeVaultSecretsJSON(w http.ResponseWriter, status int, body interface{}) 
 
 func writeVaultSecretsError(w http.ResponseWriter, status int, msg string) {
 	writeVaultSecretsJSON(w, status, ErrorResponse{Error: msg})
+}
+
+// vaultSecretValueTooLarge refuses a value over the limit. The web UI
+// (vaultSecretValueError in web/src/utils/vaults.ts) words it the same way.
+func vaultSecretValueTooLarge(n int) string {
+	return fmt.Sprintf("The value is %d bytes; the limit is %d bytes.", n, vaultSecretMaxValueBytes)
 }
 
 // vaultSecretsPrefix is the vault's path with a trailing slash.
@@ -174,6 +198,10 @@ func resolveVaultSecretsTarget(w http.ResponseWriter, r *http.Request) (vaultSec
 	}
 	if e.Env == "" {
 		e.Env = envName
+	}
+	if e.Project == "" {
+		writeVaultSecretsError(w, http.StatusBadRequest, fmt.Sprintf("project is not set in %s.yaml", envName))
+		return vaultSecretsTarget{}, false
 	}
 	// Only a vault the YAML declares, by its exact name: the name becomes part
 	// of the path, and the declared names all passed the generate rules.
@@ -231,14 +259,40 @@ func handleVaultSecrets(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// vaultSecretsClient builds the request's clients and, when the env YAML names
+// its account_id, refuses unless the credentials belong to that account. It
+// writes the error response itself and returns false on failure; no SSM call
+// is made before the check passes.
 func vaultSecretsClient(ctx context.Context, w http.ResponseWriter, e Env) (vaultSecretsSSMAPI, bool) {
-	client, err := newVaultSecretsClient(ctx, e)
+	clients, err := newVaultSecretsClients(ctx, e)
 	if err != nil {
 		writeVaultSecretsError(w, http.StatusInternalServerError,
 			fmt.Sprintf("failed to load AWS config for profile %q: %v", e.AWSProfile, err))
 		return nil, false
 	}
-	return client, true
+	if e.AccountID != "" {
+		out, err := clients.sts.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+		if err != nil {
+			writeVaultSecretsAWSError(w, err, "")
+			return nil, false
+		}
+		if actual := aws.ToString(out.Account); actual != e.AccountID {
+			writeVaultSecretsError(w, http.StatusForbidden, vaultSecretsWrongAccount(e, actual))
+			return nil, false
+		}
+	}
+	return clients.ssm, true
+}
+
+// vaultSecretsWrongAccount names the account the env deploys to and the one
+// the credentials belong to.
+func vaultSecretsWrongAccount(e Env, actual string) string {
+	creds := "the default AWS credentials"
+	if e.AWSProfile != "" {
+		creds = fmt.Sprintf("AWS profile %q", e.AWSProfile)
+	}
+	return fmt.Sprintf("%s.yaml deploys to account %s, but %s is signed in to account %s: sign in to account %s and try again",
+		e.Env, e.AccountID, creds, actual, e.AccountID)
 }
 
 // listVaultSecrets answers the union of the YAML's secrets list and the
@@ -315,13 +369,12 @@ func putVaultSecret(w http.ResponseWriter, r *http.Request, t vaultSecretsTarget
 		writeVaultSecretsError(w, http.StatusBadRequest, "invalid secret name: "+vaultSecretNameRule)
 		return
 	}
-	switch n := utf8.RuneCountInString(req.Value); {
+	switch n := len(req.Value); {
 	case n == 0:
 		writeVaultSecretsError(w, http.StatusBadRequest, "value is required")
 		return
-	case n > vaultSecretMaxValueLength:
-		writeVaultSecretsError(w, http.StatusBadRequest,
-			fmt.Sprintf("value is %d characters; the limit is %d", n, vaultSecretMaxValueLength))
+	case n > vaultSecretMaxValueBytes:
+		writeVaultSecretsError(w, http.StatusBadRequest, vaultSecretValueTooLarge(n))
 		return
 	}
 	if !t.isDeclared(req.Name) {

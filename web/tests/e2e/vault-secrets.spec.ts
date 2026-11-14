@@ -29,8 +29,11 @@ function secretsOnDisk(envYaml: EnvYaml, vault: string): string[] | undefined {
   return vaultsOnDisk(envYaml).find(v => v.name === vault)?.secrets;
 }
 
-/** Stubs /api/vaults/secrets over `aws` (vault → parameter name → version). */
-async function fakeVaultApi(page: Page, envYaml: EnvYaml, aws: Record<string, Record<string, number>>) {
+/**
+ * Stubs /api/vaults/secrets over `aws` (vault → parameter name → version).
+ * While `deniedPuts` holds a name, AWS refuses its PUT with 403.
+ */
+async function fakeVaultApi(page: Page, envYaml: EnvYaml, aws: Record<string, Record<string, number>>, deniedPuts = new Set<string>()) {
   const sent: Sent[] = [];
   const valueReads: string[] = [];
   page.on("request", (request: Request) => {
@@ -64,6 +67,9 @@ async function fakeVaultApi(page: Page, envYaml: EnvYaml, aws: Record<string, Re
       entry.declaredOnDisk = declared.includes(name);
       if (!entry.declaredOnDisk) {
         return route.fulfill({ status: 409, json: { error: `${name} is not in the vault's secrets list: save it to the YAML first` } });
+      }
+      if (deniedPuts.has(name)) {
+        return route.fulfill({ status: 403, json: { error: "User: arn:aws:iam::000000000000:user/example is not authorized to perform: ssm:PutParameter" } });
       }
       params[name] = (params[name] ?? 0) + 1;
       return route.fulfill({ json: { name, version: params[name] } });
@@ -159,6 +165,20 @@ test("Vault secrets · add, replace and remove a secret, warn about one with no 
   await expect.poll(() => secretsOnDisk(envYaml, "payments")).toEqual(["signing_key", "webhook_secret"]);
   await expect(card.getByTestId("vault-secret-api_key")).toContainText("Not in the YAML");
   await expect(card.getByText("Apply, then delete the value, so running tasks never point at a missing secret.")).toBeVisible();
+  // Removed but not applied: the row and the dialog say the deployed
+  // workloads still use it, and the delete stays offered.
+  const removedRow = card.getByTestId("vault-secret-api_key");
+  await expect(removedRow).toContainText("Not in the YAML any more, and not applied yet.");
+  await expect(removedRow).toContainText("The deployed workloads still use this secret until you apply.");
+  await removedRow.getByRole("button", { name: "Delete api_key from AWS", exact: true }).click();
+  const removeDialog = page.getByRole("alertdialog", { name: "Delete api_key from AWS?" });
+  await expect(removeDialog).toContainText("The deployed workloads still use this secret until you apply.");
+  await expect(removeDialog).toContainText("Deleting it now makes their new tasks fail to start. Apply first, then delete.");
+  await expect(removeDialog).not.toContainText("no workload gets it");
+  await expect(removeDialog.getByRole("button", { name: "Delete from AWS", exact: true })).toBeEnabled();
+  await evidence("vault-secrets-removed-delete-warning");
+  await removeDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(removeDialog).toHaveCount(0);
   expect(api.sent.filter(s => s.method === "DELETE")).toEqual([]);
   expect(aws.payments).toHaveProperty("api_key");
   await evidence("vault-secrets-removed");
@@ -195,6 +215,53 @@ test("Vault secrets · a value in AWS the YAML does not list: add it to the YAML
   await expect(card.getByTestId("vault-secret-legacy_key")).toHaveCount(0);
   expect(secretsOnDisk(envYaml, "payments")).toEqual(["old_token"]);
   await evidence("vault-secrets-deleted-from-aws");
+
+  expectWriteOnly(api);
+});
+
+test("Vault secrets · a refused add keeps the value; a name already in AWS is refused in the form", async ({ page, app, envYaml, evidence }) => {
+  test.setTimeout(120_000);
+  seed(envYaml, { vaults: [{ name: "payments", secrets: [] }] });
+  const aws = { payments: { old_token: 4 } };
+  const deniedPuts = new Set(["webhook_secret"]);
+  const api = await fakeVaultApi(page, envYaml, aws, deniedPuts);
+  await app.open();
+  await openPanel(page, app, "Vaults", "Vaults");
+  const card = page.getByTestId("vault-payments");
+  await expect(card.getByTestId("vault-secret-old_token")).toContainText("Not in the YAML");
+
+  const nameField = card.getByLabel("New secret name", { exact: true });
+  const valueField = card.getByLabel("Value", { exact: true });
+  const addButton = card.getByRole("button", { name: "Add secret to payments", exact: true });
+
+  // A name AWS already has: the form says to use the row, and sends nothing.
+  await nameField.fill("old_token");
+  await valueField.fill("fake-value-do-not-use");
+  await expect(card.getByText("old_token is already in AWS — use Add to YAML on its row.")).toBeVisible();
+  await expect(addButton).toBeDisabled();
+  await evidence("vault-secrets-add-name-in-aws");
+
+  // AWS refuses the write: the error shows and both fields keep what was typed.
+  await nameField.fill("webhook_secret");
+  await addButton.click();
+  await expect(card.getByText(/AWS refused the request/)).toBeVisible();
+  await expect(nameField).toHaveValue("webhook_secret");
+  await expect(valueField).toHaveValue("fake-value-do-not-use");
+  await expect.poll(() => secretsOnDisk(envYaml, "payments")).toEqual(["webhook_secret"]);
+  await evidence("vault-secrets-add-refused");
+
+  // Sent again from the same fields once AWS allows it; then they clear.
+  deniedPuts.clear();
+  await expect(addButton).toBeEnabled();
+  await addButton.click();
+  await expect(card.getByTestId("vault-secret-webhook_secret")).toContainText("version 1");
+  await expect(nameField).toHaveValue("");
+  await expectNoValueShown(page);
+  expect(secretsOnDisk(envYaml, "payments")).toEqual(["webhook_secret"]);
+  // A PUT may arrive before the background save and be retried, so only the
+  // name is pinned here; the value was written once (version 1).
+  expect(new Set(api.sent.filter(s => s.method === "PUT").map(s => s.body?.name))).toEqual(new Set(["webhook_secret"]));
+  expect(aws.payments).toEqual({ old_token: 4, webhook_secret: 1 });
 
   expectWriteOnly(api);
 });

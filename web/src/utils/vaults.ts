@@ -9,7 +9,7 @@ const VAULT_PREFIX_PATTERN = /^[A-Z][A-Z0-9_]*$/;
 // Lower case only, so two names never become the same env var name.
 const VAULT_SECRET_PATTERN = /^[a-z][a-z0-9_]{0,62}$/;
 
-/** The longest value the server accepts for a vault secret. */
+/** The largest value, in UTF-8 bytes, the server accepts for a vault secret. */
 export const VAULT_SECRET_VALUE_MAX = 4096;
 
 /** The SSM path of a vault, with its trailing slash. */
@@ -62,9 +62,11 @@ export function vaultSecretNameError(
 
 /** Why a secret value cannot be sent, or `null` when it can. */
 export function vaultSecretValueError(value: string): string | null {
-	// Counted in characters (code points), as the server counts them.
-	if ([...value].length > VAULT_SECRET_VALUE_MAX) {
-		return `A value has at most ${VAULT_SECRET_VALUE_MAX} characters.`;
+	// SSM's standard tier limits a value in bytes, so the UTF-8 size is what
+	// counts, as on the server; the message is the server's, word for word.
+	const bytes = new TextEncoder().encode(value).length;
+	if (bytes > VAULT_SECRET_VALUE_MAX) {
+		return `The value is ${bytes} bytes; the limit is ${VAULT_SECRET_VALUE_MAX} bytes.`;
 	}
 	return null;
 }

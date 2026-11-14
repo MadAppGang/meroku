@@ -16,6 +16,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	ssmtypes "github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/aws/smithy-go"
 )
 
@@ -71,6 +72,21 @@ func (f *fakeVaultSSM) DeleteParameter(_ context.Context, in *ssm.DeleteParamete
 	return &ssm.DeleteParameterOutput{}, nil
 }
 
+// fakeVaultSTS answers GetCallerIdentity with account, or err.
+type fakeVaultSTS struct {
+	account string
+	err     error
+	calls   int
+}
+
+func (f *fakeVaultSTS) GetCallerIdentity(_ context.Context, _ *sts.GetCallerIdentityInput, _ ...func(*sts.Options)) (*sts.GetCallerIdentityOutput, error) {
+	f.calls++
+	if f.err != nil {
+		return nil, f.err
+	}
+	return &sts.GetCallerIdentityOutput{Account: aws.String(f.account)}, nil
+}
+
 const testVaultSecretValue = "postgres://example:fake-key-do-not-use@db.example.com/app"
 
 // vaultTestEnv is a synthetic environment. payments declares database_url and
@@ -92,24 +108,30 @@ func vaultTestEnv() Env {
 	return e
 }
 
-// setupVaultSecrets replaces the loader and the client constructor for one test.
+// setupVaultSecrets replaces the loader and the client constructor for one
+// test. The credentials belong to the env's own account.
 func setupVaultSecrets(t *testing.T, fake *fakeVaultSSM) {
 	t.Helper()
-	env := vaultTestEnv()
-	prevLoad, prevClient := loadEnvForVaultSecrets, newVaultSecretsClient
+	setupVaultSecretsWith(t, vaultTestEnv(), fake, &fakeVaultSTS{account: "000000000000"})
+}
+
+// setupVaultSecretsWith is setupVaultSecrets with its own env and STS answer.
+func setupVaultSecretsWith(t *testing.T, env Env, fake *fakeVaultSSM, identity *fakeVaultSTS) {
+	t.Helper()
+	prevLoad, prevClients := loadEnvForVaultSecrets, newVaultSecretsClients
 	loadEnvForVaultSecrets = func(name string) (Env, error) {
 		if name != "dev" {
 			return Env{}, errors.New("no such file")
 		}
 		return env, nil
 	}
-	newVaultSecretsClient = func(_ context.Context, e Env) (vaultSecretsSSMAPI, error) {
-		if e.AWSProfile != "example-dev" || e.Region != "us-east-1" {
+	newVaultSecretsClients = func(_ context.Context, e Env) (vaultSecretsClients, error) {
+		if e.AWSProfile != env.AWSProfile || e.Region != env.Region {
 			t.Errorf("client built for profile %q region %q, want the env's own", e.AWSProfile, e.Region)
 		}
-		return fake, nil
+		return vaultSecretsClients{ssm: fake, sts: identity}, nil
 	}
-	t.Cleanup(func() { loadEnvForVaultSecrets, newVaultSecretsClient = prevLoad, prevClient })
+	t.Cleanup(func() { loadEnvForVaultSecrets, newVaultSecretsClients = prevLoad, prevClients })
 }
 
 func callVaultSecrets(method, query, body string) *httptest.ResponseRecorder {
@@ -413,18 +435,25 @@ func TestVaultSecretsAPI_BadNameIs400(t *testing.T) {
 func TestVaultSecretsAPI_BadValueIs400(t *testing.T) {
 	fake := &fakeVaultSSM{}
 	setupVaultSecrets(t, fake)
-	for _, value := range []string{"", strings.Repeat("x", 4097), strings.Repeat("é", 4097)} {
+	for _, value := range []string{"", strings.Repeat("x", 4097), strings.Repeat("é", 2049), strings.Repeat("é", 4096)} {
 		rec := callVaultSecrets(http.MethodPut, "env=dev&vault=payments", vaultWriteBody("api_key", value))
 		if rec.Code != http.StatusBadRequest {
 			t.Errorf("value of %d bytes: status %d, want 400", len(value), rec.Code)
 		}
 	}
+	// The limit is in bytes: 2049 two-byte characters are 4098 bytes.
+	rec := callVaultSecrets(http.MethodPut, "env=dev&vault=payments", vaultWriteBody("api_key", strings.Repeat("é", 2049)))
+	if msg := vaultErrorOf(t, rec); msg != "The value is 4098 bytes; the limit is 4096 bytes." {
+		t.Errorf("error %q", msg)
+	}
 	if len(fake.putInputs) != 0 {
 		t.Errorf("PutParameter called for a bad value")
 	}
-	rec := callVaultSecrets(http.MethodPut, "env=dev&vault=payments", vaultWriteBody("api_key", strings.Repeat("é", 4096)))
-	if rec.Code != http.StatusOK {
-		t.Errorf("4096 characters: status %d, want 200", rec.Code)
+	for _, value := range []string{strings.Repeat("x", 4096), strings.Repeat("é", 2048)} {
+		rec = callVaultSecrets(http.MethodPut, "env=dev&vault=payments", vaultWriteBody("api_key", value))
+		if rec.Code != http.StatusOK {
+			t.Errorf("value of %d bytes: status %d, want 200", len(value), rec.Code)
+		}
 	}
 	rec = callVaultSecrets(http.MethodPut, "env=dev&vault=payments", `{"name":"api_key","value":"`+testVaultSecretValue)
 	if rec.Code != http.StatusBadRequest {
@@ -489,11 +518,11 @@ func TestVaultSecretsAPI_MethodNotAllowed(t *testing.T) {
 
 func TestVaultSecretsAPI_ClientErrorIs500(t *testing.T) {
 	setupVaultSecrets(t, &fakeVaultSSM{})
-	prev := newVaultSecretsClient
-	newVaultSecretsClient = func(context.Context, Env) (vaultSecretsSSMAPI, error) {
-		return nil, errors.New("profile example-dev not found")
+	prev := newVaultSecretsClients
+	newVaultSecretsClients = func(context.Context, Env) (vaultSecretsClients, error) {
+		return vaultSecretsClients{}, errors.New("profile example-dev not found")
 	}
-	t.Cleanup(func() { newVaultSecretsClient = prev })
+	t.Cleanup(func() { newVaultSecretsClients = prev })
 	rec := callVaultSecrets(http.MethodGet, "env=dev&vault=shared", "")
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status %d, want 500", rec.Code)
@@ -517,5 +546,106 @@ func TestVaultSecretsAPI_RouteIsRegistered(t *testing.T) {
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/vaults/secrets?env=dev&vault=shared", nil))
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"vault":"shared"`) {
 		t.Errorf("GET through the router: status %d body %s", rec.Code, rec.Body.String())
+	}
+}
+
+// Credentials of another account are refused before any SSM call, with both
+// account IDs in the message.
+func TestVaultSecretsAPI_WrongAccountIs403(t *testing.T) {
+	cases := []struct {
+		method, query string
+	}{
+		{http.MethodGet, "env=dev&vault=shared"},
+		{http.MethodPut, "env=dev&vault=shared"},
+		{http.MethodDelete, "env=dev&vault=shared&name=token"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.method, func(t *testing.T) {
+			fake := &fakeVaultSSM{params: map[string]ssmtypes.ParameterMetadata{
+				"/dev/myapp/vault/shared/token": {Name: aws.String("/dev/myapp/vault/shared/token")},
+			}}
+			identity := &fakeVaultSTS{account: "111111111111"}
+			setupVaultSecretsWith(t, vaultTestEnv(), fake, identity)
+			rec := callVaultSecrets(tc.method, tc.query, vaultWriteBody("token", testVaultSecretValue))
+			if rec.Code != http.StatusForbidden {
+				t.Fatalf("status %d, want 403: %s", rec.Code, rec.Body.String())
+			}
+			want := `dev.yaml deploys to account 000000000000, but AWS profile "example-dev" is signed in to account 111111111111: sign in to account 000000000000 and try again`
+			if msg := vaultErrorOf(t, rec); msg != want {
+				t.Errorf("error %q\nwant  %q", msg, want)
+			}
+			if identity.calls != 1 {
+				t.Errorf("GetCallerIdentity called %d times, want 1", identity.calls)
+			}
+			if n := len(fake.describeInputs) + len(fake.putInputs) + len(fake.deleteInputs); n != 0 {
+				t.Errorf("%d SSM calls made with credentials of another account", n)
+			}
+			assertNoVaultValue(t, rec)
+		})
+	}
+}
+
+// Without a profile the message says the default credentials were used.
+func TestVaultSecretsAPI_WrongAccountWithoutProfile(t *testing.T) {
+	env := vaultTestEnv()
+	env.AWSProfile = ""
+	setupVaultSecretsWith(t, env, &fakeVaultSSM{}, &fakeVaultSTS{account: "111111111111"})
+	rec := callVaultSecrets(http.MethodGet, "env=dev&vault=shared", "")
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status %d, want 403", rec.Code)
+	}
+	if msg := vaultErrorOf(t, rec); !strings.Contains(msg, "the default AWS credentials is signed in to account 111111111111") {
+		t.Errorf("error %q", msg)
+	}
+}
+
+// A failing identity check is an AWS error, and nothing reaches SSM.
+func TestVaultSecretsAPI_IdentityErrorStopsTheRequest(t *testing.T) {
+	fake := &fakeVaultSSM{}
+	denied := &smithy.GenericAPIError{Code: "AccessDenied", Message: "not allowed to call sts:GetCallerIdentity"}
+	setupVaultSecretsWith(t, vaultTestEnv(), fake, &fakeVaultSTS{err: denied})
+	rec := callVaultSecrets(http.MethodPut, "env=dev&vault=shared", vaultWriteBody("token", testVaultSecretValue))
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status %d, want 403", rec.Code)
+	}
+	if len(fake.putInputs) != 0 {
+		t.Errorf("PutParameter called after the identity check failed")
+	}
+	assertNoVaultValue(t, rec)
+}
+
+// An env without account_id has nothing to compare, so STS is not asked.
+func TestVaultSecretsAPI_NoAccountIDSkipsTheCheck(t *testing.T) {
+	env := vaultTestEnv()
+	env.AccountID = ""
+	identity := &fakeVaultSTS{account: "111111111111"}
+	setupVaultSecretsWith(t, env, &fakeVaultSSM{}, identity)
+	rec := callVaultSecrets(http.MethodGet, "env=dev&vault=shared", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	if identity.calls != 0 {
+		t.Errorf("GetCallerIdentity called %d times, want 0", identity.calls)
+	}
+}
+
+// A YAML without project would build a path with an empty segment.
+func TestVaultSecretsAPI_EmptyProjectIs400(t *testing.T) {
+	env := vaultTestEnv()
+	env.Project = ""
+	fake := &fakeVaultSSM{}
+	setupVaultSecretsWith(t, env, fake, &fakeVaultSTS{account: "000000000000"})
+	for _, method := range []string{http.MethodGet, http.MethodPut, http.MethodDelete} {
+		rec := callVaultSecrets(method, "env=dev&vault=shared&name=token", vaultWriteBody("token", testVaultSecretValue))
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: status %d, want 400", method, rec.Code)
+			continue
+		}
+		if msg := vaultErrorOf(t, rec); msg != "project is not set in dev.yaml" {
+			t.Errorf("%s: error %q", method, msg)
+		}
+	}
+	if n := len(fake.describeInputs) + len(fake.putInputs) + len(fake.deleteInputs); n != 0 {
+		t.Errorf("%d SSM calls made without a project", n)
 	}
 }

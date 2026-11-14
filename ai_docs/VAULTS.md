@@ -93,11 +93,22 @@ vault, every declared secret and every parameter found under the path:
 |---|---|---|
 | declared, set | name → variable name, version, last modified | Replace value, Remove |
 | declared, not set | "No value yet" | Set value |
-| in SSM, not declared | "Not in the YAML" | Add to YAML, Delete value |
+| in SSM, not declared | "Not in the YAML" | Add to YAML, Delete from AWS |
+| removed in this session, not applied | warning: the deployed workloads still use it until you apply | Add to YAML, Delete from AWS |
+
+Removing a name from the YAML changes nothing in AWS until an apply: the
+deployed task definitions still reference the parameter, and a new task fails to
+start once its value is gone. So for a name the YAML listed when the tab opened,
+or that was removed there, the row and the delete dialog say to apply first,
+then delete. The delete stays available. A `warning` in the DELETE answer is
+shown under the vault.
 
 The value inputs are password fields, always empty. Adding a secret adds its
 name to `vaults[i].secrets` (an ordinary config change) and writes the value
-once the YAML is saved. The tab talks to `/api/vaults/secrets`
+once the YAML is saved; the name and value fields clear only once AWS has the
+value, so a refused write can be sent again. A new name that AWS already has
+but the YAML does not list is refused in the form: use Add to YAML on its row,
+then Replace value. The tab talks to `/api/vaults/secrets`
 (`app/api_vault_secrets.go`):
 
 | Request | Does | Answer |
@@ -107,9 +118,15 @@ once the YAML is saved. The tab talks to `/api/vaults/secrets`
 | `DELETE ?env&vault&name` | `DeleteParameter` | `{name, deleted: true}`, plus a `warning` for a declared name; 404 if there is no value |
 
 The server builds the path from the env YAML's `env`, `project` and a declared
-vault; the browser never sends one. It uses the env's own `aws_profile` and
-`region`. Its SSM client has only `DescribeParameters`, `PutParameter` and
-`DeleteParameter`, so it cannot read a value. A value is 1 to 4096 characters.
+vault; the browser never sends one, and a YAML without `project` is refused
+(400). It uses the env's own `aws_profile` and `region`; when either is absent
+the SDK's default chain (`AWS_PROFILE`, `AWS_REGION`, the default profile) fills
+it in. When the YAML has `account_id`, every request first asks
+`sts:GetCallerIdentity` and refuses (403, naming both accounts) credentials of
+another account, before any SSM call. Its SSM client has only
+`DescribeParameters`, `PutParameter` and `DeleteParameter`, so it cannot read a
+value. A value is 1 to 4096 bytes, the standard-tier limit, counted in UTF-8
+bytes on both the server and the tab.
 DELETE also accepts an upper-case or dotted name, so a parameter written before
 names were declared can be cleaned up.
 
@@ -121,10 +138,12 @@ aws ssm put-parameter --type SecureString --overwrite \
   --value '<value>'
 ```
 
+Keep vault parameters `SecureString`: the plan-time check below returns the value of a `String` or `StringList` parameter in plaintext into the plan.
+
 ### A secret with no value yet: a warning at plan
 
 For every connected vault that declares a secret, the plan lists the
-parameters under the vault's path (names only, `with_decryption = false`) and
+parameters under the vault's path (`with_decryption = false`) and
 warns about each declared name with no parameter:
 
 ```

@@ -2,8 +2,11 @@
 # in SSM. A check block warns and never fails a plan or an apply, and an error
 # reading its own data source (no permission, for example) is a warning too.
 #
-# The read lists names only: with_decryption is false, and a value never
-# reaches the plan. Not recursive, because a vault is flat.
+# with_decryption is false, so a SecureString value comes back encrypted. The
+# value of a String or StringList parameter has no encryption to skip: this read
+# returns it in plaintext, and it appears in the plan. The Vaults tab always
+# writes SecureString; a parameter written another way as String is exposed
+# here. Not recursive, because a vault is flat.
 
 check "vault_values_set" {
   data "aws_ssm_parameters_by_path" "vault" {

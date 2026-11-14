@@ -49,9 +49,20 @@ const AWS_FIXTURE: Record<string, FakeVault> = {
 		{ name: "api_key", type: "SecureString", version: 1 },
 	],
 	empty: [],
+	// Lists, but AWS refuses every write.
+	readonly: [],
+	// Its saved YAML still lists every name, so DELETE answers with a warning.
+	racing: [{ name: "old_token", type: "SecureString", version: 2 }],
 	locked: "denied",
 	slow: "pending",
 };
+
+/** Vaults whose PUT AWS refuses. */
+const PUT_DENIED = new Set(["readonly"]);
+/** Vaults whose DELETE answers as for a name the saved YAML still lists. */
+const DELETE_WARNS = new Set(["racing"]);
+const STILL_LISTED =
+	"still listed in the YAML; connected tasks will fail to start until it is set again or removed and applied";
 
 // The server's name rules: PUT takes a declarable name, DELETE a wider one so
 // an older upper-case parameter can still be deleted.
@@ -91,6 +102,12 @@ function installFakeAws() {
 		if (method !== "GET" && method !== "PUT" && method !== "DELETE") {
 			return json({ error: "method not allowed: use GET, PUT or DELETE" }, 405);
 		}
+		if (method === "PUT" && PUT_DENIED.has(vault)) {
+			return json(
+				{ error: "AccessDeniedException: not allowed to write parameters" },
+				403,
+			);
+		}
 		if (method === "PUT") {
 			const { name, value } = JSON.parse(String(init?.body)) as {
 				name: string;
@@ -115,7 +132,11 @@ function installFakeAws() {
 				return json({ error: `${name} has no value in vault "${vault}"` }, 404);
 			}
 			aws[vault] = params.filter((p) => p.name !== name);
-			return json({ name, deleted: true });
+			return json({
+				name,
+				deleted: true,
+				...(DELETE_WARNS.has(vault) ? { warning: STILL_LISTED } : {}),
+			});
 		}
 		const secrets = params
 			.map((p) => ({
@@ -434,5 +455,164 @@ export const UpperCaseNameImport: Story = {
 		await expect(
 			canvas.queryByRole("button", { name: "Add DATABASE_URL to the YAML" }),
 		).toBeNull();
+	},
+};
+
+/**
+ * A name removed in this session may still be in the deployed task
+ * definitions: the row and the delete dialog both say to apply first, and the
+ * delete stays available.
+ */
+export const RemoveThenDelete: Story = {
+	name: "Removed, not applied: delete warns",
+	render: () => (
+		<Editor
+			initial={configWith({
+				vaults: [{ name: "stripe", secrets: ["api_key"] }],
+			})}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await userEvent.click(
+			await canvas.findByRole("button", {
+				name: "Remove api_key from the YAML",
+			}),
+		);
+		const row = within(await canvas.findByTestId("vault-secret-api_key"));
+		await expect(
+			row.getByText("Not in the YAML any more, and not applied yet."),
+		).toBeVisible();
+		await expect(
+			row.getByText(/still use this secret until you apply/),
+		).toBeVisible();
+		await userEvent.click(
+			row.getByRole("button", { name: "Delete api_key from AWS" }),
+		);
+		const dialog = await screen.findByRole("alertdialog", {
+			name: "Delete api_key from AWS?",
+		});
+		const inDialog = within(dialog);
+		await expect(
+			inDialog.getByText(
+				"The deployed workloads still use this secret until you apply.",
+			),
+		).toBeVisible();
+		await expect(
+			inDialog.getByText(/Deleting it now makes their new tasks fail to start/),
+		).toBeVisible();
+		await expect(dialog).not.toHaveTextContent(/no workload gets it/);
+		await userEvent.click(
+			inDialog.getByRole("button", { name: "Delete from AWS" }),
+		);
+		await waitFor(() =>
+			expect(canvas.queryByTestId("vault-secret-api_key")).toBeNull(),
+		);
+	},
+};
+
+/** The server's DELETE warning is shown when it sends one. */
+export const DeleteWarning: Story = {
+	name: "Delete answered with a warning",
+	render: () => (
+		<Editor
+			initial={configWith({ vaults: [{ name: "racing", secrets: [] }] })}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await userEvent.click(
+			await canvas.findByRole("button", { name: "Delete old_token from AWS" }),
+		);
+		await userEvent.click(
+			within(
+				await screen.findByRole("alertdialog", {
+					name: "Delete old_token from AWS?",
+				}),
+			).getByRole("button", { name: "Delete from AWS" }),
+		);
+		await expect(
+			await canvas.findByText(`old_token: ${STILL_LISTED}`),
+		).toBeVisible();
+	},
+};
+
+/** A refused write keeps what was typed, so it can be sent again. */
+export const AddFailureKeepsValue: Story = {
+	name: "Add refused by AWS keeps the value",
+	render: () => (
+		<Editor
+			initial={configWith({ vaults: [{ name: "readonly", secrets: [] }] })}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await canvas.findByText("This vault has no secrets yet.");
+		await userEvent.type(canvas.getByLabelText("New secret name"), "api_key");
+		await userEvent.type(
+			canvas.getByLabelText("Value"),
+			"fake-value-do-not-use",
+		);
+		await userEvent.click(
+			canvas.getByRole("button", { name: "Add secret to readonly" }),
+		);
+		await expect(
+			await canvas.findByText(/AWS refused the request/),
+		).toBeVisible();
+		await expect(canvas.getByLabelText("New secret name")).toHaveValue(
+			"api_key",
+		);
+		await expect(canvas.getByLabelText("Value")).toHaveValue(
+			"fake-value-do-not-use",
+		);
+		await expect(
+			canvas.getByRole("button", { name: "Add secret to readonly" }),
+		).toBeEnabled();
+	},
+};
+
+/** A name AWS already has, but the YAML does not list, is refused in the form. */
+export const AddNameAlreadyInAws: Story = {
+	name: "Add a name already in AWS",
+	render: () => (
+		<Editor
+			initial={configWith({ vaults: [{ name: "stripe", secrets: [] }] })}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await canvas.findByTestId("vault-secret-old_token");
+		await userEvent.type(canvas.getByLabelText("New secret name"), "old_token");
+		await userEvent.type(
+			canvas.getByLabelText("Value"),
+			"fake-value-do-not-use",
+		);
+		await expect(
+			canvas.getByText(
+				"old_token is already in AWS — use Add to YAML on its row.",
+			),
+		).toBeVisible();
+		await expect(
+			canvas.getByRole("button", { name: "Add secret to stripe" }),
+		).toBeDisabled();
+	},
+};
+
+/** The limit is 4096 bytes: 2049 two-byte characters are over it. */
+export const ValueTooLarge: Story = {
+	name: "Value over 4096 bytes",
+	render: () => (
+		<Editor
+			initial={configWith({ vaults: [{ name: "empty", secrets: [] }] })}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await canvas.findByText("This vault has no secrets yet.");
+		await userEvent.click(canvas.getByLabelText("Value"));
+		await userEvent.paste("é".repeat(2049));
+		await expect(
+			canvas.getByText("The value is 4098 bytes; the limit is 4096 bytes."),
+		).toBeVisible();
 	},
 };
