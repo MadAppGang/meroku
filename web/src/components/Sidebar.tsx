@@ -558,6 +558,7 @@ export function Sidebar({
 					) : null
 				) : selectedNode.type === "neon" && config && onConfigChange ? (
 					<NeonNodeProperties
+						key={panelKey}
 						config={config}
 						onConfigChange={onConfigChange}
 						section={activeTab === "databases" ? "databases" : "settings"}
@@ -1447,7 +1448,7 @@ jobs:
 					config &&
 					onConfigChange && (
 						<ServiceDatabaseTab
-							key={selectedNode.id}
+							key={panelKey}
 							config={config}
 							onConfigChange={onConfigChange}
 							target={

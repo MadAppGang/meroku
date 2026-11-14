@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 // biome-ignore lint/correctness/noUnusedImports: Storybook's browser-test transform requires React in scope for JSX.
 import React from "react";
-import { userEvent, within } from "storybook/test";
+import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import {
 	type NeonLookupFn,
@@ -23,23 +23,24 @@ import {
 
 /**
  * The env's Neon panel, one story per state. Both tabs of the Sidebar render
- * this component; `section` picks the tab. The lookup is replaced by a fixed
- * answer, and Save updates the story's own config.
+ * this component; `section` picks the tab. Valid changes write immediately
+ * through `onConfigChange`.
  */
 
 interface HarnessProps {
 	config: YamlInfrastructureConfig;
 	section: NeonPanelSection;
 	lookup: NeonLookupFn;
+	onConfigChange?: (updates: Partial<YamlInfrastructureConfig>) => void;
 }
 
-function Harness({ config, section, lookup }: HarnessProps) {
+function Harness({ config, section, lookup, onConfigChange }: HarnessProps) {
 	return (
-		<NeonConfigHarness initial={config}>
-			{(current, onConfigChange) => (
+		<NeonConfigHarness initial={config} onChange={onConfigChange}>
+			{(current, handleChange) => (
 				<NeonNodeProperties
 					config={current}
-					onConfigChange={onConfigChange}
+					onConfigChange={handleChange}
 					section={section}
 					lookupNeon={lookup}
 				/>
@@ -52,9 +53,13 @@ const meta = {
 	title: "Panels/Neon Postgres",
 	component: Harness,
 	parameters: { layout: "padded" },
+	args: {
+		onConfigChange: fn(),
+	},
 	argTypes: {
 		config: { control: false },
 		lookup: { control: false },
+		onConfigChange: { control: false },
 		section: { control: "radio", options: ["settings", "databases"] },
 	},
 } satisfies Meta<typeof Harness>;
@@ -62,7 +67,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** No `neon:` block yet: one button sets it up. */
+/** No `neon:` block yet: one button starts setup. */
 export const NotSetUp: Story = {
 	args: {
 		config: neonStoryConfig(),
@@ -71,12 +76,72 @@ export const NotSetUp: Story = {
 	},
 };
 
-/** Create mode, logged in: organization, region and name are choices. */
+/** Setting up Neon: choosing an organization writes the complete `neon` block immediately. */
+export const SettingUp: Story = {
+	args: {
+		config: neonStoryConfig(),
+		section: "settings",
+		lookup: answer(loggedIn),
+	},
+	play: async ({ args, canvasElement }) => {
+		const canvas = within(canvasElement);
+		const body = within(canvasElement.ownerDocument.body);
+
+		await userEvent.click(
+			await canvas.findByRole("button", {
+				name: /set up neon for this environment/i,
+			}),
+		);
+		await expect(args.onConfigChange).not.toHaveBeenCalled();
+
+		await userEvent.click(
+			await canvas.findByRole("combobox", { name: "Organization" }),
+		);
+		await userEvent.click(await body.findByRole("option", { name: "My team" }));
+
+		await expect(args.onConfigChange).toHaveBeenCalledWith({
+			neon: {
+				mode: "create",
+				project: {
+					name: "myapp-dev",
+					org_id: "org-fake-000000",
+					region_id: "aws-us-east-1",
+					pg_version: 17,
+				},
+				databases: [],
+			},
+		});
+	},
+};
+
+/** Create mode, logged in: editing the project name writes immediately without a Save button. */
 export const CreateMode: Story = {
 	args: {
 		config: neonStoryConfig({ neon: createNeon }),
 		section: "settings",
 		lookup: answer(loggedIn),
+	},
+	play: async ({ args, canvasElement }) => {
+		const canvas = within(canvasElement);
+		await expect(
+			canvas.queryByRole("button", { name: /save neon settings/i }),
+		).toBeNull();
+		const nameField = await canvas.findByLabelText("Project name");
+		await userEvent.clear(nameField);
+		await expect(args.onConfigChange).not.toHaveBeenCalled();
+		await userEvent.type(nameField, "myapp-staging");
+		await expect(args.onConfigChange).toHaveBeenLastCalledWith({
+			neon: {
+				...createNeon,
+				project: {
+					...createNeon.project,
+					name: "myapp-staging",
+					org_id: "org-fake-000000",
+					region_id: "aws-us-east-1",
+					pg_version: 17,
+				},
+			},
+		});
 	},
 };
 
@@ -116,14 +181,14 @@ export const LookupFailed: Story = {
 	},
 };
 
-/** A project id typed under Advanced shows its error on every keystroke. */
+/** An invalid project id typed under Advanced shows its error and is never written. */
 export const AdvancedValidationError: Story = {
 	args: {
 		config: neonStoryConfig({ neon: reuseNeon }),
 		section: "settings",
 		lookup: answer(notLoggedIn),
 	},
-	play: async ({ canvasElement }) => {
+	play: async ({ args, canvasElement }) => {
 		const canvas = within(canvasElement);
 		await userEvent.click(
 			await canvas.findByRole("button", { name: /enter ids yourself/i }),
@@ -131,12 +196,17 @@ export const AdvancedValidationError: Story = {
 		const field = await canvas.findByLabelText("Project id");
 		await userEvent.clear(field);
 		await userEvent.type(field, "Not_A_Project");
+		await expect(
+			canvas.getByText(/3 to 63 lower-case letters/i),
+		).toBeInTheDocument();
+		await expect(args.onConfigChange).not.toHaveBeenCalled();
 	},
 };
 
 /**
- * A deployed create-mode project switched to "Use an existing project": the
- * warning, and Save asks for confirmation.
+ * A deployed create-mode project switched to "Use an existing project": picking
+ * a project opens confirmation immediately; cancel reverts to create mode, and
+ * confirm writes the reuse block.
  */
 export const CreateToReuseSwitch: Story = {
 	args: {
@@ -144,11 +214,50 @@ export const CreateToReuseSwitch: Story = {
 		section: "settings",
 		lookup: answer(loggedInDeployed),
 	},
-	play: async ({ canvasElement }) => {
+	play: async ({ args, canvasElement }) => {
 		const canvas = within(canvasElement);
+		const body = within(canvasElement.ownerDocument.body);
+
 		await userEvent.click(
 			await canvas.findByRole("radio", { name: "Use an existing project" }),
 		);
+		await expect(args.onConfigChange).not.toHaveBeenCalled();
+
+		await userEvent.click(
+			await canvas.findByRole("combobox", { name: "Project" }),
+		);
+		await userEvent.click(
+			await body.findByRole("option", { name: /shared-dev/i }),
+		);
+
+		await expect(await body.findByRole("alertdialog")).toBeInTheDocument();
+		await userEvent.click(body.getByRole("button", { name: "Cancel" }));
+		await waitFor(() => expect(body.queryByRole("alertdialog")).toBeNull());
+		await expect(args.onConfigChange).not.toHaveBeenCalled();
+		await expect(
+			canvas.getByRole("radio", { name: "Create a new project" }),
+		).toBeChecked();
+
+		await userEvent.click(
+			canvas.getByRole("radio", { name: "Use an existing project" }),
+		);
+		await userEvent.click(
+			await canvas.findByRole("combobox", { name: "Project" }),
+		);
+		await userEvent.click(
+			await body.findByRole("option", { name: /shared-dev/i }),
+		);
+		await userEvent.click(await body.findByRole("button", { name: "Confirm" }));
+		await waitFor(() => expect(body.queryByRole("alertdialog")).toBeNull());
+
+		await expect(args.onConfigChange).toHaveBeenCalledWith({
+			neon: {
+				mode: "reuse",
+				project_id: "fake-project-000000",
+				pg_version: 17,
+				databases: createNeon.databases,
+			},
+		});
 	},
 };
 
@@ -177,12 +286,66 @@ export const RemoveBlockedByServices: Story = {
 	},
 };
 
-/** Databases tab, create mode: neondb comes with the project; app is new. */
+/** Disconnecting Neon keeps its confirmation dialog and writes removal immediately on confirm. */
+export const DisconnectNeon: Story = {
+	args: {
+		config: neonStoryConfig({ neon: createNeon }),
+		section: "settings",
+		lookup: answer(loggedIn),
+	},
+	play: async ({ args, canvasElement }) => {
+		const canvas = within(canvasElement);
+		const body = within(canvasElement.ownerDocument.body);
+
+		await userEvent.click(
+			await canvas.findByRole("button", {
+				name: /disconnect neon from this environment/i,
+			}),
+		);
+		await userEvent.click(await body.findByRole("button", { name: "Cancel" }));
+		await waitFor(() => expect(body.queryByRole("alertdialog")).toBeNull());
+		await expect(args.onConfigChange).not.toHaveBeenCalled();
+
+		await userEvent.click(
+			canvas.getByRole("button", {
+				name: /disconnect neon from this environment/i,
+			}),
+		);
+		await userEvent.click(
+			await body.findByRole("button", { name: "Disconnect" }),
+		);
+		await waitFor(() => expect(body.queryByRole("alertdialog")).toBeNull());
+		await expect(args.onConfigChange).toHaveBeenCalledWith({ neon: undefined });
+	},
+};
+
+/** Databases tab, create mode: adding a database writes immediately. */
 export const DatabasesCreateMode: Story = {
 	args: {
 		config: neonStoryConfig({ neon: createNeon }),
 		section: "databases",
 		lookup: answer(loggedIn),
+	},
+	play: async ({ args, canvasElement }) => {
+		const canvas = within(canvasElement);
+		const body = within(canvasElement.ownerDocument.body);
+
+		await userEvent.click(
+			await canvas.findByRole("combobox", { name: "Add a database" }),
+		);
+		await userEvent.click(
+			await body.findByRole("option", { name: /new database/i }),
+		);
+
+		await expect(args.onConfigChange).toHaveBeenCalledWith({
+			neon: {
+				...createNeon,
+				databases: [
+					...(createNeon.databases ?? []),
+					{ name: "app_2", create: true },
+				],
+			},
+		});
 	},
 };
 
@@ -222,32 +385,66 @@ export const DatabaseUsedByService: Story = {
 	},
 };
 
-/** A new database's name with an error, checked on every keystroke. */
+/** A new database's invalid name shows an inline error and is never written. */
 export const DatabaseNameInvalid: Story = {
 	args: {
 		config: neonStoryConfig({ neon: createNeon }),
 		section: "databases",
 		lookup: answer(loggedIn),
 	},
-	play: async ({ canvasElement }) => {
+	play: async ({ args, canvasElement }) => {
 		const canvas = within(canvasElement);
 		const field = await canvas.findByLabelText("Name of new database 2");
 		await userEvent.clear(field);
 		await userEvent.type(field, "My-App");
+		await expect(
+			canvas.getByText(/lower-case letters, digits and underscores/i),
+		).toBeInTheDocument();
+		await expect(args.onConfigChange).not.toHaveBeenCalled();
 	},
 };
 
-/** Renaming a created database in a deployed project: kept, and a new one made. */
+/**
+ * Renaming a created database in a deployed project asks for confirmation on
+ * Enter/blur: cancel reverts the input, and confirm writes the rename.
+ */
 export const DatabaseRenameWarning: Story = {
 	args: {
 		config: neonStoryConfig({ neon: createNeon }),
 		section: "databases",
 		lookup: answer(loggedInDeployed),
 	},
-	play: async ({ canvasElement }) => {
+	play: async ({ args, canvasElement }) => {
 		const canvas = within(canvasElement);
+		const body = within(canvasElement.ownerDocument.body);
+
 		const field = await canvas.findByLabelText("Name of new database 2");
 		await userEvent.clear(field);
 		await userEvent.type(field, "main");
+		await expect(
+			canvas.getByText(/the database app is kept in neon with its data/i),
+		).toBeInTheDocument();
+		await expect(args.onConfigChange).not.toHaveBeenCalled();
+
+		await userEvent.keyboard("{Enter}");
+		await expect(await body.findByRole("alertdialog")).toBeInTheDocument();
+		await userEvent.click(body.getByRole("button", { name: "Cancel" }));
+		await waitFor(() => expect(body.queryByRole("alertdialog")).toBeNull());
+		await expect(args.onConfigChange).not.toHaveBeenCalled();
+		await expect(field).toHaveValue("app");
+
+		await userEvent.clear(field);
+		await userEvent.type(field, "main{Enter}");
+		await userEvent.click(await body.findByRole("button", { name: "Confirm" }));
+		await waitFor(() => expect(body.queryByRole("alertdialog")).toBeNull());
+		await expect(args.onConfigChange).toHaveBeenCalledWith({
+			neon: {
+				...createNeon,
+				databases: [
+					{ name: "neondb", create: false },
+					{ name: "main", create: true },
+				],
+			},
+		});
 	},
 };

@@ -1,5 +1,16 @@
 # Changelog
 
+## v6.0.2
+
+### Web UI
+- The service Database tab and the Neon panel write each change to the YAML as you make
+  it, like every other tab. The "Save database access", "Save Neon settings" and "Discard
+  changes" buttons are gone. A name that is not valid yet is shown with its error and not
+  written.
+- A change that replaces something asks first, at the moment you make it: moving a service
+  to another database (its login role is replaced), switching the Neon project or mode,
+  and Disconnect Neon. Cancel puts the control back.
+
 ## v6.0.1
 
 ### Pricing

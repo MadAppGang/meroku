@@ -6,7 +6,7 @@ import {
 	Trash2,
 	Unlink,
 } from "lucide-react";
-import { type ReactNode, useEffect, useId, useState } from "react";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { infrastructureApi } from "../api/infrastructure";
 import type { NeonLookupOptions, NeonLookupResponse } from "../types/neon";
 import type {
@@ -25,9 +25,10 @@ import {
 } from "../utils/neonChoices";
 import {
 	buildNeonUpdate,
-	type NeonDraft,
-	neonDraftFromConfig,
+	type NeonConfigFields,
+	type NeonReplacingChange,
 	neonReplacingChanges,
+	neonValuesFromConfig,
 } from "../utils/neonConfigUpdate";
 import {
 	checkNeonDatabaseName,
@@ -44,7 +45,6 @@ import {
 	neonProjectProblems,
 	validateNeonConfig,
 } from "../utils/neonValidation";
-import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -90,11 +90,9 @@ import { NoteCode, NoteDetail, StatusNote } from "./ui/status-note";
  * (regions, Postgres versions). Typing an id is an Advanced fallback with an
  * inline error on every keystroke.
  *
- * Edits are a draft held here and shared by both tabs. The project fields,
- * the owner role and database names replace what they name in Neon, so
- * nothing is written per keystroke: one Save writes the complete `neon`
- * block, after a confirmation when the change replaces or releases something
- * in a deployed project.
+ * Valid changes write immediately through `onConfigChange`. Changes that
+ * replace or release existing Neon resources ask for confirmation first, and
+ * revert the control when cancelled.
  */
 
 export type NeonPanelSection = "settings" | "databases";
@@ -107,7 +105,7 @@ export type NeonLookupFn = (
 export interface NeonNodePropertiesProps {
 	config: YamlInfrastructureConfig;
 	onConfigChange: (config: Partial<YamlInfrastructureConfig>) => void;
-	/** Which tab is showing. The draft survives switching tabs. */
+	/** Which tab is showing. */
 	section: NeonPanelSection;
 	/** Reads live Neon choices. Defaults to GET /api/neon/lookup. */
 	lookupNeon?: NeonLookupFn;
@@ -121,6 +119,11 @@ type LookupState =
 /** "yes": the lookup found the project in Neon. "unknown": no lookup. */
 type Deployed = "yes" | "no" | "unknown";
 
+interface PendingConfirm {
+	next: YamlNeonConfig;
+	replacing: NeonReplacingChange[];
+}
+
 const NEW_DATABASE = "__new__";
 
 const defaultLookup: NeonLookupFn = (env, opts) =>
@@ -130,8 +133,8 @@ function isAbort(err: unknown): boolean {
 	return err instanceof DOMException && err.name === "AbortError";
 }
 
-function freshDraft(config: YamlInfrastructureConfig): NeonDraft {
-	return neonDraftFromConfig(config.neon, {
+function baseValues(config: YamlInfrastructureConfig): NeonConfigFields {
+	return neonValuesFromConfig(config.neon, {
 		projectName: defaultNeonProjectName(config.project, config.env),
 		regionId: neonRegionForAwsRegion(config.region),
 	});
@@ -158,35 +161,60 @@ export function NeonNodeProperties({
 	const saved = config.neon;
 	const savedKey = JSON.stringify(saved ?? null);
 
-	const [enabled, setEnabled] = useState(saved !== undefined);
-	const [draft, setDraft] = useState<NeonDraft>(() => freshDraft(config));
+	const [settingUp, setSettingUp] = useState(false);
+	const enabled = saved !== undefined || settingUp;
+
+	const [fields, setFields] = useState<NeonConfigFields>(() =>
+		baseValues(config),
+	);
+	const fieldsRef = useRef(fields);
+	fieldsRef.current = fields;
+
 	const [reuseOrg, setReuseOrg] = useState("");
 	const [advancedOpen, setAdvancedOpen] = useState(false);
 	const [manualDatabase, setManualDatabase] = useState("");
-	const [confirmOpen, setConfirmOpen] = useState(false);
+	const [blockedProblems, setBlockedProblems] = useState<string[]>([]);
+	const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(
+		null,
+	);
+	const pendingConfirmRef = useRef<PendingConfirm | null>(null);
+	pendingConfirmRef.current = pendingConfirm;
+	const confirmedRef = useRef(false);
 	const [removeOpen, setRemoveOpen] = useState(false);
 
 	const [lookup, setLookup] = useState<LookupState>({ status: "loading" });
 	const [reloadKey, setReloadKey] = useState(0);
 
-	// A save, a discard or another panel changed the saved block: start over
-	// from what is on disk.
+	// Sync local input buffers when the saved YAML block changes externally.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: savedKey stands for config.neon by value.
 	useEffect(() => {
-		setEnabled(config.neon !== undefined);
-		setDraft(freshDraft(config));
+		setSettingUp(false);
+		setBlockedProblems([]);
+		setFields((current) => {
+			if (!config.neon) {
+				const fresh = baseValues(config);
+				fieldsRef.current = fresh;
+				return fresh;
+			}
+			if (JSON.stringify(buildNeonUpdate(current, config.neon)) === savedKey) {
+				return current;
+			}
+			const fresh = baseValues(config);
+			fieldsRef.current = fresh;
+			return fresh;
+		});
 	}, [savedKey]);
 
 	const lookupOrg =
-		draft.mode === "create"
-			? checkNeonOrgId(draft.create.org_id) === null
-				? draft.create.org_id
+		fields.mode === "create"
+			? checkNeonOrgId(fields.create.org_id) === null
+				? fields.create.org_id
 				: undefined
 			: reuseOrg || undefined;
 	const lookupProject =
-		draft.mode === "reuse" &&
-		checkNeonProjectId(draft.reuse.project_id) === null
-			? draft.reuse.project_id
+		fields.mode === "reuse" &&
+		checkNeonProjectId(fields.reuse.project_id) === null
+			? fields.reuse.project_id
 			: undefined;
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey re-runs the lookup on Refresh.
@@ -223,49 +251,147 @@ export function NeonNodeProperties({
 		: [];
 	const liveDatabases = authOk ? (live?.databases ?? []) : [];
 	const deployed: Deployed = !authOk ? "unknown" : live?.project ? "yes" : "no";
-
-	// One organization: choose it, there is nothing to decide.
-	useEffect(() => {
-		if (organizations.length !== 1) return;
-		const only = organizations[0].id;
-		if (draft.mode === "create" && draft.create.org_id === "") {
-			setDraft((d) => ({ ...d, create: { ...d.create, org_id: only } }));
-		}
-		if (draft.mode === "reuse" && reuseOrg === "") setReuseOrg(only);
-	}, [organizations, draft.mode, draft.create.org_id, reuseOrg]);
-
-	const next: YamlNeonConfig | undefined = enabled
-		? buildNeonUpdate(draft, saved)
+	const deployedDbSet = authOk
+		? new Set(liveDatabases.map((database) => database.name))
 		: undefined;
-	const dirty = JSON.stringify(next ?? null) !== savedKey;
-	const problems = next
-		? neonProjectProblems(validateNeonConfig({ ...config, neon: next }))
-		: [];
-	const replacing =
-		saved && next && deployed !== "no" ? neonReplacingChanges(saved, next) : [];
-	const accessEntries = neonAccessEntries(config);
 
-	function update(change: (d: NeonDraft) => NeonDraft) {
-		setDraft((d) => change(d));
+	function openConfirm(next: YamlNeonConfig, replacing: NeonReplacingChange[]) {
+		const pending = { next, replacing };
+		pendingConfirmRef.current = pending;
+		setPendingConfirm(pending);
 	}
 
-	function save() {
-		if (!next) return;
+	function commitDiscrete(nextFields: NeonConfigFields) {
+		setBlockedProblems([]);
+		const next = buildNeonUpdate(nextFields, saved);
+		const problems = neonProjectProblems(
+			validateNeonConfig({ ...config, neon: next }),
+		);
+		if (problems.length > 0) {
+			const crossField = problems
+				.filter(
+					(problem) => problem.rule === "V-N28" || problem.rule === "V-N9",
+				)
+				.map((problem) => problem.message);
+			if (crossField.length > 0) {
+				setBlockedProblems(crossField);
+				return;
+			}
+			fieldsRef.current = nextFields;
+			setFields(nextFields);
+			return;
+		}
+
+		if (JSON.stringify(next) === savedKey) {
+			fieldsRef.current = nextFields;
+			setFields(nextFields);
+			return;
+		}
+
+		const replacing =
+			saved && deployed !== "no"
+				? neonReplacingChanges(saved, next, deployedDbSet)
+				: [];
+		if (replacing.length > 0) {
+			openConfirm(next, replacing);
+			return;
+		}
+
+		fieldsRef.current = nextFields;
+		setFields(nextFields);
 		onConfigChange({ neon: next });
 	}
 
-	function requestSave() {
-		if (replacing.length > 0) setConfirmOpen(true);
-		else save();
+	function handleTextChange(nextFields: NeonConfigFields) {
+		setBlockedProblems([]);
+		fieldsRef.current = nextFields;
+		setFields(nextFields);
+
+		const next = buildNeonUpdate(nextFields, saved);
+		const problems = neonProjectProblems(
+			validateNeonConfig({ ...config, neon: next }),
+		);
+		if (problems.length > 0 || JSON.stringify(next) === savedKey) return;
+
+		const replacing =
+			saved && deployed !== "no"
+				? neonReplacingChanges(saved, next, deployedDbSet)
+				: [];
+		if (replacing.length > 0) return;
+
+		onConfigChange({ neon: next });
 	}
 
-	function discard() {
-		setEnabled(saved !== undefined);
-		setDraft(freshDraft(config));
-		setManualDatabase("");
+	function commitPendingText() {
+		if (pendingConfirmRef.current !== null) return;
+		const currentFields = fieldsRef.current;
+		const next = buildNeonUpdate(currentFields, saved);
+		const problems = neonProjectProblems(
+			validateNeonConfig({ ...config, neon: next }),
+		);
+		if (problems.length > 0 || JSON.stringify(next) === savedKey) return;
+
+		const replacing =
+			saved && deployed !== "no"
+				? neonReplacingChanges(saved, next, deployedDbSet)
+				: [];
+		if (replacing.length > 0) {
+			openConfirm(next, replacing);
+			return;
+		}
+
+		onConfigChange({ neon: next });
 	}
+
+	function confirmPendingChange() {
+		const pending = pendingConfirmRef.current;
+		if (!pending) return;
+		confirmedRef.current = true;
+		pendingConfirmRef.current = null;
+		setPendingConfirm(null);
+		const nextFields = neonValuesFromConfig(pending.next, {
+			projectName: defaultNeonProjectName(config.project, config.env),
+			regionId: neonRegionForAwsRegion(config.region),
+		});
+		fieldsRef.current = nextFields;
+		setFields(nextFields);
+		onConfigChange({ neon: pending.next });
+	}
+
+	function cancelPendingChange() {
+		pendingConfirmRef.current = null;
+		setPendingConfirm(null);
+		const restored = baseValues(config);
+		fieldsRef.current = restored;
+		setFields(restored);
+	}
+
+	// One organization: choose it, there is nothing to decide.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: auto-selects the single organization once loaded.
+	useEffect(() => {
+		if (!enabled || organizations.length !== 1) return;
+		const only = organizations[0].id;
+		if (fields.mode === "create" && fields.create.org_id === "") {
+			commitDiscrete({
+				...fieldsRef.current,
+				create: { ...fieldsRef.current.create, org_id: only },
+			});
+		}
+		if (fields.mode === "reuse" && reuseOrg === "") setReuseOrg(only);
+	}, [enabled, organizations, fields.mode, fields.create.org_id, reuseOrg]);
+
+	const savedProblems = saved
+		? neonProjectProblems(validateNeonConfig(config)).map(
+				(problem) => problem.message,
+			)
+		: [];
+	const displayedProblems = [
+		...new Set([...savedProblems, ...blockedProblems]),
+	];
+	const accessEntries = neonAccessEntries(config);
 
 	function removeNeon() {
+		setSettingUp(false);
 		onConfigChange({ neon: undefined });
 	}
 
@@ -279,7 +405,7 @@ export function NeonNodeProperties({
 					Each service gets its own database login and finds the address in
 					DATABASE_URL. meroku never deletes Neon data.
 				</NoteDetail>
-				<Button type="button" onClick={() => setEnabled(true)}>
+				<Button type="button" onClick={() => setSettingUp(true)}>
 					<Database aria-hidden="true" />
 					Set up Neon for this environment
 				</Button>
@@ -294,23 +420,36 @@ export function NeonNodeProperties({
 		/>
 	);
 
-	const footer = (
-		<SaveSection
-			dirty={dirty}
-			problems={problems.map((problem) => problem.message)}
-			replacing={replacing.map((change) => change.message)}
-			deployed={deployed}
-			onSave={requestSave}
-			onDiscard={discard}
-		/>
-	);
+	const problemsList =
+		displayedProblems.length > 0 ? (
+			<div className="space-y-2" aria-live="polite">
+				{displayedProblems.map((problem) => (
+					<StatusNote key={problem} tone="error">
+						<p>{problem}</p>
+					</StatusNote>
+				))}
+			</div>
+		) : null;
 
 	const confirmDialog = (
-		<AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+		<AlertDialog
+			open={pendingConfirm !== null}
+			onOpenChange={(open) => {
+				if (!open) {
+					if (confirmedRef.current) {
+						confirmedRef.current = false;
+						pendingConfirmRef.current = null;
+						setPendingConfirm(null);
+					} else {
+						cancelPendingChange();
+					}
+				}
+			}}
+		>
 			<AlertDialogContent>
 				<AlertDialogHeader>
 					<AlertDialogTitle>
-						Save a change that replaces Neon data?
+						Make a change that replaces Neon data?
 					</AlertDialogTitle>
 					<AlertDialogDescription>
 						{deployed === "yes"
@@ -320,24 +459,46 @@ export function NeonNodeProperties({
 					</AlertDialogDescription>
 				</AlertDialogHeader>
 				<div className="space-y-2">
-					{replacing.map((change) => (
+					{(pendingConfirm?.replacing ?? []).map((change) => (
 						<StatusNote key={change.kind + change.message} tone="warning">
 							<p>{change.message}</p>
 						</StatusNote>
 					))}
 				</div>
 				<AlertDialogFooter>
-					<AlertDialogCancel>Keep editing</AlertDialogCancel>
-					<AlertDialogAction onClick={save}>Save anyway</AlertDialogAction>
+					<AlertDialogCancel>Cancel</AlertDialogCancel>
+					<AlertDialogAction onClick={confirmPendingChange}>
+						Confirm
+					</AlertDialogAction>
 				</AlertDialogFooter>
 			</AlertDialogContent>
 		</AlertDialog>
 	);
 
 	if (section === "databases") {
-		const taken = new Set(draft.databases.map((database) => database.name));
+		if (!saved) {
+			return (
+				<div className="space-y-4">
+					{lookupStatus}
+					<PanelCard
+						title="Databases"
+						description="The databases your services can use. A database you add as new is created by meroku; an existing one is used as it is."
+					>
+						<StatusNote tone="neutral">
+							<p>Finish setting up the Neon project first.</p>
+							<NoteDetail>
+								Choose the project on the Project tab, then come back here to
+								add databases.
+							</NoteDetail>
+						</StatusNote>
+					</PanelCard>
+				</div>
+			);
+		}
+
+		const taken = new Set(fields.databases.map((database) => database.name));
 		const addChoices = [
-			...(draft.mode === "create" && !taken.has(NEON_PROJECT_DEFAULT_DATABASE)
+			...(fields.mode === "create" && !taken.has(NEON_PROJECT_DEFAULT_DATABASE)
 				? [
 						{
 							value: NEON_PROJECT_DEFAULT_DATABASE,
@@ -362,14 +523,22 @@ export function NeonNodeProperties({
 					: checkNeonDatabaseName(manualName, false);
 
 		function addDatabase(value: string) {
-			update((d) => {
-				const names = new Set(d.databases.map((database) => database.name));
-				const database =
-					value === NEW_DATABASE
-						? { name: nextNewDatabaseName(names), create: true }
-						: { name: value, create: false };
-				return { ...d, databases: [...d.databases, database] };
+			const current = fieldsRef.current;
+			const names = new Set(current.databases.map((database) => database.name));
+			const database =
+				value === NEW_DATABASE
+					? { name: nextNewDatabaseName(names), create: true }
+					: { name: value, create: false };
+			commitDiscrete({
+				...current,
+				databases: [...current.databases, database],
 			});
+		}
+
+		function addManualDatabase() {
+			if (manualName === "" || manualError !== null) return;
+			addDatabase(manualName);
+			setManualDatabase("");
 		}
 
 		return (
@@ -379,27 +548,44 @@ export function NeonNodeProperties({
 					title="Databases"
 					description="The databases your services can use. A database you add as new is created by meroku; an existing one is used as it is."
 				>
-					{draft.mode === "create" && (
+					{fields.mode === "create" && (
 						<NoteDetail>
 							A new project comes with a database called{" "}
 							<NoteCode>{NEON_PROJECT_DEFAULT_DATABASE}</NoteCode>.
 						</NoteDetail>
 					)}
-					{draft.databases.length === 0 && (
+					{fields.databases.length === 0 && (
 						<StatusNote tone="neutral">
 							<p>No databases yet. Add one so your services can connect.</p>
 						</StatusNote>
 					)}
 					<div className="space-y-4">
-						{draft.databases.map((database, index) => {
+						{fields.databases.map((database, index) => {
 							const usedBy = neonServicesUsingDatabase(config, database.name);
-							const savedHere = saved?.databases?.some(
-								(entry) => entry.name === database.name,
+							const trimmedName = database.name.trim();
+							const isDuplicate = fields.databases.some(
+								(entry, i) => i !== index && entry.name.trim() === trimmedName,
 							);
-							const nameError = checkNeonDatabaseName(
-								database.name,
-								database.create === true,
-							);
+							const nameError =
+								checkNeonDatabaseName(trimmedName, database.create === true) ??
+								(isDuplicate
+									? `The database ${trimmedName} is listed twice. Keep one.`
+									: null);
+							const savedDb = saved.databases?.[index];
+							const isDeployedDb =
+								savedDb?.create === true &&
+								(deployed === "unknown" ||
+									Boolean(deployedDbSet?.has(savedDb.name)));
+							const renameWarning =
+								database.create &&
+								nameError === null &&
+								deployed !== "no" &&
+								isDeployedDb &&
+								savedDb &&
+								savedDb.name !== trimmedName
+									? `The database ${savedDb.name} is kept in Neon with its data, and a new empty database ${trimmedName} is created.`
+									: null;
+							const alreadyInNeon = Boolean(deployedDbSet?.has(trimmedName));
 							const rowId = `${uid}-database-${index}`;
 							return (
 								<div key={rowId} className="space-y-1">
@@ -415,12 +601,20 @@ export function NeonNodeProperties({
 												aria-describedby={`${rowId}-hint`}
 												onChange={(event) => {
 													const name = event.target.value;
-													update((d) => ({
-														...d,
-														databases: d.databases.map((entry, i) =>
+													const current = fieldsRef.current;
+													handleTextChange({
+														...current,
+														databases: current.databases.map((entry, i) =>
 															i === index ? { ...entry, name } : entry,
 														),
-													}));
+													});
+												}}
+												onBlur={commitPendingText}
+												onKeyDown={(event) => {
+													if (event.key === "Enter") {
+														event.preventDefault();
+														commitPendingText();
+													}
 												}}
 											/>
 										) : (
@@ -435,12 +629,15 @@ export function NeonNodeProperties({
 											size="icon"
 											aria-label={`Remove database ${database.name}`}
 											disabled={usedBy.length > 0}
-											onClick={() =>
-												update((d) => ({
-													...d,
-													databases: d.databases.filter((_, i) => i !== index),
-												}))
-											}
+											onClick={() => {
+												const current = fieldsRef.current;
+												commitDiscrete({
+													...current,
+													databases: current.databases.filter(
+														(_, i) => i !== index,
+													),
+												});
+											}}
 										>
 											<Trash2 aria-hidden="true" />
 										</Button>
@@ -455,9 +652,14 @@ export function NeonNodeProperties({
 												<p>{nameError}</p>
 											</StatusNote>
 										)}
+										{renameWarning && (
+											<StatusNote tone="warning">
+												<p>{renameWarning}</p>
+											</StatusNote>
+										)}
 										<NoteDetail>
 											{database.create
-												? savedHere
+												? alreadyInNeon
 													? "Created by meroku."
 													: "meroku creates it at the next deploy."
 												: "Already in Neon; meroku uses it and never changes it."}
@@ -483,7 +685,7 @@ export function NeonNodeProperties({
 								))}
 							</SelectContent>
 						</Select>
-						{!authOk && draft.mode === "reuse" && (
+						{!authOk && fields.mode === "reuse" && (
 							<NoteDetail>
 								Log in to Neon to pick from the project's databases, or enter a
 								name under Advanced.
@@ -509,15 +711,18 @@ export function NeonNodeProperties({
 									aria-invalid={manualError !== null}
 									aria-describedby={`${uid}-manual-database-hint`}
 									onChange={(event) => setManualDatabase(event.target.value)}
+									onKeyDown={(event) => {
+										if (event.key === "Enter") {
+											event.preventDefault();
+											addManualDatabase();
+										}
+									}}
 								/>
 								<Button
 									type="button"
 									variant="outline"
 									disabled={manualName === "" || manualError !== null}
-									onClick={() => {
-										addDatabase(manualName);
-										setManualDatabase("");
-									}}
+									onClick={addManualDatabase}
 								>
 									<Plus aria-hidden="true" />
 									Add
@@ -538,7 +743,7 @@ export function NeonNodeProperties({
 						</div>
 					</AdvancedSection>
 				</PanelCard>
-				{footer}
+				{problemsList}
 				{confirmDialog}
 			</div>
 		);
@@ -546,43 +751,45 @@ export function NeonNodeProperties({
 
 	// Project tab.
 	const pgVersion =
-		draft.mode === "reuse" ? draft.reuse.pg_version : draft.create.pg_version;
+		fields.mode === "reuse"
+			? fields.reuse.pg_version
+			: fields.create.pg_version;
 	const chosenProject = projects.find(
-		(project) => project.id === draft.reuse.project_id,
+		(project) => project.id === fields.reuse.project_id,
 	);
 	const projectIdError =
-		draft.mode === "reuse" && draft.reuse.project_id !== ""
-			? checkNeonProjectId(draft.reuse.project_id)
+		fields.mode === "reuse" && fields.reuse.project_id !== ""
+			? checkNeonProjectId(fields.reuse.project_id)
 			: null;
 	const nameError =
-		draft.mode === "create" ? checkNeonProjectName(draft.create.name) : null;
+		fields.mode === "create" ? checkNeonProjectName(fields.create.name) : null;
 	const orgError =
-		draft.mode === "create" && draft.create.org_id !== ""
-			? checkNeonOrgId(draft.create.org_id)
+		fields.mode === "create" && fields.create.org_id !== ""
+			? checkNeonOrgId(fields.create.org_id)
 			: null;
 	const regionError =
-		draft.mode === "create" && draft.create.region_id !== ""
-			? checkNeonRegionId(draft.create.region_id)
+		fields.mode === "create" && fields.create.region_id !== ""
+			? checkNeonRegionId(fields.create.region_id)
 			: null;
 	const ownerError =
-		draft.owner_role === ""
+		fields.owner_role === ""
 			? null
-			: checkNeonIdentifier(draft.owner_role, "owner role name");
+			: checkNeonIdentifier(fields.owner_role, "owner role name");
 	const regionChoices = NEON_REGIONS.some(
-		(region) => region.id === draft.create.region_id,
+		(region) => region.id === fields.create.region_id,
 	)
 		? NEON_REGIONS
-		: draft.create.region_id && regionError === null
+		: fields.create.region_id && regionError === null
 			? [
 					...NEON_REGIONS,
-					{ id: draft.create.region_id, label: draft.create.region_id },
+					{ id: fields.create.region_id, label: fields.create.region_id },
 				]
 			: NEON_REGIONS;
 	const ownerChoices = [
 		...new Set([
 			NEON_DEFAULT_OWNER_ROLE,
 			...liveDatabases.map((database) => database.owner),
-			...(ownerError === null && draft.owner_role ? [draft.owner_role] : []),
+			...(ownerError === null && fields.owner_role ? [fields.owner_role] : []),
 		]),
 	];
 	const servicesBlocking = accessEntries.length > 0;
@@ -595,11 +802,19 @@ export function NeonNodeProperties({
 				description="A Neon project is a trust zone. Give prod its own project."
 			>
 				<RadioGroup
-					value={draft.mode}
+					value={fields.mode}
 					aria-label="Neon project"
-					onValueChange={(value) =>
-						update((d) => ({ ...d, mode: value as NeonDraft["mode"] }))
-					}
+					onValueChange={(value) => {
+						const mode = value as NeonConfigFields["mode"];
+						const current = fieldsRef.current;
+						const nextCreate =
+							mode === "create" &&
+							current.create.org_id === "" &&
+							reuseOrg !== ""
+								? { ...current.create, org_id: reuseOrg }
+								: current.create;
+						commitDiscrete({ ...current, mode, create: nextCreate });
+					}}
 				>
 					<div className="flex items-start gap-2">
 						<RadioGroupItem id={`${uid}-mode-create`} value="create" />
@@ -623,20 +838,24 @@ export function NeonNodeProperties({
 					</div>
 				</RadioGroup>
 
-				{draft.mode === "create" ? (
+				{fields.mode === "create" ? (
 					<>
 						<div className="space-y-1">
 							<Label htmlFor={`${uid}-project-name`}>Project name</Label>
 							<Input
 								id={`${uid}-project-name`}
-								value={draft.create.name}
+								value={fields.create.name}
 								autoComplete="off"
 								spellCheck={false}
 								aria-invalid={nameError !== null}
 								aria-describedby={`${uid}-project-name-hint`}
 								onChange={(event) => {
 									const name = event.target.value;
-									update((d) => ({ ...d, create: { ...d.create, name } }));
+									const current = fieldsRef.current;
+									handleTextChange({
+										...current,
+										create: { ...current.create, name },
+									});
 								}}
 							/>
 							<div id={`${uid}-project-name-hint`} aria-live="polite">
@@ -654,10 +873,14 @@ export function NeonNodeProperties({
 							<Label htmlFor={`${uid}-org`}>Organization</Label>
 							{organizations.length > 0 ? (
 								<Select
-									value={draft.create.org_id}
-									onValueChange={(org_id) =>
-										update((d) => ({ ...d, create: { ...d.create, org_id } }))
-									}
+									value={fields.create.org_id}
+									onValueChange={(org_id) => {
+										const current = fieldsRef.current;
+										commitDiscrete({
+											...current,
+											create: { ...current.create, org_id },
+										});
+									}}
 								>
 									<SelectTrigger id={`${uid}-org`}>
 										<SelectValue placeholder="Choose your Neon organization" />
@@ -670,8 +893,8 @@ export function NeonNodeProperties({
 										))}
 									</SelectContent>
 								</Select>
-							) : draft.create.org_id && orgError === null ? (
-								<NoteCode id={`${uid}-org`}>{draft.create.org_id}</NoteCode>
+							) : fields.create.org_id && orgError === null ? (
+								<NoteCode id={`${uid}-org`}>{fields.create.org_id}</NoteCode>
 							) : (
 								<NoteDetail id={`${uid}-org`}>
 									Log in to Neon to choose your organization, or enter its id
@@ -683,10 +906,14 @@ export function NeonNodeProperties({
 						<div className="space-y-1">
 							<Label htmlFor={`${uid}-region`}>Region</Label>
 							<Select
-								value={regionError === null ? draft.create.region_id : ""}
-								onValueChange={(region_id) =>
-									update((d) => ({ ...d, create: { ...d.create, region_id } }))
-								}
+								value={regionError === null ? fields.create.region_id : ""}
+								onValueChange={(region_id) => {
+									const current = fieldsRef.current;
+									commitDiscrete({
+										...current,
+										create: { ...current.create, region_id },
+									});
+								}}
 							>
 								<SelectTrigger id={`${uid}-region`}>
 									<SelectValue placeholder="Choose where the data lives" />
@@ -709,6 +936,14 @@ export function NeonNodeProperties({
 					</>
 				) : (
 					<div className="space-y-3">
+						{saved?.mode === "create" && deployed !== "no" && (
+							<StatusNote tone="warning">
+								<p>
+									Choose an existing project to switch. The project meroku
+									created stays in Neon with its data; meroku stops managing it.
+								</p>
+							</StatusNote>
+						)}
 						{authOk && organizations.length > 1 && (
 							<div className="space-y-1">
 								<Label htmlFor={`${uid}-reuse-org`}>Organization</Label>
@@ -733,16 +968,17 @@ export function NeonNodeProperties({
 									value={chosenProject ? chosenProject.id : ""}
 									onValueChange={(projectId) => {
 										const project = projects.find((p) => p.id === projectId);
-										update((d) => ({
-											...d,
+										const current = fieldsRef.current;
+										commitDiscrete({
+											...current,
 											reuse: {
 												project_id: projectId,
 												pg_version:
 													project && isReusePgVersion(project.pg_version)
 														? project.pg_version
-														: d.reuse.pg_version,
+														: current.reuse.pg_version,
 											},
-										}));
+										});
 									}}
 								>
 									<SelectTrigger id={`${uid}-project`}>
@@ -756,9 +992,9 @@ export function NeonNodeProperties({
 										))}
 									</SelectContent>
 								</Select>
-							) : draft.reuse.project_id && projectIdError === null ? (
+							) : fields.reuse.project_id && projectIdError === null ? (
 								<NoteCode id={`${uid}-project`}>
-									{draft.reuse.project_id}
+									{fields.reuse.project_id}
 								</NoteCode>
 							) : (
 								<NoteDetail id={`${uid}-project`}>
@@ -767,7 +1003,7 @@ export function NeonNodeProperties({
 								</NoteDetail>
 							)}
 						</div>
-						{draft.reuse.project_id !== "" && (
+						{fields.reuse.project_id !== "" && (
 							<div className="flex flex-wrap items-center gap-2">
 								<NoteDetail>Postgres version:</NoteDetail>
 								{pgVersion !== undefined ? (
@@ -795,39 +1031,42 @@ export function NeonNodeProperties({
 					label="Advanced: enter ids yourself"
 				>
 					<div className="space-y-4">
-						{draft.mode === "reuse" ? (
+						{fields.mode === "reuse" ? (
 							<>
 								<ManualField
 									id={`${uid}-manual-project`}
 									label="Project id"
-									value={draft.reuse.project_id}
+									value={fields.reuse.project_id}
 									placeholder="fake-project-000000"
 									error={projectIdError}
 									hint="Copy it from the project's settings in the Neon console."
-									onChange={(project_id) =>
-										update((d) => ({
-											...d,
-											reuse: { ...d.reuse, project_id },
-										}))
-									}
+									onChange={(project_id) => {
+										const current = fieldsRef.current;
+										handleTextChange({
+											...current,
+											reuse: { ...current.reuse, project_id },
+										});
+									}}
+									onCommit={commitPendingText}
 								/>
 								<div className="space-y-1">
 									<Label htmlFor={`${uid}-reuse-pg`}>Postgres version</Label>
 									<Select
 										value={
-											draft.reuse.pg_version !== undefined
-												? String(draft.reuse.pg_version)
+											fields.reuse.pg_version !== undefined
+												? String(fields.reuse.pg_version)
 												: ""
 										}
-										onValueChange={(value) =>
-											update((d) => ({
-												...d,
+										onValueChange={(value) => {
+											const current = fieldsRef.current;
+											commitDiscrete({
+												...current,
 												reuse: {
-													...d.reuse,
+													...current.reuse,
 													pg_version: Number(value) as NeonReusePgVersion,
 												},
-											}))
-										}
+											});
+										}}
 									>
 										<SelectTrigger id={`${uid}-reuse-pg`}>
 											<SelectValue placeholder="unknown — checked at deploy" />
@@ -851,41 +1090,49 @@ export function NeonNodeProperties({
 								<ManualField
 									id={`${uid}-manual-org`}
 									label="Organization id"
-									value={draft.create.org_id}
+									value={fields.create.org_id}
 									placeholder="org-fake-000000"
 									error={orgError}
 									hint="Copy it from your organization's settings in the Neon console."
-									onChange={(org_id) =>
-										update((d) => ({ ...d, create: { ...d.create, org_id } }))
-									}
+									onChange={(org_id) => {
+										const current = fieldsRef.current;
+										handleTextChange({
+											...current,
+											create: { ...current.create, org_id },
+										});
+									}}
+									onCommit={commitPendingText}
 								/>
 								<ManualField
 									id={`${uid}-manual-region`}
 									label="Region id"
-									value={draft.create.region_id}
+									value={fields.create.region_id}
 									placeholder="aws-us-east-1"
 									error={regionError}
 									hint="For a region not in the list above."
-									onChange={(region_id) =>
-										update((d) => ({
-											...d,
-											create: { ...d.create, region_id },
-										}))
-									}
+									onChange={(region_id) => {
+										const current = fieldsRef.current;
+										handleTextChange({
+											...current,
+											create: { ...current.create, region_id },
+										});
+									}}
+									onCommit={commitPendingText}
 								/>
 								<div className="space-y-1">
 									<Label htmlFor={`${uid}-create-pg`}>Postgres version</Label>
 									<Select
-										value={String(draft.create.pg_version)}
-										onValueChange={(value) =>
-											update((d) => ({
-												...d,
+										value={String(fields.create.pg_version)}
+										onValueChange={(value) => {
+											const current = fieldsRef.current;
+											commitDiscrete({
+												...current,
 												create: {
-													...d.create,
+													...current.create,
 													pg_version: Number(value) as NeonCreatePgVersion,
 												},
-											}))
-										}
+											});
+										}}
 									>
 										<SelectTrigger id={`${uid}-create-pg`}>
 											<SelectValue />
@@ -904,10 +1151,11 @@ export function NeonNodeProperties({
 						<div className="space-y-1">
 							<Label htmlFor={`${uid}-owner`}>Owner role</Label>
 							<Select
-								value={ownerError === null ? draft.owner_role : ""}
-								onValueChange={(owner_role) =>
-									update((d) => ({ ...d, owner_role }))
-								}
+								value={ownerError === null ? fields.owner_role : ""}
+								onValueChange={(owner_role) => {
+									const current = fieldsRef.current;
+									commitDiscrete({ ...current, owner_role });
+								}}
 							>
 								<SelectTrigger id={`${uid}-owner`}>
 									<SelectValue placeholder="Choose the owner role" />
@@ -927,17 +1175,21 @@ export function NeonNodeProperties({
 						<ManualField
 							id={`${uid}-manual-owner`}
 							label="Or type a role name"
-							value={draft.owner_role}
+							value={fields.owner_role}
 							placeholder={NEON_DEFAULT_OWNER_ROLE}
 							error={ownerError}
 							hint="A role that owns the project's databases."
-							onChange={(owner_role) => update((d) => ({ ...d, owner_role }))}
+							onChange={(owner_role) => {
+								const current = fieldsRef.current;
+								handleTextChange({ ...current, owner_role });
+							}}
+							onCommit={commitPendingText}
 						/>
 					</div>
 				</AdvancedSection>
 			</PanelCard>
 
-			{footer}
+			{problemsList}
 
 			{saved && (
 				<PanelCard
@@ -1051,6 +1303,7 @@ function ManualField({
 	error,
 	hint,
 	onChange,
+	onCommit,
 }: {
 	id: string;
 	label: string;
@@ -1059,6 +1312,7 @@ function ManualField({
 	error: string | null;
 	hint: string;
 	onChange: (value: string) => void;
+	onCommit?: () => void;
 }) {
 	return (
 		<div className="space-y-1">
@@ -1072,6 +1326,13 @@ function ManualField({
 				aria-invalid={error !== null}
 				aria-describedby={`${id}-hint`}
 				onChange={(event) => onChange(event.target.value.trim())}
+				onBlur={onCommit}
+				onKeyDown={(event) => {
+					if (event.key === "Enter") {
+						event.preventDefault();
+						onCommit?.();
+					}
+				}}
 			/>
 			<div id={`${id}-hint`} aria-live="polite">
 				{error ? (
@@ -1146,59 +1407,4 @@ function LookupStatus({
 		);
 	}
 	return null;
-}
-
-function SaveSection({
-	dirty,
-	problems,
-	replacing,
-	deployed,
-	onSave,
-	onDiscard,
-}: {
-	dirty: boolean;
-	problems: string[];
-	replacing: string[];
-	deployed: Deployed;
-	onSave: () => void;
-	onDiscard: () => void;
-}) {
-	if (!dirty && problems.length === 0) return null;
-	return (
-		<div className="space-y-3">
-			{problems.length > 0 && (
-				<div className="space-y-2" aria-live="polite">
-					{problems.map((problem) => (
-						<StatusNote key={problem} tone="error">
-							<p>{problem}</p>
-						</StatusNote>
-					))}
-				</div>
-			)}
-			{dirty && replacing.length > 0 && (
-				<Alert>
-					<AlertTitle>
-						{deployed === "yes"
-							? "This change replaces data in a deployed project"
-							: "If this project is deployed, this change replaces data"}
-					</AlertTitle>
-					<AlertDescription>
-						{replacing.map((message) => (
-							<p key={message}>{message}</p>
-						))}
-					</AlertDescription>
-				</Alert>
-			)}
-			{dirty && (
-				<div className="flex flex-wrap gap-2">
-					<Button type="button" disabled={problems.length > 0} onClick={onSave}>
-						Save Neon settings
-					</Button>
-					<Button type="button" variant="outline" onClick={onDiscard}>
-						Discard changes
-					</Button>
-				</div>
-			)}
-		</div>
-	);
 }

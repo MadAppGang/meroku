@@ -22,17 +22,16 @@ import {
  * behind. Access blocks are replaced whole too; removing one sets the key to
  * `undefined`, which the save path prunes before writing the YAML.
  *
- * The panels hold a draft and save it with one Save: the project fields, the
- * owner role and database names force Terraform to replace what they name, so
- * they are never written per keystroke.
+ * Valid changes are written immediately through `onConfigChange`. Changes that
+ * replace or release existing Neon resources ask for confirmation first.
  */
 
 /**
- * The editable state of the env's Neon block. It keeps both modes' fields, so
- * flipping the mode back and forth in the panel loses nothing; only the
- * active mode's fields are written.
+ * Current values of the env's Neon form, keeping both modes' fields so
+ * switching modes in the panel before choosing a project or organization loses
+ * nothing; only the active mode's fields are written to YAML.
  */
-export interface NeonDraft {
+export interface NeonConfigFields {
 	mode: "create" | "reuse";
 	create: {
 		name: string;
@@ -51,17 +50,17 @@ export interface NeonDraft {
 }
 
 /** Defaults for a new Neon block, e.g. a project named after the env. */
-export interface NeonDraftDefaults {
+export interface NeonConfigDefaults {
 	projectName?: string;
 	orgId?: string;
 	regionId?: string;
 }
 
-/** The draft for an env's current `neon` block, or for a new one. */
-export function neonDraftFromConfig(
+/** Form values for an env's current `neon` block, or for a new one. */
+export function neonValuesFromConfig(
 	neon: YamlNeonConfig | undefined,
-	defaults: NeonDraftDefaults = {},
-): NeonDraft {
+	defaults: NeonConfigDefaults = {},
+): NeonConfigFields {
 	return {
 		mode: neon?.mode ?? "create",
 		create: {
@@ -82,33 +81,34 @@ export function neonDraftFromConfig(
 }
 
 /**
- * The complete `neon` object for a draft, keys in the YAML reference order.
+ * The complete `neon` object for the given fields, keys in the YAML reference
+ * order.
  *
  * `saved` is the env's current `neon` block: `owner_role` is written when it
- * differs from `neondb_owner` or when the YAML already names it, so opening and
- * saving the panel does not add a line the user never wrote.
+ * differs from `neondb_owner` or when the YAML already names it, so editing
+ * another field does not add a line the user never wrote.
  */
 export function buildNeonUpdate(
-	draft: NeonDraft,
+	fields: NeonConfigFields,
 	saved?: YamlNeonConfig,
 ): YamlNeonConfig {
-	const neon: YamlNeonConfig = { mode: draft.mode };
+	const neon: YamlNeonConfig = { mode: fields.mode };
 
-	if (draft.mode === "reuse") {
-		neon.project_id = draft.reuse.project_id.trim();
-		if (draft.reuse.pg_version !== undefined) {
-			neon.pg_version = draft.reuse.pg_version;
+	if (fields.mode === "reuse") {
+		neon.project_id = fields.reuse.project_id.trim();
+		if (fields.reuse.pg_version !== undefined) {
+			neon.pg_version = fields.reuse.pg_version;
 		}
 	} else {
 		neon.project = {
-			name: draft.create.name.trim(),
-			org_id: draft.create.org_id.trim(),
-			region_id: draft.create.region_id.trim(),
-			pg_version: draft.create.pg_version,
+			name: fields.create.name.trim(),
+			org_id: fields.create.org_id.trim(),
+			region_id: fields.create.region_id.trim(),
+			pg_version: fields.create.pg_version,
 		};
 	}
 
-	const ownerRole = draft.owner_role.trim();
+	const ownerRole = fields.owner_role.trim();
 	if (
 		ownerRole !== "" &&
 		(ownerRole !== NEON_DEFAULT_OWNER_ROLE || saved?.owner_role !== undefined)
@@ -116,7 +116,7 @@ export function buildNeonUpdate(
 		neon.owner_role = ownerRole;
 	}
 
-	neon.databases = draft.databases.map((database) => ({
+	neon.databases = fields.databases.map((database) => ({
 		name: database.name.trim(),
 		create: database.create,
 	}));
@@ -133,8 +133,8 @@ export function getNeonAccess(
 	return config.services?.find((service) => service.name === target.name)?.neon;
 }
 
-/** The editable state of one service's access block. */
-export interface NeonAccessDraft {
+/** Current values of one service's access block. */
+export interface NeonAccessValues {
 	database: string;
 	schemas: string[];
 	access: NeonAccessLevel;
@@ -142,10 +142,10 @@ export interface NeonAccessDraft {
 	password_version?: number;
 }
 
-export function neonAccessDraftFromConfig(
+export function neonAccessValuesFromConfig(
 	access: YamlNeonAccess | undefined,
 	defaultDatabase = "",
-): NeonAccessDraft {
+): NeonAccessValues {
 	return {
 		database: access?.database ?? defaultDatabase,
 		schemas: [...(access?.schemas ?? NEON_DEFAULT_SCHEMAS)],
@@ -162,22 +162,22 @@ function isDefaultSchemas(schemas: readonly string[]): boolean {
 }
 
 /**
- * The complete access block for a draft. `schemas` is left out when it is the
- * default (`[public]`) and the YAML did not list it.
+ * The complete access block for the given values. `schemas` is left out when it
+ * is the default (`[public]`) and the YAML did not list it.
  */
 export function buildNeonAccess(
-	draft: NeonAccessDraft,
+	values: NeonAccessValues,
 	saved?: YamlNeonAccess,
 ): YamlNeonAccess {
-	const schemas = draft.schemas.map((schema) => schema.trim());
+	const schemas = values.schemas.map((schema) => schema.trim());
 	const writeSchemas =
 		!isDefaultSchemas(schemas) || saved?.schemas !== undefined;
 	return {
-		database: draft.database.trim(),
+		database: values.database.trim(),
 		...(writeSchemas ? { schemas } : {}),
-		access: draft.access,
-		...(draft.password_version !== undefined
-			? { password_version: draft.password_version }
+		access: values.access,
+		...(values.password_version !== undefined
+			? { password_version: values.password_version }
 			: {}),
 	};
 }
@@ -204,9 +204,25 @@ export function buildNeonAccessUpdate(
 }
 
 /**
- * A saved change that replaces or releases something in Neon, for the
- * "changing this replaces …" alerts. Which ones apply depends on whether the
- * project is deployed; the panel decides that from the lookup.
+ * Why a service access change needs confirmation, or null when it can be
+ * written immediately. Changing an already-valid database replaces the
+ * service's login role at the next deploy.
+ */
+export function neonAccessReplacingChange(
+	saved: YamlNeonAccess | undefined,
+	next: YamlNeonAccess,
+	declaredDatabases: readonly string[],
+	serviceLabel: string,
+): string | null {
+	if (!saved || !declaredDatabases.includes(saved.database)) return null;
+	if (saved.database === next.database) return null;
+	return `Changing the database replaces ${serviceLabel}'s database login at the next deploy. The login for ${saved.database} is removed and a new login is created for ${next.database}. The data in ${saved.database} stays in Neon.`;
+}
+
+/**
+ * A change that replaces or releases something in Neon, for confirmation
+ * dialogs. Which ones apply depends on whether the project is deployed; the
+ * panel decides that from the lookup.
  */
 export type NeonReplacingChange =
 	| {
@@ -217,7 +233,9 @@ export type NeonReplacingChange =
 	| { kind: "owner_role"; message: string }
 	| { kind: "database_renamed"; from: string; to: string; message: string }
 	| { kind: "database_removed"; name: string; message: string }
-	| { kind: "mode_to_reuse"; message: string };
+	| { kind: "mode_to_reuse"; message: string }
+	| { kind: "mode_to_create"; message: string }
+	| { kind: "reuse_project"; message: string };
 
 const PROJECT_FIELD_LABELS = {
 	org_id: "organization",
@@ -227,13 +245,14 @@ const PROJECT_FIELD_LABELS = {
 
 /**
  * The changes between the saved `neon` block and the next one that would
- * replace a created project or database, or release one meroku created.
+ * replace a created project or database, or release one meroku manages.
  * meroku never deletes Neon data: a replacement is refused at deploy, and a
  * released database stays in Neon.
  */
 export function neonReplacingChanges(
 	saved: YamlNeonConfig | undefined,
 	next: YamlNeonConfig,
+	deployedDatabases?: ReadonlySet<string>,
 ): NeonReplacingChange[] {
 	if (!saved) return [];
 	const changes: NeonReplacingChange[] = [];
@@ -243,6 +262,27 @@ export function neonReplacingChanges(
 			kind: "mode_to_reuse",
 			message:
 				"The project meroku created stays in Neon with its data; meroku stops managing it and uses the project you chose.",
+		});
+	}
+
+	if (saved.mode === "reuse" && next.mode === "create") {
+		changes.push({
+			kind: "mode_to_create",
+			message:
+				"The project you were using stays in Neon with its data; meroku stops managing any databases and logins it created there and creates a new project.",
+		});
+	}
+
+	if (
+		saved.mode === "reuse" &&
+		next.mode === "reuse" &&
+		Boolean(saved.project_id) &&
+		saved.project_id !== next.project_id
+	) {
+		changes.push({
+			kind: "reuse_project",
+			message:
+				"The project you were using stays in Neon with its data; meroku stops managing any databases and logins it created there and uses the project you chose.",
 		});
 	}
 
@@ -283,6 +323,7 @@ export function neonReplacingChanges(
 	const savedNames = new Set(savedDatabases.map((database) => database.name));
 	savedDatabases.forEach((database, index) => {
 		if (!database.create || nextNames.has(database.name)) return;
+		if (deployedDatabases && !deployedDatabases.has(database.name)) return;
 		const successor = nextDatabases[index];
 		if (successor?.create && !savedNames.has(successor.name)) {
 			changes.push({
