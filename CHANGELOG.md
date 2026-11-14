@@ -1,5 +1,12 @@
 # Changelog
 
+## v6.0.3
+
+### Pricing
+- The console no longer prints a line for every cost meroku works out (EC2 pool, ECS, RDS,
+  Aurora, S3), which filled it each time the web UI loaded. Failures, such as an instance
+  type with no price, are still reported, once.
+
 ## v6.0.2
 
 ### Web UI
