@@ -374,6 +374,55 @@ export interface SSMParameterCreateRequest {
 	overwrite?: boolean;
 }
 
+/**
+ * One secret of a vault: a name the YAML declares, a parameter that exists in
+ * AWS, or both. The value is never part of it: vault values are write-only.
+ */
+export interface VaultSecretStatus {
+	name: string;
+	envName?: string;
+	/** The name is in the saved YAML's `secrets` list. */
+	declared: boolean;
+	/** A parameter with this name exists under the vault's path. */
+	set: boolean;
+	type?: string;
+	version?: number;
+	lastModified?: string;
+}
+
+export interface VaultSecretsListing {
+	vault: string;
+	path: string;
+	secrets: VaultSecretStatus[];
+}
+
+/** A failed vault secrets request, with the HTTP status the server answered. */
+export class VaultSecretsError extends Error {
+	readonly status: number;
+	constructor(message: string, status: number) {
+		super(message);
+		this.name = "VaultSecretsError";
+		this.status = status;
+	}
+}
+
+async function vaultSecretsResponse<T>(
+	response: Response,
+	fallback: string,
+): Promise<T> {
+	if (!response.ok) {
+		let message = fallback;
+		try {
+			const error: ErrorResponse = await response.json();
+			if (error.error) message = error.error;
+		} catch {
+			// The body was not JSON; keep the fallback message.
+		}
+		throw new VaultSecretsError(message, response.status);
+	}
+	return response.json();
+}
+
 // S3 interfaces
 export interface S3FileContent {
 	bucket: string;
@@ -1508,6 +1557,53 @@ export const infrastructureApi = {
 			throw new Error(error.error || "Failed to list SSM parameters");
 		}
 		return response.json();
+	},
+
+	// Vault secrets. Values are write-only: no call returns one.
+	async listVaultSecrets(
+		env: string,
+		vault: string,
+	): Promise<VaultSecretsListing> {
+		const params = new URLSearchParams({ env, vault });
+		const response = await fetch(
+			`${API_BASE_URL}/api/vaults/secrets?${params}`,
+		);
+		const listing = await vaultSecretsResponse<VaultSecretsListing>(
+			response,
+			"Failed to list the vault's secrets",
+		);
+		return { ...listing, secrets: listing.secrets ?? [] };
+	},
+
+	async setVaultSecret(
+		env: string,
+		vault: string,
+		name: string,
+		value: string,
+	): Promise<{ name: string; version: number }> {
+		const params = new URLSearchParams({ env, vault });
+		const response = await fetch(
+			`${API_BASE_URL}/api/vaults/secrets?${params}`,
+			{
+				method: "PUT",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ name, value }),
+			},
+		);
+		return vaultSecretsResponse(response, "Failed to set the secret's value");
+	},
+
+	async deleteVaultSecret(
+		env: string,
+		vault: string,
+		name: string,
+	): Promise<{ name: string; deleted: boolean; warning?: string }> {
+		const params = new URLSearchParams({ env, vault, name });
+		const response = await fetch(
+			`${API_BASE_URL}/api/vaults/secrets?${params}`,
+			{ method: "DELETE" },
+		);
+		return vaultSecretsResponse(response, "Failed to delete the secret");
 	},
 
 	// S3 File APIs

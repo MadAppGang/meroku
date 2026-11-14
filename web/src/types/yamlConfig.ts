@@ -714,15 +714,21 @@ export interface YamlInfrastructureConfig {
 /** One shared SSM vault, `/<env>/<project>/vault/<name>/`. */
 export interface VaultDefinition {
 	name: string;
+	/**
+	 * The vault's secret names; each is a parameter directly under the path.
+	 * Values live only in AWS. Required by generate; `[]` is a vault with
+	 * nothing yet, and an absent key is the older shape the Vaults tab imports.
+	 */
+	secrets?: string[];
 }
 
 /** `read` (the default when absent) or `read_write`. */
 export type VaultAccess = "read" | "read_write";
 
 /**
- * A workload's connection to a vault. Every parameter directly under the vault
- * becomes a secret of the workload, named after its last path segment,
- * upper-cased, behind `prefix` and an underscore.
+ * A workload's connection to a vault. Every secret the vault lists becomes a
+ * secret of the workload, named after it, upper-cased, behind `prefix` and an
+ * underscore.
  */
 export interface VaultConnection {
 	name: string;

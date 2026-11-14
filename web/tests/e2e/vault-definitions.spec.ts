@@ -12,13 +12,13 @@ test("Vaults · deleting a vault disconnects every workload and keeps other vaul
   await openPanel(page, app, "Vaults", "Vaults");
   await page.getByRole("textbox", { name: "New vault", exact: true }).fill("shared");
   await page.getByRole("button", { name: "Add", exact: true }).click();
-  await expect.poll(() => envYaml.read().vaults).toEqual([{ name: "payments" }, { name: "shared" }]);
+  await expect.poll(() => envYaml.read().vaults).toEqual([{ name: "payments" }, { name: "shared", secrets: [] }]);
   await reopen(page, app, "Vaults", "Vaults");
   await expect(page.getByRole("heading", { name: "shared", exact: true })).toBeVisible();
   await evidence("vaults-added");
 
   await page.getByRole("button", { name: "Remove vault payments", exact: true }).click();
-  await expect.poll(() => envYaml.read().vaults).toEqual([{ name: "shared" }]);
+  await expect.poll(() => envYaml.read().vaults).toEqual([{ name: "shared", secrets: [] }]);
   const targets = [["workload", "backend", "Backend service"], ["services", "api", "api"],
     ["scheduled_tasks", "nightly", "nightly"], ["event_processor_tasks", "mailer", "mailer"]];
   await expect.poll(() => targets.map(([kind, name]) =>

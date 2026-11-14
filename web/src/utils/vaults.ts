@@ -6,6 +6,11 @@ import type {
 // Same rules as app/vaults.go and modules/vaults.
 const VAULT_NAME_PATTERN = /^[a-z0-9]([a-z0-9_-]{0,30}[a-z0-9])?$/;
 const VAULT_PREFIX_PATTERN = /^[A-Z][A-Z0-9_]*$/;
+// Lower case only, so two names never become the same env var name.
+const VAULT_SECRET_PATTERN = /^[a-z][a-z0-9_]{0,62}$/;
+
+/** The longest value the server accepts for a vault secret. */
+export const VAULT_SECRET_VALUE_MAX = 4096;
 
 /** The SSM path of a vault, with its trailing slash. */
 export function vaultPath(config: YamlInfrastructureConfig, name: string) {
@@ -28,6 +33,29 @@ export function vaultNameError(
 	}
 	if (existing.includes(name)) {
 		return `A vault named "${name}" already exists.`;
+	}
+	return null;
+}
+
+/** Why a new secret name cannot be used, or `null` when it can. */
+export function vaultSecretNameError(
+	name: string,
+	existing: string[],
+): string | null {
+	if (name === "") return null;
+	if (!VAULT_SECRET_PATTERN.test(name)) {
+		return "Use up to 63 lower-case letters, digits and underscores, starting with a letter.";
+	}
+	if (existing.includes(name)) {
+		return `This vault already has a secret named "${name}".`;
+	}
+	return null;
+}
+
+/** Why a secret value cannot be sent, or `null` when it can. */
+export function vaultSecretValueError(value: string): string | null {
+	if (value.length > VAULT_SECRET_VALUE_MAX) {
+		return `A value has at most ${VAULT_SECRET_VALUE_MAX} characters.`;
 	}
 	return null;
 }
