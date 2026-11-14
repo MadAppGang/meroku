@@ -100,16 +100,38 @@ type Env struct {
 	Valkey *Valkey `yaml:"valkey,omitempty"`
 }
 
-// Vault is one entry of the top-level vaults list.
+// Vault is one entry of the top-level vaults list. Secrets are the names of
+// its parameters, /<env>/<project>/vault/<name>/<secret>; the values live only
+// in SSM.
+//
+// A missing secrets key and an empty list mean different things: missing is
+// the shape from before the list existed, which meroku generate refuses so the
+// names get imported, while [] is a vault with nothing in it yet. Secrets is
+// nil for the first and non-nil for the second, and MarshalYAML keeps the
+// difference on save.
 type Vault struct {
-	Name string `yaml:"name"`
+	Name    string   `yaml:"name"`
+	Secrets []string `yaml:"secrets"`
 }
 
-// VaultConnection connects a workload to a vault: every parameter directly
-// under the vault becomes a secret of the workload, named after its last path
-// segment, upper-cased, behind Prefix and an underscore. Access is read (the
-// default when empty) or read_write, which also lets the application write the
-// vault's parameters.
+// MarshalYAML writes secrets only when the key was there, so a struct save
+// never turns a vault without a list into one that declares nothing.
+func (v Vault) MarshalYAML() (interface{}, error) {
+	if v.Secrets == nil {
+		return struct {
+			Name string `yaml:"name"`
+		}{v.Name}, nil
+	}
+	return struct {
+		Name    string   `yaml:"name"`
+		Secrets []string `yaml:"secrets"`
+	}{v.Name, v.Secrets}, nil
+}
+
+// VaultConnection connects a workload to a vault: every secret the vault
+// declares becomes a secret of the workload, upper-cased, behind Prefix and an
+// underscore. Access is read (the default when empty) or read_write, which
+// also lets the application write the vault's parameters.
 type VaultConnection struct {
 	Name   string `yaml:"name"`
 	Access string `yaml:"access,omitempty"`

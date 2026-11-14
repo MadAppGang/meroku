@@ -7,7 +7,7 @@ import (
 
 func TestQACapabilityVaultsRenderConnectionsForEveryKind(t *testing.T) {
 	m := qaCapabilityEnv()
-	m["vaults"] = qaCapabilityList(qaCapabilityMap{"name": "shared"}, qaCapabilityMap{"name": "payments"})
+	m["vaults"] = qaCapabilityList(qaCapabilityMap{"name": "shared", "secrets": []interface{}{"api_key"}}, qaCapabilityMap{"name": "payments", "secrets": []interface{}{"database_url"}})
 	for _, kind := range qaCapabilityKinds() {
 		qaCapabilityOwner(m, kind)["vaults"] = qaCapabilityList(qaCapabilityMap{"name": "shared"})
 	}

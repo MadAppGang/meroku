@@ -1,17 +1,20 @@
-# Shared SSM vaults. A vault is the SSM path /<env>/<project>/vault/<name>/; every
-# parameter directly under it becomes a secret of each workload connected to the
-# vault, named after its last path segment, upper-cased, behind the connection's
-# prefix. See ai_docs/VAULTS.md.
+# Shared SSM vaults. A vault is the SSM path /<env>/<project>/vault/<name>/ and a
+# list of secret names declared in the YAML. Each declared name becomes a secret
+# of every workload connected to the vault, upper-cased, behind the connection's
+# prefix, with the parameter /<env>/<project>/vault/<vault>/<name> as its value.
+# See ai_docs/VAULTS.md.
 #
-# Nothing is created for a vault itself: SSM has no folders. This module reads
-# the parameters, grants the roles and hands the secrets back to the workloads.
+# Terraform never creates, reads or deletes a vault parameter's value: values are
+# written from the web UI's Vaults tab, and a destroy leaves them in SSM. This
+# module grants the roles, hands the secrets back to the workloads and warns at
+# plan about a declared secret that has no value yet.
 
 data "aws_region" "current" {}
 data "aws_caller_identity" "current" {}
 data "aws_partition" "current" {}
 
 locals {
-  # Vaults some workload is connected to; only these are read.
+  # Vaults some workload is connected to; only these are granted and checked.
   vaults_in_use = toset([for c in var.connections : c.vault])
 
   vault_path = { for v in local.vaults_in_use : v => "/${var.env}/${var.project}/vault/${v}" }
@@ -28,20 +31,17 @@ locals {
   read_write_workloads = toset([for c in var.connections : c.workload if c.access == "read_write"])
 }
 
-# One read per vault in use.
-#
-# No depends_on, so the read happens at plan: the secret names are known when
-# the task definitions are planned, and the collision checks on them run at
-# plan. Adding or removing a parameter in a vault therefore changes every
-# connected task definition on the next plan. Not recursive: a vault is flat,
-# and a nested path would turn two parameters with the same last segment into
-# one secret name twice.
-data "aws_ssm_parameters_by_path" "vault" {
-  for_each = local.vaults_in_use
+# A declared secret with no parameter in SSM is a warning, never an error: the
+# plan shows it, and a new task of a connected workload cannot start until the
+# value is set. One check per vault in use that declares a secret; a check
+# block's own data source cannot use for_each, hence the child module.
+module "value_check" {
+  source   = "./value_check"
+  for_each = { for v in local.vaults_in_use : v => var.vaults[v] if length(var.vaults[v]) > 0 }
 
-  path            = local.vault_path[each.key]
-  recursive       = false
-  with_decryption = false
+  vault = each.key
+  path  = local.vault_path[each.key]
+  names = each.value
 }
 
 # Every connected workload's execution role may read its vaults' parameters:
@@ -67,7 +67,7 @@ resource "aws_iam_role_policy" "execution_read" {
 # read_write lets the application itself, on its task role, read and write the
 # vault's parameters. There is no delete: a deleted parameter is still listed in
 # the running task definitions, and every new task of every connected workload
-# would fail to start until the next apply.
+# would fail to start until it is set again.
 resource "aws_iam_role_policy" "task_read_write" {
   for_each = { for w in local.read_write_workloads : w => [
     for c in local.workload_connections[w] : c.vault if c.access == "read_write"
@@ -96,21 +96,22 @@ resource "aws_iam_role_policy" "task_read_write" {
 }
 
 locals {
-  # Every secret each connected workload gets, unsorted.
+  # Every secret each connected workload gets, unsorted. Built from the YAML
+  # list alone, so every name is known at plan and nothing waits for SSM.
   workload_secret_entries = { for w, conns in local.workload_connections : w => flatten([
     for c in conns : [
-      for p in data.aws_ssm_parameters_by_path.vault[c.vault].names : {
-        name      = upper("${c.prefix == "" ? "" : "${c.prefix}_"}${reverse(split("/", p))[0]}")
-        valueFrom = p
-        origin    = "vault \"${c.vault}\" (${p})"
+      for n in var.vaults[c.vault] : {
+        name      = upper("${c.prefix == "" ? "" : "${c.prefix}_"}${n}")
+        valueFrom = "${local.vault_arn[c.vault]}/${n}"
+        origin    = "vault \"${c.vault}\" (${local.vault_path[c.vault]}/${n})"
       }
     ]
   ]) }
 
-  # Sorted by name, then parameter, so reordering the YAML or the SSM listing
-  # changes no task definition. A workload is connected to a vault once, so the
-  # parameter makes every key unique and two parameters that map to one name
-  # both stay in the list for the collision check to report.
+  # Sorted by name, then parameter, so reordering the YAML changes no task
+  # definition. A workload is connected to a vault once, so the parameter makes
+  # every key unique and two secrets that map to one name both stay in the list
+  # for the collision check to report.
   workload_secrets_sorted = { for w, entries in local.workload_secret_entries : w => [
     for key in sort([for e in entries : "${e.name} ${e.valueFrom}"]) :
     one([for e in entries : e if "${e.name} ${e.valueFrom}" == key])

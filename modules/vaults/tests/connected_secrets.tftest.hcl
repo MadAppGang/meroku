@@ -1,5 +1,21 @@
-# Vault discovery, observable secret mappings and least-privilege roles.
-mock_provider "aws" {}
+# Secret mappings from the declared lists, the value checks and least-privilege roles.
+#
+# terraform test fails a run on a failed check block, where a plan only warns.
+# Every vault's value check reads this one answer and compares last segments,
+# so it lists every secret name the runs below declare: the checks pass and the
+# runs test the mapping. tests/value_check.tftest.hcl tests the warning itself.
+mock_provider "aws" {
+  mock_data "aws_ssm_parameters_by_path" {
+    defaults = {
+      names = [
+        "/dev/myapp/vault/any/api_key",
+        "/dev/myapp/vault/any/database_url",
+        "/dev/myapp/vault/any/env",
+        "/dev/myapp/vault/any/token"
+      ]
+    }
+  }
+}
 
 override_data {
   target = data.aws_region.current
@@ -22,6 +38,11 @@ variables {
     api     = { task_role_name = "api-task", execution_role_name = "api-execution" }
     worker  = { task_role_name = "worker-task", execution_role_name = "worker-execution" }
   }
+  vaults = {
+    shared   = ["database_url", "api_key"]
+    payments = ["env", "database_url"]
+    unused   = ["token"]
+  }
   connections = [
     { workload = "api", vault = "payments", access = "read_write", prefix = "PAY" },
     { workload = "backend", vault = "shared" },
@@ -32,25 +53,6 @@ variables {
 run "vault_names_paths_and_origins_are_sorted" {
   command = plan
 
-  override_data {
-    target = data.aws_ssm_parameters_by_path.vault["shared"]
-    values = {
-      names = [
-        "/dev/myapp/vault/shared/database_url",
-        "/dev/myapp/vault/shared/api_key"
-      ]
-    }
-  }
-  override_data {
-    target = data.aws_ssm_parameters_by_path.vault["payments"]
-    values = {
-      names = [
-        "/dev/myapp/vault/payments/env",
-        "/dev/myapp/vault/payments/database_url"
-      ]
-    }
-  }
-
   assert {
     # A directory path may be represented with or without its final slash.
     condition     = { for name, path in output.vault_paths : name => trimsuffix(path, "/") } == { shared = "/dev/myapp/vault/shared", payments = "/dev/myapp/vault/payments" }
@@ -58,11 +60,8 @@ run "vault_names_paths_and_origins_are_sorted" {
   }
 
   assert {
-    condition = (
-      toset(keys(data.aws_ssm_parameters_by_path.vault)) == toset(["shared", "payments"]) &&
-      alltrue([for d in data.aws_ssm_parameters_by_path.vault : d.recursive == false && d.with_decryption == false])
-    )
-    error_message = "Discover only connected vaults, nonrecursively and without decrypting values."
+    condition     = toset(keys(module.value_check)) == toset(["shared", "payments"])
+    error_message = "Check the values of connected vaults only, one check per vault."
   }
 
   assert {
@@ -84,12 +83,12 @@ run "vault_names_paths_and_origins_are_sorted" {
       } :
       alltrue([
         for secret in output.secrets["api"] :
-        (secret.valueFrom == path || secret.valueFrom == "arn:aws:ssm:us-east-1:000000000000:parameter${path}") &&
+        secret.valueFrom == "arn:aws:ssm:us-east-1:000000000000:parameter${path}" &&
         strcontains(secret.origin, path)
         if secret.name == name
       ])
     ])
-    error_message = "Every secret must reference the actual listed SSM parameter and retain its origin path for collision diagnostics."
+    error_message = "Every secret must reference its parameter by ARN and retain its origin path for collision diagnostics."
   }
 
   assert {
@@ -104,25 +103,6 @@ run "vault_names_paths_and_origins_are_sorted" {
 
 run "vault_grants_separate_execution_reads_from_task_writes" {
   command = plan
-
-  override_data {
-    target = data.aws_ssm_parameters_by_path.vault["shared"]
-    values = {
-      names = [
-        "/dev/myapp/vault/shared/database_url",
-        "/dev/myapp/vault/shared/api_key"
-      ]
-    }
-  }
-  override_data {
-    target = data.aws_ssm_parameters_by_path.vault["payments"]
-    values = {
-      names = [
-        "/dev/myapp/vault/payments/env",
-        "/dev/myapp/vault/payments/database_url"
-      ]
-    }
-  }
 
   assert {
     condition     = toset([for p in aws_iam_role_policy.execution_read : p.role]) == toset(["api-execution", "backend-execution"])
@@ -199,12 +179,82 @@ run "no_connections_create_no_secrets_or_grants" {
 
   assert {
     condition = (
-      length(data.aws_ssm_parameters_by_path.vault) == 0 &&
+      length(module.value_check) == 0 &&
       length(aws_iam_role_policy.execution_read) == 0 &&
       length(aws_iam_role_policy.task_read_write) == 0 &&
       alltrue([for w, secrets in output.secrets : length(secrets) == 0]) &&
       toset(keys(output.secrets)) == toset(["backend", "api", "worker"])
     )
-    error_message = "Without connections there must be no vault lookup or grant, but each workload still has an empty secrets output."
+    error_message = "Without connections there must be no value check or grant, but each workload still has an empty secrets output."
   }
+}
+
+run "the_declared_list_alone_decides_the_secrets" {
+  command = plan
+
+  variables {
+    vaults = {
+      shared   = ["api_key", "database_url"]
+      payments = []
+    }
+    connections = [
+      { workload = "backend", vault = "shared" },
+      { workload = "worker", vault = "payments" }
+    ]
+  }
+
+  assert {
+    condition = (
+      [for s in output.secrets["backend"] : s.name] == ["API_KEY", "DATABASE_URL"] &&
+      length(output.secrets["worker"]) == 0 &&
+      toset(keys(aws_iam_role_policy.execution_read)) == toset(["backend", "worker"])
+    )
+    error_message = "Reordering the YAML list changes nothing, and a vault with no secrets yet gives none but still grants the read."
+  }
+
+  assert {
+    condition     = toset(keys(module.value_check)) == toset(["shared"])
+    error_message = "A vault that declares no secret has nothing to check."
+  }
+}
+
+run "a_secret_name_outside_the_pattern_is_refused" {
+  command = plan
+
+  variables {
+    vaults = {
+      shared = ["Database_URL"]
+    }
+    connections = []
+  }
+
+  expect_failures = [var.vaults]
+}
+
+run "a_secret_listed_twice_is_refused" {
+  command = plan
+
+  variables {
+    vaults = {
+      shared = ["token", "token"]
+    }
+    connections = []
+  }
+
+  expect_failures = [var.vaults]
+}
+
+run "a_connection_to_an_undeclared_vault_is_refused" {
+  command = plan
+
+  variables {
+    vaults = {
+      shared = ["token"]
+    }
+    connections = [
+      { workload = "api", vault = "payments" }
+    ]
+  }
+
+  expect_failures = [var.connections]
 }

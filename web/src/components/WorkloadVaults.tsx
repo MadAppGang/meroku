@@ -13,6 +13,7 @@ import {
 	vaultSecretName,
 } from "../utils/vaults";
 import { Alert, AlertDescription } from "./ui/alert";
+import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import {
 	Card,
@@ -30,6 +31,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "./ui/select";
+import { NoteDetail, StatusNote } from "./ui/status-note";
 
 interface VaultConnectionsEditorProps {
 	config: YamlInfrastructureConfig;
@@ -202,20 +204,14 @@ function VaultConnectionRow({
 							if (e.key === "Enter") commitPrefix();
 						}}
 					/>
-					{prefixError ? (
-						<p className="text-sm text-danger">{prefixError}</p>
-					) : (
-						<p className="text-xs text-muted-foreground">
-							{vaultPath(config, connection.name)}database_url becomes{" "}
-							<span className="font-mono">
-								{vaultSecretName(savedPrefix, "database_url")}
-							</span>
-							.
-							{savedPrefix === "" &&
-								" Without a prefix, a parameter named env would become ENV, which meroku reserves; plan refuses it."}
-						</p>
-					)}
+					{prefixError && <StatusNote tone="error">{prefixError}</StatusNote>}
 				</div>
+				<VaultSecretsReceived
+					secrets={
+						config.vaults?.find((v) => v.name === connection.name)?.secrets
+					}
+					prefix={savedPrefix}
+				/>
 				{connection.access === "read_write" && (
 					<p className="text-xs text-muted-foreground">
 						The application may also create and update this vault's parameters.
@@ -224,6 +220,53 @@ function VaultConnectionRow({
 				)}
 			</CardContent>
 		</Card>
+	);
+}
+
+/**
+ * The secrets a connection gives the workload: each name the vault lists,
+ * upper-cased, behind the connection's prefix.
+ */
+function VaultSecretsReceived({
+	secrets,
+	prefix,
+}: {
+	/** The vault's `secrets` list; `undefined` when the YAML has no such key. */
+	secrets: string[] | undefined;
+	prefix: string;
+}) {
+	if (secrets === undefined) {
+		return (
+			<NoteDetail>
+				This vault does not list its secret names yet. List them on the Vaults
+				node.
+			</NoteDetail>
+		);
+	}
+	if (secrets.length === 0) {
+		return (
+			<NoteDetail>
+				This vault has no secrets yet. Add them on the Vaults node.
+			</NoteDetail>
+		);
+	}
+	return (
+		<div className="space-y-1">
+			<NoteDetail>This workload gets:</NoteDetail>
+			<div className="flex flex-wrap gap-2">
+				{secrets.map((name) => (
+					<Badge key={name} variant="code">
+						{vaultSecretName(prefix, name)}
+					</Badge>
+				))}
+			</div>
+			{prefix === "" && secrets.includes("env") && (
+				<StatusNote tone="error">
+					Without a prefix, the secret env becomes ENV, which meroku reserves.
+					Add a prefix.
+				</StatusNote>
+			)}
+		</div>
 	);
 }
 
@@ -328,9 +371,9 @@ export function WorkloadVaults({
 					Vaults
 				</CardTitle>
 				<CardDescription>
-					Every parameter of a connected vault reaches this workload as a
-					secret. Read lets the container receive them; read and write also lets
-					the application create and update them.
+					Every secret a connected vault lists reaches this workload. Read lets
+					the container receive them; read and write also lets the application
+					create and update them.
 				</CardDescription>
 			</CardHeader>
 			<CardContent>

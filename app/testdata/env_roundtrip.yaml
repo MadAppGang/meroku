@@ -295,7 +295,11 @@ data_bucket:
     - cleanup
 vaults:
 - name: shared
+  secrets:
+  - database_url
+  - api_key
 - name: payments
+  secrets: []
 event_bus:
   enabled: true
 valkey:

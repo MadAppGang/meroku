@@ -115,7 +115,9 @@ data_bucket:
       read: [nightly, mailer]
 vaults:
   - name: shared
+    secrets: [database_url, api_key]
   - name: payments
+    secrets: []
 event_bus:
   enabled: false
 valkey:

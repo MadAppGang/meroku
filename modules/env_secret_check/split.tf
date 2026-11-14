@@ -65,10 +65,10 @@ locals {
       "- ${n} is a plain environment variable (from ${w.yaml_field} in ${w.yaml_file}, ${w.defaults_source} or a meroku feature) and also the secret from ${local.known_origins[k][n]}. Keep exactly one: remove the variable, or connect the vault with a prefix so the secret gets another name."
     ],
     [for n in local.known_duplicates[k] :
-      "- ${n} would be set by more than one secret: ${local.known_origins[k][n]}. Give the connected vaults different prefixes, or rename one of the parameters."
+      "- ${n} would be set by more than one secret: ${local.known_origins[k][n]}. Give the connected vaults different prefixes, or rename one of the secrets in its vault's secrets list."
     ],
     contains(local.known_env_overlap[k], "ENV") || contains(local.known_duplicates[k], "ENV") ? [
-      "ENV is reserved. meroku creates ${w.ssm_path}/env itself and sets it as the secret ENV. A vault parameter named env, connected without a prefix, becomes ENV as well; connect that vault with a prefix (prefix PAY makes it PAY_ENV, which is allowed) or rename the parameter. An ENV in ${w.yaml_field} is removed from the YAML and set with: aws ssm put-parameter --name ${w.ssm_path}/env --value <value> --overwrite"
+      "ENV is reserved. meroku creates ${w.ssm_path}/env itself and sets it as the secret ENV. A vault secret named env, connected without a prefix, becomes ENV as well; connect that vault with a prefix (prefix PAY makes it PAY_ENV, which is allowed) or rename the secret in the vault's secrets list. An ENV in ${w.yaml_field} is removed from the YAML and set with: aws ssm put-parameter --name ${w.ssm_path}/env --value <value> --overwrite"
     ] : [],
   ) }
 

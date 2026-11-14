@@ -1,6 +1,7 @@
 "use client";
 
 import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog";
+import type { VariantProps } from "class-variance-authority";
 import type * as React from "react";
 import { buttonVariants } from "./button";
 import { cn } from "./utils";
@@ -117,13 +118,19 @@ function AlertDialogDescription({
 	);
 }
 
+/**
+ * The confirming button. `variant="destructive"` for an action that deletes
+ * something that cannot be brought back.
+ */
 function AlertDialogAction({
 	className,
+	variant,
 	...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Action>) {
+}: React.ComponentProps<typeof AlertDialogPrimitive.Action> &
+	Pick<VariantProps<typeof buttonVariants>, "variant">) {
 	return (
 		<AlertDialogPrimitive.Action
-			className={cn(buttonVariants(), className)}
+			className={cn(buttonVariants({ variant }), className)}
 			{...props}
 		/>
 	);

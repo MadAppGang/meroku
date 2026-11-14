@@ -42,8 +42,9 @@ variable "workloads" {
     `environment` (extra_env). Each must appear in `environment` exactly once.
     `known_secrets` are the secrets known at plan whatever the SSM reads return:
     ENV (origin "<ssm_path>/env", which meroku always creates) and every secret
-    the capability modules add, such as vault parameters. `discovered_secrets`
-    are the names read under the workload's own path other than
+    the capability modules add, such as vault secrets, whose names come from
+    the YAML's vaults[].secrets lists. Nothing is discovered from a vault.
+    `discovered_secrets` are the names read under the workload's own path other than
     "<ssm_path>/env". That read may be postponed to apply, so nothing computed
     from it may decide `valid_known`.
 

@@ -94,10 +94,20 @@ pointer with `omitempty` too.
 
 `vaults` ([VAULTS.md](./VAULTS.md)) is another: the top-level list and each
 workload's `vaults` connections are optional. Absent means no vaults and no
-connections, which renders a `vaults` module that reads nothing and grants
+connections, which renders a `vaults` module that checks nothing and grants
 nothing, so there is nothing to write. The struct fields (`Env.Vaults` and
 `Vaults` on the backend workload, services, scheduled tasks and event tasks)
 use `omitempty`.
+
+`vaults[].secrets`, the list of each vault's secret names, has no migration on
+purpose, although a vault without it is refused by `meroku generate`. The names
+are the parameters already under the vault's path in SSM, and a migration reads
+only the YAML: it cannot know them. Writing `secrets: []` instead would let the
+next apply drop every vault secret from every connected task definition. So the
+key stays absent until the user fills it, and the refusal says how: the web UI's
+Vaults tab lists the names in SSM and imports them. `Vault.MarshalYAML` writes
+`secrets` only when the key was there, so a struct save keeps a missing list
+missing and `[]` as `[]`.
 
 `event_bus`, and `events` on `workload`, `services[]`, `scheduled_tasks[]` and
 `event_processor_tasks[]`, with `event_processor_tasks[].rules[].bus`
