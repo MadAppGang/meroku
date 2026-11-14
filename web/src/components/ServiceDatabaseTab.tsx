@@ -1,5 +1,5 @@
 import { ChevronDown, Database, KeyRound, X } from "lucide-react";
-import { type ReactNode, useEffect, useId, useState } from "react";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { infrastructureApi } from "../api/infrastructure";
 import type {
 	NeonAccessLevel,
@@ -7,23 +7,39 @@ import type {
 	NeonSchemasOptions,
 	NeonSchemasResponse,
 } from "../types/neon";
-import type { YamlInfrastructureConfig } from "../types/yamlConfig";
+import type {
+	YamlInfrastructureConfig,
+	YamlNeonAccess,
+} from "../types/yamlConfig";
 import { neonSchemaChoices, neonTargetLabel } from "../utils/neonChoices";
 import {
 	buildNeonAccess,
 	buildNeonAccessUpdate,
 	getNeonAccess,
-	type NeonAccessDraft,
-	neonAccessDraftFromConfig,
+	type NeonAccessValues,
+	neonAccessReplacingChange,
+	neonAccessValuesFromConfig,
 } from "../utils/neonConfigUpdate";
 import { neonRoleName, neonTargetKey } from "../utils/neonRoleName";
 import {
+	checkNeonDatabaseName,
 	checkNeonSchemaName,
 	NEON_DEFAULT_OWNER_ROLE,
+	NEON_DEFAULT_SCHEMAS,
 	NEON_MIN_ACCESS_PG_VERSION,
 	neonProblemsFor,
 	validateNeonConfig,
 } from "../utils/neonValidation";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "./ui/alert-dialog";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import {
@@ -59,8 +75,8 @@ import { Switch } from "./ui/switch";
  * The service gets its own login and finds the connection string in
  * DATABASE_URL. Databases come from the env's `neon` block; schemas come live
  * from `GET /api/neon/schemas` when the database can be read, with manual entry
- * under Advanced (and as the fallback when live schemas are unavailable). Edits
- * are a draft saved with one button, like the env's Neon panel.
+ * under Advanced (and as the fallback when live schemas are unavailable). Valid
+ * changes write immediately through `onConfigChange`.
  */
 
 export type NeonSchemasFn = (
@@ -88,6 +104,21 @@ const defaultLookupSchemas: NeonSchemasFn = (env, database, opts) =>
 
 function isAbort(err: unknown): boolean {
 	return err instanceof DOMException && err.name === "AbortError";
+}
+
+function withAccess(
+	config: YamlInfrastructureConfig,
+	target: NeonAccessTarget,
+	access: YamlNeonAccess | undefined,
+): YamlInfrastructureConfig {
+	return {
+		...config,
+		...buildNeonAccessUpdate(config, target, access),
+		workload:
+			target.kind === "backend"
+				? { ...config.workload, backend_neon: access }
+				: config.workload,
+	} as YamlInfrastructureConfig;
 }
 
 const ACCESS_CHOICES: {
@@ -118,30 +149,33 @@ export function ServiceDatabaseTab({
 	const neon = config.neon;
 	const saved = getNeonAccess(config, target);
 	const savedKey = JSON.stringify(saved ?? null);
+	const enabled = saved !== undefined;
 	const databases = neon?.databases ?? [];
 	const firstDatabase = databases[0]?.name ?? "";
+	const values = neonAccessValuesFromConfig(saved, firstDatabase);
 
-	const [enabled, setEnabled] = useState(saved !== undefined);
-	const [draft, setDraft] = useState<NeonAccessDraft>(() =>
-		neonAccessDraftFromConfig(saved, firstDatabase),
-	);
 	const [advancedOpen, setAdvancedOpen] = useState(false);
 	const [manualSchema, setManualSchema] = useState("");
 	const [roleName, setRoleName] = useState<string | null>(null);
 	const [schemasLookup, setSchemasLookup] = useState<SchemasLookupState>({
 		status: "idle",
 	});
+	const [pendingDatabase, setPendingDatabase] = useState<{
+		database: string;
+		message: string;
+	} | null>(null);
+	const confirmedDbRef = useRef(false);
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: savedKey stands for the saved block by value.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: savedKey resets pending inputs when saved config changes.
 	useEffect(() => {
-		setEnabled(saved !== undefined);
-		setDraft(neonAccessDraftFromConfig(saved, firstDatabase));
 		setManualSchema("");
-	}, [savedKey, firstDatabase]);
+		setPendingDatabase(null);
+	}, [savedKey]);
 
-	const chosenDatabase = databases.some((d) => d.name === draft.database)
-		? draft.database
-		: "";
+	const chosenDatabase =
+		enabled && databases.some((d) => d.name === values.database)
+			? values.database
+			: "";
 	const serviceKey = neonTargetKey(target);
 	const hasNeon = neon !== undefined;
 
@@ -215,19 +249,23 @@ export function ServiceDatabaseTab({
 		neon.pg_version !== undefined &&
 		neon.pg_version < NEON_MIN_ACCESS_PG_VERSION;
 
-	const next = enabled ? buildNeonAccess(draft, saved) : undefined;
-	const dirty = JSON.stringify(next ?? null) !== savedKey;
-	const nextConfig = {
-		...config,
-		...buildNeonAccessUpdate(config, target, next),
-		workload:
-			target.kind === "backend"
-				? { ...config.workload, backend_neon: next }
-				: config.workload,
-	} as YamlInfrastructureConfig;
+	const defaultEnableAccess =
+		firstDatabase !== ""
+			? buildNeonAccess(
+					neonAccessValuesFromConfig(undefined, firstDatabase),
+					undefined,
+				)
+			: undefined;
+	const preEnableProblems =
+		!enabled && defaultEnableAccess
+			? neonProblemsFor(
+					validateNeonConfig(withAccess(config, target, defaultEnableAccess)),
+					target,
+				)
+			: [];
 	const problems = enabled
-		? neonProblemsFor(validateNeonConfig(nextConfig), target)
-		: [];
+		? neonProblemsFor(validateNeonConfig(config), target)
+		: preEnableProblems;
 
 	const liveSchemas =
 		schemasLookup.status === "done" && schemasLookup.data.note === ""
@@ -235,15 +273,15 @@ export function ServiceDatabaseTab({
 			: null;
 	const liveSchemasSet = liveSchemas ? new Set(liveSchemas) : null;
 	const newLiveSchemas = liveSchemasSet
-		? draft.schemas.filter((schema) => !liveSchemasSet.has(schema))
+		? values.schemas.filter((schema) => !liveSchemasSet.has(schema))
 		: [];
 	const selectableSchemas = liveSchemas
 		? [...liveSchemas, ...newLiveSchemas]
 		: [];
 
-	const schemaChoices = neonSchemaChoices(config, draft.database, target);
+	const schemaChoices = neonSchemaChoices(config, values.database, target);
 	const addableSchemas = schemaChoices.filter(
-		(schema) => !draft.schemas.includes(schema),
+		(schema) => !values.schemas.includes(schema),
 	);
 	const isLoadingSchemas = schemasLookup.status === "loading";
 
@@ -251,29 +289,83 @@ export function ServiceDatabaseTab({
 	const manualError =
 		manualName === ""
 			? null
-			: draft.schemas.includes(manualName)
+			: values.schemas.includes(manualName)
 				? "This schema is already in the list."
 				: checkNeonSchemaName(manualName);
 
+	function commitAccess(nextValues: NeonAccessValues) {
+		const next = buildNeonAccess(nextValues, saved);
+		if (checkNeonDatabaseName(next.database, false) !== null) return;
+		if (!databases.some((d) => d.name === next.database)) return;
+		const schemas = next.schemas ?? NEON_DEFAULT_SCHEMAS;
+		if (
+			schemas.length === 0 ||
+			schemas.some((schema) => checkNeonSchemaName(schema) !== null)
+		) {
+			return;
+		}
+
+		const replacingMessage = neonAccessReplacingChange(
+			saved,
+			next,
+			databases.map((d) => d.name),
+			label,
+		);
+		if (replacingMessage !== null) {
+			setPendingDatabase({
+				database: next.database,
+				message: replacingMessage,
+			});
+			return;
+		}
+		onConfigChange(buildNeonAccessUpdate(config, target, next));
+	}
+
+	function handleToggle(nextEnabled: boolean) {
+		if (!nextEnabled) {
+			onConfigChange(buildNeonAccessUpdate(config, target, undefined));
+			return;
+		}
+		if (
+			!defaultEnableAccess ||
+			reusedOldPostgres ||
+			preEnableProblems.length > 0
+		) {
+			return;
+		}
+		onConfigChange(buildNeonAccessUpdate(config, target, defaultEnableAccess));
+	}
+
 	function setSchemas(schemas: string[]) {
-		setDraft((d) => ({ ...d, schemas }));
+		commitAccess({ ...values, schemas });
 	}
 
 	function addManualSchema() {
 		if (manualName === "" || manualError !== null) return;
-		setSchemas([...draft.schemas, manualName]);
+		setSchemas([...values.schemas, manualName]);
 		setManualSchema("");
 	}
 
-	function save() {
+	function confirmDatabaseChange() {
+		if (!pendingDatabase) return;
+		confirmedDbRef.current = true;
+		const next = buildNeonAccess(
+			{ ...values, database: pendingDatabase.database },
+			saved,
+		);
+		setPendingDatabase(null);
 		onConfigChange(buildNeonAccessUpdate(config, target, next));
 	}
 
-	function discard() {
-		setEnabled(saved !== undefined);
-		setDraft(neonAccessDraftFromConfig(saved, firstDatabase));
-		setManualSchema("");
-	}
+	const postgres14Warning = (
+		<StatusNote tone="warning">
+			<p>
+				This project runs Postgres {neon.pg_version}, where any service could
+				create its own tables. meroku gives services access only on Postgres 15
+				or later. Upgrade the project in Neon first.
+			</p>
+		</StatusNote>
+	);
 
 	return (
 		<div className="space-y-4">
@@ -289,8 +381,13 @@ export function ServiceDatabaseTab({
 					<Switch
 						id={`${uid}-enabled`}
 						checked={enabled}
-						disabled={databases.length === 0 && !enabled}
-						onCheckedChange={setEnabled}
+						disabled={
+							!enabled &&
+							(databases.length === 0 ||
+								reusedOldPostgres ||
+								preEnableProblems.length > 0)
+						}
+						onCheckedChange={handleToggle}
 					/>
 				</div>
 				{databases.length === 0 && (
@@ -301,6 +398,7 @@ export function ServiceDatabaseTab({
 						</NoteDetail>
 					</StatusNote>
 				)}
+				{!enabled && reusedOldPostgres && postgres14Warning}
 
 				{enabled && (
 					<>
@@ -309,7 +407,7 @@ export function ServiceDatabaseTab({
 							<Select
 								value={chosenDatabase}
 								onValueChange={(database) =>
-									setDraft((d) => ({ ...d, database }))
+									commitAccess({ ...values, database })
 								}
 							>
 								<SelectTrigger id={`${uid}-database`}>
@@ -329,9 +427,8 @@ export function ServiceDatabaseTab({
 										Login role: <NoteCode>{roleName}</NoteCode>
 									</NoteDetail>
 									<NoteDetail>
-										{saved?.database === chosenDatabase
-											? "meroku creates this role at the next deploy if it does not exist yet. It changes if the database changes."
-											: "meroku creates this role at the next deploy. It changes if the database changes."}
+										meroku creates this role at the next deploy if it does not
+										exist yet. It changes if the database changes.
 									</NoteDetail>
 								</div>
 							)}
@@ -348,7 +445,7 @@ export function ServiceDatabaseTab({
 								<>
 									<ul className="space-y-2" aria-labelledby={`${uid}-schemas`}>
 										{selectableSchemas.map((schema, index) => {
-											const checked = draft.schemas.includes(schema);
+											const checked = values.schemas.includes(schema);
 											const isNew = !liveSchemasSet?.has(schema);
 											const checkboxId = `${uid}-schema-${index}`;
 											const badgeId = `${uid}-schema-${index}-new`;
@@ -360,16 +457,16 @@ export function ServiceDatabaseTab({
 													<Checkbox
 														id={checkboxId}
 														checked={checked}
-														disabled={checked && draft.schemas.length === 1}
+														disabled={checked && values.schemas.length === 1}
 														aria-describedby={isNew ? badgeId : undefined}
 														onCheckedChange={(nextChecked) => {
 															if (nextChecked === true) {
 																if (!checked) {
-																	setSchemas([...draft.schemas, schema]);
+																	setSchemas([...values.schemas, schema]);
 																}
-															} else if (checked && draft.schemas.length > 1) {
+															} else if (checked && values.schemas.length > 1) {
 																setSchemas(
-																	draft.schemas.filter((s) => s !== schema),
+																	values.schemas.filter((s) => s !== schema),
 																);
 															}
 														}}
@@ -418,7 +515,7 @@ export function ServiceDatabaseTab({
 										className="flex flex-wrap gap-2"
 										aria-label="Chosen schemas"
 									>
-										{draft.schemas.map((schema) => {
+										{values.schemas.map((schema) => {
 											const isNew =
 												!isLoadingSchemas && !schemaChoices.includes(schema);
 											return (
@@ -431,10 +528,10 @@ export function ServiceDatabaseTab({
 														variant="ghost"
 														size="icon"
 														aria-label={`Remove schema ${schema}`}
-														disabled={draft.schemas.length === 1}
+														disabled={values.schemas.length === 1}
 														onClick={() =>
 															setSchemas(
-																draft.schemas.filter((s) => s !== schema),
+																values.schemas.filter((s) => s !== schema),
 															)
 														}
 													>
@@ -445,7 +542,7 @@ export function ServiceDatabaseTab({
 										})}
 									</ul>
 									{!isLoadingSchemas &&
-										draft.schemas
+										values.schemas
 											.filter((schema) => !schemaChoices.includes(schema))
 											.map((schema) => (
 												<NoteDetail key={schema}>
@@ -458,7 +555,7 @@ export function ServiceDatabaseTab({
 										<Select
 											value=""
 											onValueChange={(schema) =>
-												setSchemas([...draft.schemas, schema])
+												setSchemas([...values.schemas, schema])
 											}
 										>
 											<SelectTrigger
@@ -483,11 +580,11 @@ export function ServiceDatabaseTab({
 						<div className="space-y-2">
 							<Label id={`${uid}-access`}>Access</Label>
 							<RadioGroup
-								value={draft.access}
+								value={values.access}
 								aria-labelledby={`${uid}-access`}
 								disabled={reusedOldPostgres}
 								onValueChange={(value) =>
-									setDraft((d) => ({ ...d, access: value as NeonAccessLevel }))
+									commitAccess({ ...values, access: value as NeonAccessLevel })
 								}
 							>
 								{ACCESS_CHOICES.map((choice) => (
@@ -505,16 +602,7 @@ export function ServiceDatabaseTab({
 									</div>
 								))}
 							</RadioGroup>
-							{reusedOldPostgres && (
-								<StatusNote tone="warning">
-									<p>
-										This project runs Postgres {neon.pg_version}, where any
-										service could create its own tables. meroku gives services
-										access only on Postgres 15 or later. Upgrade the project in
-										Neon first.
-									</p>
-								</StatusNote>
-							)}
+							{reusedOldPostgres && postgres14Warning}
 						</div>
 
 						<Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
@@ -578,7 +666,7 @@ export function ServiceDatabaseTab({
 									</div>
 									<div className="space-y-1">
 										<NoteDetail>
-											Password version {draft.password_version ?? 1}. A new
+											Password version {values.password_version ?? 1}. A new
 											password takes effect at the next deploy.
 										</NoteDetail>
 										<Button
@@ -586,10 +674,10 @@ export function ServiceDatabaseTab({
 											variant="outline"
 											size="sm"
 											onClick={() =>
-												setDraft((d) => ({
-													...d,
+												commitAccess({
+													...values,
 													password_version: (saved?.password_version ?? 1) + 1,
-												}))
+												})
 											}
 										>
 											<KeyRound aria-hidden="true" />
@@ -603,41 +691,44 @@ export function ServiceDatabaseTab({
 				)}
 			</TabCard>
 
-			{(dirty || problems.length > 0) && (
-				<div className="space-y-3">
-					{problems.length > 0 && (
-						<div className="space-y-2" aria-live="polite">
-							{problems.map((problem) => (
-								<StatusNote key={problem.path + problem.rule} tone="error">
-									<p>{problem.message}</p>
-								</StatusNote>
-							))}
-						</div>
-					)}
-					{!enabled && saved && (
-						<StatusNote tone="warning">
-							<p>
-								Saving removes {label}'s database login at the next deploy. The
-								data stays in Neon.
-							</p>
+			{problems.length > 0 && (
+				<div className="space-y-2" aria-live="polite">
+					{problems.map((problem) => (
+						<StatusNote key={problem.path + problem.rule} tone="error">
+							<p>{problem.message}</p>
 						</StatusNote>
-					)}
-					{dirty && (
-						<div className="flex flex-wrap gap-2">
-							<Button
-								type="button"
-								disabled={problems.length > 0}
-								onClick={save}
-							>
-								Save database access
-							</Button>
-							<Button type="button" variant="outline" onClick={discard}>
-								Discard changes
-							</Button>
-						</div>
-					)}
+					))}
 				</div>
 			)}
+
+			<AlertDialog
+				open={pendingDatabase !== null}
+				onOpenChange={(open) => {
+					if (!open) {
+						if (confirmedDbRef.current) {
+							confirmedDbRef.current = false;
+						}
+						setPendingDatabase(null);
+					}
+				}}
+			>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>
+							Change {label}'s database to {pendingDatabase?.database}?
+						</AlertDialogTitle>
+						<AlertDialogDescription>
+							{pendingDatabase?.message}
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel>Cancel</AlertDialogCancel>
+						<AlertDialogAction onClick={confirmDatabaseChange}>
+							Change database
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 		</div>
 	);
 }

@@ -132,14 +132,16 @@ export function answerSchemas(response: NeonSchemasResponse): NeonSchemasFn {
 export const schemasNeverAnswer: NeonSchemasFn = () => new Promise(() => {});
 
 /**
- * Holds the env config like App does: an update is merged in and undefined
- * keys are pruned, as the YAML save would.
+ * Holds the env config like App does: each immediate update is merged in and
+ * undefined keys are pruned, as the YAML save would.
  */
 export function NeonConfigHarness({
 	initial,
+	onChange,
 	children,
 }: {
 	initial: YamlInfrastructureConfig;
+	onChange?: (updates: Partial<YamlInfrastructureConfig>) => void;
 	children: (
 		config: YamlInfrastructureConfig,
 		onConfigChange: (updates: Partial<YamlInfrastructureConfig>) => void,
@@ -148,14 +150,15 @@ export function NeonConfigHarness({
 	const [config, setConfig] = useState(initial);
 	return (
 		<div className="max-w-xl">
-			{children(config, (updates) =>
+			{children(config, (updates) => {
+				onChange?.(updates);
 				setConfig(
 					(prev) =>
 						pruneUndefined(
 							mergeConfigUpdates(prev, updates),
 						) as YamlInfrastructureConfig,
-				),
-			)}
+				);
+			})}
 		</div>
 	);
 }
