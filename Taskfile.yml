@@ -41,9 +41,9 @@ tasks:
     cmd: go test -tags neon_e2e -run TestNeonE2E -count=1 -timeout 180m -v ./
 
   test:web:
-    desc: Run web frontend tests
+    desc: Run the Playwright UI tests (meroku on a synthetic project, behind the vite dev server)
     dir: '{{.WEB_DIR}}'
-    cmd: pnpm run test
+    cmd: pnpm run test:e2e
 
   generate:
     desc: Generate code from templates

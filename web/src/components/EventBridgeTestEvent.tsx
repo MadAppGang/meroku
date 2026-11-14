@@ -6,6 +6,7 @@ import {
 	type TestEventResponse,
 } from "../api/infrastructure";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
+import { isEventBusEnabled, projectBusName } from "../utils/workloadEvents";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
 import {
@@ -17,6 +18,13 @@ import {
 } from "./ui/card";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "./ui/select";
 import { Textarea } from "./ui/textarea";
 
 interface EventBridgeTestEventProps {
@@ -25,8 +33,12 @@ interface EventBridgeTestEventProps {
 
 export function EventBridgeTestEvent({ config }: EventBridgeTestEventProps) {
 	const uid = useId();
+	const busEnabled = isEventBusEnabled(config);
+	const projectBus = projectBusName(config);
 	// Test event state - default source to 'meroku.test'
 	const [testEvent, setTestEvent] = useState<TestEventRequest>({
+		env: config.env,
+		eventBusName: busEnabled ? projectBus : "default",
 		source: "meroku.test",
 		detailType: "Test Event",
 		detail: {},
@@ -66,7 +78,10 @@ export function EventBridgeTestEvent({ config }: EventBridgeTestEventProps) {
 		setEventResponse(null);
 
 		try {
-			const response = await infrastructureApi.sendTestEvent(testEvent);
+			const response = await infrastructureApi.sendTestEvent({
+				...testEvent,
+				env: config.env,
+			});
 			setEventResponse(response);
 		} catch (error) {
 			setEventResponse({
@@ -112,6 +127,25 @@ export function EventBridgeTestEvent({ config }: EventBridgeTestEventProps) {
 					</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-4">
+					<div className="space-y-2">
+						<Label htmlFor={`${uid}-test-bus`}>Bus</Label>
+						<Select
+							value={testEvent.eventBusName || "default"}
+							onValueChange={(value) =>
+								setTestEvent((prev) => ({ ...prev, eventBusName: value }))
+							}
+						>
+							<SelectTrigger id={`${uid}-test-bus`} aria-label="Test event bus">
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="default">Default bus</SelectItem>
+								<SelectItem value={projectBus} disabled={!busEnabled}>
+									Project bus ({projectBus})
+								</SelectItem>
+							</SelectContent>
+						</Select>
+					</div>
 					<div className="space-y-2">
 						<Label htmlFor={`${uid}-test-source`}>Event Source</Label>
 						<Input

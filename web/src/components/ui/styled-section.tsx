@@ -37,7 +37,7 @@ export function StyledSection({
 					<div>
 						<h3 className="font-medium text-white text-sm">{title}</h3>
 						{description && (
-							<p className="text-xs text-gray-500">{description}</p>
+							<p className="text-xs text-muted-foreground">{description}</p>
 						)}
 					</div>
 				</div>

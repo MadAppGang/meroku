@@ -15,8 +15,24 @@ variable "amplify_apps" {
     subdomain_prefix = optional(string)     # NEW: Auto-constructs domain
     custom_domain    = optional(string)     # For manual override (edge cases)
     spa_mode         = optional(bool, true) # Per-app SPA routing control
+    # Rewrites and redirects, applied in order before the SPA rule. A rule has
+    # either a fixed target, or a workload whose URL comes from workload_urls
+    # with target_path appended.
+    custom_rules = optional(list(object({
+      source      = string
+      target      = optional(string, "")
+      workload    = optional(string, "")
+      target_path = optional(string, "")
+      status      = optional(string, "200")
+    })), [])
   }))
   default = []
+}
+
+variable "workload_urls" {
+  description = "Base URL of each workload (backend or a service) that a custom rule names, without a trailing slash"
+  type        = map(string)
+  default     = {}
 }
 
 variable "project" {
@@ -36,7 +52,7 @@ variable "base_domain" {
 }
 
 variable "add_env_domain_prefix" {
-  description = "Whether to add environment prefix to domains (from domain.add_env_domain_prefix)"
+  description = "Whether to add environment prefix to domains (domain.add_env_domain_prefix; always true for a delegated subdomain, domain.root_zone_id)"
   type        = bool
   default     = true
 }

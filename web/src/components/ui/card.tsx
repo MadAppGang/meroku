@@ -1,3 +1,4 @@
+import { cva, type VariantProps } from "class-variance-authority";
 import type * as React from "react";
 
 import { cn } from "./utils";
@@ -28,21 +29,55 @@ function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
 	);
 }
 
-function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
+const cardTitleVariants = cva("leading-none", {
+	variants: {
+		variant: {
+			default: "",
+			// A title that is a path or a name as written, such as a folder.
+			code: "font-mono text-sm",
+		},
+	},
+	defaultVariants: {
+		variant: "default",
+	},
+});
+
+function CardTitle({
+	className,
+	variant,
+	...props
+}: React.ComponentProps<"div"> & VariantProps<typeof cardTitleVariants>) {
 	return (
 		<h4
 			data-slot="card-title"
-			className={cn("leading-none", className)}
+			className={cn(cardTitleVariants({ variant }), className)}
 			{...props}
 		/>
 	);
 }
 
-function CardDescription({ className, ...props }: React.ComponentProps<"div">) {
+const cardDescriptionVariants = cva("text-muted-foreground", {
+	variants: {
+		variant: {
+			default: "",
+			// A description that is an identifier, such as an env var name.
+			code: "font-mono",
+		},
+	},
+	defaultVariants: {
+		variant: "default",
+	},
+});
+
+function CardDescription({
+	className,
+	variant,
+	...props
+}: React.ComponentProps<"div"> & VariantProps<typeof cardDescriptionVariants>) {
 	return (
 		<p
 			data-slot="card-description"
-			className={cn("text-muted-foreground", className)}
+			className={cn(cardDescriptionVariants({ variant }), className)}
 			{...props}
 		/>
 	);
@@ -61,11 +96,29 @@ function CardAction({ className, ...props }: React.ComponentProps<"div">) {
 	);
 }
 
-function CardContent({ className, ...props }: React.ComponentProps<"div">) {
+const cardContentVariants = cva("px-6 [&:last-child]:pb-6", {
+	variants: {
+		inset: {
+			// Below a CardHeader, which supplies the space above.
+			default: "",
+			// The card's only section, with no header above it.
+			standalone: "pt-6",
+		},
+	},
+	defaultVariants: {
+		inset: "default",
+	},
+});
+
+function CardContent({
+	className,
+	inset,
+	...props
+}: React.ComponentProps<"div"> & VariantProps<typeof cardContentVariants>) {
 	return (
 		<div
 			data-slot="card-content"
-			className={cn("px-6 [&:last-child]:pb-6", className)}
+			className={cn(cardContentVariants({ inset }), className)}
 			{...props}
 		/>
 	);

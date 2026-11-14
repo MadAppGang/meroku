@@ -359,6 +359,28 @@ One node per additional service.
 | `status` | string | — | RUNTIME | |
 | `launchType` | string | fixed `FARGATE` | RO | |
 
+**Events tab** (`ServiceEventsTab.tsx`, also on the backend, where it writes only
+`{ workload: { events } }`). See [EVENTS.md](./EVENTS.md).
+
+| Property | Type | Conditional | Class | Notes |
+|---|---|---|---|---|
+| `events.subscribes[].detail_type` | string | exactly one of this and the prefix | TF | One rule per entry. Editing an entry touches only its rule. |
+| `events.subscribes[].detail_type_prefix` | string | exactly one of this and the exact type | TF | |
+| `events.subscribes[].source` | string | optional | TF | |
+| `events.subscribes[].name` | string | optional; derived when unset | TF-REPLACE | The rule's key. Changing it replaces the rule. |
+| `events.subscribes[].bus` | `"project"` \| `"default"` | absent follows `event_bus.enabled` | TF-REPLACE | A rule's bus is ForceNew. |
+| `events.queue.visibility_timeout` | number | 0–43200, default 30 | TF | In place. |
+| `events.queue.max_receive_count` | number | 1–1000, default 5 | TF | In place. |
+| `events.produces[].detail_types` | string[] | exactly one of this and `any` | TF | PutEvents grant on the task role. |
+| `events.produces[].any` | boolean | — | TF | Generate warns. |
+| `events.produces[].own_source_only` | boolean | default `true` | TF | |
+| `events.produces[].bus` | `"project"` \| `"default"` | absent follows `event_bus.enabled` | TF | |
+| `EVENT_QUEUE_URL` | string | consumers only | RO | Queue URL in the container. |
+
+The first subscription creates three queues, two alarms and, for the first consumer in the
+environment, the alerts topic. Removing the last subscription deletes the queues and the
+messages in them.
+
 Three overlapping environment-variable shapes exist for backward compatibility: `env_vars`,
 `environment_variables` and `env_variables[]`. Prefer `environment_variables`. All three land in the
 task definition in plaintext.
@@ -440,11 +462,14 @@ task definition in plaintext.
 
 ## 12. `eventbridge`
 
-No stored configuration of its own. It is the routing fabric for event tasks.
+The routing fabric for event tasks and for the workloads' event queues. Its one stored
+property is the project bus switch, on the **Settings** tab. See [EVENTS.md](./EVENTS.md).
 
 | Property | Type | Conditional | Class | Notes |
 |---|---|---|---|---|
-| Bus name | string | — | RO | Default bus. |
+| `event_bus.enabled` | boolean | default `false` | TF-REPLACE | Creates `<project>-<env>`; every `EVENT_BUS_NAME` names it; entries and rules without `bus` move to it, rules by replacement. |
+| Bus name | string | — | RO | `<project>-<env>` when on, otherwise the default bus. |
+| Test event bus | `"default"` \| `<project>-<env>` | the project bus only when on and applied | RUNTIME | Action input. The server checks the bus exists before publishing. |
 | Rule list | object[] | derived from event tasks | TF | |
 | Test event `source` | string | — | RUNTIME | Action input, not persisted. |
 | Test event `detailType` | string | — | RUNTIME | Action input. |
@@ -464,6 +489,8 @@ One node per event-driven task.
 | `rules[].name` | string | preferred multi-rule form | TF | |
 | `rules[].sources` | string[] | preferred form | TF | Event pattern `source`. |
 | `rules[].detail_types` | string[] | preferred form | TF | Event pattern `detail-type`. |
+| `rules[].bus` | `"project"` \| `"default"` | absent follows `event_bus.enabled` | TF-REPLACE | AWS-service events are on the default bus only. |
+| `events.produces[]` | object[] | optional | TF | Same shape as the service's. The task cannot subscribe. |
 | `rule_name` | string | legacy; ignored when `rules[]` present | TF | |
 | `sources` | string[] | legacy | TF | |
 | `detail_types` | string[] | legacy | TF | |
@@ -493,6 +520,7 @@ One node per scheduled task.
 | `schedule` | string | required | TF | `cron(...)` or `rate(...)`. In-place update. |
 | `docker_image` | string | optional | TF-DEPLOY | |
 | `container_command` | string | optional | TF-DEPLOY | String here, unlike services and event tasks. |
+| `events.produces[]` | object[] | optional | TF | Same shape as the service's. The task cannot subscribe. |
 | `cpu` | number | Fargate-valid pairs | TF-DEPLOY | |
 | `memory` | number | must pair with CPU | TF-DEPLOY | |
 | `environment_variables` | Record\<string,string\> | optional | TF-DEPLOY | |

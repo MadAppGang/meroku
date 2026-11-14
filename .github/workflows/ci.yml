@@ -33,9 +33,9 @@ env:
   # The lower of the two modules' `go` directives (ci_lambda: 1.22,
   # app: 1.23.0), so both are built with a toolchain each accepts.
   GO_VERSION: '1.23'
-  TERRAFORM_VERSION: '1.9.8'
+  TERRAFORM_VERSION: '1.10.5'
   # The Neon modules declare required_version >= 1.14.0 (ephemeral variables and
-  # write-only arguments), so 1.9.8 refuses to init them. They get their own job,
+  # write-only arguments), so 1.10.5 refuses to init them. They get their own job,
   # pinned to that floor.
   NEON_TERRAFORM_VERSION: '1.14.0'
   # Matches release.yml. The pnpm version is deliberately not pinned here — the
@@ -300,6 +300,41 @@ jobs:
           terraform test
         working-directory: modules/github_runners
 
+      # The private data bucket, under mock_provider: the bucket settings and the
+      # exact per-workload policy each task role gets.
+      - name: Test the data bucket module
+        run: |
+          terraform init -backend=false -input=false
+          terraform test
+        working-directory: modules/data_bucket
+
+      # Shared SSM vaults, under mock_provider: the secrets each connected
+      # workload gets, the read grant on the execution role and the read-write
+      # grant on the task role.
+      - name: Test the vaults module
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate
+          terraform test
+        working-directory: modules/vaults
+
+      # Events, under mock_provider: the queues and their policies, the rules,
+      # delivery retries and dead-letter queues, the PutEvents conditions and
+      # the alerts topic.
+      - name: Test the events module
+        run: |
+          terraform init -backend=false -input=false
+          terraform test
+        working-directory: modules/events
+
+      # Serverless Valkey, under mock_provider: one ingress rule pair per distinct
+      # security group, the cache name and its usage limits, the container env.
+      - name: Test the valkey module
+        run: |
+          terraform init -backend=false -input=false
+          terraform test
+        working-directory: modules/valkey
+
       # Every module that consumes modules/naming. Validation was scoped to
       # modules/workloads when it was the only module with a module block; a
       # naming.tf that references a request key nothing declares is a plan-time
@@ -307,7 +342,7 @@ jobs:
       - name: Validate the naming consumers
         run: |
           set -e
-          for m in alb s3 postgres sqs ecs_task event_bridge_task appsync dns-root github_runners; do
+          for m in alb s3 postgres sqs ecs_task event_bridge_task appsync dns-root github_runners data_bucket events valkey; do
             echo "==> modules/$m"
             terraform -chdir="modules/$m" init -backend=false -input=false
             terraform -chdir="modules/$m" validate
@@ -315,7 +350,7 @@ jobs:
 
   # modules/neon, modules/neon_access and modules/neon_ssm need Terraform 1.14 or
   # later. The repository-wide Format step in the job above still parses them
-  # under 1.9.8, which is why they use no syntax newer than that; this job is
+  # under TERRAFORM_VERSION, which is why they use no syntax newer than that; this job is
   # where they are formatted and validated against the version they require.
   terraform-neon:
     name: Terraform (Neon modules)
@@ -427,3 +462,73 @@ jobs:
       # this step turns into `pnpm exec biome ci src` when it lands.
       - name: Build
         run: pnpm build
+
+  # The Playwright UI tests. playwright.config.ts builds meroku from app/ and
+  # serves it on a throwaway copy of web/tests/e2e/fixtures/project behind the
+  # vite dev server, so this job needs Go as well as Node. The server is given
+  # empty AWS config files and no credentials, so nothing here reaches AWS.
+  web-e2e:
+    name: Web UI (Playwright)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: app/go.sum
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/package.json
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # The browser build is tied to the exact @playwright/test version, so
+      # that version is the cache key.
+      - name: Read the Playwright version
+        id: playwright
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-chromium
+
+      - name: Install Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install --with-deps chromium
+
+      # A cache hit restores the browser but not the system libraries it links.
+      - name: Install Chromium system dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps chromium
+
+      - name: Test
+        run: pnpm test:e2e
+
+      - name: Upload the Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            web/playwright-report/
+            web/test-results/
+          retention-days: 7

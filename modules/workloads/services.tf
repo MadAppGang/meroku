@@ -478,7 +478,7 @@ resource "aws_ecs_task_definition" "services" {
       // 1. from SSM
       // 2. from env_files_s3
       // 3. from env_vars variable
-      secrets = local.services_env_ssm[each.key]
+      secrets = local.services_container_secrets[each.key]
 
       # Assembled in env_services.tf, not here, so that the precondition below
       # compares the list this argument actually carries. Byte-identical to the
@@ -554,9 +554,17 @@ resource "aws_ecs_task_definition" "services" {
   # Every subsequent plan, which is where a parameter added out of band shows up,
   # evaluates it at plan.
   lifecycle {
+    # Two halves, so the one that can always be decided at plan never waits
+    # for the one that may not be: ENV and vault collisions are refused at plan,
+    # own-path collisions as soon as the own-path read is known.
     precondition {
-      condition     = module.service_env_secret_check.valid[each.key]
-      error_message = module.service_env_secret_check.message[each.key]
+      condition     = module.service_env_secret_check.valid_known[each.key]
+      error_message = module.service_env_secret_check.message_known[each.key]
+    }
+
+    precondition {
+      condition     = module.service_env_secret_check.valid_discovered[each.key]
+      error_message = module.service_env_secret_check.message_discovered[each.key]
     }
   }
 }
@@ -726,26 +734,13 @@ resource "aws_iam_role_policy_attachment" "services_task_execution" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
-resource "aws_iam_role_policy_attachment" "services_task_cloudwatch" {
-  for_each = local.service_names
-
-  role       = aws_iam_role.services_task[each.key].name
-  policy_arn = "arn:aws:iam::aws:policy/CloudWatchFullAccess"
-}
-
-# S3 bucket access
-resource "aws_iam_role_policy_attachment" "service_task_bucket" {
-  for_each = local.service_names
-
-  role       = aws_iam_role.services_task_execution[each.key].name
-  policy_arn = aws_iam_policy.full_access_to_backend_bucket.arn
-}
-
-# SES access for all services
+# SES access for all services. On the task role, not the execution role: the
+# container's own code calls SES, and the execution role is ECS's — it pulls the
+# image, writes logs and reads SSM, and never sends an email.
 resource "aws_iam_role_policy_attachment" "service_task_ses" {
   for_each = local.service_names
 
-  role       = aws_iam_role.services_task_execution[each.key].name
+  role       = aws_iam_role.services_task[each.key].name
   policy_arn = aws_iam_policy.send_emails.arn
 }
 
@@ -791,9 +786,14 @@ resource "aws_iam_role_policy_attachment" "services_sqs_access" {
 }
 
 
-# S3 env files access for services
+# S3 env files access for services. Each service is granted its own files and
+# nothing else, and only a service that declares any gets a policy at all. On
+# the execution role, because ECS is what reads --env-file: it fetches the files
+# while it assembles the container definition, before the container runs.
+# s3:GetObject is an object-level action and s3:GetBucketLocation a bucket-level
+# one, so each gets its own statement on the ARNs IAM evaluates it against.
 resource "aws_iam_role_policy" "services_s3_env" {
-  for_each = { for k, v in local.service_names : k => v if length(local.env_files_s3) > 0 }
+  for_each = { for k, v in local.services_env_files_s3 : k => v if length(v) > 0 }
 
   name = "${var.project}_${each.key}_s3_env_${var.env}"
   role = aws_iam_role.services_task_execution[each.key].name
@@ -803,13 +803,16 @@ resource "aws_iam_role_policy" "services_s3_env" {
     Statement = [
       {
         Effect = "Allow"
-        Action = [
-          "s3:*"
-        ]
+        Action = ["s3:GetObject"]
         Resource = [
-          for file in local.env_files_s3 :
+          for file in each.value :
           "arn:aws:s3:::${file.bucket}/${file.key}"
         ]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["s3:GetBucketLocation"]
+        Resource = distinct([for file in each.value : "arn:aws:s3:::${file.bucket}"])
       }
     ]
   })
@@ -872,7 +875,8 @@ resource "aws_iam_role_policy" "services_ecs_exec_policy" {
   })
 }
 
-# EventBridge permissions to allow services to emit and listen to events
+# EventBridge read access: the buses and rules the service may describe.
+# PutEvents is not here; modules/events grants it per events.produces entry.
 resource "aws_iam_policy" "services_eventbridge" {
   for_each = local.service_names
 
@@ -883,18 +887,13 @@ resource "aws_iam_policy" "services_eventbridge" {
       {
         Effect = "Allow"
         Action = [
-          "events:PutEvents",
           "events:DescribeEventBus",
           "events:ListRules",
           "events:DescribeRule",
           "events:ListTargetsByRule",
           "events:ListEventBuses"
         ]
-        Resource = [
-          "arn:aws:events:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:event-bus/default",
-          "arn:aws:events:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:event-bus/${var.project}-*",
-          "arn:aws:events:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:rule/*"
-        ]
+        Resource = local.eventbridge_read_resources
       }
     ]
   })

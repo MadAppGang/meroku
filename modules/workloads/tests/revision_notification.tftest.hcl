@@ -319,7 +319,7 @@ run "no_services_plans_and_notifies_nothing" {
 # therefore cannot be read at plan at all.
 #
 # Terraform >= 1.11 offers `override_during = plan` for exactly this. It is not
-# used: CI pins 1.9.8 (.github/workflows/ci.yml), which rejects the argument
+# used: CI pins 1.10.5 (.github/workflows/ci.yml), which rejects the argument
 # outright — "An argument named override_during is not expected here" — so the
 # whole file would fail to parse in the one place it has to run. Applying against
 # mocks needs nothing newer than the 1.7 that introduced them.

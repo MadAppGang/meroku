@@ -1,12 +1,102 @@
 # Changelog
 
-## v5.7.2
+## v6.0.1
 
 ### Pricing
 - The first price request of a region waits up to 15 seconds for the region's live EC2
   prices instead of answering from the table. In v5.7.1 that first answer had no price for
   types the table lacks (`t3.small`), and the canvas kept showing it until the next request.
   Later requests read the cache, which lasts a day.
+
+## v6.0.0
+
+Six things projects wrote by hand in `custom/` Terraform are now YAML settings, each with
+an editor in the web UI. All of them deploy in one apply.
+
+### Breaking changes
+
+These affect event-driven services, and anything that relied on the broad permissions
+task roles used to have.
+
+- **PutEvents is strict.** A workload may publish only what it declares in
+  `events.produces` (detail-types, `own_source_only`, or `any: true`). Anything else gets
+  `AccessDenied`. There is no migration: add `events.produces` before upgrading.
+- **Task roles no longer get the AWS managed `CloudWatchFullAccess`.** It also granted
+  `events:*`, `sns:*`, `logs:*` and CloudWatch reads. Task roles now get an inline
+  `cloudwatch` policy: `cloudwatch:PutMetricData` and log writes to the workload's own log
+  group (with `xray_enabled`, also the Container Insights and `/aws/ecs/application/metrics`
+  log groups). meroku-managed SNS keeps working: FCM push on the platform application ARN,
+  and `sns:Publish` on extension topics with `add_to_backend_env`. Application code that
+  reads logs or alarms, writes other log groups or publishes to other SNS topics needs a
+  `policy` block. On the first apply the managed policy is detached and the inline one
+  created; logs and metrics a container ships itself may drop for a few seconds.
+  Execution roles are unchanged.
+- **Turning `event_bus.enabled` on replaces event-task rules** and moves `EVENT_BUS_NAME`
+  to the project bus `<project>-<env>`.
+
+### Generate now refuses
+
+Each error names the YAML field and the fix.
+
+- A workload named `backend`, `vault`, `task` or `shared`, or two workloads of any kind
+  with the same name.
+- `AWS_S3_BUCKET` in `workload.backend_env_variables` (meroku already sets it, so the
+  container got it twice). On a service or task your value is kept, with a warning.
+- A YAML env var named `DATA_BUCKET_NAME`, `DATA_BUCKET_PATH` or `DATA_BUCKET_SHARED_*`;
+  `EVENT_QUEUE_URL` on an event consumer; `VALKEY_*` on a workload in `valkey.access`.
+- Two event tasks whose rules have the same name on the same bus.
+- An `extensions.sns_topics` entry named `alerts` in an env with event consumers.
+- A custom `.tf` file declaring `module "data_bucket"`, `"vaults"`, `"events"` or
+  `"valkey"`, or a local `workload_roles`, `workload_extra_env` or `workload_extra_secrets`.
+- A `policy` statement with empty actions or resources.
+- An Amplify rule that targets the backend with a path starting with a public service's
+  name (`/api/<*>` → backend while a public service `api` exists): the service's route
+  wins, so the rule never reached the backend. Target the service, or set `path`.
+
+### Amplify rewrites
+`amplify_apps[].custom_rules`: a `target`, or a `workload` (backend or a public service)
+resolved to the API host for the env's ingress mode. App-level `environment_variables`
+now render; before, they were dropped.
+
+### Private data bucket
+Every env gets a versioned, TLS-only private bucket `<project>-data-<env>-<account>`.
+Each workload reads and writes its own folder `<name>/`; `data_bucket.shared` adds
+`shared/<name>/` folders with `read_write` and `read` lists. Containers get
+`DATA_BUCKET_NAME`, `DATA_BUCKET_PATH` and `DATA_BUCKET_SHARED_<NAME>`. Services and tasks
+also get object read-write on the backend bucket on their task role, and `AWS_S3_BUCKET`;
+the bucket grant on service execution roles is removed.
+
+### IAM policy on services and tasks
+`policy` on `services[]`, `scheduled_tasks[]` and `event_processor_tasks[]`, the same
+statement shape as `workload.policy` (`effect`, `actions`, `resources`, `conditions`).
+A backend statement with `effect: Deny` or `conditions` now deploys as written; before, it
+deployed as an unconditional Allow.
+
+### Vaults
+`vaults: [{name}]` are shared SSM paths `/<env>/<project>/vault/<name>/`. A workload's
+`vaults` entry connects one with `read` or `read_write` (Put, no Delete) and an optional
+variable prefix. Name collisions with env vars, `ENV` or other vaults fail at plan.
+
+### Events
+`event_bus.enabled` creates the project bus. `events.subscribes` on the backend or a
+service gives it its own SQS queue (`EVENT_QUEUE_URL`, SSE-SQS), an app DLQ, a delivery
+DLQ and alarms to the `<project>-<env>-alerts` topic. Event-task rules take a `bus`.
+
+### Valkey
+`valkey.enabled` creates a serverless Valkey cache (`engine_version` 7, 8 or 9,
+`max_storage_gb`). Workloads in `valkey.access` reach it by security group and get
+`VALKEY_URL`, `VALKEY_HOST` and `VALKEY_PORT`.
+
+### Fixes
+- Services' SES grant is on the task role, where the container can use it.
+- Event tasks read their own secrets and the EventBridge target can start them.
+- A service's env-file grant covers its own files only.
+- Saving from the web UI keeps `policy`, `efs`, autoscaling targets and task env vars.
+- Scheduled and event tasks get `SQS_QUEUE_URL`, and in a `cross_account` ECR env they pull
+  their image from the source account (before, the image was empty).
+- A new scheduled or event task has its `ENV` secret on the first apply.
+- Task modules and `env_secret_check` require Terraform 1.10 or newer, as every env
+  already did. CI runs Terraform 1.10.5.
 
 ## v5.7.1
 

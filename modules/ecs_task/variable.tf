@@ -68,7 +68,7 @@ variable "max_retry_attempts" {
 
   # A conditional, not `== null || (...)`. Terraform evaluates only the branch a
   # conditional takes, but `||` evaluates BOTH operands on the versions this
-  # repository supports (required_version >= 1.2.6; CI pins 1.9.8), and
+  # repository supports (required_version >= 1.10.0; CI pins 1.10.5), and
   # floor(null) is "argument must not be null". null is this variable's default
   # and, per the description above, its normal state, so the || form failed at
   # plan for every scheduled task that left it alone. Terraform 1.16

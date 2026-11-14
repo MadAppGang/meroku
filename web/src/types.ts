@@ -42,11 +42,13 @@ export interface ComponentNode {
 		| "postgres"
 		| "neon"
 		| "sqs"
+		| "valkey"
 		| "efs"
 		| "alb"
 		| "appsync"
 		| "custom-terraform"
-		| "cloudfront";
+		| "cloudfront"
+		| "vaults";
 	name: string;
 	url?: string;
 	status: "running" | "deploying" | "stopped" | "error" | "external";

@@ -503,6 +503,12 @@ func applyTemplate(env string) error {
 	// Everything that happens to envMap between loading and rendering: the
 	// disabled-item filter, the zero-config pool, and the compute refusals that
 	// have to see the result of both.
+	// The bus state main.tf was last generated with, so normalizeEvents can say
+	// what a change of event_bus.enabled moves.
+	if previous, ok := previousEventBusState(env); ok {
+		envMap[eventBusPreviousKey] = previous
+	}
+
 	if err := preprocessEnvMap(envMap); err != nil {
 		return fmt.Errorf("invalid configuration in %s:\n\n%w", envFile, err)
 	}
@@ -510,6 +516,18 @@ func applyTemplate(env string) error {
 	// Printed here, not in preprocessEnvMap, which render tests call.
 	for _, w := range githubExternalImageWarnings(envMap) {
 		fmt.Printf("⚠️  %s\n", w)
+	}
+	for _, w := range amplifyRewriteWarnings(envMap) {
+		fmt.Printf("⚠️  %s\n", w)
+	}
+	for _, w := range generateWarnings(envMap) {
+		fmt.Printf("⚠️  %s\n", w)
+	}
+
+	// Custom files share main.tf's root namespace; refuse one that redeclares a
+	// name the template uses before rendering anything.
+	if err := validateCustomTerraformRootNames(env); err != nil {
+		return err
 	}
 
 	envMap["modules"] = "../../infrastructure/modules"
@@ -566,13 +584,17 @@ func applyTemplate(env string) error {
 
 // preprocessEnvMap runs everything applyTemplate does to envMap between
 // loading and rendering, in order: applyNeonPreprocess (Neon snapshot,
-// validation and neon_render), filterDisabledItems x3, then
+// validation and neon_render), collectDisabledWorkloadNames,
+// filterDisabledItems x3, then
 // synthesizeDefaultComputePool, assignSESPrimaryDomain, resolveSESZones,
 // normalizeHealthCheckCommands, assignGitHubRunnersOwner, then validateSESDNSConfigMap,
 // validateNetworkAccessConfigMap, validateBackendHealthConfigMap,
-// validateReservedEnvNamesConfigMap, validateGitHubRunnersConfigMap and
-// validateComputeConfigMap. Path and
-// custom-module flags stay with each caller, because they differ.
+// validateReservedEnvNamesConfigMap, validateGitHubRunnersConfigMap,
+// prepareAmplifyRewriteRules, validateWorkloadNamesConfigMap, normalizeEvents,
+// validateWorkloadReservedEnvConfigMap, validateDataBucketConfigMap,
+// validateVaultsConfigMap, moveServiceVaultsOut, validateValkeyConfigMap and
+// validateComputeConfigMap. Path and custom-module flags stay with each caller,
+// because they differ.
 //
 // resolveSESZones runs after assignSESPrimaryDomain because it reads the
 // ses_primary_domain that step stores for the legacy single-domain form.
@@ -593,6 +615,8 @@ func preprocessEnvMap(envMap map[string]interface{}) error {
 	if err := applyNeonPreprocess(envMap); err != nil {
 		return err
 	}
+	// Before the filter, which removes what it records.
+	collectDisabledWorkloadNames(envMap)
 
 	filterDisabledItems(envMap, "services")
 	filterDisabledItems(envMap, "scheduled_tasks")
@@ -603,6 +627,14 @@ func preprocessEnvMap(envMap map[string]interface{}) error {
 	resolveSESZones(envMap)
 	normalizeHealthCheckCommands(envMap)
 	assignGitHubRunnersOwner(envMap)
+
+	// Validate every policy block first, then take the services' statements
+	// out of the service maps; the order is required, the validator reads them
+	// where the user wrote them.
+	if err := validateWorkloadPolicyConfigMap(envMap); err != nil {
+		return err
+	}
+	moveServicePoliciesOut(envMap)
 
 	if err := validateSESDNSConfigMap(envMap); err != nil {
 		return err
@@ -620,6 +652,32 @@ func preprocessEnvMap(envMap map[string]interface{}) error {
 		return err
 	}
 	if err := validateGitHubRunnersConfigMap(envMap); err != nil {
+		return err
+	}
+	// Names first: the validators after it resolve references against them.
+	if err := validateWorkloadNamesConfigMap(envMap); err != nil {
+		return err
+	}
+	if err := prepareAmplifyRewriteRules(envMap); err != nil {
+		return err
+	}
+	// Before the reserved-env check, which reads the consumers it records.
+	if err := normalizeEvents(envMap); err != nil {
+		return err
+	}
+	if err := validateWorkloadReservedEnvConfigMap(envMap); err != nil {
+		return err
+	}
+	if err := validateDataBucketConfigMap(envMap); err != nil {
+		return err
+	}
+	// Validate the connections where the user wrote them, then take them out
+	// of the service maps.
+	if err := validateVaultsConfigMap(envMap); err != nil {
+		return err
+	}
+	moveServiceVaultsOut(envMap)
+	if err := validateValkeyConfigMap(envMap); err != nil {
 		return err
 	}
 	return validateComputeConfigMap(envMap)
@@ -779,7 +837,10 @@ func filterDisabledItems(envMap map[string]interface{}, key string) {
 
 	filtered := make([]interface{}, 0, len(items))
 	for _, item := range items {
-		itemMap, ok := item.(map[string]interface{})
+		// Either map type: yaml.v2 decodes a list item as
+		// map[interface{}]interface{}, and a switched-off workload must be left
+		// out whichever loader produced it.
+		itemMap, ok := computeNodeMap(item)
 		if !ok {
 			filtered = append(filtered, item)
 			continue
@@ -898,6 +959,11 @@ locals {
     backend_ecr_repo_url = module.workloads.backend_ecr_repo_url
     backend_task_role    = module.workloads.backend_task_role_name
     backend_cloud_map_arn = module.workloads.backend_cloud_map_arn
+    backend_bucket_arn    = module.workloads.backend_bucket_arn
+
+    # Data bucket (always created)
+    data_bucket_name = module.data_bucket.bucket_name
+    data_bucket_arn  = module.data_bucket.bucket_arn
 `, project, env, region, accountID)
 
 	// Add domain outputs if enabled
@@ -933,6 +999,26 @@ locals {
     db_endpoint = ""
     db_user     = ""
     db_name     = ""
+`
+	}
+
+	bridge += eventsBridgeBlock(envMap)
+	// Add Valkey outputs if enabled. validateValkeyConfigMap writes valkeyKey
+	// only for an enabled block, and the template renders module.valkey on the
+	// same key, so the two never disagree.
+	if _, valkeyEnabled := envMap[valkeyKey]; valkeyEnabled {
+		bridge += `
+    # Valkey module outputs (valkey.enabled = true)
+    valkey_address           = module.valkey.address
+    valkey_port              = module.valkey.port
+    valkey_security_group_id = module.valkey.security_group_id
+`
+	} else {
+		bridge += `
+    # Valkey module outputs (valkey.enabled = false)
+    valkey_address           = ""
+    valkey_port              = ""
+    valkey_security_group_id = ""
 `
 	}
 

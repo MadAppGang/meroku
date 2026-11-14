@@ -61,9 +61,12 @@ type Env struct {
 	ScheduledTasks      []ScheduledTask      `yaml:"scheduled_tasks"`
 	EventProcessorTasks []EventProcessorTask `yaml:"event_processor_tasks"`
 	AppSyncPubSub       AppSync              `yaml:"pubsub_appsync"`
-	Buckets             []BucketConfig       `yaml:"buckets"`
-	Services            []Service            `yaml:"services"`
-	AmplifyApps         []AmplifyApp         `yaml:"amplify_apps,omitempty"`
+	// EFS is the top-level `efs` list: the filesystems modules/efs creates,
+	// which the backend mounts through Workload.EFS. Absent renders no module.
+	EFS         []EFSConfig    `yaml:"efs,omitempty"`
+	Buckets     []BucketConfig `yaml:"buckets"`
+	Services    []Service      `yaml:"services"`
+	AmplifyApps []AmplifyApp   `yaml:"amplify_apps,omitempty"`
 	// CloudFront CDN Configuration (Schema v14 -> v15: changed to array)
 	CloudFrontDistributions []CloudFront `yaml:"cloudfront_distributions,omitempty"`
 	// Custom Extensions (for SNS, SQS, Lambda, etc.)
@@ -82,6 +85,97 @@ type Env struct {
 	// Neon (schema v32) is a Neon Postgres project and the databases on its
 	// default branch. nil renders nothing; see ai_docs/NEON.md.
 	Neon *Neon `yaml:"neon,omitempty"`
+	// DataBucket lists the shared folders of the private data bucket. The
+	// bucket itself always exists; a pointer so an environment without the
+	// block saves without one. See ai_docs/DATA_BUCKET.md.
+	DataBucket *DataBucket `yaml:"data_bucket,omitempty"`
+	// Vaults are the shared SSM vaults, /<env>/<project>/vault/<name>/, that
+	// workloads connect to through their own vaults key. See ai_docs/VAULTS.md.
+	Vaults []Vault `yaml:"vaults,omitempty"`
+	// EventBus turns on the project bus <project>-<env>. A pointer so an
+	// environment without the block saves without one. See ai_docs/EVENTS.md.
+	EventBus *EventBus `yaml:"event_bus,omitempty"`
+	// Valkey is the optional serverless Valkey cache. A pointer so an
+	// environment without the block saves without one. See ai_docs/VALKEY.md.
+	Valkey *Valkey `yaml:"valkey,omitempty"`
+}
+
+// Vault is one entry of the top-level vaults list.
+type Vault struct {
+	Name string `yaml:"name"`
+}
+
+// VaultConnection connects a workload to a vault: every parameter directly
+// under the vault becomes a secret of the workload, named after its last path
+// segment, upper-cased, behind Prefix and an underscore. Access is read (the
+// default when empty) or read_write, which also lets the application write the
+// vault's parameters.
+type VaultConnection struct {
+	Name   string `yaml:"name"`
+	Access string `yaml:"access,omitempty"`
+	Prefix string `yaml:"prefix,omitempty"`
+}
+
+// EventBus is the optional event_bus block.
+type EventBus struct {
+	Enabled *bool `yaml:"enabled,omitempty"`
+}
+
+// WorkloadEvents is a workload's events block: what it subscribes to (backend
+// and services only), its queue settings, and what it may publish.
+type WorkloadEvents struct {
+	Subscribes []EventSubscription `yaml:"subscribes,omitempty"`
+	Queue      *EventQueue         `yaml:"queue,omitempty"`
+	Produces   []EventProduce      `yaml:"produces,omitempty"`
+}
+
+// EventSubscription is one events.subscribes entry: exactly one of DetailType
+// and DetailTypePrefix, an optional Source, and an optional Bus (project or
+// default; absent follows event_bus.enabled). Name, when set, is the key of the
+// entry's rule; without it the key is derived from the detail-type.
+type EventSubscription struct {
+	Name             string `yaml:"name,omitempty"`
+	DetailType       string `yaml:"detail_type,omitempty"`
+	DetailTypePrefix string `yaml:"detail_type_prefix,omitempty"`
+	Source           string `yaml:"source,omitempty"`
+	Bus              string `yaml:"bus,omitempty"`
+}
+
+// EventQueue holds the two settings a consumer's queue exposes.
+type EventQueue struct {
+	VisibilityTimeout *int `yaml:"visibility_timeout,omitempty"`
+	MaxReceiveCount   *int `yaml:"max_receive_count,omitempty"`
+}
+
+// EventProduce is one events.produces entry: a detail-type list or Any, whether
+// the workload may publish only with its own source (default true), and the bus.
+type EventProduce struct {
+	DetailTypes   []string `yaml:"detail_types,omitempty"`
+	Any           *bool    `yaml:"any,omitempty"`
+	OwnSourceOnly *bool    `yaml:"own_source_only,omitempty"`
+	Bus           string   `yaml:"bus,omitempty"`
+}
+
+// Valkey is the optional valkey block. EngineVersion is a major version, "7",
+// "8" or "9"; MaxStorageGB caps the stored data and is never a minimum.
+type Valkey struct {
+	Enabled       bool     `yaml:"enabled"`
+	EngineVersion string   `yaml:"engine_version,omitempty"`
+	MaxStorageGB  int      `yaml:"max_storage_gb,omitempty"`
+	Access        []string `yaml:"access,omitempty"`
+}
+
+// DataBucket is the optional data_bucket block.
+type DataBucket struct {
+	Shared []DataBucketShared `yaml:"shared,omitempty"`
+}
+
+// DataBucketShared is one shared folder, shared/<name>/ in the data bucket, and
+// the workloads that may use it.
+type DataBucketShared struct {
+	Name      string   `yaml:"name"`
+	ReadWrite []string `yaml:"read_write,omitempty"`
+	Read      []string `yaml:"read,omitempty"`
 }
 
 // Neon is the env's top-level `neon:` block. A Neon project is the trust zone:
@@ -251,16 +345,21 @@ type Workload struct {
 	BackendExternalDockerImage string `yaml:"backend_external_docker_image"`
 	// list(string) in modules/workloads/variables.tf, and a scalar here for most
 	// of its life. Schema v29 converts the scalar form. See ScheduledTask.
-	BackendContainerCommand []string          `yaml:"backend_container_command,omitempty"`
-	BucketPostfix           string            `yaml:"bucket_postfix"`
-	BucketPublic            bool              `yaml:"bucket_public"`
-	BackendImagePort        int               `yaml:"backend_image_port"`
-	SetupFCNSNS             bool              `yaml:"setup_fcnsns"`
-	XrayEnabled             bool              `yaml:"xray_enabled"`
-	BackendEnvVariables     map[string]string `yaml:"backend_env_variables"`
-	Policies                []string          `yaml:"policies"`
-	BackendPolicies         []Policy          `yaml:"backend_policies"`
-	EnvFilesS3              []S3EnvFile       `yaml:"env_files_s3"`
+	BackendContainerCommand []string `yaml:"backend_container_command,omitempty"`
+	BucketPostfix           string   `yaml:"bucket_postfix"`
+	BucketPublic            bool     `yaml:"bucket_public"`
+	BackendImagePort        int      `yaml:"backend_image_port"`
+	// BackendRemoteAccess turns on ECS Exec for the backend container and the IAM
+	// policy it needs. A *bool because the template defaults an absent key to
+	// true: an operator's explicit false has to survive a save as false, or the
+	// next save silently re-enables shell access to the container.
+	BackendRemoteAccess *bool             `yaml:"backend_remote_access,omitempty"`
+	SetupFCNSNS         bool              `yaml:"setup_fcnsns"`
+	XrayEnabled         bool              `yaml:"xray_enabled"`
+	BackendEnvVariables map[string]string `yaml:"backend_env_variables"`
+	Policies            []string          `yaml:"policies"`
+	BackendPolicies     []Policy          `yaml:"backend_policies"`
+	EnvFilesS3          []S3EnvFile       `yaml:"env_files_s3"`
 
 	SlackWebhook     string `yaml:"slack_webhook"`
 	EnableGithubOIDC bool   `yaml:"enable_github_oidc"`
@@ -282,12 +381,32 @@ type Workload struct {
 	BackendALBDomainName string `yaml:"backend_alb_domain_name"`
 
 	// Backend scaling configuration
-	BackendDesiredCount           int32  `yaml:"backend_desired_count"`
-	BackendAutoscalingEnabled     bool   `yaml:"backend_autoscaling_enabled"`
-	BackendAutoscalingMinCapacity int32  `yaml:"backend_autoscaling_min_capacity"`
-	BackendAutoscalingMaxCapacity int32  `yaml:"backend_autoscaling_max_capacity"`
-	BackendCPU                    string `yaml:"backend_cpu"`
-	BackendMemory                 string `yaml:"backend_memory"`
+	BackendDesiredCount           int32 `yaml:"backend_desired_count"`
+	BackendAutoscalingEnabled     bool  `yaml:"backend_autoscaling_enabled"`
+	BackendAutoscalingMinCapacity int32 `yaml:"backend_autoscaling_min_capacity"`
+	BackendAutoscalingMaxCapacity int32 `yaml:"backend_autoscaling_max_capacity"`
+	// The two scaling targets are pointers, and the three fields above them are
+	// not, because those three have something writing a value into the configs
+	// meroku itself produces: migrateToV4 adds them to an older one and createEnv
+	// sets them for a new one. That is not every config: a hand-written one that
+	// already declares the current version reaches neither, because
+	// applyMigrations returns before the chain runs, so a plain int32 there can
+	// still stand for "absent", and does, as 0. The targets have no populator on
+	// any path: their only default is the template's
+	// {{default workload.backend_autoscaling_target_cpu 70}}.
+	//
+	// A plain int32 here would save an unset target as 0, and the default helper
+	// returns 0 for 0 rather than falling back, so both target-tracking policies
+	// would render target_value = 0. The template passes all five arguments
+	// unconditionally while both policies are
+	// count = var.backend_autoscaling_enabled ? 1 : 0, so that 0 reaches AWS only
+	// in a config that turned autoscaling on — and there AWS rejects it, turning a
+	// config that only omitted an optional key into a failed apply. nil keeps the
+	// key out of the YAML and leaves the template's default in force.
+	BackendAutoscalingTargetCPU    *int32 `yaml:"backend_autoscaling_target_cpu,omitempty"`
+	BackendAutoscalingTargetMemory *int32 `yaml:"backend_autoscaling_target_memory,omitempty"`
+	BackendCPU                     string `yaml:"backend_cpu"`
+	BackendMemory                  string `yaml:"backend_memory"`
 
 	// BackendRuntime (schema v26) is fargate | ec2. The v26 migration stamps
 	// "fargate" on every existing environment so a runtime choice is visible in
@@ -319,6 +438,26 @@ type Workload struct {
 	BackendHealthCheckGracePeriod *int `yaml:"backend_health_check_grace_period,omitempty"`
 	// BackendNeon is the backend's Neon database access. nil means none.
 	BackendNeon *NeonAccess `yaml:"backend_neon,omitempty"`
+
+	// Policy is the user's own `policy` block: statements meroku adds to the
+	// backend task role on top of the grants it builds itself. It renders into
+	// backend_policy, which modules/workloads/backend.tf creates as a
+	// customer-managed aws_iam_policy and attaches to the role.
+	//
+	// Not BackendPolicies above: that one's Policy type carries no effect and no
+	// conditions.
+	Policy []IAMStatement `yaml:"policy,omitempty"`
+
+	// EFS is workload.efs: the filesystems from the environment's top-level efs
+	// list that the backend container mounts. Absent renders neither
+	// available_efs nor backend_efs_mounts.
+	EFS []EFSMount `yaml:"efs,omitempty"`
+
+	// Vaults are the backend's vault connections (workload.vaults).
+	Vaults []VaultConnection `yaml:"vaults,omitempty"`
+	// Events is workload.events: the backend subscribes and publishes like a
+	// service. See ai_docs/EVENTS.md.
+	Events *WorkloadEvents `yaml:"events,omitempty"`
 }
 
 // BackendHealthCheck is workload.backend_health_check. Command takes the same
@@ -348,6 +487,31 @@ type S3EnvFile struct {
 type Policy struct {
 	Actions   []string `yaml:"actions"`
 	Resources []string `yaml:"resources"`
+}
+
+// IAMStatement is one statement of a `policy` block: the IAM policy a workload,
+// service or task carries in its own config.
+//
+// It is deliberately not the Policy type above, which serves `backend_policies`
+// and `instance_policies`. That type has neither an effect nor conditions, so it
+// cannot express the Deny that keeps a broad grant narrow, nor scope a statement
+// to a region or a transport.
+type IAMStatement struct {
+	// Effect is "Allow" or "Deny". Empty means Allow, which is IAM's own default.
+	Effect    string   `yaml:"effect,omitempty"`
+	Actions   []string `yaml:"actions"`
+	Resources []string `yaml:"resources"`
+	// Conditions restrict when the statement applies, such as a region or a
+	// transport requirement. Empty means the statement is unconditional.
+	Conditions []IAMCondition `yaml:"conditions,omitempty"`
+}
+
+// IAMCondition is one condition block of an IAMStatement: a test applied to the
+// values of a condition key.
+type IAMCondition struct {
+	Test     string   `yaml:"test"`
+	Variable string   `yaml:"variable"`
+	Values   []string `yaml:"values"`
 }
 
 // Compute (schema v26) is the EC2 capacity side of the environment: the pools
@@ -568,6 +732,53 @@ type ALB struct {
 	RemoveAPIGateway bool `yaml:"remove_api_gateway,omitempty"`
 }
 
+// EFSConfig is one entry of the top-level `efs` list, shaped by the efs_configs
+// variable in modules/efs/variable.tf.
+//
+// UID and GID are pointers because 0 and absent mean different things here.
+// Both reach only root_directory.creation_info, which AWS applies when it has to
+// create the access point's root directory; the access point's own posix_user is
+// uid 0 / gid 0 in modules/efs/main.tf whatever the YAML says. An absent uid
+// takes the variable's default of 1000, uid: 0 asks for a root-owned directory.
+// A plain int would break one way or the other — with omitempty it drops an
+// explicit 0 and hands the directory to 1000, without omitempty it writes 0 into
+// every config that never set one. Either way a filesystem created at the next
+// apply gets a differently owned root directory, and in the second case every
+// untuned config also gains a spurious diff at the next plan.
+//
+// Permissions and Path are plain strings: neither "" nor absent is a POSIX mode
+// or a root directory anybody can mean, so the two collapse onto the module's
+// defaults ("755" and "/") and nothing is lost — the call ComputePool makes for
+// NetworkMode.
+type EFSConfig struct {
+	Name        string `yaml:"name"`
+	UID         *int   `yaml:"uid,omitempty"`
+	GID         *int   `yaml:"gid,omitempty"`
+	Permissions string `yaml:"permissions,omitempty"`
+	Path        string `yaml:"path,omitempty"`
+}
+
+// EFSMount is one entry of workload.efs: a filesystem the backend container
+// mounts. Name has to be the Name of an EFSConfig in the same environment,
+// which is how the template resolves the mount to module.efs.efs_configs.
+//
+// MountPoint is omitempty because modules/workloads/variables.tf declares
+// mount_point = optional(string, "/"), so a mount that omits the key has to stay
+// omitted. Without it a save writes mount_point: "" into every config that never
+// set one, and the YAML then claims a mount path nobody chose.
+//
+// ReadOnly is a *bool, the shape Workload.BackendRemoteAccess has, because the
+// module declares read_only = optional(bool, false): absent has to stay absent.
+// A plain bool cannot tell "the user asked for a read-write mount" from "the
+// user said nothing", and a save would then write read_only: false into every
+// config that never set one, so the YAML claims a choice about a mount nobody
+// tuned.
+type EFSMount struct {
+	Name       string `yaml:"name"`
+	MountPoint string `yaml:"mount_point,omitempty"`
+	ReadOnly   *bool  `yaml:"read_only,omitempty"`
+}
+
 type ScheduledTask struct {
 	Name    string `yaml:"name"`
 	Enabled *bool  `yaml:"enabled,omitempty"` // Schema v20: nil/true = deployed, false = config kept but not deployed
@@ -584,10 +795,15 @@ type ScheduledTask struct {
 	ExternalDockerImage string `yaml:"docker_image"`
 	// A list of arguments, matching Terraform's list(string). Was a scalar
 	// string until schema v25, which converts existing values on load.
-	ContainerCommand []string   `yaml:"container_command"`
-	CPU              int        `yaml:"cpu,omitempty"`
-	Memory           int        `yaml:"memory,omitempty"`
-	ECRConfig        *ECRConfig `yaml:"ecr_config,omitempty"` // Schema v9
+	ContainerCommand []string `yaml:"container_command"`
+	// EnvironmentVariables are the container's own environment, rendered as the
+	// task's custom_env_vars. ENV is not a usable name: meroku creates
+	// <path>/env for every workload and ECS refuses a name present in both.
+	// See app/env_reserved.go.
+	EnvironmentVariables map[string]string `yaml:"environment_variables,omitempty"`
+	CPU                  int               `yaml:"cpu,omitempty"`
+	Memory               int               `yaml:"memory,omitempty"`
+	ECRConfig            *ECRConfig        `yaml:"ecr_config,omitempty"` // Schema v9
 	// IANA timezone the schedule is evaluated in. DST-aware, so a job set for
 	// 09:00 stays at 09:00 local across the change. Empty uses the module
 	// default of UTC.
@@ -599,6 +815,13 @@ type ScheduledTask struct {
 	// SQS queue ARN for failed invocations. Empty disables the DLQ and the
 	// scoped sqs:SendMessage grant that comes with it.
 	DLQArn string `yaml:"dlq_arn,omitempty"`
+	// Policy is the user's own `policy` block: statements meroku adds to this
+	// task's role on top of the grants it builds itself.
+	Policy []IAMStatement `yaml:"policy,omitempty"`
+	// Vaults are this task's vault connections.
+	Vaults []VaultConnection `yaml:"vaults,omitempty"`
+	// Events is the task's events block; a task may only produce.
+	Events *WorkloadEvents `yaml:"events,omitempty"`
 }
 
 // EventBridgeRule defines a single EventBridge rule pattern (Schema v13)
@@ -606,6 +829,8 @@ type EventBridgeRule struct {
 	Name        string   `yaml:"name"`
 	Sources     []string `yaml:"sources"`
 	DetailTypes []string `yaml:"detail_types"`
+	// Bus is project or default; absent follows event_bus.enabled.
+	Bus string `yaml:"bus,omitempty"`
 }
 
 type EventProcessorTask struct {
@@ -618,11 +843,23 @@ type EventProcessorTask struct {
 	DetailTypes []string `yaml:"detail_types,omitempty"`
 	Sources     []string `yaml:"sources,omitempty"`
 	// Container configuration
-	ExternalDockerImage string     `yaml:"docker_image,omitempty"`
-	ContainerCommand    []string   `yaml:"container_command,omitempty"`
-	CPU                 int        `yaml:"cpu,omitempty"`
-	Memory              int        `yaml:"memory,omitempty"`
-	ECRConfig           *ECRConfig `yaml:"ecr_config,omitempty"` // Schema v9
+	ExternalDockerImage string   `yaml:"docker_image,omitempty"`
+	ContainerCommand    []string `yaml:"container_command,omitempty"`
+	// EnvironmentVariables are the container's own environment, rendered as the
+	// task's custom_env_vars. ENV is not a usable name: meroku creates
+	// <path>/env for every workload and ECS refuses a name present in both.
+	// See app/env_reserved.go.
+	EnvironmentVariables map[string]string `yaml:"environment_variables,omitempty"`
+	CPU                  int               `yaml:"cpu,omitempty"`
+	Memory               int               `yaml:"memory,omitempty"`
+	ECRConfig            *ECRConfig        `yaml:"ecr_config,omitempty"` // Schema v9
+	// Policy is the user's own `policy` block: statements meroku adds to this
+	// task's role on top of the grants it builds itself.
+	Policy []IAMStatement `yaml:"policy,omitempty"`
+	// Vaults are this task's vault connections.
+	Vaults []VaultConnection `yaml:"vaults,omitempty"`
+	// Events is the task's events block; a task may only produce.
+	Events *WorkloadEvents `yaml:"events,omitempty"`
 }
 
 type EnvVariable struct {
@@ -670,6 +907,14 @@ type Service struct {
 	HealthCheckCommand HealthCheckCommand `yaml:"health_check_command,omitempty"`
 	// Neon is this service's Neon database access. nil means none.
 	Neon *NeonAccess `yaml:"neon,omitempty"`
+
+	// Policy is the user's own `policy` block: statements meroku adds to this
+	// service's role on top of the grants it builds itself.
+	Policy []IAMStatement `yaml:"policy,omitempty"`
+	// Vaults are this service's vault connections.
+	Vaults []VaultConnection `yaml:"vaults,omitempty"`
+	// Events is the service's events block. See ai_docs/EVENTS.md.
+	Events *WorkloadEvents `yaml:"events,omitempty"`
 }
 
 type DNSConfig struct {
@@ -741,6 +986,21 @@ type AmplifyApp struct {
 	CustomDomain     string            `yaml:"custom_domain,omitempty"`         // For manual override
 	EnvVariables     map[string]string `yaml:"environment_variables,omitempty"` // App-level env vars
 	SPAMode          bool              `yaml:"spa_mode,omitempty"`              // Enable SPA routing (200 rewrite instead of 404-200)
+	// CustomRules are rewrites and redirects applied before the SPA rule, in
+	// order. See amplify_rewrites.go.
+	CustomRules []AmplifyRewriteRule `yaml:"custom_rules,omitempty"`
+}
+
+// AmplifyRewriteRule is one amplify_apps[].custom_rules entry. Exactly one of
+// Target and Workload is set. Workload is "backend" or a public service, and
+// the request is proxied to that workload's base URL plus Path (or the source
+// path when Path is empty). Status is 200, 301, 302 or 404-200; empty means 200.
+type AmplifyRewriteRule struct {
+	Source   string `yaml:"source"`
+	Target   string `yaml:"target,omitempty"`
+	Workload string `yaml:"workload,omitempty"`
+	Path     string `yaml:"path,omitempty"`
+	Status   string `yaml:"status,omitempty"`
 }
 
 // AmplifyBranch represents a branch configuration for an Amplify app

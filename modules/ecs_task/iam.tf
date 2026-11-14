@@ -11,9 +11,31 @@ resource "aws_iam_role" "task" {
   }
 }
 
-resource "aws_iam_role_policy_attachment" "task_cloudwatch" {
-  role       = aws_iam_role.task.name
-  policy_arn = "arn:aws:iam::aws:policy/CloudWatchFullAccess"
+# What the task's container may do in CloudWatch: publish custom metrics and
+# write to its own log group. In place of the AWS-managed CloudWatchFullAccess,
+# which also carries events:* and so would let the task call PutEvents on any
+# bus whatever its events.produces says (modules/events). The execution role
+# keeps its attachment: a container never sees its credentials.
+resource "aws_iam_role_policy" "task_cloudwatch" {
+  name = "cloudwatch"
+  role = aws_iam_role.task.name
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "PutMetrics"
+        Effect   = "Allow"
+        Action   = ["cloudwatch:PutMetricData"]
+        Resource = "*"
+      },
+      {
+        Sid      = "OwnLogs"
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogStream", "logs:PutLogEvents", "logs:DescribeLogStreams"]
+        Resource = [aws_cloudwatch_log_group.task.arn, "${aws_cloudwatch_log_group.task.arn}:*"]
+      },
+    ]
+  })
 }
 
 resource "aws_iam_role" "task_execution" {
@@ -162,7 +184,8 @@ resource "aws_iam_role_policy_attachment" "ses_access" {
   policy_arn = aws_iam_policy.send_emails[0].arn
 }
 
-# EventBridge permissions to allow scheduled tasks to emit and listen to events
+# EventBridge read access: the buses and rules the task may describe.
+# PutEvents is not here; modules/events grants it per events.produces entry.
 resource "aws_iam_policy" "eventbridge_access" {
   name = "EventBridgeAccess_${var.project}_task_${var.task}_${var.env}"
   policy = jsonencode({
@@ -171,18 +194,13 @@ resource "aws_iam_policy" "eventbridge_access" {
       {
         Effect = "Allow"
         Action = [
-          "events:PutEvents",
           "events:DescribeEventBus",
           "events:ListRules",
           "events:DescribeRule",
           "events:ListTargetsByRule",
           "events:ListEventBuses"
         ]
-        Resource = [
-          "arn:aws:events:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:event-bus/default",
-          "arn:aws:events:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:event-bus/${var.project}-*",
-          "arn:aws:events:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:rule/*"
-        ]
+        Resource = local.eventbridge_read_resources
       }
     ]
   })

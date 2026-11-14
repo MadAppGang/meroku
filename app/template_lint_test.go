@@ -39,6 +39,15 @@ type mustacheToken struct {
 	eachDepth int
 }
 
+// hclEmittingHelpers are the helpers whose output is HCL syntax, quotes
+// included, and which the template must call with a triple-stache.
+var hclEmittingHelpers = map[string]bool{
+	"hclString":  true,
+	"hclArray":   true,
+	"hclEscape":  true,
+	"hclHeredoc": true,
+}
+
 func TestMainHBSLint(t *testing.T) {
 	template := readMainHBS(t)
 	tokens := scanMustaches(t, template)
@@ -63,6 +72,28 @@ func TestMainHBSLint(t *testing.T) {
 					"    A list rendered this way concatenates into one bare word.\n"+
 					"    Use a helper that emits HCL: {{{array %s}}}",
 					token.line, token.body, token.body)
+			}
+		}
+	})
+
+	t.Run("every hcl helper call is a triple-stache", func(t *testing.T) {
+		// hclString, hclArray, hclEscape and hclHeredoc emit HCL that must reach
+		// main.tf byte for byte. They return SafeString today, which raymond does
+		// not escape, but a double-stache call site works only for as long as
+		// that stays true: the day one returns a plain string, {{hclString x}}
+		// writes &quot; into main.tf. One spelling for every call keeps the
+		// template independent of that detail.
+		for _, token := range tokens {
+			if token.raw || isBlockToken(token.body) {
+				continue
+			}
+			invoked, _ := classifyAtoms(bodyAtoms(token.body), helpers)
+			for _, name := range invoked {
+				if hclEmittingHelpers[name] {
+					t.Errorf("env/main.hbs:%d: {{%s}} calls %s with a double-stache.\n"+
+						"    Use {{{%s}}} so the HCL it emits is never HTML-escaped.",
+						token.line, token.body, name, token.body)
+				}
 			}
 		}
 	})
@@ -157,10 +188,11 @@ func registeredHelperNames(t *testing.T) map[string]bool {
 // with: the Env struct's own yaml tags, the keys of the shipped config, and what
 // applyTemplate injects.
 //
-// Both config sources are needed. The struct is the schema, but generation reads
-// the YAML into a plain map and never goes through it, so a key can be real and
-// working without a field — `efs` is one today. The shipped config covers those,
-// and the struct covers optional keys no fixture happens to set.
+// Both sources are unioned because generation reads the YAML into a plain map and
+// never goes through the struct: a root key the shipped config sets is real and
+// working whether or not Env declares a field for it, and a field Env declares is
+// a legitimate root whether or not the shipped config sets it. Neither source on
+// its own covers both halves.
 func fixtureRootKeys(t *testing.T) map[string]bool {
 	t.Helper()
 
@@ -187,8 +219,9 @@ func fixtureRootKeys(t *testing.T) map[string]bool {
 	}
 
 	// Set by applyTemplate and preprocessEnvMap rather than by the config file.
-	for _, injected := range []string{"modules", "custom_modules", "has_custom_pre", "has_custom_post", sesPrimaryDomainKey,
-		sesLegacyZoneOriginKey, sesMergeDomainsKey, sesMergeAnyKey, neonRenderKey} {
+	for _, injected := range []string{"modules", "custom_modules", "has_custom_pre", "has_custom_post", sesPrimaryDomainKey, neonRenderKey,
+		sesLegacyZoneOriginKey, sesMergeDomainsKey, sesMergeAnyKey, amplifyWorkloadURLsKey, amplifyBaseViaDomainKey, servicePoliciesKey,
+		dataBucketSharedKey, ownBackendBucketEnvKey, vaultConnectionsKey, eventConsumersKey, eventProducersKey, valkeyKey} {
 		keys[injected] = true
 	}
 	return keys

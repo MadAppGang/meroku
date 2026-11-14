@@ -77,6 +77,44 @@ write that would change what the next apply deploys. `github_runners`
 ([GITHUB_RUNNERS.md](./GITHUB_RUNNERS.md)) is one. Its struct field is a
 pointer with `omitempty`, so a save of a file without the block writes none.
 
+`amplify_apps[].custom_rules` ([amplify.md](./amplify.md#rewrites-and-the-api-proxy))
+is another: an app without rules renders no rule and no `workload_urls`.
+
+The same holds for `policy` on `services[]`, `scheduled_tasks[]` and
+`event_processor_tasks[]` ([WORKLOAD_IAM.md](./WORKLOAD_IAM.md)): absent renders
+no policy, and the struct fields use `omitempty`. `workload.policy` gained
+optional `effect` and `conditions`; a statement without them renders the
+document it always did.
+
+`data_bucket` ([DATA_BUCKET.md](./DATA_BUCKET.md)) is another, with one
+difference: the bucket it configures exists in every environment whether or not
+the block is present. The block only lists shared folders, so absent means "no
+shared folders" and there is still nothing to write. Its struct field is a
+pointer with `omitempty` too.
+
+`vaults` ([VAULTS.md](./VAULTS.md)) is another: the top-level list and each
+workload's `vaults` connections are optional. Absent means no vaults and no
+connections, which renders a `vaults` module that reads nothing and grants
+nothing, so there is nothing to write. The struct fields (`Env.Vaults` and
+`Vaults` on the backend workload, services, scheduled tasks and event tasks)
+use `omitempty`.
+
+`event_bus`, and `events` on `workload`, `services[]`, `scheduled_tasks[]` and
+`event_processor_tasks[]`, with `event_processor_tasks[].rules[].bus`
+([EVENTS.md](./EVENTS.md)), need no migration either: absent renders the default
+bus, no queue and no PutEvents grant, and the struct fields are pointers or use
+`omitempty`. One change has no migration on purpose: `events:PutEvents` is no
+longer granted by default, so a workload that publishes needs an
+`events.produces` entry. That is a change of permissions, not of the YAML, and no
+migration could write the entry, because only the project knows which
+detail-types each workload publishes.
+
+`valkey` ([VALKEY.md](./VALKEY.md)) is another: absent, or `enabled: false`,
+renders no cache, no security group and no variables. Its defaults
+(`engine_version: "8"`, `max_storage_gb: 1`) apply only to an enabled block and
+live in `app/valkey.go`, so nothing is written to existing files. Its struct
+field is a pointer with `omitempty`.
+
 ### A note on v23's two defaults
 
 v23 is the one migration that does **not** write the safer of two values

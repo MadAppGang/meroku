@@ -5,9 +5,9 @@
 # hashicorp/aws, which may be a major no environment runs, and CI then validates
 # the wrong provider. Keep this constraint equal to env/main.hbs.
 #
-# required_version: nothing here needs a construct newer than Terraform 1.2.
+# required_version: matches env/main.hbs, which every generated environment runs.
 terraform {
-  required_version = ">= 1.2.6"
+  required_version = ">= 1.10.0"
 
   required_providers {
     aws = {

@@ -1,5 +1,6 @@
 import {
 	Activity,
+	ArrowRightLeft,
 	BarChart,
 	Bell,
 	BookOpen,
@@ -10,6 +11,7 @@ import {
 	Cpu,
 	Database,
 	FileText,
+	FolderLock,
 	Gauge,
 	GitBranch,
 	Globe,
@@ -25,6 +27,7 @@ import {
 	Terminal,
 	Trash2,
 	Upload,
+	Vault,
 	Workflow,
 	X,
 	Zap,
@@ -40,6 +43,7 @@ import { AmplifyBranchManagement } from "./AmplifyBranchManagement";
 import { AmplifyBuildSettings } from "./AmplifyBuildSettings";
 import { AmplifyDomainSettings } from "./AmplifyDomainSettings";
 import { AmplifyNodeProperties } from "./AmplifyNodeProperties";
+import { AmplifyRewrites } from "./AmplifyRewrites";
 import { APIGatewayProperties } from "./APIGatewayProperties";
 import { AuroraNodeProperties } from "./AuroraNodeProperties";
 import { BackendAlerts } from "./BackendAlerts";
@@ -55,6 +59,7 @@ import { BackendSSHAccess } from "./BackendSSHAccess";
 import { BackendXRayConfiguration } from "./BackendXRayConfiguration";
 import { CloudFrontNodeProperties } from "./CloudFrontNodeProperties";
 import { ComputePoolProperties } from "./ComputePoolProperties";
+import { DataBucketProperties } from "./DataBucketProperties";
 import { ECRNodeProperties } from "./ECRNodeProperties";
 import { ECRPushInstructions } from "./ECRPushInstructions";
 import { ECRRepositoryList } from "./ECRRepositoryList";
@@ -66,6 +71,7 @@ import {
 	ECSServicesInfo,
 } from "./ECSNodeProperties";
 import { EventBridgeTestEvent } from "./EventBridgeTestEvent";
+import { EventBusSettings } from "./EventBusSettings";
 import { EventTaskEnvVars } from "./EventTaskEnvVars";
 import { EventTaskProperties } from "./EventTaskProperties";
 import { EventTaskTestEvent } from "./EventTaskTestEvent";
@@ -89,16 +95,21 @@ import { SESStatus } from "./SESStatus";
 import ServiceCICDConfiguration from "./ServiceCICDConfiguration";
 import { ServiceDatabaseTab } from "./ServiceDatabaseTab";
 import { ServiceEnvironmentVariables } from "./ServiceEnvironmentVariables";
+import { ServiceEventsTab } from "./ServiceEventsTab";
 import { ServiceLogs } from "./ServiceLogs";
 import { ServiceParameterStore } from "./ServiceParameterStore";
 import { ServiceProperties } from "./ServiceProperties";
 import { ServiceXRayConfiguration } from "./ServiceXRayConfiguration";
 import { SNSNodeProperties } from "./SNSNodeProperties";
 import { SQSNodeProperties } from "./SQSNodeProperties";
+import { TaskEventsTab } from "./TaskEventsTab";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Switch } from "./ui/switch";
+import { ValkeyNodeProperties } from "./ValkeyNodeProperties";
+import { VaultsProperties } from "./VaultsProperties";
+import { WorkloadVaults } from "./WorkloadVaults";
 
 interface SidebarProps {
 	selectedNode: ComponentNode | null;
@@ -160,8 +171,13 @@ export function Sidebar({
 					{ id: "status", label: "Status", icon: Activity },
 					{ id: "send", label: "Send Email", icon: Send },
 				];
+			case "vaults":
+				return [{ id: "vaults", label: "Vaults", icon: Vault }];
 			case "s3":
-				return [{ id: "settings", label: "Buckets", icon: HardDrive }];
+				return [
+					{ id: "settings", label: "Buckets", icon: HardDrive },
+					{ id: "data-bucket", label: "Data bucket", icon: FolderLock },
+				];
 			case "sns":
 				return [{ id: "settings", label: "Settings", icon: Settings }];
 			case "postgres":
@@ -176,8 +192,13 @@ export function Sidebar({
 				];
 			case "sqs":
 				return [{ id: "settings", label: "Settings", icon: Settings }];
+			case "valkey":
+				return [{ id: "settings", label: "Settings", icon: Settings }];
 			case "eventbridge":
-				return [{ id: "test", label: "Test Event", icon: Send }];
+				return [
+					{ id: "bus", label: "Settings", icon: Settings },
+					{ id: "test", label: "Test Event", icon: Send },
+				];
 			case "api-gateway":
 				return [{ id: "settings", label: "Settings", icon: Settings }];
 			case "alb":
@@ -203,9 +224,11 @@ export function Sidebar({
 					{ id: "ssh", label: "SSH", icon: Terminal },
 					{ id: "env", label: "Env Vars", icon: Zap },
 					{ id: "params", label: "Parameters", icon: Key },
+					{ id: "vaults", label: "Vaults", icon: Vault },
 					{ id: "s3", label: "S3 Buckets", icon: HardDrive },
 					{ id: "sns", label: "SNS", icon: Bell },
 					{ id: "iam", label: "IAM", icon: Shield },
+					{ id: "events", label: "Events", icon: Workflow },
 					{ id: "logs", label: "Logs", icon: FileText },
 					{ id: "cloudwatch", label: "CloudWatch", icon: Cloud },
 					{ id: "alerts", label: "Alerts", icon: Bell },
@@ -216,7 +239,9 @@ export function Sidebar({
 					{ id: "cicd", label: "CI/CD", icon: Workflow },
 					{ id: "env", label: "Env Vars", icon: Zap },
 					{ id: "params", label: "Parameters", icon: Key },
+					{ id: "vaults", label: "Vaults", icon: Vault },
 					{ id: "iam", label: "IAM", icon: Shield },
+					{ id: "events", label: "Events", icon: Workflow },
 					{ id: "cloudwatch", label: "CloudWatch", icon: Cloud },
 					{ id: "logs", label: "Logs", icon: FileText },
 				];
@@ -227,7 +252,9 @@ export function Sidebar({
 					{ id: "test", label: "Test Event", icon: Send },
 					{ id: "env", label: "Env Vars", icon: Zap },
 					{ id: "params", label: "Parameters", icon: Key },
+					{ id: "vaults", label: "Vaults", icon: Vault },
 					{ id: "iam", label: "IAM", icon: Shield },
+					{ id: "events", label: "Events", icon: Workflow },
 					{ id: "cloudwatch", label: "CloudWatch", icon: Cloud },
 					{ id: "logs", label: "Logs", icon: FileText },
 				];
@@ -240,7 +267,9 @@ export function Sidebar({
 					{ id: "ssh", label: "SSH", icon: Terminal },
 					{ id: "env", label: "Env Vars", icon: Zap },
 					{ id: "params", label: "Parameters", icon: Key },
+					{ id: "vaults", label: "Vaults", icon: Vault },
 					{ id: "iam", label: "IAM", icon: Shield },
+					{ id: "events", label: "Events", icon: Workflow },
 					{ id: "logs", label: "Logs", icon: FileText },
 					{ id: "cloudwatch", label: "CloudWatch", icon: Cloud },
 				];
@@ -251,6 +280,7 @@ export function Sidebar({
 					{ id: "branches", label: "Branches", icon: GitBranch },
 					{ id: "build", label: "Build", icon: Code },
 					{ id: "domain", label: "Domain", icon: Globe },
+					{ id: "rewrites", label: "Rewrites", icon: ArrowRightLeft },
 				];
 			default:
 				return [
@@ -378,6 +408,10 @@ export function Sidebar({
 	}, [selectedNode, checkScrollButtons]);
 
 	if (!isOpen || !selectedNode) return null;
+
+	// Panels that hold a draft in local state remount when the environment or
+	// the node changes, so no draft carries over to another workload or env.
+	const panelKey = `${config?.env ?? ""}:${selectedNode.id}`;
 
 	return (
 		<div className="fixed right-0 top-0 h-full w-[768px] bg-gray-900 border-l border-gray-700 shadow-xl z-50 flex flex-col">
@@ -586,11 +620,17 @@ export function Sidebar({
 							onConfigChange={onConfigChange}
 							accountInfo={accountInfo}
 						/>
+					) : selectedNode.type === "valkey" && config && onConfigChange ? (
+						<ValkeyNodeProperties
+							key={panelKey}
+							config={config}
+							onConfigChange={onConfigChange}
+						/>
 					) : selectedNode.type === "scheduled-task" &&
 						config &&
 						onConfigChange ? (
 						<ScheduledTaskProperties
-							key={selectedNode.id}
+							key={panelKey}
 							config={config}
 							onConfigChange={onConfigChange}
 							accountInfo={accountInfo}
@@ -598,7 +638,7 @@ export function Sidebar({
 						/>
 					) : selectedNode.type === "event-task" && config && onConfigChange ? (
 						<EventTaskProperties
-							key={selectedNode.id}
+							key={panelKey}
 							config={config}
 							onConfigChange={onConfigChange}
 							accountInfo={accountInfo}
@@ -606,7 +646,7 @@ export function Sidebar({
 						/>
 					) : selectedNode.type === "service" && config && onConfigChange ? (
 						<ServiceProperties
-							key={selectedNode.id}
+							key={panelKey}
 							config={config}
 							onConfigChange={onConfigChange}
 							accountInfo={accountInfo}
@@ -1242,6 +1282,43 @@ jobs:
 					</div>
 				)}
 
+				{activeTab === "vaults" &&
+					selectedNode.type === "vaults" &&
+					config &&
+					onConfigChange && (
+						<VaultsProperties
+							key={panelKey}
+							config={config}
+							onConfigChange={onConfigChange}
+						/>
+					)}
+
+				{activeTab === "vaults" &&
+					(selectedNode.type === "backend" ||
+						selectedNode.type === "service" ||
+						selectedNode.type === "scheduled-task" ||
+						selectedNode.type === "event-task") &&
+					config &&
+					onConfigChange && (
+						<WorkloadVaults
+							key={panelKey}
+							config={config}
+							node={selectedNode}
+							onConfigChange={onConfigChange}
+						/>
+					)}
+
+				{activeTab === "data-bucket" &&
+					selectedNode.type === "s3" &&
+					config &&
+					onConfigChange && (
+						<DataBucketProperties
+							key={panelKey}
+							config={config}
+							onConfigChange={onConfigChange}
+						/>
+					)}
+
 				{activeTab === "repos" && selectedNode.type === "ecr" && config && (
 					<ECRRepositoryList config={config} accountInfo={accountInfo} />
 				)}
@@ -1404,6 +1481,7 @@ jobs:
 					config &&
 					onConfigChange && (
 						<BackendIAMPermissions
+							key={panelKey}
 							config={config}
 							onConfigChange={onConfigChange}
 						/>
@@ -1477,6 +1555,7 @@ jobs:
 					config &&
 					onConfigChange && (
 						<BackendIAMPermissions
+							key={panelKey}
 							config={config}
 							node={selectedNode}
 							onConfigChange={onConfigChange}
@@ -1550,7 +1629,12 @@ jobs:
 				{activeTab === "iam" &&
 					selectedNode.type === "scheduled-task" &&
 					config && (
-						<ScheduledTaskIAMPermissions config={config} node={selectedNode} />
+						<ScheduledTaskIAMPermissions
+							key={panelKey}
+							config={config}
+							node={selectedNode}
+							onConfigChange={onConfigChange}
+						/>
 					)}
 
 				{activeTab === "cloudwatch" &&
@@ -1581,11 +1665,128 @@ jobs:
 
 				{activeTab === "test" &&
 					selectedNode.type === "event-task" &&
-					config && <EventTaskTestEvent config={config} node={selectedNode} />}
+					config && (
+						<EventTaskTestEvent
+							key={panelKey}
+							config={config}
+							node={selectedNode}
+						/>
+					)}
 
 				{activeTab === "test" &&
 					selectedNode.type === "eventbridge" &&
 					config && <EventBridgeTestEvent config={config} />}
+
+				{activeTab === "bus" &&
+					selectedNode.type === "eventbridge" &&
+					config &&
+					onConfigChange && (
+						<EventBusSettings
+							key={panelKey}
+							config={config}
+							onConfigChange={onConfigChange}
+						/>
+					)}
+
+				{/* Events tabs. The backend writes only { workload: { events } };
+				    services and tasks map the one entry into the current list. */}
+				{activeTab === "events" &&
+					selectedNode.type === "backend" &&
+					config &&
+					onConfigChange && (
+						<ServiceEventsTab
+							key={panelKey}
+							config={config}
+							workloadName="backend"
+							kind="backend"
+							events={config.workload?.events}
+							onEventsChange={(events) =>
+								onConfigChange({
+									workload: { events } as YamlInfrastructureConfig["workload"],
+								})
+							}
+						/>
+					)}
+
+				{activeTab === "events" &&
+					selectedNode.type === "service" &&
+					config &&
+					onConfigChange &&
+					(() => {
+						const name = selectedNode.id.replace("service-", "");
+						const service = config.services?.find((s) => s.name === name);
+						if (!service) return null;
+						return (
+							<ServiceEventsTab
+								key={panelKey}
+								config={config}
+								workloadName={name}
+								kind="service"
+								events={service.events}
+								onEventsChange={(events) =>
+									onConfigChange({
+										services: (config.services || []).map((s) =>
+											s.name === name ? { ...s, events } : s,
+										),
+									})
+								}
+							/>
+						);
+					})()}
+
+				{activeTab === "events" &&
+					selectedNode.type === "scheduled-task" &&
+					config &&
+					onConfigChange &&
+					(() => {
+						const name = selectedNode.id.replace("scheduled-", "");
+						const task = config.scheduled_tasks?.find((t) => t.name === name);
+						if (!task) return null;
+						return (
+							<TaskEventsTab
+								key={panelKey}
+								config={config}
+								taskName={name}
+								kind="scheduled_task"
+								events={task.events}
+								onEventsChange={(events) =>
+									onConfigChange({
+										scheduled_tasks: (config.scheduled_tasks || []).map((t) =>
+											t.name === name ? { ...t, events } : t,
+										),
+									})
+								}
+							/>
+						);
+					})()}
+
+				{activeTab === "events" &&
+					selectedNode.type === "event-task" &&
+					config &&
+					onConfigChange &&
+					(() => {
+						const name = selectedNode.id.replace("event-", "");
+						const task = config.event_processor_tasks?.find(
+							(t) => t.name === name,
+						);
+						if (!task) return null;
+						return (
+							<TaskEventsTab
+								key={panelKey}
+								config={config}
+								taskName={name}
+								kind="event_task"
+								events={task.events}
+								onEventsChange={(events) =>
+									onConfigChange({
+										event_processor_tasks: (
+											config.event_processor_tasks || []
+										).map((t) => (t.name === name ? { ...t, events } : t)),
+									})
+								}
+							/>
+						);
+					})()}
 
 				{activeTab === "params" &&
 					selectedNode.type === "event-task" &&
@@ -1596,7 +1797,12 @@ jobs:
 				{activeTab === "iam" &&
 					selectedNode.type === "event-task" &&
 					config && (
-						<ScheduledTaskIAMPermissions config={config} node={selectedNode} />
+						<ScheduledTaskIAMPermissions
+							key={panelKey}
+							config={config}
+							node={selectedNode}
+							onConfigChange={onConfigChange}
+						/>
 					)}
 
 				{activeTab === "cloudwatch" &&
@@ -1675,6 +1881,18 @@ jobs:
 					config &&
 					onConfigChange && (
 						<AmplifyBranchManagement
+							config={config}
+							nodeId={selectedNode.id}
+							onConfigChange={onConfigChange}
+						/>
+					)}
+
+				{activeTab === "rewrites" &&
+					selectedNode.type === "amplify" &&
+					config &&
+					onConfigChange && (
+						<AmplifyRewrites
+							key={panelKey}
 							config={config}
 							nodeId={selectedNode.id}
 							onConfigChange={onConfigChange}
