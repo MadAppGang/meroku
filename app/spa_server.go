@@ -120,6 +120,9 @@ func mainRouter() http.Handler {
 	}))
 	mux.HandleFunc("/api/ssm/parameters", corsMiddleware(listSSMParameters))
 
+	// Vault secret values, write-only (api_vault_secrets.go)
+	mux.HandleFunc("/api/vaults/secrets", corsMiddleware(handleVaultSecrets))
+
 	// S3
 	mux.HandleFunc("/api/s3/file", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {

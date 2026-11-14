@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+### Breaking
+- Every vault needs a `secrets` list: `vaults: [{ name: shared, secrets: [api_key] }]`.
+  `meroku generate` refuses a vault without one, which is every vault v6.0.0 wrote. Open the
+  Vaults tab and use "Import names from AWS" to fill the list from the parameters already
+  under the vault's path, then apply. Each connected workload gets one new task definition
+  revision (`valueFrom` is now the parameter's ARN). No migration writes the list, because
+  only SSM knows the names. A vault secret name is lower case: `^[a-z][a-z0-9_]{0,62}$`.
+
+### Vaults
+- A vault's secret names are declared in the YAML, and only those reach the connected
+  workloads; their values are set, replaced and deleted from the Vaults tab and never read
+  back. Terraform no longer reads a vault at plan, so the secret names are known on every
+  plan, and a declared secret with no value yet is a plan warning naming the vault and the
+  secret. `meroku destroy` keeps the values.
+- `meroku generate` now refuses the vault name collisions it can see in the YAML: an `env`
+  secret on a connection without a prefix, two vaults giving one workload the same
+  variable, and a vault secret with the name of the workload's YAML variable or of one
+  meroku sets for it.
+
 ## v6.0.2
 
 ### Web UI
