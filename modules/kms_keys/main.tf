@@ -62,10 +62,11 @@ resource "aws_kms_alias" "key" {
   target_key_id = aws_kms_key.key[each.key].key_id
 }
 
-data "aws_kms_public_key" "key" {
-  for_each = var.keys
+# The public keys are read in a child module, never here: see public_keys/main.tf.
+module "public_keys" {
+  source = "./public_keys"
 
-  key_id = aws_kms_key.key[each.key].arn
+  key_arns = { for k, key in aws_kms_key.key : k => key.arn }
 }
 
 locals {

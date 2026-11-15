@@ -3,8 +3,9 @@
 A KMS signing key is an asymmetric AWS KMS key that never leaves KMS. The YAML
 declares the keys of an environment; each workload connected to a key may sign
 with it, verify with it, or both, and its container gets the key's ARN and its
-public key as environment variables. Built by `modules/kms_keys`; the YAML is
-normalised in `app/kms_keys.go`.
+public key as environment variables. Built by `modules/kms_keys`, which reads
+the public keys through its child module `modules/kms_keys/public_keys`; the
+YAML is normalised in `app/kms_keys.go`.
 
 Use it for tokens, webhooks or documents that other parties verify: the private
 key cannot be read or copied, and anyone holding the public key can verify a
@@ -84,6 +85,17 @@ secret that would become the same name on that workload.
 
 The values are known only once the key exists: the first apply that creates a
 key registers the task definitions that name it in the same run.
+
+Adding, retiring or deleting one key leaves the other keys' variables known at
+plan, so a workload connected only to other keys keeps its task definition.
+This holds because the public keys are read in a child module,
+`modules/kms_keys/public_keys`, whose only input is a map of key name to ARN.
+Terraform records a data source's dependency on a managed resource for the
+whole `aws_kms_key.key` block, not per key: a read placed beside the keys is
+deferred to apply for every key whenever any key is created or destroyed, every
+`KMS_<NAME>_PUBLIC_KEY` becomes unknown, and ECS replaces the task definition of
+every connected workload. Do not move the read back into `modules/kms_keys`;
+`modules/kms_keys/tests/public_key_known_at_plan.tftest.hcl` fails if it is.
 
 A new grant can take a few seconds to reach every KMS endpoint after the apply
 that creates it. An application that calls KMS at startup should retry an

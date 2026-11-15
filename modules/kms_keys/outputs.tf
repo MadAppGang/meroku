@@ -7,7 +7,7 @@ output "environment" {
   value = { for w in keys(var.workloads) : w => flatten([
     for k in lookup(local.workload_keys, w, []) : [
       { name = "KMS_${upper(k)}_KEY_ARN", value = aws_kms_key.key[k].arn },
-      { name = "KMS_${upper(k)}_PUBLIC_KEY", value = data.aws_kms_public_key.key[k].public_key_pem },
+      { name = "KMS_${upper(k)}_PUBLIC_KEY", value = module.public_keys.public_keys[k] },
     ]
   ]) }
 }
