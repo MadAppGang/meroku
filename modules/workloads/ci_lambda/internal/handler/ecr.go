@@ -32,10 +32,21 @@ func (h *Handler) ecr(ctx context.Context, log *slog.Logger, ev events.CloudWatc
 		return ignored("unparsable ECR event detail"), nil
 	}
 
-	log = log.With("repository", d.RepositoryName, "image_tag", d.Tag)
+	log = log.With("repository", d.RepositoryName, "image_tag", d.Tag, "image_digest", d.Digest)
 
 	if d.ActionType != ECRActionTypePush || d.Result != ECRResultSuccess {
 		return ignored(fmt.Sprintf("ECR action-type=%s result=%s", d.ActionType, d.Result)), nil
+	}
+
+	// An untagged push is never a deploy, for any repository. buildx emits one
+	// for every child manifest of a build (the platform image, and an
+	// attestation manifest with no layers that ECS cannot pull), while the
+	// build's tagged index emits its own event. Deploying the digest would pin
+	// a revision to whichever child event happened to land last.
+	if d.Tag == "" {
+		log.Info("ECR push carries no tag; only a tagged push is deployed")
+		return ignored(fmt.Sprintf("untagged ECR push to %s (%s): only a tagged push is deployed",
+			d.RepositoryName, d.Digest)), nil
 	}
 
 	resolved := h.cfg.IdentifiersForRepo(d.RepositoryName)
@@ -66,9 +77,13 @@ func (h *Handler) ecr(ctx context.Context, log *slog.Logger, ev events.CloudWatc
 	// pushed now. deploy.Deployer turns this URI into a revision that pins the
 	// exact reference, which is what makes a revision a rollback point.
 	//
-	// This is safe to do unconditionally only because the rule ignores the
-	// mutable tag (ECRMutableTag): one build now yields one event, so one push
-	// registers one revision. See lambda.tf's ci_ecr_pattern_* locals.
+	// This is safe to do unconditionally only because one build reaches this
+	// point once. One buildx build emits a PUSH event for the tagged index and
+	// one per untagged child manifest (platform image, attestation), and the
+	// pipeline also pushes the mutable tag. The rule excludes the mutable tag
+	// (ECRMutableTag) and the empty tag, and the check above drops untagged
+	// pushes itself, so one build yields one deploy and registers one
+	// revision. See lambda.tf's ci_ecr_pattern_* locals.
 	reqs := make([]deploy.Request, 0, len(ids))
 	for _, id := range ids {
 		reqs = append(reqs, deploy.Request{
@@ -83,17 +98,11 @@ func (h *Handler) ecr(ctx context.Context, log *slog.Logger, ev events.CloudWatc
 	return h.deployMany(ctx, log, reqs)
 }
 
-// ecrImageURI rebuilds the pushed image reference. The event carries the
-// repository, tag and digest but not the registry host, which is derived from
-// the account and region the event came from.
+// ecrImageURI rebuilds the pushed image reference from the repository and the
+// tag; ecr() only gets here for a tagged push. The event does not carry the
+// registry host, which is derived from the account and region the event came
+// from.
 func ecrImageURI(accountID, region string, d ecrDetail) string {
 	repo := fmt.Sprintf("%s.dkr.ecr.%s.amazonaws.com/%s", accountID, region, d.RepositoryName)
-	switch {
-	case d.Tag != "":
-		return repo + ":" + d.Tag
-	case d.Digest != "":
-		return repo + "@" + d.Digest
-	default:
-		return repo
-	}
+	return repo + ":" + d.Tag
 }

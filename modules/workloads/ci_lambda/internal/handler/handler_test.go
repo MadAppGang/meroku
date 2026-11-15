@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -197,31 +198,82 @@ func TestECRPushFanOutCarriesTheImageToEveryTarget(t *testing.T) {
 	}
 }
 
-// TestECRPushUsesTheDigestWhenThereIsNoTag covers a fallback the ci_ecr_push
-// rule can no longer deliver on its own.
+// TestECRPushWithoutATagIsIgnored pins that an untagged push is never a deploy.
 //
-// Excluding handler.ECRMutableTag means the pattern NAMES image-tag, and
-// EventBridge requires a named field to be present, so an untagged push does not
-// match. That is wanted — the untagged events are buildx child manifests of a
-// build whose tagged manifest list emits its own event — but the digest branch
-// in ecrImageURI stays for the same reason ecr.go re-checks action-type and
-// result: an event can also arrive from a hand-made rule, and building a
-// registry reference with a bare ":" on the end would be worse than useless.
-func TestECRPushUsesTheDigestWhenThereIsNoTag(t *testing.T) {
-	h, dep, _ := newHandler(t, nil)
-
+// One buildx push emits an ECR PUSH event for every manifest it uploads: the
+// tagged image index, and untagged child manifests under it — the platform
+// image and the attestation manifest. The tagged index emits its own event, and
+// that is the one that deploys. Deploying a child by digest adds nothing at
+// best, and at worst pins the task definition to an attestation manifest that
+// has no layers, which ECS cannot pull. Deliveries are unordered, so whichever
+// event lands last decides what the service runs.
+//
+// An untagged push arrives with image-tag "" or with no image-tag at all. The
+// ci_ecr_push rule drops "" too, but the handler re-checks for the same reason
+// it re-checks action-type and result: an event can also arrive from a
+// hand-made rule.
+func TestECRPushWithoutATagIsIgnored(t *testing.T) {
 	digest := "sha256:1111111111111111111111111111111111111111111111111111111111111111"
-	_, err := h.Handle(context.Background(), event("aws.ecr", "ECR Image Action", map[string]string{
-		"repository-name": "acme_task_cleanup",
-		"image-digest":    digest,
-		"action-type":     "PUSH",
-		"result":          "SUCCESS",
-	}))
 
-	require.NoError(t, err)
-	require.Equal(t,
-		"000000000000.dkr.ecr.us-east-1.amazonaws.com/acme_task_cleanup@"+digest,
-		dep.seen[0].ImageURI)
+	cases := []struct {
+		name   string
+		detail map[string]string
+	}{
+		{
+			name: "empty tag on a scheduled task",
+			detail: map[string]string{
+				"repository-name": "acme_task_cleanup",
+				"image-tag":       "",
+				"image-digest":    digest,
+				"action-type":     "PUSH",
+				"result":          "SUCCESS",
+			},
+		},
+		{
+			name: "no tag field on a scheduled task",
+			detail: map[string]string{
+				"repository-name": "acme_task_cleanup",
+				"image-digest":    digest,
+				"action-type":     "PUSH",
+				"result":          "SUCCESS",
+			},
+		},
+		{
+			name: "empty tag on the backend",
+			detail: map[string]string{
+				"repository-name": "acme_backend",
+				"image-tag":       "",
+				"image-digest":    digest,
+				"action-type":     "PUSH",
+				"result":          "SUCCESS",
+			},
+		},
+		{
+			name: "no tag field on the backend",
+			detail: map[string]string{
+				"repository-name": "acme_backend",
+				"image-digest":    digest,
+				"action-type":     "PUSH",
+				"result":          "SUCCESS",
+			},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			h, dep, _ := newHandler(t, nil)
+
+			res, err := h.Handle(context.Background(), event("aws.ecr", "ECR Image Action", c.detail))
+
+			require.NoError(t, err, "an untagged child manifest is not a failure")
+			require.Equal(t, handler.StatusIgnored, res.Status,
+				"an untagged push was treated as a deploy")
+			require.Empty(t, dep.seen,
+				"an untagged push reached the deployer; its digest can name a manifest ECS cannot pull")
+			require.Contains(t, strings.ToLower(res.Detail), "untagged",
+				"the ignore reason should say the push was untagged")
+		})
+	}
 }
 
 // TestECRPushFromAnotherProjectIsIgnored is the cross-project isolation
@@ -260,7 +312,7 @@ func TestECRMonitoringCanBeDisabled(t *testing.T) {
 	h, dep, _ := newHandler(t, map[string]string{"ENABLE_ECR_MONITORING": "false"})
 
 	res, err := h.Handle(context.Background(), event("aws.ecr", "ECR Image Action", map[string]string{
-		"repository-name": "acme_backend", "action-type": "PUSH", "result": "SUCCESS",
+		"repository-name": "acme_backend", "image-tag": "abc123", "action-type": "PUSH", "result": "SUCCESS",
 	}))
 	require.NoError(t, err)
 	require.Equal(t, handler.StatusIgnored, res.Status)
@@ -951,7 +1003,7 @@ func TestRetryableAWSFailureIsReturned(t *testing.T) {
 	h := handler.New(cfg, dep, &nopNotifier{}, testsupport.Logger())
 
 	_, err := h.Handle(context.Background(), event("aws.ecr", "ECR Image Action", map[string]string{
-		"repository-name": "acme_backend", "action-type": "PUSH", "result": "SUCCESS",
+		"repository-name": "acme_backend", "image-tag": "abc123", "action-type": "PUSH", "result": "SUCCESS",
 	}))
 	require.Error(t, err)
 }
