@@ -148,3 +148,32 @@ run "yaml_override_of_an_ordinary_default_is_allowed" {
     error_message = "An ordinary default/YAML duplicate must remain allowed and the YAML override must follow the default."
   }
 }
+
+# A KMS public key reaches the container as a multi-line PEM. Container
+# definitions are JSON, so the newlines are escaped in the document and decode
+# back to the same value.
+run "multi_line_extra_env_value_is_kept" {
+  command = plan
+
+  variables {
+    extra_env = [{
+      name  = "KMS_AUTH_PUBLIC_KEY"
+      value = "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEfakeKeyDoNotUseAAAAAAAAAAAAAA\nAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\n-----END PUBLIC KEY-----\n"
+    }]
+  }
+
+  override_data {
+    target = data.aws_ssm_parameters_by_path.task
+    values = { names = [] }
+  }
+
+  assert {
+    condition = (
+      one([
+        for e in jsondecode(aws_ecs_task_definition.task.container_definitions)[0].environment : e.value if e.name == "KMS_AUTH_PUBLIC_KEY"
+      ]) == "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEfakeKeyDoNotUseAAAAAAAAAAAAAA\nAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\n-----END PUBLIC KEY-----\n" &&
+      strcontains(aws_ecs_task_definition.task.container_definitions, "-----BEGIN PUBLIC KEY-----\\nMFkw")
+    )
+    error_message = "A multi-line value must reach the container definition unchanged, its newlines JSON-escaped."
+  }
+}
