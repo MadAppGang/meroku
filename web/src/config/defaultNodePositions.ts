@@ -114,6 +114,14 @@ export const defaultNodePositions = {
 			type: "service",
 		},
 		{
+			id: "kms-keys",
+			position: {
+				x: 710,
+				y: 980,
+			},
+			type: "service",
+		},
+		{
 			id: "sns",
 			position: {
 				x: 700,

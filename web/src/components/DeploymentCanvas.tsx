@@ -354,6 +354,21 @@ const initialNodes: Node[] = [
 		},
 		deletable: false,
 	},
+	// Always shown, so the first signing key can be created from it.
+	{
+		id: "kms-keys",
+		type: "service",
+		position: { x: 710, y: 980 },
+		data: {
+			id: "kms-keys",
+			type: "kms-keys",
+			name: "KMS keys",
+			description: "Signing keys in AWS KMS",
+			status: "running",
+			deletable: false,
+		},
+		deletable: false,
+	},
 ];
 
 const initialEdges: Edge[] = [

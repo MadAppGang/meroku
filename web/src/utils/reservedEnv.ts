@@ -1,4 +1,8 @@
-import type { YamlInfrastructureConfig } from "../types/yamlConfig";
+import type {
+	KmsKeyConnection,
+	YamlInfrastructureConfig,
+} from "../types/yamlConfig";
+import { kmsKeyEnvNames } from "./kmsKeys";
 import { BACKEND_WORKLOAD_NAME } from "./workloadReferences";
 
 /**
@@ -64,6 +68,23 @@ export function reservedBackendEnvError(
 		if (!hit || (rule.applies && !rule.applies(config))) continue;
 		const shown = rule.prefix ? `${rule.name}*` : rule.name;
 		return `${shown} is reserved: ${rule.reason}.`;
+	}
+	return kmsKeyEnvError(config.workload?.kms_keys, name);
+}
+
+/**
+ * The error `meroku generate` gives for a workload variable that a KMS key
+ * connection of that workload sets, or null when no connection sets it.
+ */
+export function kmsKeyEnvError(
+	connections: KmsKeyConnection[] | undefined,
+	name: string,
+): string | null {
+	for (const connection of connections ?? []) {
+		const env = kmsKeyEnvNames(connection.name);
+		if (name === env.arn || name === env.publicKey) {
+			return `${name} is reserved: meroku sets it because this workload uses the KMS key ${connection.name}.`;
+		}
 	}
 	return null;
 }

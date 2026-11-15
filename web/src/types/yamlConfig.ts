@@ -383,6 +383,8 @@ export interface YamlInfrastructureConfig {
 
 		// The backend's vault connections.
 		vaults?: VaultConnection[];
+		/** The backend's KMS signing key connections. */
+		kms_keys?: KmsKeyConnection[];
 		/** The backend's events: it subscribes and publishes like a service. */
 		events?: WorkloadEvents;
 
@@ -509,6 +511,8 @@ export interface YamlInfrastructureConfig {
 		policy?: IAMStatement[];
 		/** The task's vault connections. */
 		vaults?: VaultConnection[];
+		/** The task's KMS signing key connections. */
+		kms_keys?: KmsKeyConnection[];
 		/** A task may only produce; `subscribes` is refused at generate. */
 		events?: WorkloadEvents;
 	}>;
@@ -657,6 +661,8 @@ export interface YamlInfrastructureConfig {
 		policy?: IAMStatement[];
 		/** The service's vault connections. */
 		vaults?: VaultConnection[];
+		/** The service's KMS signing key connections. */
+		kms_keys?: KmsKeyConnection[];
 		/** What the service subscribes to and may publish. */
 		events?: WorkloadEvents;
 	}>;
@@ -705,6 +711,8 @@ export interface YamlInfrastructureConfig {
 
 	// Shared SSM vaults, /<env>/<project>/vault/<name>/.
 	vaults?: VaultDefinition[];
+	// KMS asymmetric signing keys, alias/<project>-<env>-<name>.
+	kms_keys?: KmsKeyDefinition[];
 	// The project bus <project>-<env>. Absent or off keeps everything on the default bus.
 	event_bus?: EventBusConfig;
 	// Serverless Valkey, reachable by the workloads in `access`.
@@ -734,6 +742,40 @@ export interface VaultConnection {
 	name: string;
 	access?: VaultAccess;
 	prefix?: string;
+}
+
+/** The key types AWS KMS offers for signing (`customer_master_key_spec`). */
+export type KmsKeySpec =
+	| "ECC_NIST_P256"
+	| "ECC_NIST_P384"
+	| "ECC_NIST_P521"
+	| "ECC_SECG_P256K1"
+	| "RSA_2048"
+	| "RSA_3072"
+	| "RSA_4096";
+
+/** One KMS signing key, `alias/<project>-<env>-<name>`. */
+export interface KmsKeyDefinition {
+	name: string;
+	/** Absent means ECC_NIST_P256. AWS cannot change it on an existing key. */
+	key_spec?: KmsKeySpec;
+	/**
+	 * A retired key stays in AWS and keeps working, but no workload may connect
+	 * to it. Removing the entry afterwards schedules its deletion.
+	 */
+	retired?: boolean;
+}
+
+/** `sign`, `verify` or `both`. */
+export type KmsKeyAccess = "sign" | "verify" | "both";
+
+/**
+ * A workload's connection to a KMS key. The workload gets the key's ARN and
+ * its public key as KMS_<NAME>_KEY_ARN and KMS_<NAME>_PUBLIC_KEY.
+ */
+export interface KmsKeyConnection {
+	name: string;
+	access: KmsKeyAccess;
 }
 
 /** The bus an events entry or event-task rule is on. Absent follows `event_bus.enabled`. */
@@ -931,6 +973,8 @@ export interface EventProcessorTask {
 	policy?: IAMStatement[];
 	/** The task's vault connections. */
 	vaults?: VaultConnection[];
+	/** The task's KMS signing key connections. */
+	kms_keys?: KmsKeyConnection[];
 	/** A task may only produce; `subscribes` is refused at generate. */
 	events?: WorkloadEvents;
 }
