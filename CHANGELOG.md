@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### KMS signing keys
+- `kms_keys` declares asymmetric KMS signing keys (`key_spec`, default `ECC_NIST_P256`), each
+  with the alias `alias/<project>-<env>-<name>`. The backend, services, scheduled tasks and
+  event tasks connect with `kms_keys: [{ name, access }]`, access `sign`, `verify` or `both`,
+  which grants `kms:Sign` and/or `kms:Verify` (plus `kms:GetPublicKey` and `kms:DescribeKey`)
+  on the task role, and sets `KMS_<NAME>_KEY_ARN` and `KMS_<NAME>_PUBLIC_KEY` (the PEM).
+- A key is removed in two applies: `retired: true` takes away its connections, variables and
+  grants and keeps the key; deleting the entry schedules the key's deletion with a 7-day
+  window, cancellable with `aws kms cancel-key-deletion`.
+- `meroku generate` refuses a malformed or duplicate key name, an unknown `key_spec`, a
+  connection to an unknown or retired key, a bad `access`, a key connected twice to one
+  workload, and a YAML variable or vault secret named like a variable a key gives that
+  workload. A custom `.tf` that declares `module "kms_keys"` is refused too.
+- `local.bridge.kms_key_arns` lists every key's ARN by name. No schema migration: an absent
+  block creates nothing. See `ai_docs/KMS_KEYS.md`.
+
 ## v6.1.0
 
 ### Breaking
