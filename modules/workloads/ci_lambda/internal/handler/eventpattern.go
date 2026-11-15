@@ -27,7 +27,7 @@ const (
 	// ECRMutableTag is the tag the ci_ecr_push rule must NOT act on.
 	//
 	// Every pipeline this repo generates pushes two tags per build — an
-	// immutable one and this — so one build emits two ECR events. That was
+	// immutable one and this — so one build emits two tagged ECR events. That was
 	// harmless while a service deploy was an idempotent UpdateService(family),
 	// and stopped being harmless when an ECR push began registering a revision
 	// that PINS the pushed image: two events then register two revisions, and
@@ -167,8 +167,10 @@ func PatternContracts() []PatternContract {
 				ecr["Result"]:         {ECRResultSuccess},
 				// The tag is filtered by exclusion, so no value can be required
 				// here — only that the rule filters on the field this package
-				// parses at all. What must be excluded is ECRMutableTag, pinned
-				// by internal/boundary.TestECRRuleExcludesTheMutableTag.
+				// parses at all. What must be excluded is ECRMutableTag and the
+				// empty tag, pinned by internal/boundary's
+				// TestECRRuleExcludesTheMutableTag and
+				// TestECRRuleExcludesUntaggedPushes.
 				ecr["Tag"]: nil,
 			},
 		},

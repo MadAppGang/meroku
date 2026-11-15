@@ -463,15 +463,19 @@ locals {
   #     convention. web/src/components/ECRPushInstructions.tsx still tells a human
   #     to push :latest by hand — that path is manual, and it is exactly the shape
   #     that hits this.
-  #   - EventBridge requires every field a pattern names to be PRESENT in the
-  #     event, so an untagged push no longer matches either. That is wanted: the
-  #     untagged events come from buildx child manifests of a build whose tagged
-  #     manifest list emits its own event, so the deploy still happens once.
-  #   - 42 characters of the 2,048-character budget, in both patterns below. See
+  #   - An untagged push arrives with image-tag "" (present, empty), and
+  #     anything-but matches "" unless it is listed, so "" is excluded
+  #     explicitly (an event without the field would match nothing anyway).
+  #     These events are buildx child manifests — the platform image, and an
+  #     attestation manifest with no layers that ECS cannot pull — of a build
+  #     whose tagged index emits its own event, so the deploy still happens
+  #     once. The handler drops untagged pushes too (handler/ecr.go).
+  #   - 45 characters of the 2,048-character budget, in both patterns below. See
   #     the precondition on aws_cloudwatch_event_rule.ci_ecr_push.
   #
-  # The value is pinned against the Go side by
-  # ci_lambda/internal/boundary.TestECRRuleExcludesTheMutableTag, because
+  # The values are pinned against the Go side by
+  # ci_lambda/internal/boundary.TestECRRuleExcludesTheMutableTag and
+  # ci_lambda/internal/boundary.TestECRRuleExcludesUntaggedPushes, because
   # handler.PatternContracts can only require that a value IS selected — it
   # structurally cannot say "and not this one".
   # ---------------------------------------------------------------------------
@@ -488,7 +492,7 @@ locals {
     detail = {
       action-type     = ["PUSH"]
       result          = ["SUCCESS"]
-      image-tag       = [{ anything-but = ["latest"] }]
+      image-tag       = [{ anything-but = ["latest", ""] }]
       repository-name = local.ci_ecr_repos
     }
   })
@@ -507,7 +511,7 @@ locals {
     detail = {
       action-type     = ["PUSH"]
       result          = ["SUCCESS"]
-      image-tag       = [{ anything-but = ["latest"] }]
+      image-tag       = [{ anything-but = ["latest", ""] }]
       repository-name = concat([{ prefix = "${var.project}_" }], local.ci_ecr_offprefix_repos)
     }
   })
@@ -582,7 +586,7 @@ resource "aws_cloudwatch_event_rule" "ci_ecr_push" {
     # Enough off-prefix repositories overflow the quota on their own, and there
     # is no third fallback: dropping them is what this rule exists to stop.
     # Roughly 88 of them at 18-character names, 48 at 35 — two fewer than before
-    # the image-tag filter, which spends 42 of the 2,048 characters. Fail the
+    # the image-tag filter, which spends 45 of the 2,048 characters. Fail the
     # apply and say what to do rather than silently shipping a rule that ignores
     # some of them.
     precondition {

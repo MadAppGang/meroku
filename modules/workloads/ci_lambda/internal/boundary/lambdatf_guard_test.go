@@ -466,6 +466,35 @@ func TestECRRuleExcludesTheMutableTag(t *testing.T) {
 	}
 }
 
+// TestECRRuleExcludesUntaggedPushes pins a third ABSENCE, next to
+// TestECRRuleExcludesTheMutableTag and for the same structural reason.
+//
+// One buildx push emits an event per manifest: the tagged image index, plus
+// untagged child manifests (the platform image and the attestation manifest).
+// An untagged push arrives with image-tag present and EMPTY, and `anything-but`
+// matches "" unless "" is in its list. An absent field never matches a pattern
+// that names it, so only the empty string needs excluding. Let it through and
+// the handler is asked to deploy a digest that can name a manifest with no
+// layers, racing the tagged event for which revision the service ends on.
+func TestECRRuleExcludesUntaggedPushes(t *testing.T) {
+	src := lambdaTF(t)
+
+	exclusion := regexp.MustCompile(
+		`"?image-tag"?\s*=\s*\[\s*\{\s*"?anything-but"?\s*=\s*\[\s*(?:[^]]*,\s*)?""\s*[,\]]`)
+
+	for _, name := range []string{"ci_ecr_pattern_explicit", "ci_ecr_pattern_prefix"} {
+		t.Run(name, func(t *testing.T) {
+			body := jsonencodeLocal(t, src, name)
+
+			require.Regexpf(t, exclusion, body,
+				"local.%s does not exclude an empty image-tag with anything-but. Untagged buildx "+
+					"child manifests arrive with image-tag \"\", which anything-but matches unless "+
+					"\"\" is listed, so every build would also deploy a bare digest",
+				name)
+		})
+	}
+}
+
 // TestEveryAutoDeployableServiceNotifiesOnANewRevision pins the edge that was
 // missing entirely, and the defect it pins is an ABSENCE — so only a structural
 // test over the Terraform can express it.
