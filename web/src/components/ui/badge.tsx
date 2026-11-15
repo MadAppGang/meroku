@@ -19,6 +19,10 @@ const badgeVariants = cva(
 					"text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground",
 				// An outlined identifier: an env var name, an action, a key.
 				code: "font-mono text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground",
+				// Tinted counts and states: a success, a caution, the KMS key accent.
+				success: "border-success/40 bg-success/15 text-success",
+				warning: "border-warning/40 bg-warning/15 text-warning",
+				kms: "border-node-kms/60 bg-node-kms/25 text-foreground",
 			},
 		},
 		defaultVariants: {

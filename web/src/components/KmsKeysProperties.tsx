@@ -1,14 +1,15 @@
 import { KeyRound, Plus } from "lucide-react";
 import { useId, useState } from "react";
 import type {
+	KmsKeyAccess,
 	KmsKeyDefinition,
 	KmsKeySpec,
 	YamlInfrastructureConfig,
 } from "../types/yamlConfig";
 import {
 	DEFAULT_KMS_KEY_SPEC,
-	KMS_KEY_ACCESS_LABELS,
 	KMS_KEY_SPEC_CHOICES,
+	kmsKeyAccessCounts,
 	kmsKeyConnectionsOf,
 	kmsKeyNameError,
 	kmsKeyNames,
@@ -176,37 +177,89 @@ export function KmsKeysProperties({
 						KMS keys
 					</CardTitle>
 					<CardDescription>
-						A signing key lives in AWS and never leaves it: workloads ask AWS to
-						sign or check a signature, for example on a JWT. Add a key here,
-						then connect a workload from its own KMS keys tab.
+						Signing keys that never leave AWS. Connect a workload from its own
+						KMS keys tab.
 					</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-4">
 					{keys.length === 0 && <NoteDetail>No keys yet.</NoteDetail>}
 
-					{keys.map((key) => {
-						const connections = kmsKeyConnectionsOf(config, key.name);
-						const spec = key.key_spec ?? DEFAULT_KMS_KEY_SPEC;
-						const editable = !savedKeys.has(key.name);
-						return (
-							<Card key={key.name} data-testid={`kms-key-${key.name}`}>
-								<CardHeader>
-									<div className="flex flex-wrap items-center justify-between gap-2">
-										<div className="space-y-1">
-											<div className="flex flex-wrap items-center gap-2">
-												<CardTitle>{key.name}</CardTitle>
-												<Badge variant="code">
-													{kmsKeySpecChoice(spec).label}
-												</Badge>
-												{key.retired && (
-													<Badge variant="outline">Retired</Badge>
-												)}
+					{keys.length > 0 && (
+						<ul className="divide-y rounded-md border">
+							{keys.map((key) => {
+								const connections = kmsKeyConnectionsOf(config, key.name);
+								const counts = kmsKeyAccessCounts(connections);
+								const spec = key.key_spec ?? DEFAULT_KMS_KEY_SPEC;
+								const editable = !savedKeys.has(key.name);
+								const who = (access: KmsKeyAccess) =>
+									connections
+										.filter((c) => c.access === access)
+										.map((c) => c.workload)
+										.join(", ");
+								return (
+									<li
+										key={key.name}
+										data-testid={`kms-key-${key.name}`}
+										className="grid grid-cols-[minmax(0,18rem)_6rem_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2"
+									>
+										<code
+											className="truncate font-mono text-sm font-medium text-foreground"
+											title={`Key ${key.name}, alias in AWS`}
+										>
+											{aliasOf(key.name)}
+										</code>
+										{editable ? (
+											<div className="col-span-2 w-64">
+												<KeySpecSelect
+													id={`${uid}-${key.name}-spec`}
+													label={`Key type of ${key.name}`}
+													value={spec}
+													onChange={(next) => handleSpec(key.name, next)}
+												/>
 											</div>
-											<CardDescription>
-												<code>{aliasOf(key.name)}</code>
-											</CardDescription>
-										</div>
-										<div className="flex flex-wrap gap-2">
+										) : (
+											<>
+												<Badge
+													variant="code"
+													title={kmsKeySpecChoice(spec).label}
+												>
+													{kmsKeySpecChoice(spec).short}
+												</Badge>
+												<div className="flex min-w-0 flex-wrap items-center gap-2">
+													{key.retired ? (
+														<>
+															<Badge variant="warning">Retired</Badge>
+															<span className="text-xs text-muted-foreground">
+																Apply, then delete the key.
+															</span>
+														</>
+													) : connections.length === 0 ? (
+														<span className="text-xs text-muted-foreground">
+															Not used
+														</span>
+													) : (
+														<>
+															{counts.full > 0 && (
+																<Badge variant="success" title={who("both")}>
+																	{counts.full} full
+																</Badge>
+															)}
+															{counts.sign > 0 && (
+																<Badge variant="warning" title={who("sign")}>
+																	{counts.sign} sign
+																</Badge>
+															)}
+															{counts.verify > 0 && (
+																<Badge variant="kms" title={who("verify")}>
+																	{counts.verify} verify
+																</Badge>
+															)}
+														</>
+													)}
+												</div>
+											</>
+										)}
+										<div className="flex justify-end gap-2">
 											{key.retired ? (
 												<>
 													<Button
@@ -237,59 +290,11 @@ export function KmsKeysProperties({
 												</Button>
 											)}
 										</div>
-									</div>
-								</CardHeader>
-								<CardContent className="space-y-3">
-									{key.retired ? (
-										<StatusNote tone="neutral">
-											<p>
-												Retired: no workload uses this key any more, but it
-												still works in AWS.
-											</p>
-											<NoteDetail>Apply, then delete the key.</NoteDetail>
-										</StatusNote>
-									) : connections.length === 0 ? (
-										<NoteDetail>No workload uses this key yet.</NoteDetail>
-									) : (
-										<div className="flex flex-wrap gap-2">
-											{connections.map((c) => (
-												<Badge key={c.workload} variant="secondary">
-													{c.workload} · {KMS_KEY_ACCESS_LABELS[c.access]}
-												</Badge>
-											))}
-										</div>
-									)}
-
-									{editable ? (
-										<div className="space-y-1">
-											<Label htmlFor={`${uid}-${key.name}-spec`}>
-												Key type
-											</Label>
-											<KeySpecSelect
-												id={`${uid}-${key.name}-spec`}
-												label={`Key type of ${key.name}`}
-												value={spec}
-												onChange={(next) => handleSpec(key.name, next)}
-											/>
-											<NoteDetail>
-												You can choose the type until an apply creates the key
-												in AWS. After that a changed type is ignored and the
-												plan warns about it: AWS cannot change the type of a
-												key.
-											</NoteDetail>
-										</div>
-									) : (
-										<NoteDetail>
-											Key type: {specOptionText(spec)}. AWS cannot change the
-											type of an existing key, so a changed type is ignored and
-											the plan warns about it. To use another type, add a new
-											key, move the workloads to it, then retire this one.
-										</NoteDetail>
-									)}
-								</CardContent>
-							</Card>
-						);
-					})}
+									</li>
+								);
+							})}
+						</ul>
+					)}
 
 					<div className="space-y-2">
 						<div className="flex flex-wrap items-end gap-2">
@@ -324,9 +329,9 @@ export function KmsKeysProperties({
 							<StatusNote tone="error">{newNameError}</StatusNote>
 						)}
 						<NoteDetail>
-							Each connected workload gets <NoteCode>KMS_NAME_KEY_ARN</NoteCode>{" "}
-							and <NoteCode>KMS_NAME_PUBLIC_KEY</NoteCode>, with the key's name
-							in upper case.
+							Connected workloads get <NoteCode>KMS_NAME_KEY_ARN</NoteCode> and{" "}
+							<NoteCode>KMS_NAME_PUBLIC_KEY</NoteCode>. A key's type is fixed
+							once an apply creates it.
 						</NoteDetail>
 					</div>
 				</CardContent>

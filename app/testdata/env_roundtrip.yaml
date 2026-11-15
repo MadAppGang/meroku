@@ -264,6 +264,16 @@ services:
     subscribes:
     - detail_type: payment.completed
       source: example.payments
+    - detail_type: job.*
+      source: example.jobs
+      filters:
+      - field: detail.status
+        values:
+        - done
+        - failed
+      - field: detail.order.type
+        values:
+        - retail
     - name: users
       detail_type_prefix: user.
       bus: default

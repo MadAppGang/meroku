@@ -17,6 +17,8 @@ export const DEFAULT_KMS_KEY_SPEC: KmsKeySpec = "ECC_NIST_P256";
 export interface KmsKeySpecChoice {
 	spec: KmsKeySpec;
 	label: string;
+	/** The badge text: the JWT algorithm, or the RSA key size. */
+	short: string;
 	hint: string;
 }
 
@@ -25,36 +27,43 @@ export const KMS_KEY_SPEC_CHOICES: KmsKeySpecChoice[] = [
 	{
 		spec: "ECC_NIST_P256",
 		label: "ECC P-256 (ES256)",
+		short: "ES256",
 		hint: "recommended for JWTs",
 	},
 	{
 		spec: "ECC_NIST_P384",
 		label: "ECC P-384 (ES384)",
+		short: "ES384",
 		hint: "when ES384 is required",
 	},
 	{
 		spec: "ECC_NIST_P521",
 		label: "ECC P-521 (ES512)",
+		short: "ES512",
 		hint: "when ES512 is required",
 	},
 	{
 		spec: "ECC_SECG_P256K1",
 		label: "ECC secp256k1 (ES256K)",
+		short: "ES256K",
 		hint: "blockchain signatures, such as Ethereum",
 	},
 	{
 		spec: "RSA_2048",
 		label: "RSA 2048 (RS256)",
+		short: "RSA 2048",
 		hint: "RS256 compatibility",
 	},
 	{
 		spec: "RSA_3072",
 		label: "RSA 3072 (RS256)",
+		short: "RSA 3072",
 		hint: "RS256 compatibility, longer key",
 	},
 	{
 		spec: "RSA_4096",
 		label: "RSA 4096 (RS256)",
+		short: "RSA 4096",
 		hint: "RS256 compatibility, longest key, slowest",
 	},
 ];
@@ -164,4 +173,24 @@ export function kmsKeyOf(
 	name: string,
 ): KmsKeyDefinition | undefined {
 	return config.kms_keys?.find((k) => k.name === name);
+}
+
+/** How many workloads hold each access to a key. */
+export interface KmsKeyAccessCounts {
+	full: number;
+	sign: number;
+	verify: number;
+}
+
+/** Counts connections by access: full (sign and verify), sign only, verify only. */
+export function kmsKeyAccessCounts(
+	connections: KmsKeyConnection[],
+): KmsKeyAccessCounts {
+	const counts: KmsKeyAccessCounts = { full: 0, sign: 0, verify: 0 };
+	for (const c of connections) {
+		if (c.access === "both") counts.full += 1;
+		else if (c.access === "sign") counts.sign += 1;
+		else counts.verify += 1;
+	}
+	return counts;
 }

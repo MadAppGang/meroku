@@ -1,29 +1,62 @@
 import { expect, test } from "./support/harness";
 import { seed, workload, openPanel, reopen, choose, addSubscription, addProduces } from "./support/config-editors";
 
-test("Backend service Events · subscriptions, produces and queue edits persist without losing workload fields", async ({ page, app, envYaml, evidence }) => {
+test("Backend service Events · subscriptions (exact, wildcard, with filter, default bus), produces and queue edits persist without losing workload fields", async ({ page, app, envYaml, evidence }) => {
   test.setTimeout(150_000);
   const initial = seed(envYaml);
   const before = { ...workload(initial, "workload", "backend") };
   const events = () => workload(envYaml.read(), "workload", "backend").events ?? {};
   await app.open();
   await openPanel(page, app, "Backend service", "Events");
+
+  // 1. Exact subscription on the project bus
   await addSubscription(page, "payment.completed");
   await expect.poll(() => events().subscribes).toMatchObject([
     { detail_type: "payment.completed", source: "example.payments" },
   ]);
-  await addSubscription(page, "user.", true, "users");
+
+  // 2. Wildcard subscription with field filter on the project bus
+  await addSubscription(page, "job.*", {
+    source: "coretechx.data",
+    filters: [{ field: "detail.status", values: ["done", "failed"] }],
+  });
   await expect.poll(() => events().subscribes).toMatchObject([
     { detail_type: "payment.completed", source: "example.payments" },
-    { name: "users", detail_type_prefix: "user.", source: "example.payments", bus: "default" },
+    {
+      detail_type: "job.*",
+      source: "coretechx.data",
+      filters: [{ field: "detail.status", values: ["done", "failed"] }],
+    },
+  ]);
+
+  // 3. Default-bus subscription with explicit name
+  await addSubscription(page, "user.*", {
+    bus: "default",
+    name: "users",
+    source: "example.payments",
+  });
+  await expect.poll(() => events().subscribes).toMatchObject([
+    { detail_type: "payment.completed", source: "example.payments" },
+    {
+      detail_type: "job.*",
+      source: "coretechx.data",
+      filters: [{ field: "detail.status", values: ["done", "failed"] }],
+    },
+    {
+      name: "users",
+      detail_type: "user.*",
+      source: "example.payments",
+      bus: "default",
+    },
   ]);
   expect(["project", undefined]).toContain(events().subscribes[0].bus);
-  expect(events().subscribes[1].detail_type).toBeUndefined();
+  expect(events().subscribes[2].bus).toBe("default");
+
   await addProduces(page, "order.created, order.cancelled");
   await expect.poll(() => events().produces).toMatchObject([
     { detail_types: ["order.created", "order.cancelled"] },
   ]);
-  await expect(page.getByRole("switch", { name: "Own source only for entry 1", exact: true })).toBeChecked();
+  await expect(page.getByRole("switch", { name: "Own source only for entry 1", exact: true })).not.toBeChecked();
   await page.getByRole("button", { name: "Advanced queue settings", exact: true }).click();
   const visibility = page.getByRole("textbox", { name: "Visibility timeout (seconds)", exact: true });
   await visibility.fill("90");
@@ -35,11 +68,13 @@ test("Backend service Events · subscriptions, produces and queue edits persist 
   await expect.poll(() => events().queue).toEqual({ visibility_timeout: 90, max_receive_count: 7 });
 
   await reopen(page, app, "Backend service", "Events");
-  await expect(page.getByRole("button", { name: "Remove subscription payment-completed", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Remove subscription users", exact: true })).toBeVisible();
-  await expect(page.getByRole("row").filter({ hasText: "payment.completed" })).toContainText("myapp-dev");
-  await expect(page.getByRole("row").filter({ hasText: "user." })).toContainText("default");
-  await expect(page.getByRole("row").filter({ hasText: "order.created" })).toContainText("order.cancelled");
+  const envSection = page.getByTestId("subscribes-section-project");
+  const defSection = page.getByTestId("subscribes-section-default");
+  await expect(envSection.getByRole("button", { name: "Remove subscription payment-completed", exact: true })).toBeVisible();
+  await expect(envSection.getByRole("button", { name: "Remove subscription job", exact: true })).toBeVisible();
+  await expect(envSection.getByText("detail.status = done, failed", { exact: true })).toBeVisible();
+  await expect(defSection.getByRole("button", { name: "Remove subscription users", exact: true })).toBeVisible();
+  await expect(page.getByTestId(/^produces-row-/).filter({ hasText: "order.created" })).toContainText("order.cancelled");
   await page.getByRole("button", { name: "Advanced queue settings", exact: true }).click();
   await expect(visibility).toHaveValue("90");
   await expect(receives).toHaveValue("7");
@@ -48,15 +83,17 @@ test("Backend service Events · subscriptions, produces and queue edits persist 
   expect(after).toMatchObject(before);
   await evidence("backend-events-added-and-queue-edited");
 
-  await page.getByRole("switch", { name: "Own source only for entry 1", exact: true }).uncheck();
-  await expect.poll(() => events().produces[0].own_source_only).toBe(false);
+  await page.getByRole("switch", { name: "Own source only for entry 1", exact: true }).check();
+  await expect.poll(() => events().produces[0].own_source_only).toBeUndefined();
   await choose(page, page.getByRole("combobox", { name: "Bus for entry 1", exact: true }), "default", /default/i);
   await expect.poll(() => events().produces[0].bus).toBe("default");
   await reopen(page, app, "Backend service", "Events");
-  await expect(page.getByRole("switch", { name: "Own source only for entry 1", exact: true })).not.toBeChecked();
+  await expect(page.getByRole("switch", { name: "Own source only for entry 1", exact: true })).toBeChecked();
   await evidence("backend-events-producer-edited");
 
   await page.getByRole("button", { name: "Remove subscription payment-completed", exact: true }).click();
+  await expect.poll(() => events().subscribes).toHaveLength(2);
+  await page.getByRole("button", { name: "Remove subscription job", exact: true }).click();
   await expect.poll(() => events().subscribes).toHaveLength(1);
   await page.getByRole("button", { name: "Remove subscription users", exact: true }).click();
   await expect.poll(() => events().subscribes ?? []).toEqual([]);
@@ -65,7 +102,7 @@ test("Backend service Events · subscriptions, produces and queue edits persist 
   await reopen(page, app, "Backend service", "Events");
   await expect(page.getByRole("button", { name: /^Remove subscription / })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Remove produces entry / })).toHaveCount(0);
-  await expect(page.getByText("Publishes nothing. Add an entry to allow PutEvents.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Sends nothing yet.", { exact: true })).toBeVisible();
   expect(workload(envYaml.read(), "workload", "backend")).toMatchObject(before);
   await evidence("backend-events-removed");
 });
@@ -81,18 +118,44 @@ test("api Events · subscriptions, produces and queue edits persist without losi
   await expect.poll(() => events().subscribes).toMatchObject([
     { detail_type: "payment.completed", source: "example.payments" },
   ]);
-  await addSubscription(page, "user.", true, "users");
+  await addSubscription(page, "job.*", {
+    source: "coretechx.data",
+    filters: [{ field: "detail.status", values: ["done", "failed"] }],
+  });
   await expect.poll(() => events().subscribes).toMatchObject([
     { detail_type: "payment.completed", source: "example.payments" },
-    { name: "users", detail_type_prefix: "user.", source: "example.payments", bus: "default" },
+    {
+      detail_type: "job.*",
+      source: "coretechx.data",
+      filters: [{ field: "detail.status", values: ["done", "failed"] }],
+    },
+  ]);
+  await addSubscription(page, "user.*", {
+    bus: "default",
+    name: "users",
+    source: "example.payments",
+  });
+  await expect.poll(() => events().subscribes).toMatchObject([
+    { detail_type: "payment.completed", source: "example.payments" },
+    {
+      detail_type: "job.*",
+      source: "coretechx.data",
+      filters: [{ field: "detail.status", values: ["done", "failed"] }],
+    },
+    {
+      name: "users",
+      detail_type: "user.*",
+      source: "example.payments",
+      bus: "default",
+    },
   ]);
   expect(["project", undefined]).toContain(events().subscribes[0].bus);
-  expect(events().subscribes[1].detail_type).toBeUndefined();
+  expect(events().subscribes[2].bus).toBe("default");
   await addProduces(page, "order.created, order.cancelled");
   await expect.poll(() => events().produces).toMatchObject([
     { detail_types: ["order.created", "order.cancelled"] },
   ]);
-  await expect(page.getByRole("switch", { name: "Own source only for entry 1", exact: true })).toBeChecked();
+  await expect(page.getByRole("switch", { name: "Own source only for entry 1", exact: true })).not.toBeChecked();
   await page.getByRole("button", { name: "Advanced queue settings", exact: true }).click();
   const visibility = page.getByRole("textbox", { name: "Visibility timeout (seconds)", exact: true });
   await visibility.fill("90");
@@ -104,11 +167,13 @@ test("api Events · subscriptions, produces and queue edits persist without losi
   await expect.poll(() => events().queue).toEqual({ visibility_timeout: 90, max_receive_count: 7 });
 
   await reopen(page, app, "api", "Events");
-  await expect(page.getByRole("button", { name: "Remove subscription payment-completed", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Remove subscription users", exact: true })).toBeVisible();
-  await expect(page.getByRole("row").filter({ hasText: "payment.completed" })).toContainText("myapp-dev");
-  await expect(page.getByRole("row").filter({ hasText: "user." })).toContainText("default");
-  await expect(page.getByRole("row").filter({ hasText: "order.created" })).toContainText("order.cancelled");
+  const envSection = page.getByTestId("subscribes-section-project");
+  const defSection = page.getByTestId("subscribes-section-default");
+  await expect(envSection.getByRole("button", { name: "Remove subscription payment-completed", exact: true })).toBeVisible();
+  await expect(envSection.getByRole("button", { name: "Remove subscription job", exact: true })).toBeVisible();
+  await expect(envSection.getByText("detail.status = done, failed", { exact: true })).toBeVisible();
+  await expect(defSection.getByRole("button", { name: "Remove subscription users", exact: true })).toBeVisible();
+  await expect(page.getByTestId(/^produces-row-/).filter({ hasText: "order.created" })).toContainText("order.cancelled");
   await page.getByRole("button", { name: "Advanced queue settings", exact: true }).click();
   await expect(visibility).toHaveValue("90");
   await expect(receives).toHaveValue("7");
@@ -117,15 +182,17 @@ test("api Events · subscriptions, produces and queue edits persist without losi
   expect(after).toMatchObject(before);
   await evidence("api-events-added-and-queue-edited");
 
-  await page.getByRole("switch", { name: "Own source only for entry 1", exact: true }).uncheck();
-  await expect.poll(() => events().produces[0].own_source_only).toBe(false);
+  await page.getByRole("switch", { name: "Own source only for entry 1", exact: true }).check();
+  await expect.poll(() => events().produces[0].own_source_only).toBeUndefined();
   await choose(page, page.getByRole("combobox", { name: "Bus for entry 1", exact: true }), "default", /default/i);
   await expect.poll(() => events().produces[0].bus).toBe("default");
   await reopen(page, app, "api", "Events");
-  await expect(page.getByRole("switch", { name: "Own source only for entry 1", exact: true })).not.toBeChecked();
+  await expect(page.getByRole("switch", { name: "Own source only for entry 1", exact: true })).toBeChecked();
   await evidence("api-events-producer-edited");
 
   await page.getByRole("button", { name: "Remove subscription payment-completed", exact: true }).click();
+  await expect.poll(() => events().subscribes).toHaveLength(2);
+  await page.getByRole("button", { name: "Remove subscription job", exact: true }).click();
   await expect.poll(() => events().subscribes).toHaveLength(1);
   await page.getByRole("button", { name: "Remove subscription users", exact: true }).click();
   await expect.poll(() => events().subscribes ?? []).toEqual([]);
@@ -134,7 +201,7 @@ test("api Events · subscriptions, produces and queue edits persist without losi
   await reopen(page, app, "api", "Events");
   await expect(page.getByRole("button", { name: /^Remove subscription / })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Remove produces entry / })).toHaveCount(0);
-  await expect(page.getByText("Publishes nothing. Add an entry to allow PutEvents.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Sends nothing yet.", { exact: true })).toBeVisible();
   expect(workload(envYaml.read(), "services", "api")).toMatchObject(before);
   await evidence("api-events-removed");
 });
@@ -160,12 +227,12 @@ test("Events · changes on two services stay separate after reload", async ({ pa
   await reopen(page, app, "api", "Events");
   await expect(page.getByRole("button", { name: "Remove subscription payment-completed", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Remove subscription report-requested", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("cell", { name: "order.created", exact: true })).toBeVisible();
+  await expect(page.getByTestId("produces-row-0").getByText("order.created", { exact: true })).toBeVisible();
   await evidence("events-api-isolated");
   await openPanel(page, app, "reports", "Events");
   await expect(page.getByRole("button", { name: "Remove subscription report-requested", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Remove subscription payment-completed", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("cell", { name: "report.ready", exact: true })).toBeVisible();
+  await expect(page.getByTestId("produces-row-0").getByText("report.ready", { exact: true })).toBeVisible();
   expect(api().subscribes).toHaveLength(1);
   expect(reports().subscribes).toHaveLength(1);
   expect(api().produces).toMatchObject([{ detail_types: ["order.created"] }]);

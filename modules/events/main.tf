@@ -30,6 +30,63 @@ locals {
     for s in c.subscriptions : "${c.name}/${s.key}" => merge(s, { consumer = c.name })
   }]...)
 
+  # Each subscription's field filters, sorted by path. path is the field split
+  # on "." after "detail.", so detail.order.type is ["order", "type"].
+  subscription_filters = { for k, s in local.subscriptions : k => [
+    for field in sort([for f in s.filters : f.field]) : {
+      path   = split(".", trimprefix(field, "detail."))
+      values = one([for f in s.filters : f.values if f.field == field])
+    }
+  ] }
+
+  # shared is how many leading path segments a filter has in common with the
+  # one before it in sorted order; depth is that previous filter's path length.
+  # Sorting keeps paths with a common parent next to each other.
+  subscription_filter_steps = { for k, fs in local.subscription_filters : k => [
+    for i, f in fs : merge(f, {
+      shared = i == 0 ? 0 : length([
+        for j in range(min(length(f.path), length(fs[max(i - 1, 0)].path))) : j
+        if alltrue([for q in range(j + 1) : f.path[q] == fs[max(i - 1, 0)].path[q]])
+      ])
+      depth = i == 0 ? 0 : length(fs[max(i - 1, 0)].path)
+    })
+  ] }
+
+  # The nested "detail" object of the filters, written as JSON: close the
+  # previous filter's objects down to the shared parent, open the new ones,
+  # write the value list. Terraform has no deep merge, so the text is built and
+  # decoded. "" for a subscription without filters.
+  subscription_filter_json = { for k, steps in local.subscription_filter_steps : k => length(steps) == 0 ? "" : join("", concat(
+    ["{"],
+    flatten([for i, s in steps : [
+      i == 0 ? "" : join("", concat([for n in range(s.depth - 1 - s.shared) : "}"], [","])),
+      join("", [for seg in slice(s.path, s.shared, length(s.path) - 1) : "${jsonencode(seg)}:{"]),
+      "${jsonencode(s.path[length(s.path) - 1])}:${jsonencode(s.values)}",
+    ]]),
+    [for n in range(length(steps[length(steps) - 1].path) - 1) : "}"],
+    ["}"],
+  )) }
+
+  # The rule pattern of each subscription: the detail-type (exact, by prefix, or
+  # with EventBridge's wildcard operator when it contains *), an optional source,
+  # the optional field filters under "detail", and never a replayed event: a
+  # replay would deliver every archived event to the queue again. jsonencode
+  # sorts keys and a key is added only when set, so a subscription without a
+  # wildcard or filters keeps the pattern it always had. jsondecode lets the
+  # detail-type shapes share one expression.
+  subscription_patterns = { for k, s in local.subscriptions : k => jsonencode(merge(
+    {
+      "detail-type" = jsondecode(
+        s.detail_type == "" ? jsonencode([{ prefix = s.detail_type_prefix }]) :
+        strcontains(s.detail_type, "*") ? jsonencode([{ wildcard = s.detail_type }]) :
+        jsonencode([s.detail_type])
+      )
+      "replay-name" = [{ exists = false }]
+    },
+    s.source != "" ? { source = [s.source] } : {},
+    length(s.filters) > 0 ? { detail = jsondecode(local.subscription_filter_json[k]) } : {},
+  )) }
+
   default_bus_arn = "arn:aws:events:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:event-bus/default"
 
   bus_names = {
@@ -98,16 +155,7 @@ resource "aws_cloudwatch_event_rule" "subscription" {
   name           = module.naming.names["rule/${each.key}"]
   event_bus_name = local.bus_names[each.value.bus]
 
-  # The detail-type, exact or by prefix, an optional source, and never a
-  # replayed event: a replay would deliver every archived event to the queue
-  # again. jsondecode lets the two detail-type shapes share one expression.
-  event_pattern = jsonencode(merge(
-    {
-      "detail-type" = jsondecode(each.value.detail_type != "" ? jsonencode([each.value.detail_type]) : jsonencode([{ prefix = each.value.detail_type_prefix }]))
-      "replay-name" = [{ exists = false }]
-    },
-    each.value.source != "" ? { source = [each.value.source] } : {},
-  ))
+  event_pattern = local.subscription_patterns[each.key]
 
   tags = merge(local.tags, { Name = module.naming.names["rule/${each.key}"] })
 

@@ -91,6 +91,40 @@ run "typed_and_any_producers_are_bus_and_source_scoped" {
   }
 }
 
+# A detail-type with * switches that entry to StringLike; an entry without one
+# keeps StringEquals.
+run "wildcard_detail_types_use_string_like" {
+  command = apply
+
+  variables {
+    producers = [{
+      name   = "orders"
+      source = "myapp.orders"
+      entries = [
+        { bus = "project", detail_types = ["order.*", "invoice.paid"] },
+        { bus = "default", detail_types = ["audit.logged"], own_source_only = false }
+      ]
+    }]
+  }
+
+  assert {
+    condition = (
+      toset(jsondecode(output.policies["orders"]).Statement[0].Condition["ForAllValues:StringLike"]["events:detail-type"]) == toset(["order.*", "invoice.paid"]) &&
+      jsondecode(output.policies["orders"]).Statement[0].Condition["ForAllValues:StringLike"]["events:source"] == ["myapp.orders"] &&
+      !contains(keys(jsondecode(output.policies["orders"]).Statement[0].Condition), "ForAllValues:StringEquals")
+    )
+    error_message = "An entry with a * detail-type must match with StringLike, its source included."
+  }
+
+  assert {
+    condition = (
+      jsondecode(output.policies["orders"]).Statement[1].Condition["ForAllValues:StringEquals"]["events:detail-type"] == ["audit.logged"] &&
+      !contains(keys(jsondecode(output.policies["orders"]).Statement[1].Condition), "ForAllValues:StringLike")
+    )
+    error_message = "An entry without * keeps StringEquals."
+  }
+}
+
 run "any_with_foreign_sources_has_no_conditions" {
   command = apply
 

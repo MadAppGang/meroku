@@ -173,15 +173,24 @@ type WorkloadEvents struct {
 }
 
 // EventSubscription is one events.subscribes entry: exactly one of DetailType
-// and DetailTypePrefix, an optional Source, and an optional Bus (project or
+// (a * in it is a wildcard) and DetailTypePrefix, an optional Source, optional
+// Filters on fields of the event's detail, and an optional Bus (project or
 // default; absent follows event_bus.enabled). Name, when set, is the key of the
 // entry's rule; without it the key is derived from the detail-type.
 type EventSubscription struct {
-	Name             string `yaml:"name,omitempty"`
-	DetailType       string `yaml:"detail_type,omitempty"`
-	DetailTypePrefix string `yaml:"detail_type_prefix,omitempty"`
-	Source           string `yaml:"source,omitempty"`
-	Bus              string `yaml:"bus,omitempty"`
+	Name             string        `yaml:"name,omitempty"`
+	DetailType       string        `yaml:"detail_type,omitempty"`
+	DetailTypePrefix string        `yaml:"detail_type_prefix,omitempty"`
+	Source           string        `yaml:"source,omitempty"`
+	Filters          []EventFilter `yaml:"filters,omitempty"`
+	Bus              string        `yaml:"bus,omitempty"`
+}
+
+// EventFilter matches one field of an event's detail: Field is a path such as
+// detail.order.type, Values the exact values any of which matches.
+type EventFilter struct {
+	Field  string   `yaml:"field"`
+	Values []string `yaml:"values"`
 }
 
 // EventQueue holds the two settings a consumer's queue exposes.

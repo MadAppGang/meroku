@@ -1,5 +1,28 @@
 # Changelog
 
+## v6.3.0
+
+### Event subscriptions: wildcards and filters
+- A `subscribes` entry's `detail_type` may contain `*`, a wildcard for any run of characters:
+  `detail_type: "job.*"` renders EventBridge's `{"wildcard": "job.*"}` matcher. Without a `*`
+  it stays an exact match. `detail_type_prefix` still works and refuses a `*`.
+- Optional `filters: [{ field: detail.status, values: [done, failed] }]` (at most 5) match
+  fields of the event's detail; a dotted path such as `detail.order.type` nests. A filter
+  matches when the field equals one of its values.
+- `meroku generate` refuses a filter field outside `detail`, empty or more than 10 values, the
+  same field twice, a field inside another, and a `*` in a prefix. A `detail_type` of only `*`
+  is allowed with a warning that the workload receives every event on that bus.
+- An existing entry renders the same `main.tf` and the same rule pattern, so upgrading changes
+  no rule. No schema migration. See `ai_docs/EVENTS.md`.
+
+### Event publishing: wildcards
+- A `produces` entry's `detail_types` may contain `*`: `order.*` lets the workload publish every
+  `order.` event. Such an entry's policy matches with `StringLike`; an entry without `*` keeps
+  `StringEquals`, so its policy is unchanged. A type of only `*` is refused; use `any: true`.
+- The web UI edits an entry's event types in place, and a new entry starts with "Source
+  required" off (`own_source_only: false`). An entry without the key still requires the
+  workload's own source, as before.
+
 ## v6.2.0
 
 ### KMS signing keys
