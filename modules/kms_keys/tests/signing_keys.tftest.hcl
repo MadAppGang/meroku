@@ -281,3 +281,39 @@ run "bad_key_spec_is_refused" {
 
   expect_failures = [var.keys]
 }
+
+# A key that exists keeps its type when key_spec changes: no replacement, and
+# the plan warns. The first run creates auth as ECC_NIST_P256; the second sets
+# RSA_2048 against that state.
+run "key_spec_before_change" {
+  command = apply
+
+  assert {
+    condition     = aws_kms_key.key["auth"].customer_master_key_spec == "ECC_NIST_P256"
+    error_message = "auth must be created as ECC_NIST_P256."
+  }
+}
+
+run "changed_key_spec_is_ignored_and_warned" {
+  command = apply
+
+  variables {
+    keys = {
+      auth     = { key_spec = "RSA_2048" }
+      webhooks = { key_spec = "RSA_2048" }
+      legacy   = { key_spec = "ECC_NIST_P384" }
+    }
+  }
+
+  expect_failures = [check.key_spec_unchanged]
+
+  assert {
+    condition     = aws_kms_key.key["auth"].customer_master_key_spec == "ECC_NIST_P256"
+    error_message = "A changed key_spec must not replace an existing key: auth must stay ECC_NIST_P256."
+  }
+
+  assert {
+    condition     = output.key_arns["auth"] == "arn:aws:kms:us-east-1:000000000000:key/1234abcd-12ab-34cd-86ef-123456789001"
+    error_message = "auth must keep its ARN."
+  }
+}

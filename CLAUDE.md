@@ -449,7 +449,8 @@ alias `alias/<project>-<env>-<name>`). A workload's `kms_keys: [{ name, access }
 `sign` | `verify` | `both`, grants that on its task role and sets `KMS_<NAME>_KEY_ARN` and
 `KMS_<NAME>_PUBLIC_KEY` (a multi-line PEM). Removal is two applies: `retired: true` drops
 connections, variables and grants but keeps the key; deleting the entry schedules the key's
-deletion (7-day window, `aws kms cancel-key-deletion`). A changed `key_spec` replaces the key.
+deletion (7-day window, `aws kms cancel-key-deletion`). A changed `key_spec` on a created key is
+ignored (`ignore_changes`) and the plan warns; change type with a new key, not an edit.
 Normalised in `app/kms_keys.go`, built by `modules/kms_keys`.
 [KMS Keys](./ai_docs/KMS_KEYS.md).
 

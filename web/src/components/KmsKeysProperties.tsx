@@ -96,7 +96,8 @@ function KeySpecSelect({
  * Retiring a key removes every workload's connection to it in the same update.
  * A key's type can change only while the key is new to this panel: a key that
  * was in the YAML when the panel opened may exist in AWS, which cannot change
- * the type of a key.
+ * the type of a key. modules/kms_keys ignores a changed type on a key that
+ * exists and warns at plan.
  */
 export function KmsKeysProperties({
 	config,
@@ -271,14 +272,17 @@ export function KmsKeysProperties({
 												onChange={(next) => handleSpec(key.name, next)}
 											/>
 											<NoteDetail>
-												You can change the type until the key is saved. After
-												that it is fixed.
+												You can choose the type until an apply creates the key
+												in AWS. After that a changed type is ignored and the
+												plan warns about it: AWS cannot change the type of a
+												key.
 											</NoteDetail>
 										</div>
 									) : (
 										<NoteDetail>
 											Key type: {specOptionText(spec)}. AWS cannot change the
-											type of an existing key: to use another type, add a new
+											type of an existing key, so a changed type is ignored and
+											the plan warns about it. To use another type, add a new
 											key, move the workloads to it, then retire this one.
 										</NoteDetail>
 									)}

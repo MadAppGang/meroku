@@ -44,8 +44,9 @@ event_processor_tasks:
   starting with a letter (`^[a-z][a-z0-9_]{0,30}$`). Unique. The web UI names a
   new key `key<n>`, n one more than the highest `key<n>` already in the list.
 - `kms_keys[].key_spec`: one of `ECC_NIST_P256` (the default), `ECC_NIST_P384`,
-  `ECC_NIST_P521`, `ECC_SECG_P256K1`, `RSA_2048`, `RSA_3072`, `RSA_4096`. It
-  cannot change on an existing key; see [Changing the key type](#changing-the-key-type).
+  `ECC_NIST_P521`, `ECC_SECG_P256K1`, `RSA_2048`, `RSA_3072`, `RSA_4096`. Once
+  an apply has created the key, a changed value is ignored; see
+  [Changing the key type](#changing-the-key-type).
 - `kms_keys[].retired`: optional, default `false`. See [Removing a key](#removing-a-key).
 - A connection's `name` must be a key of the top-level list that is not retired,
   and a workload connects to a key at most once.
@@ -83,6 +84,11 @@ secret that would become the same name on that workload.
 
 The values are known only once the key exists: the first apply that creates a
 key registers the task definitions that name it in the same run.
+
+A new grant can take a few seconds to reach every KMS endpoint after the apply
+that creates it. An application that calls KMS at startup should retry an
+`AccessDeniedException` a few times over several seconds before it gives up,
+so a task started right after the apply does not crash on its first call.
 
 ## Grants
 
@@ -150,12 +156,31 @@ to check the signature, or has no crypto library for the key type.
 
 ## Changing the key type
 
-`key_spec` cannot change on an existing key: Terraform would destroy the key and
-create a new one, every signature made with the old key would stop verifying,
-and the old key would be scheduled for deletion. The web UI fixes the type once
-a key is saved. To move to another type, add a new key with the new type, move
-the connections to it, deploy, and retire the old key once nothing verifies with
-it any more.
+AWS cannot change the type of an existing key. Replacing the key would make
+every signature made with it stop verifying, so `modules/kms_keys` never does:
+`aws_kms_key` has `lifecycle { ignore_changes = [customer_master_key_spec] }`.
+Once an apply has created a key, a changed `key_spec` in the YAML changes
+nothing in AWS, and the plan shows a warning from the check
+`key_spec_unchanged`:
+
+```
+KMS key "auth" is ECC_NIST_P256 in AWS, but kms_keys sets RSA_2048. AWS cannot
+change a key's type: add a new key with the type you want, move the workloads
+to it, then retire this one. Until then the key keeps ECC_NIST_P256.
+```
+
+The warning never fails the plan or the apply. Until an apply creates the key,
+`key_spec` is free to change.
+
+The web UI offers the type only for a key added since the panel was opened; a
+key already in the YAML when the panel opened shows its type read-only.
+
+To move to another type:
+
+1. Add a new key with the type you want.
+2. Move the workloads' connections to it and apply.
+3. Retire the old key once nothing verifies with it any more (see
+   [Removing a key](#removing-a-key)).
 
 ## Removing a key
 
@@ -165,6 +190,11 @@ Removing a key takes two applies, so nothing loses a key it still uses:
    web UI's "Retire" does both). Apply. The variables and the IAM grants go; the
    key still exists, so a signature it made can still be verified with its
    public key, and anything outside meroku that uses it keeps working.
+
+   The apply removes the workloads' grants at once, while the tasks it
+   redeploys start without the variables. A task still running the old task
+   definition loses `kms:Sign` and `kms:Verify` on the key as soon as the policy
+   changes. Stop the application using the key, deploy that, then retire it.
 2. **Delete**: remove the entry from `kms_keys`. Apply. Terraform destroys the
    key, which AWS turns into a **scheduled deletion 7 days ahead**. During those
    7 days the key is disabled (no Sign, no Verify, no GetPublicKey) but not gone:
@@ -181,6 +211,13 @@ Removing a key takes two applies, so nothing loses a key it still uses:
    signatures it made.
 
 Setting `retired: false` again restores a retired key: connect it and apply.
+
+A key's Terraform address is its name,
+`module.kms_keys.aws_kms_key.key["<name>"]`. Deleting a key's entry and adding
+a new entry with the same name before the next apply is, to Terraform, the same
+key: the old key stays, its deletion is not scheduled, and with a different
+`key_spec` the plan warns as in [Changing the key type](#changing-the-key-type).
+To get a fresh key under a name, apply the deletion first, or use a new name.
 
 ## Destroy
 

@@ -18,9 +18,10 @@ locals {
   }
 }
 
-# key_spec is ForceNew: AWS cannot change an existing key's type, so a changed
-# key_spec replaces the key and every signature made with it stops verifying
-# against the new public key. The docs say to add a new key instead.
+# AWS cannot change an existing key's type: customer_master_key_spec is
+# ForceNew, and a replaced key would make every signature made with it stop
+# verifying. ignore_changes keeps a created key's type whatever key_spec says
+# afterwards; the check below warns when the two differ.
 resource "aws_kms_key" "key" {
   for_each = var.keys
 
@@ -32,6 +33,26 @@ resource "aws_kms_key" "key" {
   enable_key_rotation = false
 
   tags = merge(local.tags, { Name = "${var.project}-${var.env}-${each.key}" })
+
+  lifecycle {
+    ignore_changes = [customer_master_key_spec]
+  }
+}
+
+# Compares each key's own planned type, which ignore_changes holds at the type
+# in state for a key that exists, with the YAML. A data source here would be
+# read during apply and leave every plan non-empty.
+check "key_spec_unchanged" {
+  assert {
+    condition = alltrue([
+      for k, key in aws_kms_key.key : key.customer_master_key_spec == var.keys[k].key_spec
+    ])
+    error_message = join("\n", [
+      for k, key in aws_kms_key.key :
+      "KMS key \"${k}\" is ${key.customer_master_key_spec} in AWS, but kms_keys sets ${var.keys[k].key_spec}. AWS cannot change a key's type: add a new key with the type you want, move the workloads to it, then retire this one. Until then the key keeps ${key.customer_master_key_spec}."
+      if key.customer_master_key_spec != var.keys[k].key_spec
+    ])
+  }
 }
 
 resource "aws_kms_alias" "key" {

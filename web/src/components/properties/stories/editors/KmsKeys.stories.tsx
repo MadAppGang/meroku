@@ -117,6 +117,9 @@ export const AddKey: Story = {
 			}),
 		);
 		await expect(await card.findByText("RSA 2048 (RS256)")).toBeVisible();
+		await expect(
+			card.getByText(/until an apply creates the key in AWS/),
+		).toBeVisible();
 		await expect(canvas.getByLabelText("New key name")).toHaveValue("key2");
 	},
 };
