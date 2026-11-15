@@ -98,20 +98,80 @@ export async function addPolicy(page: Page, actions = ["dynamodb:GetItem"], reso
   await page.getByRole("button", { name: "Add statement", exact: true }).last().click();
 }
 
-export async function addSubscription(page: Page, detail: string, prefix = false, name?: string) {
-  if (prefix) {
-    await choose(page, page.getByRole("combobox", { name: "Match", exact: true }),
-      "prefix", /prefix|starts with/i);
+export interface SubscriptionInput {
+  bus?: "project" | "default";
+  source?: string;
+  name?: string;
+  filters?: Array<{ field: string; values: string[] }>;
+}
+
+export async function addSubscription(
+  page: Page,
+  detail: string,
+  opts: SubscriptionInput = {},
+) {
+  const busLabel = opts.bus === "default" ? "default bus" : "environment bus";
+  await page
+    .getByRole("textbox", { name: `Event type for ${busLabel}`, exact: true })
+    .fill(detail);
+  const source = opts.source ?? "example.payments";
+  const filters = opts.filters ?? [];
+  if (source !== "" || filters.length > 0) {
+    await page
+      .getByRole("button", {
+        name: `Filter new subscription on ${busLabel}`,
+        exact: true,
+      })
+      .click();
+    if (source !== "") {
+      await page
+        .getByRole("textbox", {
+          name: `Source for new subscription on ${busLabel}`,
+          exact: true,
+        })
+        .fill(source);
+    }
+    for (const f of filters) {
+      await page
+        .getByRole("textbox", {
+          name: `Filter field for new subscription on ${busLabel}`,
+          exact: true,
+        })
+        .fill(f.field);
+      await page
+        .getByRole("textbox", {
+          name: `Filter values for new subscription on ${busLabel}`,
+          exact: true,
+        })
+        .fill(f.values.join(", "));
+      await page
+        .getByRole("button", {
+          name: `Add filter condition on ${busLabel}`,
+          exact: true,
+        })
+        .click();
+    }
   }
-  await page.getByRole("textbox", { name: "New subscription", exact: true }).fill(detail);
-  if (name) await page.getByRole("textbox", { name: "Name", exact: true }).fill(name);
-  await page.getByRole("textbox", { name: "Source", exact: true }).fill("example.payments");
-  if (prefix) {
-    await choose(page, page.getByRole("combobox", { name: "Bus for the new subscription", exact: true }),
-      "default", /default/i);
+  if (opts.name) {
+    await page
+      .getByRole("button", {
+        name: `Advanced options for new subscription on ${busLabel}`,
+        exact: true,
+      })
+      .click();
+    await page
+      .getByRole("textbox", {
+        name: `Name for new subscription on ${busLabel}`,
+        exact: true,
+      })
+      .fill(opts.name);
   }
-  // Snapshot order is Subscribes Add followed by Produces Add.
-  await page.getByRole("button", { name: "Add", exact: true }).first().click();
+  await page
+    .getByRole("button", {
+      name: `Add subscription to ${busLabel}`,
+      exact: true,
+    })
+    .click();
 }
 
 export async function addProduces(page: Page, detail = "order.created") {

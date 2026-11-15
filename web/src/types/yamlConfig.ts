@@ -786,15 +786,27 @@ export interface EventBusConfig {
 }
 
 /**
+ * One field condition on an `events.subscribes` entry. `field` is a dotted path
+ * starting with `detail.` (e.g. `detail.status`), and `values` has 1 to 10
+ * non-empty strings matched with OR.
+ */
+export interface EventSubscriptionFilter {
+	field: string;
+	values: string[];
+}
+
+/**
  * One `events.subscribes` entry. Exactly one of `detail_type` and
- * `detail_type_prefix` is set. `name`, when set, is the entry's key; without it
- * the key is derived from the detail-type.
+ * `detail_type_prefix` is set. `detail_type` may contain `*` as a wildcard.
+ * `name`, when set, is the entry's key; without it the key is derived from the
+ * detail-type.
  */
 export interface EventSubscription {
 	name?: string;
 	detail_type?: string;
 	detail_type_prefix?: string;
 	source?: string;
+	filters?: EventSubscriptionFilter[];
 	bus?: EventBusChoice;
 }
 
