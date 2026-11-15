@@ -12,6 +12,11 @@ import {
 	vaultPrefixError,
 	vaultSecretName,
 } from "../utils/vaults";
+import {
+	workloadConnections,
+	workloadConnectionsUpdate,
+	workloadOf,
+} from "../utils/workloadConnections";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -276,29 +281,6 @@ interface WorkloadVaultsProps {
 	onConfigChange: (config: Partial<YamlInfrastructureConfig>) => void;
 }
 
-type WorkloadKind = "backend" | "service" | "scheduled-task" | "event-task";
-
-function workloadOf(node: ComponentNode): {
-	kind: WorkloadKind;
-	name: string;
-} | null {
-	switch (node.type) {
-		case "backend":
-			return { kind: "backend", name: "backend" };
-		case "service":
-			return { kind: "service", name: node.id.replace(/^service-/, "") };
-		case "scheduled-task":
-			return {
-				kind: "scheduled-task",
-				name: node.id.replace(/^scheduled-/, ""),
-			};
-		case "event-task":
-			return { kind: "event-task", name: node.id.replace(/^event-/, "") };
-		default:
-			return null;
-	}
-}
-
 /**
  * The Vaults tab of a workload. This component is the single owner of the
  * workload's `vaults` list: the editor hands it (index, patch), and it writes
@@ -313,55 +295,12 @@ export function WorkloadVaults({
 	const workload = workloadOf(node);
 	if (!workload) return null;
 
-	const current = (): VaultConnection[] => {
-		switch (workload.kind) {
-			case "backend":
-				return config.workload?.vaults || [];
-			case "service":
-				return (
-					config.services?.find((s) => s.name === workload.name)?.vaults || []
-				);
-			case "scheduled-task":
-				return (
-					config.scheduled_tasks?.find((t) => t.name === workload.name)
-						?.vaults || []
-				);
-			case "event-task":
-				return (
-					config.event_processor_tasks?.find((t) => t.name === workload.name)
-						?.vaults || []
-				);
-		}
-	};
-
 	const save = (next: VaultConnection[]) => {
-		const vaults = next.length > 0 ? next : undefined;
-		const withVaults = <T extends { name: string }>(item: T): T =>
-			item.name === workload.name ? { ...item, vaults } : item;
-		switch (workload.kind) {
-			case "backend":
-				onConfigChange({ workload: { vaults } });
-				return;
-			case "service":
-				if (!config.services) return;
-				onConfigChange({ services: config.services.map(withVaults) });
-				return;
-			case "scheduled-task":
-				if (!config.scheduled_tasks) return;
-				onConfigChange({
-					scheduled_tasks: config.scheduled_tasks.map(withVaults),
-				});
-				return;
-			case "event-task":
-				if (!config.event_processor_tasks) return;
-				onConfigChange({
-					event_processor_tasks: config.event_processor_tasks.map(withVaults),
-				});
-				return;
-		}
+		const update = workloadConnectionsUpdate(config, workload, "vaults", next);
+		if (update) onConfigChange(update);
 	};
 
-	const connections = current();
+	const connections = workloadConnections(config, workload, "vaults");
 
 	return (
 		<Card>

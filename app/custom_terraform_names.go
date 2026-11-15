@@ -18,7 +18,7 @@ import (
 // declares one of these names would make Terraform fail with "Duplicate module call"
 // or "Duplicate local value definition" pointing at a line of main.tf; refusing it
 // at generate names the custom file and its line instead.
-var reservedRootModuleNames = []string{"data_bucket", "vaults", "events", "valkey"}
+var reservedRootModuleNames = []string{"data_bucket", "vaults", "events", "valkey", "kms_keys"}
 var reservedRootLocalNames = []string{"workload_roles", "workload_extra_env", "workload_extra_secrets"}
 
 // customTerraformFiles lists the custom .tf files appended to main.tf for env, in

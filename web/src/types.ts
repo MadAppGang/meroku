@@ -48,7 +48,8 @@ export interface ComponentNode {
 		| "appsync"
 		| "custom-terraform"
 		| "cloudfront"
-		| "vaults";
+		| "vaults"
+		| "kms-keys";
 	name: string;
 	url?: string;
 	status: "running" | "deploying" | "stopped" | "error" | "external";

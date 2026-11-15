@@ -17,6 +17,7 @@ import {
 	Globe,
 	HardDrive,
 	Key,
+	KeyRound,
 	Layers,
 	Mail,
 	Monitor,
@@ -99,6 +100,7 @@ const serviceIcons = {
 	"custom-terraform": FileCode,
 	cloudfront: Cloud,
 	vaults: Vault,
+	"kms-keys": KeyRound,
 };
 
 const serviceColors = {
@@ -148,6 +150,7 @@ const serviceColors = {
 	cloudfront: "bg-orange-600",
 	// Red like the Parameter Store node: a vault is a path in Parameter Store.
 	vaults: "bg-node-vault",
+	"kms-keys": "bg-node-kms",
 };
 
 export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {

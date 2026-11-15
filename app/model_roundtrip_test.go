@@ -190,6 +190,34 @@ func TestEnvRoundTrip_FixtureCoversTheGuardedFields(t *testing.T) {
 		}
 	})
 
+	t.Run("kms keys and connections", func(t *testing.T) {
+		keys := loaded.KMSKeys
+		if len(keys) != 3 {
+			t.Fatalf("want 3 entries under kms_keys, got %d", len(keys))
+		}
+		if keys[0].Name != "auth" || keys[0].KeySpec != "" || keys[0].Retired {
+			t.Errorf("the key that sets only a name loaded extra values: %+v", keys[0])
+		}
+		if keys[1].KeySpec != "RSA_2048" {
+			t.Errorf("kms_keys[1].key_spec did not load: %+v", keys[1])
+		}
+		if !keys[2].Retired || keys[2].KeySpec != "ECC_NIST_P384" {
+			t.Errorf("kms_keys[2] did not load whole: %+v", keys[2])
+		}
+		if c := loaded.Workload.KMSKeys; len(c) != 1 || c[0].Name != "auth" || c[0].Access != "both" {
+			t.Errorf("workload.kms_keys did not load: %+v", c)
+		}
+		if c := loaded.Services[0].KMSKeys; len(c) != 2 || c[1].Access != "verify" {
+			t.Errorf("services[0].kms_keys did not load: %+v", c)
+		}
+		if c := loaded.ScheduledTasks[0].KMSKeys; len(c) != 1 || c[0].Access != "verify" {
+			t.Errorf("scheduled_tasks[0].kms_keys did not load: %+v", c)
+		}
+		if c := loaded.EventProcessorTasks[0].KMSKeys; len(c) != 1 || c[0].Name != "webhooks" || c[0].Access != "sign" {
+			t.Errorf("event_processor_tasks[0].kms_keys did not load: %+v", c)
+		}
+	})
+
 	t.Run("backend_remote_access", func(t *testing.T) {
 		// A pointer because the template defaults an absent key to true, so an
 		// explicit false has to survive a save as false rather than become

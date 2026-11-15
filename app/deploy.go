@@ -591,6 +591,7 @@ func applyTemplate(env string) error {
 // validateNetworkAccessConfigMap, validateBackendHealthConfigMap,
 // validateReservedEnvNamesConfigMap, validateGitHubRunnersConfigMap,
 // prepareAmplifyRewriteRules, validateWorkloadNamesConfigMap, normalizeEvents,
+// validateKMSKeysConfigMap, moveServiceKMSKeysOut,
 // validateWorkloadReservedEnvConfigMap, validateDataBucketConfigMap,
 // validateVaultsConfigMap, moveServiceVaultsOut, validateValkeyConfigMap and
 // validateComputeConfigMap. Path and custom-module flags stay with each caller,
@@ -665,6 +666,12 @@ func preprocessEnvMap(envMap map[string]interface{}) error {
 	if err := normalizeEvents(envMap); err != nil {
 		return err
 	}
+	// Before the reserved-env check and the vaults, which read the variables
+	// the connections give each workload.
+	if err := validateKMSKeysConfigMap(envMap); err != nil {
+		return err
+	}
+	moveServiceKMSKeysOut(envMap)
 	if err := validateWorkloadReservedEnvConfigMap(envMap); err != nil {
 		return err
 	}
@@ -1003,6 +1010,7 @@ locals {
 	}
 
 	bridge += eventsBridgeBlock(envMap)
+	bridge += kmsKeysBridgeBlock(envMap)
 	// Add Valkey outputs if enabled. validateValkeyConfigMap writes valkeyKey
 	// only for an enabled block, and the template renders module.valkey on the
 	// same key, so the two never disagree.

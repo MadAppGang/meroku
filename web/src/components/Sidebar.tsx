@@ -17,6 +17,7 @@ import {
 	Globe,
 	HardDrive,
 	Key,
+	KeyRound,
 	Link,
 	Microscope,
 	Network,
@@ -76,6 +77,7 @@ import { EventTaskEnvVars } from "./EventTaskEnvVars";
 import { EventTaskProperties } from "./EventTaskProperties";
 import { EventTaskTestEvent } from "./EventTaskTestEvent";
 import { GitHubNodeProperties } from "./GitHubNodeProperties";
+import { KmsKeysProperties } from "./KmsKeysProperties";
 import { NeonNodeProperties } from "./NeonNodeProperties";
 import { NodeConfigProperties } from "./NodeConfigProperties";
 import { ParameterStoreDescription } from "./ParameterStoreDescription";
@@ -109,6 +111,7 @@ import { Label } from "./ui/label";
 import { Switch } from "./ui/switch";
 import { ValkeyNodeProperties } from "./ValkeyNodeProperties";
 import { VaultsProperties } from "./VaultsProperties";
+import { WorkloadKmsKeys } from "./WorkloadKmsKeys";
 import { WorkloadVaults } from "./WorkloadVaults";
 
 interface SidebarProps {
@@ -173,6 +176,8 @@ export function Sidebar({
 				];
 			case "vaults":
 				return [{ id: "vaults", label: "Vaults", icon: Vault }];
+			case "kms-keys":
+				return [{ id: "kms-keys", label: "KMS keys", icon: KeyRound }];
 			case "s3":
 				return [
 					{ id: "settings", label: "Buckets", icon: HardDrive },
@@ -225,6 +230,7 @@ export function Sidebar({
 					{ id: "env", label: "Env Vars", icon: Zap },
 					{ id: "params", label: "Parameters", icon: Key },
 					{ id: "vaults", label: "Vaults", icon: Vault },
+					{ id: "kms-keys", label: "KMS keys", icon: KeyRound },
 					{ id: "s3", label: "S3 Buckets", icon: HardDrive },
 					{ id: "sns", label: "SNS", icon: Bell },
 					{ id: "iam", label: "IAM", icon: Shield },
@@ -240,6 +246,7 @@ export function Sidebar({
 					{ id: "env", label: "Env Vars", icon: Zap },
 					{ id: "params", label: "Parameters", icon: Key },
 					{ id: "vaults", label: "Vaults", icon: Vault },
+					{ id: "kms-keys", label: "KMS keys", icon: KeyRound },
 					{ id: "iam", label: "IAM", icon: Shield },
 					{ id: "events", label: "Events", icon: Workflow },
 					{ id: "cloudwatch", label: "CloudWatch", icon: Cloud },
@@ -253,6 +260,7 @@ export function Sidebar({
 					{ id: "env", label: "Env Vars", icon: Zap },
 					{ id: "params", label: "Parameters", icon: Key },
 					{ id: "vaults", label: "Vaults", icon: Vault },
+					{ id: "kms-keys", label: "KMS keys", icon: KeyRound },
 					{ id: "iam", label: "IAM", icon: Shield },
 					{ id: "events", label: "Events", icon: Workflow },
 					{ id: "cloudwatch", label: "CloudWatch", icon: Cloud },
@@ -268,6 +276,7 @@ export function Sidebar({
 					{ id: "env", label: "Env Vars", icon: Zap },
 					{ id: "params", label: "Parameters", icon: Key },
 					{ id: "vaults", label: "Vaults", icon: Vault },
+					{ id: "kms-keys", label: "KMS keys", icon: KeyRound },
 					{ id: "iam", label: "IAM", icon: Shield },
 					{ id: "events", label: "Events", icon: Workflow },
 					{ id: "logs", label: "Logs", icon: FileText },
@@ -1302,6 +1311,32 @@ jobs:
 					config &&
 					onConfigChange && (
 						<WorkloadVaults
+							key={panelKey}
+							config={config}
+							node={selectedNode}
+							onConfigChange={onConfigChange}
+						/>
+					)}
+
+				{activeTab === "kms-keys" &&
+					selectedNode.type === "kms-keys" &&
+					config &&
+					onConfigChange && (
+						<KmsKeysProperties
+							key={panelKey}
+							config={config}
+							onConfigChange={onConfigChange}
+						/>
+					)}
+
+				{activeTab === "kms-keys" &&
+					(selectedNode.type === "backend" ||
+						selectedNode.type === "service" ||
+						selectedNode.type === "scheduled-task" ||
+						selectedNode.type === "event-task") &&
+					config &&
+					onConfigChange && (
+						<WorkloadKmsKeys
 							key={panelKey}
 							config={config}
 							node={selectedNode}

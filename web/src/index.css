@@ -31,6 +31,8 @@
 		/* Canvas node accents behind a white icon. */
 		--node-cache: 0 72.2% 50.6%;
 		--node-vault: 0 84.2% 60.2%;
+		/* KMS keys node: #7c3aed, apart from the vault red. */
+		--node-kms: 262.1 83.3% 57.8%;
 		--border: 0 0% 14.9%;
 		--input: 0 0% 14.9%;
 		--ring: 0 0% 83.1%;

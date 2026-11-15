@@ -1,5 +1,6 @@
 import type {
 	AmplifyRewriteRule,
+	KmsKeyConnection,
 	VaultConnection,
 	YamlInfrastructureConfig,
 } from "../types/yamlConfig";
@@ -18,14 +19,15 @@ import type {
  * deleting a vault runs the same rewriters. `mapName` takes the kind of name it
  * is asked about; a rewriter that holds workload names never passes a kind, and
  * the vault rewriter passes "vault", so deleting a vault named like a workload
- * touches only vault references.
+ * touches only vault references. A KMS key is referenced by the workloads'
+ * `kms_keys[].name` and works the same way, with the kind "kms_key".
  */
 
 /** The name the backend has as a workload. */
 export const BACKEND_WORKLOAD_NAME = "backend";
 
 /** What a reference names. */
-export type ReferenceKind = "workload" | "vault";
+export type ReferenceKind = "workload" | "vault" | "kms_key";
 
 /**
  * Maps a referenced name to its new name, or `null` to remove the reference.
@@ -69,63 +71,78 @@ const dataBucketSharedReferences: ReferenceRewriter = (config, mapName) => {
 	return { data_bucket: { ...config.data_bucket, shared: rewritten } };
 };
 
-function mapVaultConnections(
-	connections: VaultConnection[] | undefined,
+/** A workload's connections to named things: vaults or KMS keys. */
+type ConnectionField = "vaults" | "kms_keys";
+
+type Connection = VaultConnection | KmsKeyConnection;
+
+function mapConnections<C extends Connection>(
+	connections: C[] | undefined,
+	kind: ReferenceKind,
 	mapName: NameMapper,
-): VaultConnection[] | undefined {
+): C[] | undefined {
 	if (!connections) return connections;
-	const out: VaultConnection[] = [];
+	const out: C[] = [];
 	for (const connection of connections) {
-		const mapped = mapName(connection.name, "vault");
+		const mapped = mapName(connection.name, kind);
 		if (mapped !== null) out.push({ ...connection, name: mapped });
 	}
 	// An emptied list is dropped, so the YAML keeps no `vaults: []`.
 	return out.length > 0 ? out : undefined;
 }
 
-function withMappedVaults<T extends { vaults?: VaultConnection[] }>(
+type WithConnections = {
+	vaults?: VaultConnection[];
+	kms_keys?: KmsKeyConnection[];
+};
+
+function withMappedConnections<T extends WithConnections>(
 	item: T,
+	field: ConnectionField,
+	kind: ReferenceKind,
 	mapName: NameMapper,
 ): T {
-	if (!item.vaults) return item;
-	return { ...item, vaults: mapVaultConnections(item.vaults, mapName) };
+	const connections = item[field] as Connection[] | undefined;
+	if (!connections) return item;
+	return { ...item, [field]: mapConnections(connections, kind, mapName) };
 }
 
 /**
- * `workload.vaults[].name`, `services[].vaults[].name`,
- * `scheduled_tasks[].vaults[].name` and `event_processor_tasks[].vaults[].name`.
+ * `workload.<field>[].name`, `services[].<field>[].name`,
+ * `scheduled_tasks[].<field>[].name` and `event_processor_tasks[].<field>[].name`.
  */
-const vaultConnectionReferences: ReferenceRewriter = (config, mapName) => {
-	const updates: Partial<YamlInfrastructureConfig> = {};
-	const same = (a: unknown, b: unknown) =>
-		JSON.stringify(a) === JSON.stringify(b);
+function connectionReferences(
+	field: ConnectionField,
+	kind: ReferenceKind,
+): ReferenceRewriter {
+	return (config, mapName) => {
+		const updates: Partial<YamlInfrastructureConfig> = {};
+		const same = (a: unknown, b: unknown) =>
+			JSON.stringify(a) === JSON.stringify(b);
+		const map = <T extends WithConnections>(item: T) =>
+			withMappedConnections(item, field, kind, mapName);
 
-	if (config.workload?.vaults) {
-		const vaults = mapVaultConnections(config.workload.vaults, mapName);
-		if (!same(vaults, config.workload.vaults)) {
-			updates.workload = { ...config.workload, vaults };
+		if (config.workload?.[field]) {
+			const workload = map(config.workload);
+			if (!same(workload, config.workload)) updates.workload = workload;
 		}
-	}
-	if (config.services) {
-		const services = config.services.map((s) => withMappedVaults(s, mapName));
-		if (!same(services, config.services)) updates.services = services;
-	}
-	if (config.scheduled_tasks) {
-		const tasks = config.scheduled_tasks.map((t) =>
-			withMappedVaults(t, mapName),
-		);
-		if (!same(tasks, config.scheduled_tasks)) updates.scheduled_tasks = tasks;
-	}
-	if (config.event_processor_tasks) {
-		const tasks = config.event_processor_tasks.map((t) =>
-			withMappedVaults(t, mapName),
-		);
-		if (!same(tasks, config.event_processor_tasks)) {
-			updates.event_processor_tasks = tasks;
+		if (config.services) {
+			const services = config.services.map(map);
+			if (!same(services, config.services)) updates.services = services;
 		}
-	}
-	return updates;
-};
+		if (config.scheduled_tasks) {
+			const tasks = config.scheduled_tasks.map(map);
+			if (!same(tasks, config.scheduled_tasks)) updates.scheduled_tasks = tasks;
+		}
+		if (config.event_processor_tasks) {
+			const tasks = config.event_processor_tasks.map(map);
+			if (!same(tasks, config.event_processor_tasks)) {
+				updates.event_processor_tasks = tasks;
+			}
+		}
+		return updates;
+	};
+}
 
 /**
  * Event sources that name a workload: `<project>.<service>`,
@@ -288,7 +305,8 @@ const amplifyRuleReferences: ReferenceRewriter = (config, mapName) => {
 
 const REFERENCE_REWRITERS: ReferenceRewriter[] = [
 	dataBucketSharedReferences,
-	vaultConnectionReferences,
+	connectionReferences("vaults", "vault"),
+	connectionReferences("kms_keys", "kms_key"),
 	eventSourceReferences,
 	valkeyAccessReferences,
 	amplifyRuleReferences,
@@ -333,6 +351,16 @@ export function removeVaultReferences(
 ): Partial<YamlInfrastructureConfig> {
 	return rewriteReferences(config, (n, kind = "workload") =>
 		kind === "vault" && n === name ? null : n,
+	);
+}
+
+/** The updates that remove every workload's connection to a KMS key. */
+export function removeKmsKeyReferences(
+	config: YamlInfrastructureConfig,
+	name: string,
+): Partial<YamlInfrastructureConfig> {
+	return rewriteReferences(config, (n, kind = "workload") =>
+		kind === "kms_key" && n === name ? null : n,
 	);
 }
 

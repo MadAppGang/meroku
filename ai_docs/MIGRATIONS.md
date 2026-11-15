@@ -125,6 +125,14 @@ renders no cache, no security group and no variables. Its defaults
 live in `app/valkey.go`, so nothing is written to existing files. Its struct
 field is a pointer with `omitempty`.
 
+`kms_keys` ([KMS_KEYS.md](./KMS_KEYS.md)) is another: the top-level list and each
+workload's `kms_keys` connections are optional. Absent means no keys, which
+renders a `kms_keys` module that creates nothing, grants nothing and gives no
+workload a variable. `key_spec` and `retired` default in `app/kms_keys.go`
+(`ECC_NIST_P256`, `false`), never in the YAML. The struct fields (`Env.KMSKeys`
+and `KMSKeys` on the backend workload, services, scheduled tasks and event tasks)
+use `omitempty`.
+
 ### A note on v23's two defaults
 
 v23 is the one migration that does **not** write the safer of two values

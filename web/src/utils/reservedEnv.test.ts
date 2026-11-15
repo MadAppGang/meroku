@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
-import { reservedBackendEnvError } from "./reservedEnv";
+import {
+	kmsKeyEnvCollisions,
+	reservedBackendEnvError,
+	reservedWorkloadEnvError,
+	workloadYamlEnv,
+} from "./reservedEnv";
 
 const base = {
 	project: "myapp",
@@ -37,5 +42,92 @@ describe("reservedBackendEnvError", () => {
 	test("allows every other name", () => {
 		expect(reservedBackendEnvError(base, "LOG_LEVEL")).toBeFalsy();
 		expect(reservedBackendEnvError(base, "ENVIRONMENT")).toBeFalsy();
+	});
+});
+
+describe("reservedWorkloadEnvError", () => {
+	const config = {
+		...base,
+		services: [
+			{ name: "orders", kms_keys: [{ name: "auth", access: "sign" }] },
+		],
+		scheduled_tasks: [
+			{ name: "nightly", kms_keys: [{ name: "auth", access: "verify" }] },
+		],
+		event_processor_tasks: [
+			{ name: "ingest", kms_keys: [{ name: "webhooks", access: "both" }] },
+		],
+	} as unknown as YamlInfrastructureConfig;
+	const orders = { kind: "service", name: "orders" } as const;
+
+	test("refuses the variables of a key the workload connects to", () => {
+		expect(
+			reservedWorkloadEnvError(config, orders, "KMS_AUTH_KEY_ARN"),
+		).toMatch(/^KMS_AUTH_KEY_ARN is reserved: .*KMS key auth/);
+		expect(
+			reservedWorkloadEnvError(
+				config,
+				{ kind: "scheduled-task", name: "nightly" },
+				"KMS_AUTH_PUBLIC_KEY",
+			),
+		).toBeTruthy();
+		expect(
+			reservedWorkloadEnvError(
+				config,
+				{ kind: "event-task", name: "ingest" },
+				"KMS_WEBHOOKS_KEY_ARN",
+			),
+		).toBeTruthy();
+	});
+
+	test("allows the variables of a key another workload connects to", () => {
+		expect(
+			reservedWorkloadEnvError(
+				config,
+				{ kind: "event-task", name: "ingest" },
+				"KMS_AUTH_KEY_ARN",
+			),
+		).toBeFalsy();
+	});
+
+	test("refuses ENV everywhere and leaves backend-only names free", () => {
+		expect(reservedWorkloadEnvError(config, orders, "ENV")).toMatch(
+			/^ENV is reserved/,
+		);
+		expect(
+			reservedWorkloadEnvError(config, orders, "AWS_S3_BUCKET"),
+		).toBeFalsy();
+	});
+});
+
+describe("kmsKeyEnvCollisions", () => {
+	test("names the key's variables present among the workload's", () => {
+		expect(
+			kmsKeyEnvCollisions("auth", ["LOG_LEVEL", "KMS_AUTH_PUBLIC_KEY"]),
+		).toEqual(["KMS_AUTH_PUBLIC_KEY"]);
+		expect(kmsKeyEnvCollisions("auth", ["KMS_WEBHOOKS_KEY_ARN"])).toEqual([]);
+	});
+});
+
+describe("workloadYamlEnv", () => {
+	test("reads each workload's own variable map", () => {
+		const config = {
+			...base,
+			workload: { backend_env_variables: { A: "1" } },
+			services: [{ name: "orders", env_vars: { B: "2" } }],
+			scheduled_tasks: [{ name: "nightly", environment_variables: { C: "3" } }],
+		} as unknown as YamlInfrastructureConfig;
+		expect(
+			workloadYamlEnv(config, { kind: "backend", name: "backend" }),
+		).toEqual({ A: "1" });
+		expect(
+			workloadYamlEnv(config, { kind: "service", name: "orders" }),
+		).toEqual({ B: "2" });
+		expect(
+			workloadYamlEnv(config, { kind: "scheduled-task", name: "nightly" }),
+		).toEqual({ C: "3" });
+		expect(
+			workloadYamlEnv(config, { kind: "event-task", name: "ingest" }),
+		).toEqual({});
 	});
 });

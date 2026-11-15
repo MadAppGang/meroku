@@ -77,6 +77,9 @@ workload:
     read_only: true
   vaults:
   - name: shared
+  kms_keys:
+  - name: auth
+    access: both
   events:
     subscribes:
     - detail_type: order.created
@@ -148,6 +151,9 @@ scheduled_tasks:
     - arn:aws:s3:::myapp-backend-dev
   vaults:
   - name: shared
+  kms_keys:
+  - name: auth
+    access: verify
   events:
     produces:
     - any: true
@@ -181,6 +187,9 @@ event_processor_tasks:
   vaults:
   - name: payments
     access: read_write
+  kms_keys:
+  - name: webhooks
+    access: sign
 pubsub_appsync:
   enabled: false
   schema: false
@@ -246,6 +255,11 @@ services:
   - name: payments
     access: read_write
     prefix: PAY
+  kms_keys:
+  - name: auth
+    access: sign
+  - name: webhooks
+    access: verify
   events:
     subscribes:
     - detail_type: payment.completed
@@ -309,3 +323,10 @@ valkey:
   access:
   - service1
   - cleanup
+kms_keys:
+- name: auth
+- name: webhooks
+  key_spec: RSA_2048
+- name: legacy
+  key_spec: ECC_NIST_P384
+  retired: true

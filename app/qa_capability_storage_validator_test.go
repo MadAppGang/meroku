@@ -168,6 +168,7 @@ func TestQACapabilityCustomTerraformRejectsReservedRootNames(t *testing.T) {
 		{`module "vaults" { source = "./unused" }`, "vaults"},
 		{`module "events" { source = "./unused" }`, "events"},
 		{`module "valkey" { source = "./unused" }`, "valkey"},
+		{`module "kms_keys" { source = "./unused" }`, "kms_keys"},
 		{`locals { workload_roles = {} }`, "workload_roles"},
 		{`locals { workload_extra_env = {} }`, "workload_extra_env"},
 		{`locals { workload_extra_secrets = {} }`, "workload_extra_secrets"},

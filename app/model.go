@@ -98,6 +98,27 @@ type Env struct {
 	// Valkey is the optional serverless Valkey cache. A pointer so an
 	// environment without the block saves without one. See ai_docs/VALKEY.md.
 	Valkey *Valkey `yaml:"valkey,omitempty"`
+	// KMSKeys are the environment's KMS signing keys, retired ones included,
+	// that workloads connect to through their own kms_keys key. See
+	// ai_docs/KMS_KEYS.md.
+	KMSKeys []KMSKey `yaml:"kms_keys,omitempty"`
+}
+
+// KMSKey is one entry of the top-level kms_keys list: an asymmetric
+// SIGN_VERIFY key. KeySpec empty means ECC_NIST_P256. A retired key stays
+// deployed but nothing may connect to it; deleting the entry schedules the
+// key's deletion.
+type KMSKey struct {
+	Name    string `yaml:"name"`
+	KeySpec string `yaml:"key_spec,omitempty"`
+	Retired bool   `yaml:"retired,omitempty"`
+}
+
+// KMSKeyConnection connects a workload to a kms key. Access is sign, verify or
+// both.
+type KMSKeyConnection struct {
+	Name   string `yaml:"name"`
+	Access string `yaml:"access"`
 }
 
 // Vault is one entry of the top-level vaults list. Secrets are the names of
@@ -477,6 +498,8 @@ type Workload struct {
 
 	// Vaults are the backend's vault connections (workload.vaults).
 	Vaults []VaultConnection `yaml:"vaults,omitempty"`
+	// KMSKeys are the backend's kms key connections (workload.kms_keys).
+	KMSKeys []KMSKeyConnection `yaml:"kms_keys,omitempty"`
 	// Events is workload.events: the backend subscribes and publishes like a
 	// service. See ai_docs/EVENTS.md.
 	Events *WorkloadEvents `yaml:"events,omitempty"`
@@ -842,6 +865,8 @@ type ScheduledTask struct {
 	Policy []IAMStatement `yaml:"policy,omitempty"`
 	// Vaults are this task's vault connections.
 	Vaults []VaultConnection `yaml:"vaults,omitempty"`
+	// KMSKeys are this task's kms key connections.
+	KMSKeys []KMSKeyConnection `yaml:"kms_keys,omitempty"`
 	// Events is the task's events block; a task may only produce.
 	Events *WorkloadEvents `yaml:"events,omitempty"`
 }
@@ -880,6 +905,8 @@ type EventProcessorTask struct {
 	Policy []IAMStatement `yaml:"policy,omitempty"`
 	// Vaults are this task's vault connections.
 	Vaults []VaultConnection `yaml:"vaults,omitempty"`
+	// KMSKeys are this task's kms key connections.
+	KMSKeys []KMSKeyConnection `yaml:"kms_keys,omitempty"`
 	// Events is the task's events block; a task may only produce.
 	Events *WorkloadEvents `yaml:"events,omitempty"`
 }
@@ -935,6 +962,8 @@ type Service struct {
 	Policy []IAMStatement `yaml:"policy,omitempty"`
 	// Vaults are this service's vault connections.
 	Vaults []VaultConnection `yaml:"vaults,omitempty"`
+	// KMSKeys are this service's kms key connections.
+	KMSKeys []KMSKeyConnection `yaml:"kms_keys,omitempty"`
 	// Events is the service's events block. See ai_docs/EVENTS.md.
 	Events *WorkloadEvents `yaml:"events,omitempty"`
 }

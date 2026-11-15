@@ -54,21 +54,23 @@ const (
 	vaultAccessReadWrite = "read_write"
 )
 
-// vaultConnectionSource is one workload's YAML vaults list and where it lives.
-type vaultConnectionSource struct {
+// workloadConnectionSource is one workload's YAML list under a capability key
+// (vaults, kms_keys) and where it lives.
+type workloadConnectionSource struct {
 	workload string
 	field    string
 	raw      interface{}
 }
 
-// vaultConnectionSources lists every workload's vaults key, backend first.
-func vaultConnectionSources(envMap map[string]interface{}) []vaultConnectionSource {
-	var out []vaultConnectionSource
+// workloadConnectionSources lists every workload's list under key, backend
+// first.
+func workloadConnectionSources(envMap map[string]interface{}, key string) []workloadConnectionSource {
+	var out []workloadConnectionSource
 	if workload, ok := yamlSubMap(envMap, "workload"); ok {
-		out = append(out, vaultConnectionSource{workload: backendWorkloadName, field: "workload.vaults", raw: workload["vaults"]})
+		out = append(out, workloadConnectionSource{workload: backendWorkloadName, field: "workload." + key, raw: workload[key]})
 	}
-	for _, key := range workloadLists {
-		items, _ := envMap[key].([]interface{})
+	for _, list := range workloadLists {
+		items, _ := envMap[list].([]interface{})
 		for i, raw := range items {
 			item, ok := computeNodeMap(raw)
 			if !ok {
@@ -78,14 +80,30 @@ func vaultConnectionSources(envMap map[string]interface{}) []vaultConnectionSour
 			if name == "" {
 				continue
 			}
-			out = append(out, vaultConnectionSource{
+			out = append(out, workloadConnectionSource{
 				workload: name,
-				field:    fmt.Sprintf("%s[%d].vaults ('%s')", key, i, name),
-				raw:      item["vaults"],
+				field:    fmt.Sprintf("%s[%d].%s ('%s')", list, i, key, name),
+				raw:      item[key],
 			})
 		}
 	}
 	return out
+}
+
+// deleteServiceKey deletes key from every service map once a capability has
+// normalised it. The services list renders through {{{array services}}}, which
+// does not escape HCL template openers, so nothing a capability module reads
+// travels through it.
+func deleteServiceKey(envMap map[string]interface{}, key string) {
+	services, _ := envMap["services"].([]interface{})
+	for _, raw := range services {
+		switch service := raw.(type) {
+		case map[string]interface{}:
+			delete(service, key)
+		case map[interface{}]interface{}:
+			delete(service, key)
+		}
+	}
 }
 
 // declaredVaults reads the top-level vaults list. It returns each vault's
@@ -211,7 +229,7 @@ func validateVaultsConfigMap(envMap map[string]interface{}) error {
 	vaults, problems := declaredVaults(envMap)
 	var connections []vaultConnection
 
-	for _, src := range vaultConnectionSources(envMap) {
+	for _, src := range workloadConnectionSources(envMap, "vaults") {
 		if src.raw == nil {
 			continue
 		}
@@ -315,7 +333,7 @@ func validateVaultsConfigMap(envMap map[string]interface{}) error {
 //     the variable meroku sets for every workload from <own path>/env;
 //   - one variable from two connected vaults;
 //   - a variable that is also in the workload's YAML env vars;
-//   - a variable meroku sets for that workload (reservedWorkloadEnvTable).
+//   - a variable meroku sets for that workload (reservedWorkloadEnvRows).
 //
 // modules/env_secret_check refuses the same at plan, together with the
 // variables the owning modules set themselves (AWS_REGION and the rest), which
@@ -382,7 +400,7 @@ func vaultSecretCollisions(envMap map[string]interface{}, vaults map[string][]st
 					break
 				}
 			}
-			for _, row := range reservedWorkloadEnvTable {
+			for _, row := range reservedWorkloadEnvRows(envMap) {
 				if row.matches(envName) && row.appliesTo(ctx) {
 					problems = append(problems, fmt.Sprintf(
 						"%s: secret %s of vault %q would be %s, which meroku sets for this workload (%s: %s); give the connection a prefix or rename the secret",
@@ -404,17 +422,7 @@ func workloadSubject(workload string) string {
 }
 
 // moveServiceVaultsOut deletes each service's vaults key once it is normalised
-// under vaultConnectionsKey. The services list renders through
-// {{{array services}}}, which does not escape HCL template openers, so nothing a
-// capability module reads travels through it.
+// under vaultConnectionsKey (see deleteServiceKey).
 func moveServiceVaultsOut(envMap map[string]interface{}) {
-	services, _ := envMap["services"].([]interface{})
-	for _, raw := range services {
-		switch service := raw.(type) {
-		case map[string]interface{}:
-			delete(service, "vaults")
-		case map[interface{}]interface{}:
-			delete(service, "vaults")
-		}
-	}
+	deleteServiceKey(envMap, "vaults")
 }

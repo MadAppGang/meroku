@@ -73,6 +73,7 @@ export default {
 					database: "hsl(var(--node-database))",
 					cache: "hsl(var(--node-cache))",
 					vault: "hsl(var(--node-vault))",
+					kms: "hsl(var(--node-kms))",
 				},
 				muted: {
 					DEFAULT: "hsl(var(--muted))",
