@@ -36,6 +36,7 @@ import {
 	subscriptionFilterSummary,
 	subscriptionKey,
 } from "../utils/workloadEvents";
+import { EventFlowDiagram } from "./EventFlowDiagram";
 import { EventProducesEditor } from "./EventProducesEditor";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Badge } from "./ui/badge";
@@ -55,6 +56,10 @@ import {
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { NoteDetail, StatusNote } from "./ui/status-note";
+
+/** One column layout for subscription rows and the add form, so they line up. */
+const SUBSCRIPTION_GRID =
+	"grid grid-cols-[minmax(0,1fr)_9.5rem_11rem] items-center gap-2";
 
 interface ServiceEventsTabProps {
 	config: YamlInfrastructureConfig;
@@ -229,11 +234,11 @@ function SubscriptionRowEditor({
 
 	return (
 		<div
-			className="rounded-lg border p-3 space-y-2"
+			className="rounded-lg border bg-card p-3 space-y-2 shadow-sm"
 			data-testid={`subscription-${key || index}`}
 		>
-			<div className="flex flex-wrap items-center gap-2">
-				<div className="flex-1 min-w-[180px]">
+			<div className={SUBSCRIPTION_GRID}>
+				<div className="flex min-w-0 items-center gap-2">
 					<Input
 						aria-label={`Event type for ${rowLabel}`}
 						variant="code"
@@ -245,17 +250,18 @@ function SubscriptionRowEditor({
 							if (e.key === "Enter") commitType();
 						}}
 					/>
+					{sub.detail_type?.includes("*") && (
+						<Badge variant="kms">wildcard</Badge>
+					)}
+					{sub.detail_type_prefix !== undefined && (
+						<Badge variant="outline">prefix</Badge>
+					)}
 				</div>
-				{sub.detail_type?.includes("*") && (
-					<Badge variant="secondary">wildcard</Badge>
-				)}
-				{sub.detail_type_prefix !== undefined && (
-					<Badge variant="outline">prefix</Badge>
-				)}
 				<Button
 					type="button"
 					variant="outline"
 					size="sm"
+					className="w-full justify-between"
 					aria-expanded={filterOpen || hasFilterError}
 					aria-label={`Filter for ${rowLabel}`}
 					onClick={() => setFilterOpen((prev) => !prev)}
@@ -268,27 +274,30 @@ function SubscriptionRowEditor({
 						<ChevronRight className="w-3.5 h-3.5" />
 					)}
 				</Button>
-				<Button
-					type="button"
-					variant="ghost"
-					size="sm"
-					aria-expanded={advancedOpen}
-					aria-label={`Advanced settings for ${rowLabel}`}
-					onClick={() => setAdvancedOpen((prev) => !prev)}
-				>
-					<span className="font-mono text-xs text-muted-foreground">
-						{key || "key"}
-					</span>
-				</Button>
-				<Button
-					type="button"
-					variant="ghost"
-					size="sm"
-					aria-label={`Remove subscription ${key || rowLabel}`}
-					onClick={() => onRemove(index)}
-				>
-					<Trash2 className="w-4 h-4" />
-				</Button>
+				<div className="flex min-w-0 items-center justify-between gap-1">
+					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						className="min-w-0"
+						aria-expanded={advancedOpen}
+						aria-label={`Advanced settings for ${rowLabel}`}
+						onClick={() => setAdvancedOpen((prev) => !prev)}
+					>
+						<span className="truncate font-mono text-xs text-muted-foreground">
+							{key || "key"}
+						</span>
+					</Button>
+					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						aria-label={`Remove subscription ${key || rowLabel}`}
+						onClick={() => onRemove(index)}
+					>
+						<Trash2 className="w-4 h-4" />
+					</Button>
+				</div>
 			</div>
 
 			{/* Compact filter chips preview when collapsed */}
@@ -488,7 +497,7 @@ interface BusSubscriptionsSectionProps {
 }
 
 /**
- * One event-bus section ("Environment bus" or "Default bus"): lists its
+ * One event-bus section ("Project bus" or "Default bus"): lists its
  * subscriptions and provides its own "Add subscription" form with an optional,
  * collapsed-by-default filter and secondary rule-key name.
  */
@@ -640,13 +649,15 @@ function BusSubscriptionsSection({
 				? "1 filter"
 				: `${draftFilterCount} filters`;
 
-	const sectionLabel =
-		targetBus === "project" ? "environment bus" : "default bus";
+	const sectionLabel = targetBus === "project" ? "project bus" : "default bus";
 
 	return (
-		<div className="rounded-xl border p-4 space-y-4" data-testid={testId}>
+		<div
+			className="rounded-xl border-2 bg-muted/40 p-4 space-y-4"
+			data-testid={testId}
+		>
 			<div className="space-y-1">
-				<h4 className="text-sm font-medium">{title}</h4>
+				<h4 className="text-base font-semibold">{title}</h4>
 				<p className="text-xs text-muted-foreground">{description}</p>
 			</div>
 
@@ -669,10 +680,10 @@ function BusSubscriptionsSection({
 			)}
 
 			{allowAdd && (
-				<div className="space-y-2 pt-1">
-					<Label htmlFor={`${uid}-type`}>Event type</Label>
-					<div className="flex flex-wrap items-center gap-2">
-						<div className="flex-1 min-w-[200px]">
+				<div className="space-y-2 border-t pt-4">
+					<Label htmlFor={`${uid}-type`}>New subscription</Label>
+					<div className={SUBSCRIPTION_GRID}>
+						<div className="min-w-0">
 							<Input
 								id={`${uid}-type`}
 								aria-label={`Event type for ${sectionLabel}`}
@@ -697,6 +708,7 @@ function BusSubscriptionsSection({
 							type="button"
 							variant="outline"
 							size="sm"
+							className="w-full justify-between"
 							aria-expanded={filterOpen}
 							aria-label={`Filter new subscription on ${sectionLabel}`}
 							onClick={() => setFilterOpen((prev) => !prev)}
@@ -711,27 +723,31 @@ function BusSubscriptionsSection({
 						</Button>
 						<Button
 							type="button"
-							variant="ghost"
+							className="w-full"
+							aria-label={`Add subscription to ${sectionLabel}`}
+							onClick={handleAdd}
+							disabled={!canAdd}
+						>
+							<Plus className="w-4 h-4" />
+							Add
+						</Button>
+					</div>
+					<div className="flex items-center justify-between gap-2">
+						<NoteDetail>
+							Use * as a wildcard: job.* matches every job event.
+						</NoteDetail>
+						<Button
+							type="button"
+							variant="link"
 							size="sm"
+							className="h-auto p-0 text-xs"
 							aria-expanded={advancedOpen}
 							aria-label={`Advanced options for new subscription on ${sectionLabel}`}
 							onClick={() => setAdvancedOpen((prev) => !prev)}
 						>
 							Advanced
 						</Button>
-						<Button
-							type="button"
-							aria-label={`Add subscription to ${sectionLabel}`}
-							onClick={handleAdd}
-							disabled={!canAdd}
-						>
-							<Plus className="w-4 h-4" />
-							Add subscription
-						</Button>
 					</div>
-					<NoteDetail>
-						Use * as a wildcard: job.* matches every job event.
-					</NoteDetail>
 
 					{isCatchAllWildcard(newType) && (
 						<StatusNote tone="warning">
@@ -1005,26 +1021,40 @@ export function ServiceEventsTab({
 						Events
 					</CardTitle>
 					<CardDescription>
-						Events reach this {kind === "backend" ? "backend" : "service"} on
-						its own queue, shared by all its running copies, so each event is
-						handled once. It may publish only what it lists under Produces.
+						Pick the events this {kind === "backend" ? "backend" : "service"}{" "}
+						receives and the events it may send. Each event is handled once,
+						however many copies run.
 					</CardDescription>
 				</CardHeader>
-				<CardContent className="space-y-2">
-					<div className="flex flex-wrap items-center gap-2">
-						<Badge variant={busEnabled ? "default" : "secondary"}>
-							{busEnabled ? `Project bus ${busName}` : "Default bus"}
-						</Badge>
-						<Badge variant="code">EVENT_SOURCE {source}</Badge>
-						{subscribes.length > 0 && (
-							<Badge variant="code">EVENT_QUEUE_URL</Badge>
-						)}
-					</div>
-					{!busEnabled && (
-						<p className="text-xs text-muted-foreground">
-							The project bus is off; entries without a bus use the default bus.
-							Turn it on in the EventBridge node.
-						</p>
+				<CardContent>
+					<dl className="grid grid-cols-[6rem_minmax(0,1fr)] items-center gap-x-3 gap-y-2 text-sm">
+						<dt className="text-muted-foreground">Bus</dt>
+						<dd>
+							<code className="font-mono">
+								{busEnabled ? busName : "default"}
+							</code>
+						</dd>
+						<dt className="text-muted-foreground">Env vars</dt>
+						<dd className="flex flex-wrap gap-2">
+							<Badge variant="code">EVENT_SOURCE={source}</Badge>
+							<Badge variant="code">
+								EVENT_BUS_NAME={busEnabled ? busName : "default"}
+							</Badge>
+							{subscribes.length > 0 && (
+								<Badge variant="code">EVENT_QUEUE_URL</Badge>
+							)}
+						</dd>
+					</dl>
+					{subscribes.length > 0 && (
+						<div className="mt-4">
+							<EventFlowDiagram
+								config={config}
+								workload={workloadName}
+								busName={busEnabled ? busName : "default"}
+								ruleCount={subscribes.length}
+								maxReceiveCount={events?.queue?.max_receive_count ?? 5}
+							/>
+						</div>
 					)}
 				</CardContent>
 			</Card>
@@ -1049,11 +1079,11 @@ export function ServiceEventsTab({
 
 					{(busEnabled || hasStrandedProjectEntries) && (
 						<BusSubscriptionsSection
-							title={`Environment bus (${busName})`}
+							title={`Project bus (${busName})`}
 							description={
 								busEnabled
 									? "Events published by your backend, services and tasks in this environment."
-									: "The environment bus is off, so these subscriptions cannot be deployed. Turn the bus on in the EventBridge node, or remove them."
+									: "The project bus is off, so these subscriptions cannot be deployed. Turn the bus on in the EventBridge node, or remove them."
 							}
 							testId="subscribes-section-project"
 							targetBus="project"

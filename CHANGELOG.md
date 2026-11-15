@@ -15,6 +15,14 @@
 - An existing entry renders the same `main.tf` and the same rule pattern, so upgrading changes
   no rule. No schema migration. See `ai_docs/EVENTS.md`.
 
+### Event publishing: wildcards
+- A `produces` entry's `detail_types` may contain `*`: `order.*` lets the workload publish every
+  `order.` event. Such an entry's policy matches with `StringLike`; an entry without `*` keeps
+  `StringEquals`, so its policy is unchanged. A type of only `*` is refused; use `any: true`.
+- The web UI edits an entry's event types in place, and a new entry starts with "Source
+  required" off (`own_source_only: false`). An entry without the key still requires the
+  workload's own source, as before.
+
 ## v6.2.0
 
 ### KMS signing keys

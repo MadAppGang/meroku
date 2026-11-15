@@ -31,6 +31,12 @@ locals {
     } : k => v if length(v) > 0 }
   ] }
 
+  # A detail-type with * (order.*) needs StringLike; an entry without one keeps
+  # StringEquals, so its policy is unchanged. events:source never holds *.
+  produce_operators = { for name, p in local.producers : name => [
+    for e in p.entries : anytrue([for t in e.detail_types : strcontains(t, "*")]) ? "ForAllValues:StringLike" : "ForAllValues:StringEquals"
+  ] }
+
   produce_statements = { for name, p in local.producers : name => [
     for i, e in p.entries : merge(
       {
@@ -41,8 +47,8 @@ locals {
       },
       length(local.produce_keys[name][i]) > 0 ? {
         Condition = {
-          "ForAllValues:StringEquals" = local.produce_keys[name][i]
-          Null                        = { for k in keys(local.produce_keys[name][i]) : k => "false" }
+          (local.produce_operators[name][i]) = local.produce_keys[name][i]
+          Null                               = { for k in keys(local.produce_keys[name][i]) : k => "false" }
         }
       } : {},
     )

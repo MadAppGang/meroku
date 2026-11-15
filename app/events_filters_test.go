@@ -174,3 +174,22 @@ func TestEventsMatchEverythingWarns(t *testing.T) {
 		qaCapabilityRequireError(t, normalizeEvents(m), "give the entry a name")
 	})
 }
+
+// A produces entry may list wildcard detail-types; a lone * would match every
+// detail-type, which any: true already says.
+func TestEventsProducesWildcards(t *testing.T) {
+	for _, types := range [][]interface{}{{"order.*"}, {"order.*", "invoice.paid"}} {
+		m := qaCapabilityEnv()
+		qaCapabilityOwner(m, "service")["events"] = qaCapabilityMap{
+			"produces": qaCapabilityList(qaCapabilityMap{"detail_types": types}),
+		}
+		qaCapabilityNoError(t, normalizeEvents(m))
+	}
+	for _, lone := range []string{"*", "**"} {
+		m := qaCapabilityEnv()
+		qaCapabilityOwner(m, "service")["events"] = qaCapabilityMap{
+			"produces": qaCapabilityList(qaCapabilityMap{"detail_types": []interface{}{"order.created", lone}}),
+		}
+		qaCapabilityRequireError(t, normalizeEvents(m), "produces[0].detail_types", "any: true")
+	}
+}

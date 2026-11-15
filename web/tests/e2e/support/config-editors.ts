@@ -110,7 +110,7 @@ export async function addSubscription(
   detail: string,
   opts: SubscriptionInput = {},
 ) {
-  const busLabel = opts.bus === "default" ? "default bus" : "environment bus";
+  const busLabel = opts.bus === "default" ? "default bus" : "project bus";
   await page
     .getByRole("textbox", { name: `Event type for ${busLabel}`, exact: true })
     .fill(detail);

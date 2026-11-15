@@ -40,6 +40,30 @@ export function projectBusName(config: YamlInfrastructureConfig): string {
 	return `${config.project}-${config.env}`;
 }
 
+/**
+ * The name of a consumer's event queue, as modules/events names it:
+ * `<project>-events-<workload>-<env>`. Null past the 80-character SQS cap,
+ * where the naming cascade falls back to a hashed name.
+ */
+export function eventQueueName(
+	config: YamlInfrastructureConfig,
+	workload: string,
+	kind: "queue" | "dlq" | "delivery-dlq" = "queue",
+): string | null {
+	const tail = kind === "queue" ? "" : `-${kind}`;
+	const name = `${config.project}-events-${workload}${tail}-${config.env}`;
+	return name.length <= 80 ? name : null;
+}
+
+/** The queue's ARN, or null when the account is unknown. */
+export function eventQueueArn(
+	config: YamlInfrastructureConfig,
+	queueName: string,
+): string | null {
+	if (!config.account_id || !config.region) return null;
+	return `arn:aws:sqs:${config.region}:${config.account_id}:${queueName}`;
+}
+
 export function isEventBusEnabled(config: YamlInfrastructureConfig): boolean {
 	return config.event_bus?.enabled === true;
 }

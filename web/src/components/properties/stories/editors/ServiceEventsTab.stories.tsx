@@ -78,7 +78,7 @@ export const Empty: Story = {
 };
 
 export const EnvironmentBusSubscriptions: Story = {
-	name: "Environment-bus subscriptions",
+	name: "Project-bus subscriptions",
 	render: () => (
 		<ServiceEditor
 			initial={withOrdersEvents(
@@ -96,9 +96,7 @@ export const EnvironmentBusSubscriptions: Story = {
 	play: async ({ canvasElement }) => {
 		const canvas = within(canvasElement);
 		const envSection = within(canvas.getByTestId("subscribes-section-project"));
-		await expect(
-			envSection.getByText("Environment bus (demo-dev)"),
-		).toBeVisible();
+		await expect(envSection.getByText("Project bus (demo-dev)")).toBeVisible();
 		await expect(
 			envSection.getByLabelText("Event type for job-completed"),
 		).toHaveValue("job.completed");
@@ -239,9 +237,7 @@ export const ValidationErrors: Story = {
 
 		// Duplicate key error when typing an already-used event type in the add form
 		const envSection = within(canvas.getByTestId("subscribes-section-project"));
-		const typeInput = envSection.getByLabelText(
-			"Event type for environment bus",
-		);
+		const typeInput = envSection.getByLabelText("Event type for project bus");
 		await userEvent.type(typeInput, "job.completed");
 		await expect(
 			envSection.getByText(
@@ -250,7 +246,7 @@ export const ValidationErrors: Story = {
 		).toBeVisible();
 		await expect(
 			envSection.getByRole("button", {
-				name: "Add subscription to environment bus",
+				name: "Add subscription to project bus",
 			}),
 		).toBeDisabled();
 	},

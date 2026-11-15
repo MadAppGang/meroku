@@ -61,23 +61,21 @@ export const NoKeys: Story = {
 	},
 };
 
-/** Saved keys: their type is shown read-only, with the workloads using them. */
+/** Saved keys: a fixed type badge and coloured counts of the workloads using them. */
 export const WithKeys: Story = {
 	name: "With keys",
 	render: () => <Editor initial={withKeys} />,
 	play: async ({ canvasElement }) => {
 		const canvas = within(canvasElement);
 		const auth = within(canvas.getByTestId("kms-key-auth"));
-		await expect(auth.getByText("backend · Sign")).toBeVisible();
-		await expect(auth.getByText("orders · Verify")).toBeVisible();
-		await expect(auth.getByText(/AWS cannot change the type/)).toBeVisible();
+		await expect(auth.getByText("1 sign")).toHaveAttribute("title", "backend");
+		await expect(auth.getByText("1 verify")).toHaveAttribute("title", "orders");
+		await expect(auth.getByText("ES256", { exact: true })).toBeVisible();
 		await expect(
 			auth.queryByRole("combobox", { name: "Key type of auth" }),
 		).toBeNull();
 		await expect(
-			within(canvas.getByTestId("kms-key-legacy")).getByText(
-				"No workload uses this key yet.",
-			),
+			within(canvas.getByTestId("kms-key-legacy")).getByText("Not used"),
 		).toBeVisible();
 	},
 };
@@ -107,7 +105,9 @@ export const AddKey: Story = {
 		const canvas = within(canvasElement);
 		await userEvent.click(canvas.getByRole("button", { name: "Add key" }));
 		const card = within(await canvas.findByTestId("kms-key-key1"));
-		await expect(card.getByText("ECC P-256 (ES256)")).toBeVisible();
+		await expect(
+			card.getByRole("combobox", { name: "Key type of key1" }),
+		).toHaveTextContent("ECC P-256 (ES256)");
 		await userEvent.click(
 			card.getByRole("combobox", { name: "Key type of key1" }),
 		);
@@ -116,10 +116,9 @@ export const AddKey: Story = {
 				name: "RSA 2048 (RS256) — RS256 compatibility",
 			}),
 		);
-		await expect(await card.findByText("RSA 2048 (RS256)")).toBeVisible();
 		await expect(
-			card.getByText(/until an apply creates the key in AWS/),
-		).toBeVisible();
+			card.getByRole("combobox", { name: "Key type of key1" }),
+		).toHaveTextContent("RSA 2048 (RS256)");
 		await expect(canvas.getByLabelText("New key name")).toHaveValue("key2");
 	},
 };
@@ -169,7 +168,7 @@ export const Retire: Story = {
 		const card = within(canvas.getByTestId("kms-key-auth"));
 		await expect(await card.findByText("Retired")).toBeVisible();
 		await expect(card.getByText("Apply, then delete the key.")).toBeVisible();
-		await expect(card.queryByText("backend · Sign")).toBeNull();
+		await expect(card.queryByText("1 sign")).toBeNull();
 		await expect(
 			card.getByRole("button", { name: "Restore key auth" }),
 		).toBeVisible();

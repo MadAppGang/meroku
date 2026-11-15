@@ -648,6 +648,16 @@ func normalizeEventProduces(w eventWorkload, busEnabled bool) ([]interface{}, []
 			}
 			detailTypes = list
 		}
+		catchAll := false
+		for _, t := range detailTypes {
+			if strings.Trim(t, "*") == "" {
+				catchAll = true
+			}
+		}
+		if catchAll {
+			problems = append(problems, fmt.Sprintf("%s.detail_types has %q, which matches every detail-type; use any: true instead", where, "*"))
+			continue
+		}
 		if anyType == (len(detailTypes) > 0) {
 			problems = append(problems, fmt.Sprintf("%s needs exactly one of a non-empty detail_types list or any: true", where))
 			continue

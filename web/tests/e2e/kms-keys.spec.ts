@@ -42,7 +42,7 @@ test("KMS keys · add, connect with each access, retire, restore and delete surv
   await expect.poll(() => (keys() as any[])[2]).toEqual({ name: "auth", key_spec: "ECC_NIST_P384" });
   await reopen(page, app, "KMS keys", "KMS keys");
   await expect(page.getByRole("combobox", { name: "Key type of auth", exact: true })).toHaveCount(0);
-  await expect(page.getByTestId("kms-key-auth").getByText(/AWS cannot change the type of an existing key/)).toBeVisible();
+  await expect(page.getByTestId("kms-key-auth").getByText("ES384", { exact: true })).toBeVisible();
   await evidence("kms-keys-added");
 
   // Connect every workload kind, one access each.
@@ -64,9 +64,9 @@ test("KMS keys · add, connect with each access, retire, restore and delete surv
   await evidence("kms-keys-connected-task");
   await openPanel(page, app, "KMS keys", "KMS keys");
   const auth = page.getByTestId("kms-key-auth");
-  for (const text of ["backend · Sign", "api · Verify", "nightly · Sign and verify", "mailer · Sign"]) {
-    await expect(auth.getByText(text, { exact: true })).toBeVisible();
-  }
+  await expect(auth.getByText("1 full", { exact: true })).toHaveAttribute("title", "nightly");
+  await expect(auth.getByText("2 sign", { exact: true })).toHaveAttribute("title", "backend, mailer");
+  await expect(auth.getByText("1 verify", { exact: true })).toHaveAttribute("title", "api");
   await evidence("kms-keys-connected");
 
   // Retire: every connection goes, the key stays with retired: true.

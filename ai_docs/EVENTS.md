@@ -152,6 +152,13 @@ requires it. `any: true` drops the detail-type condition (generate warns). `own_
 false` drops the source condition. A batch with one entry outside the list is denied as a
 whole.
 
+A `detail_types` value may contain `*` (`order.*`). That entry's operator becomes
+`ForAllValues:StringLike`, which treats `*` as any run of characters; the source value has
+no `*`, so it still matches exactly. An entry without `*` keeps `StringEquals`. A value of
+only `*` is refused at generate: `any: true` says the same. The web UI starts a new entry
+with "Source required" off, writing `own_source_only: false`; an entry without the key keeps
+the source condition.
+
 IAM allows add up, so this holds only while nothing else on the task role grants
 `events:*`. The task roles of the backend, services, pgAdmin and both task kinds no longer
 carry the AWS-managed `CloudWatchFullAccess` (which includes `events:*` and `sns:*`); an
