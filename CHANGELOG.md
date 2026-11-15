@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v6.3.0
 
 ### Event subscriptions: wildcards and filters
 - A `subscribes` entry's `detail_type` may contain `*`, a wildcard for any run of characters:
