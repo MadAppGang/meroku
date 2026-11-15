@@ -186,3 +186,200 @@ run "long_rule_names_fit_the_eventbridge_limit" {
     error_message = "Long project and environment names must still produce valid EventBridge rules within 64 characters and queue names within 80."
   }
 }
+
+# The exact text of the patterns subscriptions without a wildcard or filters
+# have always had. A byte changed here is an in-place update of every such rule.
+run "existing_subscriptions_keep_their_pattern_text" {
+  command = plan
+
+  variables {
+    bus_enabled = true
+    consumers = [{
+      name = "orders"
+      subscriptions = [
+        { key = "exact", detail_type = "order.created", bus = "project" },
+        { key = "exact-source", detail_type = "payment.completed", source = "example.payments", bus = "project" },
+        { key = "prefix", detail_type_prefix = "user.", bus = "default" },
+        { key = "prefix-source", detail_type_prefix = "user.", source = "example.identity", bus = "default" }
+      ]
+    }]
+  }
+
+  assert {
+    condition = (
+      aws_cloudwatch_event_rule.subscription["orders/exact"].event_pattern == "{\"detail-type\":[\"order.created\"],\"replay-name\":[{\"exists\":false}]}" &&
+      aws_cloudwatch_event_rule.subscription["orders/exact-source"].event_pattern == "{\"detail-type\":[\"payment.completed\"],\"replay-name\":[{\"exists\":false}],\"source\":[\"example.payments\"]}" &&
+      aws_cloudwatch_event_rule.subscription["orders/prefix"].event_pattern == "{\"detail-type\":[{\"prefix\":\"user.\"}],\"replay-name\":[{\"exists\":false}]}" &&
+      aws_cloudwatch_event_rule.subscription["orders/prefix-source"].event_pattern == "{\"detail-type\":[{\"prefix\":\"user.\"}],\"replay-name\":[{\"exists\":false}],\"source\":[\"example.identity\"]}"
+    )
+    error_message = "A subscription without a wildcard or filters must render the same pattern text as before, so upgrading updates no rule."
+  }
+}
+
+run "wildcard_detail_type_uses_the_wildcard_operator" {
+  command = plan
+
+  variables {
+    bus_enabled = true
+    consumers = [{
+      name = "orders"
+      subscriptions = [
+        { key = "job", detail_type = "job.*", source = "example.jobs", bus = "project" },
+        { key = "middle", detail_type = "job.*.done", bus = "project" }
+      ]
+    }]
+  }
+
+  assert {
+    condition     = aws_cloudwatch_event_rule.subscription["orders/job"].event_pattern == "{\"detail-type\":[{\"wildcard\":\"job.*\"}],\"replay-name\":[{\"exists\":false}],\"source\":[\"example.jobs\"]}"
+    error_message = "A detail_type with * must become an array holding one {\"wildcard\": ...} object under detail-type."
+  }
+
+  assert {
+    condition = jsondecode(aws_cloudwatch_event_rule.subscription["orders/middle"].event_pattern) == {
+      "detail-type" = [{ wildcard = "job.*.done" }]
+      "replay-name" = [{ exists = false }]
+    }
+    error_message = "A * in the middle of the detail-type is a wildcard too."
+  }
+}
+
+run "filters_nest_under_detail" {
+  command = plan
+
+  variables {
+    bus_enabled = true
+    consumers = [{
+      name = "orders"
+      subscriptions = [
+        {
+          key         = "single"
+          detail_type = "job.completed"
+          bus         = "project"
+          filters     = [{ field = "detail.status", values = ["done", "failed"] }]
+        },
+        {
+          key         = "nested"
+          detail_type = "job.completed"
+          bus         = "project"
+          filters     = [{ field = "detail.order.type", values = ["retail"] }]
+        },
+        {
+          key         = "two"
+          detail_type = "job.*"
+          source      = "example.jobs"
+          bus         = "project"
+          filters = [
+            { field = "detail.status", values = ["done", "failed"] },
+            { field = "detail.region", values = ["eu"] }
+          ]
+        },
+        {
+          key                = "shared-parent"
+          detail_type_prefix = "job."
+          bus                = "default"
+          filters = [
+            { field = "detail.order.type", values = ["retail"] },
+            { field = "detail.status", values = ["done"] },
+            { field = "detail.order.id", values = ["o-1", "o-2"] },
+            { field = "detail.order-x.a", values = ["x"] },
+            { field = "detail.order.meta.tier", values = ["gold"] }
+          ]
+        }
+      ]
+    }]
+  }
+
+  assert {
+    condition     = aws_cloudwatch_event_rule.subscription["orders/single"].event_pattern == "{\"detail\":{\"status\":[\"done\",\"failed\"]},\"detail-type\":[\"job.completed\"],\"replay-name\":[{\"exists\":false}]}"
+    error_message = "One filter must add detail.<field> with its values."
+  }
+
+  assert {
+    condition = jsondecode(aws_cloudwatch_event_rule.subscription["orders/nested"].event_pattern) == {
+      detail        = { order = { type = ["retail"] } }
+      "detail-type" = ["job.completed"]
+      "replay-name" = [{ exists = false }]
+    }
+    error_message = "A dotted field path must become nested objects under detail."
+  }
+
+  assert {
+    condition     = aws_cloudwatch_event_rule.subscription["orders/two"].event_pattern == "{\"detail\":{\"region\":[\"eu\"],\"status\":[\"done\",\"failed\"]},\"detail-type\":[{\"wildcard\":\"job.*\"}],\"replay-name\":[{\"exists\":false}],\"source\":[\"example.jobs\"]}"
+    error_message = "Two filters must share one detail object, beside the wildcard detail-type and the source."
+  }
+
+  assert {
+    condition = jsondecode(aws_cloudwatch_event_rule.subscription["orders/shared-parent"].event_pattern) == {
+      detail = {
+        order = {
+          id   = ["o-1", "o-2"]
+          meta = { tier = ["gold"] }
+          type = ["retail"]
+        }
+        "order-x" = { a = ["x"] }
+        status    = ["done"]
+      }
+      "detail-type" = [{ prefix = "job." }]
+      "replay-name" = [{ exists = false }]
+    }
+    error_message = "Filters with a common parent must merge into one nested object."
+  }
+}
+
+run "filter_field_outside_detail_is_refused" {
+  command = plan
+
+  variables {
+    consumers = [{
+      name          = "orders"
+      subscriptions = [{ key = "a", detail_type = "job.done", bus = "default", filters = [{ field = "status", values = ["done"] }] }]
+    }]
+  }
+
+  expect_failures = [var.consumers]
+}
+
+run "filter_without_values_is_refused" {
+  command = plan
+
+  variables {
+    consumers = [{
+      name          = "orders"
+      subscriptions = [{ key = "a", detail_type = "job.done", bus = "default", filters = [{ field = "detail.status", values = [] }] }]
+    }]
+  }
+
+  expect_failures = [var.consumers]
+}
+
+run "filter_field_inside_another_is_refused" {
+  command = plan
+
+  variables {
+    consumers = [{
+      name = "orders"
+      subscriptions = [{
+        key         = "a"
+        detail_type = "job.done"
+        bus         = "default"
+        filters     = [{ field = "detail.order", values = ["x"] }, { field = "detail.order.type", values = ["y"] }]
+      }]
+    }]
+  }
+
+  expect_failures = [var.consumers]
+}
+
+run "wildcard_in_prefix_is_refused" {
+  command = plan
+
+  variables {
+    consumers = [{
+      name          = "orders"
+      subscriptions = [{ key = "a", detail_type_prefix = "job.*", bus = "default" }]
+    }]
+  }
+
+  expect_failures = [var.consumers]
+}

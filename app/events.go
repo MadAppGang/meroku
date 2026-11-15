@@ -18,6 +18,8 @@ import (
 //	    events:
 //	      subscribes:
 //	        - { detail_type: payment.completed, source: example.payments }
+//	        - detail_type: "job.*"                # * is EventBridge's wildcard
+//	          filters: [{ field: detail.status, values: [done, failed] }]
 //	        - { name: users, detail_type_prefix: "user.", bus: default }
 //	      queue: { visibility_timeout: 30, max_receive_count: 5 }
 //	      produces:
@@ -72,6 +74,15 @@ const (
 // part of the EventBridge rule name, which accepts [.\-_A-Za-z0-9].
 var eventSubscriptionNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
 
+// eventFilterFieldPattern is a filter's field: a path into the event's detail.
+var eventFilterFieldPattern = regexp.MustCompile(`^detail(\.[A-Za-z0-9_-]+)+$`)
+
+// Filter limits per subscription entry.
+const (
+	eventFiltersMax      = 5
+	eventFilterValuesMax = 10
+)
+
 // eventKeyMaxLen is how long a derived key may be before "-default".
 const eventKeyMaxLen = 32
 
@@ -105,9 +116,9 @@ func eventSource(kind, project, name string) string {
 
 // deriveEventSubscriptionKey builds the key of a subscription that has no name:
 // the detail-type, or the prefix followed by "-prefix", lower-cased, every run of
-// characters outside [a-z0-9] turned into "-", trimmed and cut to 32, with
-// "-default" appended when the subscription is on the default bus. Returns "" when
-// nothing usable is left.
+// characters outside [a-z0-9] (a wildcard * included) turned into "-", trimmed
+// and cut to 32, with "-default" appended when the subscription is on the
+// default bus. Returns "" when nothing usable is left.
 func deriveEventSubscriptionKey(detailType, detailTypePrefix, bus string) string {
 	base := detailType
 	if base == "" {
@@ -302,8 +313,9 @@ func normalizeEvents(envMap map[string]interface{}) error {
 	for _, w := range workloads {
 		problems = append(problems, checkEventKeys(w.events, []string{"subscribes", "queue", "produces"}, w.field)...)
 
-		subs, subProblems, subMoves := normalizeEventSubscriptions(w, busEnabled)
+		subs, subProblems, subWarnings, subMoves := normalizeEventSubscriptions(w, busEnabled)
 		problems = append(problems, subProblems...)
+		warnings = append(warnings, subWarnings...)
 		moves = append(moves, subMoves...)
 
 		queue, queueProblems := normalizeEventQueue(w)
@@ -372,25 +384,27 @@ func normalizeEvents(envMap map[string]interface{}) error {
 }
 
 // normalizeEventSubscriptions validates a workload's subscribes list and returns
-// the subscriptions modules/events renders.
-func normalizeEventSubscriptions(w eventWorkload, busEnabled bool) ([]interface{}, []string, []eventMove) {
+// the subscriptions modules/events renders. A detail_type with * is matched
+// with EventBridge's wildcard operator by the module; filters, when set, are
+// passed on as [{field, values}].
+func normalizeEventSubscriptions(w eventWorkload, busEnabled bool) ([]interface{}, []string, []string, []eventMove) {
 	raw, present := w.events["subscribes"]
 	if !present || raw == nil {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 	items, ok := raw.([]interface{})
 	if !ok {
-		return nil, []string{fmt.Sprintf("%s.subscribes must be a list", w.field)}, nil
+		return nil, []string{fmt.Sprintf("%s.subscribes must be a list", w.field)}, nil, nil
 	}
 	if len(items) == 0 {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 	if w.kind == eventKindScheduledTask || w.kind == eventKindEventTask {
 		return nil, []string{fmt.Sprintf(
-			"%s.subscribes: tasks cannot subscribe; an event task runs from its rules, and a service or the backend subscribes with its own queue", w.field)}, nil
+			"%s.subscribes: tasks cannot subscribe; an event task runs from its rules, and a service or the backend subscribes with its own queue", w.field)}, nil, nil
 	}
 
-	var problems []string
+	var problems, warnings []string
 	var moves []eventMove
 	var out []interface{}
 	keys := map[string]int{}
@@ -402,12 +416,22 @@ func normalizeEventSubscriptions(w eventWorkload, busEnabled bool) ([]interface{
 			problems = append(problems, fmt.Sprintf("%s must be a mapping with detail_type or detail_type_prefix", where))
 			continue
 		}
-		problems = append(problems, checkEventKeys(item, []string{"name", "detail_type", "detail_type_prefix", "source", "bus"}, where)...)
+		problems = append(problems, checkEventKeys(item, []string{"name", "detail_type", "detail_type_prefix", "source", "filters", "bus"}, where)...)
 
 		detailType, _ := item["detail_type"].(string)
 		prefix, _ := item["detail_type_prefix"].(string)
 		if (detailType == "") == (prefix == "") {
 			problems = append(problems, fmt.Sprintf("%s needs exactly one of detail_type or detail_type_prefix", where))
+			continue
+		}
+		if strings.Contains(prefix, "*") {
+			problems = append(problems, fmt.Sprintf(
+				"%s.detail_type_prefix %q contains *, which a prefix cannot; use detail_type: %q instead", where, prefix, strings.TrimRight(prefix, "*")+"*"))
+			continue
+		}
+		filters, filterProblems := normalizeEventFilters(item["filters"], where)
+		if len(filterProblems) > 0 {
+			problems = append(problems, filterProblems...)
 			continue
 		}
 		source := ""
@@ -426,6 +450,10 @@ func normalizeEventSubscriptions(w eventWorkload, busEnabled bool) ([]interface{
 		}
 		if !explicit {
 			moves = append(moves, eventMove{where: where})
+		}
+		if detailType != "" && strings.Trim(detailType, "*") == "" {
+			warnings = append(warnings, fmt.Sprintf(
+				"%s has detail_type %q, so the workload receives every event on the %s bus; narrow it with a pattern such as job.* or a filter", where, detailType, bus))
 		}
 
 		key := ""
@@ -451,15 +479,95 @@ func normalizeEventSubscriptions(w eventWorkload, busEnabled bool) ([]interface{
 		}
 		keys[key] = i
 
-		out = append(out, map[string]interface{}{
+		sub := map[string]interface{}{
 			"key":                key,
 			"detail_type":        detailType,
 			"detail_type_prefix": prefix,
 			"source":             source,
 			"bus":                bus,
-		})
+		}
+		// Absent rather than empty, so an entry without filters renders the
+		// same consumers object as before filters existed.
+		if len(filters) > 0 {
+			sub["filters"] = filters
+		}
+		out = append(out, sub)
 	}
-	return out, problems, moves
+	return out, problems, warnings, moves
+}
+
+// normalizeEventFilters validates a subscription's optional filters list:
+// at most eventFiltersMax entries, each {field, values} with field a path
+// under detail and 1 to eventFilterValuesMax non-empty strings, no field twice
+// and no field inside another (detail.order with detail.order.type would ask
+// one key to be both a value list and an object).
+func normalizeEventFilters(raw interface{}, where string) ([]interface{}, []string) {
+	if raw == nil {
+		return nil, nil
+	}
+	where += ".filters"
+	items, ok := raw.([]interface{})
+	if !ok {
+		return nil, []string{fmt.Sprintf("%s must be a list of { field, values }", where)}
+	}
+	if len(items) > eventFiltersMax {
+		return nil, []string{fmt.Sprintf("%s has %d entries; a subscription takes at most %d", where, len(items), eventFiltersMax)}
+	}
+
+	var problems []string
+	var out []interface{}
+	seen := map[string]int{}
+	for i, itemRaw := range items {
+		at := fmt.Sprintf("%s[%d]", where, i)
+		item, ok := computeNodeMap(itemRaw)
+		if !ok {
+			problems = append(problems, fmt.Sprintf("%s must be a mapping with field and values", at))
+			continue
+		}
+		problems = append(problems, checkEventKeys(item, []string{"field", "values"}, at)...)
+
+		field, _ := item["field"].(string)
+		if !eventFilterFieldPattern.MatchString(field) {
+			problems = append(problems, fmt.Sprintf(
+				"%s.field %s must be a path under detail, such as detail.status or detail.order.type", at, formatYAMLValue(item["field"])))
+			continue
+		}
+		values, ok := eventStringList(item["values"])
+		if !ok || len(values) == 0 || len(values) > eventFilterValuesMax {
+			problems = append(problems, fmt.Sprintf(
+				"%s.values must list 1 to %d non-empty strings, got %s", at, eventFilterValuesMax, formatYAMLValue(item["values"])))
+			continue
+		}
+		if first, dup := seen[field]; dup {
+			problems = append(problems, fmt.Sprintf("%s matches %s, as %s[%d] does; put all its values in one filter", at, field, where, first))
+			continue
+		}
+		seen[field] = i
+
+		list := make([]interface{}, 0, len(values))
+		for _, v := range values {
+			list = append(list, v)
+		}
+		out = append(out, map[string]interface{}{"field": field, "values": list})
+	}
+
+	fields := make([]string, 0, len(seen))
+	for field := range seen {
+		fields = append(fields, field)
+	}
+	sort.Strings(fields)
+	for _, outer := range fields {
+		for _, inner := range fields {
+			if strings.HasPrefix(inner, outer+".") {
+				problems = append(problems, fmt.Sprintf(
+					"%s has both %s and %s; a field cannot be matched and also hold a filtered field", where, outer, inner))
+			}
+		}
+	}
+	if len(problems) > 0 {
+		return nil, problems
+	}
+	return out, nil
 }
 
 type eventQueueSettings struct {

@@ -25,7 +25,10 @@ variable "consumers" {
     The workloads that subscribe to events, each with its own queue. bus is
     "project" or "default", resolved by meroku. key is the subscription's stable
     identity: the rule's name and for_each key, so reordering entries changes
-    nothing. Exactly one of detail_type and detail_type_prefix is set.
+    nothing. Exactly one of detail_type and detail_type_prefix is set; a * in
+    detail_type is EventBridge's wildcard. filters match fields of the event's
+    detail: field is a path such as detail.order.type, values an exact-match
+    list (any of).
   EOT
   type = list(object({
     name               = string
@@ -37,6 +40,10 @@ variable "consumers" {
       detail_type_prefix = optional(string, "")
       source             = optional(string, "")
       bus                = string
+      filters = optional(list(object({
+        field  = string
+        values = list(string)
+      })), [])
     }))
   }))
   default = []
@@ -70,6 +77,32 @@ variable "consumers" {
       for s in c.subscriptions : (s.detail_type == "") != (s.detail_type_prefix == "")
     ]]))
     error_message = "A subscription sets exactly one of detail_type and detail_type_prefix."
+  }
+
+  validation {
+    condition = alltrue(flatten([for c in var.consumers : [
+      for s in c.subscriptions : !strcontains(s.detail_type_prefix, "*")
+    ]]))
+    error_message = "detail_type_prefix cannot contain *; use detail_type with a wildcard instead."
+  }
+
+  validation {
+    condition = alltrue(flatten([for c in var.consumers : [
+      for s in c.subscriptions : length(s.filters) <= 5 && alltrue([
+        for f in s.filters : can(regex("^detail(\\.[A-Za-z0-9_-]+)+$", f.field)) &&
+        length(f.values) >= 1 && length(f.values) <= 10 && alltrue([for v in f.values : v != ""])
+      ])
+    ]]))
+    error_message = "A subscription has at most 5 filters; a filter's field is a path under detail (detail.status, detail.order.type) and its values 1 to 10 non-empty strings."
+  }
+
+  validation {
+    condition = alltrue(flatten([for c in var.consumers : [
+      for s in c.subscriptions : length(distinct([for f in s.filters : f.field])) == length(s.filters) && alltrue(flatten([
+        for a in s.filters : [for b in s.filters : !startswith(b.field, "${a.field}.")]
+      ]))
+    ]]))
+    error_message = "A subscription's filters each match a different field, and no field lies inside another (detail.order and detail.order.type together)."
   }
 
   validation {

@@ -18,6 +18,11 @@ services:
     events:
       subscribes:
         - { detail_type: payment.completed, source: example.payments }
+        - detail_type: "job.*"                                   # * is a wildcard
+          source: example.jobs                                   # optional
+          filters:                                               # optional
+            - { field: detail.status, values: [done, failed] }
+            - { field: detail.order.type, values: [retail] }
         - { name: users, detail_type_prefix: "user.", bus: default }
       queue: { visibility_timeout: 30, max_receive_count: 5 }   # optional
       produces:
@@ -40,7 +45,8 @@ event_processor_tasks:
 |---|---|
 | `event_bus.enabled` | `true` creates the project bus `<project>-<env>`. `EVENT_BUS_NAME` then names it in every container. |
 | `bus` (any entry or rule) | `project` or `default`. Absent: the project bus when it is on, otherwise `default`. `project` with the bus off is a generate error. |
-| `subscribes[]` | Backend and services only. Exactly one of `detail_type` (exact) or `detail_type_prefix`, an optional `source`, an optional `name`. |
+| `subscribes[]` | Backend and services only. Exactly one of `detail_type` (exact, or a wildcard pattern when it contains `*`) or `detail_type_prefix`, an optional `source`, optional `filters`, an optional `name`. |
+| `subscribes[].filters[]` | Optional, at most 5. `field` is a path under the event's detail, `^detail(\.[A-Za-z0-9_-]+)+$` (`detail.status`, `detail.order.type`); `values` is 1–10 non-empty strings, any of which matches. See [Wildcards and filters](#wildcards-and-filters). |
 | `queue.visibility_timeout` | 0–43200 seconds, default 30. Set it above the longest time a message takes to handle. |
 | `queue.max_receive_count` | 1–1000, default 5. Receives before SQS moves a message to the application DLQ. |
 | `produces[]` | Exactly one of a `detail_types` list or `any: true`. `own_source_only` (default `true`) limits the entry to events whose `source` is the workload's own `EVENT_SOURCE`. |
@@ -63,8 +69,9 @@ queue, so each event is handled by one copy.
 | Alarm per DLQ | `<project>-<env>-events-<name>-dlq` and `...-delivery-dlq` | `ApproximateNumberOfMessagesVisible` Maximum > 0 over 300 s, missing data not breaching |
 | `EVENT_QUEUE_URL` | container variable | the main queue's URL |
 
-The rule pattern is the detail-type (exact, or `{"prefix": ...}`), the `source` when set, and
-`"replay-name": [{"exists": false}]`: an archive replay is never delivered to a queue.
+The rule pattern is the detail-type (exact, `{"prefix": ...}` or `{"wildcard": ...}`), the
+`source` when set, the filters under `detail` when set, and `"replay-name": [{"exists": false}]`:
+an archive replay is never delivered to a queue.
 
 The main queue and the delivery DLQ each have a queue policy that lets `events.amazonaws.com`
 send only for this consumer's own rules (`aws:SourceArn`). The application DLQ needs none.
@@ -82,10 +89,50 @@ changes nothing and editing one entry touches only its own rule.
 - Without: the `detail_type`, or the `detail_type_prefix` followed by `-prefix`, lower-cased,
   each run of characters outside `[a-z0-9]` replaced by `-`, trimmed and cut to 32. `-default`
   is appended when the entry is on the default bus. `payment.completed` → `payment-completed`;
-  `user.` on the default bus → `user-prefix-default`.
+  `user.` on the default bus → `user-prefix-default`; `job.*` → `job` (a `*` is replaced like
+  any other character outside `[a-z0-9]`), so `job.*` and an exact `job` on one bus need a
+  `name`. A `detail_type` of only `*` derives no key and always needs a `name`.
 
 Two entries of one consumer with the same key are a generate error. Give one a `name`
 (typical case: one detail-type from two sources).
+
+### Wildcards and filters
+
+`modules/events` builds each rule's pattern from the entry:
+
+| Entry | `event_pattern` (keys as Terraform sorts them) |
+|---|---|
+| `detail_type: job.completed` | `{"detail-type":["job.completed"],"replay-name":[{"exists":false}]}` |
+| `detail_type_prefix: "user."` | `{"detail-type":[{"prefix":"user."}],"replay-name":[{"exists":false}]}` |
+| `detail_type: "job.*"` | `{"detail-type":[{"wildcard":"job.*"}],"replay-name":[{"exists":false}]}` |
+| `job.*` + `source: example.jobs` + `filters: [{ field: detail.status, values: [done, failed] }, { field: detail.order.type, values: [retail] }]` | `{"detail":{"order":{"type":["retail"]},"status":["done","failed"]},"detail-type":[{"wildcard":"job.*"}],"replay-name":[{"exists":false}],"source":["example.jobs"]}` |
+
+An entry without a `*` and without `filters` renders the pattern it always had, so upgrading
+updates no rule. `modules/events/tests/subscriptions.tftest.hcl` pins those strings.
+
+EventBridge's `wildcard` operator, as it applies here:
+
+- `*` matches any run of characters, including none: `job.*` matches `job.created` and
+  `job.`, not `job`; `*.created` matches `order.created`; `job.*.done` matches
+  `job.export.done`. Matching is case-sensitive.
+- A `detail_type` without `*` is an exact match, never a wildcard.
+- A `detail_type` of only `*` matches every event on the bus, AWS services' events included on
+  the default bus. Generate allows it with a warning.
+- `detail_type_prefix` stays a plain prefix and cannot contain `*`; `detail_type: "user.*"` is
+  the wildcard spelling of the same match, but it renders a different pattern, so switching an
+  entry from one to the other updates its rule in place.
+
+Filters:
+
+- Each filter adds one key under `detail`, nested along the path: `detail.order.type` becomes
+  `{"detail": {"order": {"type": [...]}}}`. Filters with a common parent share one object.
+- A field matches when its value equals one of `values` exactly (case-sensitive). When the
+  field in the event is an array, it matches when any element equals one of `values`. An event
+  without the field does not match.
+- Values are strings and EventBridge compares types: `values: ["3"]` does not match the number
+  `3`, and `values: ["true"]` does not match the boolean `true`. Filter on string fields.
+- All filters, the detail-type and the source must match together (AND); the values of one
+  filter are alternatives (OR).
 
 ## What a producer gets
 
@@ -236,10 +283,18 @@ from the one `env/<env>/main.tf` was last generated with. To keep an entry where
 `bus: default` on it. Turning the bus off is the same in reverse; an entry with `bus: project`
 is then a generate error.
 
+## Generate-time warnings
+
+- A `detail_type` of only `*`: the workload receives every event on that bus.
+
 ## Generate-time errors
 
 - Not exactly one of `detail_type` / `detail_type_prefix`; not exactly one of `detail_types` /
   `any: true`.
+- A `*` in `detail_type_prefix`.
+- A filter whose `field` is not a path under `detail`, whose `values` is empty, longer than 10
+  or holds anything but non-empty strings; two filters on one field; a field inside another
+  (`detail.order` with `detail.order.type`); more than 5 filters on one entry.
 - Two subscriptions of one consumer with the same key.
 - `bus: project` while `event_bus.enabled` is not true; a `bus` other than `project` or `default`.
 - `subscribes` or `queue` on a scheduled or event task.
