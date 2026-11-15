@@ -319,6 +319,17 @@ jobs:
           terraform test
         working-directory: modules/vaults
 
+      # KMS signing keys, under mock_provider: the keys and aliases, the grants
+      # per access, the env each connected workload gets, a changed key type
+      # left alone with a warning, and other keys' public keys staying known at
+      # plan when a key is added or deleted.
+      - name: Test the kms_keys module
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate
+          terraform test
+        working-directory: modules/kms_keys
+
       # Events, under mock_provider: the queues and their policies, the rules,
       # delivery retries and dead-letter queues, the PutEvents conditions and
       # the alerts topic.
