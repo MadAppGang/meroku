@@ -12,6 +12,7 @@ import {
 	kmsKeyEnvNames,
 	kmsKeyOf,
 } from "../utils/kmsKeys";
+import { kmsKeyEnvCollisions, workloadYamlEnv } from "../utils/reservedEnv";
 import {
 	workloadConnections,
 	workloadConnectionsUpdate,
@@ -53,6 +54,8 @@ const DEFAULT_ACCESS: KmsKeyAccess = "verify";
 interface KmsKeyConnectionsEditorProps {
 	config: YamlInfrastructureConfig;
 	connections: KmsKeyConnection[];
+	/** The names of the workload's own YAML variables. */
+	envNames: string[];
 	onChange: (index: number, patch: Partial<KmsKeyConnection>) => void;
 	onAdd: (connection: KmsKeyConnection) => void;
 	onRemove: (index: number) => void;
@@ -66,6 +69,7 @@ interface KmsKeyConnectionsEditorProps {
 export function KmsKeyConnectionsEditor({
 	config,
 	connections,
+	envNames,
 	onChange,
 	onAdd,
 	onRemove,
@@ -87,6 +91,7 @@ export function KmsKeyConnectionsEditor({
 					key={connection.name}
 					config={config}
 					connection={connection}
+					collisions={kmsKeyEnvCollisions(connection.name, envNames)}
 					choices={[connection.name, ...available]}
 					onChange={(patch) => onChange(index, patch)}
 					onRemove={() => onRemove(index)}
@@ -112,6 +117,8 @@ export function KmsKeyConnectionsEditor({
 interface KmsKeyConnectionRowProps {
 	config: YamlInfrastructureConfig;
 	connection: KmsKeyConnection;
+	/** The workload's YAML variables this connection's variables collide with. */
+	collisions: string[];
 	choices: string[];
 	onChange: (patch: Partial<KmsKeyConnection>) => void;
 	onRemove: () => void;
@@ -120,6 +127,7 @@ interface KmsKeyConnectionRowProps {
 function KmsKeyConnectionRow({
 	config,
 	connection,
+	collisions,
 	choices,
 	onChange,
 	onRemove,
@@ -164,6 +172,17 @@ function KmsKeyConnectionRow({
 						</AlertDescription>
 					</Alert>
 				)}
+				{collisions.map((name) => (
+					<Alert key={name} variant="destructive">
+						<AlertDescription>
+							<span>
+								{name} is reserved: meroku sets it because this workload uses
+								the KMS key {connection.name}. Remove the workload's own {name}{" "}
+								variable; generate refuses it.
+							</span>
+						</AlertDescription>
+					</Alert>
+				))}
 				{access === undefined && (
 					<Alert variant="destructive">
 						<AlertDescription>
@@ -290,6 +309,7 @@ export function WorkloadKmsKeys({
 				<KmsKeyConnectionsEditor
 					config={config}
 					connections={connections}
+					envNames={Object.keys(workloadYamlEnv(config, workload))}
 					onChange={(index, patch) =>
 						save(
 							connections.map((c, i) => (i === index ? { ...c, ...patch } : c)),

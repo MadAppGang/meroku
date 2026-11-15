@@ -1,7 +1,11 @@
-import { ExternalLink, Key, Zap } from "lucide-react";
+import { ExternalLink, Key, Settings, Zap } from "lucide-react";
 import type { AccountInfo } from "../api/infrastructure";
 import type { ComponentNode } from "../types";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
+import {
+	reservedWorkloadEnvError,
+	workloadYamlEnv,
+} from "../utils/reservedEnv";
 import { Button } from "./ui/button";
 import { StyledSection } from "./ui/styled-section";
 
@@ -19,6 +23,8 @@ export function EventTaskEnvVars({
 	const taskName = node.id.replace("event-", "");
 	const parameterStorePath = `/${config.env}/${config.project}/task/${taskName}/`;
 	const hasSqsEnvVar = config.sqs?.enabled;
+	const workload = { kind: "event-task", name: taskName } as const;
+	const yamlVars = Object.entries(workloadYamlEnv(config, workload));
 
 	return (
 		<div className="space-y-4">
@@ -43,6 +49,41 @@ export function EventTaskEnvVars({
 								"<ACCOUNT_ID>"}
 							/{config.project}-{config.env}-{config.sqs?.name || "queue"}
 						</div>
+					</div>
+				</StyledSection>
+			)}
+
+			{yamlVars.length > 0 && (
+				<StyledSection
+					title="YAML Variables"
+					description="environment_variables in the YAML"
+					icon={Settings}
+					iconColor="text-green-400"
+				>
+					<div className="space-y-2">
+						{yamlVars.map(([name, value]) => {
+							const nameError = reservedWorkloadEnvError(
+								config,
+								workload,
+								name,
+							);
+							return (
+								<div key={name} className="p-3 bg-gray-900 rounded-lg">
+									<code className="text-sm font-mono text-green-400">
+										{name}
+									</code>
+									<div className="text-xs font-mono text-gray-400 mt-2 break-all">
+										{value}
+									</div>
+									{nameError && (
+										<p className="mt-1 text-xs text-danger" role="alert">
+											{nameError} Remove it from environment_variables; generate
+											refuses it.
+										</p>
+									)}
+								</div>
+							);
+						})}
 					</div>
 				</StyledSection>
 			)}

@@ -2,6 +2,7 @@ import { Check, Edit2, Info, Plus, Settings, Trash2, X } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import type { ComponentNode } from "../types";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
+import { reservedWorkloadEnvError } from "../utils/reservedEnv";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
 import {
@@ -42,6 +43,10 @@ export function ScheduledTaskEnvironmentVariables({
 	const [newVarValue, setNewVarValue] = useState("");
 	const [editingVar, setEditingVar] = useState<string | null>(null);
 	const [editingVarValue, setEditingVarValue] = useState("");
+	const workload = { kind: "scheduled-task", name: taskName } as const;
+	const nameErrorOf = (name: string) =>
+		reservedWorkloadEnvError(config, workload, name);
+	const newVarNameError = newVarName ? nameErrorOf(newVarName) : null;
 
 	// Sync state when task changes
 	useEffect(() => {
@@ -68,7 +73,7 @@ export function ScheduledTaskEnvironmentVariables({
 
 	// Handler functions for environment variables
 	const handleAddVar = () => {
-		if (newVarName && newVarValue) {
+		if (newVarName && newVarValue && !newVarNameError) {
 			const updatedVars = { ...envVars, [newVarName]: newVarValue };
 			setEnvVars(updatedVars);
 			setNewVarName("");
@@ -109,68 +114,80 @@ export function ScheduledTaskEnvironmentVariables({
 							No environment variables defined
 						</div>
 					) : (
-						Object.entries(envVars).map(([name, value]) => (
-							<div key={name} className="p-2 bg-gray-800 rounded">
-								<div className="flex items-center justify-between">
-									<code className="text-xs font-mono text-green-400">
-										{name}
-									</code>
-									<div className="flex items-center gap-1">
-										<Button
-											size="sm"
-											variant="ghost"
-											onClick={() => {
-												setEditingVar(name);
-												setEditingVarValue(value);
-											}}
-											className="h-5 w-5 p-0"
-										>
-											<Edit2 className="w-3 h-3" />
-										</Button>
-										<Button
-											size="sm"
-											variant="ghost"
-											onClick={() => handleDeleteVar(name)}
-											className="h-5 w-5 p-0 text-red-400 hover:text-red-300"
-										>
-											<Trash2 className="w-3 h-3" />
-										</Button>
-									</div>
-								</div>
-								{editingVar === name ? (
-									<div className="mt-1">
-										<Input
-											type="text"
-											value={editingVarValue}
-											onChange={(e) => setEditingVarValue(e.target.value)}
-											className="w-full h-6 text-xs"
-										/>
-										<div className="flex items-center gap-1 mt-1">
+						Object.entries(envVars).map(([name, value]) => {
+							const nameError = nameErrorOf(name);
+							return (
+								<div key={name} className="p-2 bg-gray-800 rounded">
+									<div className="flex items-center justify-between">
+										<code className="text-xs font-mono text-green-400">
+											{name}
+										</code>
+										<div className="flex items-center gap-1">
 											<Button
 												size="sm"
 												variant="ghost"
-												onClick={() => handleEditVar(name, editingVarValue)}
+												aria-label={`Edit ${name}`}
+												onClick={() => {
+													setEditingVar(name);
+													setEditingVarValue(value);
+												}}
 												className="h-5 w-5 p-0"
 											>
-												<Check className="w-3 h-3" />
+												<Edit2 className="w-3 h-3" />
 											</Button>
 											<Button
 												size="sm"
 												variant="ghost"
-												onClick={() => setEditingVar(null)}
-												className="h-5 w-5 p-0"
+												aria-label={`Delete ${name}`}
+												onClick={() => handleDeleteVar(name)}
+												className="h-5 w-5 p-0 text-red-400 hover:text-red-300"
 											>
-												<X className="w-3 h-3" />
+												<Trash2 className="w-3 h-3" />
 											</Button>
 										</div>
 									</div>
-								) : (
-									<div className="text-xs text-gray-300 font-mono mt-1">
-										{value}
-									</div>
-								)}
-							</div>
-						))
+									{editingVar === name ? (
+										<div className="mt-1">
+											<Input
+												type="text"
+												value={editingVarValue}
+												onChange={(e) => setEditingVarValue(e.target.value)}
+												className="w-full h-6 text-xs"
+											/>
+											<div className="flex items-center gap-1 mt-1">
+												<Button
+													size="sm"
+													variant="ghost"
+													aria-label={`Save ${name}`}
+													onClick={() => handleEditVar(name, editingVarValue)}
+													className="h-5 w-5 p-0"
+												>
+													<Check className="w-3 h-3" />
+												</Button>
+												<Button
+													size="sm"
+													variant="ghost"
+													aria-label={`Cancel editing ${name}`}
+													onClick={() => setEditingVar(null)}
+													className="h-5 w-5 p-0"
+												>
+													<X className="w-3 h-3" />
+												</Button>
+											</div>
+										</div>
+									) : (
+										<div className="text-xs text-gray-300 font-mono mt-1">
+											{value}
+										</div>
+									)}
+									{nameError && (
+										<p className="mt-1 text-xs text-danger" role="alert">
+											{nameError} Remove it here; generate refuses it.
+										</p>
+									)}
+								</div>
+							);
+						})
 					)}
 
 					{/* Add new variable form */}
@@ -193,6 +210,10 @@ export function ScheduledTaskEnvironmentVariables({
 											e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "_"),
 										)
 									}
+									aria-invalid={newVarNameError !== null}
+									aria-describedby={
+										newVarNameError ? `${uid}-new-var-name-error` : undefined
+									}
 									className="mt-1"
 								/>
 							</div>
@@ -213,9 +234,18 @@ export function ScheduledTaskEnvironmentVariables({
 								/>
 							</div>
 						</div>
+						{newVarNameError && (
+							<p
+								id={`${uid}-new-var-name-error`}
+								className="mt-1 text-xs text-danger"
+								role="alert"
+							>
+								{newVarNameError}
+							</p>
+						)}
 						<Button
 							onClick={handleAddVar}
-							disabled={!newVarName || !newVarValue}
+							disabled={!newVarName || !newVarValue || newVarNameError !== null}
 							className="mt-2 w-full"
 							size="sm"
 						>

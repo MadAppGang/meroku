@@ -210,6 +210,38 @@ export const UndeclaredKey: Story = {
 	},
 };
 
+/** The workload's own variable already holds a name the key connection sets. */
+export const ReservedEnvCollision: Story = {
+	name: "Workload variable named like the key's",
+	render: () => (
+		<Editor
+			initial={configWith({
+				kms_keys: [{ name: "auth" }],
+				services: (baseConfig.services || []).map((s) =>
+					s.name === "orders"
+						? {
+								...s,
+								env_vars: { KMS_AUTH_KEY_ARN: "fake-arn-do-not-use" },
+								kms_keys: [{ name: "auth", access: "sign" }],
+							}
+						: s,
+				),
+			})}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const card = within(
+			within(canvasElement).getByTestId("kms-key-connection-auth"),
+		);
+		await expect(
+			card.getByText(/KMS_AUTH_KEY_ARN is reserved: meroku sets it/),
+		).toBeVisible();
+		await expect(
+			card.queryByText(/KMS_AUTH_PUBLIC_KEY is reserved/),
+		).toBeNull();
+	},
+};
+
 export const MissingAccess: Story = {
 	name: "Connection without access",
 	render: () => (
