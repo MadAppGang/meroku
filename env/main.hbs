@@ -1107,6 +1107,7 @@ locals {
   workload_extra_env = { for name in keys(local.workload_roles) : name => concat(
     module.data_bucket.environment[name],
     module.events.environment[name],
+    module.kms_keys.environment[name],
 {{#if _valkey}}
     module.valkey.environment[name],
 {{/if}}
@@ -1159,6 +1160,20 @@ module "vaults" {
   {{!-- Validated by app/vaults.go: vault and secret names are plain lower-case. --}}
   vaults      = {{{stringListMap _vault_secrets}}}
   connections = {{{hclArray _vault_connections}}}
+}
+
+# KMS signing keys: an asymmetric key per kms_keys entry, retired ones included.
+# A connected workload may sign, verify or both, and gets KMS_<NAME>_KEY_ARN and
+# KMS_<NAME>_PUBLIC_KEY. See ai_docs/KMS_KEYS.md.
+module "kms_keys" {
+  source  = "{{modules}}/kms_keys"
+  project = "{{project}}"
+  env     = "{{env}}"
+
+  workloads   = local.workload_roles
+  {{!-- Validated by app/kms_keys.go: key names are plain lower-case, specs from a fixed list. --}}
+  keys        = {{{hclJSON _kms_keys}}}
+  connections = {{{hclArray _kms_connections}}}
 }
 
 # Events: the project bus (event_bus.enabled), a queue per workload that

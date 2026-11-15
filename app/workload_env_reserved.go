@@ -21,6 +21,9 @@ import (
 // names a bucket of the workload's own. Its value is kept, meroku does not add the
 // backend bucket, and generate warns.
 //
+// The KMS key variables are named after the keys in the YAML, so they are not in
+// the static table; reservedWorkloadEnvRows adds them.
+//
 // This joins the ENV rule in app/env_reserved.go.
 
 // workloadEnvContext is what a reserved-name rule needs to know about a workload.
@@ -55,6 +58,14 @@ var reservedWorkloadEnvTable = []reservedWorkloadEnv{
 	{name: "VALKEY_URL", setBy: "valkey.access", appliesTo: hasValkeyAccess},
 	{name: "VALKEY_HOST", setBy: "valkey.access", appliesTo: hasValkeyAccess},
 	{name: "VALKEY_PORT", setBy: "valkey.access", appliesTo: hasValkeyAccess},
+}
+
+// reservedWorkloadEnvRows is reservedWorkloadEnvTable plus the rows whose names
+// depend on the YAML: KMS_<NAME>_KEY_ARN and KMS_<NAME>_PUBLIC_KEY for each kms
+// key a workload connects to (kmsReservedWorkloadEnv).
+func reservedWorkloadEnvRows(envMap map[string]interface{}) []reservedWorkloadEnv {
+	rows := append([]reservedWorkloadEnv{}, reservedWorkloadEnvTable...)
+	return append(rows, kmsReservedWorkloadEnv(envMap)...)
 }
 
 // backendBucketEnvName is the variable that names the backend bucket.
@@ -192,6 +203,7 @@ func envVarNames(raw interface{}) []string {
 func validateWorkloadReservedEnvConfigMap(envMap map[string]interface{}) error {
 	var problems []string
 	var ownBucket []interface{}
+	table := reservedWorkloadEnvRows(envMap)
 
 	for _, src := range workloadEnvSources(envMap) {
 		ctx := workloadEnvContext{envMap: envMap, name: src.name}
@@ -203,7 +215,7 @@ func validateWorkloadReservedEnvConfigMap(envMap map[string]interface{}) error {
 					src.field, backendBucketEnvName, backendBucketEnvName))
 				continue
 			}
-			for _, row := range reservedWorkloadEnvTable {
+			for _, row := range table {
 				if row.matches(v) && row.appliesTo(ctx) {
 					problems = append(problems, fmt.Sprintf(
 						"%s sets %s, which meroku sets for this workload (%s: %s); remove it from the YAML and read meroku's value",
