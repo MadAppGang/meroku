@@ -1,5 +1,19 @@
 # Changelog
 
+## v6.3.1
+
+### CI Lambda: untagged ECR pushes no longer deploy
+- One `docker build` + `docker push` (buildx) pushes a tagged image index plus untagged child
+  manifests (the platform image and an attestation manifest with no layers), and ECR emits a
+  PUSH event for each. The untagged ones arrive with `image-tag: ""`, which the `ci_ecr_push`
+  rule let through, and the Lambda deployed each by digest. The last event decided the task
+  definition, so a service or scheduled task could end up pinned to the attestation manifest and
+  fail with `CannotPullContainerError: ... mismatched image rootfs and manifest layers`.
+- The rule now excludes `""` as well as `latest` (`anything-but = ["latest", ""]`), and the
+  Lambda ignores any ECR push without a tag, so one build deploys once, from its tag.
+- Rolling it out changes the CI Lambda's code and the `ci_ecr_push` rule pattern in place. No
+  YAML change, no schema migration.
+
 ## v6.3.0
 
 ### Event subscriptions: wildcards and filters
