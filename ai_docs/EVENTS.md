@@ -68,6 +68,7 @@ queue, so each event is handled by one copy.
 | One rule per subscription | `<project>-events-<name>-<key>-<env>` | On the subscription's bus; target retry 185 attempts within 24 h, then the delivery DLQ |
 | Alarm per DLQ | `<project>-<env>-events-<name>-dlq` and `...-delivery-dlq` | `ApproximateNumberOfMessagesVisible` Maximum > 0 over 300 s, missing data not breaching |
 | `EVENT_QUEUE_URL` | container variable | the main queue's URL |
+| `EVENT_DLQ_URL` | container variable | the application DLQ's URL |
 
 The rule pattern is the detail-type (exact, `{"prefix": ...}` or `{"wildcard": ...}`), the
 `source` when set, the filters under `detail` when set, and `"replay-name": [{"exists": false}]`:
@@ -76,9 +77,19 @@ an archive replay is never delivered to a queue.
 The main queue and the delivery DLQ each have a queue policy that lets `events.amazonaws.com`
 send only for this consumer's own rules (`aws:SourceArn`). The application DLQ needs none.
 
-The task role gets `sqs:ReceiveMessage`, `DeleteMessage`, `ChangeMessageVisibility`,
-`GetQueueAttributes` and `GetQueueUrl` on the main queue, in the inline policy
-`<project>_events_<name>_<env>`.
+The task role gets, in the inline policy `<project>_events_<name>_<env>`:
+
+- on the main queue: `sqs:ReceiveMessage`, `DeleteMessage`, `ChangeMessageVisibility`,
+  `GetQueueAttributes`, `GetQueueUrl` and `SendMessage`. `SendMessage` lets the app put a
+  message back with `DelaySeconds` to retry it later;
+- on the application DLQ: `sqs:SendMessage`, `GetQueueAttributes` and `GetQueueUrl`, so the app
+  can dead-letter a message it can never process (an unreadable body, an invalid event) at once
+  instead of failing it `max_receive_count` times;
+- nothing on the delivery DLQ, which only EventBridge writes to.
+
+These grants cover everything a consumer does with its own queues. A `policy` entry naming
+a meroku queue ARN is never needed; to reach another workload, publish an event with
+`produces`.
 
 ### Subscription keys
 
@@ -311,7 +322,7 @@ is then a generate error.
 - An `extensions.sns_topics` entry whose name equals the alerts topic, when there are consumers.
 - Two event-task rules (the legacy `rule_name` form included) with the same AWS rule name,
   `<project>_rule_<key>_<env>`, on the same bus. The same key on different buses is allowed.
-- `EVENT_QUEUE_URL` in a consumer's YAML env vars (`app/workload_env_reserved.go`).
+- `EVENT_QUEUE_URL` or `EVENT_DLQ_URL` in a consumer's YAML env vars (`app/workload_env_reserved.go`).
 
 ## Custom Terraform
 

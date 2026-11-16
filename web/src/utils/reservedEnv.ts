@@ -51,6 +51,11 @@ const RESERVED_BACKEND_ENV: ReservedBackendEnv[] = [
 		reason: "meroku sets it for the backend's event queue",
 		applies: backendSubscribes,
 	},
+	{
+		name: "EVENT_DLQ_URL",
+		reason: "meroku sets it for the backend's event dead-letter queue",
+		applies: backendSubscribes,
+	},
 	...["VALKEY_URL", "VALKEY_HOST", "VALKEY_PORT"].map((name) => ({
 		name,
 		reason: "meroku sets it because valkey.access lists backend",

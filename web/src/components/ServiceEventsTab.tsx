@@ -1041,7 +1041,10 @@ export function ServiceEventsTab({
 								EVENT_BUS_NAME={busEnabled ? busName : "default"}
 							</Badge>
 							{subscribes.length > 0 && (
-								<Badge variant="code">EVENT_QUEUE_URL</Badge>
+								<>
+									<Badge variant="code">EVENT_QUEUE_URL</Badge>
+									<Badge variant="code">EVENT_DLQ_URL</Badge>
+								</>
 							)}
 						</dd>
 					</dl>

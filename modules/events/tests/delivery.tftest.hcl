@@ -256,13 +256,29 @@ run "consumers_get_encrypted_queues_retries_policies_and_alarms" {
       toset(keys(output.policies)) == toset(["backend", "orders"]) &&
       alltrue([
         for c, policy in output.policies :
-        toset(flatten([for st in jsondecode(policy).Statement : try(tolist(st.Action), [tostring(st.Action)])])) ==
-        toset(["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:ChangeMessageVisibility", "sqs:GetQueueAttributes", "sqs:GetQueueUrl"]) &&
-        toset(flatten([for st in jsondecode(policy).Statement : try(tolist(st.Resource), [tostring(st.Resource)])])) == toset([aws_sqs_queue.main[c].arn]) &&
+        length(jsondecode(policy).Statement) == 2 &&
+        alltrue([
+          for st in jsondecode(policy).Statement :
+          st.Sid != "EventQueue" || (
+            toset(try(tolist(st.Action), [tostring(st.Action)])) ==
+            toset(["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:ChangeMessageVisibility", "sqs:GetQueueAttributes", "sqs:GetQueueUrl", "sqs:SendMessage"]) &&
+            toset(try(tolist(st.Resource), [tostring(st.Resource)])) == toset([aws_sqs_queue.main[c].arn])
+          )
+        ]) &&
+        alltrue([
+          for st in jsondecode(policy).Statement :
+          st.Sid != "EventDeadLetterQueue" || (
+            toset(try(tolist(st.Action), [tostring(st.Action)])) ==
+            toset(["sqs:SendMessage", "sqs:GetQueueAttributes", "sqs:GetQueueUrl"]) &&
+            toset(try(tolist(st.Resource), [tostring(st.Resource)])) == toset([aws_sqs_queue.dlq[c].arn])
+          )
+        ]) &&
+        toset([for st in jsondecode(policy).Statement : st.Sid]) == toset(["EventQueue", "EventDeadLetterQueue"]) &&
+        !contains(flatten([for st in jsondecode(policy).Statement : try(tolist(st.Resource), [tostring(st.Resource)])]), aws_sqs_queue.delivery_dlq[c].arn) &&
         aws_iam_role_policy.workload[c].role == (c == "backend" ? "backend-task" : "orders-task")
       ])
     )
-    error_message = "Consumer IAM must grant exactly queue consumption on its main queue to its task role, never queue or bus creation."
+    error_message = "Consumer IAM must grant consumption and send on its main queue and send on its application DLQ to its task role, nothing on the delivery DLQ, and never queue or bus creation."
   }
 
   assert {
@@ -290,10 +306,10 @@ run "consumers_get_encrypted_queues_retries_policies_and_alarms" {
     condition = (
       output.alerts_topic_arn == "arn:aws:sns:us-east-1:000000000000:myapp-dev-alerts" &&
       output.queue_urls == { backend = aws_sqs_queue.main["backend"].url, orders = aws_sqs_queue.main["orders"].url } &&
-      jsonencode(output.environment["backend"]) == jsonencode([{ name = "EVENT_QUEUE_URL", value = aws_sqs_queue.main["backend"].url }]) &&
-      jsonencode(output.environment["orders"]) == jsonencode([{ name = "EVENT_QUEUE_URL", value = aws_sqs_queue.main["orders"].url }]) &&
+      jsonencode(output.environment["backend"]) == jsonencode([{ name = "EVENT_QUEUE_URL", value = aws_sqs_queue.main["backend"].url }, { name = "EVENT_DLQ_URL", value = aws_sqs_queue.dlq["backend"].url }]) &&
+      jsonencode(output.environment["orders"]) == jsonencode([{ name = "EVENT_QUEUE_URL", value = aws_sqs_queue.main["orders"].url }, { name = "EVENT_DLQ_URL", value = aws_sqs_queue.dlq["orders"].url }]) &&
       length(output.environment["worker"]) == 0
     )
-    error_message = "Only consumers receive EVENT_QUEUE_URL; queue and alerts outputs must reference the resources actually created."
+    error_message = "Only consumers receive EVENT_QUEUE_URL and EVENT_DLQ_URL; queue and alerts outputs must reference the resources actually created."
   }
 }

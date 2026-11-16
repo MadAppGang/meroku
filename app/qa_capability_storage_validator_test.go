@@ -112,25 +112,27 @@ func TestQACapabilityReservedEnvironmentIsConditional(t *testing.T) {
 				qaCapabilityRequireError(t, preprocessEnvMap(m), variable, field)
 			})
 		}
-		for _, consuming := range []bool{false, true} {
-			if consuming && (kind == "scheduled_task" || kind == "event_task") {
-				continue
+		for _, variable := range []string{"EVENT_QUEUE_URL", "EVENT_DLQ_URL"} {
+			for _, consuming := range []bool{false, true} {
+				if consuming && (kind == "scheduled_task" || kind == "event_task") {
+					continue
+				}
+				t.Run(fmt.Sprintf("%s/%s consumer %t", kind, variable, consuming), func(t *testing.T) {
+					m := qaCapabilityEnv()
+					owner := qaCapabilityOwner(m, kind)
+					field := qaCapabilityEnvField(kind)
+					owner[field] = qaCapabilityMap{variable: "https://sqs.us-east-1.amazonaws.com/000000000000/custom"}
+					if consuming {
+						owner["events"] = qaCapabilityMap{"subscribes": qaCapabilityList(qaCapabilityMap{"detail_type": "order.created"})}
+					}
+					err := preprocessEnvMap(m)
+					if consuming {
+						qaCapabilityRequireError(t, err, variable, field)
+					} else {
+						qaCapabilityNoError(t, err)
+					}
+				})
 			}
-			t.Run(fmt.Sprintf("%s/queue consumer %t", kind, consuming), func(t *testing.T) {
-				m := qaCapabilityEnv()
-				owner := qaCapabilityOwner(m, kind)
-				field := qaCapabilityEnvField(kind)
-				owner[field] = qaCapabilityMap{"EVENT_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/000000000000/custom"}
-				if consuming {
-					owner["events"] = qaCapabilityMap{"subscribes": qaCapabilityList(qaCapabilityMap{"detail_type": "order.created"})}
-				}
-				err := preprocessEnvMap(m)
-				if consuming {
-					qaCapabilityRequireError(t, err, "EVENT_QUEUE_URL", field)
-				} else {
-					qaCapabilityNoError(t, err)
-				}
-			})
 		}
 		for _, variable := range []string{"VALKEY_URL", "VALKEY_HOST", "VALKEY_PORT"} {
 			for _, mode := range []string{"disabled", "unlisted", "listed"} {

@@ -376,6 +376,7 @@ One node per additional service.
 | `events.produces[].own_source_only` | boolean | default `true` | TF | |
 | `events.produces[].bus` | `"project"` \| `"default"` | absent follows `event_bus.enabled` | TF | |
 | `EVENT_QUEUE_URL` | string | consumers only | RO | Queue URL in the container. |
+| `EVENT_DLQ_URL` | string | consumers only | RO | Application DLQ URL in the container. |
 
 The first subscription creates three queues, two alarms and, for the first consumer in the
 environment, the alerts topic. Removing the last subscription deletes the queues and the

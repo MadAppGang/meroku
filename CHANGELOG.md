@@ -1,5 +1,21 @@
 # Changelog
 
+## v6.4.0
+
+### Event consumers can send to their own queue and dead-letter queue
+- A workload with `events.subscribes` now gets `sqs:SendMessage` on its own main queue, so it can
+  put a message back with `DelaySeconds` to retry it later, and `sqs:SendMessage`,
+  `GetQueueAttributes` and `GetQueueUrl` on its own application DLQ, so it can dead-letter a
+  message it can never process at once instead of failing it `max_receive_count` times. The
+  delivery DLQ stays EventBridge's alone.
+- Consumers get a new container variable, `EVENT_DLQ_URL`, the application DLQ's URL.
+  `meroku generate` refuses `EVENT_DLQ_URL` in a consumer's YAML env vars, as it does
+  `EVENT_QUEUE_URL`.
+- A `policy` entry that granted these actions on a meroku queue ARN is no longer needed and can
+  be removed once this version is applied.
+- Rolling it out updates each consumer's inline events policy in place and gives each
+  consumer one new task definition revision (the new variable). No schema migration.
+
 ## v6.3.1
 
 ### CI Lambda: untagged ECR pushes no longer deploy

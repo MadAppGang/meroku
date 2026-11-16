@@ -18,12 +18,14 @@ output "alerts_topic_arn" {
   value       = length(aws_sns_topic.alerts) > 0 ? aws_sns_topic.alerts[0].arn : ""
 }
 
-# Per workload, the variables its container gets: EVENT_QUEUE_URL for a
-# consumer, nothing for any other workload.
+# Per workload, the variables its container gets: EVENT_QUEUE_URL and
+# EVENT_DLQ_URL (its application DLQ) for a consumer, nothing for any other
+# workload.
 output "environment" {
   description = "Environment variables for each workload, keyed by workload name."
   value = { for w in keys(var.workloads) : w => contains(keys(local.consumers), w) ? [
     { name = "EVENT_QUEUE_URL", value = aws_sqs_queue.main[w].url },
+    { name = "EVENT_DLQ_URL", value = aws_sqs_queue.dlq[w].url },
   ] : [] }
 }
 
