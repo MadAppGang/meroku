@@ -1,6 +1,6 @@
 import * as yaml from "js-yaml";
 import { AlertCircle, CheckCircle, Loader2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ReactFlowProvider } from "reactflow";
 import { type AccountInfo, infrastructureApi } from "./api/infrastructure";
 import { AddAmplifyDialog } from "./components/AddAmplifyDialog";
@@ -15,12 +15,17 @@ import { Sidebar } from "./components/Sidebar";
 import { StatusLine } from "./components/StatusLine";
 import { Toaster } from "./components/ui/sonner";
 import { PricingProvider } from "./contexts/PricingContext";
+import { useConfigWarnings } from "./hooks/use-config-warnings";
 import { usePricing } from "./hooks/use-pricing";
 import type { ComponentNode } from "./types";
+import type { ConfigWarning } from "./types/configWarnings";
 import type { YamlInfrastructureConfig } from "./types/yamlConfig";
 import { mergeConfigUpdates } from "./utils/configMerge";
+import { warningsForNode } from "./utils/configWarnings";
 import { pruneUndefined } from "./utils/pruneUndefined";
 import { removeWorkloadReferences } from "./utils/workloadReferences";
+
+const NO_WARNINGS: readonly ConfigWarning[] = [];
 
 export default function App() {
 	const [selectedNode, setSelectedNode] = useState<ComponentNode | null>(null);
@@ -48,11 +53,24 @@ export default function App() {
 		string | null
 	>(null);
 	const [pricingRefreshTrigger, setPricingRefreshTrigger] = useState(0);
+	const [warningsRefreshKey, setWarningsRefreshKey] = useState(0);
 	const [backendError, setBackendError] = useState<string | null>(null);
 	const [connecting, setConnecting] = useState(true);
 
 	// Use pricing hook with refresh trigger
 	const { pricing } = usePricing(selectedEnvironment, pricingRefreshTrigger);
+
+	// Configuration warnings, re-read shortly after each successful save
+	const { report: warningsReport } = useConfigWarnings(
+		selectedEnvironment,
+		warningsRefreshKey,
+	);
+	const configWarnings = warningsReport?.warnings ?? NO_WARNINGS;
+	const selectedNodeWarnings = useMemo(
+		() =>
+			selectedNode ? warningsForNode(configWarnings, selectedNode.id) : [],
+		[configWarnings, selectedNode],
+	);
 
 	const handleNodeSelect = useCallback((node: ComponentNode | null) => {
 		setSelectedNode(node);
@@ -168,8 +186,9 @@ export default function App() {
 				console.log("Configuration saved successfully");
 				setSaveStatus("success");
 
-				// Refresh pricing after configuration update
+				// Refresh pricing and warnings after configuration update
 				setPricingRefreshTrigger((prev) => prev + 1);
+				setWarningsRefreshKey((prev) => prev + 1);
 
 				// Reset status after 2 seconds
 				setTimeout(() => setSaveStatus("idle"), 2000);
@@ -582,6 +601,8 @@ export default function App() {
 										onManageCustomTerraform={() => setViewMode("code")}
 										onDeleteNode={handleDeleteNode}
 										pricing={pricing}
+										warnings={configWarnings}
+										configError={warningsReport?.configError}
 									/>
 
 									{/* Right Sidebar */}
@@ -596,6 +617,7 @@ export default function App() {
 										onConfigChange={handleConfigChange}
 										accountInfo={accountInfo || undefined}
 										onDeleteNode={handleDeleteNode}
+										warnings={selectedNodeWarnings}
 									/>
 								</ReactFlowProvider>
 							</div>
@@ -665,6 +687,7 @@ export default function App() {
 							viewMode={viewMode}
 							onViewModeChange={setViewMode}
 							onConfigChange={handleConfigChange}
+							warnings={configWarnings}
 						/>
 
 						{/* Toast notifications */}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -82,7 +83,7 @@ func v31Fixture(env string) map[string]interface{} {
 
 func TestMigrateToV31_NonDevTurnsEveryTargetOff(t *testing.T) {
 	data := v31Fixture("staging")
-	if err := migrateToV31(data); err != nil {
+	if err := migrateToV31(data, io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	if data["auto_deploy"] != false {
@@ -106,7 +107,7 @@ func TestMigrateToV31_NonDevTurnsEveryTargetOff(t *testing.T) {
 
 func TestMigrateToV31_DevKeepsItsTargets(t *testing.T) {
 	data := v31Fixture("dev")
-	if err := migrateToV31(data); err != nil {
+	if err := migrateToV31(data, io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	if data["auto_deploy"] != true {
@@ -121,7 +122,7 @@ func TestMigrateToV31_DevKeepsItsTargets(t *testing.T) {
 
 func TestMigrateToV31_ProdDomainBecomesFlags(t *testing.T) {
 	data := v31Fixture("prod")
-	if err := migrateToV31(data); err != nil {
+	if err := migrateToV31(data, io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	if data["is_prod"] != true || data["auto_deploy"] != false {
@@ -139,7 +140,7 @@ func TestMigrateToV31_ProdDomainBecomesFlags(t *testing.T) {
 // "production" flags as prod but keeps the domain it already renders.
 func TestMigrateToV31_ProductionKeepsItsDomain(t *testing.T) {
 	data := v31Fixture("production")
-	if err := migrateToV31(data); err != nil {
+	if err := migrateToV31(data, io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	if data["is_prod"] != true {

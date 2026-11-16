@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"regexp"
 	"strings"
 	"testing"
@@ -28,7 +29,7 @@ func TestMigrateToV30_PinsEveryExistingServiceToFullOpen(t *testing.T) {
 		},
 	}
 
-	if err := migrateToV30(doc); err != nil {
+	if err := migrateToV30(doc, io.Discard); err != nil {
 		t.Fatalf("migrateToV30: %v", err)
 	}
 
@@ -47,7 +48,7 @@ func TestMigrateToV30_KeepsAValueTheUserAlreadyChose(t *testing.T) {
 			map[interface{}]interface{}{"name": "bridge", "network_access": "internal"},
 		},
 	}
-	if err := migrateToV30(doc); err != nil {
+	if err := migrateToV30(doc, io.Discard); err != nil {
 		t.Fatalf("migrateToV30: %v", err)
 	}
 	if got := doc["services"].([]interface{})[0].(map[interface{}]interface{})["network_access"]; got != "internal" {
@@ -64,7 +65,7 @@ func TestMigrateToV30_ToleratesMissingAndOddShapes(t *testing.T) {
 		"element not map":   {"services": []interface{}{"oops"}},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if err := migrateToV30(doc); err != nil {
+			if err := migrateToV30(doc, io.Discard); err != nil {
 				t.Fatalf("migrateToV30 must skip, not fail: %v", err)
 			}
 		})

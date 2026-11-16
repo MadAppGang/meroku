@@ -117,8 +117,14 @@ image.
 
 meroku never invents the command, because the tool it calls must exist in the
 image: a check whose tool is missing fails on every probe, and ECS replaces the
-task in a loop. `meroku` prints a warning at generate time for an
-`internal` or `none` service without one. When set, it renders as
+task in a loop. An `internal` or `none` service without one gets the
+configuration warning `service_no_health_check` (item kind `service`, the
+service's name). `meroku generate` prints it and continues. The web UI paints
+the service's node in the warning colour, with the text and a link to this
+section in the sidebar. A TUI deploy shows it on the warnings screen before
+anything runs, with "Cancel and fix" and "Proceed anyway". A `public` service,
+or one with any non-empty `health_check_command`, gets none. See
+[Configuration warnings](./CONFIG_WARNINGS.md). When set, it renders as
 `healthCheck` with interval 30s, timeout 5s, 3 retries and a 60s start period.
 When empty, no `healthCheck` key is rendered and the task definition is
 unchanged.

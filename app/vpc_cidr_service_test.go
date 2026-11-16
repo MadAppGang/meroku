@@ -77,7 +77,8 @@ func TestVPCCIDROverlapWarningText_ShowsTipOnlyWithOverlap(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			text := vpcCIDROverlapWarningText("file-dev", tt.fields, uses)
+			w, _ := vpcCIDROverlapWarning("file-dev", tt.fields, uses)
+			text := w.Detail
 			if !tt.wantWarning {
 				if text != "" {
 					t.Errorf("non-overlap returned warning/tip: %q", text)

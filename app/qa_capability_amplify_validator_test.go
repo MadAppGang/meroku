@@ -105,7 +105,7 @@ func TestQACapabilityAmplifyAcceptsSupportedRules(t *testing.T) {
 		qaCapabilityEqual(t, remaining["source"], "/old")
 		qaCapabilityEqual(t, remaining["target"], "/new")
 		qaCapabilityEqual(t, remaining["status"], "301")
-		qaCapabilityContains(t, strings.Join(generateWarnings(m), "\n"), "api", "custom_rules")
+		qaCapabilityContains(t, strings.Join(warningDetails(generateWarnings(m)), "\n"), "api", "custom_rules")
 	})
 }
 
@@ -195,7 +195,7 @@ func TestQACapabilityAmplifyWarnsAfterCatchAll(t *testing.T) {
 	qaCapabilityNoError(t, prepareAmplifyRewriteRules(m))
 	warnings := amplifyRewriteWarnings(m)
 	qaCapabilityEqual(t, len(warnings), 2)
-	joined := strings.Join(warnings, "\n")
+	joined := strings.Join(warningDetails(warnings), "\n")
 	for source, field := range map[string]string{
 		"/after-one": "custom_rules[2]",
 		"/after-two": "custom_rules[3]",

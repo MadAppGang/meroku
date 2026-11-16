@@ -92,7 +92,7 @@ func TestWorkloadPolicy_WildcardActionIsAGenerateWarning(t *testing.T) {
 		t.Fatalf("validateWorkloadPolicyConfigMap: %v", err)
 	}
 	warnings := generateWarnings(envMap)
-	if len(warnings) != 1 || !strings.Contains(warnings[0], `workload: policy[0].actions contains "*"`) {
+	if len(warnings) != 1 || !strings.Contains(warnings[0].Detail, `workload: policy[0].actions contains "*"`) {
 		t.Errorf("want one generate warning about the * action, got %v", warnings)
 	}
 }

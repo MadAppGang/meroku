@@ -97,8 +97,14 @@ func validateDataBucketConfigMap(envMap map[string]interface{}) error {
 				case workloadReferenceKnown:
 					kept = append(kept, w)
 				case workloadReferenceDisabled:
-					addGenerateWarning(envMap, fmt.Sprintf(
-						"%s.%s lists %q, which is switched off (enabled: false); it gets no access to shared/%s/ until it is switched on", where, field, w, name))
+					addGenerateWarning(envMap, ConfigWarning{
+						Code:  warnCodeDataBucketDisabledWorkload,
+						Item:  workloadItem(WarningKindDataBucket, name),
+						Title: "Shared folder lists a switched-off workload",
+						Detail: fmt.Sprintf(
+							"%s.%s lists %q, which is switched off (enabled: false); it gets no access to shared/%s/ until it is switched on", where, field, w, name),
+						Docs: docsLink("ai_docs/DATA_BUCKET.md"),
+					})
 				default:
 					problems = append(problems, fmt.Sprintf(
 						"%s.%s lists %q, which is not a workload; use backend or the name of a service, scheduled task or event task", where, field, w))

@@ -58,7 +58,11 @@ func deployMenu() {
 		}
 	}
 
-	deployInteractive(env, os.Stdin, offerClaudeHandoff)
+	// Configuration warnings are shown, and can stop the deploy, before
+	// anything is generated, migrated or planned.
+	deployWithGate(env, defaultDeployWarningGate(), func(env string) {
+		deployInteractive(env, os.Stdin, offerClaudeHandoff)
+	})
 }
 
 // runCommandToDeploy generates, checks and deploys env from the project root.
@@ -433,6 +437,36 @@ func handleGenerateCommand(args []string) error {
 	return nil
 }
 
+// validateConfigBeforePreprocess runs the checks that refuse a raw env map
+// before preprocessing, in the order generate has always run them. Generate
+// and the warnings collector both call it, so a refusal added here is seen by
+// both.
+func validateConfigBeforePreprocess(env string, envMap map[string]interface{}) error {
+	// Refuse to generate terraform that would deploy an authorizer trusting a
+	// JWKS endpoint nobody chose. Failing here costs a second; the same mistake
+	// found by terraform costs an apply.
+	if err := validateAppSyncConfigMap(envMap); err != nil {
+		return err
+	}
+
+	// An ALB with no certificate plans clean and fails from AWS part-way through
+	// the apply, leaving a half-built stack. Cheaper to refuse here.
+	if err := validateALBConfigMap(envMap); err != nil {
+		return err
+	}
+
+	// A NAT egress strategy on the default VPC generates a module call with an
+	// empty subnet list: it plans clean and fails during the apply.
+	if err := validateEgressStrategyMap(envMap); err != nil {
+		return err
+	}
+
+	// A VPC range outside the rules (public, reserved, wrong size, host bits
+	// set) is refused before anything is built from it. Existing deployed
+	// environments opt out with allow_vpc_cidr_override: true.
+	return validateVPCCIDRMap(env, envMap)
+}
+
 // applyTemplate renders env/<env>/main.tf from the env YAML. It returns every
 // failure instead of exiting, so the interactive deploy can offer the Claude
 // Code handoff and `meroku generate` can exit 1. A YAML that does not load or
@@ -464,41 +498,17 @@ func applyTemplate(env string) error {
 		return stepErr("migration", fmt.Errorf("loading environment %s: %w", envFile, err))
 	}
 
-	// Refuse to generate terraform that would deploy an authorizer trusting a
-	// JWKS endpoint nobody chose. Failing here costs a second; the same mistake
-	// found by terraform costs an apply.
-	if err := validateAppSyncConfigMap(envMap); err != nil {
-		return fmt.Errorf("invalid configuration in %s:\n\n%w", envFile, err)
+	if err := validateConfigBeforePreprocess(env, envMap); err != nil {
+		return invalidConfigurationError(envFile, err)
 	}
 
-	// An ALB with no certificate plans clean and fails from AWS part-way through
-	// the apply, leaving a half-built stack. Cheaper to refuse here.
-	if err := validateALBConfigMap(envMap); err != nil {
-		return fmt.Errorf("invalid configuration in %s:\n\n%w", envFile, err)
-	}
-
-	// A NAT egress strategy on the default VPC generates a module call with an
-	// empty subnet list: it plans clean and fails during the apply.
-	if err := validateEgressStrategyMap(envMap); err != nil {
-		return fmt.Errorf("invalid configuration in %s:\n\n%w", envFile, err)
-	}
-
-	// A VPC range outside the rules (public, reserved, wrong size, host bits
-	// set) is refused before anything is built from it. Existing deployed
-	// environments opt out with allow_vpc_cidr_override: true.
-	if err := validateVPCCIDRMap(env, envMap); err != nil {
-		return fmt.Errorf("invalid configuration in %s:\n\n%w", envFile, err)
-	}
-
-	// The template pins the provider region from this config. Say so now if the
-	// shell disagrees, so an existing stack's relocation is not first seen as a
-	// destroy in the plan. A warning, not an error: on a stack that does not
-	// exist yet there is nothing to relocate.
-	warnOnRegionDrift(stringFromMap(envMap, "region"), stringFromMap(envMap, "aws_profile"))
-
-	// Overlap with a sibling environment is a warning: two environments that
-	// are never connected may share a range. Offline — no AWS call here.
-	warnOnVPCCIDROverlap(envFile, envMap)
+	// The template pins the provider region from this config, so a shell that
+	// disagrees is said now, before a stack's relocation is first seen as a
+	// destroy in the plan. A VPC range shared with a sibling environment is
+	// said too. Both are warnings: offline, no AWS call.
+	in := defaultWarningInputs(env)
+	in.EnvFile = envFile
+	envLevel := envLevelWarnings(envMap, in)
 
 	// Everything that happens to envMap between loading and rendering: the
 	// disabled-item filter, the zero-config pool, and the compute refusals that
@@ -510,19 +520,15 @@ func applyTemplate(env string) error {
 	}
 
 	if err := preprocessEnvMap(envMap); err != nil {
-		return fmt.Errorf("invalid configuration in %s:\n\n%w", envFile, err)
+		printGenerateNotices(os.Stdout, generateNotices(envMap))
+		printConfigWarnings(os.Stdout, normalizeConfigWarnings(envLevel))
+		return invalidConfigurationError(envFile, err)
 	}
 
-	// Printed here, not in preprocessEnvMap, which render tests call.
-	for _, w := range githubExternalImageWarnings(envMap) {
-		fmt.Printf("⚠️  %s\n", w)
-	}
-	for _, w := range amplifyRewriteWarnings(envMap) {
-		fmt.Printf("⚠️  %s\n", w)
-	}
-	for _, w := range generateWarnings(envMap) {
-		fmt.Printf("⚠️  %s\n", w)
-	}
+	// Printed here, not in preprocessEnvMap, which render tests and the
+	// warnings collector call.
+	printGenerateNotices(os.Stdout, generateNotices(envMap))
+	printConfigWarnings(os.Stdout, configWarnings(envMap, envLevel))
 
 	// Custom files share main.tf's root namespace; refuse one that redeclares a
 	// name the template uses before rendering anything.
@@ -703,8 +709,8 @@ func preprocessEnvMap(envMap map[string]interface{}) error {
 // It writes to the in-memory map only, never to the user's YAML: generation is
 // not a mutating command, and making it one to save a print would be a much
 // larger promise than this feature needs. The cost — the synthesized pool never
-// appears in `git diff` — is paid for by the printout below, which states every
-// value it chose.
+// appears in `git diff` — is paid for by the notice below, which states every
+// value it chose and which applyTemplate prints.
 //
 // The synthesized pool is deliberately NOT what the recommender would suggest.
 // capacity_type is on_demand rather than spot_with_base and network_mode is
@@ -799,16 +805,18 @@ func synthesizeDefaultComputePool(envMap map[string]interface{}) {
 	}
 
 	// 5. Say what was done, with the numbers, in the migration runner's tone.
-	//    This print is the only place the synthesized pool is visible, so it
-	//    prints even when nothing was rewritten.
-	fmt.Printf("  → No compute pool defined; synthesizing pool \"default\" for %d EC2 workload(s)\n", len(units))
-	fmt.Printf("      instance_types:  %s\n", strings.Join(instanceTypes, ", "))
-	fmt.Printf("      capacity_type:   on_demand\n")
-	fmt.Printf("      network_mode:    %s\n", computeNetworkBridge)
-	fmt.Printf("      size:            min 1, max 6, target capacity 100\n")
+	//    This notice is the only place the synthesized pool is visible, so it
+	//    is recorded even when nothing was rewritten.
+	var notice strings.Builder
+	fmt.Fprintf(&notice, "  → No compute pool defined; synthesizing pool \"default\" for %d EC2 workload(s)\n", len(units))
+	fmt.Fprintf(&notice, "      instance_types:  %s\n", strings.Join(instanceTypes, ", "))
+	fmt.Fprintf(&notice, "      capacity_type:   on_demand\n")
+	fmt.Fprintf(&notice, "      network_mode:    %s\n", computeNetworkBridge)
+	fmt.Fprintf(&notice, "      size:            min 1, max 6, target capacity 100\n")
 	if rewritten < len(units) {
-		fmt.Printf("      note:            %d workload(s) already name a pool and were left alone\n", len(units)-rewritten)
+		fmt.Fprintf(&notice, "      note:            %d workload(s) already name a pool and were left alone\n", len(units)-rewritten)
 	}
+	addGenerateNotice(envMap, notice.String())
 }
 
 // computeSetString writes a string into a YAML node IN PLACE, whichever of the

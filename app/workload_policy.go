@@ -35,6 +35,7 @@ var workloadPolicyEffects = map[string]bool{"Allow": true, "Deny": true}
 // workloadPolicyOwner is one place a policy block can be written.
 type workloadPolicyOwner struct {
 	subject string // how the message names the owner: "workload", "services 'api'"
+	item    WarningItem
 	raw     interface{}
 }
 
@@ -52,11 +53,20 @@ type workloadPolicyOwner struct {
 // Every mapping is read through computeNodeMap, so a YAML decoded by yaml.v2
 // (map[interface{}]interface{}) is validated the same as a converted one.
 func validateWorkloadPolicyConfigMap(envMap map[string]interface{}) error {
-	var problems, warnings []string
+	var problems []string
+	var warnings []ConfigWarning
 	for _, owner := range workloadPolicyOwners(envMap) {
 		p, w := workloadPolicyProblems(owner.subject, owner.raw)
 		problems = append(problems, p...)
-		warnings = append(warnings, w...)
+		for _, detail := range w {
+			warnings = append(warnings, ConfigWarning{
+				Code:   warnCodePolicyWildcardAction,
+				Item:   owner.item,
+				Title:  `IAM policy grants every action ("*")`,
+				Detail: detail,
+				Docs:   docsLink("ai_docs/WORKLOAD_IAM.md"),
+			})
+		}
 	}
 
 	for _, w := range warnings {
@@ -75,11 +85,21 @@ func workloadPolicyOwners(envMap map[string]interface{}) []workloadPolicyOwner {
 
 	if workload, ok := computeNodeMap(envMap["workload"]); ok {
 		if raw, exists := workload["policy"]; exists {
-			owners = append(owners, workloadPolicyOwner{subject: "workload", raw: raw})
+			owners = append(owners, workloadPolicyOwner{
+				subject: "workload",
+				item:    workloadItem(WarningKindBackend, ""),
+				raw:     raw,
+			})
 		}
 	}
 
-	for _, list := range []string{"services", "scheduled_tasks", "event_processor_tasks"} {
+	lists := []struct{ key, kind string }{
+		{"services", WarningKindService},
+		{"scheduled_tasks", WarningKindScheduledTask},
+		{"event_processor_tasks", WarningKindEventTask},
+	}
+	for _, l := range lists {
+		list := l.key
 		items, ok := envMap[list].([]interface{})
 		if !ok {
 			continue
@@ -99,6 +119,7 @@ func workloadPolicyOwners(envMap map[string]interface{}) []workloadPolicyOwner {
 			}
 			owners = append(owners, workloadPolicyOwner{
 				subject: fmt.Sprintf("%s '%s'", list, name),
+				item:    workloadItem(l.kind, name),
 				raw:     raw,
 			})
 		}

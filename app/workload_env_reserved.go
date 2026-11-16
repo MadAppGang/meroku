@@ -135,7 +135,7 @@ func hasValkeyAccess(ctx workloadEnvContext) bool {
 type workloadEnvSource struct {
 	name  string // workload name
 	field string // YAML path of the map, for messages
-	kind  string // "backend", "service" or "task"
+	kind  string // a WarningKind: backend, service, scheduled_task or event_task
 	vars  []string
 }
 
@@ -144,17 +144,17 @@ func workloadEnvSources(envMap map[string]interface{}) []workloadEnvSource {
 	var out []workloadEnvSource
 	if workload, ok := yamlSubMap(envMap, "workload"); ok {
 		out = append(out, workloadEnvSource{
-			name: backendWorkloadName, field: "workload.backend_env_variables", kind: "backend",
+			name: backendWorkloadName, field: "workload.backend_env_variables", kind: WarningKindBackend,
 			vars: envVarNames(workload["backend_env_variables"]),
 		})
 	} else {
-		out = append(out, workloadEnvSource{name: backendWorkloadName, field: "workload.backend_env_variables", kind: "backend"})
+		out = append(out, workloadEnvSource{name: backendWorkloadName, field: "workload.backend_env_variables", kind: WarningKindBackend})
 	}
 
 	lists := []struct{ key, field, kind string }{
-		{"services", "env_vars", "service"},
-		{"scheduled_tasks", "environment_variables", "task"},
-		{"event_processor_tasks", "environment_variables", "task"},
+		{"services", "env_vars", WarningKindService},
+		{"scheduled_tasks", "environment_variables", WarningKindScheduledTask},
+		{"event_processor_tasks", "environment_variables", WarningKindEventTask},
 	}
 	for _, list := range lists {
 		items, _ := envMap[list.key].([]interface{})
@@ -210,11 +210,17 @@ func validateWorkloadReservedEnvConfigMap(envMap map[string]interface{}) error {
 	for _, src := range workloadEnvSources(envMap) {
 		ctx := workloadEnvContext{envMap: envMap, name: src.name}
 		for _, v := range src.vars {
-			if v == backendBucketEnvName && src.kind != "backend" {
+			if v == backendBucketEnvName && src.kind != WarningKindBackend {
 				ownBucket = append(ownBucket, src.name)
-				addGenerateWarning(envMap, fmt.Sprintf(
-					"%s sets %s. Its value is kept and meroku does not add its own; for every other workload %s now names the backend bucket, which this workload can also read and write.",
-					src.field, backendBucketEnvName, backendBucketEnvName))
+				addGenerateWarning(envMap, ConfigWarning{
+					Code:  warnCodeOwnBackendBucketEnv,
+					Item:  workloadItem(src.kind, src.name),
+					Title: fmt.Sprintf("%s sets its own %s", src.name, backendBucketEnvName),
+					Detail: fmt.Sprintf(
+						"%s sets %s. Its value is kept and meroku does not add its own; for every other workload %s now names the backend bucket, which this workload can also read and write.",
+						src.field, backendBucketEnvName, backendBucketEnvName),
+					Docs: docsLink("ai_docs/CONTAINER_ENV_AND_SSM.md"),
+				})
 				continue
 			}
 			for _, row := range table {

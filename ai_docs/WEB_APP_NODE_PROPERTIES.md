@@ -806,6 +806,48 @@ Stored per environment on the meroku host. Never reaches AWS.
 
 ---
 
+## Configuration warnings on nodes
+
+Not a stored property. The canvas reads `GET /api/config-warnings?env=` through
+`useConfigWarnings` (on env change, and 300 ms after the last successful save) and attaches each
+warning to the node of the YAML item it is about. Nothing here is saved or reaches AWS (class
+**UI**). The rules and codes are in [CONFIG_WARNINGS.md](./CONFIG_WARNINGS.md).
+
+| `item.kind` | Node id | Node |
+|---|---|---|
+| `backend` | `backend-service` | 7 `backend` |
+| `service` | `service-<name>` | 8 `service` |
+| `scheduled_task` | `scheduled-<name>` | 14 `scheduled-task` |
+| `event_task` | `event-<name>` | 13 `event-task` |
+| `amplify_app` | `amplify-<name>` | 23 `amplify` |
+| `compute_pool` | `ecs-cluster` | 6 `ecs` (every pool shares it) |
+| `valkey` | `valkey` | the `valkey` node |
+| `data_bucket` | `s3` | 11 `s3` |
+| `event_bus` | `eventbridge` | 12 `eventbridge` |
+| `env` | none | listed over the canvas |
+
+What each surface shows:
+
+- **Node.** A node with at least one warning gets the `border-warning` border, a count badge
+  (`data-testid="node-warning-badge"`) at the top of its top-left badge stack, and
+  `data-warning="true"`. `ServiceNode` sets the attribute on its root div and copies it onto the
+  React Flow wrapper (`rf__node-<id>`), because `reactflow` 11 passes no custom attributes from
+  node objects to the wrapper. The node's `aria-label` gains "N configuration warnings".
+- **Sidebar.** Selecting the node puts `ConfigWarningSection` (`data-testid="node-warnings"`)
+  above every tab: title, detail and docs link for each warning.
+- **Env-wide panel.** `EnvWarningsPanel` (`data-testid="env-warnings"`,
+  `aria-label="Environment warnings"`) sits top-centre over the canvas, rendered by
+  `DeploymentCanvas`. It lists `env` warnings, warnings whose node is hidden or not on the canvas
+  (an unnamed `#N` entry), warnings of a kind the UI does not know, and `configError` when
+  generate would refuse the YAML. It collapses to one line and is absent when empty.
+- **Status line.** `ConfigWarningsStatus` shows "N warnings" (`data-testid="config-warnings-status"`)
+  when the report has any; its popover lists all of them grouped by item.
+
+Only nodes of React Flow type `service` carry warnings; a warning for any other node goes to the
+env-wide panel. `region_drift` never reaches the web UI. The web UI has no deploy control.
+
+---
+
 ## Cross-cutting notes
 
 **Desired count drift.** Task definitions are ignored on redeploy, so CI/CD image pushes survive.

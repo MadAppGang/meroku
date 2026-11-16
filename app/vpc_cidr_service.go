@@ -542,40 +542,31 @@ func validateVPCCIDRMap(envName string, envMap map[string]interface{}) error {
 	return nil
 }
 
-// vpcCIDROverlapWarningText is the generate-time overlap warning for envMap
-// against siblings, with the AWS tip. "" when there is nothing to say.
-func vpcCIDROverlapWarningText(envName string, envMap map[string]interface{}, siblings []vpcCIDRUse) string {
+// vpcCIDROverlapWarning is the generate-time overlap warning for envMap
+// against siblings, with the AWS tip; ok is false when there is nothing to say.
+func vpcCIDROverlapWarning(envName string, envMap map[string]interface{}, siblings []vpcCIDRUse) (w ConfigWarning, ok bool) {
 	useDefault, _ := envMap["use_default_vpc"].(bool)
-	p, ok := parseVPCCIDRForOverlap(effectiveVPCCIDR(useDefault, stringFromMap(envMap, "vpc_cidr")))
-	if !ok {
-		return ""
+	p, parsed := parseVPCCIDRForOverlap(effectiveVPCCIDR(useDefault, stringFromMap(envMap, "vpc_cidr")))
+	if !parsed {
+		return ConfigWarning{}, false
 	}
 	warnings := vpcCIDROverlapWarnings(p, siblings)
 	if len(warnings) == 0 {
-		return ""
+		return ConfigWarning{}, false
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "\n⚠️  VPC range overlap\n\n")
 	for _, w := range warnings {
-		fmt.Fprintf(&b, "    %s\n", w.Message)
+		fmt.Fprintf(&b, "%s\n", w.Message)
 	}
 	fmt.Fprintf(&b, "\nOverlapping VPCs can never be peered or share a Transit Gateway. Fine if\n")
 	fmt.Fprintf(&b, "these environments will never be connected; otherwise give one of them a\n")
 	fmt.Fprintf(&b, "different range before it is deployed (`meroku vpc-cidr assign %s`).\n", envName)
-	fmt.Fprintf(&b, "Tip: `meroku vpc-cidr check %s --aws` also checks VPCs already in your AWS account.\n", envName)
-	return b.String()
-}
-
-// warnOnVPCCIDROverlap prints the sibling overlap warning during generation.
-// Offline: generation never calls AWS for this.
-func warnOnVPCCIDROverlap(envFile string, envMap map[string]interface{}) {
-	dir := filepath.Dir(envFile)
-	self := strings.TrimSuffix(filepath.Base(envFile), filepath.Ext(envFile))
-	siblings, err := siblingVPCCIDRUses(dir, self)
-	if err != nil {
-		return
-	}
-	if w := vpcCIDROverlapWarningText(self, envMap, siblings); w != "" {
-		fmt.Print(w)
-	}
+	fmt.Fprintf(&b, "Tip: `meroku vpc-cidr check %s --aws` also checks VPCs already in your AWS account.", envName)
+	return ConfigWarning{
+		Code:   warnCodeVPCCIDROverlap,
+		Item:   envItem(),
+		Title:  "VPC range overlaps another environment",
+		Detail: b.String(),
+		Docs:   docsLink("ai_docs/VPC_CIDR_ALLOCATION.md"),
+	}, true
 }

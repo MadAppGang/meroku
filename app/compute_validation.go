@@ -83,8 +83,8 @@ func (u computeUnitView) isEC2() bool { return u.runtime == computeRuntimeEC2 }
 //
 // It returns the first refusal rather than a list: the rules are independent,
 // the fix for each is a single edit, and one message a user reads to the end is
-// worth more than five they skim. Warnings (FR-53) are printed by
-// computeWarnings and never returned.
+// worth more than five they skim. Warnings are recorded with
+// addGenerateWarning and never returned.
 func validateComputeConfigMap(envMap map[string]interface{}) error {
 	pools := computePoolViews(envMap)
 	units := computeUnitViews(envMap)
@@ -102,7 +102,7 @@ func validateComputeConfigMap(envMap map[string]interface{}) error {
 	}
 
 	for _, w := range computeWarnings(envMap) {
-		fmt.Printf("⚠️  %s\n", w)
+		addGenerateWarning(envMap, w)
 	}
 	return nil
 }
@@ -421,7 +421,7 @@ func computeDefinedPoolsSentence(pools []computePoolView) string {
 
 // computeWarnings is FR-53: things worth saying that are not worth refusing.
 // They are returned rather than printed so that a test can read them.
-func computeWarnings(envMap map[string]interface{}) []string {
+func computeWarnings(envMap map[string]interface{}) []ConfigWarning {
 	pools := computePoolViews(envMap)
 	if len(pools) == 0 {
 		return nil
@@ -440,45 +440,67 @@ func computeWarnings(envMap map[string]interface{}) []string {
 		}
 	}
 
-	var out []string
+	var out []ConfigWarning
 	for _, p := range pools {
 		users := referenced[p.name]
 
 		// A pool nothing runs on still costs money the moment min_size is
 		// above zero.
 		if len(users) == 0 {
-			out = append(out, fmt.Sprintf(
-				"%s is referenced by no workload. Nothing will be placed on it, and it still runs "+
-					"min_size instances. Set workload.backend_compute_pool or a service's compute_pool to "+
-					"%q, or delete the pool.",
-				p.key(), p.name))
+			out = append(out, computePoolWarning(p, warnCodeComputePoolUnused,
+				fmt.Sprintf("Compute pool '%s' is used by no workload", p.name),
+				fmt.Sprintf(
+					"%s is referenced by no workload. Nothing will be placed on it, and it still runs "+
+						"min_size instances. Set workload.backend_compute_pool or a service's compute_pool to "+
+						"%q, or delete the pool.",
+					p.key(), p.name)))
 			continue
 		}
 
 		// Pure spot behind an ALB: an interruption can take the whole pool at
 		// once, because every instance in it is interruptible.
 		if p.capacityType == "spot" && p.onDemandBase == nil && albEnabled {
-			out = append(out, fmt.Sprintf(
-				"%s.capacity_type is \"spot\" with no on-demand base, and %s serves traffic through the "+
-					"ALB. A capacity rebalance can reclaim every instance in the pool at once, and the target "+
-					"group has nothing left to route to. Consider capacity_type: spot_with_base with "+
-					"on_demand_base: 1.",
-				p.key(), strings.Join(users, ", ")))
+			out = append(out, computePoolWarning(p, warnCodeComputePoolSpotWithoutBase,
+				fmt.Sprintf("Compute pool '%s' is Spot-only behind the ALB", p.name),
+				fmt.Sprintf(
+					"%s.capacity_type is \"spot\" with no on-demand base, and %s serves traffic through the "+
+						"ALB. A capacity rebalance can reclaim every instance in the pool at once, and the target "+
+						"group has nothing left to route to. Consider capacity_type: spot_with_base with "+
+						"on_demand_base: 1.",
+					p.key(), strings.Join(users, ", "))))
 		}
 
 		// The one path in this design no Fargate environment exercises: an
 		// EC2 service reached through API Gateway resolves via Cloud Map SRV
 		// records, because under bridge the host port is assigned dynamically.
 		if p.networkMode == computeNetworkBridge && !albEnabled {
-			out = append(out, fmt.Sprintf(
-				"%s uses network_mode: bridge and this environment has no ALB, so %s is reached through "+
-					"API Gateway over Cloud Map SRV records rather than A records — the dynamic host port "+
-					"makes SRV the only option. It is supported; it is called out because no Fargate "+
-					"environment exercises it.",
-				p.key(), strings.Join(users, ", ")))
+			out = append(out, computePoolWarning(p, warnCodeComputePoolBridgeSRV,
+				fmt.Sprintf("Compute pool '%s' is bridge-mode behind Cloud Map SRV", p.name),
+				fmt.Sprintf(
+					"%s uses network_mode: bridge and this environment has no ALB, so %s is reached through "+
+						"API Gateway over Cloud Map SRV records rather than A records — the dynamic host port "+
+						"makes SRV the only option. It is supported; it is called out because no Fargate "+
+						"environment exercises it.",
+					p.key(), strings.Join(users, ", "))))
 		}
 	}
 	return out
+}
+
+// computePoolWarning is a configuration warning about one compute pool. Every
+// title names the pool: all pools share one node in the web UI.
+func computePoolWarning(p computePoolView, code, title, detail string) ConfigWarning {
+	name := p.name
+	if name == "" {
+		name = fmt.Sprintf("#%d", p.index)
+	}
+	return ConfigWarning{
+		Code:   code,
+		Item:   workloadItem(WarningKindComputePool, name),
+		Title:  title,
+		Detail: detail,
+		Docs:   docsLink("ai_docs/EC2_COMPUTE_POOLS.md"),
+	}
 }
 
 func (p computePoolView) key() string {

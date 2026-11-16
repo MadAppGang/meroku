@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -223,7 +224,7 @@ func TestMigrateToV2(t *testing.T) {
 	}
 
 	// Apply v2 migration
-	err = migrateToV2(data)
+	err = migrateToV2(data, io.Discard)
 	if err != nil {
 		t.Fatalf("Migration to v2 failed: %v", err)
 	}
@@ -265,7 +266,7 @@ func TestMigrateToV3(t *testing.T) {
 	}
 
 	// Apply v3 migration
-	err = migrateToV3(data)
+	err = migrateToV3(data, io.Discard)
 	if err != nil {
 		t.Fatalf("Migration to v3 failed: %v", err)
 	}
@@ -300,7 +301,7 @@ func TestMigrateToV4(t *testing.T) {
 	}
 
 	// Apply v4 migration
-	err = migrateToV4(data)
+	err = migrateToV4(data, io.Discard)
 	if err != nil {
 		t.Fatalf("Migration to v4 failed: %v", err)
 	}
@@ -356,7 +357,7 @@ func TestMigrateToV5(t *testing.T) {
 	}
 
 	// Apply v5 migration
-	err = migrateToV5(data)
+	err = migrateToV5(data, io.Discard)
 	if err != nil {
 		t.Fatalf("Migration to v5 failed: %v", err)
 	}
@@ -387,7 +388,7 @@ func TestApplyMigrationsChain(t *testing.T) {
 	}
 
 	// Apply all migrations
-	err = applyMigrations(data, version)
+	err = applyMigrations(data, version, io.Discard)
 	if err != nil {
 		t.Fatalf("Migration chain failed: %v", err)
 	}
@@ -430,7 +431,7 @@ func TestMigrationIdempotency(t *testing.T) {
 	}
 
 	// First migration
-	err = applyMigrations(data1, 1)
+	err = applyMigrations(data1, 1, io.Discard)
 	if err != nil {
 		t.Fatalf("First migration failed: %v", err)
 	}
@@ -449,7 +450,7 @@ func TestMigrationIdempotency(t *testing.T) {
 	}
 
 	version := detectSchemaVersion(data2)
-	err = applyMigrations(data2, version)
+	err = applyMigrations(data2, version, io.Discard)
 	if err != nil {
 		t.Fatalf("Second migration failed: %v", err)
 	}
@@ -581,7 +582,7 @@ workload:
 	originalUsername := postgres["username"]
 
 	// Apply migrations
-	err = applyMigrations(data, 1)
+	err = applyMigrations(data, 1, io.Discard)
 	if err != nil {
 		t.Fatalf("Migration failed: %v", err)
 	}
@@ -622,7 +623,7 @@ func TestMigrateV8ToV9_Services(t *testing.T) {
 		},
 	}
 
-	err := migrateV8ToV9(data)
+	err := migrateV8ToV9(data, io.Discard)
 	if err != nil {
 		t.Fatalf("Migration failed: %v", err)
 	}
@@ -667,7 +668,7 @@ func TestMigrateV8ToV9_EventProcessorTasks(t *testing.T) {
 		},
 	}
 
-	err := migrateV8ToV9(data)
+	err := migrateV8ToV9(data, io.Discard)
 	if err != nil {
 		t.Fatalf("Migration failed: %v", err)
 	}
@@ -698,7 +699,7 @@ func TestMigrateV8ToV9_ScheduledTasks(t *testing.T) {
 		},
 	}
 
-	err := migrateV8ToV9(data)
+	err := migrateV8ToV9(data, io.Discard)
 	if err != nil {
 		t.Fatalf("Migration failed: %v", err)
 	}
@@ -737,7 +738,7 @@ func TestMigrateV8ToV9_AllTypes(t *testing.T) {
 		},
 	}
 
-	err := migrateV8ToV9(data)
+	err := migrateV8ToV9(data, io.Discard)
 	if err != nil {
 		t.Fatalf("Migration failed: %v", err)
 	}
@@ -779,7 +780,7 @@ func TestMigrateV8ToV9_ExistingConfig(t *testing.T) {
 		},
 	}
 
-	err := migrateV8ToV9(data)
+	err := migrateV8ToV9(data, io.Discard)
 	if err != nil {
 		t.Fatalf("Migration failed: %v", err)
 	}
@@ -809,7 +810,7 @@ func TestMigrateV8ToV9_EmptyArrays(t *testing.T) {
 		"scheduled_tasks":       []interface{}{},
 	}
 
-	err := migrateV8ToV9(data)
+	err := migrateV8ToV9(data, io.Discard)
 	if err != nil {
 		t.Fatalf("Migration failed on empty arrays: %v", err)
 	}
@@ -822,7 +823,7 @@ func TestMigrateV8ToV9_MissingArrays(t *testing.T) {
 		"env":     "dev",
 	}
 
-	err := migrateV8ToV9(data)
+	err := migrateV8ToV9(data, io.Discard)
 	if err != nil {
 		t.Fatalf("Migration failed on missing arrays: %v", err)
 	}
@@ -834,7 +835,7 @@ func TestMigrateV8ToV9_InvalidData(t *testing.T) {
 		"services": "not-an-array", // Invalid type
 	}
 
-	err := migrateV8ToV9(data)
+	err := migrateV8ToV9(data, io.Discard)
 	if err != nil {
 		t.Fatalf("Migration should handle invalid data gracefully: %v", err)
 	}
@@ -901,7 +902,7 @@ func TestMigrateToV11_MissingHostPort(t *testing.T) {
 		},
 	}
 
-	err := migrateToV11(data)
+	err := migrateToV11(data, io.Discard)
 	if err != nil {
 		t.Fatalf("Migration failed: %v", err)
 	}
@@ -931,7 +932,7 @@ func TestMigrateToV11_MismatchedHostPort(t *testing.T) {
 		},
 	}
 
-	err := migrateToV11(data)
+	err := migrateToV11(data, io.Discard)
 	if err != nil {
 		t.Fatalf("Migration failed: %v", err)
 	}
@@ -956,7 +957,7 @@ func TestMigrateToV11_AlreadyMatching(t *testing.T) {
 		},
 	}
 
-	err := migrateToV11(data)
+	err := migrateToV11(data, io.Discard)
 	if err != nil {
 		t.Fatalf("Migration failed: %v", err)
 	}
@@ -976,7 +977,7 @@ func TestMigrateToV11_NoServices(t *testing.T) {
 		"env":     "dev",
 	}
 
-	err := migrateToV11(data)
+	err := migrateToV11(data, io.Discard)
 	if err != nil {
 		t.Fatalf("Migration should handle missing services gracefully: %v", err)
 	}
@@ -988,7 +989,7 @@ func TestMigrateToV11_EmptyServices(t *testing.T) {
 		"services": []interface{}{},
 	}
 
-	err := migrateToV11(data)
+	err := migrateToV11(data, io.Discard)
 	if err != nil {
 		t.Fatalf("Migration should handle empty services array: %v", err)
 	}
@@ -1005,7 +1006,7 @@ func TestMigrateToV11_NoContainerPort(t *testing.T) {
 		},
 	}
 
-	err := migrateToV11(data)
+	err := migrateToV11(data, io.Discard)
 	if err != nil {
 		t.Fatalf("Migration should handle missing container_port gracefully: %v", err)
 	}
@@ -1049,7 +1050,7 @@ func TestMigrateToV21_AddsEmptyJWKSURI(t *testing.T) {
 		},
 	}
 
-	if err := migrateToV21(data); err != nil {
+	if err := migrateToV21(data, io.Discard); err != nil {
 		t.Fatalf("migrateToV21: %v", err)
 	}
 
@@ -1080,7 +1081,7 @@ func TestMigrateToV21_PreservesConfiguredJWKSURI(t *testing.T) {
 		},
 	}
 
-	if err := migrateToV21(data); err != nil {
+	if err := migrateToV21(data, io.Discard); err != nil {
 		t.Fatalf("migrateToV21: %v", err)
 	}
 
@@ -1099,7 +1100,7 @@ func TestMigrateToV21_PreservesConfiguredJWKSURI(t *testing.T) {
 func TestMigrateToV21_NoAppSyncSection(t *testing.T) {
 	data := map[string]interface{}{"project": "test"}
 
-	if err := migrateToV21(data); err != nil {
+	if err := migrateToV21(data, io.Discard); err != nil {
 		t.Fatalf("migration should be a no-op without pubsub_appsync: %v", err)
 	}
 	if _, exists := data["pubsub_appsync"]; exists {
@@ -1110,7 +1111,7 @@ func TestMigrateToV21_NoAppSyncSection(t *testing.T) {
 func TestMigrateToV21_InvalidShape(t *testing.T) {
 	data := map[string]interface{}{"pubsub_appsync": "not a map"}
 
-	if err := migrateToV21(data); err != nil {
+	if err := migrateToV21(data, io.Discard); err != nil {
 		t.Fatalf("migration should handle a malformed section gracefully: %v", err)
 	}
 }
@@ -1124,7 +1125,7 @@ func TestMigrateToV21_Idempotent(t *testing.T) {
 	}
 
 	for i := 0; i < 3; i++ {
-		if err := migrateToV21(data); err != nil {
+		if err := migrateToV21(data, io.Discard); err != nil {
 			t.Fatalf("run %d: %v", i, err)
 		}
 	}
@@ -1193,7 +1194,7 @@ func v22AutoDeployOf(t *testing.T, data map[string]interface{}, key, name string
 func TestMigrateToV22_DevDefaultsToTrue(t *testing.T) {
 	data := v22Fixture("dev")
 
-	if err := migrateToV22(data); err != nil {
+	if err := migrateToV22(data, io.Discard); err != nil {
 		t.Fatalf("migrateToV22: %v", err)
 	}
 
@@ -1220,7 +1221,7 @@ func TestMigrateToV22_ProductionDefaultsToFalse(t *testing.T) {
 	for _, env := range []string{"prod", "production"} {
 		data := v22Fixture(env)
 
-		if err := migrateToV22(data); err != nil {
+		if err := migrateToV22(data, io.Discard); err != nil {
 			t.Fatalf("env %s: %v", env, err)
 		}
 
@@ -1245,7 +1246,7 @@ func TestMigrateToV22_NonProductionKeepsAutoDeploy(t *testing.T) {
 	for _, env := range []string{"staging", "qa", "uat", "preview"} {
 		data := v22Fixture(env)
 
-		if err := migrateToV22(data); err != nil {
+		if err := migrateToV22(data, io.Discard); err != nil {
 			t.Fatalf("env %s: %v", env, err)
 		}
 
@@ -1269,7 +1270,7 @@ func TestMigrateToV22_NonProductionKeepsAutoDeploy(t *testing.T) {
 func TestMigrateToV22_WritesTheKeyExplicitly(t *testing.T) {
 	data := v22Fixture("prod")
 
-	if err := migrateToV22(data); err != nil {
+	if err := migrateToV22(data, io.Discard); err != nil {
 		t.Fatalf("migrateToV22: %v", err)
 	}
 
@@ -1299,7 +1300,7 @@ func TestMigrateToV22_PreservesExistingValues(t *testing.T) {
 	data["services"].([]interface{})[0].(map[interface{}]interface{})["auto_deploy"] = true
 	data["scheduled_tasks"].([]interface{})[0].(map[interface{}]interface{})["auto_deploy"] = true
 
-	if err := migrateToV22(data); err != nil {
+	if err := migrateToV22(data, io.Discard); err != nil {
 		t.Fatalf("migrateToV22: %v", err)
 	}
 
@@ -1325,7 +1326,7 @@ func TestMigrateToV22_PreservesExplicitFalseInDev(t *testing.T) {
 	data := v22Fixture("dev")
 	data["services"].([]interface{})[1].(map[interface{}]interface{})["auto_deploy"] = false
 
-	if err := migrateToV22(data); err != nil {
+	if err := migrateToV22(data, io.Discard); err != nil {
 		t.Fatalf("migrateToV22: %v", err)
 	}
 
@@ -1341,7 +1342,7 @@ func TestMigrateToV22_Idempotent(t *testing.T) {
 	data := v22Fixture("prod")
 
 	for i := 0; i < 3; i++ {
-		if err := migrateToV22(data); err != nil {
+		if err := migrateToV22(data, io.Discard); err != nil {
 			t.Fatalf("run %d: %v", i, err)
 		}
 	}
@@ -1362,7 +1363,7 @@ func TestMigrateToV22_DoesNotTouchEnabled(t *testing.T) {
 	data := v22Fixture("dev")
 	data["services"].([]interface{})[0].(map[interface{}]interface{})["enabled"] = false
 
-	if err := migrateToV22(data); err != nil {
+	if err := migrateToV22(data, io.Discard); err != nil {
 		t.Fatalf("migrateToV22: %v", err)
 	}
 
@@ -1383,7 +1384,7 @@ func TestMigrateToV22_SkipsEventProcessorTasks(t *testing.T) {
 		map[interface{}]interface{}{"name": "on-upload"},
 	}
 
-	if err := migrateToV22(data); err != nil {
+	if err := migrateToV22(data, io.Discard); err != nil {
 		t.Fatalf("migrateToV22: %v", err)
 	}
 
@@ -1400,7 +1401,7 @@ func TestMigrateToV22_HandlesMissingSections(t *testing.T) {
 		"nil services":      {"env": "dev", "services": nil},
 		"services not list": {"env": "dev", "services": "oops"},
 	} {
-		if err := migrateToV22(data); err != nil {
+		if err := migrateToV22(data, io.Discard); err != nil {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
@@ -1421,7 +1422,7 @@ func TestMigrateToV22_MissingEnvIsNotProduction(t *testing.T) {
 		"services": []interface{}{map[interface{}]interface{}{"name": "api"}},
 	}
 
-	if err := migrateToV22(data); err != nil {
+	if err := migrateToV22(data, io.Discard); err != nil {
 		t.Fatalf("migrateToV22: %v", err)
 	}
 
@@ -1475,7 +1476,7 @@ func TestMigrateToV23_EnabledAppSyncKeepsItsAPIKey(t *testing.T) {
 		},
 	}
 
-	if err := migrateToV23(data); err != nil {
+	if err := migrateToV23(data, io.Discard); err != nil {
 		t.Fatalf("migrateToV23: %v", err)
 	}
 
@@ -1506,7 +1507,7 @@ func TestMigrateToV23_DisabledAppSyncGetsNoAPIKey(t *testing.T) {
 		},
 	}
 
-	if err := migrateToV23(data); err != nil {
+	if err := migrateToV23(data, io.Discard); err != nil {
 		t.Fatalf("migrateToV23: %v", err)
 	}
 
@@ -1533,7 +1534,7 @@ func TestMigrateToV23_InfersLambdaModeRegardlessOfAuthLambdaFlag(t *testing.T) {
 			},
 		}
 
-		if err := migrateToV23(data); err != nil {
+		if err := migrateToV23(data, io.Discard); err != nil {
 			t.Fatalf("auth_lambda=%v: %v", authLambda, err)
 		}
 
@@ -1556,7 +1557,7 @@ func TestMigrateToV23_NeverOverwritesExistingValues(t *testing.T) {
 		},
 	}
 
-	if err := migrateToV23(data); err != nil {
+	if err := migrateToV23(data, io.Discard); err != nil {
 		t.Fatalf("migrateToV23: %v", err)
 	}
 
@@ -1577,7 +1578,7 @@ func TestMigrateToV23_Idempotent(t *testing.T) {
 	}
 
 	for i := 0; i < 3; i++ {
-		if err := migrateToV23(data); err != nil {
+		if err := migrateToV23(data, io.Discard); err != nil {
 			t.Fatalf("run %d: %v", i, err)
 		}
 	}
@@ -1599,7 +1600,7 @@ func TestMigrateToV23_DoesNotAddOIDCFields(t *testing.T) {
 		"pubsub_appsync": map[interface{}]interface{}{"enabled": true},
 	}
 
-	if err := migrateToV23(data); err != nil {
+	if err := migrateToV23(data, io.Discard); err != nil {
 		t.Fatalf("migrateToV23: %v", err)
 	}
 
@@ -1617,14 +1618,14 @@ func TestMigrateToV23_HandlesMissingAndMalformedSections(t *testing.T) {
 		"nil appsync":        {"pubsub_appsync": nil},
 		"appsync not a map":  {"pubsub_appsync": "oops"},
 	} {
-		if err := migrateToV23(data); err != nil {
+		if err := migrateToV23(data, io.Discard); err != nil {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
 
 	// And it must not invent a section that was not there.
 	data := map[string]interface{}{"project": "test"}
-	if err := migrateToV23(data); err != nil {
+	if err := migrateToV23(data, io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	if _, exists := data["pubsub_appsync"]; exists {
@@ -1704,7 +1705,7 @@ func TestMigrateToV24_MovesValueOntoCorrectKey(t *testing.T) {
 		},
 	}
 
-	if err := migrateToV24(data); err != nil {
+	if err := migrateToV24(data, io.Discard); err != nil {
 		t.Fatalf("migrateToV24: %v", err)
 	}
 
@@ -1732,7 +1733,7 @@ func TestMigrateToV24_IsIdempotent(t *testing.T) {
 	}
 
 	for i := 0; i < 3; i++ {
-		if err := migrateToV24(data); err != nil {
+		if err := migrateToV24(data, io.Discard); err != nil {
 			t.Fatalf("migrateToV24 run %d: %v", i, err)
 		}
 	}
@@ -1758,7 +1759,7 @@ func TestMigrateToV24_DropsEmptyMisspeltKey(t *testing.T) {
 		},
 	}
 
-	if err := migrateToV24(data); err != nil {
+	if err := migrateToV24(data, io.Discard); err != nil {
 		t.Fatalf("migrateToV24: %v", err)
 	}
 
@@ -1782,7 +1783,7 @@ func TestMigrateToV24_PrefersTheDeployedValueWhenBothExist(t *testing.T) {
 		},
 	}
 
-	if err := migrateToV24(data); err != nil {
+	if err := migrateToV24(data, io.Discard); err != nil {
 		t.Fatalf("migrateToV24: %v", err)
 	}
 
@@ -1808,7 +1809,7 @@ func TestMigrateToV24_FillsAnEmptyCorrectKey(t *testing.T) {
 		},
 	}
 
-	if err := migrateToV24(data); err != nil {
+	if err := migrateToV24(data, io.Discard); err != nil {
 		t.Fatalf("migrateToV24: %v", err)
 	}
 
@@ -1828,7 +1829,7 @@ func TestMigrateToV24_ToleratesMissingOrOddCognito(t *testing.T) {
 			"dashboard_callback_urls": []interface{}{"https://jwt.io"},
 		}},
 	} {
-		if err := migrateToV24(data); err != nil {
+		if err := migrateToV24(data, io.Discard); err != nil {
 			t.Errorf("%s: %v", name, err)
 		}
 	}

@@ -1,5 +1,19 @@
 # Changelog
 
+## v6.6.0
+
+### Configuration warnings in the web UI and before a deploy
+- The warnings `meroku generate` prints (a service with no health check, an unused compute pool,
+  a policy with a wildcard action, an overlapping VPC range and the rest) are now shown where the
+  problem is. Generate still prints them in the same text and carries on.
+- Web UI: the item with a warning is painted orange with a count badge, its sidebar lists the
+  warnings with a "How to fix this" link, warnings that belong to no node are listed over the
+  canvas, and the status line counts them. They refresh after each save.
+- TUI: main-menu Deploy shows the warnings first, with "Cancel and fix" (the default) and
+  "Proceed anyway", before anything is migrated or generated. Without a terminal, or with `CI`
+  set, the warnings are printed and the deploy runs as before.
+- New endpoint `GET /api/config-warnings?env=`. Docs: `ai_docs/CONFIG_WARNINGS.md`.
+
 ## v6.5.0
 
 ### HMAC keys in KMS

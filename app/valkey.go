@@ -90,8 +90,14 @@ func validateValkeyConfigMap(envMap map[string]interface{}) error {
 		case workloadReferenceKnown:
 			access = append(access, w)
 		case workloadReferenceDisabled:
-			addGenerateWarning(envMap, fmt.Sprintf(
-				"valkey.access lists %q, which is switched off (enabled: false); it cannot reach Valkey until it is switched on", w))
+			addGenerateWarning(envMap, ConfigWarning{
+				Code:  warnCodeValkeyAccessDisabledWorkload,
+				Item:  workloadItem(WarningKindValkey, ""),
+				Title: "valkey.access lists a switched-off workload",
+				Detail: fmt.Sprintf(
+					"valkey.access lists %q, which is switched off (enabled: false); it cannot reach Valkey until it is switched on", w),
+				Docs: docsLink("ai_docs/VALKEY.md"),
+			})
 		default:
 			problems = append(problems, fmt.Sprintf(
 				"valkey.access lists %q, which is not a workload; use backend or the name of a service, scheduled task or event task", w))
@@ -104,8 +110,13 @@ func validateValkeyConfigMap(envMap map[string]interface{}) error {
 	}
 
 	if len(access) == 0 {
-		addGenerateWarning(envMap,
-			"valkey is enabled but valkey.access lists no workload, so nothing can connect to it; add the workloads that use it, or set enabled: false to stop paying for it")
+		addGenerateWarning(envMap, ConfigWarning{
+			Code:   warnCodeValkeyNoAccess,
+			Item:   workloadItem(WarningKindValkey, ""),
+			Title:  "Valkey is enabled but nothing can reach it",
+			Detail: "valkey is enabled but valkey.access lists no workload, so nothing can connect to it; add the workloads that use it, or set enabled: false to stop paying for it",
+			Docs:   docsLink("ai_docs/VALKEY.md"),
+		})
 	}
 
 	envMap[valkeyKey] = map[string]interface{}{

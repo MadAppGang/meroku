@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"io"
+)
 
 // Network access values for services[].network_access (schema v30).
 //
@@ -36,18 +39,18 @@ var NetworkAccessValues = []string{
 // web UI before the file was migrated — keeps it.
 //
 // The version is not set here. applyMigrations owns schema_version.
-func migrateToV30(data map[string]interface{}) error {
-	fmt.Println("  → Migrating to v30: Pinning existing services to network_access: full_open")
+func migrateToV30(data map[string]interface{}, out io.Writer) error {
+	fmt.Fprintln(out, "  → Migrating to v30: Pinning existing services to network_access: full_open")
 
 	servicesRaw, exists := data["services"]
 	if !exists || servicesRaw == nil {
-		fmt.Println("    ℹ️  No services to migrate")
+		fmt.Fprintln(out, "    ℹ️  No services to migrate")
 		return nil
 	}
 
 	services, ok := servicesRaw.([]interface{})
 	if !ok {
-		fmt.Println("    ⚠️  services is not an array, skipping")
+		fmt.Fprintln(out, "    ⚠️  services is not an array, skipping")
 		return nil
 	}
 
@@ -62,17 +65,17 @@ func migrateToV30(data map[string]interface{}) error {
 		}
 		stamped++
 		if name := service.stringValue("name"); name != "" {
-			fmt.Printf("    ✓ service '%s': Set network_access to full_open (current behaviour, no infrastructure change)\n", name)
+			fmt.Fprintf(out, "    ✓ service '%s': Set network_access to full_open (current behaviour, no infrastructure change)\n", name)
 		}
 	}
 
 	switch {
 	case len(services) == 0:
-		fmt.Println("    ℹ️  No services to migrate")
+		fmt.Fprintln(out, "    ℹ️  No services to migrate")
 	case stamped == 0:
-		fmt.Println("    ℹ️  Every service already has a network_access")
+		fmt.Fprintln(out, "    ℹ️  Every service already has a network_access")
 	default:
-		fmt.Printf("    ✓ Pinned %d service(s) to full_open. Set network_access: public to stop exposing the container port directly.\n", stamped)
+		fmt.Fprintf(out, "    ✓ Pinned %d service(s) to full_open. Set network_access: public to stop exposing the container port directly.\n", stamped)
 	}
 	return nil
 }

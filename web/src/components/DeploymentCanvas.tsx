@@ -28,11 +28,13 @@ import {
 import { defaultNodePositions } from "../config/defaultNodePositions";
 import type { PricingResponse } from "../hooks/use-pricing";
 import type { ComponentNode } from "../types";
+import type { ConfigWarning } from "../types/configWarnings";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import {
 	generateAdditionalServiceNodes,
 	updateEcsClusterGroup,
 } from "../utils/additionalServicesNodes";
+import { warningCountLabel, warningsByNode } from "../utils/configWarnings";
 import { generateHiddenComponentNodes } from "../utils/hiddenComponentsNodes";
 import { layoutNodesWithGroups } from "../utils/layoutUtils";
 import {
@@ -44,6 +46,7 @@ import { CanvasControls } from "./CanvasControls";
 import { CustomEdge } from "./CustomEdge";
 import { DynamicGroupNode } from "./DynamicGroupNode";
 import { EdgeHandleSelector } from "./EdgeHandleSelector";
+import { EnvWarningsPanel } from "./EnvWarningsPanel";
 import { GroupNode } from "./GroupNode";
 import { ServiceNode } from "./ServiceNode";
 
@@ -60,7 +63,13 @@ interface DeploymentCanvasProps {
 	onManageCustomTerraform?: () => void;
 	onDeleteNode?: (nodeId: string, nodeType: string, name?: string) => void;
 	pricing?: PricingResponse | null;
+	/** Every configuration warning for the environment, in server order. */
+	warnings?: readonly ConfigWarning[];
+	/** Set when `meroku generate` would refuse the environment's YAML. */
+	configError?: string;
 }
+
+const NO_WARNINGS: readonly ConfigWarning[] = [];
 
 const nodeTypes = {
 	service: ServiceNode,
@@ -610,6 +619,8 @@ export function DeploymentCanvas({
 	onManageCustomTerraform,
 	onDeleteNode,
 	pricing,
+	warnings = NO_WARNINGS,
+	configError,
 }: DeploymentCanvasProps) {
 	const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 	const [savedPositions, setSavedPositions] = React.useState<
@@ -999,9 +1010,11 @@ export function DeploymentCanvas({
 		setEdgeSelectorPosition({ x: event.clientX, y: event.clientY });
 	}, []);
 
-	// Update nodes to show selection state and apply config-based states
-	const nodesWithSelection = useMemo(() => {
-		return nodes
+	// Update nodes to show selection state and apply config-based states.
+	// Warnings go on the visible node they are about; the rest are unplaced
+	// and listed over the canvas.
+	const { nodesWithSelection, unplacedWarnings } = useMemo(() => {
+		const visibleNodes = nodes
 			.map((node) => {
 				// Apply configuration-based state
 				const isEnabled = getNodeState(node.id, config || null);
@@ -1031,7 +1044,26 @@ export function DeploymentCanvas({
 				}
 				return true;
 			});
-	}, [nodes, selectedNode, config, showInactive, pricing]);
+
+		const { byNode, unplaced } = warningsByNode(
+			warnings,
+			new Set(
+				visibleNodes
+					.filter((node) => node.type === "service")
+					.map((node) => node.id),
+			),
+		);
+		const withWarnings = visibleNodes.map((node) => {
+			const nodeWarnings = byNode.get(node.id);
+			if (!nodeWarnings) return node;
+			return {
+				...node,
+				ariaLabel: `${node.data.name}, ${warningCountLabel(nodeWarnings.length, "configuration warning")}`,
+				data: { ...node.data, warnings: nodeWarnings },
+			};
+		});
+		return { nodesWithSelection: withWarnings, unplacedWarnings: unplaced };
+	}, [nodes, selectedNode, config, showInactive, pricing, warnings]);
 
 	// Update edges to show dimmed state when connected to disabled nodes
 	const edgesWithState = useMemo(() => {
@@ -1236,6 +1268,19 @@ export function DeploymentCanvas({
 					onManageCustomTerraform={handleManageCustomTerraform}
 				/>
 			</ReactFlow>
+
+			{/* Environment-wide warnings, visible without selecting a node */}
+			{(unplacedWarnings.length > 0 || configError) && (
+				<div className="pointer-events-none absolute inset-x-0 top-4 z-30 flex justify-center px-20">
+					<div className="pointer-events-auto w-full max-w-md">
+						<EnvWarningsPanel
+							key={environmentName}
+							warnings={unplacedWarnings}
+							configError={configError}
+						/>
+					</div>
+				</div>
+			)}
 
 			{/* Edge Handle Selector */}
 			{selectedEdge && edgeSelectorPosition && (

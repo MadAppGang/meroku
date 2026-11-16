@@ -66,6 +66,9 @@ func mainRouter() http.Handler {
 	// VPC range: validation, overlap report and free-range suggestions
 	mux.HandleFunc("/api/vpc-cidr", corsMiddleware(getVPCCIDRReport))
 
+	// Configuration warnings: what generate would warn about, per env
+	mux.HandleFunc("/api/config-warnings", corsMiddleware(getConfigWarnings))
+
 	// Neon: live choices for the Neon panels. No CORS: only a loopback
 	// client with a loopback Host and Origin is answered (see api_neon.go).
 	mux.HandleFunc("/api/neon/lookup", getNeonLookup)

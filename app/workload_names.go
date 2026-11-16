@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 )
 
@@ -163,20 +162,41 @@ func resolveWorkloadReference(envMap map[string]interface{}, name string) worklo
 	return workloadReferenceUnknown
 }
 
-// generateWarningsKey is the envMap key holding warnings found while
-// preprocessing. applyTemplate prints them; render tests read them.
+// generateWarningsKey is the envMap key holding the configuration warnings
+// found while preprocessing. configWarnings reads them; render tests read
+// them through generateWarnings.
 const generateWarningsKey = "_generate_warnings"
 
-// addGenerateWarning records a warning for applyTemplate to print.
-func addGenerateWarning(envMap map[string]interface{}, warning string) {
-	existing, _ := envMap[generateWarningsKey].([]string)
+// generateNoticesKey is the envMap key holding notices found while
+// preprocessing: what generate did on the user's behalf, printed by
+// applyTemplate and never shown as a warning.
+const generateNoticesKey = "_generate_notices"
+
+// addGenerateWarning records a configuration warning. Validators record
+// warnings here and never print them.
+func addGenerateWarning(envMap map[string]interface{}, warning ConfigWarning) {
+	existing, _ := envMap[generateWarningsKey].([]ConfigWarning)
 	envMap[generateWarningsKey] = append(existing, warning)
 }
 
-// generateWarnings returns the warnings recorded while preprocessing, sorted.
-func generateWarnings(envMap map[string]interface{}) []string {
-	warnings, _ := envMap[generateWarningsKey].([]string)
-	out := append([]string(nil), warnings...)
-	sort.Strings(out)
+// generateWarnings returns a sorted copy of the warnings recorded while
+// preprocessing.
+func generateWarnings(envMap map[string]interface{}) []ConfigWarning {
+	warnings, _ := envMap[generateWarningsKey].([]ConfigWarning)
+	out := append([]ConfigWarning(nil), warnings...)
+	sortConfigWarnings(out)
 	return out
+}
+
+// addGenerateNotice records a notice for applyTemplate to print.
+func addGenerateNotice(envMap map[string]interface{}, notice string) {
+	existing, _ := envMap[generateNoticesKey].([]string)
+	envMap[generateNoticesKey] = append(existing, notice)
+}
+
+// generateNotices returns the notices recorded while preprocessing, in the
+// order they were recorded.
+func generateNotices(envMap map[string]interface{}) []string {
+	notices, _ := envMap[generateNoticesKey].([]string)
+	return append([]string(nil), notices...)
 }

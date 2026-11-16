@@ -36,7 +36,7 @@ func parseECRImageURI(uri string) (account, region, repo string, ok bool) {
 // role is created, so there is nothing to warn about.
 // Returned rather than printed so that a test can read them, like
 // computeWarnings.
-func githubExternalImageWarnings(envMap map[string]interface{}) []string {
+func githubExternalImageWarnings(envMap map[string]interface{}) []ConfigWarning {
 	workload, ok := yamlSubMap(envMap, "workload")
 	if !ok {
 		return nil
@@ -64,8 +64,13 @@ func githubExternalImageWarnings(envMap map[string]interface{}) []string {
 		return nil
 	}
 
-	return []string{fmt.Sprintf(
-		"workload.backend_external_docker_image: CI cannot push to %s; set github_push_external_image if CI builds this image",
-		repo,
-	)}
+	return []ConfigWarning{{
+		Code:  warnCodeBackendExternalImage,
+		Item:  workloadItem(WarningKindBackend, ""),
+		Title: "CI cannot push the external backend image",
+		Detail: fmt.Sprintf(
+			"workload.backend_external_docker_image: CI cannot push to %s; set github_push_external_image if CI builds this image",
+			repo,
+		),
+	}}
 }

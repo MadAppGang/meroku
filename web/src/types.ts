@@ -1,4 +1,5 @@
 import type { PricingResponse } from "./hooks/use-pricing";
+import type { ConfigWarning } from "./types/configWarnings";
 import type { ComputeRuntime } from "./types/yamlConfig";
 
 export interface ComponentNode {
@@ -75,6 +76,8 @@ export interface ComponentNode {
 	disabled?: boolean;
 	configProperties?: NodeConfigValues;
 	pricing?: PricingResponse | null;
+	/** Configuration warnings about this node's item; absent or empty when none. */
+	warnings?: ConfigWarning[];
 }
 
 /**

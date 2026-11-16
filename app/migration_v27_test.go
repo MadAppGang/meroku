@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"strings"
 	"testing"
 )
@@ -26,7 +27,7 @@ func TestV27IsRegistered(t *testing.T) {
 func TestMigrateToV27_DefaultsToPublicIP(t *testing.T) {
 	doc := map[string]interface{}{"project": "demo"}
 
-	if err := migrateToV27(doc); err != nil {
+	if err := migrateToV27(doc, io.Discard); err != nil {
 		t.Fatalf("migrateToV27: %v", err)
 	}
 
@@ -44,7 +45,7 @@ func TestMigrateToV27_IsIdempotent(t *testing.T) {
 	// A re-run, or a file someone already set by hand, must not be overwritten.
 	doc := map[string]interface{}{"egress_strategy": string(EgressNATGatewayHA)}
 
-	if err := migrateToV27(doc); err != nil {
+	if err := migrateToV27(doc, io.Discard); err != nil {
 		t.Fatalf("migrateToV27: %v", err)
 	}
 
@@ -56,7 +57,7 @@ func TestMigrateToV27_IsIdempotent(t *testing.T) {
 func TestMigrateToV27_DefaultVPCStillGetsPublicIP(t *testing.T) {
 	doc := map[string]interface{}{"use_default_vpc": true}
 
-	if err := migrateToV27(doc); err != nil {
+	if err := migrateToV27(doc, io.Discard); err != nil {
 		t.Fatalf("migrateToV27: %v", err)
 	}
 

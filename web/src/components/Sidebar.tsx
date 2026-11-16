@@ -36,6 +36,7 @@ import {
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { AccountInfo } from "../api/infrastructure";
 import type { ComponentNode } from "../types";
+import type { ConfigWarning } from "../types/configWarnings";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import { ALBNodeProperties } from "./ALBNodeProperties";
 import { ALBRoutingRules } from "./ALBRoutingRules";
@@ -60,6 +61,7 @@ import { BackendSSHAccess } from "./BackendSSHAccess";
 import { BackendXRayConfiguration } from "./BackendXRayConfiguration";
 import { CloudFrontNodeProperties } from "./CloudFrontNodeProperties";
 import { ComputePoolProperties } from "./ComputePoolProperties";
+import { ConfigWarningSection } from "./ConfigWarningList";
 import { DataBucketProperties } from "./DataBucketProperties";
 import { ECRNodeProperties } from "./ECRNodeProperties";
 import { ECRPushInstructions } from "./ECRPushInstructions";
@@ -122,7 +124,11 @@ interface SidebarProps {
 	onConfigChange?: (config: Partial<YamlInfrastructureConfig>) => void;
 	accountInfo?: AccountInfo;
 	onDeleteNode?: (nodeId: string, nodeType: string, name?: string) => void;
+	/** Configuration warnings about the selected node, shown above every tab. */
+	warnings?: readonly ConfigWarning[];
 }
+
+const NO_WARNINGS: readonly ConfigWarning[] = [];
 
 export function Sidebar({
 	selectedNode,
@@ -132,6 +138,7 @@ export function Sidebar({
 	onConfigChange,
 	accountInfo,
 	onDeleteNode,
+	warnings = NO_WARNINGS,
 }: SidebarProps) {
 	const uid = useId();
 	const [activeTab, setActiveTab] = useState("settings");
@@ -554,6 +561,11 @@ export function Sidebar({
 			</div>
 
 			<div className="flex-1 overflow-y-auto p-4 min-h-0">
+				{warnings.length > 0 && (
+					<div className="mb-4">
+						<ConfigWarningSection warnings={warnings} />
+					</div>
+				)}
 				{/* Special handling for postgres with connection tab */}
 				{selectedNode.type === "postgres" && config && onConfigChange ? (
 					activeTab === "connection" ? (

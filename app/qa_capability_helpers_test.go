@@ -195,7 +195,7 @@ func qaCapabilityDiagnostics(t *testing.T, m qaCapabilityMap, f func() error) (e
 	if err != nil {
 		t.Fatal(err)
 	}
-	return callErr, string(raw) + "\n" + strings.Join(generateWarnings(m), "\n")
+	return callErr, string(raw) + "\n" + strings.Join(warningDetails(generateWarnings(m)), "\n")
 }
 
 func qaCapabilityParse(t *testing.T, rendered string) *hclsyntax.Body {
@@ -344,4 +344,14 @@ func qaCapabilityURLContext(apiHost string) *hcl.EvalContext {
 			}),
 		}),
 	}}
+}
+
+// warningDetails returns each warning's detail text, so a substring assertion
+// on what a validator warned reads the same text it always did.
+func warningDetails(ws []ConfigWarning) []string {
+	out := make([]string, 0, len(ws))
+	for _, w := range ws {
+		out = append(out, w.Detail)
+	}
+	return out
 }

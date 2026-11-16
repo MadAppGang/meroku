@@ -2,6 +2,13 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 // biome-ignore lint/correctness/noUnusedImports: Storybook's browser-test transform requires React in scope for JSX.
 import React from "react";
 import { ReactFlowProvider } from "reactflow";
+import { expect, within } from "storybook/test";
+import {
+	backendExternalImage,
+	eventTaskProducesAny,
+	serviceNoHealthCheck,
+	servicePolicyWildcard,
+} from "./configWarningStoryFixtures";
 import { ServiceNode } from "./ServiceNode";
 import "reactflow/dist/style.css";
 
@@ -324,4 +331,111 @@ export const AllStatusStates: Story = {
 			/>
 		</div>
 	),
+};
+
+// Configuration warnings: a warning-token border plus a corner badge with
+// the count, so a warning never relies on colour alone.
+export const ServiceWithWarning: Story = {
+	args: {
+		...baseNodeProps,
+		data: {
+			id: "service-magento-bridge",
+			name: "magento-bridge",
+			type: "service",
+			status: "running",
+			configProperties: { cpu: 256, memory: 512, desiredCount: 1 },
+			warnings: [serviceNoHealthCheck],
+		},
+	},
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		const node = canvasElement.querySelector('[data-warning="true"]');
+		await expect(node).not.toBeNull();
+		await expect(canvas.getByTestId("node-warning-badge")).toHaveTextContent(
+			"1",
+		);
+	},
+};
+
+export const ServiceWithSeveralWarnings: Story = {
+	args: {
+		...baseNodeProps,
+		data: {
+			id: "service-magento-bridge-2",
+			name: "magento-bridge",
+			type: "service",
+			status: "running",
+			configProperties: { cpu: 256, memory: 512, desiredCount: 2 },
+			warnings: [servicePolicyWildcard, serviceNoHealthCheck],
+		},
+	},
+};
+
+export const BackendWithWarning: Story = {
+	args: {
+		...baseNodeProps,
+		data: {
+			id: "backend-service",
+			name: "backend",
+			type: "backend",
+			status: "running",
+			configProperties: {
+				cpu: 512,
+				memory: 1024,
+				autoscalingEnabled: true,
+				autoscalingMinCapacity: 1,
+				autoscalingMaxCapacity: 4,
+			},
+			warnings: [backendExternalImage],
+		},
+	},
+};
+
+// An event task already has an orange accent; the badge tells them apart.
+export const EventTaskWithWarning: Story = {
+	args: {
+		...baseNodeProps,
+		data: {
+			id: "event-order-sync",
+			name: "order-sync",
+			type: "event-task",
+			status: "running",
+			configProperties: { cpu: 256, memory: 512 },
+			warnings: [eventTaskProducesAny],
+		},
+	},
+};
+
+// Selection keeps its blue border; the badge still shows the warning.
+export const SelectedWithWarning: Story = {
+	args: {
+		...baseNodeProps,
+		selected: true,
+		data: {
+			id: "service-magento-bridge-3",
+			name: "magento-bridge",
+			type: "service",
+			status: "running",
+			configProperties: { cpu: 256, memory: 512, desiredCount: 1 },
+			warnings: [serviceNoHealthCheck],
+		},
+	},
+};
+
+// No warnings: no badge and no data-warning attribute.
+export const ServiceWithoutWarnings: Story = {
+	args: {
+		...baseNodeProps,
+		data: {
+			id: "service-clean",
+			name: "clean-service",
+			type: "service",
+			status: "running",
+			configProperties: { cpu: 256, memory: 512, desiredCount: 1 },
+			warnings: [],
+		},
+	},
+	play: async ({ canvasElement }) => {
+		await expect(canvasElement.querySelector("[data-warning]")).toBeNull();
+	},
 };

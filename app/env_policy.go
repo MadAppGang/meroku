@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"strings"
 )
 
@@ -78,8 +79,8 @@ func envZoneName(env, domain, rootZoneID string, prefix *bool) string {
 //
 // The domain settings apply to "prod" only: the template used to single out
 // that exact name, so writing them for any other environment would move its DNS.
-func migrateToV31(data map[string]interface{}) error {
-	fmt.Println("  → Migrating to v31: Writing name-based policy as flags")
+func migrateToV31(data map[string]interface{}, out io.Writer) error {
+	fmt.Fprintln(out, "  → Migrating to v31: Writing name-based policy as flags")
 
 	env, _ := data["env"].(string)
 	policy := policyForEnvName(env)
@@ -88,12 +89,12 @@ func migrateToV31(data map[string]interface{}) error {
 		data["is_prod"] = true
 	}
 	data["auto_deploy"] = policy.AutoDeploy
-	fmt.Printf("    ℹ️  env=%q → auto_deploy=%v\n", env, policy.AutoDeploy)
+	fmt.Fprintf(out, "    ℹ️  env=%q → auto_deploy=%v\n", env, policy.AutoDeploy)
 
 	if !policy.AutoDeploy {
 		if turnedOff := disableTargetAutoDeploy(data); turnedOff > 0 {
-			fmt.Printf("    ⚠️  Automatic deploys are now OFF for %d target(s) in %q.\n", turnedOff, env)
-			fmt.Println("       To turn them back on, set auto_deploy: true and re-apply.")
+			fmt.Fprintf(out, "    ⚠️  Automatic deploys are now OFF for %d target(s) in %q.\n", turnedOff, env)
+			fmt.Fprintln(out, "       To turn them back on, set auto_deploy: true and re-apply.")
 		}
 	}
 

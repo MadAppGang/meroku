@@ -248,7 +248,7 @@ func TestGithubExternalImageWarnings(t *testing.T) {
 			if wantRepo == "" {
 				wantRepo = "shared/acme-api"
 			}
-			w := warnings[0]
+			w := warnings[0].Detail
 			for _, want := range []string{
 				"CI cannot push to " + wantRepo,
 				"set github_push_external_image if CI builds this image",

@@ -272,10 +272,11 @@ To add a new migration for schema changes:
    }
    ```
 
-3. **Implement migration function**:
+3. **Implement migration function**. It takes the writer `applyMigrations` passes it and
+   prints only to that writer, never with `fmt.Print*` or to `os.Stdout`:
    ```go
-   func migrateToV6(data map[string]interface{}) error {
-       fmt.Println("  → Migrating to v6: Add new feature X")
+   func migrateToV6(data map[string]interface{}, out io.Writer) error {
+       fmt.Fprintln(out, "  → Migrating to v6: Add new feature X")
 
        // Add new fields with defaults
        if _, exists := data["new_field"]; !exists {
@@ -293,6 +294,13 @@ To add a new migration for schema changes:
        return 6
    }
    ```
+
+   The writer is `os.Stdout` when the file is rewritten (`loadEnvWithMigration`,
+   `meroku migrate`) and `io.Discard` for the read-only loads (`loadEnvReadOnly`,
+   `loadEnvMapReadOnly`). The read-only loads run on every `GET /api/config-warnings` and before
+   a TUI deploy, so a migration that prints to stdout puts its text on the web server's console
+   and over the deploy warnings screen. See
+   [Configuration warnings](./CONFIG_WARNINGS.md#migrations-write-to-the-writer-they-are-given).
 
 5. **Add a row to the Schema Version History table above** and bump the
    "Current version" line under it. Nothing enforces this, which is exactly why
@@ -441,7 +449,7 @@ loadEnv()
     → Read YAML file
     → Unmarshal to map[string]interface{}
     → detectSchemaVersion()
-    → applyMigrations() if needed
+    → applyMigrations(data, version, os.Stdout) if needed
       → Create backup
       → Apply each migration in sequence
       → Set schema_version
@@ -449,6 +457,22 @@ loadEnv()
     → Unmarshal to Env struct
     → Return Env
 ```
+
+### Read-only loads
+
+`loadEnvReadOnly` (used by the web API's GET handlers) and `loadEnvMapReadOnly` (used by the
+configuration warnings collector) migrate in memory and never write the file:
+
+```
+loadEnvMapReadOnly(env)
+  → Read YAML file
+  → checkSchemaNotNewer()             (a newer schema_version is an error)
+  → applyMigrations(raw, version, io.Discard)
+  → yaml.Marshal + yaml.Unmarshal     (values get the types generate sees)
+  → convertToJSONCompatible()
+```
+
+No backup is created and nothing is printed.
 
 ### Data Structure
 
