@@ -62,8 +62,9 @@ var reservedWorkloadEnvTable = []reservedWorkloadEnv{
 }
 
 // reservedWorkloadEnvRows is reservedWorkloadEnvTable plus the rows whose names
-// depend on the YAML: KMS_<NAME>_KEY_ARN and KMS_<NAME>_PUBLIC_KEY for each kms
-// key a workload connects to (kmsReservedWorkloadEnv).
+// depend on the YAML: KMS_<NAME>_KEY_ARN for each kms key a workload connects
+// to, and KMS_<NAME>_PUBLIC_KEY when that key is asymmetric
+// (kmsReservedWorkloadEnv).
 func reservedWorkloadEnvRows(envMap map[string]interface{}) []reservedWorkloadEnv {
 	rows := append([]reservedWorkloadEnv{}, reservedWorkloadEnvTable...)
 	return append(rows, kmsReservedWorkloadEnv(envMap)...)

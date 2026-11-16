@@ -22,7 +22,7 @@ export interface KmsKeySpecChoice {
 	hint: string;
 }
 
-/** Every key type, the recommended one first. */
+/** Every key type: the signing types, the recommended one first, then the HMAC types. */
 export const KMS_KEY_SPEC_CHOICES: KmsKeySpecChoice[] = [
 	{
 		spec: "ECC_NIST_P256",
@@ -66,7 +66,44 @@ export const KMS_KEY_SPEC_CHOICES: KmsKeySpecChoice[] = [
 		short: "RSA 4096",
 		hint: "RS256 compatibility, longest key, slowest",
 	},
+	{
+		spec: "HMAC_224",
+		label: "HMAC-224",
+		short: "HMAC-224",
+		hint: "when that size is required",
+	},
+	{
+		spec: "HMAC_256",
+		label: "HMAC-256 (HS256)",
+		short: "HS256",
+		hint: "shared secret for service-to-service requests",
+	},
+	{
+		spec: "HMAC_384",
+		label: "HMAC-384 (HS384)",
+		short: "HS384",
+		hint: "when HS384 is required",
+	},
+	{
+		spec: "HMAC_512",
+		label: "HMAC-512 (HS512)",
+		short: "HS512",
+		hint: "when HS512 is required",
+	},
 ];
+
+/** Whether `spec` is an HMAC key type. An HMAC key has no public key. */
+export function isHmacKeySpec(spec: KmsKeySpec | undefined): boolean {
+	return spec?.startsWith("HMAC_") ?? false;
+}
+
+/** Whether the key `name` is declared as an HMAC key. */
+export function kmsKeyIsHmac(
+	config: YamlInfrastructureConfig,
+	name: string,
+): boolean {
+	return isHmacKeySpec(kmsKeyOf(config, name)?.key_spec);
+}
 
 /** The choice for `spec`; an unknown or absent spec reads as the default. */
 export function kmsKeySpecChoice(
@@ -78,11 +115,18 @@ export function kmsKeySpecChoice(
 	);
 }
 
-/** What each access lets a workload do, in plain words. */
+/** What each access lets a workload do with a signing key, in plain words. */
 export const KMS_KEY_ACCESS_LABELS: Record<KmsKeyAccess, string> = {
 	sign: "Sign",
 	verify: "Verify",
 	both: "Sign and verify",
+};
+
+/** What each access lets a workload do with an HMAC key, in plain words. */
+export const KMS_HMAC_KEY_ACCESS_LABELS: Record<KmsKeyAccess, string> = {
+	sign: "Create MAC",
+	verify: "Check MAC",
+	both: "Create and check MAC",
 };
 
 /** The names of the keys in the top-level `kms_keys` list, retired ones included. */
@@ -123,7 +167,10 @@ export function kmsKeyNameError(
 	return null;
 }
 
-/** The variables a connection to `name` gives a workload. */
+/**
+ * The names of the variables a key can give a workload. An HMAC key gives only
+ * `arn`; see kmsKeyEnvVariables.
+ */
 export function kmsKeyEnvNames(name: string): {
 	arn: string;
 	publicKey: string;
@@ -133,6 +180,18 @@ export function kmsKeyEnvNames(name: string): {
 		arn: `KMS_${upper}_KEY_ARN`,
 		publicKey: `KMS_${upper}_PUBLIC_KEY`,
 	};
+}
+
+/**
+ * The variables a connection to the key `name` gives a workload: its ARN, and
+ * its public key unless the key is an HMAC key.
+ */
+export function kmsKeyEnvVariables(
+	config: YamlInfrastructureConfig,
+	name: string,
+): string[] {
+	const env = kmsKeyEnvNames(name);
+	return kmsKeyIsHmac(config, name) ? [env.arn] : [env.arn, env.publicKey];
 }
 
 /** One workload's connection to a key, with the workload named. */

@@ -1162,9 +1162,9 @@ module "vaults" {
   connections = {{{hclArray _vault_connections}}}
 }
 
-# KMS signing keys: an asymmetric key per kms_keys entry, retired ones included.
-# A connected workload may sign, verify or both, and gets KMS_<NAME>_KEY_ARN and
-# KMS_<NAME>_PUBLIC_KEY. See ai_docs/KMS_KEYS.md.
+# KMS signing and HMAC keys: a key per kms_keys entry, retired ones included.
+# A connected workload may sign, verify or both, and gets KMS_<NAME>_KEY_ARN,
+# plus KMS_<NAME>_PUBLIC_KEY for a signing key. See ai_docs/KMS_KEYS.md.
 module "kms_keys" {
   source  = "{{modules}}/kms_keys"
   project = "{{project}}"

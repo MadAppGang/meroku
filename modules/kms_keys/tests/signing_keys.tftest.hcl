@@ -188,6 +188,45 @@ run "grants_per_access" {
   }
 }
 
+# An environment with only signing keys must render exactly what it rendered
+# before HMAC keys existed, byte for byte, so a deployed one plans no change.
+run "signing_only_render_is_unchanged" {
+  command = apply
+
+  assert {
+    condition = (
+      aws_kms_key.key["auth"].description == "myapp dev signing key auth (meroku)" &&
+      aws_kms_key.key["webhooks"].description == "myapp dev signing key webhooks (meroku)"
+    )
+    error_message = "A signing key's description must stay \"<project> <env> signing key <name> (meroku)\"."
+  }
+
+  assert {
+    condition     = output.policies["api"] == "{\"Statement\":[{\"Action\":[\"kms:Sign\"],\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:kms:us-east-1:000000000000:key/1234abcd-12ab-34cd-86ef-123456789001\"],\"Sid\":\"KmsSign\"},{\"Action\":[\"kms:Verify\"],\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:kms:us-east-1:000000000000:key/1234abcd-12ab-34cd-86ef-123456789002\"],\"Sid\":\"KmsVerify\"},{\"Action\":[\"kms:GetPublicKey\",\"kms:DescribeKey\"],\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:kms:us-east-1:000000000000:key/1234abcd-12ab-34cd-86ef-123456789001\",\"arn:aws:kms:us-east-1:000000000000:key/1234abcd-12ab-34cd-86ef-123456789002\"],\"Sid\":\"KmsPublicKey\"}],\"Version\":\"2012-10-17\"}"
+    error_message = "The policy of a workload with sign and verify on signing keys must be byte-identical to the one rendered before HMAC keys."
+  }
+
+  assert {
+    condition     = output.policies["backend"] == "{\"Statement\":[{\"Action\":[\"kms:Sign\"],\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:kms:us-east-1:000000000000:key/1234abcd-12ab-34cd-86ef-123456789001\"],\"Sid\":\"KmsSign\"},{\"Action\":[\"kms:Verify\"],\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:kms:us-east-1:000000000000:key/1234abcd-12ab-34cd-86ef-123456789001\"],\"Sid\":\"KmsVerify\"},{\"Action\":[\"kms:GetPublicKey\",\"kms:DescribeKey\"],\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:kms:us-east-1:000000000000:key/1234abcd-12ab-34cd-86ef-123456789001\"],\"Sid\":\"KmsPublicKey\"}],\"Version\":\"2012-10-17\"}"
+    error_message = "The policy of a workload with both on a signing key must be byte-identical to the one rendered before HMAC keys."
+  }
+
+  assert {
+    condition     = output.policies["nightly"] == "{\"Statement\":[{\"Action\":[\"kms:Verify\"],\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:kms:us-east-1:000000000000:key/1234abcd-12ab-34cd-86ef-123456789001\"],\"Sid\":\"KmsVerify\"},{\"Action\":[\"kms:GetPublicKey\",\"kms:DescribeKey\"],\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:kms:us-east-1:000000000000:key/1234abcd-12ab-34cd-86ef-123456789001\"],\"Sid\":\"KmsPublicKey\"}],\"Version\":\"2012-10-17\"}"
+    error_message = "The policy of a workload with verify on a signing key must be byte-identical to the one rendered before HMAC keys."
+  }
+
+  assert {
+    condition = jsonencode(output.environment["api"]) == jsonencode([
+      { name = "KMS_AUTH_KEY_ARN", value = "arn:aws:kms:us-east-1:000000000000:key/1234abcd-12ab-34cd-86ef-123456789001" },
+      { name = "KMS_AUTH_PUBLIC_KEY", value = "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEfakeKeyDoNotUseAAAAAAAAAAAAAA\nAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\n-----END PUBLIC KEY-----\n" },
+      { name = "KMS_WEBHOOKS_KEY_ARN", value = "arn:aws:kms:us-east-1:000000000000:key/1234abcd-12ab-34cd-86ef-123456789002" },
+      { name = "KMS_WEBHOOKS_PUBLIC_KEY", value = "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEfakeKeyDoNotUseAAAAAAAAAAAAAA\nAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\n-----END PUBLIC KEY-----\n" },
+    ])
+    error_message = "A workload connected to signing keys must get the same variables, in the same order, as before HMAC keys."
+  }
+}
+
 run "environment_per_workload" {
   command = apply
 

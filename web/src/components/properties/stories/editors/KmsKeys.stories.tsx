@@ -80,6 +80,90 @@ export const WithKeys: Story = {
 	},
 };
 
+/** An HMAC key used by two services: one creates MACs, the other checks them. */
+const withHmacKey = configWith({
+	kms_keys: [{ name: "requests", key_spec: "HMAC_256" }],
+	workload: {
+		kms_keys: [{ name: "requests", access: "sign" }],
+	} as YamlInfrastructureConfig["workload"],
+	services: (baseConfig.services || []).map((s) =>
+		s.name === "orders"
+			? { ...s, kms_keys: [{ name: "requests", access: "verify" as const }] }
+			: s,
+	),
+});
+
+export const HmacKey: Story = {
+	name: "HMAC key",
+	render: () => <Editor initial={withHmacKey} />,
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		const requests = within(canvas.getByTestId("kms-key-requests"));
+		await expect(requests.getByText("HS256", { exact: true })).toHaveAttribute(
+			"title",
+			"HMAC-256 (HS256)",
+		);
+		await expect(requests.getByText("1 sign")).toHaveAttribute(
+			"title",
+			"backend",
+		);
+		await expect(
+			canvas.getByText(/An HMAC key has no public key/),
+		).toBeVisible();
+	},
+};
+
+/** Signing and HMAC keys side by side. */
+export const MixedKeys: Story = {
+	name: "Signing and HMAC keys",
+	render: () => (
+		<Editor
+			initial={configWith({
+				...withKeys,
+				kms_keys: [
+					...(withKeys.kms_keys || []),
+					{ name: "requests", key_spec: "HMAC_512" },
+				],
+			})}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await expect(
+			within(canvas.getByTestId("kms-key-auth")).getByText("ES256", {
+				exact: true,
+			}),
+		).toBeVisible();
+		await expect(
+			within(canvas.getByTestId("kms-key-requests")).getByText("HS512", {
+				exact: true,
+			}),
+		).toBeVisible();
+	},
+};
+
+/** A new key can be an HMAC key; the HMAC types follow the signing ones. */
+export const AddHmacKey: Story = {
+	name: "Add an HMAC key",
+	render: () => <Editor initial={baseConfig} />,
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await userEvent.click(
+			canvas.getByRole("combobox", { name: "Type of the new key" }),
+		);
+		await userEvent.click(
+			await screen.findByRole("option", {
+				name: "HMAC-256 (HS256) — shared secret for service-to-service requests",
+			}),
+		);
+		await userEvent.click(canvas.getByRole("button", { name: "Add key" }));
+		const card = within(await canvas.findByTestId("kms-key-key1"));
+		await expect(
+			card.getByRole("combobox", { name: "Key type of key1" }),
+		).toHaveTextContent("HMAC-256 (HS256)");
+	},
+};
+
 /** The default name follows the highest key<n>, not the number of keys. */
 export const NextDefaultName: Story = {
 	name: "Default name after key7",

@@ -7,13 +7,17 @@ import (
 	"strings"
 )
 
-// KMS signing keys (modules/kms_keys). Each key is an asymmetric SIGN_VERIFY
-// key; a workload connected to it may sign, verify or both, and gets the key's
-// ARN and public key as variables:
+// KMS signing and HMAC keys (modules/kms_keys). The key_spec decides the kind:
+// an HMAC_* spec is a GENERATE_VERIFY_MAC key, every other spec an asymmetric
+// SIGN_VERIFY key. A workload connected to a key may sign, verify or both (on an
+// HMAC key: generate or verify a MAC), and gets the key's ARN as a variable,
+// plus its public key when the key is asymmetric:
 //
 //	kms_keys:
 //	  - name: auth                 # KMS_AUTH_KEY_ARN, KMS_AUTH_PUBLIC_KEY
 //	    key_spec: ECC_NIST_P256    # the default
+//	  - name: requests             # KMS_REQUESTS_KEY_ARN only
+//	    key_spec: HMAC_256
 //	  - name: legacy
 //	    retired: true              # still deployed; nothing may connect to it
 //	services:
@@ -39,12 +43,17 @@ var kmsKeyNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,30}$`)
 // kmsDefaultKeySpec is the key type of a key without key_spec.
 const kmsDefaultKeySpec = "ECC_NIST_P256"
 
-// kmsKeySpecs are the key types AWS KMS offers for SIGN_VERIFY that meroku
-// accepts, in the order the messages list them.
+// kmsKeySpecs are the key types meroku accepts, in the order the messages list
+// them: the SIGN_VERIFY types, then the GENERATE_VERIFY_MAC (HMAC) types.
 var kmsKeySpecs = []string{
 	"ECC_NIST_P256", "ECC_NIST_P384", "ECC_NIST_P521", "ECC_SECG_P256K1",
 	"RSA_2048", "RSA_3072", "RSA_4096",
+	"HMAC_224", "HMAC_256", "HMAC_384", "HMAC_512",
 }
+
+// kmsIsHMACKeySpec reports whether a key type is an HMAC one. An HMAC key has
+// no public key, so a workload connected to it gets only the key's ARN.
+func kmsIsHMACKeySpec(spec string) bool { return strings.HasPrefix(spec, "HMAC_") }
 
 const (
 	kmsAccessSign   = "sign"
@@ -59,7 +68,7 @@ type kmsDeclaredKey struct {
 }
 
 // kmsKeyArnEnvName and kmsPublicKeyEnvName are the variables a key gives a
-// connected workload.
+// connected workload; an HMAC key gives only the first.
 func kmsKeyArnEnvName(key string) string { return "KMS_" + strings.ToUpper(key) + "_KEY_ARN" }
 
 func kmsPublicKeyEnvName(key string) string { return "KMS_" + strings.ToUpper(key) + "_PUBLIC_KEY" }
@@ -229,9 +238,11 @@ func validateKMSKeysConfigMap(envMap map[string]interface{}) error {
 // kmsReservedWorkloadEnv lists the variables the normalised connections give
 // each workload, as rows of the reserved-env table: a workload's YAML variable
 // or vault secret of the same name is refused by the checks that read the
-// table. Empty until validateKMSKeysConfigMap has run, which preprocessEnvMap
-// does before those checks.
+// table. KMS_<NAME>_PUBLIC_KEY is a row only for an asymmetric key: an HMAC key
+// has no public key. Empty until validateKMSKeysConfigMap has run, which
+// preprocessEnvMap does before those checks.
 func kmsReservedWorkloadEnv(envMap map[string]interface{}) []reservedWorkloadEnv {
+	keys, _ := envMap[kmsKeysKey].(map[string]interface{})
 	connections, _ := envMap[kmsConnectionsKey].([]interface{})
 	var rows []reservedWorkloadEnv
 	for _, raw := range connections {
@@ -243,10 +254,14 @@ func kmsReservedWorkloadEnv(envMap map[string]interface{}) []reservedWorkloadEnv
 		key := stringFromMap(c, "key")
 		applies := func(ctx workloadEnvContext) bool { return ctx.name == workload }
 		setBy := fmt.Sprintf("kms key %q", key)
-		rows = append(rows,
-			reservedWorkloadEnv{name: kmsKeyArnEnvName(key), setBy: setBy, appliesTo: applies},
-			reservedWorkloadEnv{name: kmsPublicKeyEnvName(key), setBy: setBy, appliesTo: applies},
-		)
+		rows = append(rows, reservedWorkloadEnv{name: kmsKeyArnEnvName(key), setBy: setBy, appliesTo: applies})
+		spec := kmsDefaultKeySpec
+		if declared, ok := computeNodeMap(keys[key]); ok {
+			spec = stringFromMap(declared, "key_spec")
+		}
+		if !kmsIsHMACKeySpec(spec) {
+			rows = append(rows, reservedWorkloadEnv{name: kmsPublicKeyEnvName(key), setBy: setBy, appliesTo: applies})
+		}
 	}
 	return rows
 }

@@ -296,7 +296,7 @@ export const nodeStateMapping: NodeStateConfig[] = [
 		},
 	},
 	{
-		// Always on: the node is where the first signing key is created.
+		// Always on: the node is where the first key is created.
 		id: "kms-keys",
 		name: "KMS keys",
 		type: "kms-keys",
@@ -306,8 +306,8 @@ export const nodeStateMapping: NodeStateConfig[] = [
 		}),
 		description: (config) => {
 			const count = (config.kms_keys || []).filter((k) => !k.retired).length;
-			if (count === 0) return "Signing keys in AWS KMS";
-			return `${count} signing ${count === 1 ? "key" : "keys"} in AWS KMS`;
+			if (count === 0) return "Signing and HMAC keys in AWS KMS";
+			return `${count} ${count === 1 ? "key" : "keys"} in AWS KMS`;
 		},
 	},
 	{

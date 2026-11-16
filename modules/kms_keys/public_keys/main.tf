@@ -1,4 +1,5 @@
-# The public key of every signing key, read from KMS by ARN.
+# The public key of every asymmetric (signing) key, read from KMS by ARN. HMAC
+# keys have no public key and are never passed in.
 #
 # This read lives in its own module so that it refers to an input variable, not
 # to aws_kms_key.key. Terraform records a data source's dependency on a managed

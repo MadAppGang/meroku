@@ -102,12 +102,66 @@ describe("reservedWorkloadEnvError", () => {
 	});
 });
 
+describe("HMAC keys", () => {
+	const config = {
+		...base,
+		kms_keys: [{ name: "auth" }, { name: "requests", key_spec: "HMAC_256" }],
+		workload: { kms_keys: [{ name: "requests", access: "sign" }] },
+		services: [
+			{
+				name: "orders",
+				kms_keys: [
+					{ name: "auth", access: "sign" },
+					{ name: "requests", access: "verify" },
+				],
+			},
+		],
+	} as unknown as YamlInfrastructureConfig;
+	const orders = { kind: "service", name: "orders" } as const;
+
+	test("refuse the ARN variable", () => {
+		expect(
+			reservedWorkloadEnvError(config, orders, "KMS_REQUESTS_KEY_ARN"),
+		).toMatch(/^KMS_REQUESTS_KEY_ARN is reserved: .*KMS key requests/);
+		expect(
+			reservedBackendEnvError(config, "KMS_REQUESTS_KEY_ARN"),
+		).toBeTruthy();
+	});
+
+	test("leave the PUBLIC_KEY name free: an HMAC key has no public key", () => {
+		expect(
+			reservedWorkloadEnvError(config, orders, "KMS_REQUESTS_PUBLIC_KEY"),
+		).toBeFalsy();
+		expect(
+			reservedBackendEnvError(config, "KMS_REQUESTS_PUBLIC_KEY"),
+		).toBeFalsy();
+		expect(
+			reservedWorkloadEnvError(config, orders, "KMS_AUTH_PUBLIC_KEY"),
+		).toBeTruthy();
+	});
+});
+
 describe("kmsKeyEnvCollisions", () => {
 	test("names the key's variables present among the workload's", () => {
 		expect(
-			kmsKeyEnvCollisions("auth", ["LOG_LEVEL", "KMS_AUTH_PUBLIC_KEY"]),
+			kmsKeyEnvCollisions(base, "auth", ["LOG_LEVEL", "KMS_AUTH_PUBLIC_KEY"]),
 		).toEqual(["KMS_AUTH_PUBLIC_KEY"]);
-		expect(kmsKeyEnvCollisions("auth", ["KMS_WEBHOOKS_KEY_ARN"])).toEqual([]);
+		expect(kmsKeyEnvCollisions(base, "auth", ["KMS_WEBHOOKS_KEY_ARN"])).toEqual(
+			[],
+		);
+	});
+
+	test("an HMAC key collides only on its ARN variable", () => {
+		const config = {
+			...base,
+			kms_keys: [{ name: "requests", key_spec: "HMAC_512" }],
+		} as unknown as YamlInfrastructureConfig;
+		expect(
+			kmsKeyEnvCollisions(config, "requests", [
+				"KMS_REQUESTS_KEY_ARN",
+				"KMS_REQUESTS_PUBLIC_KEY",
+			]),
+		).toEqual(["KMS_REQUESTS_KEY_ARN"]);
 	});
 });
 

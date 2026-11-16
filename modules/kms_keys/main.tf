@@ -1,7 +1,9 @@
-# KMS signing keys. Each entry of var.keys is an asymmetric SIGN_VERIFY key with
-# an alias; each connected workload's task role may sign, verify or both with the
-# keys it is connected to, and its container gets each key's ARN and public key.
-# See ai_docs/KMS_KEYS.md.
+# KMS signing and HMAC keys. Each entry of var.keys is a key with an alias: an
+# HMAC_* key_spec makes a GENERATE_VERIFY_MAC (HMAC) key, every other key_spec an
+# asymmetric SIGN_VERIFY key. Each connected workload's task role may sign,
+# verify or both with the keys it is connected to (on an HMAC key: generate or
+# verify a MAC), and its container gets each key's ARN, plus its public key when
+# the key is asymmetric. See ai_docs/KMS_KEYS.md.
 #
 # A retired key is still in var.keys, with no connections: the key stays, and
 # nothing grants it or names it to a container. Removing the entry from var.keys
@@ -18,24 +20,31 @@ locals {
   }
 }
 
-# AWS cannot change an existing key's type: customer_master_key_spec is
-# ForceNew, and a replaced key would make every signature made with it stop
-# verifying. ignore_changes keeps a created key's type whatever key_spec says
-# afterwards; the check below warns when the two differ.
+# AWS cannot change an existing key's type or usage: customer_master_key_spec
+# and key_usage are ForceNew, and a replaced key would make every signature or
+# MAC made with it stop verifying. ignore_changes keeps a created key's type and
+# usage whatever key_spec says afterwards; the check below warns when the two
+# differ. The usage follows from the type, so comparing types also catches a
+# switch between a signing and an HMAC key.
 resource "aws_kms_key" "key" {
   for_each = var.keys
 
-  description              = "${var.project} ${var.env} signing key ${each.key} (meroku)"
-  key_usage                = "SIGN_VERIFY"
+  description = (
+    startswith(each.value.key_spec, "HMAC_")
+    ? "${var.project} ${var.env} HMAC key ${each.key} (meroku)"
+    : "${var.project} ${var.env} signing key ${each.key} (meroku)"
+  )
+  key_usage                = startswith(each.value.key_spec, "HMAC_") ? "GENERATE_VERIFY_MAC" : "SIGN_VERIFY"
   customer_master_key_spec = each.value.key_spec
   deletion_window_in_days  = 7
-  # AWS rotates symmetric keys only; asymmetric keys cannot be rotated.
+  # AWS rotates symmetric encryption keys only: neither asymmetric nor HMAC keys
+  # can be rotated automatically.
   enable_key_rotation = false
 
   tags = merge(local.tags, { Name = "${var.project}-${var.env}-${each.key}" })
 
   lifecycle {
-    ignore_changes = [customer_master_key_spec]
+    ignore_changes = [customer_master_key_spec, key_usage]
   }
 }
 
@@ -62,11 +71,22 @@ resource "aws_kms_alias" "key" {
   target_key_id = aws_kms_key.key[each.key].key_id
 }
 
+locals {
+  # The HMAC keys, by the type each key has: for a key that exists that is the
+  # type in state, so a key_spec the check above warns about changes no grant
+  # and no variable. Known at plan.
+  hmac_keys = toset([
+    for k, key in aws_kms_key.key : k if startswith(key.customer_master_key_spec, "HMAC_")
+  ])
+}
+
 # The public keys are read in a child module, never here: see public_keys/main.tf.
+# An HMAC key has no public key and reading one fails, so only asymmetric keys
+# go in.
 module "public_keys" {
   source = "./public_keys"
 
-  key_arns = { for k, key in aws_kms_key.key : k => key.arn }
+  key_arns = { for k, key in aws_kms_key.key : k => key.arn if !contains(local.hmac_keys, k) }
 }
 
 locals {
@@ -78,12 +98,30 @@ locals {
     for c in var.connections : c.key if c.workload == w
   ]) }
   sign_keys = { for w in local.connected_workloads : w => sort([
-    for c in var.connections : c.key if c.workload == w && contains(["sign", "both"], c.access)
+    for c in var.connections : c.key
+    if c.workload == w && contains(["sign", "both"], c.access) && !contains(local.hmac_keys, c.key)
   ]) }
   verify_keys = { for w in local.connected_workloads : w => sort([
-    for c in var.connections : c.key if c.workload == w && contains(["verify", "both"], c.access)
+    for c in var.connections : c.key
+    if c.workload == w && contains(["verify", "both"], c.access) && !contains(local.hmac_keys, c.key)
   ]) }
+  generate_mac_keys = { for w in local.connected_workloads : w => sort([
+    for c in var.connections : c.key
+    if c.workload == w && contains(["sign", "both"], c.access) && contains(local.hmac_keys, c.key)
+  ]) }
+  verify_mac_keys = { for w in local.connected_workloads : w => sort([
+    for c in var.connections : c.key
+    if c.workload == w && contains(["verify", "both"], c.access) && contains(local.hmac_keys, c.key)
+  ]) }
+  asymmetric_keys = { for w in local.connected_workloads : w => [
+    for k in local.workload_keys[w] : k if !contains(local.hmac_keys, k)
+  ] }
+  mac_keys = { for w in local.connected_workloads : w => [
+    for k in local.workload_keys[w] : k if contains(local.hmac_keys, k)
+  ] }
 
+  # Each statement only when it has a key. A workload connected only to signing
+  # keys gets KmsSign, KmsVerify and KmsPublicKey, in that order.
   workload_policy_statements = { for w in local.connected_workloads : w => concat(
     length(local.sign_keys[w]) > 0 ? [
       {
@@ -101,14 +139,38 @@ locals {
         Resource = [for k in local.verify_keys[w] : aws_kms_key.key[k].arn]
       },
     ] : [],
-    [
+    length(local.generate_mac_keys[w]) > 0 ? [
+      {
+        Sid      = "KmsGenerateMac"
+        Effect   = "Allow"
+        Action   = ["kms:GenerateMac"]
+        Resource = [for k in local.generate_mac_keys[w] : aws_kms_key.key[k].arn]
+      },
+    ] : [],
+    length(local.verify_mac_keys[w]) > 0 ? [
+      {
+        Sid      = "KmsVerifyMac"
+        Effect   = "Allow"
+        Action   = ["kms:VerifyMac"]
+        Resource = [for k in local.verify_mac_keys[w] : aws_kms_key.key[k].arn]
+      },
+    ] : [],
+    length(local.asymmetric_keys[w]) > 0 ? [
       {
         Sid      = "KmsPublicKey"
         Effect   = "Allow"
         Action   = ["kms:GetPublicKey", "kms:DescribeKey"]
-        Resource = [for k in local.workload_keys[w] : aws_kms_key.key[k].arn]
+        Resource = [for k in local.asymmetric_keys[w] : aws_kms_key.key[k].arn]
       },
-    ],
+    ] : [],
+    length(local.mac_keys[w]) > 0 ? [
+      {
+        Sid      = "KmsDescribeMacKey"
+        Effect   = "Allow"
+        Action   = ["kms:DescribeKey"]
+        Resource = [for k in local.mac_keys[w] : aws_kms_key.key[k].arn]
+      },
+    ] : [],
   ) }
 }
 

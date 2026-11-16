@@ -91,7 +91,7 @@ func TestKMSKeysRefusals(t *testing.T) {
 		{
 			name:      "unknown key_spec",
 			keys:      qaCapabilityList(qaCapabilityMap{"name": "auth", "key_spec": "SYMMETRIC_DEFAULT"}),
-			fragments: []string{"kms_keys[0] key_spec", "SYMMETRIC_DEFAULT", "ECC_NIST_P256", "RSA_4096"},
+			fragments: []string{"kms_keys[0] key_spec", "SYMMETRIC_DEFAULT", "ECC_NIST_P256", "RSA_4096", "HMAC_224", "HMAC_512"},
 		},
 		{
 			name:      "retired not a boolean",
@@ -178,6 +178,71 @@ func TestKMSKeysReservedEnvNames(t *testing.T) {
 		service["kms_keys"] = qaCapabilityList(qaCapabilityMap{"name": "auth", "access": "verify"})
 		service["vaults"] = qaCapabilityList(qaCapabilityMap{"name": "shared"})
 		qaCapabilityRequireError(t, preprocessEnvMap(m), "KMS_AUTH_PUBLIC_KEY", `kms key "auth"`)
+	})
+}
+
+func TestKMSKeysAcceptsEveryHMACSpec(t *testing.T) {
+	for _, spec := range []string{"HMAC_224", "HMAC_256", "HMAC_384", "HMAC_512"} {
+		t.Run(spec, func(t *testing.T) {
+			m := qaCapabilityEnv()
+			m["kms_keys"] = qaCapabilityList(qaCapabilityMap{"name": "requests", "key_spec": spec})
+			for kind, access := range map[string]string{"backend": "sign", "service": "verify", "scheduled_task": "both"} {
+				qaCapabilityOwner(m, kind)["kms_keys"] = qaCapabilityList(qaCapabilityMap{"name": "requests", "access": access})
+			}
+			qaCapabilityNoError(t, preprocessEnvMap(m))
+			qaCapabilityEqual(t, m[kmsKeysKey], map[string]interface{}{
+				"requests": map[string]interface{}{"key_spec": spec},
+			})
+		})
+	}
+}
+
+// kmsReservedNames is the set of KMS variable names reserved for one workload.
+func kmsReservedNames(envMap map[string]interface{}, workload string) map[string]bool {
+	names := map[string]bool{}
+	for _, row := range kmsReservedWorkloadEnv(envMap) {
+		if row.appliesTo(workloadEnvContext{envMap: envMap, name: workload}) {
+			names[row.name] = true
+		}
+	}
+	return names
+}
+
+func TestKMSKeysReservedRowsForHMACKeys(t *testing.T) {
+	m := kmsTestEnv()
+	m["kms_keys"] = append(m["kms_keys"].([]interface{}), qaCapabilityMap{"name": "requests", "key_spec": "HMAC_256"})
+	qaCapabilityOwner(m, "service")["kms_keys"] = qaCapabilityList(
+		qaCapabilityMap{"name": "auth", "access": "sign"},
+		qaCapabilityMap{"name": "requests", "access": "both"},
+	)
+	qaCapabilityNoError(t, preprocessEnvMap(m))
+
+	qaCapabilityEqual(t, kmsReservedNames(m, "api"), map[string]bool{
+		"KMS_AUTH_KEY_ARN":     true,
+		"KMS_AUTH_PUBLIC_KEY":  true,
+		"KMS_REQUESTS_KEY_ARN": true,
+	})
+}
+
+func TestKMSKeysHMACKeyReservesOnlyTheARN(t *testing.T) {
+	for _, kind := range qaCapabilityKinds() {
+		t.Run(kind, func(t *testing.T) {
+			m := qaCapabilityEnv()
+			m["kms_keys"] = qaCapabilityList(qaCapabilityMap{"name": "x", "key_spec": "HMAC_512"})
+			owner := qaCapabilityOwner(m, kind)
+			owner["kms_keys"] = qaCapabilityList(qaCapabilityMap{"name": "x", "access": "verify"})
+			owner[qaCapabilityEnvField(kind)] = qaCapabilityMap{"KMS_X_PUBLIC_KEY": "mine"}
+			qaCapabilityNoError(t, preprocessEnvMap(m))
+		})
+	}
+
+	t.Run("the ARN variable is still refused", func(t *testing.T) {
+		m := qaCapabilityEnv()
+		m["kms_keys"] = qaCapabilityList(qaCapabilityMap{"name": "x", "key_spec": "HMAC_256"})
+		backend := qaCapabilityOwner(m, "backend")
+		backend["kms_keys"] = qaCapabilityList(qaCapabilityMap{"name": "x", "access": "sign"})
+		backend[qaCapabilityEnvField("backend")] = qaCapabilityMap{"KMS_X_KEY_ARN": "mine"}
+		qaCapabilityRequireError(t, preprocessEnvMap(m), "KMS_X_KEY_ARN", `kms key "x"`)
 	})
 }
 

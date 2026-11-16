@@ -2,8 +2,13 @@ import { describe, expect, test } from "bun:test";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import {
 	activeKmsKeyNames,
+	isHmacKeySpec,
+	KMS_HMAC_KEY_ACCESS_LABELS,
+	KMS_KEY_SPEC_CHOICES,
 	kmsKeyConnectionsOf,
 	kmsKeyEnvNames,
+	kmsKeyEnvVariables,
+	kmsKeyIsHmac,
 	kmsKeyNameError,
 	kmsKeySpecChoice,
 	nextKmsKeyName,
@@ -85,6 +90,55 @@ describe("kms key helpers", () => {
 	test("an absent spec reads as ECC P-256", () => {
 		expect(kmsKeySpecChoice(undefined).spec).toBe("ECC_NIST_P256");
 		expect(kmsKeySpecChoice("RSA_2048").label).toBe("RSA 2048 (RS256)");
+	});
+
+	test("offers the HMAC types after the signing types", () => {
+		expect(KMS_KEY_SPEC_CHOICES.map((c) => c.spec)).toEqual([
+			"ECC_NIST_P256",
+			"ECC_NIST_P384",
+			"ECC_NIST_P521",
+			"ECC_SECG_P256K1",
+			"RSA_2048",
+			"RSA_3072",
+			"RSA_4096",
+			"HMAC_224",
+			"HMAC_256",
+			"HMAC_384",
+			"HMAC_512",
+		]);
+		expect(kmsKeySpecChoice("HMAC_256")).toEqual({
+			spec: "HMAC_256",
+			label: "HMAC-256 (HS256)",
+			short: "HS256",
+			hint: "shared secret for service-to-service requests",
+		});
+	});
+
+	test("tells HMAC keys from signing keys by their type", () => {
+		expect(isHmacKeySpec("HMAC_384")).toBe(true);
+		expect(isHmacKeySpec("RSA_2048")).toBe(false);
+		expect(isHmacKeySpec(undefined)).toBe(false);
+		const hmac = {
+			...config,
+			kms_keys: [{ name: "auth" }, { name: "requests", key_spec: "HMAC_256" }],
+		} as unknown as YamlInfrastructureConfig;
+		expect(kmsKeyIsHmac(hmac, "requests")).toBe(true);
+		expect(kmsKeyIsHmac(hmac, "auth")).toBe(false);
+		expect(KMS_HMAC_KEY_ACCESS_LABELS.sign).toBe("Create MAC");
+	});
+
+	test("an HMAC key gives only its ARN variable", () => {
+		const hmac = {
+			...config,
+			kms_keys: [{ name: "auth" }, { name: "requests", key_spec: "HMAC_256" }],
+		} as unknown as YamlInfrastructureConfig;
+		expect(kmsKeyEnvVariables(hmac, "requests")).toEqual([
+			"KMS_REQUESTS_KEY_ARN",
+		]);
+		expect(kmsKeyEnvVariables(hmac, "auth")).toEqual([
+			"KMS_AUTH_KEY_ARN",
+			"KMS_AUTH_PUBLIC_KEY",
+		]);
 	});
 
 	test("retired keys are not offered", () => {

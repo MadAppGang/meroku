@@ -98,14 +98,15 @@ type Env struct {
 	// Valkey is the optional serverless Valkey cache. A pointer so an
 	// environment without the block saves without one. See ai_docs/VALKEY.md.
 	Valkey *Valkey `yaml:"valkey,omitempty"`
-	// KMSKeys are the environment's KMS signing keys, retired ones included,
+	// KMSKeys are the environment's KMS signing and HMAC keys, retired ones included,
 	// that workloads connect to through their own kms_keys key. See
 	// ai_docs/KMS_KEYS.md.
 	KMSKeys []KMSKey `yaml:"kms_keys,omitempty"`
 }
 
 // KMSKey is one entry of the top-level kms_keys list: an asymmetric
-// SIGN_VERIFY key. KeySpec empty means ECC_NIST_P256. A retired key stays
+// SIGN_VERIFY key, or a GENERATE_VERIFY_MAC key when KeySpec is an HMAC_*
+// type. KeySpec empty means ECC_NIST_P256. A retired key stays
 // deployed but nothing may connect to it; deleting the entry schedules the
 // key's deletion.
 type KMSKey struct {
