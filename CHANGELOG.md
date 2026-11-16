@@ -1,5 +1,20 @@
 # Changelog
 
+## v6.5.0
+
+### HMAC keys in KMS
+- `kms_keys` accepts `key_spec` `HMAC_224`, `HMAC_256`, `HMAC_384` and `HMAC_512`, which create
+  an HMAC key (`GENERATE_VERIFY_MAC`) for machine-to-machine requests, such as HS256 tokens or
+  signed requests between workloads. The secret never leaves KMS.
+- Connections keep `sign`, `verify` and `both`: on an HMAC key `sign` grants `kms:GenerateMac`
+  and `verify` grants `kms:VerifyMac`. A connected workload gets `KMS_<NAME>_KEY_ARN` only; an
+  HMAC key has no public key, so `KMS_<NAME>_PUBLIC_KEY` is not set or reserved for it.
+- A key's type, and so whether it is a signing or an HMAC key, cannot change once created; a
+  changed `key_spec` is ignored and the plan warns, as before.
+- The KMS keys node lists the HMAC types in their own group; the workload tab says
+  "Create MAC" and "Check MAC" for an HMAC key.
+- An environment with only signing keys plans no change.
+
 ## v6.4.0
 
 ### Event consumers can send to their own queue and dead-letter queue
