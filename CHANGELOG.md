@@ -1,5 +1,19 @@
 # Changelog
 
+## v6.6.1
+
+### EC2 pool prices are cached on disk and refresh in the background
+- The region's live on-demand prices are saved per AWS profile under the user cache directory
+  (`meroku/ec2-on-demand-prices`). A restart of meroku prices a pool from that file at once
+  instead of loading the Price List API again.
+- Pool costs, `/api/pricing/rates` and the instance picker never wait for AWS. Prices missing
+  or older than a day start one load in the background; the first request of a region with
+  nothing cached answers from the dated table, where a type it lacks (`t3.small`) is unknown
+  until the load ends. A load that fails is not retried for 5 minutes.
+- `GET /api/pricing` reports `pricesRefreshing`, and each pool level reports `price_source`
+  (`aws_api`, `cached` or `fallback`). The web UI asks again quietly while a load runs and
+  shows the region's prices when it ends, without a reload.
+
 ## v6.6.0
 
 ### Configuration warnings in the web UI and before a deploy

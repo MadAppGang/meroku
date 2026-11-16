@@ -22,6 +22,27 @@ type PricingResponse struct {
 	// the internet. Advisory only: it never blocks a plan or an apply, and
 	// acting on it is the operator's choice. See ai_docs/EGRESS_COST_MODEL.md.
 	Egress EgressAdvice `json:"egress"`
+
+	// PricesRefreshing is true when the pool figures in this response may
+	// already be superseded: they came from the cache or the table while a
+	// background load of the region's live EC2 prices was in flight (one this
+	// request started included), or such a load is in flight now. A client
+	// asks again to get the region's prices. It is false while nothing loads,
+	// which includes the cooldown after a failed load.
+	PricesRefreshing bool `json:"pricesRefreshing"`
+}
+
+// addComputePoolNodes adds a node per EC2 capacity pool to response and sets
+// PricesRefreshing for region. The snapshot the pools were priced from records
+// whether a load was in flight when it was taken. That load can end before
+// this function reads liveEC2PricesLoading, and the figures are then still the
+// old ones, so the flag is the snapshot's record OR a load in flight now.
+func addComputePoolNodes(response *PricingResponse, env Env, region string) {
+	nodes, live := computePoolNodes(env, region)
+	for poolKey, poolNode := range nodes {
+		response.Nodes[poolKey] = poolNode
+	}
+	response.PricesRefreshing = live.refreshing || liveEC2PricesLoading(region)
 }
 
 // NodePricing represents pricing for a single node/service
@@ -137,18 +158,44 @@ func effectiveComputePoolName(poolName string) string {
 // dated hardcoded table when that service has not been started -- the pricing
 // endpoint must answer with the best figures it has rather than fail, and
 // AWSPricingClient.FetchRates never touches the AWS client it is given, so a
-// nil one is safe here.
-func ec2PoolRates(region string) *pricingpkg.PriceRates {
+// nil one is safe here. The returned rates are the live map laid over the
+// table; the snapshot is the raw cached live map and its fetch time, for
+// poolPriceSource and PricesRefreshing.
+func ec2PoolRates(region string) (*pricingpkg.PriceRates, liveEC2Snapshot) {
 	if globalPricingService != nil {
 		if rates, err := globalPricingService.GetRates(region); err == nil && rates != nil {
-			return withLiveEC2Prices(rates, region)
+			return liveEC2PricesFor(rates, region)
 		}
 	}
 	rates, err := pricingpkg.NewAWSPricingClient(nil).FetchRates(region)
 	if err != nil {
-		return nil
+		return nil, liveEC2Snapshot{}
 	}
-	return withLiveEC2Prices(rates, region)
+	return liveEC2PricesFor(rates, region)
+}
+
+// Values of a pool level's "price_source" detail.
+const (
+	poolPriceSourceLive     = "aws_api"
+	poolPriceSourceCached   = "cached"
+	poolPriceSourceFallback = "fallback"
+)
+
+// poolPriceSource says where the on-demand price of basisType came from:
+//
+//   - "aws_api"  -- the region's live map, read from AWS within computeOnDemandTTL
+//   - "cached"   -- the region's live map, read from AWS longer ago than that:
+//     live data older than 24h
+//   - "fallback" -- the dated table, because the live map lacks the type or
+//     no live map is cached yet
+func poolPriceSource(basisType string, snap liveEC2Snapshot) string {
+	if v, ok := snap.prices[basisType]; !ok || !usablePriceUSD(v) {
+		return poolPriceSourceFallback
+	}
+	if snap.fresh() {
+		return poolPriceSourceLive
+	}
+	return poolPriceSourceCached
 }
 
 // zeroMarginalLevels builds the three levels of a node whose cost is billed
@@ -258,9 +305,7 @@ func getPricing(w http.ResponseWriter, r *http.Request) {
 
 	// 2a. EC2 capacity pools. Every EC2-runtime node above reports $0 marginal
 	//     and points here with costAttributedTo; this is where its money is.
-	for poolKey, poolNode := range computePoolNodes(env, region) {
-		response.Nodes[poolKey] = poolNode
-	}
+	addComputePoolNodes(&response, env, region)
 
 	// 3. RDS pricing if postgres is enabled
 	if env.Postgres.Enabled {
@@ -526,7 +571,10 @@ func calculateServicePricing(ctx context.Context, client *pricing.Client, region
 //
 // A declared pool nothing is placed on is still priced: an idle pool is the
 // exact case this whole shape exists to make visible.
-func computePoolNodes(env Env, region string) map[string]NodePricing {
+//
+// It also returns the live price snapshot the pools were priced from, empty
+// when there was no pool to price.
+func computePoolNodes(env Env, region string) (map[string]NodePricing, liveEC2Snapshot) {
 	// 1. Which units run on EC2, and on which pool.
 	attributedFrom := map[string][]string{}
 	addUnit := func(nodeKey, poolName string) {
@@ -553,7 +601,7 @@ func computePoolNodes(env Env, region string) map[string]NodePricing {
 	}
 
 	if len(attributedFrom) == 0 && len(declared) == 0 {
-		return nil
+		return nil, liveEC2Snapshot{}
 	}
 
 	// 3. No pools declared but something asks for EC2: mirror FR-58's
@@ -570,13 +618,20 @@ func computePoolNodes(env Env, region string) map[string]NodePricing {
 		})
 	}
 
-	rates := ec2PoolRates(region)
+	rates, live := ec2PoolRates(region)
 	nodes := make(map[string]NodePricing, len(declared))
 	priced := map[string]bool{}
 	for _, pool := range declared {
 		from := attributedFrom[pool.Name]
 		sort.Strings(from)
-		nodes[computePoolNodeKey(pool.Name)] = *calculateComputePoolPricing(pool, rates, from)
+		node := calculateComputePoolPricing(pool, rates, from)
+		// A level with a basis type has a price; say where it came from.
+		for _, level := range node.Levels {
+			if basis, ok := level.Details["instance_type"]; ok {
+				level.Details["price_source"] = poolPriceSource(basis, live)
+			}
+		}
+		nodes[computePoolNodeKey(pool.Name)] = *node
 		priced[pool.Name] = true
 	}
 
@@ -606,7 +661,7 @@ func computePoolNodes(env Env, region string) map[string]NodePricing {
 		nodes[computePoolNodeKey(poolName)] = node
 	}
 
-	return nodes
+	return nodes, live
 }
 
 // calculateComputePoolPricing prices one EC2 capacity pool -- the node that

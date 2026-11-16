@@ -512,3 +512,36 @@ func waitUntil(cond func() bool) bool {
 	}
 	return true
 }
+
+// TestTTLCache_SeedIfAbsentKeepsFetchedAt: an entry restored from disk keeps
+// the instant it was read from AWS, so its age decides whether it is stale.
+func TestTTLCache_SeedIfAbsentKeepsFetchedAt(t *testing.T) {
+	c := NewTTLCache[string]()
+	fetchedAt := time.Now().Add(-30 * time.Hour).Truncate(time.Second)
+
+	if !c.SeedIfAbsent(testKey, "from-disk", fetchedAt) {
+		t.Fatal("seeding an empty key must store the value")
+	}
+	val, at, ok := c.Peek(testKey)
+	if !ok || val != "from-disk" || !at.Equal(fetchedAt) {
+		t.Fatalf("Peek = %q, %v, %v; want the seeded value at %v", val, at, ok, fetchedAt)
+	}
+
+	// Older than the TTL, so an unforced read refetches rather than serving it.
+	fetches := 0
+	got, _, err := c.GetOrFetch(testKey, 24*time.Hour, false, func() (string, error) {
+		fetches++
+		return "fresh", nil
+	})
+	if err != nil || got != "fresh" || fetches != 1 {
+		t.Fatalf("GetOrFetch = %q, %v after %d fetches; a seeded entry past its TTL must be refetched", got, err, fetches)
+	}
+
+	// A present entry is never overwritten by a seed.
+	if c.SeedIfAbsent(testKey, "older", fetchedAt) {
+		t.Error("SeedIfAbsent replaced an entry that was already there")
+	}
+	if val, _, _ := c.Peek(testKey); val != "fresh" {
+		t.Errorf("value = %q, want the fetched one kept", val)
+	}
+}

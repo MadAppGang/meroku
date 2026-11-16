@@ -211,12 +211,17 @@ func fetchRegionOnDemandPrices(ctx context.Context, api pricingProductsAPI, regi
 // loadOnDemandPrices is the cached read (FR-9: 24h, per profile and region).
 // Like the catalog, it does not Invalidate before a forced fetch -- see
 // loadComputeCatalog for why the stale rung has to survive a failed refresh.
+//
+// The disk copy is loaded into memory first, so a fresh saved map answers
+// without a fetch, and every successful fetch is saved for the next start.
 func (ce *computeEnv) loadOnDemandPrices(ctx context.Context, force bool) (map[string]float64, time.Time, error) {
+	peekOnDemandPrices(ce.key)
 	return computeOnDemandCache.GetOrFetch(ce.key, computeOnDemandTTL, force, func() (map[string]float64, error) {
 		prices, err := fetchRegionOnDemandPrices(ctx, ce.pricingAPI, ce.region)
 		if err != nil {
 			return nil, ce.explainFailure(ctx, err, actionGetProducts)
 		}
+		saveLiveEC2Prices(ce.key, ce.region, prices, time.Now())
 		return prices, nil
 	})
 }
@@ -251,7 +256,7 @@ func (ce *computeEnv) resolveComputePrices(ctx context.Context, force bool) pric
 		state = ce.lastKnownCredState()
 	}
 
-	if stale, staleAt, ok := computeOnDemandCache.Peek(ce.key); ok {
+	if stale, staleAt, ok := peekOnDemandPrices(ce.key); ok {
 		return priceResolution{
 			prices:    stale,
 			source:    sourcePartial,
@@ -368,7 +373,7 @@ func clearPriceFetchStart(key string) {
 // or joins a fetch, so it cannot block. It is what the budget expiry falls back
 // to while the real fetch is still in flight.
 func (ce *computeEnv) pricesWithoutWaiting() priceResolution {
-	if stale, staleAt, ok := computeOnDemandCache.Peek(ce.key); ok {
+	if stale, staleAt, ok := peekOnDemandPrices(ce.key); ok {
 		return priceResolution{
 			prices:    stale,
 			source:    sourcePartial,
