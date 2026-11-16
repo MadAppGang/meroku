@@ -672,6 +672,25 @@ Your ASG may launch any type in the list, so treat the figure as a basis, not a 
 types all have unknown prices reports **unknown**, never `$0` — absent data and free are different
 answers.
 
+Where the on-demand rate comes from (`app/pricing_live_ec2.go`, `app/pricing_disk_cache.go`):
+
+- The region's live price map, read from the AWS Price List API (about 8 seconds per region), is
+  kept in memory and in `<user cache dir>/meroku/ec2-on-demand-prices/`, one JSON file per AWS
+  profile and region. After a restart the file is read back with its original fetch time. A file
+  whose fetch time is more than 5 minutes in the future is ignored.
+- `GET /api/pricing` never waits for AWS. It answers from the map it has, or from the dated
+  12-type table when there is none. When the map is missing or older than 24 hours it starts one
+  background load (at most 2 minutes). `pricesRefreshing` is true when the response was priced
+  while a load was running, even if the load ended before the response was sent, or when a load
+  is running now.
+- A failed load (expired SSO session, no `pricing:GetProducts`) is not retried for 5 minutes.
+  During that time nothing loads and `pricesRefreshing` is false.
+- While `pricesRefreshing` is true the web UI asks again after 3 seconds, doubling the wait up to
+  15 seconds, and stops after the 2-minute load timeout plus one more wait.
+- Each pool level has a `price_source` detail: `aws_api` (live, under 24 hours old), `cached`
+  (live data older than 24h) or `fallback` (from the table).
+- The instance picker reads and writes the same memory and disk cache.
+
 Two practical consequences:
 
 - `min_size: 0` is a real option for a pool that only serves scheduled work. It costs nothing while

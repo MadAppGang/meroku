@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { infrastructureApi } from "../api/infrastructure";
 
 export interface LevelPrice {
@@ -103,7 +103,31 @@ export interface PricingResponse {
 	region: string;
 	nodes: Record<string, NodePricing>;
 	egress?: EgressAdvice;
+	/**
+	 * True when the server priced this response while loading the region's
+	 * live EC2 prices in the background, or is loading them now. False while
+	 * nothing loads, including the few minutes after a failed load. Pool
+	 * figures come from the cache or the dated table until a load ends, and
+	 * each pool level's `details.price_source` says which:
+	 * `"aws_api"`, `"cached"` or `"fallback"`. Absent on older servers.
+	 */
+	pricesRefreshing?: boolean;
 }
+
+/**
+ * Longest a background price load may run on the server (`liveEC2LoadTimeout`
+ * in app/pricing_live_ec2.go). Change the two together.
+ */
+const REFRESH_LOAD_TIMEOUT_MS = 120_000;
+/**
+ * While prices are refreshing the hook asks again after 3s, doubling the wait
+ * each time up to 15s (3, 6, 12, 15, 15, ...). It stops once it has waited
+ * longer than the server's load timeout plus one last wait, so a load that
+ * ends at its timeout is still picked up and the polling is always bounded.
+ */
+const REFRESH_POLL_FIRST_MS = 3000;
+const REFRESH_POLL_MAX_MS = 15_000;
+const REFRESH_POLL_BUDGET_MS = REFRESH_LOAD_TIMEOUT_MS + REFRESH_POLL_MAX_MS;
 
 export function usePricing(
 	environment: string | null,
@@ -113,28 +137,85 @@ export function usePricing(
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<Error | null>(null);
 
+	// requestId changes on every fetch, environment change and unmount, so a
+	// response or timer from an earlier one is dropped.
+	const requestId = useRef(0);
+	const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	const stopPolling = useCallback(() => {
+		if (pollTimer.current !== null) {
+			clearTimeout(pollTimer.current);
+			pollTimer.current = null;
+		}
+	}, []);
+
 	const fetchPricing = useCallback(async () => {
+		stopPolling();
+		const id = ++requestId.current;
 		if (!environment) {
 			setPricing(null);
 			return;
 		}
 
+		// While the server reports a refresh, ask again quietly: the figures on
+		// screen stay, no loading state, and errors leave them as they are.
+		const pollWhileRefreshing = (
+			data: PricingResponse,
+			delayMs: number,
+			waitedMs: number,
+		) => {
+			if (!data.pricesRefreshing || waitedMs >= REFRESH_POLL_BUDGET_MS) {
+				return;
+			}
+			const wait = Math.min(delayMs, REFRESH_POLL_BUDGET_MS - waitedMs);
+			pollTimer.current = setTimeout(async () => {
+				pollTimer.current = null;
+				try {
+					const next = await infrastructureApi.getPricing(environment);
+					if (id !== requestId.current) {
+						return;
+					}
+					setPricing(next);
+					pollWhileRefreshing(
+						next,
+						Math.min(delayMs * 2, REFRESH_POLL_MAX_MS),
+						waitedMs + wait,
+					);
+				} catch {
+					// Keep the figures already shown and stop asking.
+				}
+			}, wait);
+		};
+
 		setLoading(true);
 		setError(null);
 		try {
 			const data = await infrastructureApi.getPricing(environment);
+			if (id !== requestId.current) {
+				return;
+			}
 			setPricing(data);
+			pollWhileRefreshing(data, REFRESH_POLL_FIRST_MS, 0);
 		} catch (err) {
+			if (id !== requestId.current) {
+				return;
+			}
 			setError(err as Error);
 			setPricing(null);
 		} finally {
-			setLoading(false);
+			if (id === requestId.current) {
+				setLoading(false);
+			}
 		}
-	}, [environment]);
+	}, [environment, stopPolling]);
 
 	useEffect(() => {
 		fetchPricing();
-	}, [fetchPricing]);
+		return () => {
+			requestId.current++;
+			stopPolling();
+		};
+	}, [fetchPricing, stopPolling]);
 
 	return { pricing, loading, error, refreshPricing: fetchPricing };
 }

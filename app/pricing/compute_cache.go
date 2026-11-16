@@ -197,6 +197,22 @@ func (c *TTLCache[T]) Peek(key string) (T, time.Time, bool) {
 	return e.val, e.cachedAt, true
 }
 
+// SeedIfAbsent stores val for key with the instant it was fetched, but only
+// when key holds no entry, and reports whether it stored it. It restores a
+// value saved by an earlier process: cachedAt is the original fetch time, so
+// the entry is fresh or stale by its real age, and a value already in memory
+// is never replaced by an older copy.
+func (c *TTLCache[T]) SeedIfAbsent(key string, val T, cachedAt time.Time) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if _, ok := c.entries[key]; ok {
+		return false
+	}
+	c.entries[key] = &cacheEntry[T]{val: val, cachedAt: cachedAt}
+	return true
+}
+
 // Invalidate drops the stored entry for key. It does not cancel or detach an
 // in-flight fetch: a fetch already running will still store its result, which
 // is what the refresh=true path wants (invalidate, then refetch synchronously).
