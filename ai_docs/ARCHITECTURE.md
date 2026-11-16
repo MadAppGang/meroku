@@ -275,6 +275,10 @@ workload:
       resources: ["arn:aws:s3:::my-bucket/*"]
 ```
 
+`policy` is the one key for a workload's own statements (see
+[Workload IAM](./WORKLOAD_IAM.md)). `workload.backend_policies` is moved onto it by migration v33;
+`workload.policies` (managed policy ARNs) is refused at generate.
+
 ### Secrets Management
 - **SSM Parameter Store**: Database passwords, API keys
 - **Environment Files**: S3-stored configuration

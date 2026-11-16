@@ -418,7 +418,8 @@ module "alb" {
 # ============================================================================
 # CUSTOM PRE-MODULE (runs before workloads module)
 # Source: custom/pre/
-# Outputs from this module can feed into workloads (e.g., backend_env_vars)
+# Outputs that feed into workloads: backend_env_vars (merged into backend_env)
+# and backend_policies (merged into backend_policy)
 # ============================================================================
 module "custom_pre" {
   source = "{{custom_modules}}/pre"
@@ -811,7 +812,16 @@ module "workloads" {
   {{!-- hclArray, not array: an IAM resource or condition value routinely
         carries ${aws:username} or ${aws:PrincipalTag/...}, which must reach
         IAM literally rather than as a Terraform interpolation. --}}
+  {{#if custom_pre_backend_policies}}
+  {{!-- The custom/pre module's backend_policies output is referenced directly,
+        never through try(): try() turns a partly unknown list (a statement
+        naming a resource created in the same apply) into a wholly unknown
+        one, and the backend custom policy's count would be unknown at plan.
+        The generator sets the flag only when custom/pre declares the output. --}}
+  backend_policy = concat({{{hclArray workload.policy}}}, module.custom_pre.backend_policies)
+  {{else}}
   backend_policy = {{{hclArray workload.policy}}}
+  {{/if}}
   {{#if _service_policies}}
   {{!-- Each service's policy, moved out of the service maps by
         moveServicePoliciesOut so it never travels through the services list. --}}

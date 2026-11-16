@@ -171,7 +171,7 @@ sqsClient.SendMessage(&sqs.SendMessageInput{
 
 ```yaml
 workload:
-  backend_policies:
+  policy:
     - actions:
         - sqs:SendMessage
         - sqs:ReceiveMessage
@@ -370,7 +370,7 @@ output "backend_env_vars" {
   ]
 }
 
-# Add IAM policies for the backend task
+# IAM statements merged into the backend task role's custom policy
 output "backend_policies" {
   value = [
     {
@@ -384,6 +384,25 @@ output "backend_policies" {
   ]
 }
 ```
+
+Both outputs are merged into the workloads module: `backend_env_vars` into the backend's environment, and
+`backend_policies` into the same customer-managed policy as `workload.policy` from the YAML. Rules for
+`backend_policies`:
+
+- **It is picked up when a `custom/pre/*.tf` file declares `output "backend_policies"`.** `meroku generate`
+  looks for that declaration and references the output only when it finds one. Regenerate after adding it.
+- **Each statement has the shape of a `policy` statement:** `actions` and `resources`, with optional `effect`
+  (`Allow` or `Deny`, default `Allow`) and `conditions` (`test`, `variable`, `values`).
+- **Write a fixed list with literal `actions`.** The number of statements decides whether the custom policy
+  exists, and Terraform must know it at plan. `resources` may reference resources created in the same
+  apply, like `aws_kms_key.app_secrets.arn` above. A `for` expression whose length is only known after
+  apply (over a computed list attribute, or `split()` of a computed ID) makes the list's length unknown,
+  and the plan fails with "Invalid count argument". A `for` over a resource with a literal `count`, or a
+  `for_each` over keys written in the configuration, is known at plan and works.
+- **The output carries statements only, never managed policy ARNs.** An env YAML does not carry ARNs either:
+  `meroku generate` refuses `workload.policies`. To attach a managed policy, use an
+  `aws_iam_role_policy_attachment` on the role `<project>_backend_task_<env>` in `custom/post`, which runs
+  after the backend role exists.
 
 ---
 
@@ -604,7 +623,7 @@ extensions:
       dlq_max_receive: 5
 
 workload:
-  backend_policies:
+  policy:
     - actions:
         - sqs:*
       resources:

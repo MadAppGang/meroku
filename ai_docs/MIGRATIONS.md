@@ -48,8 +48,9 @@ The meroku application includes a comprehensive YAML schema migration system tha
 | 30 | Service network access | `services[].network_access` (`public`\|`internal`\|`full_open`\|`none`); existing services pinned to `full_open` |
 | 31 | Name-based policy as flags | Environment `auto_deploy` (`true` only in `dev`), every non-dev target turned off, `is_prod` for `prod` and `production`, and `prod`'s domain settings. See [Environment Policy](./ENVIRONMENT_POLICY.md) |
 | 32 | Neon Postgres (opt-in) | Top-level `neon` block and per-service `workload.backend_neon` / `services[].neon`. Only an env that already has `neon:` changes: `owner_role: neondb_owner`, `create: false` on every `databases[]` entry, and in create mode `project.pg_version: 17`, each written only where absent. A file with a `schema_version` newer than the binary is refused by every loader and left unchanged |
+| 33 | Backend statements under `policy` | Appends `workload.backend_policies` entries (never rendered) to `workload.policy`, after the statements already there, and removes the key; an empty one is just removed. They are granted from the next apply. A `backend_policies` that is not a list, or a `policy` that is not a list, is left with a warning and refused by `meroku generate`. `workload.policies` (managed policy ARNs) is not migrated; generate refuses it when non-empty |
 
-Current version: **v32**
+Current version: **v33**
 
 ### A note on v30 — the default and the migration disagree on purpose
 

@@ -115,6 +115,36 @@ the `service_policies` input of `module.workloads`, one `hclArray` per service.
 The backend renders `backend_policy = {{{hclArray workload.policy}}}` and each
 task block `custom_policy = {{{hclArray policy}}}`.
 
+## Statements from custom/pre
+
+A `custom/pre` module may add backend statements through an
+`output "backend_policies"` in the same shape (`actions`, `resources`, optional
+`effect` and `conditions`). When a `custom/pre/*.tf` file declares that output,
+`meroku generate` sets `custom_pre_backend_policies` and the template renders
+
+```hcl
+backend_policy = concat(<workload.policy>, module.custom_pre.backend_policies)
+```
+
+The reference is direct, never `try(module.custom_pre.backend_policies, [])`:
+`try()` returns a wholly unknown value when its argument is partly unknown, so a
+statement naming a resource created in the same apply would make the custom
+policy's `count` unknown and stop the plan with "Invalid count argument". The
+output must be a fixed list with literal `actions`; its `resources` may be
+unknown at plan. These statements are not checked at generate; the validation
+blocks on the module's `backend_policy` variable check every statement at plan
+(non-empty `actions` and `resources`, no repeated condition test and variable).
+`modules/workloads/tests/backend_policies.tftest.hcl` pins the plan-time count.
+
+## Keys that are not `policy`
+
+- `workload.backend_policies` was declared and documented but never rendered.
+  Migration v33 appends its entries to `workload.policy` and removes it;
+  generate refuses one that still holds anything.
+- `workload.policies`, a list of managed policy ARNs, was never attached. An
+  env YAML does not carry ARNs, so generate refuses a non-empty one: write
+  `policy` statements, or attach a managed policy from `custom/post`.
+
 ## Web UI
 
 The IAM tab of the backend, every service, every scheduled task and every event

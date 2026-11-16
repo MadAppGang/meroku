@@ -213,22 +213,16 @@ The `workload` section configures your main backend application and related infr
 
 ### IAM Policies
 
-#### `policies`
-- **Type**: Array of strings
-- **Description**: AWS managed policy ARNs to attach to backend task role
+#### `policy`
+- **Type**: Array of statements: `effect` (optional, `Allow` or `Deny`, default `Allow`), `actions`, `resources`,
+  `conditions` (optional)
+- **Description**: The backend task role's own IAM statements. They become one customer-managed policy
+  (`<project>_backend_custom_policy_<env>`), together with any statements from a `custom/pre` module's
+  `backend_policies` output. Services and tasks take the same key. Full rules:
+  [Workload IAM](../ai_docs/WORKLOAD_IAM.md).
 - **Example**:
   ```yaml
-  policies:
-    - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
-    - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
-  ```
-
-#### `backend_policies`
-- **Type**: Array of policy objects
-- **Description**: Custom inline IAM policies for the backend
-- **Example**:
-  ```yaml
-  backend_policies:
+  policy:
     - actions:
         - s3:GetObject
         - s3:PutObject
@@ -238,8 +232,17 @@ The `workload` section configures your main backend application and related infr
         - dynamodb:GetItem
         - dynamodb:PutItem
       resources:
-        - arn:aws:dynamodb:us-east-1:123456789012:table/MyTable
+        - arn:aws:dynamodb:us-east-1:000000000000:table/MyTable
   ```
+
+#### `backend_policies` (replaced by `policy`)
+Never rendered. Schema migration v33 appends its statements to `policy` and removes the key. `meroku generate`
+refuses a `backend_policies` that still holds anything.
+
+#### `policies` (not supported)
+A list of managed policy ARNs was never attached, and an env YAML does not carry ARNs. `meroku generate`
+refuses a non-empty `policies`. Write the permissions as `policy` statements, or attach a managed policy to
+the role `<project>_backend_task_<env>` with an `aws_iam_role_policy_attachment` in `custom/post`.
 
 ### Integrations
 
