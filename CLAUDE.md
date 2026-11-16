@@ -437,7 +437,8 @@ service) are optional; absent keys render nothing. A breaker is turned off with
 
 `event_bus.enabled` creates `<project>-<env>`; `EVENT_BUS_NAME` then names it, and
 entries and event-task rules without `bus` use it. A workload's `events.subscribes`
-gives it its own SQS queue (`EVENT_QUEUE_URL`), two DLQs and alarms to
+gives it its own SQS queue (`EVENT_QUEUE_URL`; it may receive from and send to it and its
+application DLQ, `EVENT_DLQ_URL`), two DLQs and alarms to
 `<project>-<env>-alerts`; `events.produces` is the only source of `events:PutEvents`.
 Normalised in `app/events.go`, built by `modules/events`.
 [Events](./ai_docs/EVENTS.md).

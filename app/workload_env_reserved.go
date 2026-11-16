@@ -55,6 +55,7 @@ var reservedWorkloadEnvTable = []reservedWorkloadEnv{
 	{name: "DATA_BUCKET_PATH", setBy: "the data bucket", appliesTo: everyWorkload},
 	{name: "DATA_BUCKET_SHARED_", prefix: true, setBy: "the data bucket's shared folders", appliesTo: everyWorkload},
 	{name: "EVENT_QUEUE_URL", setBy: "the workload's event queue", appliesTo: isEventConsumer},
+	{name: "EVENT_DLQ_URL", setBy: "the workload's event dead-letter queue", appliesTo: isEventConsumer},
 	{name: "VALKEY_URL", setBy: "valkey.access", appliesTo: hasValkeyAccess},
 	{name: "VALKEY_HOST", setBy: "valkey.access", appliesTo: hasValkeyAccess},
 	{name: "VALKEY_PORT", setBy: "valkey.access", appliesTo: hasValkeyAccess},

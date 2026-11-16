@@ -29,6 +29,7 @@ describe("reservedBackendEnvError", () => {
 
 	test("refuses queue and Valkey names only when meroku sets them", () => {
 		expect(reservedBackendEnvError(base, "EVENT_QUEUE_URL")).toBeFalsy();
+		expect(reservedBackendEnvError(base, "EVENT_DLQ_URL")).toBeFalsy();
 		expect(reservedBackendEnvError(base, "VALKEY_URL")).toBeFalsy();
 		const wired = {
 			...base,
@@ -36,6 +37,7 @@ describe("reservedBackendEnvError", () => {
 			valkey: { enabled: true, access: ["backend"] },
 		} as unknown as YamlInfrastructureConfig;
 		expect(reservedBackendEnvError(wired, "EVENT_QUEUE_URL")).toBeTruthy();
+		expect(reservedBackendEnvError(wired, "EVENT_DLQ_URL")).toBeTruthy();
 		expect(reservedBackendEnvError(wired, "VALKEY_URL")).toBeTruthy();
 	});
 

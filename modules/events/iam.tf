@@ -1,5 +1,5 @@
 # One inline policy on the task role of every workload that consumes or produces:
-# read access to its own queue, and events:PutEvents on the buses its produces
+# access to its own queue and application DLQ, and events:PutEvents on the buses its produces
 # entries name. Without an entry a workload cannot publish at all; the owning
 # modules grant no PutEvents.
 #
@@ -19,6 +19,16 @@ locals {
     "sqs:ReceiveMessage",
     "sqs:DeleteMessage",
     "sqs:ChangeMessageVisibility",
+    "sqs:GetQueueAttributes",
+    "sqs:GetQueueUrl",
+    "sqs:SendMessage",
+  ]
+
+  # A consumer moves a message it cannot process to its application DLQ itself,
+  # instead of waiting for max_receive_count failed receives. The delivery DLQ
+  # is written only by EventBridge, so the workload gets nothing on it.
+  dead_letter_actions = [
+    "sqs:SendMessage",
     "sqs:GetQueueAttributes",
     "sqs:GetQueueUrl",
   ]
@@ -54,12 +64,22 @@ locals {
     )
   ] }
 
-  consume_statements = { for name in keys(local.consumers) : name => [{
-    Sid      = "EventQueue"
-    Effect   = "Allow"
-    Action   = local.consumer_actions
-    Resource = aws_sqs_queue.main[name].arn
-  }] }
+  # SendMessage on the main queue lets a consumer put a message back with a
+  # delay (DelaySeconds) to retry it later.
+  consume_statements = { for name in keys(local.consumers) : name => [
+    {
+      Sid      = "EventQueue"
+      Effect   = "Allow"
+      Action   = local.consumer_actions
+      Resource = aws_sqs_queue.main[name].arn
+    },
+    {
+      Sid      = "EventDeadLetterQueue"
+      Effect   = "Allow"
+      Action   = local.dead_letter_actions
+      Resource = aws_sqs_queue.dlq[name].arn
+    },
+  ] }
 
   policy_workloads = setunion(keys(local.consumers), keys(local.producers))
 }
