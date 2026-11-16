@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"reflect"
 	"testing"
 )
@@ -83,7 +84,7 @@ func TestMigrateToV25ConvertsScalarCommands(t *testing.T) {
 				"container_command": tc.given,
 			})
 
-			if err := migrateToV25(doc); err != nil {
+			if err := migrateToV25(doc, io.Discard); err != nil {
 				t.Fatalf("migrateToV25: %v", err)
 			}
 
@@ -104,12 +105,12 @@ func TestMigrateToV25IsIdempotent(t *testing.T) {
 		"container_command": `["npm","run","cron"]`,
 	})
 
-	if err := migrateToV25(doc); err != nil {
+	if err := migrateToV25(doc, io.Discard); err != nil {
 		t.Fatalf("first run: %v", err)
 	}
 	first := v25Command(t, doc, 0)
 
-	if err := migrateToV25(doc); err != nil {
+	if err := migrateToV25(doc, io.Discard); err != nil {
 		t.Fatalf("second run: %v", err)
 	}
 	second := v25Command(t, doc, 0)
@@ -122,7 +123,7 @@ func TestMigrateToV25IsIdempotent(t *testing.T) {
 func TestMigrateToV25LeavesOtherShapesAlone(t *testing.T) {
 	t.Run("missing container_command", func(t *testing.T) {
 		doc := v25Doc(map[interface{}]interface{}{"name": "cleanup"})
-		if err := migrateToV25(doc); err != nil {
+		if err := migrateToV25(doc, io.Discard); err != nil {
 			t.Fatalf("migrateToV25: %v", err)
 		}
 		if got := v25Command(t, doc, 0); got != nil {
@@ -132,7 +133,7 @@ func TestMigrateToV25LeavesOtherShapesAlone(t *testing.T) {
 
 	t.Run("no scheduled_tasks key", func(t *testing.T) {
 		doc := map[string]interface{}{}
-		if err := migrateToV25(doc); err != nil {
+		if err := migrateToV25(doc, io.Discard); err != nil {
 			t.Fatalf("migrateToV25: %v", err)
 		}
 		if _, exists := doc["scheduled_tasks"]; exists {
@@ -142,7 +143,7 @@ func TestMigrateToV25LeavesOtherShapesAlone(t *testing.T) {
 
 	t.Run("scheduled_tasks is not a list", func(t *testing.T) {
 		doc := map[string]interface{}{"scheduled_tasks": "nonsense"}
-		if err := migrateToV25(doc); err != nil {
+		if err := migrateToV25(doc, io.Discard); err != nil {
 			t.Fatalf("migrateToV25 should skip, not fail: %v", err)
 		}
 	})
@@ -152,7 +153,7 @@ func TestMigrateToV25LeavesOtherShapesAlone(t *testing.T) {
 			"name":              "cleanup",
 			"container_command": 42,
 		})
-		if err := migrateToV25(doc); err != nil {
+		if err := migrateToV25(doc, io.Discard); err != nil {
 			t.Fatalf("migrateToV25: %v", err)
 		}
 		if got := v25Command(t, doc, 0); got != 42 {

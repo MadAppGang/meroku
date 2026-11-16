@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"testing"
 
 	"gopkg.in/yaml.v2"
@@ -108,7 +109,7 @@ func TestMigrateToV26(t *testing.T) {
 		t.Run(shape.name, func(t *testing.T) {
 			doc := shape.doc
 
-			if err := migrateToV26(doc); err != nil {
+			if err := migrateToV26(doc, io.Discard); err != nil {
 				t.Fatalf("migrateToV26: %v", err)
 			}
 
@@ -138,7 +139,7 @@ func TestMigrateToV26(t *testing.T) {
 	// not exist and fail generation with an index error.
 	t.Run("never writes compute_pool", func(t *testing.T) {
 		doc := v26AnyKeyed("api")
-		if err := migrateToV26(doc); err != nil {
+		if err := migrateToV26(doc, io.Discard); err != nil {
 			t.Fatalf("migrateToV26: %v", err)
 		}
 		if _, exists := v26Value(t, v26Workload(t, doc), "backend_compute_pool"); exists {
@@ -155,7 +156,7 @@ func TestMigrateToV26(t *testing.T) {
 	// invented one would be introducing a second convention by accident.
 	t.Run("creates neither a compute block nor a vpc map", func(t *testing.T) {
 		doc := v26AnyKeyed("api")
-		if err := migrateToV26(doc); err != nil {
+		if err := migrateToV26(doc, io.Discard); err != nil {
 			t.Fatalf("migrateToV26: %v", err)
 		}
 		if _, exists := doc["compute"]; exists {
@@ -171,7 +172,7 @@ func TestMigrateToV26(t *testing.T) {
 	// in the same run from being applied.
 	t.Run("does not set schema_version", func(t *testing.T) {
 		doc := v26AnyKeyed("api")
-		if err := migrateToV26(doc); err != nil {
+		if err := migrateToV26(doc, io.Discard); err != nil {
 			t.Fatalf("migrateToV26: %v", err)
 		}
 		if _, exists := doc["schema_version"]; exists {
@@ -185,7 +186,7 @@ func TestMigrateToV26(t *testing.T) {
 func TestMigrateToV26_SkipsOddShapes(t *testing.T) {
 	t.Run("no workload section", func(t *testing.T) {
 		doc := map[string]interface{}{"services": []interface{}{}}
-		if err := migrateToV26(doc); err != nil {
+		if err := migrateToV26(doc, io.Discard); err != nil {
 			t.Fatalf("migrateToV26 should skip, not fail: %v", err)
 		}
 		if _, exists := doc["workload"]; exists {
@@ -195,7 +196,7 @@ func TestMigrateToV26_SkipsOddShapes(t *testing.T) {
 
 	t.Run("no services key", func(t *testing.T) {
 		doc := map[string]interface{}{"workload": map[interface{}]interface{}{}}
-		if err := migrateToV26(doc); err != nil {
+		if err := migrateToV26(doc, io.Discard); err != nil {
 			t.Fatalf("migrateToV26 should skip, not fail: %v", err)
 		}
 		if _, exists := doc["services"]; exists {
@@ -205,7 +206,7 @@ func TestMigrateToV26_SkipsOddShapes(t *testing.T) {
 
 	t.Run("services is not a list", func(t *testing.T) {
 		doc := map[string]interface{}{"services": "nonsense"}
-		if err := migrateToV26(doc); err != nil {
+		if err := migrateToV26(doc, io.Discard); err != nil {
 			t.Fatalf("migrateToV26 should skip, not fail: %v", err)
 		}
 		if doc["services"] != "nonsense" {
@@ -221,7 +222,7 @@ func TestMigrateToV26_SkipsOddShapes(t *testing.T) {
 				map[interface{}]interface{}{"name": "api"},
 			},
 		}
-		if err := migrateToV26(doc); err != nil {
+		if err := migrateToV26(doc, io.Discard); err != nil {
 			t.Fatalf("migrateToV26 should skip, not fail: %v", err)
 		}
 		if got := v26Service(t, doc, 0); got != "nonsense" {
@@ -238,7 +239,7 @@ func TestMigrateToV26_SkipsOddShapes(t *testing.T) {
 			"workload": map[interface{}]interface{}{},
 			"services": []interface{}{},
 		}
-		if err := migrateToV26(doc); err != nil {
+		if err := migrateToV26(doc, io.Discard); err != nil {
 			t.Fatalf("migrateToV26: %v", err)
 		}
 		services, ok := doc["services"].([]interface{})
@@ -254,7 +255,7 @@ func TestMigrateToV26_SkipsOddShapes(t *testing.T) {
 func TestMigrateToV26_IsIdempotent(t *testing.T) {
 	doc := v26AnyKeyed("api", "worker")
 
-	if err := migrateToV26(doc); err != nil {
+	if err := migrateToV26(doc, io.Discard); err != nil {
 		t.Fatalf("first run: %v", err)
 	}
 	first, err := yaml.Marshal(doc)
@@ -262,7 +263,7 @@ func TestMigrateToV26_IsIdempotent(t *testing.T) {
 		t.Fatalf("marshal after first run: %v", err)
 	}
 
-	if err := migrateToV26(doc); err != nil {
+	if err := migrateToV26(doc, io.Discard); err != nil {
 		t.Fatalf("second run: %v", err)
 	}
 	second, err := yaml.Marshal(doc)
@@ -295,7 +296,7 @@ func TestMigrateToV26_PreservesExistingValues(t *testing.T) {
 		},
 	}
 
-	if err := migrateToV26(doc); err != nil {
+	if err := migrateToV26(doc, io.Discard); err != nil {
 		t.Fatalf("migrateToV26: %v", err)
 	}
 
@@ -328,7 +329,7 @@ func TestMigrateToV26_PreservesExistingValues(t *testing.T) {
 			"workload": map[interface{}]interface{}{"backend_runtime": ""},
 			"services": []interface{}{map[interface{}]interface{}{"name": "api", "runtime": ""}},
 		}
-		if err := migrateToV26(doc); err != nil {
+		if err := migrateToV26(doc, io.Discard); err != nil {
 			t.Fatalf("migrateToV26: %v", err)
 		}
 		if runtime, _ := v26Value(t, v26Workload(t, doc), "backend_runtime"); runtime != "" {
@@ -372,7 +373,7 @@ scheduled_tasks:
 		t.Fatalf("unmarshal fixture: %v", err)
 	}
 
-	if err := migrateToV26(doc); err != nil {
+	if err := migrateToV26(doc, io.Discard); err != nil {
 		t.Fatalf("migrateToV26: %v", err)
 	}
 

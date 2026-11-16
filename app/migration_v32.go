@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"io"
+)
 
 // migrateToV32 writes the Neon defaults into an existing `neon:` block:
 // owner_role neondb_owner, create: false on every database, and in create
@@ -10,24 +13,24 @@ import "fmt"
 // Every value is written only where the key is absent, so a user's choice is
 // kept and a second run changes nothing. The version is not set here.
 // applyMigrations owns schema_version.
-func migrateToV32(data map[string]interface{}) error {
-	fmt.Println("  → Migrating to v32: Neon Postgres defaults (opt-in)")
+func migrateToV32(data map[string]interface{}, out io.Writer) error {
+	fmt.Fprintln(out, "  → Migrating to v32: Neon Postgres defaults (opt-in)")
 
 	neon, ok := asYAMLMapping(data["neon"])
 	if !ok {
-		fmt.Println("    ℹ️  No neon block; nothing to do")
+		fmt.Fprintln(out, "    ℹ️  No neon block; nothing to do")
 		return nil
 	}
 
 	if neon.setIfAbsent("owner_role", neonDefaultOwnerRole) {
-		fmt.Printf("    ✓ neon.owner_role set to %s\n", neonDefaultOwnerRole)
+		fmt.Fprintf(out, "    ✓ neon.owner_role set to %s\n", neonDefaultOwnerRole)
 	}
 
 	if raw, present := neon.lookup("databases"); present {
 		if list, ok := raw.([]interface{}); ok {
 			for _, item := range list {
 				if db, ok := asYAMLMapping(item); ok && db.setIfAbsent("create", false) {
-					fmt.Printf("    ✓ neon.databases '%s': create set to false (an existing database)\n", db.stringValue("name"))
+					fmt.Fprintf(out, "    ✓ neon.databases '%s': create set to false (an existing database)\n", db.stringValue("name"))
 				}
 			}
 		}
@@ -36,7 +39,7 @@ func migrateToV32(data map[string]interface{}) error {
 	if neon.stringValue("mode") == NeonModeCreate {
 		if raw, present := neon.lookup("project"); present {
 			if project, ok := asYAMLMapping(raw); ok && project.setIfAbsent("pg_version", neonDefaultPGVersion) {
-				fmt.Printf("    ✓ neon.project.pg_version set to %d\n", neonDefaultPGVersion)
+				fmt.Fprintf(out, "    ✓ neon.project.pg_version set to %d\n", neonDefaultPGVersion)
 			}
 		}
 	}

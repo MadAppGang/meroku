@@ -162,7 +162,7 @@ func TestEventsMatchEverythingWarns(t *testing.T) {
 		qaCapabilityMap{"detail_type": "job.*", "bus": "default"},
 	)}
 	qaCapabilityNoError(t, normalizeEvents(m))
-	warnings := strings.Join(generateWarnings(m), "\n")
+	warnings := strings.Join(warningDetails(generateWarnings(m)), "\n")
 	qaCapabilityContains(t, warnings, `detail_type "*"`, "every event on the default bus")
 	if strings.Contains(warnings, "subscribes[1]") {
 		t.Errorf("a narrowed wildcard must not warn: %s", warnings)

@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"io"
+)
 
 // migrateToV26 stamps an explicit runtime on the backend and on every service.
 //
@@ -34,44 +37,44 @@ import "fmt"
 //
 // The version is not set here. applyMigrations owns schema_version and writes
 // it once, after the whole chain has run.
-func migrateToV26(data map[string]interface{}) error {
-	fmt.Println("  → Migrating to v26: Stamping runtime: fargate on the backend and every service")
+func migrateToV26(data map[string]interface{}, out io.Writer) error {
+	fmt.Fprintln(out, "  → Migrating to v26: Stamping runtime: fargate on the backend and every service")
 
-	migrateV26Backend(data)
-	migrateV26Services(data)
+	migrateV26Backend(data, out)
+	migrateV26Services(data, out)
 
 	return nil
 }
 
 // migrateV26Backend stamps workload.backend_runtime.
-func migrateV26Backend(data map[string]interface{}) {
+func migrateV26Backend(data map[string]interface{}, out io.Writer) {
 	workload, ok := asYAMLMapping(data["workload"])
 	if !ok {
 		// A config with no workload section is minimal or hand-written. There
 		// is nothing to annotate, and the template's default already renders
 		// Fargate, so this is a skip rather than an error.
-		fmt.Println("    ℹ️  No workload section; backend runtime left at its default (fargate)")
+		fmt.Fprintln(out, "    ℹ️  No workload section; backend runtime left at its default (fargate)")
 		return
 	}
 
 	if workload.setIfAbsent("backend_runtime", "fargate") {
-		fmt.Println("    ✓ backend: Set runtime to fargate")
+		fmt.Fprintln(out, "    ✓ backend: Set runtime to fargate")
 	} else {
-		fmt.Println("    ℹ️  backend already has a runtime")
+		fmt.Fprintln(out, "    ℹ️  backend already has a runtime")
 	}
 }
 
 // migrateV26Services stamps runtime on each element of services.
-func migrateV26Services(data map[string]interface{}) {
+func migrateV26Services(data map[string]interface{}, out io.Writer) {
 	servicesRaw, exists := data["services"]
 	if !exists || servicesRaw == nil {
-		fmt.Println("    ℹ️  No services to migrate")
+		fmt.Fprintln(out, "    ℹ️  No services to migrate")
 		return
 	}
 
 	services, ok := servicesRaw.([]interface{})
 	if !ok {
-		fmt.Println("    ⚠️  services is not an array, skipping")
+		fmt.Fprintln(out, "    ⚠️  services is not an array, skipping")
 		return
 	}
 
@@ -86,17 +89,17 @@ func migrateV26Services(data map[string]interface{}) {
 		}
 		stamped++
 		if name := service.stringValue("name"); name != "" {
-			fmt.Printf("    ✓ service '%s': Set runtime to fargate\n", name)
+			fmt.Fprintf(out, "    ✓ service '%s': Set runtime to fargate\n", name)
 		}
 	}
 
 	switch {
 	case len(services) == 0:
-		fmt.Println("    ℹ️  No services to migrate")
+		fmt.Fprintln(out, "    ℹ️  No services to migrate")
 	case stamped == 0:
-		fmt.Println("    ℹ️  Every service already has a runtime")
+		fmt.Fprintln(out, "    ℹ️  Every service already has a runtime")
 	default:
-		fmt.Printf("    ✓ Stamped runtime on %d service(s)\n", stamped)
+		fmt.Fprintf(out, "    ✓ Stamped runtime on %d service(s)\n", stamped)
 	}
 }
 

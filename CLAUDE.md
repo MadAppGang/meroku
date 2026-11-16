@@ -433,6 +433,21 @@ service) are optional; absent keys render nothing. A breaker is turned off with
 `enable: false`, never by removing the key (provider 6.x suppresses that diff).
 [Backend Health Check](./ai_docs/BACKEND_HEALTH_CHECK.md).
 
+## Configuration warnings
+
+A configuration warning is something in the env YAML worth fixing that does not stop
+`meroku generate`. Each is a `ConfigWarning` (`code`, `item` kind+name, `title`, `detail`,
+`docs`) recorded with `addGenerateWarning` — never printed by the validator that finds it — and
+`collectEnvConfigWarnings` (`app/config_warnings.go`) computes all of them offline, without
+writing or printing. Generate prints them and carries on. `GET /api/config-warnings?env=` feeds
+the web UI, which paints the item's node in the `warning` token and lists the rest over the
+canvas; it has no `region_drift` (the server's `AWS_REGION` is not the deploying shell's) and
+answers 200 with `configError` for a YAML generate would refuse. The TUI main-menu Deploy shows
+them with "Cancel and fix" / "Proceed anyway" before anything is migrated or generated, except
+without a TTY or with `CI` set. There is no web deploy. Errors stay errors, added in
+`validateConfigBeforePreprocess` or a preprocess validator. Migrations write to the `io.Writer`
+they are given, never stdout directly. [Config Warnings](./ai_docs/CONFIG_WARNINGS.md).
+
 ## Events (project bus, queues, PutEvents)
 
 `event_bus.enabled` creates `<project>-<env>`; `EVENT_BUS_NAME` then names it, and

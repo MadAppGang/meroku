@@ -306,7 +306,7 @@ func normalizeEvents(envMap map[string]interface{}) error {
 	}
 
 	workloads, problems := eventWorkloads(envMap)
-	var warnings []string
+	var warnings []ConfigWarning
 	var moves []eventMove
 	var consumers, producers []interface{}
 
@@ -325,7 +325,8 @@ func normalizeEvents(envMap map[string]interface{}) error {
 			case w.kind == eventKindScheduledTask || w.kind == eventKindEventTask:
 				problems = append(problems, fmt.Sprintf("%s.queue: tasks have no event queue; remove it", w.field))
 			case len(subs) == 0:
-				warnings = append(warnings, fmt.Sprintf("%s.queue has no effect: the workload subscribes to nothing, so it has no queue", w.field))
+				warnings = append(warnings, eventWarning(w, warnCodeEventQueueUnused, "events.queue has no effect",
+					fmt.Sprintf("%s.queue has no effect: the workload subscribes to nothing, so it has no queue", w.field)))
 			}
 		}
 		if len(subs) > 0 {
@@ -368,7 +369,13 @@ func normalizeEvents(envMap map[string]interface{}) error {
 		addGenerateWarning(envMap, warning)
 	}
 	if previous, ok := envMap[eventBusPreviousKey].(bool); ok && previous != busEnabled {
-		addGenerateWarning(envMap, eventBusToggleWarning(project, env, busEnabled, moves))
+		addGenerateWarning(envMap, ConfigWarning{
+			Code:   warnCodeEventBusToggle,
+			Item:   workloadItem(WarningKindEventBus, ""),
+			Title:  "event_bus.enabled changed: the bus moves",
+			Detail: eventBusToggleWarning(project, env, busEnabled, moves),
+			Docs:   docsLink("ai_docs/EVENTS.md"),
+		})
 	}
 
 	envMap[eventConsumersKey] = consumers
@@ -387,7 +394,7 @@ func normalizeEvents(envMap map[string]interface{}) error {
 // the subscriptions modules/events renders. A detail_type with * is matched
 // with EventBridge's wildcard operator by the module; filters, when set, are
 // passed on as [{field, values}].
-func normalizeEventSubscriptions(w eventWorkload, busEnabled bool) ([]interface{}, []string, []string, []eventMove) {
+func normalizeEventSubscriptions(w eventWorkload, busEnabled bool) ([]interface{}, []string, []ConfigWarning, []eventMove) {
 	raw, present := w.events["subscribes"]
 	if !present || raw == nil {
 		return nil, nil, nil, nil
@@ -404,7 +411,8 @@ func normalizeEventSubscriptions(w eventWorkload, busEnabled bool) ([]interface{
 			"%s.subscribes: tasks cannot subscribe; an event task runs from its rules, and a service or the backend subscribes with its own queue", w.field)}, nil, nil
 	}
 
-	var problems, warnings []string
+	var problems []string
+	var warnings []ConfigWarning
 	var moves []eventMove
 	var out []interface{}
 	keys := map[string]int{}
@@ -452,8 +460,8 @@ func normalizeEventSubscriptions(w eventWorkload, busEnabled bool) ([]interface{
 			moves = append(moves, eventMove{where: where})
 		}
 		if detailType != "" && strings.Trim(detailType, "*") == "" {
-			warnings = append(warnings, fmt.Sprintf(
-				"%s has detail_type %q, so the workload receives every event on the %s bus; narrow it with a pattern such as job.* or a filter", where, detailType, bus))
+			warnings = append(warnings, eventWarning(w, warnCodeEventSubscriptionAllTypes, "Subscription receives every event on the bus",
+				fmt.Sprintf("%s has detail_type %q, so the workload receives every event on the %s bus; narrow it with a pattern such as job.* or a filter", where, detailType, bus)))
 		}
 
 		key := ""
@@ -607,7 +615,7 @@ func normalizeEventQueue(w eventWorkload) (eventQueueSettings, []string) {
 }
 
 // normalizeEventProduces validates a workload's produces list.
-func normalizeEventProduces(w eventWorkload, busEnabled bool) ([]interface{}, []string, []string, []eventMove) {
+func normalizeEventProduces(w eventWorkload, busEnabled bool) ([]interface{}, []string, []ConfigWarning, []eventMove) {
 	raw, present := w.events["produces"]
 	if !present || raw == nil {
 		return nil, nil, nil, nil
@@ -617,7 +625,8 @@ func normalizeEventProduces(w eventWorkload, busEnabled bool) ([]interface{}, []
 		return nil, []string{fmt.Sprintf("%s.produces must be a list", w.field)}, nil, nil
 	}
 
-	var problems, warnings []string
+	var problems []string
+	var warnings []ConfigWarning
 	var moves []eventMove
 	var out []interface{}
 
@@ -680,8 +689,8 @@ func normalizeEventProduces(w eventWorkload, busEnabled bool) ([]interface{}, []
 			moves = append(moves, eventMove{where: where})
 		}
 		if anyType {
-			warnings = append(warnings, fmt.Sprintf(
-				"%s has any: true, so the workload may publish every detail-type to the %s bus; list detail_types to narrow it", where, bus))
+			warnings = append(warnings, eventWarning(w, warnCodeEventProducesAny, "Workload may publish any detail-type",
+				fmt.Sprintf("%s has any: true, so the workload may publish every detail-type to the %s bus; list detail_types to narrow it", where, bus)))
 		}
 
 		dt := make([]interface{}, 0, len(detailTypes))
@@ -890,6 +899,18 @@ func eventAlertsTopicClashes(envMap map[string]interface{}, project, env string)
 		}
 	}
 	return problems
+}
+
+// eventWarning is a configuration warning about one workload's events block.
+// The event kinds are the warning kinds of the same names.
+func eventWarning(w eventWorkload, code, title, detail string) ConfigWarning {
+	return ConfigWarning{
+		Code:   code,
+		Item:   workloadItem(w.kind, w.name),
+		Title:  title,
+		Detail: detail,
+		Docs:   docsLink("ai_docs/EVENTS.md"),
+	}
 }
 
 // eventBusToggleWarning lists everything that moves when event_bus.enabled

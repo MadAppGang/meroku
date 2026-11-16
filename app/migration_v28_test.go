@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"io"
+	"testing"
+)
 
 // v28 has to stay in the registry, or a file that is behind migrates past it
 // without it ever running. The current-version check moved to
@@ -31,7 +34,7 @@ func TestMigrateToV28_EnabledProjectKeepsCreatingTheProvider(t *testing.T) {
 		"enable_github_oidc": true,
 	})
 
-	if err := migrateToV28(doc); err != nil {
+	if err := migrateToV28(doc, io.Discard); err != nil {
 		t.Fatalf("migrateToV28: %v", err)
 	}
 
@@ -52,7 +55,7 @@ func TestMigrateToV28_DisabledProjectGetsNoKey(t *testing.T) {
 		"enable_github_oidc": false,
 	})
 
-	if err := migrateToV28(doc); err != nil {
+	if err := migrateToV28(doc, io.Discard); err != nil {
 		t.Fatalf("migrateToV28: %v", err)
 	}
 
@@ -65,7 +68,7 @@ func TestMigrateToV28_DisabledProjectGetsNoKey(t *testing.T) {
 func TestMigrateToV28_AbsentOIDCKeyCountsAsDisabled(t *testing.T) {
 	doc := workloadDoc(map[interface{}]interface{}{"backend_image_port": 8080})
 
-	if err := migrateToV28(doc); err != nil {
+	if err := migrateToV28(doc, io.Discard); err != nil {
 		t.Fatalf("migrateToV28: %v", err)
 	}
 
@@ -83,7 +86,7 @@ func TestMigrateToV28_IsIdempotent(t *testing.T) {
 		"github_oidc_create_provider": false,
 	})
 
-	if err := migrateToV28(doc); err != nil {
+	if err := migrateToV28(doc, io.Discard); err != nil {
 		t.Fatalf("migrateToV28: %v", err)
 	}
 
@@ -98,7 +101,7 @@ func TestMigrateToV28_NoWorkloadSection(t *testing.T) {
 	// cleanly rather than panicking on the type assertion.
 	doc := map[string]interface{}{"project": "demo"}
 
-	if err := migrateToV28(doc); err != nil {
+	if err := migrateToV28(doc, io.Discard); err != nil {
 		t.Fatalf("migrateToV28: %v", err)
 	}
 

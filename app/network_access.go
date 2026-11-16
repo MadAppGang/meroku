@@ -12,7 +12,7 @@ import (
 // only at plan, after generation, and its message points at a variable rather
 // than at the service. Refusing here names the service and the file.
 //
-// It also warns — never refuses — when an internal or none service has no
+// It also records a warning — never refuses — when an internal or none service has no
 // health_check_command. Those services have no ALB target group, and the ALB's
 // health check was the only one meroku ever configured, so ECS would only
 // replace such a task when its process exits. meroku does not invent a check:
@@ -54,12 +54,7 @@ func validateNetworkAccessConfigMap(envMap map[string]interface{}) error {
 
 		if access == NetworkAccessInternal || access == NetworkAccessNone {
 			if cmd, _ := service["health_check_command"].([]interface{}); len(cmd) == 0 {
-				fmt.Printf("⚠️  service '%s' is network_access: %s and has no health_check_command.\n", name, access)
-				fmt.Println("   It is not behind the ALB, so nothing health-checks it: ECS replaces a task only")
-				fmt.Println("   when its process exits. Add a health_check_command that uses a tool the image")
-				fmt.Println("   really has. Slim and distroless images usually have no wget or curl; probe with")
-				fmt.Println("   the runtime instead, or copy the Dockerfile's HEALTHCHECK. Examples:")
-				fmt.Println("   ai_docs/SERVICE_NETWORK_ACCESS.md#check-that-the-tool-is-in-the-image")
+				addGenerateWarning(envMap, serviceNoHealthCheckWarning(name, access))
 			}
 		}
 	}
@@ -68,6 +63,23 @@ func validateNetworkAccessConfigMap(envMap map[string]interface{}) error {
 		return fmt.Errorf("invalid service network settings:\n  %s", strings.Join(problems, "\n  "))
 	}
 	return nil
+}
+
+// serviceNoHealthCheckWarning is the warning for an internal or none service
+// with no health_check_command.
+func serviceNoHealthCheckWarning(name, access string) ConfigWarning {
+	return ConfigWarning{
+		Code:  warnCodeServiceNoHealthCheck,
+		Item:  workloadItem(WarningKindService, name),
+		Title: fmt.Sprintf("service '%s' is network_access: %s and has no health_check_command", name, access),
+		Detail: strings.Join([]string{
+			"It is not behind the ALB, so nothing health-checks it: ECS replaces a task only",
+			"when its process exits. Add a health_check_command that uses a tool the image",
+			"really has. Slim and distroless images usually have no wget or curl; probe with",
+			"the runtime instead, or copy the Dockerfile's HEALTHCHECK.",
+		}, "\n"),
+		Docs: docsLink("ai_docs/SERVICE_NETWORK_ACCESS.md#check-that-the-tool-is-in-the-image"),
+	}
 }
 
 func isNetworkAccessValue(v string) bool {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"io"
 	"net/url"
 	"reflect"
 	"strings"
@@ -18,7 +19,7 @@ func TestNeonContractMigrationV32AddsOnlyAbsentDefaults(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			m := qaNeonMap(t, tc.input)
-			if err := migrateToV32(m); err != nil {
+			if err := migrateToV32(m, io.Discard); err != nil {
 				t.Fatal(err)
 			}
 			// JSON normalizes Go/YAML integer representations without changing observable values.
@@ -28,7 +29,7 @@ func TestNeonContractMigrationV32AddsOnlyAbsentDefaults(t *testing.T) {
 				t.Fatalf("migrated=%s want %s", qaNeonJSON(t, m), tc.want)
 			}
 			once := qaNeonJSON(t, m)
-			if err := migrateToV32(m); err != nil {
+			if err := migrateToV32(m, io.Discard); err != nil {
 				t.Fatal(err)
 			}
 			if qaNeonJSON(t, m) != once {

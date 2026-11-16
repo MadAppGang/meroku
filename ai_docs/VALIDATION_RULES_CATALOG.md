@@ -709,6 +709,40 @@ See [WORKLOAD_IAM.md](./WORKLOAD_IAM.md).
 The Terraform variables (`backend_policy`, `service_policies`, the task modules'
 `custom_policy`) repeat the `effect` rule as variable validations.
 
+### 18. CONFIGURATION WARNINGS (all sections)
+
+**Implemented.** The rows marked Warning above, and the other rules below, never stop
+`meroku generate`. Each is a `ConfigWarning` with a stable `code`, recorded with
+`addGenerateWarning` (`app/workload_names.go`) and collected by `collectEnvConfigWarnings`
+(`app/config_warnings.go`). Generate prints them, `GET /api/config-warnings?env=` serves them to
+the web UI, and a TUI deploy asks "Cancel and fix" or "Proceed anyway" first.
+See [CONFIG_WARNINGS.md](./CONFIG_WARNINGS.md).
+
+| Code | Section | Rule |
+|------|---------|------|
+| `region_drift` | env | `region` differs from the shell's `AWS_REGION` or profile region (CLI and TUI only) |
+| `vpc_cidr_overlap` | env | `vpc_cidr` overlaps a sibling environment's range |
+| `service_no_health_check` | services | `network_access: internal` or `none` with no `health_check_command` |
+| `policy_wildcard_action` | workload, services, tasks | `policy[].actions` contains `*` or `*:*` |
+| `own_backend_bucket_env` | services, tasks | The workload sets its own `AWS_S3_BUCKET` |
+| `event_subscription_all_types` | events | A subscription receives every event on the bus |
+| `event_produces_any` | events | A workload may publish any detail-type |
+| `event_queue_unused` | events | `events.queue` on a workload that subscribes to nothing |
+| `event_bus_toggle` | event_bus | `event_bus.enabled` changed since the last generate |
+| `amplify_rule_disabled_workload` | amplify_apps | A rewrite rule points at a switched-off workload |
+| `amplify_rule_unreachable` | amplify_apps | A rewrite rule after the catch-all |
+| `data_bucket_disabled_workload` | data_bucket | A shared folder lists a switched-off workload |
+| `valkey_access_disabled_workload` | valkey | `valkey.access` lists a switched-off workload |
+| `valkey_no_access` | valkey | Valkey is enabled and no workload can reach it |
+| `compute_pool_unused` | compute.pools | No workload uses the pool |
+| `compute_pool_spot_without_base` | compute.pools | Spot-only pool with no on-demand base behind the ALB |
+| `compute_pool_bridge_srv` | compute.pools | Bridge-mode pool reached through Cloud Map SRV records (no ALB) |
+| `backend_external_image_not_pushable` | workload | CI cannot push `backend_external_docker_image` |
+
+A check that must stop generate is an error, not a warning. It goes in
+`validateConfigBeforePreprocess` (`app/deploy.go`) or returns an error from a validator inside
+`preprocessEnvMap`; the web API then reports it as `configError`.
+
 ---
 
 ## Implementation Recommendations

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -55,7 +56,7 @@ type EnvWithVersion struct {
 type Migration struct {
 	Version     int
 	Description string
-	Apply       func(data map[string]interface{}) error
+	Apply       func(data map[string]interface{}, out io.Writer) error
 }
 
 // AllMigrations contains all available migrations in order
@@ -269,8 +270,8 @@ func detectSchemaVersion(data map[string]interface{}) int {
 }
 
 // migrateToV2 adds Aurora Serverless v2 support
-func migrateToV2(data map[string]interface{}) error {
-	fmt.Println("  → Migrating to v2: Adding Aurora Serverless v2 and ALB support")
+func migrateToV2(data map[string]interface{}, out io.Writer) error {
+	fmt.Fprintln(out, "  → Migrating to v2: Adding Aurora Serverless v2 and ALB support")
 
 	// Add postgres fields if postgres exists
 	if postgres, ok := data["postgres"].(map[interface{}]interface{}); ok {
@@ -292,8 +293,8 @@ func migrateToV2(data map[string]interface{}) error {
 }
 
 // migrateToV3 adds DNS management fields
-func migrateToV3(data map[string]interface{}) error {
-	fmt.Println("  → Migrating to v3: Adding DNS management fields")
+func migrateToV3(data map[string]interface{}, out io.Writer) error {
+	fmt.Fprintln(out, "  → Migrating to v3: Adding DNS management fields")
 
 	// Add domain fields if domain exists
 	if domain, ok := data["domain"].(map[interface{}]interface{}); ok {
@@ -345,8 +346,8 @@ func migrateToV3(data map[string]interface{}) error {
 }
 
 // migrateToV4 adds backend scaling configuration
-func migrateToV4(data map[string]interface{}) error {
-	fmt.Println("  → Migrating to v4: Adding backend scaling configuration")
+func migrateToV4(data map[string]interface{}, out io.Writer) error {
+	fmt.Fprintln(out, "  → Migrating to v4: Adding backend scaling configuration")
 
 	// Add workload fields if workload exists
 	if workload, ok := data["workload"].(map[interface{}]interface{}); ok {
@@ -394,8 +395,8 @@ func migrateToV4(data map[string]interface{}) error {
 }
 
 // migrateToV5 adds account_id and aws_profile
-func migrateToV5(data map[string]interface{}) error {
-	fmt.Println("  → Migrating to v5: Adding Account ID and AWS Profile fields")
+func migrateToV5(data map[string]interface{}, out io.Writer) error {
+	fmt.Fprintln(out, "  → Migrating to v5: Adding Account ID and AWS Profile fields")
 
 	if _, exists := data["account_id"]; !exists {
 		data["account_id"] = ""
@@ -408,14 +409,14 @@ func migrateToV5(data map[string]interface{}) error {
 }
 
 // migrateToV6 adds custom VPC configuration
-func migrateToV6(data map[string]interface{}) error {
-	fmt.Println("  → Migrating to v6: Adding custom VPC configuration")
+func migrateToV6(data map[string]interface{}, out io.Writer) error {
+	fmt.Fprintln(out, "  → Migrating to v6: Adding custom VPC configuration")
 
 	// Add use_default_vpc flag (true for backward compatibility with existing projects)
 	// Existing projects without this field were using AWS default VPC
 	if _, exists := data["use_default_vpc"]; !exists {
 		data["use_default_vpc"] = true // Keep existing projects on default VPC
-		fmt.Println("    ℹ️  Setting use_default_vpc=true for backward compatibility")
+		fmt.Fprintln(out, "    ℹ️  Setting use_default_vpc=true for backward compatibility")
 	}
 
 	// Add VPC configuration fields (only used when use_default_vpc = false)
@@ -423,29 +424,29 @@ func migrateToV6(data map[string]interface{}) error {
 	// Only fix if empty string (keep it if not specified)
 	if vpcCIDR, exists := data["vpc_cidr"]; exists && vpcCIDR == "" {
 		data["vpc_cidr"] = "10.0.0.0/16"
-		fmt.Println("    ℹ️  Fixing empty vpc_cidr → 10.0.0.0/16")
+		fmt.Fprintln(out, "    ℹ️  Fixing empty vpc_cidr → 10.0.0.0/16")
 	}
 
 	// Remove deprecated fields
 	if _, exists := data["az_count"]; exists {
 		delete(data, "az_count")
-		fmt.Println("    🗑️  Removed az_count (now hardcoded to 2 in VPC module)")
+		fmt.Fprintln(out, "    🗑️  Removed az_count (now hardcoded to 2 in VPC module)")
 	}
 	if _, exists := data["create_private_subnets"]; exists {
 		delete(data, "create_private_subnets")
-		fmt.Println("    🗑️  Removed create_private_subnets (deprecated)")
+		fmt.Fprintln(out, "    🗑️  Removed create_private_subnets (deprecated)")
 	}
 	if _, exists := data["enable_nat_gateway"]; exists {
 		delete(data, "enable_nat_gateway")
-		fmt.Println("    🗑️  Removed enable_nat_gateway (deprecated)")
+		fmt.Fprintln(out, "    🗑️  Removed enable_nat_gateway (deprecated)")
 	}
 
 	return nil
 }
 
 // migrateToV7 adds ECR strategy configuration
-func migrateToV7(data map[string]interface{}) error {
-	fmt.Println("  → Migrating to v7: Adding ECR strategy configuration")
+func migrateToV7(data map[string]interface{}, out io.Writer) error {
+	fmt.Fprintln(out, "  → Migrating to v7: Adding ECR strategy configuration")
 
 	// Only add ecr_strategy if it doesn't exist
 	if _, exists := data["ecr_strategy"]; !exists {
@@ -460,13 +461,13 @@ func migrateToV7(data map[string]interface{}) error {
 
 		if env == "dev" {
 			data["ecr_strategy"] = "local"
-			fmt.Println("    ℹ️  Setting ecr_strategy=local for dev environment")
+			fmt.Fprintln(out, "    ℹ️  Setting ecr_strategy=local for dev environment")
 		} else if hasECRAccountID && ecrAccountID != nil && ecrAccountID != "" {
 			data["ecr_strategy"] = "cross_account"
-			fmt.Println("    ℹ️  Setting ecr_strategy=cross_account (ecr_account_id is set)")
+			fmt.Fprintln(out, "    ℹ️  Setting ecr_strategy=cross_account (ecr_account_id is set)")
 		} else {
 			data["ecr_strategy"] = "local"
-			fmt.Println("    ℹ️  Setting ecr_strategy=local (isolated environment)")
+			fmt.Fprintln(out, "    ℹ️  Setting ecr_strategy=local (isolated environment)")
 		}
 	}
 
@@ -482,21 +483,21 @@ func migrateToV7(data map[string]interface{}) error {
 }
 
 // migrateToV8 adds ECR trusted accounts for cross-account access
-func migrateToV8(data map[string]interface{}) error {
-	fmt.Println("  → Migrating to v8: Adding ECR trusted accounts configuration")
+func migrateToV8(data map[string]interface{}, out io.Writer) error {
+	fmt.Fprintln(out, "  → Migrating to v8: Adding ECR trusted accounts configuration")
 
 	// Add ecr_trusted_accounts field if it doesn't exist
 	if _, exists := data["ecr_trusted_accounts"]; !exists {
 		data["ecr_trusted_accounts"] = []interface{}{}
-		fmt.Println("    ℹ️  Initialized empty ecr_trusted_accounts array")
+		fmt.Fprintln(out, "    ℹ️  Initialized empty ecr_trusted_accounts array")
 	}
 
 	return nil
 }
 
 // migrateV8ToV9 adds per-service ECR configuration (actually migrating to v10)
-func migrateV8ToV9(data map[string]interface{}) error {
-	fmt.Println("  → Migrating to v10: Adding per-service ECR configuration")
+func migrateV8ToV9(data map[string]interface{}, out io.Writer) error {
+	fmt.Fprintln(out, "  → Migrating to v10: Adding per-service ECR configuration")
 
 	// Helper function to add default ECR config to a list of items
 	addDefaultECRConfig := func(items []interface{}, itemType string) int {
@@ -526,7 +527,7 @@ func migrateV8ToV9(data map[string]interface{}) error {
 			count := addDefaultECRConfig(services, "services")
 			totalMigrated += count
 			if count > 0 {
-				fmt.Printf("    ✓ Added default ECR config to %d service(s)\n", count)
+				fmt.Fprintf(out, "    ✓ Added default ECR config to %d service(s)\n", count)
 			}
 		}
 	}
@@ -537,7 +538,7 @@ func migrateV8ToV9(data map[string]interface{}) error {
 			count := addDefaultECRConfig(tasks, "event_processor_tasks")
 			totalMigrated += count
 			if count > 0 {
-				fmt.Printf("    ✓ Added default ECR config to %d event processor task(s)\n", count)
+				fmt.Fprintf(out, "    ✓ Added default ECR config to %d event processor task(s)\n", count)
 			}
 		}
 	}
@@ -548,34 +549,34 @@ func migrateV8ToV9(data map[string]interface{}) error {
 			count := addDefaultECRConfig(tasks, "scheduled_tasks")
 			totalMigrated += count
 			if count > 0 {
-				fmt.Printf("    ✓ Added default ECR config to %d scheduled task(s)\n", count)
+				fmt.Fprintf(out, "    ✓ Added default ECR config to %d scheduled task(s)\n", count)
 			}
 		}
 	}
 
 	if totalMigrated == 0 {
-		fmt.Println("    ℹ️  No services/tasks to migrate")
+		fmt.Fprintln(out, "    ℹ️  No services/tasks to migrate")
 	} else {
-		fmt.Printf("    ✓ Total items migrated: %d\n", totalMigrated)
+		fmt.Fprintf(out, "    ✓ Total items migrated: %d\n", totalMigrated)
 	}
 
 	return nil
 }
 
 // migrateToV9 simplifies Amplify domain configuration
-func migrateToV9(data map[string]interface{}) error {
-	fmt.Println("  → Migrating to v9: Simplifying Amplify domain configuration")
+func migrateToV9(data map[string]interface{}, out io.Writer) error {
+	fmt.Fprintln(out, "  → Migrating to v9: Simplifying Amplify domain configuration")
 
 	// Check if amplify_apps exists
 	amplifyAppsRaw, exists := data["amplify_apps"]
 	if !exists || amplifyAppsRaw == nil {
-		fmt.Println("    ℹ️  No amplify_apps to migrate")
+		fmt.Fprintln(out, "    ℹ️  No amplify_apps to migrate")
 		return nil
 	}
 
 	amplifyApps, ok := amplifyAppsRaw.([]interface{})
 	if !ok {
-		fmt.Println("    ⚠️  amplify_apps is not an array, skipping migration")
+		fmt.Fprintln(out, "    ⚠️  amplify_apps is not an array, skipping migration")
 		return nil
 	}
 
@@ -649,7 +650,7 @@ func migrateToV9(data map[string]interface{}) error {
 			// Set subdomain_prefix
 			if prefix != "" {
 				appMap["subdomain_prefix"] = prefix
-				fmt.Printf("    ✓ App %d: Extracted subdomain_prefix '%s' from custom_domain '%s'\n",
+				fmt.Fprintf(out, "    ✓ App %d: Extracted subdomain_prefix '%s' from custom_domain '%s'\n",
 					i+1, prefix, customDomain)
 			}
 
@@ -658,34 +659,34 @@ func migrateToV9(data map[string]interface{}) error {
 			migrationCount++
 		} else if customDomain != "" {
 			// Keep custom_domain as-is if we can't parse it (manual override)
-			fmt.Printf("    ⚠️  App %d: Keeping custom_domain '%s' (couldn't parse or no base domain)\n",
+			fmt.Fprintf(out, "    ⚠️  App %d: Keeping custom_domain '%s' (couldn't parse or no base domain)\n",
 				i+1, customDomain)
 		}
 	}
 
 	if migrationCount > 0 {
-		fmt.Printf("    ✓ Migrated %d Amplify app(s) to simplified domain configuration\n", migrationCount)
+		fmt.Fprintf(out, "    ✓ Migrated %d Amplify app(s) to simplified domain configuration\n", migrationCount)
 	} else {
-		fmt.Println("    ℹ️  No Amplify apps needed migration")
+		fmt.Fprintln(out, "    ℹ️  No Amplify apps needed migration")
 	}
 
 	return nil
 }
 
 // migrateToV11 ensures host_port matches container_port for all services
-func migrateToV11(data map[string]interface{}) error {
-	fmt.Println("  → Migrating to v11: Ensuring host_port matches container_port for awsvpc compatibility")
+func migrateToV11(data map[string]interface{}, out io.Writer) error {
+	fmt.Fprintln(out, "  → Migrating to v11: Ensuring host_port matches container_port for awsvpc compatibility")
 
 	// Check if services exist
 	servicesRaw, exists := data["services"]
 	if !exists || servicesRaw == nil {
-		fmt.Println("    ℹ️  No services to migrate")
+		fmt.Fprintln(out, "    ℹ️  No services to migrate")
 		return nil
 	}
 
 	services, ok := servicesRaw.([]interface{})
 	if !ok {
-		fmt.Println("    ⚠️  services is not an array, skipping migration")
+		fmt.Fprintln(out, "    ⚠️  services is not an array, skipping migration")
 		return nil
 	}
 
@@ -715,36 +716,36 @@ func migrateToV11(data map[string]interface{}) error {
 			serviceMap["host_port"] = containerPort
 			fixedCount++
 			if serviceName != "" {
-				fmt.Printf("    ✓ Service '%s': Set host_port=%v to match container_port\n", serviceName, containerPort)
+				fmt.Fprintf(out, "    ✓ Service '%s': Set host_port=%v to match container_port\n", serviceName, containerPort)
 			} else {
-				fmt.Printf("    ✓ Set host_port=%v to match container_port\n", containerPort)
+				fmt.Fprintf(out, "    ✓ Set host_port=%v to match container_port\n", containerPort)
 			}
 		}
 	}
 
 	if fixedCount == 0 {
-		fmt.Println("    ℹ️  All services already have matching host_port")
+		fmt.Fprintln(out, "    ℹ️  All services already have matching host_port")
 	} else {
-		fmt.Printf("    ✓ Fixed %d service(s) with mismatched or missing host_port\n", fixedCount)
+		fmt.Fprintf(out, "    ✓ Fixed %d service(s) with mismatched or missing host_port\n", fixedCount)
 	}
 
 	return nil
 }
 
 // migrateToV12 ensures all postgres boolean fields have explicit default values
-func migrateToV12(data map[string]interface{}) error {
-	fmt.Println("  → Migrating to v12: Ensuring all postgres boolean fields have explicit values")
+func migrateToV12(data map[string]interface{}, out io.Writer) error {
+	fmt.Fprintln(out, "  → Migrating to v12: Ensuring all postgres boolean fields have explicit values")
 
 	// Check if postgres exists
 	postgresRaw, exists := data["postgres"]
 	if !exists || postgresRaw == nil {
-		fmt.Println("    ℹ️  No postgres configuration to migrate")
+		fmt.Fprintln(out, "    ℹ️  No postgres configuration to migrate")
 		return nil
 	}
 
 	postgres, ok := postgresRaw.(map[interface{}]interface{})
 	if !ok {
-		fmt.Println("    ⚠️  postgres is not a map, skipping migration")
+		fmt.Fprintln(out, "    ⚠️  postgres is not a map, skipping migration")
 		return nil
 	}
 
@@ -764,33 +765,33 @@ func migrateToV12(data map[string]interface{}) error {
 		if _, exists := postgres[field]; !exists {
 			postgres[field] = defaultValue
 			fieldsAdded++
-			fmt.Printf("    ✓ Added %s = %v (default)\n", field, defaultValue)
+			fmt.Fprintf(out, "    ✓ Added %s = %v (default)\n", field, defaultValue)
 		}
 	}
 
 	if fieldsAdded == 0 {
-		fmt.Println("    ℹ️  All postgres boolean fields already have explicit values")
+		fmt.Fprintln(out, "    ℹ️  All postgres boolean fields already have explicit values")
 	} else {
-		fmt.Printf("    ✓ Added %d missing postgres boolean field(s)\n", fieldsAdded)
+		fmt.Fprintf(out, "    ✓ Added %d missing postgres boolean field(s)\n", fieldsAdded)
 	}
 
 	return nil
 }
 
 // migrateToV13 converts legacy single-rule EventBridge tasks to multi-rule format
-func migrateToV13(data map[string]interface{}) error {
-	fmt.Println("  → Migrating to v13: Converting EventBridge tasks to multi-rule format")
+func migrateToV13(data map[string]interface{}, out io.Writer) error {
+	fmt.Fprintln(out, "  → Migrating to v13: Converting EventBridge tasks to multi-rule format")
 
 	// Check if event_processor_tasks exist
 	tasksRaw, exists := data["event_processor_tasks"]
 	if !exists || tasksRaw == nil {
-		fmt.Println("    ℹ️  No event_processor_tasks to migrate")
+		fmt.Fprintln(out, "    ℹ️  No event_processor_tasks to migrate")
 		return nil
 	}
 
 	tasks, ok := tasksRaw.([]interface{})
 	if !ok {
-		fmt.Println("    ⚠️  event_processor_tasks is not an array, skipping migration")
+		fmt.Fprintln(out, "    ⚠️  event_processor_tasks is not an array, skipping migration")
 		return nil
 	}
 
@@ -844,40 +845,40 @@ func migrateToV13(data map[string]interface{}) error {
 		// We don't delete them because the template checks for rules[] first
 
 		migratedCount++
-		fmt.Printf("    ✓ Task '%s': Converted rule '%s' to rules[] array\n", taskName, ruleName)
+		fmt.Fprintf(out, "    ✓ Task '%s': Converted rule '%s' to rules[] array\n", taskName, ruleName)
 	}
 
 	if migratedCount == 0 {
-		fmt.Println("    ℹ️  All event_processor_tasks already use rules[] format or have no rules")
+		fmt.Fprintln(out, "    ℹ️  All event_processor_tasks already use rules[] format or have no rules")
 	} else {
-		fmt.Printf("    ✓ Migrated %d event_processor_task(s) to multi-rule format\n", migratedCount)
+		fmt.Fprintf(out, "    ✓ Migrated %d event_processor_task(s) to multi-rule format\n", migratedCount)
 	}
 
 	return nil
 }
 
 // migrateToV14 adds CloudFront CDN configuration
-func migrateToV14(data map[string]interface{}) error {
-	fmt.Println("  → Migrating to v14: Adding CloudFront CDN configuration")
+func migrateToV14(data map[string]interface{}, out io.Writer) error {
+	fmt.Fprintln(out, "  → Migrating to v14: Adding CloudFront CDN configuration")
 
 	// Add cloudfront configuration if it doesn't exist
 	if _, exists := data["cloudfront"]; !exists {
 		data["cloudfront"] = map[string]interface{}{
 			"enabled": false,
 		}
-		fmt.Println("    ℹ️  Initialized CloudFront configuration (disabled by default)")
+		fmt.Fprintln(out, "    ℹ️  Initialized CloudFront configuration (disabled by default)")
 	}
 
 	return nil
 }
 
 // migrateToV15 converts single cloudfront to cloudfront_distributions array
-func migrateToV15(data map[string]interface{}) error {
-	fmt.Println("  → Migrating to v15: Converting to multiple CloudFront distributions support")
+func migrateToV15(data map[string]interface{}, out io.Writer) error {
+	fmt.Fprintln(out, "  → Migrating to v15: Converting to multiple CloudFront distributions support")
 
 	// Check if cloudfront_distributions already exists
 	if _, exists := data["cloudfront_distributions"]; exists {
-		fmt.Println("    ℹ️  cloudfront_distributions already exists, skipping conversion")
+		fmt.Fprintln(out, "    ℹ️  cloudfront_distributions already exists, skipping conversion")
 		return nil
 	}
 
@@ -886,7 +887,7 @@ func migrateToV15(data map[string]interface{}) error {
 	if !exists || cloudfrontRaw == nil {
 		// Initialize empty array
 		data["cloudfront_distributions"] = []interface{}{}
-		fmt.Println("    ℹ️  Initialized empty cloudfront_distributions array")
+		fmt.Fprintln(out, "    ℹ️  Initialized empty cloudfront_distributions array")
 		return nil
 	}
 
@@ -897,7 +898,7 @@ func migrateToV15(data map[string]interface{}) error {
 			// Convert to new format
 			data["cloudfront_distributions"] = []interface{}{}
 			delete(data, "cloudfront")
-			fmt.Println("    ℹ️  Removed old cloudfront config, initialized empty array")
+			fmt.Fprintln(out, "    ℹ️  Removed old cloudfront config, initialized empty array")
 
 			// Check if it was enabled
 			if enabled, hasEnabled := cfStr["enabled"]; hasEnabled {
@@ -910,7 +911,7 @@ func migrateToV15(data map[string]interface{}) error {
 
 					cfStr["name"] = projectName + "-cdn"
 					data["cloudfront_distributions"] = []interface{}{cfStr}
-					fmt.Printf("    ✓ Converted existing CloudFront config to distribution '%s-cdn'\n", projectName)
+					fmt.Fprintf(out, "    ✓ Converted existing CloudFront config to distribution '%s-cdn'\n", projectName)
 				}
 			}
 			return nil
@@ -918,7 +919,7 @@ func migrateToV15(data map[string]interface{}) error {
 
 		data["cloudfront_distributions"] = []interface{}{}
 		delete(data, "cloudfront")
-		fmt.Println("    ⚠️  Could not parse old cloudfront config, initialized empty array")
+		fmt.Fprintln(out, "    ⚠️  Could not parse old cloudfront config, initialized empty array")
 		return nil
 	}
 
@@ -934,7 +935,7 @@ func migrateToV15(data map[string]interface{}) error {
 		// Not enabled, just remove old config and initialize empty array
 		data["cloudfront_distributions"] = []interface{}{}
 		delete(data, "cloudfront")
-		fmt.Println("    ℹ️  Old CloudFront was disabled, initialized empty cloudfront_distributions array")
+		fmt.Fprintln(out, "    ℹ️  Old CloudFront was disabled, initialized empty cloudfront_distributions array")
 		return nil
 	}
 
@@ -953,13 +954,13 @@ func migrateToV15(data map[string]interface{}) error {
 	// Remove old cloudfront key
 	delete(data, "cloudfront")
 
-	fmt.Printf("    ✓ Converted existing CloudFront config to distribution '%s-cdn'\n", projectName)
+	fmt.Fprintf(out, "    ✓ Converted existing CloudFront config to distribution '%s-cdn'\n", projectName)
 	return nil
 }
 
 // migrateToV16 adds DynamoDB state locking support with auto-generated table name
-func migrateToV16(data map[string]interface{}) error {
-	fmt.Println("  → Migrating to v16: Adding DynamoDB state locking support")
+func migrateToV16(data map[string]interface{}, out io.Writer) error {
+	fmt.Fprintln(out, "  → Migrating to v16: Adding DynamoDB state locking support")
 
 	// Get project and env for generating table name
 	project, _ := data["project"].(string)
@@ -972,44 +973,44 @@ func migrateToV16(data map[string]interface{}) error {
 			// Generate table name following same pattern as S3 bucket
 			tableName := fmt.Sprintf("%s-terraform-locks-%s", project, env)
 			data["state_lock_table"] = tableName
-			fmt.Printf("    ✓ Auto-generated state_lock_table: %s\n", tableName)
-			fmt.Println("    ℹ️  DynamoDB table will be created automatically on first terraform init")
+			fmt.Fprintf(out, "    ✓ Auto-generated state_lock_table: %s\n", tableName)
+			fmt.Fprintln(out, "    ℹ️  DynamoDB table will be created automatically on first terraform init")
 		} else {
-			fmt.Println("    ℹ️  Using existing state_lock_table configuration")
+			fmt.Fprintln(out, "    ℹ️  Using existing state_lock_table configuration")
 		}
 	} else {
-		fmt.Println("    ⚠️  Cannot auto-generate state_lock_table: project or env not set")
+		fmt.Fprintln(out, "    ⚠️  Cannot auto-generate state_lock_table: project or env not set")
 	}
 
 	return nil
 }
 
 // migrateToV17 adds multi-domain support to SES configuration
-func migrateToV17(data map[string]interface{}) error {
-	fmt.Println("  → Migrating to v17: Adding multi-domain support to SES configuration")
+func migrateToV17(data map[string]interface{}, out io.Writer) error {
+	fmt.Fprintln(out, "  → Migrating to v17: Adding multi-domain support to SES configuration")
 
 	ses, ok := data["ses"].(map[interface{}]interface{})
 	if !ok || ses == nil {
-		fmt.Println("    ℹ️  No SES configuration to migrate")
+		fmt.Fprintln(out, "    ℹ️  No SES configuration to migrate")
 		return nil
 	}
 
 	// Check if already migrated (has domains array)
 	if _, hasNewFormat := ses["domains"]; hasNewFormat {
-		fmt.Println("    ℹ️  SES already has domains array format")
+		fmt.Fprintln(out, "    ℹ️  SES already has domains array format")
 		return nil
 	}
 
 	// Check if legacy format exists
 	domainName, hasDomain := ses["domain_name"]
 	if !hasDomain {
-		fmt.Println("    ℹ️  No legacy domain_name found, nothing to migrate")
+		fmt.Fprintln(out, "    ℹ️  No legacy domain_name found, nothing to migrate")
 		return nil
 	}
 
 	domainNameStr, ok := domainName.(string)
 	if !ok || domainNameStr == "" {
-		fmt.Println("    ℹ️  domain_name is empty, nothing to migrate")
+		fmt.Fprintln(out, "    ℹ️  domain_name is empty, nothing to migrate")
 		return nil
 	}
 
@@ -1057,26 +1058,26 @@ func migrateToV17(data map[string]interface{}) error {
 		ses["dmarc_policy"] = "none"
 	}
 
-	fmt.Printf("    ✓ Migrated legacy SES domain '%s' to domains array\n", domainNameStr)
-	fmt.Println("    ✓ Removed legacy domain_name and test_emails fields")
+	fmt.Fprintf(out, "    ✓ Migrated legacy SES domain '%s' to domains array\n", domainNameStr)
+	fmt.Fprintln(out, "    ✓ Removed legacy domain_name and test_emails fields")
 
 	return nil
 }
 
 // migrateToV18 moves test_emails from per-domain to global SES level
 // Test email identities in AWS SES are account-wide, not per-domain
-func migrateToV18(data map[string]interface{}) error {
-	fmt.Println("  → Migrating to v18: Moving test_emails to global SES level")
+func migrateToV18(data map[string]interface{}, out io.Writer) error {
+	fmt.Fprintln(out, "  → Migrating to v18: Moving test_emails to global SES level")
 
 	ses, ok := data["ses"].(map[interface{}]interface{})
 	if !ok || ses == nil {
-		fmt.Println("    ℹ️  No SES configuration to migrate")
+		fmt.Fprintln(out, "    ℹ️  No SES configuration to migrate")
 		return nil
 	}
 
 	domains, ok := ses["domains"].([]interface{})
 	if !ok || len(domains) == 0 {
-		fmt.Println("    ℹ️  No domains array found")
+		fmt.Fprintln(out, "    ℹ️  No domains array found")
 		return nil
 	}
 
@@ -1117,27 +1118,27 @@ func migrateToV18(data map[string]interface{}) error {
 			emailSlice = append(emailSlice, email)
 		}
 		ses["test_emails"] = emailSlice
-		fmt.Printf("    ✓ Consolidated %d test email(s) to global level\n", len(emailSlice))
+		fmt.Fprintf(out, "    ✓ Consolidated %d test email(s) to global level\n", len(emailSlice))
 	} else {
-		fmt.Println("    ℹ️  No test emails to migrate")
+		fmt.Fprintln(out, "    ℹ️  No test emails to migrate")
 	}
 
 	return nil
 }
 
 // migrateToV19 adds enabled=true to all existing services
-func migrateToV19(data map[string]interface{}) error {
-	fmt.Println("  → Migrating to v19: Adding enabled field to services")
+func migrateToV19(data map[string]interface{}, out io.Writer) error {
+	fmt.Fprintln(out, "  → Migrating to v19: Adding enabled field to services")
 
 	servicesRaw, exists := data["services"]
 	if !exists || servicesRaw == nil {
-		fmt.Println("    ℹ️  No services to migrate")
+		fmt.Fprintln(out, "    ℹ️  No services to migrate")
 		return nil
 	}
 
 	services, ok := servicesRaw.([]interface{})
 	if !ok {
-		fmt.Println("    ⚠️  services is not an array, skipping migration")
+		fmt.Fprintln(out, "    ⚠️  services is not an array, skipping migration")
 		return nil
 	}
 
@@ -1152,34 +1153,34 @@ func migrateToV19(data map[string]interface{}) error {
 			serviceMap["enabled"] = true
 			updatedCount++
 			if name, _ := serviceMap["name"].(string); name != "" {
-				fmt.Printf("    ✓ Service '%s': Set enabled=true\n", name)
+				fmt.Fprintf(out, "    ✓ Service '%s': Set enabled=true\n", name)
 			}
 		}
 	}
 
 	if updatedCount == 0 {
-		fmt.Println("    ℹ️  All services already have enabled field")
+		fmt.Fprintln(out, "    ℹ️  All services already have enabled field")
 	} else {
-		fmt.Printf("    ✓ Set enabled=true on %d service(s)\n", updatedCount)
+		fmt.Fprintf(out, "    ✓ Set enabled=true on %d service(s)\n", updatedCount)
 	}
 
 	return nil
 }
 
 // migrateToV20 adds enabled=true to all existing scheduled_tasks and event_processor_tasks
-func migrateToV20(data map[string]interface{}) error {
-	fmt.Println("  → Migrating to v20: Adding enabled field to scheduled_tasks and event_processor_tasks")
+func migrateToV20(data map[string]interface{}, out io.Writer) error {
+	fmt.Fprintln(out, "  → Migrating to v20: Adding enabled field to scheduled_tasks and event_processor_tasks")
 
 	for _, key := range []string{"scheduled_tasks", "event_processor_tasks"} {
 		tasksRaw, exists := data[key]
 		if !exists || tasksRaw == nil {
-			fmt.Printf("    ℹ️  No %s to migrate\n", key)
+			fmt.Fprintf(out, "    ℹ️  No %s to migrate\n", key)
 			continue
 		}
 
 		tasks, ok := tasksRaw.([]interface{})
 		if !ok {
-			fmt.Printf("    ⚠️  %s is not an array, skipping\n", key)
+			fmt.Fprintf(out, "    ⚠️  %s is not an array, skipping\n", key)
 			continue
 		}
 
@@ -1194,15 +1195,15 @@ func migrateToV20(data map[string]interface{}) error {
 				taskMap["enabled"] = true
 				updatedCount++
 				if name, _ := taskMap["name"].(string); name != "" {
-					fmt.Printf("    ✓ %s '%s': Set enabled=true\n", key, name)
+					fmt.Fprintf(out, "    ✓ %s '%s': Set enabled=true\n", key, name)
 				}
 			}
 		}
 
 		if updatedCount == 0 {
-			fmt.Printf("    ℹ️  All %s already have enabled field\n", key)
+			fmt.Fprintf(out, "    ℹ️  All %s already have enabled field\n", key)
 		} else {
-			fmt.Printf("    ✓ Set enabled=true on %d %s\n", updatedCount, key)
+			fmt.Fprintf(out, "    ✓ Set enabled=true on %d %s\n", updatedCount, key)
 		}
 	}
 
@@ -1219,18 +1220,18 @@ func migrateToV20(data map[string]interface{}) error {
 // This migration deliberately writes an EMPTY jwks_uri: guessing an identity
 // provider would recreate the same silent-trust bug in a new place. An empty
 // value is caught by validateAppSyncConfig before terraform ever runs.
-func migrateToV21(data map[string]interface{}) error {
-	fmt.Println("  → Migrating to v21: Adding AppSync Lambda authorizer configuration")
+func migrateToV21(data map[string]interface{}, out io.Writer) error {
+	fmt.Fprintln(out, "  → Migrating to v21: Adding AppSync Lambda authorizer configuration")
 
 	appsyncRaw, exists := data["pubsub_appsync"]
 	if !exists || appsyncRaw == nil {
-		fmt.Println("    ℹ️  No pubsub_appsync configuration to migrate")
+		fmt.Fprintln(out, "    ℹ️  No pubsub_appsync configuration to migrate")
 		return nil
 	}
 
 	appsync, ok := appsyncRaw.(map[interface{}]interface{})
 	if !ok {
-		fmt.Println("    ⚠️  pubsub_appsync is not a map, skipping migration")
+		fmt.Fprintln(out, "    ⚠️  pubsub_appsync is not a map, skipping migration")
 		return nil
 	}
 
@@ -1239,23 +1240,23 @@ func migrateToV21(data map[string]interface{}) error {
 		if _, hasField := appsync[field]; !hasField {
 			appsync[field] = ""
 			fieldsAdded++
-			fmt.Printf("    ✓ Added %s = \"\" (must be set by you, never guessed)\n", field)
+			fmt.Fprintf(out, "    ✓ Added %s = \"\" (must be set by you, never guessed)\n", field)
 		}
 	}
 
 	if fieldsAdded == 0 {
-		fmt.Println("    ℹ️  AppSync authorizer fields already present")
+		fmt.Fprintln(out, "    ℹ️  AppSync authorizer fields already present")
 	} else {
-		fmt.Printf("    ✓ Added %d AppSync authorizer field(s)\n", fieldsAdded)
+		fmt.Fprintf(out, "    ✓ Added %d AppSync authorizer field(s)\n", fieldsAdded)
 	}
 
 	// Tell the user now rather than letting them discover it at deploy time.
 	authLambda, _ := appsync["auth_lambda"].(bool)
 	jwksURI, _ := appsync["jwks_uri"].(string)
 	if authLambda && strings.TrimSpace(jwksURI) == "" {
-		fmt.Println("    ⚠️  pubsub_appsync.auth_lambda is enabled but pubsub_appsync.jwks_uri is empty.")
-		fmt.Println("       Set it to your identity provider's JWKS URL before deploying, e.g.")
-		fmt.Println("       jwks_uri: \"https://<your-idp-host>/.well-known/jwks.json\"")
+		fmt.Fprintln(out, "    ⚠️  pubsub_appsync.auth_lambda is enabled but pubsub_appsync.jwks_uri is empty.")
+		fmt.Fprintln(out, "       Set it to your identity provider's JWKS URL before deploying, e.g.")
+		fmt.Fprintln(out, "       jwks_uri: \"https://<your-idp-host>/.well-known/jwks.json\"")
 	}
 
 	return nil
@@ -1296,8 +1297,8 @@ func migrateToV21(data map[string]interface{}) error {
 // means true everywhere, in the Terraform variables and in the Lambda. That is
 // deliberately the opposite default from this migration: absent must mean "keep
 // doing what this project does today", while the migration states the policy.
-func migrateToV22(data map[string]interface{}) error {
-	fmt.Println("  → Migrating to v22: Adding auto_deploy (CI/CD auto-deploy policy)")
+func migrateToV22(data map[string]interface{}, out io.Writer) error {
+	fmt.Fprintln(out, "  → Migrating to v22: Adding auto_deploy (CI/CD auto-deploy policy)")
 
 	// Only production opts out. Both spellings are accepted because meroku has
 	// never constrained the env name and both appear in the wild — matching just
@@ -1315,12 +1316,12 @@ func migrateToV22(data map[string]interface{}) error {
 	// choosing true would arm production. The value below is stated, and so is
 	// the fact that it was chosen without being able to read the environment.
 	if env == "" {
-		fmt.Println("    ⚠️  This config has no 'env' key, so the auto-deploy policy could not be")
-		fmt.Printf("        matched against it. Defaulting to auto_deploy=%v. If this is a production\n", defaultAutoDeploy)
-		fmt.Println("        config, set env and re-run, or set auto_deploy: false by hand.")
+		fmt.Fprintln(out, "    ⚠️  This config has no 'env' key, so the auto-deploy policy could not be")
+		fmt.Fprintf(out, "        matched against it. Defaulting to auto_deploy=%v. If this is a production\n", defaultAutoDeploy)
+		fmt.Fprintln(out, "        config, set env and re-run, or set auto_deploy: false by hand.")
 	}
 
-	fmt.Printf("    ℹ️  env=%q → default auto_deploy=%v\n", env, defaultAutoDeploy)
+	fmt.Fprintf(out, "    ℹ️  env=%q → default auto_deploy=%v\n", env, defaultAutoDeploy)
 
 	added := 0
 
@@ -1330,10 +1331,10 @@ func migrateToV22(data map[string]interface{}) error {
 		if _, has := workload["backend_auto_deploy"]; !has {
 			workload["backend_auto_deploy"] = defaultAutoDeploy
 			added++
-			fmt.Printf("    ✓ backend: Set auto_deploy=%v\n", defaultAutoDeploy)
+			fmt.Fprintf(out, "    ✓ backend: Set auto_deploy=%v\n", defaultAutoDeploy)
 		}
 	} else {
-		fmt.Println("    ℹ️  No workload section; backend auto_deploy left to its default (true)")
+		fmt.Fprintln(out, "    ℹ️  No workload section; backend auto_deploy left to its default (true)")
 	}
 
 	// Services and scheduled tasks. event_processor_tasks are deliberately not
@@ -1342,13 +1343,13 @@ func migrateToV22(data map[string]interface{}) error {
 	for _, key := range []string{"services", "scheduled_tasks"} {
 		itemsRaw, exists := data[key]
 		if !exists || itemsRaw == nil {
-			fmt.Printf("    ℹ️  No %s to migrate\n", key)
+			fmt.Fprintf(out, "    ℹ️  No %s to migrate\n", key)
 			continue
 		}
 
 		items, ok := itemsRaw.([]interface{})
 		if !ok {
-			fmt.Printf("    ⚠️  %s is not an array, skipping\n", key)
+			fmt.Fprintf(out, "    ⚠️  %s is not an array, skipping\n", key)
 			continue
 		}
 
@@ -1363,23 +1364,23 @@ func migrateToV22(data map[string]interface{}) error {
 			itemMap["auto_deploy"] = defaultAutoDeploy
 			added++
 			if name, _ := itemMap["name"].(string); name != "" {
-				fmt.Printf("    ✓ %s '%s': Set auto_deploy=%v\n", key, name, defaultAutoDeploy)
+				fmt.Fprintf(out, "    ✓ %s '%s': Set auto_deploy=%v\n", key, name, defaultAutoDeploy)
 			}
 		}
 	}
 
 	switch {
 	case added == 0:
-		fmt.Println("    ℹ️  Every target already has an auto_deploy field")
+		fmt.Fprintln(out, "    ℹ️  Every target already has an auto_deploy field")
 	case defaultAutoDeploy:
-		fmt.Printf("    ✓ Set auto_deploy=true on %d target(s)\n", added)
+		fmt.Fprintf(out, "    ✓ Set auto_deploy=true on %d target(s)\n", added)
 	default:
-		fmt.Printf("    ✓ Set auto_deploy=false on %d target(s)\n", added)
-		fmt.Printf("    ⚠️  %s is not a dev environment, so automatic deploys are now OFF for these targets.\n", env)
-		fmt.Println("       An image push or an env change will be logged and ignored, with the reason named:")
-		fmt.Println("         \"auto_deploy is disabled for <target>\"")
-		fmt.Println("       Manual deploys (GitHub Actions DEPLOY / SERVICE_DEPLOY) are unaffected.")
-		fmt.Println("       To keep a target deploying automatically, set auto_deploy: true on it and re-apply.")
+		fmt.Fprintf(out, "    ✓ Set auto_deploy=false on %d target(s)\n", added)
+		fmt.Fprintf(out, "    ⚠️  %s is not a dev environment, so automatic deploys are now OFF for these targets.\n", env)
+		fmt.Fprintln(out, "       An image push or an env change will be logged and ignored, with the reason named:")
+		fmt.Fprintln(out, "         \"auto_deploy is disabled for <target>\"")
+		fmt.Fprintln(out, "       Manual deploys (GitHub Actions DEPLOY / SERVICE_DEPLOY) are unaffected.")
+		fmt.Fprintln(out, "       To keep a target deploying automatically, set auto_deploy: true on it and re-apply.")
 	}
 
 	return nil
@@ -1417,73 +1418,73 @@ func migrateToV22(data map[string]interface{}) error {
 // optional settings with no meaning outside oidc mode, and per CLAUDE.md that is
 // the `default` helper's job, not a migration's — the migration writes the core
 // policy fields that should always be explicit.
-func migrateToV23(data map[string]interface{}) error {
-	fmt.Println("  → Migrating to v23: Adding AppSync auth_mode and api_key_enabled")
+func migrateToV23(data map[string]interface{}, out io.Writer) error {
+	fmt.Fprintln(out, "  → Migrating to v23: Adding AppSync auth_mode and api_key_enabled")
 
 	appsyncRaw, exists := data["pubsub_appsync"]
 	if !exists || appsyncRaw == nil {
-		fmt.Println("    ℹ️  No pubsub_appsync configuration to migrate")
+		fmt.Fprintln(out, "    ℹ️  No pubsub_appsync configuration to migrate")
 		return nil
 	}
 
 	appsync, ok := appsyncRaw.(map[interface{}]interface{})
 	if !ok {
-		fmt.Println("    ⚠️  pubsub_appsync is not a map, skipping migration")
+		fmt.Fprintln(out, "    ⚠️  pubsub_appsync is not a map, skipping migration")
 		return nil
 	}
 
 	enabled, _ := appsync["enabled"].(bool)
 
 	if existing, has := appsync["auth_mode"]; has {
-		fmt.Printf("    ℹ️  auth_mode already set to %v, left alone\n", existing)
+		fmt.Fprintf(out, "    ℹ️  auth_mode already set to %v, left alone\n", existing)
 	} else {
 		appsync["auth_mode"] = AppSyncAuthLambda
-		fmt.Printf("    ✓ Added auth_mode = %q (what this module deploys today; nothing changes)\n", AppSyncAuthLambda)
+		fmt.Fprintf(out, "    ✓ Added auth_mode = %q (what this module deploys today; nothing changes)\n", AppSyncAuthLambda)
 		if enabled {
-			fmt.Println("       AppSync now also supports:")
-			fmt.Println("         auth_mode: \"cognito\"  — AWS validates tokens against this environment's user pool")
-			fmt.Println("         auth_mode: \"oidc\"     — AWS validates tokens against your OIDC issuer")
-			fmt.Println("       Both drop the authorizer Lambda entirely: no cold start, no invocation cost.")
+			fmt.Fprintln(out, "       AppSync now also supports:")
+			fmt.Fprintln(out, "         auth_mode: \"cognito\"  — AWS validates tokens against this environment's user pool")
+			fmt.Fprintln(out, "         auth_mode: \"oidc\"     — AWS validates tokens against your OIDC issuer")
+			fmt.Fprintln(out, "       Both drop the authorizer Lambda entirely: no cold start, no invocation cost.")
 		}
 	}
 
 	if existing, has := appsync["api_key_enabled"]; has {
-		fmt.Printf("    ℹ️  api_key_enabled already set to %v, left alone\n", existing)
+		fmt.Fprintf(out, "    ℹ️  api_key_enabled already set to %v, left alone\n", existing)
 		return nil
 	}
 
 	appsync["api_key_enabled"] = enabled
 
 	if !enabled {
-		fmt.Println("    ✓ Added api_key_enabled = false (AppSync is disabled here, so there is no key to keep)")
+		fmt.Fprintln(out, "    ✓ Added api_key_enabled = false (AppSync is disabled here, so there is no key to keep)")
 		return nil
 	}
 
 	// Loud on purpose. This is the one value the migration sets to the less safe
 	// of the two options, and the reader deserves to know that and to know the
 	// one-line fix.
-	fmt.Println("    ✓ Added api_key_enabled = true")
-	fmt.Println()
-	fmt.Println("    ⚠️  IMPORTANT — this environment has a live AppSync API key, and this")
-	fmt.Println("        migration keeps it.")
-	fmt.Println()
-	fmt.Println("        Until now modules/appsync created an API key for every deployment and")
-	fmt.Println("        exported it. That key is a bearer credential that BYPASSES token")
-	fmt.Println("        verification completely: whoever holds it reaches every resolver without")
-	fmt.Println("        presenting a JWT, so none of your issuer/audience/signature checks apply")
-	fmt.Println("        to them.")
-	fmt.Println()
-	fmt.Println("        It is preserved rather than removed because setting it to false here")
-	fmt.Println("        would delete the key on your next apply and break any client using it.")
-	fmt.Println("        New environments default to false.")
-	fmt.Println()
-	fmt.Println("        To turn it off once you have confirmed nothing depends on it:")
-	fmt.Println()
-	fmt.Println("          pubsub_appsync:")
-	fmt.Println("            api_key_enabled: false")
-	fmt.Println()
-	fmt.Println("        then re-generate and apply. Check first with:")
-	fmt.Println("          aws appsync list-api-keys --api-id <your-api-id>")
+	fmt.Fprintln(out, "    ✓ Added api_key_enabled = true")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "    ⚠️  IMPORTANT — this environment has a live AppSync API key, and this")
+	fmt.Fprintln(out, "        migration keeps it.")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "        Until now modules/appsync created an API key for every deployment and")
+	fmt.Fprintln(out, "        exported it. That key is a bearer credential that BYPASSES token")
+	fmt.Fprintln(out, "        verification completely: whoever holds it reaches every resolver without")
+	fmt.Fprintln(out, "        presenting a JWT, so none of your issuer/audience/signature checks apply")
+	fmt.Fprintln(out, "        to them.")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "        It is preserved rather than removed because setting it to false here")
+	fmt.Fprintln(out, "        would delete the key on your next apply and break any client using it.")
+	fmt.Fprintln(out, "        New environments default to false.")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "        To turn it off once you have confirmed nothing depends on it:")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "          pubsub_appsync:")
+	fmt.Fprintln(out, "            api_key_enabled: false")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "        then re-generate and apply. Check first with:")
+	fmt.Fprintln(out, "          aws appsync list-api-keys --api-id <your-api-id>")
 
 	return nil
 }
@@ -1498,18 +1499,18 @@ const legacyDashboardCallbackURLsKey = "dashboard_callback_ur_ls"
 
 const dashboardCallbackURLsKey = "dashboard_callback_urls"
 
-func migrateToV24(data map[string]interface{}) error {
-	fmt.Println("  → Migrating to v24: Repairing the cognito.dashboard_callback_ur_ls key")
+func migrateToV24(data map[string]interface{}, out io.Writer) error {
+	fmt.Fprintln(out, "  → Migrating to v24: Repairing the cognito.dashboard_callback_ur_ls key")
 
 	cognito, ok := data["cognito"].(map[interface{}]interface{})
 	if !ok {
-		fmt.Println("    ℹ️  No cognito configuration to repair")
+		fmt.Fprintln(out, "    ℹ️  No cognito configuration to repair")
 		return nil
 	}
 
 	legacy, hasLegacy := cognito[legacyDashboardCallbackURLsKey]
 	if !hasLegacy {
-		fmt.Println("    ✓ Already using dashboard_callback_urls, nothing to repair")
+		fmt.Fprintln(out, "    ✓ Already using dashboard_callback_urls, nothing to repair")
 		return nil
 	}
 
@@ -1522,16 +1523,16 @@ func migrateToV24(data map[string]interface{}) error {
 		// The normal case. The correct key is absent because nothing ever wrote
 		// it, or empty because a hand edit added it without values.
 		cognito[dashboardCallbackURLsKey] = legacy
-		fmt.Printf("    ✓ Moved %v onto dashboard_callback_urls\n", legacy)
+		fmt.Fprintf(out, "    ✓ Moved %v onto dashboard_callback_urls\n", legacy)
 	case isEmptyList(legacy):
-		fmt.Println("    ✓ Dropped the empty dashboard_callback_ur_ls key")
+		fmt.Fprintln(out, "    ✓ Dropped the empty dashboard_callback_ur_ls key")
 	default:
 		// Both hold values. The correctly spelled one is what the template reads
 		// and therefore what is deployed today, so it wins; the other is reported
 		// rather than silently discarded.
-		fmt.Printf("    ⚠️  Both keys held values. Kept dashboard_callback_urls = %v\n", current)
-		fmt.Printf("        and discarded dashboard_callback_ur_ls = %v, which was never\n", legacy)
-		fmt.Println("        read by the template and so was never deployed.")
+		fmt.Fprintf(out, "    ⚠️  Both keys held values. Kept dashboard_callback_urls = %v\n", current)
+		fmt.Fprintf(out, "        and discarded dashboard_callback_ur_ls = %v, which was never\n", legacy)
+		fmt.Fprintln(out, "        read by the template and so was never deployed.")
 	}
 
 	return nil
@@ -1548,17 +1549,17 @@ func isEmptyList(value interface{}) bool {
 }
 
 // applyMigrations applies all necessary migrations to bring data to current version
-func applyMigrations(data map[string]interface{}, currentVersion int) error {
+func applyMigrations(data map[string]interface{}, currentVersion int, out io.Writer) error {
 	if currentVersion >= CurrentSchemaVersion {
 		return nil
 	}
 
-	fmt.Printf("Schema version detected: v%d (current: v%d)\n", currentVersion, CurrentSchemaVersion)
-	fmt.Println("Applying migrations...")
+	fmt.Fprintf(out, "Schema version detected: v%d (current: v%d)\n", currentVersion, CurrentSchemaVersion)
+	fmt.Fprintln(out, "Applying migrations...")
 
 	for _, migration := range AllMigrations {
 		if migration.Version > currentVersion {
-			if err := migration.Apply(data); err != nil {
+			if err := migration.Apply(data, out); err != nil {
 				return fmt.Errorf("migration to v%d failed: %w", migration.Version, err)
 			}
 		}
@@ -1566,7 +1567,7 @@ func applyMigrations(data map[string]interface{}, currentVersion int) error {
 
 	// Set the current schema version
 	data["schema_version"] = CurrentSchemaVersion
-	fmt.Printf("✓ Successfully migrated to v%d\n", CurrentSchemaVersion)
+	fmt.Fprintf(out, "✓ Successfully migrated to v%d\n", CurrentSchemaVersion)
 
 	return nil
 }
@@ -1615,7 +1616,7 @@ func loadEnvWithMigration(name string) (Env, error) {
 		}
 
 		// Apply migrations
-		if err := applyMigrations(dataMap, currentVersion); err != nil {
+		if err := applyMigrations(dataMap, currentVersion, os.Stdout); err != nil {
 			return e, fmt.Errorf("migration failed: %w", err)
 		}
 
@@ -1683,7 +1684,7 @@ func loadEnvReadOnly(name string) (Env, error) {
 		return e, fmt.Errorf("error unmarshaling YAML: %v", err)
 	}
 	if currentVersion := detectSchemaVersion(dataMap); currentVersion < CurrentSchemaVersion {
-		if err := applyMigrations(dataMap, currentVersion); err != nil {
+		if err := applyMigrations(dataMap, currentVersion, io.Discard); err != nil {
 			return e, fmt.Errorf("migration failed: %w", err)
 		}
 		if data, err = yaml.Marshal(dataMap); err != nil {
@@ -1695,6 +1696,53 @@ func loadEnvReadOnly(name string) (Env, error) {
 		return e, fmt.Errorf("error unmarshaling YAML to Env struct: %v", err)
 	}
 	return e, nil
+}
+
+// loadEnvMapReadOnly loads <env>.yaml as the map applyTemplate renders from,
+// migrating it in memory only: no backup, no write and no output. It reads the
+// same file generate reads (resolveEnvFilePath) and returns its path.
+//
+// A migrated map goes through a YAML marshal and unmarshal before conversion,
+// as a migrated file does when generate re-reads it, so values a migration
+// inserted have the YAML-decoded types the validators expect.
+func loadEnvMapReadOnly(env string) (path string, envMap map[string]interface{}, err error) {
+	path, err = resolveEnvFilePath(env)
+	if err != nil {
+		return "", nil, err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return path, nil, fmt.Errorf("error reading YAML file %s: %w", path, err)
+	}
+
+	var raw map[string]interface{}
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		return path, nil, fmt.Errorf("error unmarshaling YAML: %v", err)
+	}
+	version := detectSchemaVersion(raw)
+	if err := checkSchemaNotNewer(path, version); err != nil {
+		return path, nil, err
+	}
+
+	if version < CurrentSchemaVersion {
+		if err := applyMigrations(raw, version, io.Discard); err != nil {
+			return path, nil, fmt.Errorf("migration failed: %w", err)
+		}
+		migrated, err := yaml.Marshal(raw)
+		if err != nil {
+			return path, nil, fmt.Errorf("error marshaling migrated data: %v", err)
+		}
+		raw = nil
+		if err := yaml.Unmarshal(migrated, &raw); err != nil {
+			return path, nil, fmt.Errorf("error unmarshaling migrated YAML: %v", err)
+		}
+	}
+
+	envMap, ok := convertToJSONCompatible(raw).(map[string]interface{})
+	if !ok || envMap == nil {
+		envMap = map[string]interface{}{}
+	}
+	return path, envMap, nil
 }
 
 // migrateFileIfNeeded brings a config up to the current schema version, and says
@@ -1762,7 +1810,7 @@ func MigrateYAMLFile(filepath string) error {
 	}
 
 	// Apply migrations
-	if err := applyMigrations(dataMap, currentVersion); err != nil {
+	if err := applyMigrations(dataMap, currentVersion, os.Stdout); err != nil {
 		return fmt.Errorf("migration failed: %w", err)
 	}
 
@@ -1828,18 +1876,18 @@ func MigrateAllYAMLFiles() error {
 // else is kept verbatim as a single argument: splitting on whitespace would
 // look right for `npm run cron` and quietly corrupt any command with a quoted
 // argument containing a space.
-func migrateToV25(data map[string]interface{}) error {
-	fmt.Println("  → Migrating to v25: Normalizing scheduled_tasks container_command to list(string)")
+func migrateToV25(data map[string]interface{}, out io.Writer) error {
+	fmt.Fprintln(out, "  → Migrating to v25: Normalizing scheduled_tasks container_command to list(string)")
 
 	tasksRaw, exists := data["scheduled_tasks"]
 	if !exists || tasksRaw == nil {
-		fmt.Println("    ℹ️  No scheduled_tasks to migrate")
+		fmt.Fprintln(out, "    ℹ️  No scheduled_tasks to migrate")
 		return nil
 	}
 
 	tasks, ok := tasksRaw.([]interface{})
 	if !ok {
-		fmt.Println("    ⚠️  scheduled_tasks is not an array, skipping migration")
+		fmt.Fprintln(out, "    ⚠️  scheduled_tasks is not an array, skipping migration")
 		return nil
 	}
 
@@ -1870,14 +1918,14 @@ func migrateToV25(data map[string]interface{}) error {
 		taskMap["container_command"] = scalarCommandToList(command)
 		updatedCount++
 		if name, _ := taskMap["name"].(string); name != "" {
-			fmt.Printf("    ✓ scheduled_task '%s': converted container_command to a list\n", name)
+			fmt.Fprintf(out, "    ✓ scheduled_task '%s': converted container_command to a list\n", name)
 		}
 	}
 
 	if updatedCount == 0 {
-		fmt.Println("    ℹ️  All scheduled_tasks container_command values are already lists")
+		fmt.Fprintln(out, "    ℹ️  All scheduled_tasks container_command values are already lists")
 	} else {
-		fmt.Printf("    ✓ Converted container_command on %d scheduled task(s)\n", updatedCount)
+		fmt.Fprintf(out, "    ✓ Converted container_command on %d scheduled task(s)\n", updatedCount)
 	}
 
 	return nil
@@ -1897,12 +1945,12 @@ func migrateToV25(data map[string]interface{}) error {
 // The template fix alone would turn that silence into a type error, because the
 // array helper rejects a scalar. This makes the value the helper now actually
 // receives the right shape.
-func migrateToV29(data map[string]interface{}) error {
-	fmt.Println("  → Migrating to v29: Normalizing workload.backend_container_command to list(string)")
+func migrateToV29(data map[string]interface{}, out io.Writer) error {
+	fmt.Fprintln(out, "  → Migrating to v29: Normalizing workload.backend_container_command to list(string)")
 
 	workloadRaw, exists := data["workload"]
 	if !exists || workloadRaw == nil {
-		fmt.Println("    ℹ️  No workload section to migrate")
+		fmt.Fprintln(out, "    ℹ️  No workload section to migrate")
 		return nil
 	}
 
@@ -1919,18 +1967,18 @@ func migrateToV29(data map[string]interface{}) error {
 		get = func(k string) (interface{}, bool) { v, ok := workload[k]; return v, ok }
 		set = func(k string, v interface{}) { workload[k] = v }
 	default:
-		fmt.Println("    ⚠️  workload is not a mapping, skipping migration")
+		fmt.Fprintln(out, "    ⚠️  workload is not a mapping, skipping migration")
 		return nil
 	}
 
 	cmdRaw, hasCommand := get("backend_container_command")
 	if !hasCommand || cmdRaw == nil {
-		fmt.Println("    ℹ️  No backend_container_command to migrate")
+		fmt.Fprintln(out, "    ℹ️  No backend_container_command to migrate")
 		return nil
 	}
 	// Already a list. Keeps the migration idempotent.
 	if _, isList := cmdRaw.([]interface{}); isList {
-		fmt.Println("    ℹ️  backend_container_command is already a list")
+		fmt.Fprintln(out, "    ℹ️  backend_container_command is already a list")
 		return nil
 	}
 
@@ -1938,7 +1986,7 @@ func migrateToV29(data map[string]interface{}) error {
 	if !ok {
 		// Left for the Env decoder to reject with a message naming the field,
 		// rather than mangled here.
-		fmt.Println("    ⚠️  backend_container_command is not a string, leaving it alone")
+		fmt.Fprintln(out, "    ⚠️  backend_container_command is not a string, leaving it alone")
 		return nil
 	}
 
@@ -1949,12 +1997,12 @@ func migrateToV29(data map[string]interface{}) error {
 	converted := scalarCommandToList(command)
 	if len(converted) == 0 {
 		set("backend_container_command", nil)
-		fmt.Println("    ✓ Dropped an empty backend_container_command")
+		fmt.Fprintln(out, "    ✓ Dropped an empty backend_container_command")
 		return nil
 	}
 
 	set("backend_container_command", converted)
-	fmt.Printf("    ✓ Converted backend_container_command to a list of %d argument(s)\n", len(converted))
+	fmt.Fprintf(out, "    ✓ Converted backend_container_command to a list of %d argument(s)\n", len(converted))
 	return nil
 }
 
@@ -1993,22 +2041,22 @@ func scalarCommandToList(command string) []interface{} {
 //
 // Environments on the default VPC are pinned to public_ip regardless, because
 // the default VPC has no private subnets for a NAT strategy to use.
-func migrateToV27(data map[string]interface{}) error {
-	fmt.Println("  → Migrating to v27: Adding egress_strategy")
+func migrateToV27(data map[string]interface{}, out io.Writer) error {
+	fmt.Fprintln(out, "  → Migrating to v27: Adding egress_strategy")
 
 	if existing, ok := data["egress_strategy"].(string); ok && existing != "" {
-		fmt.Printf("    ℹ️  egress_strategy already set to '%s', leaving it alone\n", existing)
+		fmt.Fprintf(out, "    ℹ️  egress_strategy already set to '%s', leaving it alone\n", existing)
 		return nil
 	}
 
 	data["egress_strategy"] = string(EgressPublicIP)
 
 	if useDefault, ok := data["use_default_vpc"].(bool); ok && useDefault {
-		fmt.Println("    ✓ Set egress_strategy: public_ip (required — the default VPC has no private subnets)")
+		fmt.Fprintln(out, "    ✓ Set egress_strategy: public_ip (required — the default VPC has no private subnets)")
 		return nil
 	}
 
-	fmt.Println("    ✓ Set egress_strategy: public_ip (current behaviour, no infrastructure change)")
+	fmt.Fprintln(out, "    ✓ Set egress_strategy: public_ip (current behaviour, no infrastructure change)")
 	return nil
 }
 
@@ -2024,27 +2072,27 @@ func migrateToV27(data map[string]interface{}) error {
 // the writers in aws_preflight.go and api.go both insert as well as flip. That
 // is the right place for the tolerance: it also covers hand-written configs,
 // which no migration ever sees.
-func migrateToV28(data map[string]interface{}) error {
-	fmt.Println("  → Migrating to v28: Adding workload.github_oidc_create_provider")
+func migrateToV28(data map[string]interface{}, out io.Writer) error {
+	fmt.Fprintln(out, "  → Migrating to v28: Adding workload.github_oidc_create_provider")
 
 	workload, ok := data["workload"].(map[interface{}]interface{})
 	if !ok {
-		fmt.Println("    ℹ️  No workload section; nothing to annotate")
+		fmt.Fprintln(out, "    ℹ️  No workload section; nothing to annotate")
 		return nil
 	}
 
 	if enabled, _ := workload["enable_github_oidc"].(bool); !enabled {
-		fmt.Println("    ℹ️  GitHub OIDC is not enabled; leaving the key out")
+		fmt.Fprintln(out, "    ℹ️  GitHub OIDC is not enabled; leaving the key out")
 		return nil
 	}
 
 	if existing, has := workload["github_oidc_create_provider"]; has {
-		fmt.Printf("    ℹ️  github_oidc_create_provider already set to %v, leaving it alone\n", existing)
+		fmt.Fprintf(out, "    ℹ️  github_oidc_create_provider already set to %v, leaving it alone\n", existing)
 		return nil
 	}
 
 	workload["github_oidc_create_provider"] = true
-	fmt.Println("    ✓ Set github_oidc_create_provider: true (current behaviour, no infrastructure change)")
-	fmt.Println("       Set it to false if another project in this AWS account already owns the provider.")
+	fmt.Fprintln(out, "    ✓ Set github_oidc_create_provider: true (current behaviour, no infrastructure change)")
+	fmt.Fprintln(out, "       Set it to false if another project in this AWS account already owns the provider.")
 	return nil
 }

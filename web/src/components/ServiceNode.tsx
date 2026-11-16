@@ -2,6 +2,7 @@
 import {
 	Activity,
 	AlertCircle,
+	AlertTriangle,
 	BarChart3,
 	Bell,
 	Calendar,
@@ -33,10 +34,12 @@ import {
 	Workflow,
 	Zap,
 } from "lucide-react";
+import { useLayoutEffect, useRef } from "react";
 import { Handle, type NodeProps, Position } from "reactflow";
 import type { ComponentNode } from "../types";
 import { AmplifyStatusWidget } from "./AmplifyStatusWidget";
 import { PricingBadge } from "./PricingBadge";
+import { Badge } from "./ui/badge";
 
 // Convert CPU units (256, 512, 1024...) to vCPU display (0.25, 0.5, 1...)
 function formatCpuDisplay(cpu: string | number | undefined): string {
@@ -169,9 +172,30 @@ export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
 		"amplify",
 	].includes(data.type);
 	const minWidth = "min-w-64"; // Keep compact width
+	const warningCount = data.warnings?.length ?? 0;
+	const hasWarnings = warningCount > 0;
+	const showInstanceBadge =
+		["backend", "service"].includes(data.type) && !!data.configProperties;
+
+	// React Flow 11 renders the node wrapper itself and passes no custom
+	// attributes through to it, so the warning state is mirrored onto that
+	// wrapper from here.
+	const rootRef = useRef<HTMLDivElement>(null);
+	useLayoutEffect(() => {
+		const wrapper = rootRef.current?.closest(".react-flow__node");
+		if (!wrapper) return;
+		if (hasWarnings) {
+			wrapper.setAttribute("data-warning", "true");
+		} else {
+			wrapper.removeAttribute("data-warning");
+		}
+		return () => wrapper.removeAttribute("data-warning");
+	}, [hasWarnings]);
 
 	return (
 		<div
+			ref={rootRef}
+			data-warning={hasWarnings ? "true" : undefined}
 			className={`
       relative border-2 rounded-lg p-4 ${minWidth} shadow-lg
       ${
@@ -186,21 +210,23 @@ export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
       ${
 				selected
 					? "border-blue-500 shadow-blue-500/20"
-					: data.isExternal
-						? "border-gray-500"
-						: isServiceNode
-							? data.type === "backend"
-								? "border-blue-600/50 shadow-blue-900/20"
-								: data.type === "service"
-									? "border-purple-600/50 shadow-purple-900/20"
-									: data.type === "scheduled-task"
-										? "border-green-600/50 shadow-green-900/20"
-										: data.type === "event-task"
-											? "border-orange-600/50 shadow-orange-900/20"
-											: data.type === "amplify"
-												? "border-red-600/50 shadow-red-900/20"
-												: "border-gray-600"
-							: "border-gray-600"
+					: hasWarnings
+						? "border-warning"
+						: data.isExternal
+							? "border-gray-500"
+							: isServiceNode
+								? data.type === "backend"
+									? "border-blue-600/50 shadow-blue-900/20"
+									: data.type === "service"
+										? "border-purple-600/50 shadow-purple-900/20"
+										: data.type === "scheduled-task"
+											? "border-green-600/50 shadow-green-900/20"
+											: data.type === "event-task"
+												? "border-orange-600/50 shadow-orange-900/20"
+												: data.type === "amplify"
+													? "border-red-600/50 shadow-red-900/20"
+													: "border-gray-600"
+								: "border-gray-600"
 			}
       hover:border-gray-400 transition-all duration-200
       ${data.disabled ? "opacity-50" : ""}
@@ -538,25 +564,40 @@ export function ServiceNode({ data, selected }: NodeProps<ComponentNode>) {
 				</div>
 			)}
 
-			{/* Instance count badges for services */}
-			{["backend", "service"].includes(data.type) && data.configProperties && (
-				<div className="absolute -top-2 -left-2 flex flex-col gap-1">
-					{/* Show autoscaling badge OR instance count badge, not both */}
-					{data.type === "backend" &&
-					data.configProperties.autoscalingEnabled ? (
-						/* Autoscaling badge with range */
-						<div className="bg-green-600 text-white rounded-full px-2 py-0.5 text-xs font-medium flex items-center gap-1">
-							<Activity className="w-3 h-3" />
-							{data.configProperties.autoscalingMinCapacity || 1}-
-							{data.configProperties.autoscalingMaxCapacity || 10}
-						</div>
-					) : (
-						/* Instance count badge */
-						<div className="bg-blue-600 text-white rounded-full px-2 py-0.5 text-xs font-medium flex items-center gap-1">
-							<Copy className="w-3 h-3" />
-							{data.configProperties.desiredCount ?? 1}
-						</div>
+			{/* Top-left corner: configuration warnings, then the instance count */}
+			{(hasWarnings || showInstanceBadge) && (
+				<div className="absolute -top-2 -left-2 flex flex-col items-start gap-1">
+					{hasWarnings && (
+						<Badge
+							variant="warning"
+							data-testid="node-warning-badge"
+							title={`${warningCount} configuration warning${warningCount === 1 ? "" : "s"}`}
+						>
+							<AlertTriangle aria-hidden="true" />
+							<span aria-hidden="true">{warningCount}</span>
+							<span className="sr-only">
+								{warningCount} configuration warning
+								{warningCount === 1 ? "" : "s"}
+							</span>
+						</Badge>
 					)}
+					{/* Show autoscaling badge OR instance count badge, not both */}
+					{showInstanceBadge &&
+						(data.type === "backend" &&
+						data.configProperties?.autoscalingEnabled ? (
+							/* Autoscaling badge with range */
+							<div className="bg-green-600 text-white rounded-full px-2 py-0.5 text-xs font-medium flex items-center gap-1">
+								<Activity className="w-3 h-3" />
+								{data.configProperties.autoscalingMinCapacity || 1}-
+								{data.configProperties.autoscalingMaxCapacity || 10}
+							</div>
+						) : (
+							/* Instance count badge */
+							<div className="bg-blue-600 text-white rounded-full px-2 py-0.5 text-xs font-medium flex items-center gap-1">
+								<Copy className="w-3 h-3" />
+								{data.configProperties?.desiredCount ?? 1}
+							</div>
+						))}
 				</div>
 			)}
 		</div>

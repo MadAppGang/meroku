@@ -1,7 +1,9 @@
 import { Code, Eye, Info } from "lucide-react";
 import { usePricingRates } from "../contexts/PricingContext";
 import { AWS_REGIONS } from "../types/config";
+import type { ConfigWarning } from "../types/configWarnings";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
+import { ConfigWarningsStatus } from "./ConfigWarningsStatus";
 import {
 	Select,
 	SelectContent,
@@ -24,7 +26,11 @@ interface StatusLineProps {
 	viewMode: "visual" | "code";
 	onViewModeChange: (mode: "visual" | "code") => void;
 	onConfigChange: (updates: Partial<YamlInfrastructureConfig>) => void;
+	/** Every configuration warning for the environment. */
+	warnings?: readonly ConfigWarning[];
 }
+
+const NO_WARNINGS: readonly ConfigWarning[] = [];
 
 export function StatusLine({
 	selectedEnvironment,
@@ -34,6 +40,7 @@ export function StatusLine({
 	viewMode,
 	onViewModeChange,
 	onConfigChange,
+	warnings = NO_WARNINGS,
 }: StatusLineProps) {
 	const rates = usePricingRates();
 
@@ -56,6 +63,8 @@ export function StatusLine({
 						<span>{config.project}</span>
 					</div>
 				)}
+
+				<ConfigWarningsStatus warnings={warnings} />
 			</div>
 
 			{/* Center Section: View Mode & Region */}

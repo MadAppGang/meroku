@@ -87,7 +87,7 @@ func TestAmplifyRules_SwitchedOffWorkloadIsDroppedWithWarning(t *testing.T) {
 		t.Errorf("kept rules name %s, want backend,api", got)
 	}
 
-	warnings := strings.Join(generateWarnings(envMap), "\n")
+	warnings := strings.Join(warningDetails(generateWarnings(envMap)), "\n")
 	if !strings.Contains(warnings, "custom_rules[1] names workload 'old', which is switched off") {
 		t.Errorf("want a warning naming custom_rules[1] and 'old', got:\n%s", warnings)
 	}
@@ -276,7 +276,7 @@ func TestAmplifyRewriteWarnings_KeepTheIndexWrittenInYAML(t *testing.T) {
 	if err := preprocessEnvMap(envMap); err != nil {
 		t.Fatalf("preprocessEnvMap: %v", err)
 	}
-	warnings := strings.Join(amplifyRewriteWarnings(envMap), "\n")
+	warnings := strings.Join(warningDetails(amplifyRewriteWarnings(envMap)), "\n")
 	if !strings.Contains(warnings, "custom_rules[2] comes after the catch-all custom_rules[1]") {
 		t.Errorf("want the YAML indexes 2 and 1, got:\n%s", warnings)
 	}

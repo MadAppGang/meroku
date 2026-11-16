@@ -99,37 +99,31 @@ func regionFromSharedConfig(path, profile string) string {
 	return ""
 }
 
-// regionDriftWarning returns the operator-facing warning for a YAML region that
-// disagrees with the ambient one, or "" when they agree or nothing is ambient.
-//
-// Split from the printing so it can be tested without capturing stdout.
-func regionDriftWarning(yamlRegion, ambientRegion, source string) string {
+// regionDriftWarning returns the warning for a YAML region that disagrees with
+// the ambient one; ok is false when they agree or nothing is ambient.
+func regionDriftWarning(yamlRegion, ambientRegion, source string) (w ConfigWarning, ok bool) {
 	yamlRegion = strings.TrimSpace(yamlRegion)
 	ambientRegion = strings.TrimSpace(ambientRegion)
 
 	if yamlRegion == "" || ambientRegion == "" || yamlRegion == ambientRegion {
-		return ""
+		return ConfigWarning{}, false
 	}
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "\n⚠️  Region mismatch\n\n")
-	fmt.Fprintf(&b, "    config region:  %s\n", yamlRegion)
-	fmt.Fprintf(&b, "    your shell:     %s  (from %s)\n\n", ambientRegion, source)
+	fmt.Fprintf(&b, "config region:  %s\n", yamlRegion)
+	fmt.Fprintf(&b, "your shell:     %s  (from %s)\n\n", ambientRegion, source)
 	fmt.Fprintf(&b, "Terraform will use %s, because the config is authoritative.\n\n", yamlRegion)
 	fmt.Fprintf(&b, "If this environment was last applied from a shell set to %s, its\n", ambientRegion)
 	fmt.Fprintf(&b, "resources are there while its state is in %s, and the next plan will\n", yamlRegion)
 	fmt.Fprintf(&b, "move them — as a destroy and recreate, not a migration.\n\n")
 	fmt.Fprintf(&b, "Read the plan before applying. If %s is the region you want, set it as\n", yamlRegion)
-	fmt.Fprintf(&b, "`region` in the config and clear AWS_REGION so the two agree.\n")
-	return b.String()
-}
-
-// warnOnRegionDrift prints the warning, if there is one, during generation.
-func warnOnRegionDrift(yamlRegion, profile string) {
-	ambient, source := resolveAmbientRegion(profile)
-	if w := regionDriftWarning(yamlRegion, ambient, source); w != "" {
-		fmt.Print(w)
-	}
+	fmt.Fprintf(&b, "`region` in the config and clear AWS_REGION so the two agree.")
+	return ConfigWarning{
+		Code:   warnCodeRegionDrift,
+		Item:   envItem(),
+		Title:  fmt.Sprintf("Region mismatch: config says %s, shell says %s", yamlRegion, ambientRegion),
+		Detail: b.String(),
+	}, true
 }
 
 // stringFromMap reads a string value out of a rendered env map, tolerating a

@@ -1,5 +1,6 @@
 import type { PricingResponse } from "../hooks/use-pricing";
 import type { SESDNSIssue } from "../lib/sesDnsValidation";
+import type { ConfigWarningReport } from "../types/configWarnings";
 import type {
 	NeonLookupOptions,
 	NeonLookupResponse,
@@ -1105,6 +1106,36 @@ export const infrastructureApi = {
 			throw new Error("Failed to fetch ECS network info");
 		}
 		return response.json();
+	},
+
+	/**
+	 * GET /api/config-warnings — the configuration warnings `meroku generate`
+	 * would print for this env's YAML on disk. Read-only and offline. A YAML
+	 * that generate would refuse still answers 200, with `configError` set.
+	 */
+	async getConfigWarnings(
+		env: string,
+		signal?: AbortSignal,
+	): Promise<ConfigWarningReport> {
+		const params = new URLSearchParams({ env });
+		const response = await fetch(
+			`${API_BASE_URL}/api/config-warnings?${params}`,
+			{ signal },
+		);
+		if (!response.ok) {
+			const error: Partial<ErrorResponse> = await response
+				.json()
+				.catch(() => ({}));
+			throw new Error(
+				error.error || "Failed to check the configuration for warnings",
+			);
+		}
+		const wire: Partial<ConfigWarningReport> = await response.json();
+		return {
+			env: wire.env ?? env,
+			warnings: Array.isArray(wire.warnings) ? wire.warnings : [],
+			...(wire.configError ? { configError: wire.configError } : {}),
+		};
 	},
 
 	async getVPCCIDRReport(

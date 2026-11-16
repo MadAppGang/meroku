@@ -141,8 +141,14 @@ func prepareAmplifyRewriteRules(envMap map[string]interface{}) error {
 			if workload != backendWorkloadName {
 				switch resolveWorkloadReference(envMap, workload) {
 				case workloadReferenceDisabled:
-					addGenerateWarning(envMap, fmt.Sprintf(
-						"%s names workload '%s', which is switched off (enabled: false); the rule is left out until it is switched on", where, workload))
+					addGenerateWarning(envMap, ConfigWarning{
+						Code:  warnCodeAmplifyRuleDisabledWorkload,
+						Item:  workloadItem(WarningKindAmplifyApp, appName),
+						Title: "Rewrite rule points at a switched-off workload",
+						Detail: fmt.Sprintf(
+							"%s names workload '%s', which is switched off (enabled: false); the rule is left out until it is switched on", where, workload),
+						Docs: docsLink("ai_docs/amplify.md"),
+					})
 					continue
 				case workloadReferenceUnknown:
 					problems = append(problems, fmt.Sprintf(
@@ -226,8 +232,8 @@ func prepareAmplifyRewriteRules(envMap map[string]interface{}) error {
 // amplifyRewriteWarnings names every rule that follows a `/<*>` catch-all in
 // the same app. Amplify applies the first rule that matches, so such a rule
 // never runs.
-func amplifyRewriteWarnings(envMap map[string]interface{}) []string {
-	var warnings []string
+func amplifyRewriteWarnings(envMap map[string]interface{}) []ConfigWarning {
+	var warnings []ConfigWarning
 	apps, _ := amplifyAppMaps(envMap)
 	for _, app := range apps {
 		appName := computeStringField(app, "name")
@@ -242,9 +248,15 @@ func amplifyRewriteWarnings(envMap map[string]interface{}) []string {
 				i = written
 			}
 			if catchAll >= 0 {
-				warnings = append(warnings, fmt.Sprintf(
-					"amplify_apps '%s' custom_rules[%d] comes after the catch-all custom_rules[%d] (%s) and never matches; move it above",
-					appName, i, catchAll, amplifyCatchAll))
+				warnings = append(warnings, ConfigWarning{
+					Code:  warnCodeAmplifyRuleUnreachable,
+					Item:  workloadItem(WarningKindAmplifyApp, appName),
+					Title: "Rewrite rule after the catch-all never matches",
+					Detail: fmt.Sprintf(
+						"amplify_apps '%s' custom_rules[%d] comes after the catch-all custom_rules[%d] (%s) and never matches; move it above",
+						appName, i, catchAll, amplifyCatchAll),
+					Docs: docsLink("ai_docs/amplify.md"),
+				})
 				continue
 			}
 			if computeStringField(rule, "source") == amplifyCatchAll {

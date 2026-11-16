@@ -23,8 +23,8 @@ func TestRegionDriftWarningOnlyWhenTheyDisagree(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := regionDriftWarning(tc.yaml, tc.ambient, "AWS_REGION")
-			if warned := got != ""; warned != tc.wantWarned {
+			got, warned := regionDriftWarning(tc.yaml, tc.ambient, "AWS_REGION")
+			if warned != tc.wantWarned {
 				t.Fatalf("warned=%v, want %v (warning: %q)", warned, tc.wantWarned, got)
 			}
 		})
@@ -34,7 +34,8 @@ func TestRegionDriftWarningOnlyWhenTheyDisagree(t *testing.T) {
 // The warning has one job: make the operator read the plan before an existing
 // stack is moved. It has to name both regions and say the move is destructive.
 func TestRegionDriftWarningNamesBothRegionsAndTheRisk(t *testing.T) {
-	got := regionDriftWarning("us-east-1", "eu-west-1", "AWS_REGION")
+	w, _ := regionDriftWarning("us-east-1", "eu-west-1", "AWS_REGION")
+	got := w.Title + "\n" + w.Detail
 
 	for _, want := range []string{"us-east-1", "eu-west-1", "AWS_REGION", "destroy"} {
 		if !strings.Contains(got, want) {

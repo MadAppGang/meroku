@@ -907,7 +907,7 @@ func TestValidateComputeConfig_Warnings(t *testing.T) {
 		if err := validateComputeConfigMap(cfg); err != nil {
 			t.Fatalf("a warning was raised as an error: %v", err)
 		}
-		assertComputeWarns(t, computeWarnings(cfg), "spot_with_base")
+		assertComputeWarns(t, warningDetails(computeWarnings(cfg)), "spot_with_base")
 	})
 
 	t.Run("a pool nothing references", func(t *testing.T) {
@@ -919,7 +919,7 @@ func TestValidateComputeConfig_Warnings(t *testing.T) {
 		if err := validateComputeConfigMap(cfg); err != nil {
 			t.Fatalf("a warning was raised as an error: %v", err)
 		}
-		assertComputeWarns(t, computeWarnings(cfg), "referenced by no workload")
+		assertComputeWarns(t, warningDetails(computeWarnings(cfg)), "referenced by no workload")
 	})
 
 	t.Run("a bridge pool consumed through API Gateway", func(t *testing.T) {
@@ -933,7 +933,7 @@ func TestValidateComputeConfig_Warnings(t *testing.T) {
 		if err := validateComputeConfigMap(cfg); err != nil {
 			t.Fatalf("a warning was raised as an error: %v", err)
 		}
-		assertComputeWarns(t, computeWarnings(cfg), "Cloud Map SRV")
+		assertComputeWarns(t, warningDetails(computeWarnings(cfg)), "Cloud Map SRV")
 	})
 
 	t.Run("a fargate environment says nothing at all", func(t *testing.T) {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"reflect"
 	"testing"
 )
@@ -69,7 +70,7 @@ func TestMigrateToV29ConvertsScalarCommands(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			doc := v29Doc(test.given)
-			if err := migrateToV29(doc); err != nil {
+			if err := migrateToV29(doc, io.Discard); err != nil {
 				t.Fatalf("migrateToV29: %v", err)
 			}
 
@@ -89,7 +90,7 @@ func TestMigrateToV29ConvertsScalarCommands(t *testing.T) {
 // line in the user's YAML that says nothing.
 func TestMigrateToV29DropsAnEmptyCommand(t *testing.T) {
 	doc := v29Doc("")
-	if err := migrateToV29(doc); err != nil {
+	if err := migrateToV29(doc, io.Discard); err != nil {
 		t.Fatalf("migrateToV29: %v", err)
 	}
 
@@ -101,7 +102,7 @@ func TestMigrateToV29DropsAnEmptyCommand(t *testing.T) {
 func TestMigrateToV29LeavesUnrelatedConfigsAlone(t *testing.T) {
 	t.Run("no workload section", func(t *testing.T) {
 		doc := map[string]interface{}{"project": "demo"}
-		if err := migrateToV29(doc); err != nil {
+		if err := migrateToV29(doc, io.Discard); err != nil {
 			t.Fatalf("migrateToV29: %v", err)
 		}
 		if _, present := doc["workload"]; present {
@@ -111,7 +112,7 @@ func TestMigrateToV29LeavesUnrelatedConfigsAlone(t *testing.T) {
 
 	t.Run("no command set", func(t *testing.T) {
 		doc := v29Doc(nil)
-		if err := migrateToV29(doc); err != nil {
+		if err := migrateToV29(doc, io.Discard); err != nil {
 			t.Fatalf("migrateToV29: %v", err)
 		}
 		if _, present := v29Command(t, doc); present {
@@ -126,7 +127,7 @@ func TestMigrateToV29LeavesUnrelatedConfigsAlone(t *testing.T) {
 		doc := map[string]interface{}{
 			"workload": map[string]interface{}{"backend_container_command": "server"},
 		}
-		if err := migrateToV29(doc); err != nil {
+		if err := migrateToV29(doc, io.Discard); err != nil {
 			t.Fatalf("migrateToV29: %v", err)
 		}
 
@@ -141,7 +142,7 @@ func TestMigrateToV29LeavesUnrelatedConfigsAlone(t *testing.T) {
 	// message naming the field, rather than mangled here.
 	t.Run("an unexpected type", func(t *testing.T) {
 		doc := v29Doc(42)
-		if err := migrateToV29(doc); err != nil {
+		if err := migrateToV29(doc, io.Discard); err != nil {
 			t.Fatalf("migrateToV29: %v", err)
 		}
 		if got, _ := v29Command(t, doc); got != 42 {
@@ -155,7 +156,7 @@ func TestMigrateToV29LeavesUnrelatedConfigsAlone(t *testing.T) {
 func TestMigrateToV29IsIdempotent(t *testing.T) {
 	doc := v29Doc("npm start")
 	for i := range 2 {
-		if err := migrateToV29(doc); err != nil {
+		if err := migrateToV29(doc, io.Discard); err != nil {
 			t.Fatalf("migrateToV29 run %d: %v", i+1, err)
 		}
 	}
