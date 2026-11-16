@@ -1,5 +1,23 @@
 # Changelog
 
+## v6.7.0
+
+### Backend IAM statements from every documented key reach the task role
+- `workload.policy` is the one key for the backend's IAM statements. `workload.backend_policies`,
+  documented before but never rendered, is moved into `workload.policy` by schema v33 (existing
+  statements first) when the file is loaded, with a backup. The moved statements were never
+  granted before; the next plan shows them as new grants. `meroku generate` refuses a
+  `backend_policies` that is still present.
+- `meroku generate` refuses a non-empty `workload.policies` (managed policy ARNs), which was
+  also never rendered. Write the permissions as `workload.policy` statements, or attach a managed
+  policy to the backend task role from `custom/post`.
+- A `custom/pre` module that declares `output "backend_policies"` now has its statements added to
+  the backend task role's policy. Its `resources` may name resources custom/pre creates in the
+  same apply: the first plan works while those ARNs are still unknown. The list must have a fixed
+  length with literal `actions`.
+- Every backend statement, from the YAML or from custom/pre, is checked at plan: `actions` and
+  `resources` must be non-empty, and a statement may not repeat a condition's test and variable.
+
 ## v6.6.1
 
 ### EC2 pool prices are cached on disk and refresh in the background
