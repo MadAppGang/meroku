@@ -1,15 +1,17 @@
-# KMS signing keys
+# KMS signing and HMAC keys
 
-A KMS signing key is an asymmetric AWS KMS key that never leaves KMS. The YAML
-declares the keys of an environment; each workload connected to a key may sign
-with it, verify with it, or both, and its container gets the key's ARN and its
-public key as environment variables. Built by `modules/kms_keys`, which reads
-the public keys through its child module `modules/kms_keys/public_keys`; the
-YAML is normalised in `app/kms_keys.go`.
+A KMS key here is either a **signing key**, an asymmetric AWS KMS key, or an
+**HMAC key**; neither ever leaves KMS. The YAML declares the keys of an
+environment; each workload connected to a key may sign with it, verify with it,
+or both, and its container gets the key's ARN, plus the public key of a signing
+key, as environment variables. Built by `modules/kms_keys`, which reads the
+public keys through its child module `modules/kms_keys/public_keys`; the YAML is
+normalised in `app/kms_keys.go`.
 
-Use it for tokens, webhooks or documents that other parties verify: the private
-key cannot be read or copied, and anyone holding the public key can verify a
-signature without calling AWS.
+Use a signing key for tokens, webhooks or documents that other parties verify:
+the private key cannot be read or copied, and anyone holding the public key can
+verify a signature without calling AWS. Use an HMAC key for requests between
+workloads that all run in AWS; see [HMAC keys](#hmac-keys).
 
 ## YAML
 
@@ -19,6 +21,8 @@ kms_keys:
     key_spec: ECC_NIST_P256    # optional; the default
   - name: webhooks
     key_spec: RSA_2048
+  - name: requests
+    key_spec: HMAC_256         # an HMAC key
   - name: old_auth
     retired: true              # still deployed; nothing may connect to it
 
@@ -31,10 +35,13 @@ services:
     kms_keys:
       - { name: auth, access: sign }
       - { name: webhooks, access: verify }
+      - { name: requests, access: sign }    # creates MACs
 
 scheduled_tasks:
   - name: nightly
-    kms_keys: [{ name: auth, access: verify }]
+    kms_keys:
+      - { name: auth, access: verify }
+      - { name: requests, access: verify }  # checks MACs
 
 event_processor_tasks:
   - name: ingest
@@ -45,13 +52,17 @@ event_processor_tasks:
   starting with a letter (`^[a-z][a-z0-9_]{0,30}$`). Unique. The web UI names a
   new key `key<n>`, n one more than the highest `key<n>` already in the list.
 - `kms_keys[].key_spec`: one of `ECC_NIST_P256` (the default), `ECC_NIST_P384`,
-  `ECC_NIST_P521`, `ECC_SECG_P256K1`, `RSA_2048`, `RSA_3072`, `RSA_4096`. Once
-  an apply has created the key, a changed value is ignored; see
+  `ECC_NIST_P521`, `ECC_SECG_P256K1`, `RSA_2048`, `RSA_3072`, `RSA_4096` (signing
+  keys, key usage `SIGN_VERIFY`), or `HMAC_224`, `HMAC_256`, `HMAC_384`,
+  `HMAC_512` (HMAC keys, key usage `GENERATE_VERIFY_MAC`). There is no separate
+  usage field: the usage follows from the type. Once an apply has created the
+  key, a changed value is ignored; see
   [Changing the key type](#changing-the-key-type).
 - `kms_keys[].retired`: optional, default `false`. See [Removing a key](#removing-a-key).
 - A connection's `name` must be a key of the top-level list that is not retired,
   and a workload connects to a key at most once.
-- `access`: required, `sign`, `verify` or `both`.
+- `access`: required, `sign`, `verify` or `both`, for every key type. On an
+  HMAC key `sign` means create a MAC and `verify` check one.
 
 `meroku generate` refuses anything else and names the field, for example:
 
@@ -70,18 +81,22 @@ For each key a workload connects to, with `<NAME>` the key name upper-cased:
 
 | Variable | Value |
 |---|---|
-| `KMS_<NAME>_KEY_ARN` | The key's ARN, for `kms:Sign` and `kms:Verify` calls. |
-| `KMS_<NAME>_PUBLIC_KEY` | The key's public key, PEM-encoded (`-----BEGIN PUBLIC KEY-----` …). |
+| `KMS_<NAME>_KEY_ARN` | The key's ARN, for `kms:Sign` and `kms:Verify` calls (`kms:GenerateMac` and `kms:VerifyMac` on an HMAC key). |
+| `KMS_<NAME>_PUBLIC_KEY` | Signing keys only: the key's public key, PEM-encoded (`-----BEGIN PUBLIC KEY-----` …). |
 
 `KMS_AUTH_PUBLIC_KEY` holds a **multi-line** PEM: the header line, the base64
 body over several lines, the footer line. ECS passes container variables as JSON
 strings, so the newlines reach the process unchanged; read the variable as is
 and hand it to the PEM parser. Do not expect a single line.
 
-Every connected workload gets both variables whatever its access, sorted by key
-name. A workload's YAML variable with the same name (`backend_env_variables`,
-`env_vars`, `environment_variables`) is refused at generate, and so is a vault
-secret that would become the same name on that workload.
+Every workload connected to a signing key gets both variables whatever its
+access; a workload connected to an HMAC key gets only `KMS_<NAME>_KEY_ARN`.
+Variables are sorted by key name. A workload's YAML variable with the name of
+one it gets (`backend_env_variables`, `env_vars`, `environment_variables`) is
+refused at generate, and so is a vault secret that would become the same name on
+that workload. `KMS_<NAME>_PUBLIC_KEY` is reserved only for a signing key: on a
+workload connected to the HMAC key `<name>`, a YAML variable of that name is
+allowed.
 
 The values are known only once the key exists: the first apply that creates a
 key registers the task definitions that name it in the same run.
@@ -107,11 +122,18 @@ so a task started right after the apply does not crash on its first call.
 One inline policy on each connected workload's **task role**,
 `<project>_kms_keys_<workload>_<env>`, scoped to the ARNs of its own keys:
 
-| Access | Actions |
-|---|---|
-| `sign` | `kms:Sign`, `kms:GetPublicKey`, `kms:DescribeKey` |
-| `verify` | `kms:Verify`, `kms:GetPublicKey`, `kms:DescribeKey` |
-| `both` | `kms:Sign`, `kms:Verify`, `kms:GetPublicKey`, `kms:DescribeKey` |
+| Access | Signing key | HMAC key |
+|---|---|---|
+| `sign` | `kms:Sign`, `kms:GetPublicKey`, `kms:DescribeKey` | `kms:GenerateMac`, `kms:DescribeKey` |
+| `verify` | `kms:Verify`, `kms:GetPublicKey`, `kms:DescribeKey` | `kms:VerifyMac`, `kms:DescribeKey` |
+| `both` | `kms:Sign`, `kms:Verify`, `kms:GetPublicKey`, `kms:DescribeKey` | `kms:GenerateMac`, `kms:VerifyMac`, `kms:DescribeKey` |
+
+The policy holds one statement per action group, each only when it has a key, in
+this order: `KmsSign`, `KmsVerify`, `KmsGenerateMac`, `KmsVerifyMac`,
+`KmsPublicKey` (`kms:GetPublicKey` and `kms:DescribeKey` on the signing keys),
+`KmsDescribeMacKey` (`kms:DescribeKey` on the HMAC keys). A workload connected
+only to signing keys therefore has the same policy, byte for byte, as before
+HMAC keys existed; `modules/kms_keys/tests/signing_keys.tftest.hcl` pins it.
 
 Each key keeps the default key policy, which delegates to IAM in the account; no
 other principal can use a key unless an IAM policy in the account grants it.
@@ -120,11 +142,12 @@ other principal can use a key unless an IAM policy in the account grants it.
 
 | Setting | Value |
 |---|---|
-| Key usage | `SIGN_VERIFY` |
+| Key usage | `SIGN_VERIFY`; `GENERATE_VERIFY_MAC` for an `HMAC_*` type |
 | Key type | `key_spec` (`customer_master_key_spec`) |
+| Description | `<project> <env> signing key <name> (meroku)`; `… HMAC key …` for an HMAC key |
 | Alias | `alias/<project>-<env>-<name>` |
 | Deletion window | 7 days |
-| Rotation | none: AWS does not rotate asymmetric keys |
+| Rotation | none: AWS does not rotate asymmetric or HMAC keys automatically |
 
 `module.kms_keys.key_arns` (and `local.bridge.kms_key_arns`, `{}` without keys)
 lists every key's ARN by name, retired keys included.
@@ -166,11 +189,52 @@ signature with the same algorithm. That needs no AWS call and no `kms:Verify`.
 `kms:Verify` (access `verify` or `both`) is for an application that prefers KMS
 to check the signature, or has no crypto library for the key type.
 
+## HMAC keys
+
+An HMAC key is for machine-to-machine requests between workloads that run in
+AWS. The caller asks KMS for a MAC over the request (`GenerateMac`) and sends it
+along; the receiver asks KMS to check it (`VerifyMac`). Both sides call KMS: the
+secret never leaves KMS, so there is no public key and no
+`KMS_<NAME>_PUBLIC_KEY`. That is also the limit: a partner outside AWS, or
+outside this account's IAM, cannot check the MAC. For anything a third party
+verifies, use a signing key.
+
+```
+aws kms generate-mac \
+  --key-id "$KMS_REQUESTS_KEY_ARN" \
+  --message fileb://request.bin \
+  --mac-algorithm HMAC_SHA_256
+
+aws kms verify-mac \
+  --key-id "$KMS_REQUESTS_KEY_ARN" \
+  --message fileb://request.bin \
+  --mac-algorithm HMAC_SHA_256 \
+  --mac fileb://mac.bin
+```
+
+The MAC algorithm matches the type: `HMAC_SHA_224` / `_256` / `_384` / `_512`
+for `HMAC_224` / `_256` / `_384` / `_512`. A message is at most 4096 bytes; MAC a
+hash of a larger body. Give the caller `sign` and the receiver `verify`; a
+workload that does both gets `both`.
+
+- No public key variable, and no `kms:GetPublicKey` grant: KMS has no public key
+  to return, and `modules/kms_keys/public_keys` is passed only signing keys.
+- No rotation: AWS does not rotate HMAC keys automatically. Move to a new key the
+  same way as [changing the key type](#changing-the-key-type).
+- The usage cannot change after creation: a signing key cannot become an HMAC
+  key or the other way round (next section).
+- Cost: about $1 per key per month, like any KMS key, plus per-request charges
+  for `GenerateMac` and `VerifyMac`.
+
 ## Changing the key type
 
-AWS cannot change the type of an existing key. Replacing the key would make
-every signature made with it stop verifying, so `modules/kms_keys` never does:
-`aws_kms_key` has `lifecycle { ignore_changes = [customer_master_key_spec] }`.
+AWS cannot change the type or the usage of an existing key. Replacing the key
+would make every signature or MAC made with it stop verifying, so
+`modules/kms_keys` never does: `aws_kms_key` has
+`lifecycle { ignore_changes = [customer_master_key_spec, key_usage] }`. The usage
+follows from the type, so the type check below also catches a switch between a
+signing key and an HMAC key. Grants and variables follow the type the key has in
+AWS, not the changed `key_spec`, so the workloads keep working.
 Once an apply has created a key, a changed `key_spec` in the YAML changes
 nothing in AWS, and the plan shows a warning from the check
 `key_spec_unchanged`:
@@ -239,10 +303,11 @@ key.
 
 ## Cost
 
-About $1 per key per month (AWS bills asymmetric keys the same as symmetric
-ones), retired keys included, plus per-request charges for `Sign`, `Verify` and
-`GetPublicKey`, a few cents per 10,000 requests depending on the key type (see
-AWS KMS pricing). Verifying locally with the PEM makes no request.
+About $1 per key per month (AWS bills asymmetric and HMAC keys the same as
+symmetric ones), retired keys included, plus per-request charges for `Sign`,
+`Verify`, `GetPublicKey`, `GenerateMac` and `VerifyMac`, a few cents per 10,000
+requests depending on the key type (see AWS KMS pricing). Verifying a signature
+locally with the PEM makes no request; checking a MAC always does.
 
 ## Custom Terraform
 

@@ -107,3 +107,39 @@ test("KMS keys · add, connect with each access, retire, restore and delete surv
   await expect(page.getByRole("textbox", { name: "New key name", exact: true })).toHaveValue("key6");
   await evidence("kms-keys-deleted");
 });
+
+test("KMS keys · an HMAC key gives only its ARN and grants MAC access", async ({ page, app, envYaml, evidence }) => {
+  test.setTimeout(120_000);
+  seed(envYaml, { kms_keys: [{ name: "auth" }] });
+  const keys = () => envYaml.read().kms_keys;
+  const api = () => workload(envYaml.read(), "services", "api").kms_keys;
+  await app.open();
+
+  // Add an HMAC key: its types follow the signing ones in the same list.
+  await openPanel(page, app, "KMS keys", "KMS keys");
+  await page.getByRole("textbox", { name: "New key name", exact: true }).fill("requests");
+  await choose(page, page.getByRole("combobox", { name: "Type of the new key", exact: true }),
+    "HMAC_256", "HMAC-256 (HS256) — shared secret for service-to-service requests");
+  await page.getByRole("button", { name: "Add key", exact: true }).click();
+  await expect.poll(keys).toEqual([{ name: "auth" }, { name: "requests", key_spec: "HMAC_256" }]);
+  await expect(page.getByText(/An HMAC key has no public key/)).toBeVisible();
+  await reopen(page, app, "KMS keys", "KMS keys");
+  await expect(page.getByTestId("kms-key-requests").getByText("HS256", { exact: true })).toBeVisible();
+  await evidence("kms-keys-hmac-added");
+
+  // Connect api to both keys: the HMAC key reads as MAC access and gives only its ARN.
+  await openPanel(page, app, "api", "KMS keys");
+  await page.getByRole("button", { name: "Connect a key", exact: true }).click();
+  await expect.poll(api).toEqual([{ name: "auth", access: "verify" }]);
+  await page.getByRole("button", { name: "Connect a key", exact: true }).click();
+  await expect.poll(api).toEqual([{ name: "auth", access: "verify" }, { name: "requests", access: "verify" }]);
+  await choose(page, page.getByRole("combobox", { name: "Access to key requests", exact: true }), "sign", "Create MAC");
+  await expect.poll(api).toEqual([{ name: "auth", access: "verify" }, { name: "requests", access: "sign" }]);
+  const requests = page.getByTestId("kms-key-connection-requests");
+  await expect(requests.getByText("KMS_REQUESTS_KEY_ARN", { exact: true })).toBeVisible();
+  await expect(requests.getByText("KMS_REQUESTS_PUBLIC_KEY", { exact: true })).toHaveCount(0);
+  await expect(page.getByTestId("kms-key-connection-auth").getByText("KMS_AUTH_PUBLIC_KEY", { exact: true })).toBeVisible();
+  await reopen(page, app, "api", "KMS keys");
+  await expectChoice(page.getByRole("combobox", { name: "Access to key requests", exact: true }), "Create MAC");
+  await evidence("kms-keys-hmac-connected");
+});

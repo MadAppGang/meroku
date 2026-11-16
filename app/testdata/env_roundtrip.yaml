@@ -340,3 +340,5 @@ kms_keys:
 - name: legacy
   key_spec: ECC_NIST_P384
   retired: true
+- name: requests
+  key_spec: HMAC_256

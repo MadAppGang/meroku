@@ -2,7 +2,7 @@ import type {
 	KmsKeyConnection,
 	YamlInfrastructureConfig,
 } from "../types/yamlConfig";
-import { kmsKeyEnvNames } from "./kmsKeys";
+import { kmsKeyEnvVariables } from "./kmsKeys";
 import { type WorkloadRef, workloadConnections } from "./workloadConnections";
 import { BACKEND_WORKLOAD_NAME } from "./workloadReferences";
 
@@ -77,20 +77,21 @@ export function reservedBackendEnvError(
 		const shown = rule.prefix ? `${rule.name}*` : rule.name;
 		return `${shown} is reserved: ${rule.reason}.`;
 	}
-	return kmsKeyEnvError(config.workload?.kms_keys, name);
+	return kmsKeyEnvError(config, config.workload?.kms_keys, name);
 }
 
 /**
  * The error `meroku generate` gives for a workload variable that a KMS key
- * connection of that workload sets, or null when no connection sets it.
+ * connection of that workload sets, or null when no connection sets it. An
+ * HMAC key sets only its ARN variable, so its PUBLIC_KEY name stays free.
  */
 export function kmsKeyEnvError(
+	config: YamlInfrastructureConfig,
 	connections: KmsKeyConnection[] | undefined,
 	name: string,
 ): string | null {
 	for (const connection of connections ?? []) {
-		const env = kmsKeyEnvNames(connection.name);
-		if (name === env.arn || name === env.publicKey) {
+		if (kmsKeyEnvVariables(config, connection.name).includes(name)) {
 			return `${name} is reserved: meroku sets it because this workload uses the KMS key ${connection.name}.`;
 		}
 	}
@@ -112,6 +113,7 @@ export function reservedWorkloadEnvError(
 		return `${RESERVED_ENV.name} is reserved: ${RESERVED_ENV.reason}.`;
 	}
 	return kmsKeyEnvError(
+		config,
 		workloadConnections(config, workload, "kms_keys"),
 		name,
 	);
@@ -148,13 +150,14 @@ export function workloadYamlEnv(
 
 /**
  * The names among `envNames` that a connection to the KMS key `key` sets,
- * in the order KMS_<NAME>_KEY_ARN, KMS_<NAME>_PUBLIC_KEY.
+ * in the order KMS_<NAME>_KEY_ARN, KMS_<NAME>_PUBLIC_KEY (the second only for
+ * a signing key).
  */
 export function kmsKeyEnvCollisions(
+	config: YamlInfrastructureConfig,
 	key: string,
 	envNames: Iterable<string>,
 ): string[] {
 	const present = new Set(envNames);
-	const env = kmsKeyEnvNames(key);
-	return [env.arn, env.publicKey].filter((n) => present.has(n));
+	return kmsKeyEnvVariables(config, key).filter((n) => present.has(n));
 }

@@ -8,9 +8,11 @@ import type {
 } from "../types/yamlConfig";
 import {
 	DEFAULT_KMS_KEY_SPEC,
+	isHmacKeySpec,
 	KMS_KEY_SPEC_CHOICES,
 	kmsKeyAccessCounts,
 	kmsKeyConnectionsOf,
+	kmsKeyIsHmac,
 	kmsKeyNameError,
 	kmsKeyNames,
 	kmsKeySpecChoice,
@@ -41,7 +43,9 @@ import { Label } from "./ui/label";
 import {
 	Select,
 	SelectContent,
+	SelectGroup,
 	SelectItem,
+	SelectLabel,
 	SelectTrigger,
 	SelectValue,
 } from "./ui/select";
@@ -51,6 +55,11 @@ interface KmsKeysPropertiesProps {
 	config: YamlInfrastructureConfig;
 	onConfigChange: (config: Partial<YamlInfrastructureConfig>) => void;
 }
+
+const SIGNING_CHOICES = KMS_KEY_SPEC_CHOICES.filter(
+	(c) => !isHmacKeySpec(c.spec),
+);
+const HMAC_CHOICES = KMS_KEY_SPEC_CHOICES.filter((c) => isHmacKeySpec(c.spec));
 
 /** The text of a key type option: its name and a one-line hint. */
 function specOptionText(spec: KmsKeySpec): string {
@@ -78,20 +87,32 @@ function KeySpecSelect({
 				<SelectValue />
 			</SelectTrigger>
 			<SelectContent>
-				{KMS_KEY_SPEC_CHOICES.map((choice) => (
-					<SelectItem key={choice.spec} value={choice.spec}>
-						{specOptionText(choice.spec)}
-					</SelectItem>
-				))}
+				<SelectGroup>
+					<SelectLabel>Signing</SelectLabel>
+					{SIGNING_CHOICES.map((choice) => (
+						<SelectItem key={choice.spec} value={choice.spec}>
+							{specOptionText(choice.spec)}
+						</SelectItem>
+					))}
+				</SelectGroup>
+				<SelectGroup>
+					<SelectLabel>HMAC</SelectLabel>
+					{HMAC_CHOICES.map((choice) => (
+						<SelectItem key={choice.spec} value={choice.spec}>
+							{specOptionText(choice.spec)}
+						</SelectItem>
+					))}
+				</SelectGroup>
 			</SelectContent>
 		</Select>
 	);
 }
 
 /**
- * The KMS keys node: the environment's signing keys. Each key is an asymmetric
- * KMS key; workloads connect to it from their own KMS keys tab to sign, verify
- * or both.
+ * The KMS keys node: the environment's signing and HMAC keys. A signing key is
+ * an asymmetric KMS key, an HMAC key a GENERATE_VERIFY_MAC one; workloads
+ * connect to either from their own KMS keys tab to sign, verify or both (on an
+ * HMAC key: create or check a MAC).
  *
  * This component is the single owner of the top-level `kms_keys` list.
  * Retiring a key removes every workload's connection to it in the same update.
@@ -177,8 +198,8 @@ export function KmsKeysProperties({
 						KMS keys
 					</CardTitle>
 					<CardDescription>
-						Signing keys that never leave AWS. Connect a workload from its own
-						KMS keys tab.
+						Signing and HMAC keys that never leave AWS. Connect a workload from
+						its own KMS keys tab.
 					</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-4">
@@ -329,9 +350,10 @@ export function KmsKeysProperties({
 							<StatusNote tone="error">{newNameError}</StatusNote>
 						)}
 						<NoteDetail>
-							Connected workloads get <NoteCode>KMS_NAME_KEY_ARN</NoteCode> and{" "}
-							<NoteCode>KMS_NAME_PUBLIC_KEY</NoteCode>. A key's type is fixed
-							once an apply creates it.
+							Connected workloads get <NoteCode>KMS_NAME_KEY_ARN</NoteCode>, and{" "}
+							<NoteCode>KMS_NAME_PUBLIC_KEY</NoteCode> for a signing key. An
+							HMAC key has no public key. A key's type is fixed once an apply
+							creates it.
 						</NoteDetail>
 					</div>
 				</CardContent>
@@ -354,7 +376,9 @@ export function KmsKeysProperties({
 					</AlertDialogHeader>
 					<StatusNote tone="warning">
 						<p>
-							Anything signed with this key can no longer be checked with it.
+							{confirmDelete !== null && kmsKeyIsHmac(config, confirmDelete)
+								? "No MAC made with this key can be checked any more."
+								: "Anything signed with this key can no longer be checked with it."}
 						</p>
 						<NoteDetail>
 							Apply the retirement first, so no running workload still uses it.

@@ -14,7 +14,7 @@ variable "workloads" {
 }
 
 variable "keys" {
-  description = "Every KMS signing key of the environment, retired ones included, keyed by name. key_spec is the key type; AWS cannot change it on an existing key."
+  description = "Every KMS signing and HMAC key of the environment, retired ones included, keyed by name. key_spec is the key type; an HMAC_* type makes an HMAC key. AWS cannot change it on an existing key."
   type = map(object({
     key_spec = optional(string, "ECC_NIST_P256")
   }))
@@ -30,13 +30,14 @@ variable "keys" {
     condition = alltrue([for k, v in var.keys : contains([
       "ECC_NIST_P256", "ECC_NIST_P384", "ECC_NIST_P521", "ECC_SECG_P256K1",
       "RSA_2048", "RSA_3072", "RSA_4096",
+      "HMAC_224", "HMAC_256", "HMAC_384", "HMAC_512",
     ], v.key_spec)])
-    error_message = "A kms key's key_spec is one of ECC_NIST_P256, ECC_NIST_P384, ECC_NIST_P521, ECC_SECG_P256K1, RSA_2048, RSA_3072, RSA_4096."
+    error_message = "A kms key's key_spec is one of ECC_NIST_P256, ECC_NIST_P384, ECC_NIST_P521, ECC_SECG_P256K1, RSA_2048, RSA_3072, RSA_4096, HMAC_224, HMAC_256, HMAC_384, HMAC_512."
   }
 }
 
 variable "connections" {
-  description = "One entry per workload and key it is connected to. access is sign, verify or both."
+  description = "One entry per workload and key it is connected to. access is sign, verify or both; on an HMAC key sign generates a MAC and verify verifies one."
   type = list(object({
     workload = string
     key      = string
@@ -47,7 +48,7 @@ variable "connections" {
 
   validation {
     condition     = alltrue([for c in var.connections : contains(["sign", "verify", "both"], c.access)])
-    error_message = "A kms key connection's access is sign, verify or both."
+    error_message = "A kms key connection's access is sign, verify or both; on an HMAC key sign generates a MAC and verify verifies one."
   }
 
   validation {

@@ -192,8 +192,8 @@ func TestEnvRoundTrip_FixtureCoversTheGuardedFields(t *testing.T) {
 
 	t.Run("kms keys and connections", func(t *testing.T) {
 		keys := loaded.KMSKeys
-		if len(keys) != 3 {
-			t.Fatalf("want 3 entries under kms_keys, got %d", len(keys))
+		if len(keys) != 4 {
+			t.Fatalf("want 4 entries under kms_keys, got %d", len(keys))
 		}
 		if keys[0].Name != "auth" || keys[0].KeySpec != "" || keys[0].Retired {
 			t.Errorf("the key that sets only a name loaded extra values: %+v", keys[0])
@@ -203,6 +203,9 @@ func TestEnvRoundTrip_FixtureCoversTheGuardedFields(t *testing.T) {
 		}
 		if !keys[2].Retired || keys[2].KeySpec != "ECC_NIST_P384" {
 			t.Errorf("kms_keys[2] did not load whole: %+v", keys[2])
+		}
+		if keys[3].KeySpec != "HMAC_256" || keys[3].Retired {
+			t.Errorf("the HMAC key kms_keys[3] did not load whole: %+v", keys[3])
 		}
 		if c := loaded.Workload.KMSKeys; len(c) != 1 || c[0].Name != "auth" || c[0].Access != "both" {
 			t.Errorf("workload.kms_keys did not load: %+v", c)

@@ -383,7 +383,7 @@ export interface YamlInfrastructureConfig {
 
 		// The backend's vault connections.
 		vaults?: VaultConnection[];
-		/** The backend's KMS signing key connections. */
+		/** The backend's KMS key connections. */
 		kms_keys?: KmsKeyConnection[];
 		/** The backend's events: it subscribes and publishes like a service. */
 		events?: WorkloadEvents;
@@ -511,7 +511,7 @@ export interface YamlInfrastructureConfig {
 		policy?: IAMStatement[];
 		/** The task's vault connections. */
 		vaults?: VaultConnection[];
-		/** The task's KMS signing key connections. */
+		/** The task's KMS key connections. */
 		kms_keys?: KmsKeyConnection[];
 		/** A task may only produce; `subscribes` is refused at generate. */
 		events?: WorkloadEvents;
@@ -661,7 +661,7 @@ export interface YamlInfrastructureConfig {
 		policy?: IAMStatement[];
 		/** The service's vault connections. */
 		vaults?: VaultConnection[];
-		/** The service's KMS signing key connections. */
+		/** The service's KMS key connections. */
 		kms_keys?: KmsKeyConnection[];
 		/** What the service subscribes to and may publish. */
 		events?: WorkloadEvents;
@@ -711,7 +711,7 @@ export interface YamlInfrastructureConfig {
 
 	// Shared SSM vaults, /<env>/<project>/vault/<name>/.
 	vaults?: VaultDefinition[];
-	// KMS asymmetric signing keys, alias/<project>-<env>-<name>.
+	// KMS signing and HMAC keys, alias/<project>-<env>-<name>.
 	kms_keys?: KmsKeyDefinition[];
 	// The project bus <project>-<env>. Absent or off keeps everything on the default bus.
 	event_bus?: EventBusConfig;
@@ -744,7 +744,11 @@ export interface VaultConnection {
 	prefix?: string;
 }
 
-/** The key types AWS KMS offers for signing (`customer_master_key_spec`). */
+/**
+ * The key types meroku offers (`customer_master_key_spec`): the asymmetric
+ * signing types, then the HMAC types. An HMAC_* key is a GENERATE_VERIFY_MAC
+ * key and has no public key.
+ */
 export type KmsKeySpec =
 	| "ECC_NIST_P256"
 	| "ECC_NIST_P384"
@@ -752,9 +756,13 @@ export type KmsKeySpec =
 	| "ECC_SECG_P256K1"
 	| "RSA_2048"
 	| "RSA_3072"
-	| "RSA_4096";
+	| "RSA_4096"
+	| "HMAC_224"
+	| "HMAC_256"
+	| "HMAC_384"
+	| "HMAC_512";
 
-/** One KMS signing key, `alias/<project>-<env>-<name>`. */
+/** One KMS signing or HMAC key, `alias/<project>-<env>-<name>`. */
 export interface KmsKeyDefinition {
 	name: string;
 	/** Absent means ECC_NIST_P256. AWS cannot change it on an existing key. */
@@ -766,12 +774,13 @@ export interface KmsKeyDefinition {
 	retired?: boolean;
 }
 
-/** `sign`, `verify` or `both`. */
+/** `sign`, `verify` or `both`. On an HMAC key, sign creates a MAC and verify checks one. */
 export type KmsKeyAccess = "sign" | "verify" | "both";
 
 /**
- * A workload's connection to a KMS key. The workload gets the key's ARN and
- * its public key as KMS_<NAME>_KEY_ARN and KMS_<NAME>_PUBLIC_KEY.
+ * A workload's connection to a KMS key. The workload gets the key's ARN as
+ * KMS_<NAME>_KEY_ARN and, for a signing key, its public key as
+ * KMS_<NAME>_PUBLIC_KEY.
  */
 export interface KmsKeyConnection {
 	name: string;
@@ -985,7 +994,7 @@ export interface EventProcessorTask {
 	policy?: IAMStatement[];
 	/** The task's vault connections. */
 	vaults?: VaultConnection[];
-	/** The task's KMS signing key connections. */
+	/** The task's KMS key connections. */
 	kms_keys?: KmsKeyConnection[];
 	/** A task may only produce; `subscribes` is refused at generate. */
 	events?: WorkloadEvents;

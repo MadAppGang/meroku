@@ -161,6 +161,88 @@ export const ChangeAccess: Story = {
 	},
 };
 
+/** An HMAC key gives only its ARN, and access reads as MAC wording. */
+export const HmacKey: Story = {
+	name: "Connected to an HMAC key",
+	render: () => (
+		<Editor
+			initial={ordersWithKeys(
+				[{ name: "requests", key_spec: "HMAC_256" }],
+				[{ name: "requests", access: "sign" }],
+			)}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await expect(canvas.getByText("KMS_REQUESTS_KEY_ARN")).toBeVisible();
+		await expect(canvas.queryByText("KMS_REQUESTS_PUBLIC_KEY")).toBeNull();
+		await expect(
+			canvas.getByRole("combobox", { name: "Access to key requests" }),
+		).toHaveTextContent("Create MAC");
+		await expect(canvas.getByText(/create a MAC for a request/)).toBeVisible();
+		await userEvent.click(
+			canvas.getByRole("combobox", { name: "Access to key requests" }),
+		);
+		await userEvent.click(
+			await screen.findByRole("option", { name: "Create and check MAC" }),
+		);
+		await expect(
+			await canvas.findByText(/create and check MACs/),
+		).toBeVisible();
+	},
+};
+
+/** A signing key and an HMAC key on one workload. */
+export const MixedKeys: Story = {
+	name: "Connected to a signing and an HMAC key",
+	render: () => (
+		<Editor
+			initial={ordersWithKeys(
+				[{ name: "auth" }, { name: "requests", key_spec: "HMAC_384" }],
+				[
+					{ name: "auth", access: "verify" },
+					{ name: "requests", access: "both" },
+				],
+			)}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		const auth = within(canvas.getByTestId("kms-key-connection-auth"));
+		const requests = within(canvas.getByTestId("kms-key-connection-requests"));
+		await expect(auth.getByText("KMS_AUTH_PUBLIC_KEY")).toBeVisible();
+		await expect(requests.getByText("KMS_REQUESTS_KEY_ARN")).toBeVisible();
+		await expect(requests.queryByText("KMS_REQUESTS_PUBLIC_KEY")).toBeNull();
+		await expect(
+			requests.getByRole("combobox", { name: "Access to key requests" }),
+		).toHaveTextContent("Create and check MAC");
+	},
+};
+
+/** A workload variable named like an HMAC key's would-be public key is free. */
+export const HmacKeyPublicKeyNameFree: Story = {
+	name: "HMAC key leaves the PUBLIC_KEY name free",
+	render: () => (
+		<Editor
+			initial={configWith({
+				kms_keys: [{ name: "requests", key_spec: "HMAC_256" }],
+				services: (baseConfig.services || []).map((s) =>
+					s.name === "orders"
+						? {
+								...s,
+								env_vars: { KMS_REQUESTS_PUBLIC_KEY: "mine" },
+								kms_keys: [{ name: "requests", access: "verify" }],
+							}
+						: s,
+				),
+			})}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		await expect(within(canvasElement).queryByText(/is reserved/)).toBeNull();
+	},
+};
+
 /** Retired keys are never offered for a new connection. */
 export const OnlyRetiredKeys: Story = {
 	name: "Only retired keys",

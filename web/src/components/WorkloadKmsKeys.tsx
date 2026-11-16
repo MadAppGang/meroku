@@ -8,6 +8,8 @@ import type {
 } from "../types/yamlConfig";
 import {
 	activeKmsKeyNames,
+	isHmacKeySpec,
+	KMS_HMAC_KEY_ACCESS_LABELS,
 	KMS_KEY_ACCESS_LABELS,
 	kmsKeyEnvNames,
 	kmsKeyOf,
@@ -40,12 +42,20 @@ import { NoteDetail } from "./ui/status-note";
 
 const ACCESS_ORDER: KmsKeyAccess[] = ["sign", "verify", "both"];
 
-/** What each access lets the application do with the key. */
+/** What each access lets the application do with a signing key. */
 const ACCESS_DESCRIPTIONS: Record<KmsKeyAccess, string> = {
 	sign: "The application can sign with this key and read its public key.",
 	verify:
 		"The application can check signatures made with this key and read its public key. It cannot sign.",
 	both: "The application can sign, check signatures and read the public key.",
+};
+
+/** What each access lets the application do with an HMAC key. */
+const HMAC_ACCESS_DESCRIPTIONS: Record<KmsKeyAccess, string> = {
+	sign: "The application can ask AWS to create a MAC for a request with this key.",
+	verify:
+		"The application can ask AWS to check a MAC made with this key. It cannot create one.",
+	both: "The application can ask AWS to create and check MACs with this key.",
 };
 
 /** The access a new connection starts with: the least it can do. */
@@ -91,7 +101,7 @@ export function KmsKeyConnectionsEditor({
 					key={connection.name}
 					config={config}
 					connection={connection}
-					collisions={kmsKeyEnvCollisions(connection.name, envNames)}
+					collisions={kmsKeyEnvCollisions(config, connection.name, envNames)}
 					choices={[connection.name, ...available]}
 					onChange={(patch) => onChange(index, patch)}
 					onRemove={() => onRemove(index)}
@@ -135,6 +145,13 @@ function KmsKeyConnectionRow({
 	const uid = useId();
 	const key = kmsKeyOf(config, connection.name);
 	const env = kmsKeyEnvNames(connection.name);
+	const hmac = isHmacKeySpec(key?.key_spec);
+	const accessLabels = hmac
+		? KMS_HMAC_KEY_ACCESS_LABELS
+		: KMS_KEY_ACCESS_LABELS;
+	const accessDescriptions = hmac
+		? HMAC_ACCESS_DESCRIPTIONS
+		: ACCESS_DESCRIPTIONS;
 	const access: KmsKeyAccess | undefined = ACCESS_ORDER.includes(
 		connection.access,
 	)
@@ -229,7 +246,7 @@ function KmsKeyConnectionRow({
 							<SelectContent>
 								{ACCESS_ORDER.map((value) => (
 									<SelectItem key={value} value={value}>
-										{KMS_KEY_ACCESS_LABELS[value]}
+										{accessLabels[value]}
 									</SelectItem>
 								))}
 							</SelectContent>
@@ -244,16 +261,17 @@ function KmsKeyConnectionRow({
 						<Trash2 className="w-4 h-4" />
 					</Button>
 				</div>
-				{access && <NoteDetail>{ACCESS_DESCRIPTIONS[access]}</NoteDetail>}
+				{access && <NoteDetail>{accessDescriptions[access]}</NoteDetail>}
 				<div className="space-y-1">
 					<NoteDetail>This workload gets:</NoteDetail>
 					<div className="flex flex-wrap gap-2">
 						<Badge variant="code">{env.arn}</Badge>
-						<Badge variant="code">{env.publicKey}</Badge>
+						{!hmac && <Badge variant="code">{env.publicKey}</Badge>}
 					</div>
 					<NoteDetail>
-						The first holds the key's ARN, for calls to AWS; the second its
-						public key in PEM form, to check signatures without calling AWS.
+						{hmac
+							? "The key's ARN, for calls to AWS. An HMAC key's secret never leaves AWS, so there is no public key: both sides of a request call AWS."
+							: "The first holds the key's ARN, for calls to AWS; the second its public key in PEM form, to check signatures without calling AWS."}
 					</NoteDetail>
 				</div>
 			</CardContent>
@@ -302,7 +320,9 @@ export function WorkloadKmsKeys({
 				</CardTitle>
 				<CardDescription>
 					Connect a signing key to let this workload sign with it, check
-					signatures made with it, or both. The key itself never leaves AWS.
+					signatures made with it, or both; connect an HMAC key to create or
+					check MACs on requests between workloads. The key itself never leaves
+					AWS.
 				</CardDescription>
 			</CardHeader>
 			<CardContent>

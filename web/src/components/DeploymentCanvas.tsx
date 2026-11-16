@@ -354,7 +354,7 @@ const initialNodes: Node[] = [
 		},
 		deletable: false,
 	},
-	// Always shown, so the first signing key can be created from it.
+	// Always shown, so the first key can be created from it.
 	{
 		id: "kms-keys",
 		type: "service",
@@ -363,7 +363,7 @@ const initialNodes: Node[] = [
 			id: "kms-keys",
 			type: "kms-keys",
 			name: "KMS keys",
-			description: "Signing keys in AWS KMS",
+			description: "Signing and HMAC keys in AWS KMS",
 			status: "running",
 			deletable: false,
 		},
