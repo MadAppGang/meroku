@@ -334,7 +334,7 @@ func postDNSDelegate(w http.ResponseWriter, r *http.Request) {
 
 // registerDNSRoutes wires the DNS endpoints into the SPA server.
 func registerDNSRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("/api/dns/status", corsMiddleware(getDNSStatus))
-	mux.HandleFunc("/api/dns/parent-candidates", corsMiddleware(getDNSParentCandidates))
-	mux.HandleFunc("/api/dns/delegate", corsMiddleware(postDNSDelegate))
+	mux.HandleFunc("/api/dns/status", getDNSStatus)
+	mux.HandleFunc("/api/dns/parent-candidates", getDNSParentCandidates)
+	mux.HandleFunc("/api/dns/delegate", postDNSDelegate)
 }

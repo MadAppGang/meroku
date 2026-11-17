@@ -19,11 +19,10 @@ import (
 
 // Define WebSocket upgrader for SSH connections
 var sshUpgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		// Allow all origins for development
-		// In production, you should check the origin
-		return true
-	},
+	// The same rules as every other route (web_access.go). Gorilla's default
+	// same-Host check would refuse the web UI's dev server, which proxies from
+	// another loopback port.
+	CheckOrigin: webRequestAllowed,
 }
 
 // startSSHSessionPTY handles WebSocket connections for SSH sessions using PTY

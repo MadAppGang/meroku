@@ -530,20 +530,17 @@ func TestVaultSecretsAPI_ClientErrorIs500(t *testing.T) {
 	vaultErrorOf(t, rec)
 }
 
-// The route is registered in mainRouter behind the CORS middleware, and reaches
-// the handler.
+// The route is registered in mainRouter behind the access guard, and a
+// loopback client reaches the handler.
 func TestVaultSecretsAPI_RouteIsRegistered(t *testing.T) {
 	setupVaultSecrets(t, &fakeVaultSSM{})
 	router := mainRouter()
 
+	req := httptest.NewRequest(http.MethodGet, "/api/vaults/secrets?env=dev&vault=shared", nil)
+	req.RemoteAddr = "127.0.0.1:54000"
+	req.Host = "127.0.0.1:8080"
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, httptest.NewRequest(http.MethodOptions, "/api/vaults/secrets", nil))
-	if rec.Code != http.StatusNoContent || rec.Header().Get("Access-Control-Allow-Origin") == "" {
-		t.Errorf("preflight: status %d headers %v", rec.Code, rec.Header())
-	}
-
-	rec = httptest.NewRecorder()
-	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/vaults/secrets?env=dev&vault=shared", nil))
+	router.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"vault":"shared"`) {
 		t.Errorf("GET through the router: status %d body %s", rec.Code, rec.Body.String())
 	}

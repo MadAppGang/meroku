@@ -425,6 +425,15 @@ segment. A name in both is refused by ECS. **`ENV` is reserved**: meroku creates
 YAML; `meroku generate` refuses it (`app/env_reserved.go`).
 [Container Env and SSM](./ai_docs/CONTAINER_ENV_AND_SSM.md).
 
+## Web server access
+
+The web server listens on `127.0.0.1` by default, and `mainRouter()` wraps every route
+(`/api`, `/ws`, the SPA) in one guard, `webAccessGuard` (`app/web_access.go`): loopback
+client, loopback Host on the served port, loopback Origin, no cross-site `Sec-Fetch-Site`.
+`--listen <address>` on any other interface requires the per-run token printed at start
+(`?token=`, then the `meroku_token` cookie). No route sends CORS headers.
+[Web Server Access](./ai_docs/WEB_SERVER_ACCESS.md).
+
 ## Backend health check and circuit breaker
 
 `workload.backend_health_check` (container `healthCheck`) and

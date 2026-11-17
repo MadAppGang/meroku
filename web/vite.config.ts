@@ -19,8 +19,6 @@ const apiTarget = process.env.MEROKU_API_URL ?? "http://localhost:8080";
 export default defineConfig({
 	plugins: [react()],
 	server: {
-		host: "0.0.0.0",
-		allowedHosts: true,
 		fs: {
 			allow: [searchForWorkspaceRoot(process.cwd()), neonVectors],
 		},

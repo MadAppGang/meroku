@@ -59,11 +59,10 @@ type LogsResponse struct {
 
 // WebSocket upgrader
 var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		// Allow all origins for development
-		// In production, you should check the origin
-		return true
-	},
+	// The same rules as every other route (web_access.go). Gorilla's default
+	// same-Host check would refuse the web UI's dev server, which proxies from
+	// another loopback port.
+	CheckOrigin: webRequestAllowed,
 }
 
 // getServiceLogs retrieves recent logs for a service
