@@ -1,5 +1,20 @@
 # Changelog
 
+## v6.7.1
+
+### A hand-written YAML that leaves out optional workload or cognito keys now generates
+- Ten values had no fallback, so a YAML at the current schema version that omitted one rendered
+  `name = ` and `meroku generate` refused it. Each now falls back to its module's default:
+  - `workload.bucket_public` → `false` (private bucket). The web S3 panel now shows a missing key
+    as private too.
+  - `workload.backend_image_port` → `8080`.
+  - `workload.setup_fcnsns`, `enable_github_oidc`, `xray_enabled`, `install_pg_admin` → `false`.
+  - `cognito.enable_dashboard_client`, `enable_user_pool_domain`, `backend_confirm_signup` → `false`.
+- `cognito.enable_web_client` is now rendered as a bool, with `true` as the fallback. It used to
+  be quoted, so a missing key rendered `""`, which passed generate and then failed `terraform plan`.
+- YAML that sets these keys renders the same Terraform as before, so existing environments plan
+  with no changes. One exception: `enable_web_client` loses its quotes.
+
 ## v6.7.0
 
 ### Backend IAM statements from every documented key reach the task role
