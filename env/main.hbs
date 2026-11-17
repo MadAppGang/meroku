@@ -945,7 +945,7 @@ module "cognito" {
   source                  = "{{modules}}/cognito"
   project                 = "{{project}}"
   env                     = "{{env}}"
-  enable_web_client       = "{{cognito.enable_web_client}}"
+  enable_web_client       = {{default cognito.enable_web_client true}}
   enable_dashboard_client = {{default cognito.enable_dashboard_client false}}
   dashboard_callback_urls = {{array cognito.dashboard_callback_urls}}
 
