@@ -1,5 +1,17 @@
 # Changelog
 
+## v6.7.2
+
+### The local web server is hardened
+- `meroku --web` and the main menu's web server now listen on `127.0.0.1` only. Every route
+  (API, WebSocket and the page) goes through one access guard, and no route sends CORS headers.
+- New `--listen <address>` flag to serve the UI on another interface, e.g. `--listen 0.0.0.0`.
+  In that mode every request needs the per-run token in the URL printed at start. The mode is
+  plain HTTP, so use it only on a trusted network, or use an SSH tunnel instead
+  (`ssh -L 8080:localhost:8080 <host>`).
+- The Vite dev server (`task web`) listens on localhost only.
+- Details: `ai_docs/WEB_SERVER_ACCESS.md`.
+
 ## v6.7.1
 
 ### A hand-written YAML that leaves out optional workload or cognito keys now generates
