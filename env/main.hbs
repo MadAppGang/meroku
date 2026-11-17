@@ -554,12 +554,12 @@ module "workloads" {
       still pass it keep applying. --}}
   slack_deployment_webhook = "{{workload.slack_webhook}}"
   backend_bucket_postfix = "{{workload.bucket_postfix}}"
-  backend_bucket_public = {{workload.bucket_public}}
+  backend_bucket_public = {{default workload.bucket_public false}}
   backend_health_endpoint = "{{workload.backend_health_endpoint}}"
   backend_remote_access = {{default workload.backend_remote_access true}}
   docker_image = "{{workload.backend_external_docker_image}}"
-  setup_FCM_SNS = {{workload.setup_fcnsns}}
-  backend_image_port = {{workload.backend_image_port}}
+  setup_FCM_SNS = {{default workload.setup_fcnsns false}}
+  backend_image_port = {{default workload.backend_image_port 8080}}
   {{#if postgres.enabled}}
 
   db_endpoint = module.postgres.endpoint
@@ -601,7 +601,7 @@ module "workloads" {
   {{/notEmpty}}
   ecr_image_events = {{default ecr_image_events false}}
   is_prod = {{default is_prod false}}
-  github_oidc_enabled = {{workload.enable_github_oidc}}
+  github_oidc_enabled = {{default workload.enable_github_oidc false}}
   github_oidc_create_provider = {{default workload.github_oidc_create_provider true}}
   github_push_external_image = {{default workload.github_push_external_image false}}
   github_subjects = {{{array workload.github_oidc_subjects}}}
@@ -639,8 +639,8 @@ module "workloads" {
 {{#if (exists workload.backend_health_check_grace_period)}}
   backend_health_check_grace_period = {{workload.backend_health_check_grace_period}}
 {{/if}}
-  xray_enabled = {{workload.xray_enabled}}
-  pgadmin_enabled = {{workload.install_pg_admin}}
+  xray_enabled = {{default workload.xray_enabled false}}
+  pgadmin_enabled = {{default workload.install_pg_admin false}}
   pgadmin_email = "{{workload.pg_admin_email}}"
   # Backend environment variables merged from:
   # 1. YAML backend_env_variables
@@ -945,14 +945,14 @@ module "cognito" {
   source                  = "{{modules}}/cognito"
   project                 = "{{project}}"
   env                     = "{{env}}"
-  enable_web_client       = "{{cognito.enable_web_client}}"
-  enable_dashboard_client = {{cognito.enable_dashboard_client}}
+  enable_web_client       = {{default cognito.enable_web_client true}}
+  enable_dashboard_client = {{default cognito.enable_dashboard_client false}}
   dashboard_callback_urls = {{array cognito.dashboard_callback_urls}}
 
-  enable_user_pool_domain = {{cognito.enable_user_pool_domain}}
+  enable_user_pool_domain = {{default cognito.enable_user_pool_domain false}}
   user_pool_domain_prefix = "{{cognito.user_pool_domain_prefix}}"
 
-  allow_backend_task_to_confirm_signup = {{cognito.backend_confirm_signup}}
+  allow_backend_task_to_confirm_signup = {{default cognito.backend_confirm_signup false}}
   auto_verified_attributes = {{array cognito.auto_verified_attributes}}
   backend_task_role_name  = module.workloads.backend_task_role_name
 }

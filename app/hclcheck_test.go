@@ -1,8 +1,12 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v2"
 )
 
 func TestValidateGeneratedHCLAcceptsValidTerraform(t *testing.T) {
@@ -82,29 +86,54 @@ func TestShippedConfigGeneratesValidHCL(t *testing.T) {
 	}
 }
 
-// Dropping one optional key is all it takes, and the template gives no sign.
-// setup_fcnsns is a bool in the Env struct, so it would always have a value if
-// generation went through the struct — but applyTemplate reads the YAML into a
-// plain map, which is why the zero value never arrives.
+// Dropping one scalar key is all it takes, and the template gives no sign.
+// postgres.iam_database_authentication_enabled renders bare, with no default:
+// the YAML migrator always writes it, so only a hand-written file can leave it
+// out. applyTemplate reads the YAML into a plain map rather than the Env
+// struct, so a missing key arrives as nothing at all, not as false, and the
+// assignment is left with no value.
 func TestOmittedScalarIsCaughtBeforeWriting(t *testing.T) {
-	workload := fixtureWorkload(t)
-	if _, present := workload["setup_fcnsns"]; !present {
-		t.Fatal("project/dev.yaml no longer sets workload.setup_fcnsns; pick another scalar key for this test")
+	postgres := fixtureMapping(t, "postgres")
+	if postgres["enabled"] != true {
+		t.Fatal("project/dev.yaml no longer enables postgres, so the postgres module is not rendered; pick another scalar key for this test")
 	}
-	delete(workload, "setup_fcnsns")
+	if _, present := postgres["iam_database_authentication_enabled"]; !present {
+		t.Fatal("project/dev.yaml no longer sets postgres.iam_database_authentication_enabled; pick another scalar key for this test")
+	}
+	delete(postgres, "iam_database_authentication_enabled")
 
-	rendered := renderMainHBS(t, map[string]interface{}{"workload": workload})
+	rendered := renderMainHBS(t, map[string]interface{}{"postgres": postgres})
 
 	// The template renders it happily, which is the whole problem. The trailing
-	// space is the one in `setup_FCM_SNS = {{workload.setup_fcnsns}}`, left
+	// space is the one in `iam_database_authentication_enabled = {{...}}`, left
 	// behind once the stache resolves to nothing.
-	if !strings.Contains(rendered, "setup_FCM_SNS = \n") {
-		t.Fatalf("expected the omitted key to render a bare `=`, got:\n%s", excerptAround(rendered, "setup_FCM_SNS"))
+	if !strings.Contains(rendered, "iam_database_authentication_enabled = \n") {
+		t.Fatalf("expected the omitted key to render a bare `=`, got:\n%s", excerptAround(rendered, "iam_database_authentication_enabled"))
 	}
 
 	if err := validateGeneratedHCL("env/dev/main.tf", rendered); err == nil {
 		t.Fatal("generation would have written terraform that cannot be parsed")
 	}
+}
+
+// fixtureMapping returns one top-level mapping from the shipped
+// project/dev.yaml that renderMainHBS uses as its base.
+func fixtureMapping(t *testing.T, key string) map[interface{}]interface{} {
+	t.Helper()
+
+	raw, err := os.ReadFile(filepath.Join("..", "project", "dev.yaml"))
+	if err != nil {
+		t.Fatalf("reading project/dev.yaml: %v", err)
+	}
+	var doc map[string]interface{}
+	if err := yaml.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("parsing project/dev.yaml: %v", err)
+	}
+	section, ok := doc[key].(map[interface{}]interface{})
+	if !ok {
+		t.Fatalf("project/dev.yaml %s is not a mapping: %#v", key, doc[key])
+	}
+	return section
 }
 
 // excerptAround returns a few lines of rendered output around needle, for

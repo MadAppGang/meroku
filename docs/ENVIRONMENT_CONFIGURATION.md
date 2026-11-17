@@ -459,7 +459,7 @@ The `cognito` section configures AWS Cognito user pools for authentication.
 ### `enable_web_client`
 - **Type**: Boolean
 - **Description**: Create an app client for web applications
-- **Default**: `false`
+- **Default**: `true` when the key is left out. Environments created by meroku write `false` explicitly.
 - **Example**: `true`
 - **Notes**: Generates a client ID for frontend authentication.
 

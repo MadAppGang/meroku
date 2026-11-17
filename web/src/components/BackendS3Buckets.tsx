@@ -49,7 +49,7 @@ export function BackendS3Buckets({
 }: BackendS3BucketsProps) {
 	const uid = useId();
 	const primaryBucketName = `${config.project}-backend-${config.env}${config.workload?.bucket_postfix || ""}`;
-	const isPublic = config.workload?.bucket_public !== false;
+	const isPublic = config.workload?.bucket_public === true;
 
 	// Environment files from S3
 	const [envFiles, setEnvFiles] = useState(config.workload?.env_files_s3 || []);
