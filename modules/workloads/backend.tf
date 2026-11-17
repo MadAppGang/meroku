@@ -1022,9 +1022,12 @@ resource "aws_iam_role_policy" "ecs_exec_policy" {
 
 // The user's workload.policy as one customer-managed policy on the backend task
 // role. One statement per entry, with the entry's own effect and conditions;
-// see local.backend_custom_policy_statements in custom_policy.tf. app/
-// workload_policy.go refuses a statement with empty actions or resources, so
-// any entry at all is a policy to create.
+// see local.backend_custom_policy_statements in custom_policy.tf.
+// app/workload_policy.go validates only the YAML statements, at generate; the
+// validation blocks on var.backend_policy cover those and a custom/pre module's
+// backend_policies output alike, so every entry is a policy statement to
+// create. env/main.hbs appends that output by direct reference, so the list's
+// length stays known at plan even when a statement's resources are not.
 resource "aws_iam_policy" "backend_custom_policy" {
   # length() of the list itself, never an index into it: env/main.hbs renders
   # `backend_policy = []` for a project without workload.policy, and Terraform

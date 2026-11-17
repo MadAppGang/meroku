@@ -1,4 +1,4 @@
-schema_version: 32
+schema_version: 33
 project: myapp
 env: dev
 is_prod: false
@@ -24,11 +24,6 @@ workload:
   backend_env_variables:
     BACKEND_TEST: passed
   policies: []
-  backend_policies:
-  - actions:
-    - dynamodb:GetItem
-    resources:
-    - arn:aws:dynamodb:us-east-1:000000000000:table/example
   env_files_s3: []
   slack_webhook: ""
   enable_github_oidc: false

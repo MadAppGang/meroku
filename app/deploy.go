@@ -541,6 +541,14 @@ func applyTemplate(env string) error {
 
 	// Check for custom pre/post modules and set flags
 	envMap["has_custom_pre"] = hasCustomModule("pre")
+	envMap[customPreBackendPoliciesKey] = false
+	if envMap["has_custom_pre"] == true {
+		declared, warnings := customPreDeclaresBackendPolicies()
+		for _, w := range warnings {
+			fmt.Printf("⚠️  %s\n", w)
+		}
+		envMap[customPreBackendPoliciesKey] = declared
+	}
 	envMap["has_custom_post"] = hasCustomModule("post")
 
 	// Create a new template and parse the content
@@ -593,7 +601,9 @@ func applyTemplate(env string) error {
 // validation and neon_render), collectDisabledWorkloadNames,
 // filterDisabledItems x3, then
 // synthesizeDefaultComputePool, assignSESPrimaryDomain, resolveSESZones,
-// normalizeHealthCheckCommands, assignGitHubRunnersOwner, then validateSESDNSConfigMap,
+// normalizeHealthCheckCommands, assignGitHubRunnersOwner, then
+// validateLegacyBackendPolicyKeysConfigMap, validateWorkloadPolicyConfigMap,
+// moveServicePoliciesOut, validateSESDNSConfigMap,
 // validateNetworkAccessConfigMap, validateBackendHealthConfigMap,
 // validateReservedEnvNamesConfigMap, validateGitHubRunnersConfigMap,
 // prepareAmplifyRewriteRules, validateWorkloadNamesConfigMap, normalizeEvents,
@@ -638,6 +648,9 @@ func preprocessEnvMap(envMap map[string]interface{}) error {
 	// Validate every policy block first, then take the services' statements
 	// out of the service maps; the order is required, the validator reads them
 	// where the user wrote them.
+	if err := validateLegacyBackendPolicyKeysConfigMap(envMap); err != nil {
+		return err
+	}
 	if err := validateWorkloadPolicyConfigMap(envMap); err != nil {
 		return err
 	}

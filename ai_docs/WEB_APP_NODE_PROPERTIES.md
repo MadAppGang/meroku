@@ -302,7 +302,7 @@ The largest property surface in the app.
 
 | Property | Type | Conditional | Class | Notes |
 |---|---|---|---|---|
-| `workload.policy[].actions` | string[] | optional | TF | Inline statements on the task role. |
+| `workload.policy[].actions` | string[] | optional | TF | Inline statements on the task role. Schema v33 moves `workload.backend_policies` here. |
 | `workload.policy[].resources` | string[] | optional | TF | |
 | Task role ARN | string | — | RO | |
 | Execution role ARN | string | — | RO | |

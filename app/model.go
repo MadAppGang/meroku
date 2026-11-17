@@ -410,9 +410,13 @@ type Workload struct {
 	SetupFCNSNS         bool              `yaml:"setup_fcnsns"`
 	XrayEnabled         bool              `yaml:"xray_enabled"`
 	BackendEnvVariables map[string]string `yaml:"backend_env_variables"`
-	Policies            []string          `yaml:"policies"`
-	BackendPolicies     []Policy          `yaml:"backend_policies"`
-	EnvFilesS3          []S3EnvFile       `yaml:"env_files_s3"`
+	// Policies and BackendPolicies are not rendered. Generate refuses either
+	// when it holds anything (validateLegacyBackendPolicyKeysConfigMap), and
+	// migration v33 moves backend_policies onto Policy. Both stay declared so a
+	// struct save keeps what the user wrote for generate to name.
+	Policies        []string    `yaml:"policies"`
+	BackendPolicies []Policy    `yaml:"backend_policies,omitempty"`
+	EnvFilesS3      []S3EnvFile `yaml:"env_files_s3"`
 
 	SlackWebhook     string `yaml:"slack_webhook"`
 	EnableGithubOIDC bool   `yaml:"enable_github_oidc"`

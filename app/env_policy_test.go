@@ -12,10 +12,10 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-// REQ-18 / TEST-15: v32 is the current opt-in Neon schema.
-func TestV32IsRegisteredAtTheCurrentVersion(t *testing.T) {
-	if CurrentSchemaVersion != 32 {
-		t.Fatalf("CurrentSchemaVersion = %d, want 32", CurrentSchemaVersion)
+// v33 moves workload.backend_policies onto workload.policy.
+func TestV33IsRegisteredAtTheCurrentVersion(t *testing.T) {
+	if CurrentSchemaVersion != 33 {
+		t.Fatalf("CurrentSchemaVersion = %d, want 33", CurrentSchemaVersion)
 	}
 	last := AllMigrations[len(AllMigrations)-1]
 	if last.Version != CurrentSchemaVersion || last.Apply == nil {

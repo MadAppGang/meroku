@@ -102,6 +102,9 @@ workload:
   # IAM policies
   policy: <list>                             # Extra IAM statements for the backend task role,
                                              #   one managed policy. See ai_docs/WORKLOAD_IAM.md
+                                             #   The one key: backend_policies is moved here by
+                                             #   migration v33, and a non-empty `policies`
+                                             #   (managed policy ARNs) is refused at generate
     - effect: <Allow|Deny>                   # Optional. Absent means Allow
       actions: <list>                        # Required, non-empty (e.g., ["s3:GetObject", "s3:PutObject"])
         - <string>

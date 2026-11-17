@@ -610,6 +610,29 @@ variable "backend_policy" {
     condition     = alltrue([for s in var.backend_policy : contains(["Allow", "Deny"], s.effect)])
     error_message = "backend_policy[].effect must be Allow or Deny."
   }
+
+  # The checks below cover every statement, including those a custom/pre
+  # module's backend_policies output adds, which app/workload_policy.go never
+  # sees. They read only list lengths and condition keys, so a statement whose
+  # resources are unknown at plan (a resource created in the same apply) still
+  # validates.
+  validation {
+    condition     = alltrue([for s in var.backend_policy : length(s.actions) > 0])
+    error_message = "A backend_policy statement has an empty actions list. Every statement, from workload.policy or from a custom/pre backend_policies output, must list at least one IAM action; IAM rejects a statement without one."
+  }
+
+  validation {
+    condition     = alltrue([for s in var.backend_policy : length(s.resources) > 0])
+    error_message = "A backend_policy statement has an empty resources list. Every statement, from workload.policy or from a custom/pre backend_policies output, must list at least one resource ARN (or \"*\"); IAM rejects a statement without one."
+  }
+
+  validation {
+    condition = alltrue([
+      for s in var.backend_policy :
+      length(distinct([for c in s.conditions : [c.test, c.variable]])) == length(s.conditions)
+    ])
+    error_message = "A backend_policy statement has two conditions with the same test and variable. IAM keeps only one of them, so the other would be silently dropped: merge their values into one condition."
+  }
 }
 
 variable "service_policies" {

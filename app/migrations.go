@@ -44,7 +44,8 @@ import (
 // 30: Add services[].network_access (public|internal|full_open|none); existing services pinned to full_open
 // 31: Write name-based policy as flags: auto_deploy (dev only), is_prod, and prod's domain settings
 // 32: Neon Postgres: neon block and per-service neon access (opt-in); defaults owner_role, databases[].create, project.pg_version
-const CurrentSchemaVersion = 32
+// 33: Move workload.backend_policies onto workload.policy, the key the template reads
+const CurrentSchemaVersion = 33
 
 // EnvWithVersion extends Env with a schema version field
 type EnvWithVersion struct {
@@ -215,6 +216,11 @@ var AllMigrations = []Migration{
 		Version:     32,
 		Description: "Neon Postgres: neon block and per-service neon access (opt-in)",
 		Apply:       migrateToV32,
+	},
+	{
+		Version:     33,
+		Description: "Move workload.backend_policies onto workload.policy",
+		Apply:       migrateToV33,
 	},
 }
 

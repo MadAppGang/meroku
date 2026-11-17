@@ -27,10 +27,13 @@ output "backend_env_vars" {
   ]
 }
 
-# IAM policies for the backend task
-# These grant the backend container permissions to use the resources
+# IAM statements for the backend task role
+# meroku merges them with workload.policy from the YAML into the backend's
+# custom policy. The list is fixed and the actions are literal, so Terraform
+# knows at plan that the policy exists; the resources may be created in the
+# same apply.
 output "backend_policies" {
-  description = "IAM policies to attach to the backend task role"
+  description = "IAM statements merged into the backend task role's custom policy"
   value = [
     {
       actions = [

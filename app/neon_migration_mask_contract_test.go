@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/url"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -41,7 +42,7 @@ func TestNeonContractMigrationV32AddsOnlyAbsentDefaults(t *testing.T) {
 
 func TestNeonContractForwardSchemaGuardIsActionable(t *testing.T) {
 	// REQ-18: loader integration is not available in the declaration contract.
-	for _, v := range []int{0, 31, 32} {
+	for _, v := range []int{0, 31, 32, CurrentSchemaVersion} {
 		if err := checkSchemaNotNewer("fake-env.yaml", v); err != nil {
 			t.Fatalf("supported v%d refused: %v", v, err)
 		}
@@ -50,7 +51,7 @@ func TestNeonContractForwardSchemaGuardIsActionable(t *testing.T) {
 	if err == nil {
 		t.Fatal("future schema accepted")
 	}
-	for _, s := range []string{"fake-env.yaml", "99", "32", "Update meroku", "not changed"} {
+	for _, s := range []string{"fake-env.yaml", "99", strconv.Itoa(CurrentSchemaVersion), "Update meroku", "not changed"} {
 		if !strings.Contains(err.Error(), s) {
 			t.Errorf("guard missing %q: %v", s, err)
 		}

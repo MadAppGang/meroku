@@ -168,7 +168,7 @@ workload:
   backend_memory: "512"
   backend_desired_count: 1
   backend_autoscaling_enabled: false
-  backend_policies:
+  policy:
     - actions:
         - s3:GetObject
       resources:
@@ -505,6 +505,29 @@ output "backend_env_vars" {
 ```
 
 This automatically merges into `module.workloads.backend_env`.
+
+Use the `backend_policies` output for IAM statements the backend needs on resources the pre-module
+creates. It merges into `module.workloads.backend_policy`, together with `workload.policy` from the
+YAML, as one customer-managed policy on the backend task role:
+
+```hcl
+# custom/pre/outputs.tf
+output "backend_policies" {
+  value = [
+    { actions = ["kms:Decrypt"], resources = [aws_kms_key.app.arn] }
+  ]
+}
+```
+
+`meroku generate` references the output only when a `custom/pre/*.tf` file declares
+`output "backend_policies"`, so regenerate after adding it. Each statement has the `policy` shape
+(`actions`, `resources`, optional `effect` and `conditions`). Write a fixed list with literal `actions`:
+Terraform has to know the number of statements at plan. `resources` may reference resources from the
+same apply. A `for` expression whose length is only known after apply (over a computed list attribute,
+or `split()` of a computed ID) makes the length unknown and fails the plan with "Invalid count
+argument"; a `for` over a resource with a literal `count`, or a `for_each` over keys written in the
+configuration, is fine. Never put managed policy ARNs in the env YAML: `meroku generate` refuses
+`workload.policies`. Attach a managed policy from `custom/post` instead.
 
 ### YAML Extensions → Core Module
 
