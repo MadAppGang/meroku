@@ -85,8 +85,7 @@ type vpcCIDRWarning struct {
 var errVPCCIDRPoolExhausted = errors.New("no free /16 left in the 10.0.0.0/8 pool: every candidate overlaps an existing environment or VPC")
 
 // awsNetworkLabel is how an AWS VPC is named in warnings and the API. Generic
-// on purpose: the web API is served with permissive CORS, so VPC ids and Name
-// tags from the account stay out of it.
+// on purpose: VPC ids and Name tags from the account stay out of the web API.
 const awsNetworkLabel = "another network in this AWS account"
 
 type reservedVPCRange struct {

@@ -35,7 +35,8 @@ var (
 	awsConfigFlag  = flag.String("aws-config", "", "Custom AWS config file path (for testing different scenarios)")
 	monitorFlag    = flag.Bool("monitor", false, "Open infrastructure monitor dashboard")
 	themeFlag      = flag.String("theme", "auto", "Color theme: auto | light | dark (auto reads the terminal background)")
-	webPortFlag    = flag.String("web-port", "", "With --web: serve on 127.0.0.1 at exactly this port, open no browser and skip the update prompt (fails if the port is taken)")
+	webPortFlag    = flag.String("web-port", "", "With --web: serve on the --listen address at exactly this port, open no browser and skip the update prompt (fails if the port is taken)")
+	listenFlag     = flag.String("listen", webDefaultListen, "Interface for the web server. Any non-loopback address, e.g. 0.0.0.0, makes every request need the printed per-run token")
 )
 
 // GetVersion returns the actual version, reading from infrastructure/version.txt
@@ -102,6 +103,14 @@ func main() {
 	// Parse command line flags
 	flag.Usage = printMerokuUsage
 	flag.Parse()
+
+	// Every web server start path (--web, --web-port, the main menu) listens
+	// on this address and applies its access rules.
+	if err := validateListenHost(*listenFlag); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+	configureWebAccess(*listenFlag)
 
 	// Handle version flag (early, before any initialization). It prints plain
 	// text, so it needs no theme and must not query the terminal.

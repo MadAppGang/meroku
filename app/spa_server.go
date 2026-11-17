@@ -41,13 +41,13 @@ func mainRouter() http.Handler {
 	mux := http.NewServeMux()
 
 	// Register API routes - Environment Management
-	mux.HandleFunc("/api/environments", corsMiddleware(getEnvironments))
-	mux.HandleFunc("/api/environment", corsMiddleware(getEnvironmentConfig))
-	mux.HandleFunc("/api/environment/update", corsMiddleware(updateEnvironmentConfig))
+	mux.HandleFunc("/api/environments", getEnvironments)
+	mux.HandleFunc("/api/environment", getEnvironmentConfig)
+	mux.HandleFunc("/api/environment/update", updateEnvironmentConfig)
 
 	// Account & AWS
-	mux.HandleFunc("/api/account", corsMiddleware(getCurrentAccount))
-	mux.HandleFunc("/api/aws/profiles", corsMiddleware(getAWSProfiles))
+	mux.HandleFunc("/api/account", getCurrentAccount)
+	mux.HandleFunc("/api/aws/profiles", getAWSProfiles)
 
 	// DNS — delegation status, parent-zone discovery and the delegation write.
 	// Until these existed the DNS subsystem was CLI-only, so the web UI had to
@@ -55,39 +55,39 @@ func mainRouter() http.Handler {
 	registerDNSRoutes(mux)
 
 	// Positions
-	mux.HandleFunc("/api/positions", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/positions", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			getNodePositions(w, r)
 		} else {
 			saveNodePositions(w, r)
 		}
-	}))
+	})
 
 	// VPC range: validation, overlap report and free-range suggestions
-	mux.HandleFunc("/api/vpc-cidr", corsMiddleware(getVPCCIDRReport))
+	mux.HandleFunc("/api/vpc-cidr", getVPCCIDRReport)
 
 	// Configuration warnings: what generate would warn about, per env
-	mux.HandleFunc("/api/config-warnings", corsMiddleware(getConfigWarnings))
+	mux.HandleFunc("/api/config-warnings", getConfigWarnings)
 
-	// Neon: live choices for the Neon panels. No CORS: only a loopback
-	// client with a loopback Host and Origin is answered (see api_neon.go).
+	// Neon: live choices for the Neon panels. The handlers repeat the
+	// router-wide access check (web_access.go) themselves.
 	mux.HandleFunc("/api/neon/lookup", getNeonLookup)
 	mux.HandleFunc("/api/neon/schemas", getNeonSchemas)
 
 	// SES DNS records: zone origin, live apex values, suggested sender record
-	mux.HandleFunc("/api/ses-dns", corsMiddleware(getSESDNSReport))
+	mux.HandleFunc("/api/ses-dns", getSESDNSReport)
 
 	// ECS
-	mux.HandleFunc("/api/ecs/cluster", corsMiddleware(getECSClusterInfo))
-	mux.HandleFunc("/api/ecs/network", corsMiddleware(getECSNetworkInfo))
-	mux.HandleFunc("/api/ecs/services", corsMiddleware(getECSServicesInfo))
-	mux.HandleFunc("/api/ecs/tasks", corsMiddleware(getServiceTasks))
-	mux.HandleFunc("/api/ecs/autoscaling", corsMiddleware(getServiceAutoscaling))
-	mux.HandleFunc("/api/ecs/scaling-history", corsMiddleware(getServiceScalingHistory))
-	mux.HandleFunc("/api/ecs/metrics", corsMiddleware(getServiceMetrics))
+	mux.HandleFunc("/api/ecs/cluster", getECSClusterInfo)
+	mux.HandleFunc("/api/ecs/network", getECSNetworkInfo)
+	mux.HandleFunc("/api/ecs/services", getECSServicesInfo)
+	mux.HandleFunc("/api/ecs/tasks", getServiceTasks)
+	mux.HandleFunc("/api/ecs/autoscaling", getServiceAutoscaling)
+	mux.HandleFunc("/api/ecs/scaling-history", getServiceScalingHistory)
+	mux.HandleFunc("/api/ecs/metrics", getServiceMetrics)
 
 	// Fargate
-	mux.HandleFunc("/api/fargate/options", corsMiddleware(getFargateOptions))
+	mux.HandleFunc("/api/fargate/options", getFargateOptions)
 
 	// Compute pools (EC2 capacity) — read-only. Pool CRUD is a YAML write and
 	// goes through /api/environment/update like every other config change, so
@@ -97,19 +97,19 @@ func mainRouter() http.Handler {
 	// is a plain http.ServeMux with a catch-all at "/" below, so
 	// /api/compute/pools/{name} would match the SPA handler and return HTML
 	// with a 200 (CON-3).
-	mux.HandleFunc("/api/compute/instance-types", corsMiddleware(getComputeInstanceTypes))
-	mux.HandleFunc("/api/compute/spot-prices", corsMiddleware(getComputeSpotPrices))
-	mux.HandleFunc("/api/compute/recommendation", corsMiddleware(getComputeRecommendation))
+	mux.HandleFunc("/api/compute/instance-types", getComputeInstanceTypes)
+	mux.HandleFunc("/api/compute/spot-prices", getComputeSpotPrices)
+	mux.HandleFunc("/api/compute/recommendation", getComputeRecommendation)
 
 	// API Gateway
-	mux.HandleFunc("/api/apigateway/info", corsMiddleware(getAPIGatewayInfo))
+	mux.HandleFunc("/api/apigateway/info", getAPIGatewayInfo)
 
 	// RDS
-	mux.HandleFunc("/api/rds/endpoint", corsMiddleware(getDatabaseEndpoint))
-	mux.HandleFunc("/api/rds/info", corsMiddleware(getDatabaseInfo))
+	mux.HandleFunc("/api/rds/endpoint", getDatabaseEndpoint)
+	mux.HandleFunc("/api/rds/info", getDatabaseInfo)
 
 	// SSM Parameters
-	mux.HandleFunc("/api/ssm/parameter", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/ssm/parameter", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			getSSMParameter(w, r)
@@ -120,14 +120,14 @@ func mainRouter() http.Handler {
 		default:
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
-	}))
-	mux.HandleFunc("/api/ssm/parameters", corsMiddleware(listSSMParameters))
+	})
+	mux.HandleFunc("/api/ssm/parameters", listSSMParameters)
 
 	// Vault secret values, write-only (api_vault_secrets.go)
-	mux.HandleFunc("/api/vaults/secrets", corsMiddleware(handleVaultSecrets))
+	mux.HandleFunc("/api/vaults/secrets", handleVaultSecrets)
 
 	// S3
-	mux.HandleFunc("/api/s3/file", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/s3/file", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			getS3File(w, r)
@@ -138,60 +138,60 @@ func mainRouter() http.Handler {
 		default:
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
-	}))
-	mux.HandleFunc("/api/s3/files", corsMiddleware(listS3Files))
-	mux.HandleFunc("/api/s3/buckets", corsMiddleware(listProjectS3Buckets))
+	})
+	mux.HandleFunc("/api/s3/files", listS3Files)
+	mux.HandleFunc("/api/s3/buckets", listProjectS3Buckets)
 
 	// SES
-	mux.HandleFunc("/api/ses/status", corsMiddleware(getSESStatus))
-	mux.HandleFunc("/api/ses/sandbox-info", corsMiddleware(getSESSandboxInfo))
-	mux.HandleFunc("/api/ses/send-test-email", corsMiddleware(sendTestEmail))
-	mux.HandleFunc("/api/ses/production-access-prefill", corsMiddleware(getProductionAccessPrefill))
-	mux.HandleFunc("/api/ses/request-production", corsMiddleware(submitSESProductionAccess))
+	mux.HandleFunc("/api/ses/status", getSESStatus)
+	mux.HandleFunc("/api/ses/sandbox-info", getSESSandboxInfo)
+	mux.HandleFunc("/api/ses/send-test-email", sendTestEmail)
+	mux.HandleFunc("/api/ses/production-access-prefill", getProductionAccessPrefill)
+	mux.HandleFunc("/api/ses/request-production", submitSESProductionAccess)
 
 	// EventBridge
-	mux.HandleFunc("/api/eventbridge/send-test-event", corsMiddleware(sendTestEvent))
-	mux.HandleFunc("/api/eventbridge/event-tasks", corsMiddleware(getEventTaskInfo))
+	mux.HandleFunc("/api/eventbridge/send-test-event", sendTestEvent)
+	mux.HandleFunc("/api/eventbridge/event-tasks", getEventTaskInfo)
 
 	// GitHub OAuth
-	mux.HandleFunc("/api/github/oauth/device", corsMiddleware(initiateGitHubDeviceFlow))
-	mux.HandleFunc("/api/github/oauth/status", corsMiddleware(checkGitHubDeviceFlowStatus))
-	mux.HandleFunc("/api/github/oauth/session", corsMiddleware(deleteGitHubDeviceFlowSession))
+	mux.HandleFunc("/api/github/oauth/device", initiateGitHubDeviceFlow)
+	mux.HandleFunc("/api/github/oauth/status", checkGitHubDeviceFlowStatus)
+	mux.HandleFunc("/api/github/oauth/session", deleteGitHubDeviceFlowSession)
 
 	// Amplify
-	mux.HandleFunc("/api/amplify/apps", corsMiddleware(getAmplifyApps))
-	mux.HandleFunc("/api/amplify/build-logs", corsMiddleware(getAmplifyBuildLogs))
-	mux.HandleFunc("/api/amplify/trigger-build", corsMiddleware(triggerAmplifyBuild))
+	mux.HandleFunc("/api/amplify/apps", getAmplifyApps)
+	mux.HandleFunc("/api/amplify/build-logs", getAmplifyBuildLogs)
+	mux.HandleFunc("/api/amplify/trigger-build", triggerAmplifyBuild)
 
 	// SSH
-	mux.HandleFunc("/api/ssh/capability", corsMiddleware(getSSHCapability))
+	mux.HandleFunc("/api/ssh/capability", getSSHCapability)
 
 	// Logs
-	mux.HandleFunc("/api/logs", corsMiddleware(getServiceLogs))
+	mux.HandleFunc("/api/logs", getServiceLogs)
 
 	// Pricing
-	mux.HandleFunc("/api/pricing", corsMiddleware(getPricing))
-	mux.HandleFunc("/api/pricing/rates", corsMiddleware(getPricingRates))
+	mux.HandleFunc("/api/pricing", getPricing)
+	mux.HandleFunc("/api/pricing/rates", getPricingRates)
 
 	// Buckets
-	mux.HandleFunc("/api/buckets", corsMiddleware(listBuckets))
+	mux.HandleFunc("/api/buckets", listBuckets)
 
 	// ECR Cross-Account Configuration
-	mux.HandleFunc("/api/environments/ecr-sources", corsMiddleware(getECRSources))
-	mux.HandleFunc("/api/environments/configure-cross-account-ecr", corsMiddleware(configureCrossAccountECR))
-	mux.HandleFunc("/api/environments/check-ecr-trust-policy", corsMiddleware(checkECRTrustPolicyDeployedInAWS))
+	mux.HandleFunc("/api/environments/ecr-sources", getECRSources)
+	mux.HandleFunc("/api/environments/configure-cross-account-ecr", configureCrossAccountECR)
+	mux.HandleFunc("/api/environments/check-ecr-trust-policy", checkECRTrustPolicyDeployedInAWS)
 
 	// GitHub Actions OIDC: one provider per AWS account, so a second project
 	// sharing the account federates against the first project's.
-	mux.HandleFunc("/api/environments/github-oidc-status", corsMiddleware(getGithubOIDCStatus))
+	mux.HandleFunc("/api/environments/github-oidc-status", getGithubOIDCStatus)
 	// And a read-only scan for the other half of the problem: two projects in
 	// one account whose OIDC subject lists overlap can assume each other's
 	// roles, and AWS says nothing about it.
-	mux.HandleFunc("/api/environments/github-oidc-subject-conflicts", corsMiddleware(getGitHubOIDCSubjectConflicts))
+	mux.HandleFunc("/api/environments/github-oidc-subject-conflicts", getGitHubOIDCSubjectConflicts)
 
 	// Custom Terraform Extensions
-	mux.HandleFunc("/api/custom-terraform/files", corsMiddleware(listCustomTerraformFiles))
-	mux.HandleFunc("/api/custom-terraform/file", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/custom-terraform/files", listCustomTerraformFiles)
+	mux.HandleFunc("/api/custom-terraform/file", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			getCustomTerraformFile(w, r)
@@ -202,11 +202,11 @@ func mainRouter() http.Handler {
 		default:
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
-	}))
-	mux.HandleFunc("/api/custom-terraform/bridge-vars", corsMiddleware(getBridgeVariables))
-	mux.HandleFunc("/api/custom-terraform/modules", corsMiddleware(getCustomModuleStatus))
+	})
+	mux.HandleFunc("/api/custom-terraform/bridge-vars", getBridgeVariables)
+	mux.HandleFunc("/api/custom-terraform/modules", getCustomModuleStatus)
 
-	// WebSocket endpoints (these handle their own CORS)
+	// WebSocket endpoints; their upgraders apply the same access rules
 	mux.HandleFunc("/ws/logs", streamServiceLogs)
 	mux.HandleFunc("/ws/ssh", startSSHSession)
 	mux.HandleFunc("/ws/ssh-pty", startSSHSessionPTY)
@@ -214,7 +214,8 @@ func mainRouter() http.Handler {
 	// SPA handler for all other routes
 	mux.HandleFunc("/", spaHandler())
 
-	return mux
+	// Every route passes the access guard (web_access.go).
+	return webAccessGuard(mux)
 }
 
 func spaHandler() http.HandlerFunc {
@@ -269,7 +270,7 @@ func spaHandler() http.HandlerFunc {
 
 // isPortAvailable checks if a port is available for use
 func isPortAvailable(port string) bool {
-	ln, err := net.Listen("tcp", ":"+port)
+	ln, err := net.Listen("tcp", webListenAddr(port))
 	if err != nil {
 		return false
 	}
@@ -295,13 +296,15 @@ func findAvailablePort(preferredPort string) (string, bool) {
 	return "", false
 }
 
-// serveWebOnPort serves the web app on 127.0.0.1 at exactly the given port and
-// blocks. Unlike startSPAServer it never moves to another port, so a caller
-// that already knows the URL (a test runner, a script) cannot end up talking
-// to a different meroku instance that holds the preferred port.
+// serveWebOnPort serves the web app on the --listen address at exactly the
+// given port and blocks. Unlike startSPAServer it never moves to another port,
+// so a caller that already knows the URL (a test runner, a script) cannot end
+// up talking to a different meroku instance that holds the preferred port.
 func serveWebOnPort(port string) error {
-	addr := net.JoinHostPort("127.0.0.1", port)
+	addr := webListenAddr(port)
 	fmt.Printf("Serving the web app on http://%s\n", addr)
+	shown, _ := webServerURLs(port)
+	printWebAccessURL(shown)
 	return http.ListenAndServe(addr, mainRouter())
 }
 
@@ -331,9 +334,10 @@ func startSPAServer(preferredPort string) {
 	errChan := make(chan error, 1)
 
 	// Start server in a goroutine
-	serverURL := "http://localhost:" + port
+	shownURL, openURL := webServerURLs(port)
+	serverURL := webURLWithoutToken(openURL)
 	go func() {
-		if err := http.ListenAndServe(":"+port, router); err != nil {
+		if err := http.ListenAndServe(webListenAddr(port), router); err != nil {
 			errChan <- err
 		}
 	}()
@@ -355,9 +359,10 @@ func startSPAServer(preferredPort string) {
 	if port != preferredPort {
 		fmt.Printf("✓ Server started successfully on port %s\n", port)
 	}
+	printWebAccessURL(shownURL)
 
 	// Open the web app
-	if err := openBrowser(serverURL); err != nil {
+	if err := openBrowser(openURL); err != nil {
 		fmt.Printf("Failed to open browser: %v\n", err)
 	}
 
@@ -395,9 +400,10 @@ func startSPAServerWithAutoOpen(preferredPort string, autoOpen bool, runTUI bool
 	errChan := make(chan error, 1)
 
 	// Start server in a goroutine
-	serverURL := "http://localhost:" + port
+	shownURL, openURL := webServerURLs(port)
+	serverURL := webURLWithoutToken(openURL)
 	go func() {
-		if err := http.ListenAndServe(":"+port, router); err != nil {
+		if err := http.ListenAndServe(webListenAddr(port), router); err != nil {
 			errChan <- err
 		}
 	}()
@@ -421,10 +427,11 @@ func startSPAServerWithAutoOpen(preferredPort string, autoOpen bool, runTUI bool
 	if port != preferredPort {
 		fmt.Printf("✓ Server started successfully on port %s\n", port)
 	}
+	printWebAccessURL(shownURL)
 
 	// Open the web app if requested
 	if autoOpen {
-		if err := openBrowser(serverURL); err != nil {
+		if err := openBrowser(openURL); err != nil {
 			fmt.Printf("Failed to open browser: %v\n", err)
 		}
 	}

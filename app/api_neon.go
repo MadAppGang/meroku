@@ -7,15 +7,10 @@ package main
 // mirrored by web/src/types/neon.ts. It never carries the token, a password
 // or a connection string, and nothing here logs.
 //
-// Loopback only: the route is registered without corsMiddleware, and a
-// request gets 403 unless it arrived from a loopback address (RemoteAddr),
-// its Host is localhost, 127.0.0.1 or [::1] on the port meroku serves, its
-// Origin (when sent) is a loopback http origin, and its Sec-Fetch-Site (when
-// sent) is same-origin or none. RemoteAddr refuses other machines on the
-// network, which choose their own Host header; the Host and Origin rules
-// refuse DNS-rebinding pages in a local browser, whose Host is their own
-// name. The web UI's dev server proxies from loopback too. 4xx only for the caller's own mistakes; a Neon failure is a 200 with
-// note set.
+// Every request has passed the web server's access guard (web_access.go)
+// before it gets here, and the handler checks webRequestAllowed again: in local
+// mode only a loopback client with a loopback Host and Origin is answered. 4xx
+// only for the caller's own mistakes; a Neon failure is a 200 with note set.
 //
 // The lookup never opens a browser and never starts a login: without a usable
 // token it answers with auth.state and nothing else.
@@ -24,9 +19,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
-	"net/url"
 	"slices"
 	"sort"
 	"strings"
@@ -251,61 +244,12 @@ func neonLookupAuthFor(tok NeonToken, err error, now time.Time) neonLookupAuth {
 // Handler
 // ---------------------------------------------------------------------------
 
-// neonLookupLoopback reports whether r was sent to meroku on this machine by
-// a page meroku serves. See the file comment for the rules.
-func neonLookupLoopback(r *http.Request) bool {
-	remote, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return false
-	}
-	if ip := net.ParseIP(remote); ip == nil || !ip.IsLoopback() {
-		return false
-	}
-	switch r.Header.Get("Sec-Fetch-Site") {
-	case "", "same-origin", "none":
-	default:
-		return false
-	}
-	host, port, err := net.SplitHostPort(r.Host)
-	if err != nil || !isLoopbackHostName(host) {
-		return false
-	}
-	// The port the request reached, when the server recorded it. A Host on
-	// another port names some other server.
-	if addr, ok := r.Context().Value(http.LocalAddrContextKey).(net.Addr); ok {
-		if _, localPort, err := net.SplitHostPort(addr.String()); err == nil && localPort != port {
-			return false
-		}
-	}
-	origin := r.Header.Get("Origin")
-	if origin == "" {
-		return true
-	}
-	// The web UI's dev server proxies /api from its own loopback port, so an
-	// Origin is checked for being loopback, not for matching Host's port.
-	u, err := url.Parse(origin)
-	if err != nil || u.Scheme != "http" {
-		return false
-	}
-	return isLoopbackHostName(u.Hostname())
-}
-
-// isLoopbackHostName reports whether host (no port, no brackets) is a name
-// that always means this machine.
-func isLoopbackHostName(host string) bool {
-	switch strings.ToLower(host) {
-	case "localhost", "127.0.0.1", "::1":
-		return true
-	}
-	return false
-}
-
 func getNeonLookup(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if !neonLookupLoopback(r) {
+	if !webRequestAllowed(r) {
 		writeAPIError(w, http.StatusForbidden, "only the meroku web UI on this machine may call this")
 		return
 	}

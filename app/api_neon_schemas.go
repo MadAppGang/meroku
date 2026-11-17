@@ -43,7 +43,7 @@ func getNeonSchemas(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if !neonLookupLoopback(r) {
+	if !webRequestAllowed(r) {
 		writeAPIError(w, http.StatusForbidden, "only the meroku web UI on this machine may call this")
 		return
 	}
