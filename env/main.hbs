@@ -946,13 +946,13 @@ module "cognito" {
   project                 = "{{project}}"
   env                     = "{{env}}"
   enable_web_client       = "{{cognito.enable_web_client}}"
-  enable_dashboard_client = {{cognito.enable_dashboard_client}}
+  enable_dashboard_client = {{default cognito.enable_dashboard_client false}}
   dashboard_callback_urls = {{array cognito.dashboard_callback_urls}}
 
-  enable_user_pool_domain = {{cognito.enable_user_pool_domain}}
+  enable_user_pool_domain = {{default cognito.enable_user_pool_domain false}}
   user_pool_domain_prefix = "{{cognito.user_pool_domain_prefix}}"
 
-  allow_backend_task_to_confirm_signup = {{cognito.backend_confirm_signup}}
+  allow_backend_task_to_confirm_signup = {{default cognito.backend_confirm_signup false}}
   auto_verified_attributes = {{array cognito.auto_verified_attributes}}
   backend_task_role_name  = module.workloads.backend_task_role_name
 }
