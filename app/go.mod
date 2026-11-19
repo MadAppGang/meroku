@@ -17,6 +17,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ecr v1.36.0
 	github.com/aws/aws-sdk-go-v2/service/ecs v1.58.1
 	github.com/aws/aws-sdk-go-v2/service/eventbridge v1.40.0
+	github.com/aws/aws-sdk-go-v2/service/eventbridgev2 v1.0.5
 	github.com/aws/aws-sdk-go-v2/service/iam v1.46.0
 	github.com/aws/aws-sdk-go-v2/service/pricing v1.34.5
 	github.com/aws/aws-sdk-go-v2/service/rds v1.102.0

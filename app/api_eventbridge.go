@@ -8,25 +8,31 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
 	"github.com/aws/aws-sdk-go-v2/service/eventbridge/types"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridgev2"
+	ebv2types "github.com/aws/aws-sdk-go-v2/service/eventbridgev2/types"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
 // TestEventRequest represents the request to send a test event.
 //
 // Env names the environment whose YAML, AWS profile and region are used.
 // EventBusName is "default" (also when empty) or the environment's project bus,
-// <project>-<env>; any other bus is refused.
+// <project>-<env>; any other bus is refused. EventGroupID is the event group
+// of an ordered delivery, accepted only for the enhanced project bus.
 type TestEventRequest struct {
 	Env          string                 `json:"env"`
 	EventBusName string                 `json:"eventBusName,omitempty"`
 	Source       string                 `json:"source"`
 	DetailType   string                 `json:"detailType"`
 	Detail       map[string]interface{} `json:"detail"`
+	EventGroupID string                 `json:"eventGroupId,omitempty"`
 }
 
 // TestEventResponse represents the response after sending an event
@@ -42,10 +48,17 @@ type eventBridgeAPI interface {
 	DescribeEventBus(ctx context.Context, in *eventbridge.DescribeEventBusInput, optFns ...func(*eventbridge.Options)) (*eventbridge.DescribeEventBusOutput, error)
 }
 
-// newEventBridgeClient builds a client for the environment's own AWS profile and
-// region, never the shell's ambient credentials: the test event must land in the
-// account the environment deploys to. A variable so tests can replace it.
-var newEventBridgeClient = func(ctx context.Context, e Env) (eventBridgeAPI, error) {
+// eventBridgeV2API is the part of the enhanced (eventbridgev2) client Test
+// Event uses.
+type eventBridgeV2API interface {
+	ListEventBuses(ctx context.Context, in *eventbridgev2.ListEventBusesInput, optFns ...func(*eventbridgev2.Options)) (*eventbridgev2.ListEventBusesOutput, error)
+	PutEvents(ctx context.Context, in *eventbridgev2.PutEventsInput, optFns ...func(*eventbridgev2.Options)) (*eventbridgev2.PutEventsOutput, error)
+}
+
+// loadTestEventAWSConfig loads the environment's own AWS profile and region,
+// never the shell's ambient profile choice: the test event must land in the
+// account the environment deploys to.
+func loadTestEventAWSConfig(ctx context.Context, e Env) (aws.Config, error) {
 	var opts []func(*config.LoadOptions) error
 	if e.AWSProfile != "" {
 		opts = append(opts, config.WithSharedConfigProfile(e.AWSProfile))
@@ -53,11 +66,85 @@ var newEventBridgeClient = func(ctx context.Context, e Env) (eventBridgeAPI, err
 	if e.Region != "" {
 		opts = append(opts, config.WithRegion(e.Region))
 	}
-	cfg, err := config.LoadDefaultConfig(ctx, opts...)
+	return config.LoadDefaultConfig(ctx, opts...)
+}
+
+// newEventBridgeClient builds the classic client for the environment. A
+// variable so tests can replace it.
+var newEventBridgeClient = func(ctx context.Context, e Env) (eventBridgeAPI, error) {
+	cfg, err := loadTestEventAWSConfig(ctx, e)
 	if err != nil {
 		return nil, err
 	}
 	return eventbridge.NewFromConfig(cfg), nil
+}
+
+// newEventBridgeV2Client builds the enhanced client for the environment, from
+// the same profile and region as the classic one. A variable so tests can
+// replace it.
+var newEventBridgeV2Client = func(ctx context.Context, e Env) (eventBridgeV2API, error) {
+	cfg, err := loadTestEventAWSConfig(ctx, e)
+	if err != nil {
+		return nil, err
+	}
+	return eventbridgev2.NewFromConfig(cfg), nil
+}
+
+// callerAccount is the account the environment's profile and region resolve
+// to (sts:GetCallerIdentity): the account Terraform deployed into. A variable
+// so tests can replace it.
+var callerAccount = func(ctx context.Context, e Env) (string, error) {
+	cfg, err := loadTestEventAWSConfig(ctx, e)
+	if err != nil {
+		return "", err
+	}
+	out, err := sts.NewFromConfig(cfg).GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+	if err != nil {
+		return "", err
+	}
+	return aws.ToString(out.Account), nil
+}
+
+// eventBusEnhancedIn reports whether the environment's project bus is the
+// enhanced kind: event_bus.enabled is true and event_bus.type is enhanced.
+func eventBusEnhancedIn(e Env) bool {
+	return eventBusEnabledIn(e) && e.EventBus.Type == eventBusTypeEnhanced
+}
+
+// enhancedBusARN finds the ARN of the enhanced bus called name that account
+// owns.
+//
+// ListEventBuses filters by a name prefix, so <name>-staging matches too, and
+// it also returns buses shared in from other accounts, which can carry the
+// same name. An entry counts only when its name is exactly name, its owner is
+// account and its ARN is that account's bus of that name. Pages are read until
+// a match or the last page.
+func enhancedBusARN(ctx context.Context, c eventBridgeV2API, name, account string) (string, bool, error) {
+	arnPart := ":" + account + ":event-busv2/" + name + "/"
+	var token *string
+	for {
+		out, err := c.ListEventBuses(ctx, &eventbridgev2.ListEventBusesInput{
+			NamePrefix:        aws.String(name),
+			EventBusAccountId: aws.String(account),
+			NextToken:         token,
+		})
+		if err != nil {
+			return "", false, err
+		}
+		for _, bus := range out.EventBuses {
+			arn := aws.ToString(bus.EventBusArn)
+			if aws.ToString(bus.Name) == name &&
+				aws.ToString(bus.EventBusAccountId) == account &&
+				strings.Contains(arn, arnPart) {
+				return arn, true, nil
+			}
+		}
+		next := aws.ToString(out.NextToken)
+		if next == "" || next == aws.ToString(token) {
+			return "", false, nil
+		}
+		token = aws.String(next)
+	}
 }
 
 // loadEnvForTestEvent loads <project dir>/<env>.yaml without rewriting it. A
@@ -158,6 +245,11 @@ func sendTestEvent(w http.ResponseWriter, r *http.Request) {
 		writeTestEventResponse(w, http.StatusBadRequest, TestEventResponse{Message: err.Error()})
 		return
 	}
+	enhancedTarget := busName != eventBusDefault && eventBusEnhancedIn(e)
+	if req.EventGroupID != "" && !enhancedTarget {
+		writeTestEventResponse(w, http.StatusBadRequest, TestEventResponse{Message: "eventGroupId needs the enhanced project bus"})
+		return
+	}
 
 	if req.Detail == nil {
 		req.Detail = map[string]interface{}{
@@ -174,6 +266,11 @@ func sendTestEvent(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
+
+	if enhancedTarget {
+		sendEnhancedTestEvent(ctx, w, e, req, string(detailJSON))
+		return
+	}
 
 	client, err := newEventBridgeClient(ctx, e)
 	if err != nil {
@@ -225,6 +322,90 @@ func sendTestEvent(w http.ResponseWriter, r *http.Request) {
 		Success: true,
 		EventId: eventID,
 		Message: fmt.Sprintf("Test event sent to the %s bus", busName),
+	})
+}
+
+// sendEnhancedTestEvent publishes a test event to the environment's enhanced
+// project bus. The bus is addressed by ARN, so the profile's account is
+// checked against the YAML's account_id first, and the ARN must belong to
+// that account: a same-named bus shared in from elsewhere is never used.
+func sendEnhancedTestEvent(ctx context.Context, w http.ResponseWriter, e Env, req TestEventRequest, detail string) {
+	busName := projectEventBusName(e)
+
+	account, err := callerAccount(ctx, e)
+	if err != nil {
+		writeTestEventResponse(w, http.StatusInternalServerError, TestEventResponse{
+			Message: fmt.Sprintf("Failed to read the account of profile %q: %v", e.AWSProfile, err),
+		})
+		return
+	}
+	if e.AccountID != "" && e.AccountID != account {
+		writeTestEventResponse(w, http.StatusConflict, TestEventResponse{
+			Message: fmt.Sprintf("The profile %s is account %s, but the environment's account_id is %s", e.AWSProfile, account, e.AccountID),
+		})
+		return
+	}
+
+	client, err := newEventBridgeV2Client(ctx, e)
+	if err != nil {
+		writeTestEventResponse(w, http.StatusInternalServerError, TestEventResponse{
+			Message: fmt.Sprintf("Failed to load AWS config for profile %q: %v", e.AWSProfile, err),
+		})
+		return
+	}
+
+	arn, found, err := enhancedBusARN(ctx, client, busName, account)
+	if err != nil {
+		writeTestEventResponse(w, http.StatusInternalServerError, TestEventResponse{
+			Message: fmt.Sprintf("Failed to look up the bus %s: %v", busName, err),
+		})
+		return
+	}
+	if !found {
+		writeTestEventResponse(w, http.StatusConflict, TestEventResponse{
+			Message: fmt.Sprintf("The enhanced bus %s does not exist in %s yet; deploy the environment first", busName, e.Region),
+		})
+		return
+	}
+
+	entry := ebv2types.PutEventsRequestEntry{
+		Source:     aws.String(req.Source),
+		DetailType: aws.String(req.DetailType),
+		Detail:     aws.String(detail),
+		Time:       aws.Time(time.Now()),
+	}
+	if req.EventGroupID != "" {
+		entry.SystemMetadata = &ebv2types.PutEventsSystemMetadata{EventGroupId: aws.String(req.EventGroupID)}
+	}
+	result, err := client.PutEvents(ctx, &eventbridgev2.PutEventsInput{
+		EventBusArn: aws.String(arn),
+		Entries:     []ebv2types.PutEventsRequestEntry{entry},
+	})
+	if err != nil {
+		writeTestEventResponse(w, http.StatusInternalServerError, TestEventResponse{Message: fmt.Sprintf("Failed to send event: %v", err)})
+		return
+	}
+	if result.FailedEntryCount > 0 {
+		msg := "no entry result returned"
+		if len(result.Entries) > 0 {
+			failed := result.Entries[0]
+			msg = aws.ToString(failed.ErrorMessage)
+			if code := aws.ToString(failed.ErrorCode); code != "" {
+				msg = code + ": " + msg
+			}
+		}
+		writeTestEventResponse(w, http.StatusInternalServerError, TestEventResponse{Message: fmt.Sprintf("Event failed: %s", msg)})
+		return
+	}
+
+	eventID := ""
+	if len(result.Entries) > 0 {
+		eventID = aws.ToString(result.Entries[0].EventId)
+	}
+	writeTestEventResponse(w, http.StatusOK, TestEventResponse{
+		Success: true,
+		EventId: eventID,
+		Message: fmt.Sprintf("Event sent to %s", busName),
 	})
 }
 

@@ -152,6 +152,7 @@ func mainRouter() http.Handler {
 	// EventBridge
 	mux.HandleFunc("/api/eventbridge/send-test-event", sendTestEvent)
 	mux.HandleFunc("/api/eventbridge/event-tasks", getEventTaskInfo)
+	mux.HandleFunc("/api/event-bus/share-targets", getEventBusShareTargets)
 
 	// GitHub OAuth
 	mux.HandleFunc("/api/github/oauth/device", initiateGitHubDeviceFlow)
