@@ -582,7 +582,7 @@ func normalizeEventSubscriptions(w eventWorkload, bus eventBusSettings) eventSub
 		} else if enhanced && bus == eventBusProject {
 			if n := enhancedPatternBytes(enhancedSubscriptionPattern(sub)); n > enhancedPatternMaxBytes {
 				problems = append(problems, fmt.Sprintf(
-					"%s: its event pattern is %d bytes, over the enhanced bus's %d; use fewer or shorter filter values", where, n, enhancedPatternMaxBytes))
+					"%s: its event filters are %d bytes as AWS counts them, over the enhanced bus's %d; use fewer or shorter filter values", where, n, enhancedPatternMaxBytes))
 				continue
 			}
 		}
@@ -1121,7 +1121,8 @@ func previousEventBusState(env string) (enabled bool, ok bool) {
 // eventsBridgeBlock is the events part of local.bridge (generateBridgeFile):
 // the project bus, the consumers' queue URLs and the alerts topic. A value whose
 // resource does not exist is "" (or {} for the map), so custom Terraform that
-// reads it still validates.
+// reads it still validates. event_fifo_queue_urls is present only when the
+// environment is enhanced, in cleanup, or keeps a FIFO set.
 func eventsBridgeBlock(envMap map[string]interface{}) string {
 	busEnabled, _ := eventBusEnabled(envMap)
 	consumers, _ := envMap[eventConsumersKey].([]interface{})
@@ -1140,6 +1141,11 @@ func eventsBridgeBlock(envMap map[string]interface{}) string {
 	} else {
 		block += "    event_queue_urls = {}\n"
 		block += "    alerts_topic_arn = \"\"\n"
+	}
+	// Only where modules/events can have FIFO queues, so a classic bridge
+	// keeps its text; custom Terraform reads it with try(..., {}).
+	if fifo, _ := envMap[eventBridgeFifoKey].(bool); fifo {
+		block += "    event_fifo_queue_urls = module.events.fifo_queue_urls\n"
 	}
 	return block
 }

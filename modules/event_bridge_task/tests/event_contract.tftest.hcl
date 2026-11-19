@@ -130,3 +130,57 @@ run "legacy_rule_inherits_the_input_bus" {
     error_message = "The legacy single-rule form must use event_bus_name for both the rule and target."
   }
 }
+
+run "enhanced_bus_read_statements_follow_the_classic_one" {
+  command = plan
+
+  variables {
+    event_bus_name = "myapp-dev"
+    event_bus_arn  = "arn:aws:events:us-east-1:000000000000:event-busv2/myapp-dev/0000000000"
+  }
+
+  assert {
+    condition = alltrue([
+      for policy in [aws_iam_policy.eventbridge_access.policy] :
+      length(jsondecode(policy).Statement) == 4 &&
+      jsonencode(jsondecode(policy).Statement[0]) == jsonencode({
+        Effect = "Allow"
+        Action = ["events:DescribeEventBus", "events:ListRules", "events:DescribeRule", "events:ListTargetsByRule", "events:ListEventBuses"]
+        Resource = [
+          "arn:aws:events:us-east-1:000000000000:event-bus/default",
+          "arn:aws:events:us-east-1:000000000000:event-bus/myapp-dev",
+          "arn:aws:events:us-east-1:000000000000:rule/*",
+        ]
+      })
+    ])
+    error_message = "With an enhanced bus the classic read statement must stay first and unchanged, with no Sid."
+  }
+
+  assert {
+    condition = alltrue([
+      for policy in [aws_iam_policy.eventbridge_access.policy] :
+      jsonencode(slice(jsondecode(policy).Statement, 1, 4)) == jsonencode([
+        {
+          Sid      = "EventBridgeEnhancedBusRead"
+          Effect   = "Allow"
+          Action   = ["events:DescribeEventBus", "events:DescribeSubscriber"]
+          Resource = ["arn:aws:events:us-east-1:000000000000:event-busv2/myapp-dev/0000000000", "arn:aws:events:us-east-1:000000000000:subscriber/${var.project}-events-*-dev/*"]
+        },
+        {
+          Sid       = "EventBridgeEnhancedShortNameSubscriberRead"
+          Effect    = "Allow"
+          Action    = ["events:DescribeSubscriber"]
+          Resource  = ["arn:aws:events:us-east-1:000000000000:subscriber/events-*/*"]
+          Condition = { StringEquals = { "aws:ResourceTag/Project" = var.project, "aws:ResourceTag/Environment" = "dev" } }
+        },
+        {
+          Sid      = "EventBridgeEnhancedList"
+          Effect   = "Allow"
+          Action   = ["events:ListEventBuses", "events:ListSubscribers"]
+          Resource = ["*"]
+        },
+      ])
+    ])
+    error_message = "With an enhanced bus the read policy must append the bus and subscriber reads, the tag-scoped short-name read, and the two list actions on \"*\"."
+  }
+}

@@ -39,6 +39,8 @@ var resourceTypesRequiringProjectScope = map[string]string{
 	"aws_service_discovery_namespace":   "namespace names are account+region-global",
 	"aws_secretsmanager_secret":         "secret names are account+region-global",
 	"aws_elasticache_replication_group": "replication group ids are account+region-global",
+	"aws_ram_resource_share":            "RAM resource share names are what an account's shares are told apart by in one region",
+	"awscc_eventsv2_event_bus":          "enhanced event bus names are account+region-global",
 }
 
 // allowedUnscoped lists deliberate exceptions, each with the reason it is safe.
@@ -178,5 +180,50 @@ func TestScheduledTaskFamily_MatchesLambdaLookup(t *testing.T) {
 			"SCHEDULED_TASK_MAP lookup in lambda.tf (%s); otherwise ECR-push "+
 			"auto-deploy for scheduled tasks looks up families that do not exist",
 			actual, expected)
+	}
+}
+
+// The enhanced bus takes its name from a local, which the literal-name check
+// above cannot follow, and a subscriber takes its name from modules/naming
+// through a variable. Pin both here: the bus local is project-scoped, and the
+// subscriber refuses a name that is neither modules/naming form.
+func TestEnhancedEventBusNames_AreProjectScoped(t *testing.T) {
+	root := modulesDir(t)
+
+	busSrc, err := os.ReadFile(filepath.Join(root, "event_bus_enhanced", "main.tf"))
+	if err != nil {
+		t.Fatalf("reading event_bus_enhanced/main.tf: %v", err)
+	}
+	if !regexp.MustCompile(`(?m)^\s+bus_name = "\$\{var\.project\}-\$\{var\.env\}"$`).Match(busSrc) {
+		t.Errorf("modules/event_bus_enhanced/main.tf must set local.bus_name = \"${var.project}-${var.env}\"")
+	}
+	if !regexp.MustCompile(`resource "awscc_eventsv2_event_bus" "project" \{[^}]*\n\s+name\s+= local\.bus_name\n`).Match(busSrc) {
+		t.Errorf("awscc_eventsv2_event_bus.project must be named local.bus_name")
+	}
+
+	subSrc, err := os.ReadFile(filepath.Join(root, "event_subscriber", "main.tf"))
+	if err != nil {
+		t.Fatalf("reading event_subscriber/main.tf: %v", err)
+	}
+	const precondition = `startswith(var.subscription.name, "${var.project}-events-") || startswith(var.subscription.name, "events-")`
+	if !strings.Contains(string(subSrc), precondition) {
+		t.Errorf("modules/event_subscriber/main.tf must keep the name precondition %s", precondition)
+	}
+
+	// The two awscc-era types in resourceTypesRequiringProjectScope must exist
+	// in modules/, or their entries check nothing.
+	for _, resType := range []string{"aws_ram_resource_share", "awscc_eventsv2_event_bus"} {
+		found := false
+		_ = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+			if err != nil || info.IsDir() || !strings.HasSuffix(path, ".tf") || found {
+				return err
+			}
+			body, _ := os.ReadFile(path)
+			found = strings.Contains(string(body), `resource "`+resType+`"`)
+			return nil
+		})
+		if !found {
+			t.Errorf("no %s resource in modules/; drop it from resourceTypesRequiringProjectScope or restore the resource", resType)
+		}
 	}
 }

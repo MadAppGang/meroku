@@ -829,7 +829,7 @@ resource "aws_iam_policy" "backend_eventbridge" {
   name = "EventBridgeAccess_${var.project}_backend_${var.env}"
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
+    Statement = concat([
       {
         Effect = "Allow"
         Action = [
@@ -841,7 +841,7 @@ resource "aws_iam_policy" "backend_eventbridge" {
         ]
         Resource = local.eventbridge_read_resources
       }
-    ]
+    ], local.eventbridge_v2_read_statements)
   })
 
   tags = {

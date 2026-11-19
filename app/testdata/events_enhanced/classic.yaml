@@ -1,0 +1,39 @@
+schema_version: 33
+project: myapp
+env: dev
+region: ap-southeast-2
+account_id: "000000000000"
+aws_profile: none
+use_default_vpc: false
+ecr_strategy: local
+event_bus: { enabled: true }
+scheduled_tasks:
+  - name: cleanup
+    schedule: "rate(1 day)"
+    events:
+      produces:
+        - { detail_types: [cleanup.done] }
+event_processor_tasks:
+  - name: mailer
+    rules:
+      - { name: ecs, sources: [aws.ecs], detail_types: [ECS Task State Change], bus: default }
+workload:
+  backend_image_port: 8080
+  events:
+    subscribes:
+      - { detail_type: user.created }
+services:
+  - name: orders
+    container_port: 3000
+    events:
+      subscribes:
+        - { name: a, detail_type: a.x }
+        - { name: b, detail_type: "b.*" }
+        - { name: s, detail_type: s.x, source: example.s }
+        - { name: d, detail_type: d.x, bus: default }
+      queue: { fifo_retired: true }
+  - name: billing
+    container_port: 3001
+    events:
+      subscribes:
+        - { name: t, detail_type: t.x }
