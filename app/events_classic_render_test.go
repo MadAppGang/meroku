@@ -13,8 +13,10 @@ import (
 // testdata/events_classic/<name>.yaml is a whole synthetic env YAML (env dev,
 // account 000000000000). It is generated through applyTemplate, the function
 // `meroku generate` runs, in a throwaway project root, and the env/dev/main.tf
-// and env/dev/_bridge.tf it writes must equal <name>.main.tf and
-// <name>.bridge.tf exactly.
+// and env/dev/_bridge.tf it writes must equal <name>.main.tf.golden and
+// <name>.bridge.tf.golden exactly. The goldens do not end in .tf, so
+// terraform fmt leaves them alone: they hold the generator's output byte for
+// byte, formatted or not.
 //
 // A fixture may carry custom Terraform in <name>.custom/: every *.tf there is
 // copied to custom/terraform/dev/ and so appended to main.tf, as in a real
@@ -121,8 +123,8 @@ func TestClassicEventsRenderUnchanged(t *testing.T) {
 			mainTf, bridgeTf := renderEventsClassicFixture(t, name)
 
 			goldens := []struct{ path, got string }{
-				{filepath.Join(dir, name+".main.tf"), mainTf},
-				{filepath.Join(dir, name+".bridge.tf"), bridgeTf},
+				{filepath.Join(dir, name+".main.tf.golden"), mainTf},
+				{filepath.Join(dir, name+".bridge.tf.golden"), bridgeTf},
 			}
 			for _, g := range goldens {
 				path := g.path
