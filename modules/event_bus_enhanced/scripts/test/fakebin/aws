@@ -1,0 +1,152 @@
+#!/bin/sh
+# A stand-in for the AWS CLI v2, for testing revoke-subscribers.sh without AWS.
+#
+# It answers the EventsV2 and Organizations calls the script makes, with the
+# --query already applied, as the real CLI prints them with --output text.
+# Errors are printed the way the CLI prints them, with exit status 254.
+#
+# State lives under $FAKE_EBV2_DIR (all synthetic):
+#   bus               the one bus ARN that exists; absent means every call on
+#                     a bus fails with ResourceNotFoundException
+#   subscribers       one line per subscriber: arn TAB account TAB revoked TAB
+#                     name, revoked being True, False or None. The fake prints
+#                     it as the CLI prints the whole, already paginated, list.
+#   event-sources     the same, for event sources
+#   accounts/<id>     describe-account: "member" (found), "absent"
+#                     (AccountNotFoundException) or "denied"
+#                     (AccessDeniedException); a missing file means "denied"
+#   parents/<id>      list-parents: "<parent id> TAB <ROOT|ORGANIZATIONAL_UNIT>",
+#                     "absent" (ChildNotFoundException) or "denied"; a missing
+#                     file means "denied"
+#   revoke_error      if present, its text is the error code every
+#                     revoke-resource call fails with (InvalidStateException,
+#                     ResourceNotFoundException, AccessDeniedException ...)
+#   calls.log         one line per call: the call name and its target
+#
+# A revoke-resource that succeeds sets the resource's revoked column to True.
+# FAKE_AWS_VERSION overrides the `aws --version` text (to test the v1 refusal).
+set -u
+set -f
+
+if [ "${1:-}" = --version ]; then
+	echo "${FAKE_AWS_VERSION:-aws-cli/2.41.0 Python/3.13.0 Linux/6.0 exe/x86_64}"
+	exit 0
+fi
+
+d=${FAKE_EBV2_DIR:?fake aws: FAKE_EBV2_DIR is not set}
+call="${1:-} ${2:-}"
+[ $# -ge 2 ] && shift 2
+
+# opt FLAG: the value after FLAG in the arguments, or empty.
+opt() {
+	want=$1
+	# Split on purpose; globbing is off (set -f above).
+	# shellcheck disable=SC2086
+	set -- $args
+	while [ $# -gt 0 ]; do
+		if [ "$1" = "$want" ]; then
+			printf '%s' "${2:-}"
+			return 0
+		fi
+		shift
+	done
+}
+# The script never passes a value with a space except --query, which is
+# checked whole below; every other value is an ARN or an id.
+args="$*"
+query=
+while [ $# -gt 0 ]; do
+	[ "$1" = --query ] && query=${2:-}
+	shift
+done
+
+fail() {
+	printf '\nAn error occurred (%s) when calling the %s operation: %s\n' "$1" "$2" "$3" >&2
+	exit 254
+}
+
+need_text() {
+	[ "$(opt --output)" = text ] || {
+		echo "fake aws: $call must use --output text" >&2
+		exit 255
+	}
+}
+
+need_query() {
+	[ "$query" = "$1" ] || {
+		echo "fake aws: unexpected query for $call: '$query', want '$1'" >&2
+		exit 255
+	}
+}
+
+need_bus() {
+	b=$(opt --event-bus-arn)
+	if [ ! -f "$d/bus" ] || [ "$(cat "$d/bus")" != "$b" ]; then
+		fail ResourceNotFoundException "$1" "EventBus not found"
+	fi
+}
+
+case "$call" in
+"eventsv2 list-subscribers")
+	need_text
+	need_query 'Subscribers[].[SubscriberArn,SubscriberAccountId,Revoked,Name]'
+	echo "list-subscribers $(opt --event-bus-arn)" >>"$d/calls.log"
+	need_bus ListSubscribers
+	[ -f "$d/subscribers" ] && cat "$d/subscribers"
+	exit 0
+	;;
+"eventsv2 list-event-sources")
+	need_text
+	need_query 'EventSources[].[EventSourceArn,EventSourceAccountId,Revoked,Name]'
+	echo "list-event-sources $(opt --event-bus-arn)" >>"$d/calls.log"
+	need_bus ListEventSources
+	[ -f "$d/event-sources" ] && cat "$d/event-sources"
+	exit 0
+	;;
+"eventsv2 revoke-resource")
+	arn=$(opt --arn)
+	echo "revoke-resource $arn" >>"$d/calls.log"
+	if [ -f "$d/revoke_error" ]; then
+		fail "$(cat "$d/revoke_error")" RevokeResource "injected failure"
+	fi
+	found=
+	for f in subscribers event-sources; do
+		[ -f "$d/$f" ] || continue
+		if cut -f 1 "$d/$f" | grep -Fxq "$arn"; then
+			found=1
+			awk -F '\t' -v OFS='\t' -v a="$arn" '$1 == a { $3 = "True" } { print }' "$d/$f" >"$d/$f.next" &&
+				mv "$d/$f.next" "$d/$f"
+		fi
+	done
+	[ -n "$found" ] || fail ResourceNotFoundException RevokeResource "Resource not found"
+	printf '{\n    "Arn": "%s"\n}\n' "$arn"
+	exit 0
+	;;
+"organizations describe-account")
+	need_text
+	id=$(opt --account-id)
+	echo "describe-account $id" >>"$d/calls.log"
+	case "$(cat "$d/accounts/$id" 2>/dev/null || echo denied)" in
+	member) echo "$id" ;;
+	absent) fail AccountNotFoundException DescribeAccount "You specified an account that doesn't exist." ;;
+	*) fail AccessDeniedException DescribeAccount "You don't have permissions to access this resource." ;;
+	esac
+	exit 0
+	;;
+"organizations list-parents")
+	need_text
+	need_query 'Parents[0].[Id,Type]'
+	id=$(opt --child-id)
+	echo "list-parents $id" >>"$d/calls.log"
+	v=$(cat "$d/parents/$id" 2>/dev/null || echo denied)
+	case "$v" in
+	absent) fail ChildNotFoundException ListParents "We can't find an organizational unit (OU) or AWS account with the ChildId that you specified." ;;
+	denied) fail AccessDeniedException ListParents "You don't have permissions to access this resource." ;;
+	*) printf '%s\n' "$v" ;;
+	esac
+	exit 0
+	;;
+esac
+
+echo "fake aws: unsupported call: $call $args" >&2
+exit 255

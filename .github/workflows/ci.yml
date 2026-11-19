@@ -339,6 +339,34 @@ jobs:
           terraform test
         working-directory: modules/events
 
+      # The enhanced project bus, under mock_provider: the bus, its RAM shares
+      # and the revoke and teardown steps. These two modules are the only ones
+      # that download the awscc provider; no env dir needs it in CI.
+      - name: Test the enhanced event bus module
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate
+          terraform test
+        working-directory: modules/event_bus_enhanced
+
+      # terraform_data.revoke and terraform_data.bus_guard run
+      # scripts/revoke-subscribers.sh. The plans above never run a provisioner,
+      # so the script is only exercised here, against a fake AWS CLI
+      # (scripts/test/fakebin/aws): no account, no network.
+      - name: Test the subscriber revoke script
+        run: |
+          shellcheck --shell=sh modules/event_bus_enhanced/scripts/revoke-subscribers.sh modules/event_bus_enhanced/scripts/test/run.sh modules/event_bus_enhanced/scripts/test/fakebin/aws
+          sh modules/event_bus_enhanced/scripts/test/run.sh
+
+      # One enhanced-bus subscriber, under mock_provider: its filters, envelope,
+      # FIFO expressions, retry policy and preconditions.
+      - name: Test the event subscriber module
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate
+          terraform test
+        working-directory: modules/event_subscriber
+
       # Serverless Valkey, under mock_provider: one ingress rule pair per distinct
       # security group, the cache name and its usage limits, the container env.
       - name: Test the valkey module

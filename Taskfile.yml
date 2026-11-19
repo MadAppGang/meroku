@@ -198,6 +198,16 @@ tasks:
       - terraform fmt -check -recursive -diff modules/workloads
       - terraform -chdir=modules/workloads init -backend=false -input=false
       - terraform -chdir=modules/workloads validate
+      # The enhanced event bus modules: the only ones that need awscc.
+      - terraform fmt -check -recursive -diff modules/event_bus_enhanced modules/event_subscriber
+      - terraform -chdir=modules/event_bus_enhanced init -backend=false -input=false
+      - terraform -chdir=modules/event_bus_enhanced validate
+      - terraform -chdir=modules/event_bus_enhanced test
+      - terraform -chdir=modules/event_subscriber init -backend=false -input=false
+      - terraform -chdir=modules/event_subscriber validate
+      - terraform -chdir=modules/event_subscriber test
+      - shellcheck --shell=sh modules/event_bus_enhanced/scripts/revoke-subscribers.sh modules/event_bus_enhanced/scripts/test/run.sh modules/event_bus_enhanced/scripts/test/fakebin/aws
+      - sh modules/event_bus_enhanced/scripts/test/run.sh
 
   # ─── Release ────────────────────────────────────────────
   version:
