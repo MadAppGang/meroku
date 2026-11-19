@@ -42,4 +42,9 @@ run "shared_bus_plans" {
     condition     = terraform_data.revoke[0].triggers_replace.round == "0" && terraform_data.revoke_record[0].input.round == 0
     error_message = "round defaults to 0 and reaches the sweep's triggers and the record."
   }
+
+  assert {
+    condition     = length(terraform_data.revoke[0].input.judged) == 0 && length(terraform_data.revoke_record[0].input.judged) == 0
+    error_message = "judged defaults to empty and reaches the sweep and the record."
+  }
 }

@@ -729,11 +729,17 @@ The debt survives an apply that stops half way:
   and region; `app/events_foreign.go`), whenever the YAML keeps the enhanced bus and the bus is
   or was shared (a share entry, the guard, a RAM association or a revoke step in state). Every
   account with a subscriber that is not revoked, is not this account and has no `account` entry
-  that may subscribe is owed (`account:<id>` in `lost`). The bus is settled only when the last
-  finished round already owed all of them, so: a subscriber the sweep revoked drops out of the
-  listing; one a remaining `organization` or `ou` entry covers stays in the record's `lost` and
-  is not owed again; one Organizations cannot classify stops the apply (below), because `lost` is
-  not empty. A listing that fails refuses the render, as an unreadable state does.
+  that may subscribe is owed (`account:<id>` in `lost`). Each round also passes `judged`: the
+  ARNs of the listed subscribers no `account` entry names. The record takes `judged` only after
+  the sweep succeeded. A subscriber the sweep revoked drops out of the listing; one a remaining
+  `organization` or `ou` entry covers is kept and stays in the record's `judged`; one
+  Organizations cannot classify stops the apply (below), because `lost` is not empty. The bus is
+  settled only when every listed subscriber no `account` entry names is in the record's
+  `judged`. The check is per subscriber, not per account: an account a past round revoked that
+  creates a new subscriber during another pair of interrupted applies is in the record's `lost`,
+  but its new subscriber is not in `judged`, so a new round revokes it. A listing that fails
+  refuses the render, as an unreadable state does; the refusal names the IAM action
+  `events:ListSubscribers` (resource `*`) and the CLI check `aws eventsv2 list-subscribers`.
 
 - An `account` entry still present keeps that account.
 - A remaining `organization` or `ou` entry keeps an account only if Organizations says it is
@@ -1041,7 +1047,13 @@ writes nothing. An unknown env is 404 `{"error": ...}`.
   while an entry names `bus: project`; one button removes those `bus` fields.
 - Backend and every service: an **Events** tab (subscriptions, produces, queue settings). On
   an enhanced project-bus row, **Keep order** sets `ordered`. Turning off the last ordered row
-  sets `fifo_retired: true`. The queue settings card then offers **Delete the ordered queue**,
-  which removes it.
+  first reads `GET /api/events/deployed` again (the tab shows "Checking whether this …'s ordered
+  queue was deployed"), then saves once: with `fifo_retired: true` unless that read is known
+  and lists no FIFO set for the workload. A failed or cancelled read keeps the queue. The save
+  is applied to the config as it is when the read answers, for that environment and workload
+  only, so an edit elsewhere made meanwhile (a service added) is kept; if the workload's events
+  changed meanwhile, the turned-off edit is dropped. A read for the decision answers its caller
+  even when a routine refresh started after it; an environment change cancels it. The queue
+  settings card then offers **Delete the ordered queue**, which removes it.
 - Scheduled and event tasks: a **Produces** editor on the Events tab; event-task rules have a
   bus picker.

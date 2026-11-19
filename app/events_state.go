@@ -59,6 +59,7 @@ type eventsRevokeRecord struct {
 	Granted []string // input.granted: the subscribe-capable principals it was applied with
 	Lost    []string // input.lost: what it had to revoke
 	Round   int      // input.round: which revocation round it belongs to
+	Judged  []string // input.judged: the other accounts' subscriber ARNs its sweep was given to judge
 	Tainted bool     // its script failed (the sweep only)
 }
 
@@ -362,6 +363,7 @@ func parseEventsAwsccState(out []byte, bus projectBusID) (eventsAwsccState, erro
 				Granted: stringsOf(input["granted"]),
 				Lost:    stringsOf(input["lost"]),
 				Round:   intOf(input["round"]),
+				Judged:  stringsOf(input["judged"]),
 				Tainted: inst.Status == "tainted",
 			}
 			if r.Name == "revoke" {

@@ -38,6 +38,7 @@ resource "terraform_data" "revoke" {
     granted = var.revoke.granted
     lost    = var.revoke.lost
     round   = var.revoke.round
+    judged  = var.revoke.judged
   }
 
   provisioner "local-exec" {
@@ -70,7 +71,9 @@ resource "terraform_data" "revoke" {
 # record is never replaced. It is updated in place only after the sweep of its
 # round succeeded, so until then it still holds the principals the last
 # finished round granted, and the next generate owes whatever of them is no
-# longer granted.
+# longer granted. Its judged is the subscribers that finished sweep decided
+# on, so one still listed was kept, and a new subscriber of the same account
+# starts a new round.
 resource "terraform_data" "revoke_record" {
   count = var.enabled && var.revoke.enabled ? 1 : 0
 
@@ -78,6 +81,7 @@ resource "terraform_data" "revoke_record" {
     granted = var.revoke.granted
     lost    = var.revoke.lost
     round   = var.revoke.round
+    judged  = var.revoke.judged
   }
 
   depends_on = [terraform_data.revoke]

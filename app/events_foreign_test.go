@@ -89,17 +89,62 @@ func TestEventBusRevokeInputsFromSubscriberListing(t *testing.T) {
 		}
 	})
 
-	// An OU entry: the sweep of round 3 was given account 3, found it inside
-	// the OU and kept it. The record confirms the round, so account 3 is not
-	// owed again and the plan stays empty.
+	// An OU entry: the sweep of round 3 was given account 3's subscriber,
+	// found the account inside the OU and kept it. The record confirms the
+	// round and names the subscriber, so it is not owed again and the plan
+	// stays empty.
 	t.Run("a subscriber a finished round kept is settled", func(t *testing.T) {
 		share := []eventShareEntry{{Kind: eventShareKindOU, ID: "ou-ab12-cd34ef56", Access: eventShareAccessSubscribe}}
 		granted := []string{"ou:ou-ab12-cd34ef56"}
+		listing := foreignListing("000000000003")
 		sweep, rec := settled(granted, []string{acct3}, 3)
-		revoke, owed, _ := eventBusRevokeInputs(share, withListing(revokeState(sweep, rec, "subscribe/ou/ou-ab12-cd34ef56"),
-			foreignListing("000000000003")))
-		if len(owed) != 0 || revoke["round"] != 3 || !reflect.DeepEqual(revokeLost(revoke), []string{acct3}) {
-			t.Errorf("owed=%v lost=%v round=%v, want settled in round 3 with %s kept in lost", owed, revokeLost(revoke), revoke["round"], acct3)
+		sweep.Judged, rec.Judged = []string{listing.Subscribers[0].ARN}, []string{listing.Subscribers[0].ARN}
+		revoke, owed, _ := eventBusRevokeInputs(share, withListing(revokeState(sweep, rec, "subscribe/ou/ou-ab12-cd34ef56"), listing))
+		if len(owed) != 0 || revoke["round"] != 3 || !reflect.DeepEqual(revokeLost(revoke), []string{acct3}) ||
+			!reflect.DeepEqual(revokeJudged(revoke), rec.Judged) {
+			t.Errorf("owed=%v lost=%v judged=%v round=%v, want settled in round 3 with %s kept in lost and judged",
+				owed, revokeLost(revoke), revokeJudged(revoke), revoke["round"], acct3)
+		}
+	})
+
+	// The same OU entry and a record whose round owed account 3 and kept its
+	// first subscriber. A second subscriber of account 3 appears: no sweep
+	// judged it, so the account being in the record's lost does not settle
+	// the bus.
+	t.Run("a new subscriber of a kept account starts a round", func(t *testing.T) {
+		share := []eventShareEntry{{Kind: eventShareKindOU, ID: "ou-ab12-cd34ef56", Access: eventShareAccessSubscribe}}
+		granted := []string{"ou:ou-ab12-cd34ef56"}
+		listing := foreignListing("000000000003")
+		kept := listing.Subscribers[0].ARN
+		listing.Subscribers = append(listing.Subscribers, eventForeignSubscriber{ARN: foreignSub3, Account: "000000000003"})
+		sweep, rec := settled(granted, []string{acct3}, 3)
+		sweep.Judged, rec.Judged = []string{kept}, []string{kept}
+		revoke, owed, _ := eventBusRevokeInputs(share, withListing(revokeState(sweep, rec, "subscribe/ou/ou-ab12-cd34ef56"), listing))
+		if !reflect.DeepEqual(owed, []string{acct3}) || revoke["round"] != 4 ||
+			!reflect.DeepEqual(revokeJudged(revoke), principalsNotIn([]string{kept, foreignSub3}, nil)) {
+			t.Errorf("owed=%v judged=%v round=%v, want %s owed in round 4 judging both subscribers", owed, revokeJudged(revoke), revoke["round"], acct3)
+		}
+	})
+
+	// Round 6 revoked account 1 (its first subscriber is gone from the
+	// listing). Then a grant stopped before its sweep, account 1 created a
+	// new subscriber, and the rollback stopped before its sweep: the state
+	// reads as round 6 again, and account 1 is already in its lost.
+	t.Run("a new subscriber of an account a past round revoked is owed", func(t *testing.T) {
+		sweep, rec := settled(nil, []string{acct1}, 6)
+		sweep.Judged, rec.Judged = []string{"arn:aws:events:ap-southeast-2:000000000001:subscriber/feed/old"},
+			[]string{"arn:aws:events:ap-southeast-2:000000000001:subscriber/feed/old"}
+		revoke, owed, _ := eventBusRevokeInputs(publish, withListing(revokeState(sweep, rec), foreignListing("000000000001")))
+		if !reflect.DeepEqual(owed, []string{acct1}) || revoke["round"] != 7 || !reflect.DeepEqual(revokeLost(revoke), []string{acct1}) {
+			t.Errorf("owed=%v lost=%v round=%v, want %s owed again in round 7", owed, revokeLost(revoke), revoke["round"], acct1)
+		}
+	})
+
+	t.Run("a subscriber an account entry entitles is not judged", func(t *testing.T) {
+		share := []eventShareEntry{{Kind: eventShareKindAccount, ID: "000000000001", Access: eventShareAccessSubscribe}}
+		revoke, _, _ := eventBusRevokeInputs(share, withListing(revokeState(nil, nil), foreignListing("000000000001", "000000000003")))
+		if want := []string{foreignListing("000000000003").Subscribers[0].ARN}; !reflect.DeepEqual(revokeJudged(revoke), want) {
+			t.Errorf("judged=%v, want %v", revokeJudged(revoke), want)
 		}
 	})
 
@@ -244,7 +289,8 @@ func TestEnhancedRenderRefusesUnlistedSubscribers(t *testing.T) {
 		t.Fatalf("generate accepted a shared bus whose subscribers could not be listed:\n%s", output)
 	}
 	if !errors.Is(err, errEventsStateUnreadable) || !strings.Contains(err.Error(), "could not be listed") ||
-		!strings.Contains(err.Error(), "expired token") {
+		!strings.Contains(err.Error(), "expired token") || !strings.Contains(err.Error(), "IAM action events:ListSubscribers") ||
+		!strings.Contains(err.Error(), "aws eventsv2 list-subscribers") || strings.Contains(err.Error(), "eventsv2:ListSubscribers") {
 		t.Errorf("refusal = %v, want the listing refusal, retried after the AWS pre-flight", err)
 	}
 }

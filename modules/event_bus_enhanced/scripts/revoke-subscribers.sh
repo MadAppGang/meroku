@@ -260,7 +260,7 @@ for kind in $kinds; do
 		fi
 		d=$(decide "$acct") || exit $?
 		case "$d" in
-		keep) ;;
+		keep) say "kept $arn (account $acct may still subscribe)" ;;
 		revoke) revoke "$arn" "$acct" ;;
 		undecided) undecided="$undecided$arn$tab$acct
 " ;;

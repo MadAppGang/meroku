@@ -386,9 +386,10 @@ func (h *chainHarness) readState() eventsAwsccState {
 					Granted []string `json:"granted"`
 					Lost    []string `json:"lost"`
 					Round   int      `json:"round"`
+					Judged  []string `json:"judged"`
 				}
 				_ = json.Unmarshal(r.Values.Input, &in)
-				rec := &eventsRevokeRecord{Granted: in.Granted, Lost: in.Lost, Round: in.Round}
+				rec := &eventsRevokeRecord{Granted: in.Granted, Lost: in.Lost, Round: in.Round, Judged: in.Judged}
 				if r.Name == "revoke" {
 					s.Revoke = rec
 				} else {

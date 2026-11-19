@@ -35,6 +35,7 @@ variable "revoke" {
     keep_ous      = optional(list(string), [])
     lost          = optional(list(string), [])
     round         = optional(number, 0)
+    judged        = optional(list(string), [])
   })
   default = { enabled = false }
 }
@@ -117,6 +118,7 @@ resource "terraform_data" "revoke" {
     granted = var.revoke.granted
     lost    = var.revoke.lost
     round   = var.revoke.round
+    judged  = var.revoke.judged
   }
 
   provisioner "local-exec" {
@@ -133,6 +135,7 @@ resource "terraform_data" "revoke_record" {
     granted = var.revoke.granted
     lost    = var.revoke.lost
     round   = var.revoke.round
+    judged  = var.revoke.judged
   }
 
   depends_on = [terraform_data.revoke]

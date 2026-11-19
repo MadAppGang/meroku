@@ -64,7 +64,11 @@ variable "revoke" {
     ou:<id>, organization); keep_accounts, keep_org and keep_ous split it by
     kind; lost is what may no longer subscribe and has not been revoked yet.
     round numbers the revocation: a new round runs the sweep again even when
-    granted and lost are unchanged.
+    granted and lost are unchanged. judged is the ARNs of other accounts'
+    subscribers, listed at generate, that no account in keep_accounts owns:
+    the ones this round's sweep decides on. The record keeps it once the
+    sweep succeeded, so a subscriber still listed and in the record's judged
+    is one a finished sweep kept.
   EOT
   type = object({
     enabled       = bool
@@ -74,6 +78,7 @@ variable "revoke" {
     keep_ous      = optional(list(string), [])
     lost          = optional(list(string), [])
     round         = optional(number, 0)
+    judged        = optional(list(string), [])
   })
   default = { enabled = false }
 
@@ -90,6 +95,10 @@ variable "revoke" {
       p == "organization" || can(regex("^account:[0-9]{12}$", p)) || can(regex("^ou:ou-[a-z0-9]{4,32}-[a-z0-9]{8,32}$", p))
     ])
     error_message = "revoke.granted and revoke.lost hold organization, account:<id> or ou:<id>."
+  }
+  validation {
+    condition     = alltrue([for a in var.revoke.judged : can(regex("^arn:aws[a-z-]*:events:[a-z0-9-]+:[0-9]{12}:", a))])
+    error_message = "revoke.judged holds EventBridge subscriber ARNs."
   }
 }
 

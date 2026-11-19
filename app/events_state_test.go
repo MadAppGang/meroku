@@ -152,6 +152,14 @@ func revokeState(sweep, record *eventsRevokeRecord, ram ...string) eventDeployed
 	return eventDeployed{renderPath: true, state: s}
 }
 
+func revokeJudged(revoke map[string]interface{}) []string {
+	out := []string{}
+	for _, p := range revoke["judged"].([]interface{}) {
+		out = append(out, p.(string))
+	}
+	return out
+}
+
 func revokeLost(revoke map[string]interface{}) []string {
 	out := []string{}
 	for _, p := range revoke["lost"].([]interface{}) {

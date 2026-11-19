@@ -70,6 +70,7 @@ func TestEventBusRevokeSurvivesInterruptedApplies(t *testing.T) {
 	log, mainTf := h.step(publishOnly)
 	assertContains(t, "main.tf after interruption 1", mainTf, `"lost":["account:000000000001"]`, "# meroku:events lost=account:000000000001\n")
 	log.mustHave(t, "after interruption 1", revokeLost)
+	h.firstPlanEmpty(publishOnly)
 	log, _ = h.step(publishOnly)
 	noRevoke("settled after interruption 1", log)
 
@@ -83,6 +84,7 @@ func TestEventBusRevokeSurvivesInterruptedApplies(t *testing.T) {
 	log, _ = h.step(publishOnly)
 	log.mustHave(t, "rollback after interruption 2", revokeLost)
 	log.mustBefore(t, "rollback after interruption 2", "end principal-delete subscribe/account/000000000001", "start revoke")
+	h.firstPlanEmpty(publishOnly)
 	log, _ = h.step(publishOnly)
 	noRevoke("settled after interruption 2", log)
 
@@ -96,8 +98,10 @@ func TestEventBusRevokeSurvivesInterruptedApplies(t *testing.T) {
 // 1 creates a subscriber, and the rollback disassociates it and stops before
 // its sweep. RAM, the sweep and the record then all read as the last settled
 // round, and none names account 1. The subscriber listing still shows its
-// subscriber, so the next apply sweeps it, and once it is revoked the bus is
-// settled again with an empty plan.
+// subscriber, so the next apply sweeps it, and once it is revoked the first
+// plan is empty. The same two interruptions then run again, now with account
+// 1 in the record's lost: its new subscriber is not one the record's sweep
+// judged, so the next apply sweeps it too.
 func TestEventBusRevokeFindsSubscribersNoRecordNames(t *testing.T) {
 	if testing.Short() {
 		t.Skip("runs terraform applies with one-second operations")
@@ -182,11 +186,47 @@ func TestEventBusRevokeFindsSubscribersNoRecordNames(t *testing.T) {
 	log.mustHave(t, "after interruption 2", "start revoke granted= lost=account:000000000001")
 	sweep(log)
 
-	// 4. Settled: no sweep, and an empty plan.
-	log, mainTf = h.step(publishOnly)
-	if i := log.index("start revoke"); i >= 0 {
-		t.Errorf("a settled bus ran the sweep again: %s", log[i])
+	// 4. Settled: the first plan against the post-revoke state is empty.
+	h.firstPlanEmpty(publishOnly)
+	settledRound("after the sweep")
+	if !containsString(h.state.RevokeRecord.Lost, "account:000000000001") ||
+		!containsString(h.state.RevokeRecord.Judged, subscribers[0].ARN) {
+		t.Fatalf("the record does not hold account 1 in lost and its subscriber in judged: %+v", h.state.RevokeRecord)
 	}
+	round = h.state.RevokeRecord.Round
+
+	// 5. The same two interruptions, with account 1 already in the record's
+	// lost. Account 1 creates a second subscriber between them.
+	mainTf, _ = h.root.mustRender(t, shared)
+	h.apply(h.fakeMain(mainTf), principals)
+	if !containsString(h.state.RamPrincipals, subscribe1) {
+		t.Fatalf("interruption 3 did not associate account 1: %v", h.state.RamPrincipals)
+	}
+	second := eventBusSubscriber{ARN: "arn:aws:events:ap-southeast-2:000000000001:subscriber/feed/0002", Account: "000000000001"}
+	subscribers = append(subscribers, second)
+	mainTf, _ = h.root.mustRender(t, publishOnly)
+	h.apply(h.fakeMain(mainTf), principals)
+	settledRound("after interruption 4")
+	if h.state.RevokeRecord.Round != round || !containsString(h.state.RevokeRecord.Lost, "account:000000000001") {
+		t.Fatalf("interruption 4 did not leave the record of round %d owing account 1: %+v", round, h.state.RevokeRecord)
+	}
+
+	// 6. The next deploy sweeps the second subscriber.
+	log, mainTf = h.step(publishOnly)
+	assertContains(t, "main.tf after interruption 4", mainTf,
+		`"lost":["account:000000000001"]`, `"judged":["`+second.ARN+`"]`)
+	log.mustHave(t, "after interruption 4", "start revoke granted= lost=account:000000000001")
+	sweep(log)
+
+	// 7. Settled again: the first plan is empty.
+	h.firstPlanEmpty(publishOnly)
+}
+
+// firstPlanEmpty renders yamlBody against the current state and asserts that
+// the first plan over it is empty, before any further apply.
+func (h *chainHarness) firstPlanEmpty(yamlBody string) {
+	h.t.Helper()
+	mainTf, _ := h.root.mustRender(h.t, yamlBody)
 	h.planEmpty(h.fakeMain(mainTf))
 }
 

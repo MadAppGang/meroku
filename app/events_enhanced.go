@@ -1109,12 +1109,21 @@ func eventSubscriberTransitionClashes(live []eventLiveSubscriber, deployed map[s
 // that disassociates it and stops before its sweep, leave a principal none
 // of them names. So the listing of the bus's subscribers (d.foreign) adds F:
 // account:<id> for every account with a subscriber that is not revoked and
-// that no account entry names. F joins owed, and a bus is settled only when
-// the last finished round already owed all of F. A sweep revokes every
-// subscriber of an account no entry entitles; one it kept (an organization
-// or OU entry covers the account) stays in the record's lost and is not owed
-// again; one Organizations cannot classify stops the apply, because lost is
-// not empty. foreign is the part of owed only F shows, for the warning.
+// that no account entry names. F joins owed, so the sweep revokes those
+// subscribers, and one Organizations cannot classify stops the apply because
+// lost is not empty.
+//
+// Whether a sweep already judged a subscriber is told per subscriber, not
+// per account: an account a past round revoked can create a new subscriber
+// during another pair of interrupted applies, and its account in the
+// record's lost says nothing about it. Each round passes judged, the ARNs of
+// the listed subscribers no account entry names; the record takes it only
+// after the sweep succeeded. A sweep revokes such a subscriber, which then
+// drops out of the listing, or keeps it because an organization or OU entry
+// covers its account. So a listed subscriber in the record's judged is one a
+// finished sweep kept, and the bus is settled only when every listed
+// subscriber no account entry names is in it. foreign is the part of owed
+// only F shows, for the warning.
 func eventBusRevokeInputs(share []eventShareEntry, d eventDeployed) (revoke map[string]interface{}, owed, foreign []string) {
 	var granted, keepAccounts, keepOUs []string
 	keepOrg := false
@@ -1157,6 +1166,7 @@ func eventBusRevokeInputs(share []eventShareEntry, d eventDeployed) (revoke map[
 		baseline = subscribeCapableFromMarkers(d.previous.Share)
 		carry = d.previous.Lost
 	}
+	judged := d.foreign.unentitled(keepAccounts)
 	for _, a := range d.foreign.accounts() {
 		if !containsString(keepAccounts, a) {
 			foreign = append(foreign, eventShareKindAccount+":"+a)
@@ -1168,9 +1178,10 @@ func eventBusRevokeInputs(share []eventShareEntry, d eventDeployed) (revoke map[
 	lost := owed
 	settled := d.fromState() && rec != nil && sweep != nil && !sweep.Tainted && sweep.Round == rec.Round &&
 		sameStrings(rec.Granted, granted) && sameStrings(sweep.Granted, granted) &&
-		len(principalsNotIn(ram, granted)) == 0 && len(principalsNotIn(owed, rec.Lost)) == 0
+		len(principalsNotIn(ram, granted)) == 0 && len(principalsNotIn(owed, rec.Lost)) == 0 &&
+		len(principalsNotIn(judged, rec.Judged)) == 0
 	if settled {
-		lost, owed, foreign = sortedStrings(rec.Lost), nil, nil
+		lost, owed, foreign, judged = sortedStrings(rec.Lost), nil, nil, sortedStrings(rec.Judged)
 	} else if d.fromState() {
 		round++
 	}
@@ -1184,6 +1195,7 @@ func eventBusRevokeInputs(share []eventShareEntry, d eventDeployed) (revoke map[
 		"keep_ous":      toInterfaces(keepOUs),
 		"lost":          toInterfaces(lost),
 		"round":         round,
+		"judged":        toInterfaces(judged),
 	}, owed, foreign
 }
 
@@ -1225,6 +1237,7 @@ func disabledEventBusRevoke() map[string]interface{} {
 		"keep_ous":      []interface{}{},
 		"lost":          []interface{}{},
 		"round":         0,
+		"judged":        []interface{}{},
 	}
 }
 

@@ -47,6 +47,18 @@ func (f eventForeignSubscribers) accounts() []string {
 	return principalsNotIn(out, nil)
 }
 
+// unentitled is the sorted ARNs of the subscribers whose account no entry of
+// keepAccounts names: the ones only a sweep can judge.
+func (f eventForeignSubscribers) unentitled(keepAccounts []string) []string {
+	var out []string
+	for _, s := range f.Subscribers {
+		if !containsString(keepAccounts, s.Account) {
+			out = append(out, s.ARN)
+		}
+	}
+	return principalsNotIn(out, nil)
+}
+
 // eventForeignSubscriber is one subscriber of another account.
 type eventForeignSubscriber struct {
 	ARN     string
@@ -193,7 +205,7 @@ func eventForeignUnreadableProblem(envMap map[string]interface{}, env string, f 
 		login += " --profile " + profile
 	}
 	return fmt.Sprintf(
-		"event_bus: the subscribers of the enhanced bus of %s could not be listed (%s). The bus is or was shared, and only the listing shows whether another account still has a subscriber that must be revoked. Make eventsv2:ListSubscribers work with AWS_PROFILE %s in region %s (for an expired session run %s) and run it again",
+		"event_bus: the subscribers of the enhanced bus of %s could not be listed (%s). The bus is or was shared, and only the listing shows whether another account still has a subscriber that must be revoked. Allow the IAM action events:ListSubscribers (resource *) for AWS_PROFILE %s in region %s (check with aws eventsv2 list-subscribers --event-bus-arn <bus ARN>; for an expired session run %s) and run it again",
 		env, f.Err, profile, stringFromMap(envMap, "region"), login)
 }
 

@@ -142,6 +142,17 @@ printf 'AccessDeniedException\n' >"$FAKE_EBV2_DIR/event_sources_error"
 revoke EBV2_MODE=teardown
 expect "a failed listing before any revocation says nothing was revoked" 5 "nothing was revoked"
 
+# --- change: a kept subscriber is reported --------------------------------------
+
+reset
+sub 000000000001 partner-audit
+sub 000000000003 stray
+revoke EBV2_MODE=change EBV2_KEEP_ACCOUNTS=000000000001 EBV2_LOST=account:000000000003
+expect "change reports the subscriber it kept and revokes the other" 0 \
+	"kept $(arn_of sub 000000000001 partner-audit) (account 000000000001 may still subscribe)" \
+	"revoked $(arn_of sub 000000000003 stray) (account 000000000003)"
+expect_revoked "change revokes only the account no entry keeps" "$(arn_of sub 000000000003 stray)"
+
 # --- inputs are never globbed --------------------------------------------------
 
 # Run where a file is named like an account, so an expanded 0000000000* would
