@@ -49,6 +49,37 @@ func jsonQuote(s string) string {
 	return `"` + strings.ReplaceAll(strings.ReplaceAll(s, `\`, `\\`), `"`, `\"`) + `"`
 }
 
+// An event group longer than the ordered queue accepts, or with characters
+// SQS refuses, is answered 400 before any AWS call: PutEvents would accept it
+// and the delivery would then fail.
+func TestSendTestEventRefusesUndeliverableEventGroups(t *testing.T) {
+	enabled := true
+	previous := loadEnvForTestEvent
+	loadEnvForTestEvent = func(string) (Env, error) {
+		return Env{Project: "myapp", Env: "dev", Region: "ap-southeast-2",
+			EventBus: &EventBus{Enabled: &enabled, Type: eventBusTypeEnhanced}}, nil
+	}
+	t.Cleanup(func() { loadEnvForTestEvent = previous })
+
+	for name, group := range map[string]string{
+		"116 characters": strings.Repeat("k", eventGroupIDMax+1),
+		"a space":        "order 1",
+		"non-ASCII":      "ordér-1",
+	} {
+		t.Run(name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			body := `{"env":"dev","eventBusName":"myapp-dev","source":"myapp.api","detailType":"x","eventGroupId":` + jsonQuote(group) + `}`
+			sendTestEvent(rec, httptest.NewRequest(http.MethodPost, "/api/eventbridge/send-test-event", strings.NewReader(body)))
+			if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "eventGroupId") {
+				t.Errorf("status %d body %s, want 400 naming eventGroupId", rec.Code, rec.Body.String())
+			}
+		})
+	}
+	if got := eventGroupIDError(strings.Repeat("k", eventGroupIDMax)); got != "" {
+		t.Errorf("a %d-character group is refused: %s", eventGroupIDMax, got)
+	}
+}
+
 // loadEnvReadOnly migrates in memory and never touches the file: a GET must not
 // rewrite <env>.yaml or leave a backup next to it.
 func TestLoadEnvReadOnly_DoesNotWriteTheFile(t *testing.T) {

@@ -161,6 +161,31 @@ func validEventAPIEnvName(name string) bool {
 	return eventAPIEnvNamePattern.MatchString(name)
 }
 
+// eventGroupIDMax is the longest EventGroupId an ordered queue accepts. A FIFO
+// subscriber's MessageGroupId is "<publishing account>:<EventGroupId>", SQS
+// allows 128 characters, and the account prefix takes 13. PutEvents itself
+// accepts up to 128, so a longer group publishes fine and then fails delivery.
+const eventGroupIDMax = 115
+
+// eventGroupIDError is the problem with an EventGroupId, or "" when it is
+// empty or valid: at most eventGroupIDMax characters, each a printable ASCII
+// character other than space, the characters SQS allows in a MessageGroupId.
+// The web editor applies the same rule (eventGroupIdError).
+func eventGroupIDError(id string) string {
+	if id == "" {
+		return ""
+	}
+	for i := 0; i < len(id); i++ {
+		if id[i] < 0x21 || id[i] > 0x7e {
+			return "eventGroupId uses letters, digits and punctuation only, without spaces"
+		}
+	}
+	if len(id) > eventGroupIDMax {
+		return fmt.Sprintf("eventGroupId is at most %d characters (this one has %d): the ordered queue adds the publishing account to it", eventGroupIDMax, len(id))
+	}
+	return ""
+}
+
 // projectEventBusName is the name modules/events gives the project bus.
 func projectEventBusName(e Env) string {
 	return e.Project + "-" + e.Env
@@ -248,6 +273,10 @@ func sendTestEvent(w http.ResponseWriter, r *http.Request) {
 	enhancedTarget := busName != eventBusDefault && eventBusEnhancedIn(e)
 	if req.EventGroupID != "" && !enhancedTarget {
 		writeTestEventResponse(w, http.StatusBadRequest, TestEventResponse{Message: "eventGroupId needs the enhanced project bus"})
+		return
+	}
+	if msg := eventGroupIDError(req.EventGroupID); msg != "" {
+		writeTestEventResponse(w, http.StatusBadRequest, TestEventResponse{Message: msg})
 		return
 	}
 
