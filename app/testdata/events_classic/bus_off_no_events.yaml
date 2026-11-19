@@ -1,0 +1,9 @@
+schema_version: 33
+project: myapp
+env: dev
+region: ap-southeast-2
+account_id: "000000000000"
+aws_profile: none
+use_default_vpc: false
+workload:
+  backend_image_port: 8080

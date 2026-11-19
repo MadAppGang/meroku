@@ -1,0 +1,17 @@
+schema_version: 33
+project: myapp
+env: dev
+region: ap-southeast-2
+account_id: "000000000000"
+aws_profile: none
+use_default_vpc: false
+workload:
+  backend_image_port: 8080
+event_processor_tasks:
+  - name: mailer
+    rules:
+      - { name: r1, sources: [aws.ecs], detail_types: [ECS Task State Change] }
+  - name: legacy
+    rule_name: legacy_rule
+    sources: [myapp.backend]
+    detail_types: [user.created]
