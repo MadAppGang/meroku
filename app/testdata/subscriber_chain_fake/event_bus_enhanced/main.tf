@@ -34,6 +34,7 @@ variable "revoke" {
     keep_org      = optional(bool, false)
     keep_ous      = optional(list(string), [])
     lost          = optional(list(string), [])
+    round         = optional(number, 0)
   })
   default = { enabled = false }
 }
@@ -109,11 +110,13 @@ resource "terraform_data" "revoke" {
     bus_arn = terraform_data.bus[0].id
     granted = join(" ", var.revoke.granted)
     lost    = join(" ", var.revoke.lost)
+    round   = tostring(var.revoke.round)
   }
 
   input = {
     granted = var.revoke.granted
     lost    = var.revoke.lost
+    round   = var.revoke.round
   }
 
   provisioner "local-exec" {
@@ -121,6 +124,18 @@ resource "terraform_data" "revoke" {
   }
 
   depends_on = [terraform_data.principal]
+}
+
+resource "terraform_data" "revoke_record" {
+  count = var.enabled && var.revoke.enabled ? 1 : 0
+
+  input = {
+    granted = var.revoke.granted
+    lost    = var.revoke.lost
+    round   = var.revoke.round
+  }
+
+  depends_on = [terraform_data.revoke]
 }
 
 resource "terraform_data" "bus_guard" {

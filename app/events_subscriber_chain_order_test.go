@@ -380,13 +380,19 @@ func (h *chainHarness) readState() eventsAwsccState {
 				s.Guard = true
 			case module == "event_bus_enhanced" && r.Name == "principal":
 				s.RamPrincipals = append(s.RamPrincipals, key)
-			case module == "event_bus_enhanced" && r.Name == "revoke":
+			case module == "event_bus_enhanced" && (r.Name == "revoke" || r.Name == "revoke_record"):
 				var in struct {
 					Granted []string `json:"granted"`
 					Lost    []string `json:"lost"`
+					Round   int      `json:"round"`
 				}
 				_ = json.Unmarshal(r.Values.Input, &in)
-				s.Revoke = &eventsRevokeRecord{Granted: in.Granted, Lost: in.Lost}
+				rec := &eventsRevokeRecord{Granted: in.Granted, Lost: in.Lost, Round: in.Round}
+				if r.Name == "revoke" {
+					s.Revoke = rec
+				} else {
+					s.RevokeRecord = rec
+				}
 			case module == "events" && r.Name == "queue":
 				s.Consumers = append(s.Consumers, key)
 			case module == "events" && r.Name == "fifo_queue":

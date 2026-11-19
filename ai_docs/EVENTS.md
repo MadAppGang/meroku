@@ -509,7 +509,8 @@ The guarantee: for one consumer, events that one AWS account publishes to the pr
 with the same `EventGroupId`, and that match any of the consumer's ordered subscriptions,
 arrive in its FIFO queue in the order the bus accepted them. Each arrives once, however many
 ordered subscriptions match it. The same group id from two accounts is two groups, with no
-order between them. Events in different groups have no order between them.
+order between them, as far as it was tested (see Shared publishers below). Events in different
+groups have no order between them.
 
 Limits of that guarantee:
 
@@ -701,12 +702,25 @@ the bus with `RevokeResource`. Generate warns with `event_share_revoke` first.
 revoked subscriber stops delivering. It stays in its owner's account until that account
 deletes it.
 
-How it runs: `terraform_data.revoke[0]` in `modules/event_bus_enhanced` runs
+How it runs: `terraform_data.revoke[0]` (the sweep) in `modules/event_bus_enhanced` runs
 `scripts/revoke-subscribers.sh` after RAM stops granting access. The script lists the bus's
 subscribers (`aws eventsv2 list-subscribers --event-bus-arn <exact ARN>`), skips this account's
 own and those already revoked, and revokes every other account that no remaining entry entitles.
 The principals it compares against come from Terraform state, so running generate twice or after
 a failed apply computes the same loss.
+
+The debt survives an apply that stops half way:
+
+- `terraform_data.revoke_record[0]` is never replaced. It is updated in place only after the
+  sweep of its round succeeded, so it still names every principal the last finished round
+  granted. Terraform destroys the old sweep and a removed RAM association before it creates the
+  new sweep; an apply killed in between leaves the record, and the next generate owes every
+  principal it names that is no longer granted.
+- Each revocation is a numbered `round` (a trigger of the sweep). The bus is settled only when
+  the sweep succeeded, the record confirms its round, both were applied with today's subscribe
+  principals, and RAM associates no principal outside them. Anything else starts a new round, so
+  a principal that was revoked once, shared again by an apply that stopped before its sweep, and
+  then removed again, is revoked again although `granted` and `lost` read as before.
 
 - An `account` entry still present keeps that account.
 - A remaining `organization` or `ou` entry keeps an account only if Organizations says it is
@@ -853,8 +867,11 @@ Each is a `ConfigWarning` (`app/config_warnings.go`); generate prints it and car
 Two checks the design kept in reserve are not in the code, because live checks in
 ap-southeast-2 settled them: a classic and an enhanced bus of the same name exist at once, so a
 type switch is one deploy (warned with `event_bus_type_change`, never refused); and a FIFO
-subscriber's message group carries the publishing account, so two accounts that send the same
-`EventGroupId` keep separate groups and no shared-publisher warning is needed.
+subscriber's message group carries the publishing account, so the owner account and another
+account that send the same `EventGroupId` keep separate groups, and no shared-publisher warning
+was added. That was tested with the owner account publishing only; for an account the bus is
+shared with, it holds if EventBridge writes that account into the event's `account` field (see
+Shared publishers under [Ordered delivery](#ordered-delivery)).
 
 ## Generate-time errors
 
@@ -899,26 +916,43 @@ The bus kind and sharing:
 
 ### What was deployed
 
-The state in the S3 backend is shared; `env/<env>/.terraform` and `.terraform.lock.hcl` are
-per machine and say nothing about what another machine deployed. A render that writes main.tf
-reads the state itself when it depends on it: the YAML sets `type: enhanced`, the previous
-main.tf has a `# meroku:events` marker (it was enhanced, in cleanup, shared, or kept a FIFO set),
-or a workload sets `fifo_retired`. A lock file that names awscc also makes it read, without
-refusing when the read fails.
+The state in the S3 backend is shared; `env/<env>/` (main.tf, `.terraform`,
+`.terraform.lock.hcl`) is build output, per machine, and says nothing about what another machine
+deployed. A render that writes main.tf reads the state itself when it depends on it
+(`eventsStateRequired`, `app/events_state.go`):
+
+- the YAML sets `type: enhanced`, or a workload sets `fifo_retired`;
+- the previous main.tf has a `# meroku:events` marker (it was enhanced, in cleanup, shared, or
+  kept a FIFO set);
+- the lock file names awscc;
+- there is no previous `env/<env>/main.tf` on this machine (or it cannot be read) and the YAML
+  sets `state_bucket` and `state_file`: a fresh checkout, where another machine may have deployed
+  the enhanced bus. This costs one S3 read the first time an environment is generated on a
+  machine.
+
+How it reads:
 
 - With `env/<env>/.terraform`: `terraform state pull`, with the env YAML's `aws_profile` and
-  `region`.
-- Without it (a fresh checkout, a first deploy): the state object `s3://<state_bucket>/<state_file>`
-  directly, with the same profile. A missing bucket or object is a verified empty state.
-- A read that fails refuses the render. The markers record the last render, not the last apply,
-  so they never stand in for the state there. Only the offline `/api/config-warnings` preview
-  reads markers.
+  `region`. Terraform picks the workspace (`TF_WORKSPACE`, else `.terraform/environment`).
+- Without it: the state object directly, with the same profile:
+  `s3://<state_bucket>/<state_file>`, or `s3://<state_bucket>/env:/<workspace>/<state_file>` when
+  `TF_WORKSPACE` names a workspace other than `default` (the S3 backend's default
+  `workspace_key_prefix`; env/main.hbs sets none). A missing bucket or object is a verified empty
+  state.
+- A read that fails refuses the render, whatever made it needed. The markers record the last
+  render, not the last apply, so they never stand in for the state there. Only the offline
+  `/api/config-warnings` preview reads markers.
 
-A classic environment with none of the above is not read, so its generate stays offline.
+Once this machine has rendered the environment, a main.tf with no events marker is its record
+that the last render had nothing of the enhanced bus; a classic environment then generates
+offline.
 
-Subscribers in state count as meroku's only at the module addresses meroku renders and, while
-the bus is in state, only on that bus; a custom `awscc_eventsv2_subscriber` elsewhere in the
-root changes nothing.
+Subscribers in state count as meroku's only with two pieces of evidence: the module address is
+one meroku renders (`event_subscriber_<consumer>_<key>` or `event_fifo_subscriber_<consumer>`,
+with a consumer matching `^[a-z0-9][a-z0-9-]*$` and a key matching `^[a-z0-9][a-z0-9-]{0,39}$`),
+and the subscriber's `event_bus_arn` is the project bus: the one in state, or, when the state
+holds none, an EventBridge V2 bus named `<project>-<env>`. A custom `awscc_eventsv2_subscriber`
+on another bus changes nothing, whatever its module is called.
 
 Ordering:
 
@@ -958,10 +992,21 @@ Read the FIFO map as `try(local.bridge.event_fifo_queue_urls, {})`, so `_shared`
 Terraform also works in an environment without it.
 
 `env/<env>/main.tf` of an enhanced environment, or one with a FIFO set, carries
-`# meroku:events ...` comment lines above `module "events"`. meroku reads them back on the
-next generate when it cannot read state. Do not edit them; main.tf is generated.
+`# meroku:events ...` comment lines above `module "events"`. Their presence makes the next
+generate read the state (a read that fails refuses it), and the offline configuration-warnings
+preview reads them in place of the state. Do not edit them; main.tf is generated.
 
 ## Web UI
+
+`GET /api/events/deployed?env=<env>` (`app/api_events_deployed.go`) tells the event editors what
+the last deploy left, from the same functions generate decides with: 200
+`{"known": bool, "fifoConsumers": [...], "sharedPrincipals": [...], "subscribePrincipals": [...]}`.
+`fifoConsumers` are the workloads with a deployed FIFO set, active or retired; `sharedPrincipals`
+the principals the bus is shared with now, any access (`account:<id>`, `ou:<id>`,
+`organization`); `subscribePrincipals` the part of them whose deployed access is `subscribe` or
+`full`. `known` is true only when the state (whenever generate would read it) or the previous
+main.tf's markers answered; otherwise every list is empty and says nothing. It may read S3 or run `terraform state pull`, and
+writes nothing. An unknown env is 404 `{"error": ...}`.
 
 - EventBridge node: **Settings** (the bus switch) and **Test Event**, which sends to the
   default bus or the project bus with the environment's own profile and region. For a classic

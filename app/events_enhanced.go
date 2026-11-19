@@ -31,8 +31,11 @@ import (
 // (mode live) or its state may still hold awscc resources (mode cleanup).
 //
 // What was deployed is read from the Terraform state on every render that
-// writes main.tf (applyTemplate), and from the `# meroku:events` marker lines
-// of the previous main.tf where the state cannot answer.
+// writes main.tf (applyTemplate) and depends on it (eventsStateRequired); such
+// a render is refused when the state cannot be read. The `# meroku:events`
+// marker lines of the previous main.tf answer only where no state is read:
+// the configuration warnings, which never touch AWS, and a render whose
+// previous main.tf has no marker at all.
 //
 // See ai_docs/EVENTS.md.
 
@@ -119,6 +122,11 @@ const (
 // eventSubscriberConsumerPattern is a consumer name a subscriber module and
 // its AWS name can carry.
 var eventSubscriberConsumerPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+
+// eventSubscriberKeyPattern is every subscription key normalizeEvents can
+// produce: an explicit name (eventSubscriptionNamePattern), or a derived key
+// of at most eventKeyMaxLen characters with "-default" after it.
+var eventSubscriberKeyPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
 
 var (
 	eventShareOUPattern      = regexp.MustCompile(`^ou-[a-z0-9]{4,32}-[a-z0-9]{8,32}$`)
@@ -612,18 +620,20 @@ func eventFifoSubscriberModule(consumer string) string {
 }
 
 // parseEventSubscriberModule splits a subscriber module name back into its
-// consumer and key; key is "" for a FIFO subscriber. Neither a consumer name
-// nor a key contains "_".
+// consumer and key; key is "" for a FIFO subscriber. ok is true only for a
+// name eventSubscriberModule or eventFifoSubscriberModule can produce: the
+// consumer matches eventSubscriberConsumerPattern and the key
+// eventSubscriberKeyPattern, so neither contains "_".
 func parseEventSubscriberModule(module string) (consumer, key string, fifo, ok bool) {
 	if c, found := strings.CutPrefix(module, eventFifoSubscriberModulePrefix); found {
-		return c, "", true, c != ""
+		return c, "", true, eventSubscriberConsumerPattern.MatchString(c)
 	}
 	rest, found := strings.CutPrefix(module, eventSubscriberModulePrefix)
 	if !found {
 		return "", "", false, false
 	}
 	c, k, found := strings.Cut(rest, "_")
-	return c, k, false, found && c != "" && k != ""
+	return c, k, false, found && eventSubscriberConsumerPattern.MatchString(c) && eventSubscriberKeyPattern.MatchString(k)
 }
 
 // eventSubscriberName is the AWS name modules/events gives a standard
@@ -794,6 +804,59 @@ func (d eventDeployed) fifoSetDeployed(c string) bool {
 	}
 	_, ok := d.previous.Fifo[c]
 	return ok
+}
+
+// deployedFifoConsumers lists the consumers with a deployed FIFO queue set,
+// active or retired, sorted.
+func (d eventDeployed) deployedFifoConsumers() []string {
+	if d.fromState() {
+		return sortedStrings(d.state.FifoQueues)
+	}
+	out := make([]string, 0, len(d.previous.Fifo))
+	for c := range d.previous.Fifo {
+		out = append(out, c)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// sharedPrincipals lists every principal the bus is shared with, whatever the
+// access, in the revoke-input form (account:<id>, ou:<id>, organization),
+// sorted: the RAM principal associations in state, or offline the share=
+// markers.
+func (d eventDeployed) sharedPrincipals() []string {
+	var out []string
+	if d.fromState() {
+		for _, k := range d.state.RamPrincipals {
+			if parts := strings.SplitN(k, "/", 3); len(parts) == 3 {
+				out = append(out, sharePrincipal(parts[1], parts[2]))
+			}
+		}
+	} else {
+		for _, s := range d.previous.Share {
+			if parts := strings.Split(s, ":"); len(parts) == 3 {
+				out = append(out, sharePrincipal(parts[0], parts[1]))
+			}
+		}
+	}
+	return principalsNotIn(out, nil)
+}
+
+// subscribePrincipals lists the principals whose deployed grant lets them
+// create subscribers (subscribe or full), in the form of sharedPrincipals.
+func (d eventDeployed) subscribePrincipals() []string {
+	if d.fromState() {
+		return principalsNotIn(subscribeCapableFromRAM(d.state.RamPrincipals), nil)
+	}
+	return principalsNotIn(subscribeCapableFromMarkers(d.previous.Share), nil)
+}
+
+// sharePrincipal is the revoke-input form of a share kind and id.
+func sharePrincipal(kind, id string) string {
+	if kind == eventShareKindOrganization {
+		return eventShareKindOrganization
+	}
+	return kind + ":" + id
 }
 
 // activeFifoConsumers lists the consumers whose FIFO subscriber is deployed.
@@ -1018,18 +1081,26 @@ func eventSubscriberTransitionClashes(live []eventLiveSubscriber, deployed map[s
 //
 //	owed = (C + B) - granted
 //
-// B is everyone who may still hold a grant: the principals the last revoke
-// step was applied with, and every subscribe-capable RAM association in
-// state, because an apply interrupted after it associated a principal, but
-// before it recorded the revoke step, leaves that principal only in RAM.
-// Offline, B is the previous share= markers. C is what a failed (tainted)
-// step still owes; offline, the previous lost= markers.
+// B is everyone who may still hold a grant: every subscribe-capable RAM
+// association in state, the principals of the record (revoke_record) and
+// those of the sweep (revoke). RAM matters because an apply interrupted after
+// it associated a principal, but before its sweep, leaves that principal only
+// in RAM. The record matters because Terraform destroys the old sweep and a
+// removed RAM association before it creates the new sweep: an apply
+// interrupted in between leaves neither, and the record, which is updated in
+// place only after a sweep succeeded, still names the principal. Offline, B is
+// the previous share= markers. C is what an unfinished sweep still owes: one
+// that failed (tainted), or one whose round the record does not confirm;
+// offline, the previous lost= markers.
 //
-// lost, the module input, is owed, except when nothing changed since the
-// recorded step ran and it already revoked everything owed: then lost stays
-// what the record holds, so the plan after the apply is empty. lost is a
-// trigger of the step, so any new debt runs the script even when granted is
-// unchanged. owed is returned for the warning and the lost= markers.
+// The bus is settled when the last sweep succeeded, the record confirms its
+// round, both were applied with exactly granted, and RAM associates nobody
+// granted does not name. A principal associated in RAM but not granted is
+// new debt whatever an earlier round revoked. A settled bus keeps the
+// recorded lost and round, so the plan after the apply is empty. Anything
+// else is a new round: round is a trigger of the sweep, so the script runs
+// even when granted and lost read as before. owed is returned for the
+// warning and the lost= markers.
 func eventBusRevokeInputs(share []eventShareEntry, d eventDeployed) (revoke map[string]interface{}, owed []string) {
 	var granted, keepAccounts, keepOUs []string
 	keepOrg := false
@@ -1051,14 +1122,21 @@ func eventBusRevokeInputs(share []eventShareEntry, d eventDeployed) (revoke map[
 	sort.Strings(keepAccounts)
 	sort.Strings(keepOUs)
 
-	var baseline, carry []string
-	rec := d.state.Revoke
+	var baseline, carry, ram []string
+	sweep, rec := d.state.Revoke, d.state.RevokeRecord
+	round := 0
 	if d.fromState() {
-		baseline = subscribeCapableFromRAM(d.state.RamPrincipals)
+		ram = subscribeCapableFromRAM(d.state.RamPrincipals)
+		baseline = append(baseline, ram...)
 		if rec != nil {
 			baseline = append(baseline, rec.Granted...)
-			if rec.Tainted {
-				carry = rec.Lost
+			round = rec.Round
+		}
+		if sweep != nil {
+			baseline = append(baseline, sweep.Granted...)
+			round = max(round, sweep.Round)
+			if sweep.Tainted || rec == nil || sweep.Round != rec.Round {
+				carry = sweep.Lost
 			}
 		}
 	} else {
@@ -1067,13 +1145,16 @@ func eventBusRevokeInputs(share []eventShareEntry, d eventDeployed) (revoke map[
 	}
 	owed = principalsNotIn(append(append([]string(nil), carry...), baseline...), granted)
 	lost := owed
-	if d.fromState() && rec != nil && !rec.Tainted &&
-		strings.Join(sortedStrings(rec.Granted), " ") == strings.Join(granted, " ") &&
-		len(principalsNotIn(owed, rec.Lost)) == 0 {
+	settled := d.fromState() && rec != nil && sweep != nil && !sweep.Tainted && sweep.Round == rec.Round &&
+		sameStrings(rec.Granted, granted) && sameStrings(sweep.Granted, granted) &&
+		len(principalsNotIn(ram, granted)) == 0 && len(principalsNotIn(owed, rec.Lost)) == 0
+	if settled {
 		lost, owed = sortedStrings(rec.Lost), nil
+	} else if d.fromState() {
+		round++
 	}
 
-	enabled := len(share) > 0 || (d.fromState() && rec != nil) || len(lost) > 0
+	enabled := len(share) > 0 || (d.fromState() && (rec != nil || sweep != nil)) || len(lost) > 0
 	return map[string]interface{}{
 		"enabled":       enabled,
 		"granted":       toInterfaces(granted),
@@ -1081,7 +1162,13 @@ func eventBusRevokeInputs(share []eventShareEntry, d eventDeployed) (revoke map[
 		"keep_org":      keepOrg,
 		"keep_ous":      toInterfaces(keepOUs),
 		"lost":          toInterfaces(lost),
+		"round":         round,
 	}, owed
+}
+
+// sameStrings reports whether a and b hold the same strings, in any order.
+func sameStrings(a, b []string) bool {
+	return strings.Join(sortedStrings(a), " ") == strings.Join(sortedStrings(b), " ")
 }
 
 // principalsNotIn is the sorted, de-duplicated set of items that are not in
@@ -1116,6 +1203,7 @@ func disabledEventBusRevoke() map[string]interface{} {
 		"keep_org":      false,
 		"keep_ous":      []interface{}{},
 		"lost":          []interface{}{},
+		"round":         0,
 	}
 }
 
@@ -1198,7 +1286,7 @@ func normalizeEnhancedEvents(envMap map[string]interface{}, bus eventBusSettings
 	// FIFO retirement, tombstones, name reuse and revocation all read it, and
 	// the previous main.tf records a render, not an apply.
 	if d.renderPath && d.state.unknown() {
-		problems = append(problems, eventsStateUnreadableProblem(envMap, env, d.state.Err))
+		problems = append(problems, eventsStateUnreadableProblem(envMap, env, d.state))
 	}
 
 	previousType := d.previousType()
@@ -1391,7 +1479,7 @@ func eventBusShareStage(project, env, mode string, share []eventShareEntry, d ev
 		out.revoke, out.owed = eventBusRevokeInputs(share, d)
 		out.guard = len(share) > 0
 		if d.fromState() {
-			out.guard = out.guard || d.state.Revoke != nil || d.state.Guard
+			out.guard = out.guard || d.state.Revoke != nil || d.state.RevokeRecord != nil || d.state.Guard
 		} else {
 			out.guard = out.guard || len(d.previous.Share) > 0 || d.previous.Guard
 		}
@@ -1464,22 +1552,27 @@ func eventMarkers(mode string, subs eventLiveSubscribers, tombstones []string, c
 
 // eventsStateUnreadableProblem is the refusal of a render that depends on
 // the events state and could not read it.
-func eventsStateUnreadableProblem(envMap map[string]interface{}, env, cause string) string {
+func eventsStateUnreadableProblem(envMap map[string]interface{}, env string, st eventsAwsccState) string {
+	cause := st.Err
 	if cause == "" {
 		cause = "it was not read"
 	}
 	profile := stringFromMap(envMap, "aws_profile")
 	where := []string{"AWS_PROFILE " + profile, "region " + stringFromMap(envMap, "region")}
 	if bucket, key := stringFromMap(envMap, "state_bucket"), stringFromMap(envMap, "state_file"); bucket != "" && key != "" {
-		where = append(where, "s3://"+bucket+"/"+key)
+		where = append(where, "s3://"+bucket+"/"+eventsStateObjectKey(key, os.Getenv("TF_WORKSPACE")))
 	}
 	login := "aws sso login"
 	if profile != "" {
 		login += " --profile " + profile
 	}
+	why := ""
+	if st.NoRender {
+		why = fmt.Sprintf(" env/%s/main.tf has not been generated on this machine, so the shared state is the only record of what another machine deployed.", env)
+	}
 	return fmt.Sprintf(
-		"event_bus: the Terraform state of %s could not be read (%s), so meroku cannot tell which enhanced-bus subscribers, ordered queues and shares are deployed, and a guess could delete queued events or keep a removed account subscribed. Make the state readable (%s; for an expired session run %s) and run it again",
-		env, cause, strings.Join(where, ", "), login)
+		"event_bus: the Terraform state of %s could not be read (%s), so meroku cannot tell which enhanced-bus subscribers, ordered queues and shares are deployed, and a guess could delete queued events or keep a removed account subscribed.%s Make the state readable (%s; for an expired session run %s) and run it again",
+		env, cause, why, strings.Join(where, ", "), login)
 }
 
 func isOrdered(sub map[string]interface{}) bool {

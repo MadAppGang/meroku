@@ -34,7 +34,12 @@ run "shared_bus_plans" {
   }
 
   assert {
-    condition     = length(awscc_eventsv2_event_bus.project) == 1 && length(terraform_data.revoke) == 1 && length(terraform_data.bus_guard) == 1
-    error_message = "A shared, enabled bus plans the bus, the revoke step and the guard."
+    condition     = length(awscc_eventsv2_event_bus.project) == 1 && length(terraform_data.revoke) == 1 && length(terraform_data.revoke_record) == 1 && length(terraform_data.bus_guard) == 1
+    error_message = "A shared, enabled bus plans the bus, the revoke step, its record and the guard."
+  }
+
+  assert {
+    condition     = terraform_data.revoke[0].triggers_replace.round == "0" && terraform_data.revoke_record[0].input.round == 0
+    error_message = "round defaults to 0 and reaches the sweep's triggers and the record."
   }
 }

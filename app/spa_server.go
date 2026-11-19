@@ -69,6 +69,9 @@ func mainRouter() http.Handler {
 	// Configuration warnings: what generate would warn about, per env
 	mux.HandleFunc("/api/config-warnings", getConfigWarnings)
 
+	// Events: the FIFO queue sets and bus shares the last deploy left
+	mux.HandleFunc("/api/events/deployed", getEventsDeployed)
+
 	// Neon: live choices for the Neon panels. The handlers repeat the
 	// router-wide access check (web_access.go) themselves.
 	mux.HandleFunc("/api/neon/lookup", getNeonLookup)

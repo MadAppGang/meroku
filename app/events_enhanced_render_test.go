@@ -119,7 +119,7 @@ func TestEnhancedEventsRender(t *testing.T) {
 	assertContains(t, "module event_bus_enhanced", bus[0],
 		"  enabled = true\n",
 		`  share   = [{"access":"publish","id":"000000000002","kind":"account"},{"access":"subscribe","id":"000000000001","kind":"account"}]`,
-		`  revoke  = {"enabled":true,"granted":["account:000000000001"],"keep_accounts":["000000000001"],"keep_org":false,"keep_ous":[],"lost":[]}`,
+		`  revoke  = {"enabled":true,"granted":["account:000000000001"],"keep_accounts":["000000000001"],"keep_org":false,"keep_ous":[],"lost":[],"round":1}`,
 		"  guard   = true\n",
 	)
 

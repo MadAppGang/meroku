@@ -63,6 +63,8 @@ variable "revoke" {
     changes. granted is every principal that may subscribe now (account:<id>,
     ou:<id>, organization); keep_accounts, keep_org and keep_ous split it by
     kind; lost is what may no longer subscribe and has not been revoked yet.
+    round numbers the revocation: a new round runs the sweep again even when
+    granted and lost are unchanged.
   EOT
   type = object({
     enabled       = bool
@@ -71,6 +73,7 @@ variable "revoke" {
     keep_org      = optional(bool, false)
     keep_ous      = optional(list(string), [])
     lost          = optional(list(string), [])
+    round         = optional(number, 0)
   })
   default = { enabled = false }
 

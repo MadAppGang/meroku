@@ -3,6 +3,7 @@
 #
 # - change (terraform_data.revoke, create-time): in the apply that changes who
 #   may subscribe, revoke the subscribers of accounts no current entry entitles.
+#   terraform_data.revoke_record then records the round it finished.
 # - teardown (terraform_data.bus_guard, destroy-time): when the guard is
 #   destroyed (the bus leaves, or terraform destroy), revoke every foreign
 #   subscriber and event source, after RAM stopped granting access and before
@@ -18,23 +19,25 @@
 resource "terraform_data" "revoke" {
   count = var.enabled && var.revoke.enabled ? 1 : 0
 
-  # A change of who may subscribe, or of what is owed, replaces the instance,
-  # and the create runs the script. lost changes without granted when a
-  # principal is associated in RAM that no applied step recorded (an apply
-  # interrupted between the two); generate keeps lost as recorded once a run
-  # has revoked it, so a settled bus plans no replacement.
+  # A change of who may subscribe, of what is owed, or of the round replaces
+  # the instance, and the create runs the script. Generate starts a new round
+  # whenever the bus is not settled, so a principal that RAM still associates
+  # but no entry grants is revoked even when granted and lost read as an
+  # earlier round's; a settled bus keeps its round and plans no replacement.
   triggers_replace = {
     bus_arn = awscc_eventsv2_event_bus.project[0].event_bus_arn
     granted = join(" ", var.revoke.granted)
     lost    = join(" ", var.revoke.lost)
+    round   = tostring(var.revoke.round)
   }
 
   # Read back by the next generate: what this step was applied with, and what
-  # it still owed. A failed run taints the instance, and the next apply
-  # replaces it with the lost list computed from that record.
+  # it owed. A failed run taints the instance, and the next apply replaces it
+  # with the lost list computed from it.
   input = {
     granted = var.revoke.granted
     lost    = var.revoke.lost
+    round   = var.revoke.round
   }
 
   provisioner "local-exec" {
@@ -58,6 +61,26 @@ resource "terraform_data" "revoke" {
   # destroyed first, because a creator waits for the destroyer of what it
   # depends on.
   depends_on = [aws_ram_principal_association.bus]
+}
+
+# The memory of who could subscribe, which the sweep alone cannot keep:
+# replacing the sweep destroys its old instance before the removed RAM
+# associations, and creates the new one after them, so an apply interrupted
+# in between leaves neither the association nor the sweep that named it. This
+# record is never replaced. It is updated in place only after the sweep of its
+# round succeeded, so until then it still holds the principals the last
+# finished round granted, and the next generate owes whatever of them is no
+# longer granted.
+resource "terraform_data" "revoke_record" {
+  count = var.enabled && var.revoke.enabled ? 1 : 0
+
+  input = {
+    granted = var.revoke.granted
+    lost    = var.revoke.lost
+    round   = var.revoke.round
+  }
+
+  depends_on = [terraform_data.revoke]
 }
 
 resource "terraform_data" "bus_guard" {

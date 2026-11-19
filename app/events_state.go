@@ -32,12 +32,14 @@ import (
 type eventsAwsccState struct {
 	Readable      bool                // the state document was read (a verified absent state is readable and empty)
 	Pulled        bool                // the state was read and parsed, so its answers are exact
-	Needed        bool                // this render depends on the state: the env is or was enhanced, shares, or keeps a FIFO set
+	Needed        bool                // this render depends on the state (eventsStateRequired)
+	NoRender      bool                // this machine has no previous main.tf of the env to go by
 	Tried         bool                // a read was attempted; with Readable false the state may hold anything
 	Err           string              // why the state could not be read
 	Bus           bool                // module.event_bus_enhanced.awscc_eventsv2_event_bus.project[0]
 	ClassicBus    bool                // module.events.aws_cloudwatch_event_bus.project[0]
-	Revoke        *eventsRevokeRecord // module.event_bus_enhanced.terraform_data.revoke[0]; nil if absent
+	Revoke        *eventsRevokeRecord // module.event_bus_enhanced.terraform_data.revoke[0], the sweep; nil if absent
+	RevokeRecord  *eventsRevokeRecord // module.event_bus_enhanced.terraform_data.revoke_record[0]; nil if absent
 	Guard         bool                // module.event_bus_enhanced.terraform_data.bus_guard[0]
 	RamPrincipals []string            // keys of aws_ram_principal_association.bus: "<access>/<kind>/<id>"
 	Subscribers   map[string]string   // meroku subscriber module name -> attributes.name of its awscc_eventsv2_subscriber.this[0]
@@ -49,11 +51,14 @@ type eventsAwsccState struct {
 // read it.
 func (s eventsAwsccState) unknown() bool { return s.Needed && !s.Readable }
 
-// eventsRevokeRecord is the applied revoke step.
+// eventsRevokeRecord is the input of a revoke step as applied: the sweep
+// (terraform_data.revoke), or the record written after it succeeded
+// (terraform_data.revoke_record).
 type eventsRevokeRecord struct {
 	Granted []string // input.granted: the subscribe-capable principals it was applied with
 	Lost    []string // input.lost: what it had to revoke
-	Tainted bool     // its script failed
+	Round   int      // input.round: which revocation round it belongs to
+	Tainted bool     // its script failed (the sweep only)
 }
 
 // eventsStatePullTimeout bounds the state read.
@@ -115,35 +120,49 @@ var eventsRemoteStateReader = func(ctx context.Context, e Env) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("loading the AWS configuration: %w", err)
 	}
+	key := eventsStateObjectKey(e.StateFile, os.Getenv("TF_WORKSPACE"))
 	out, err := s3.NewFromConfig(cfg).GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(e.StateBucket),
-		Key:    aws.String(e.StateFile),
+		Key:    aws.String(key),
 	})
 	if err != nil {
 		if isRemoteStateAbsentError(err) {
 			return nil, errRemoteStateAbsent
 		}
-		return nil, fmt.Errorf("reading s3://%s/%s: %w", e.StateBucket, e.StateFile, err)
+		return nil, fmt.Errorf("reading s3://%s/%s: %w", e.StateBucket, key, err)
 	}
 	defer out.Body.Close()
 	data, err := io.ReadAll(io.LimitReader(out.Body, maxRemoteStateBytes))
 	if err != nil {
-		return nil, fmt.Errorf("reading s3://%s/%s: %w", e.StateBucket, e.StateFile, err)
+		return nil, fmt.Errorf("reading s3://%s/%s: %w", e.StateBucket, key, err)
 	}
 	return data, nil
 }
 
-// eventsAwsccStateFor reads envDir's state. needed says the render depends on
-// it (eventsStateNeeded). An env that does not need it, and whose lock file
-// has no awscc, is not read: classic generate stays offline, and an env that
-// is classic now with nothing of events in its markers or YAML has nothing a
-// guess could delete. Every other env is read: with `terraform state pull`
-// when envDir is initialised, otherwise from the S3 backend directly. A read
-// that fails comes back with Tried set and Readable false, never as an empty
-// state. A variable so tests stub it.
+// s3WorkspaceKeyPrefix is the S3 backend's default workspace_key_prefix;
+// env/main.hbs sets none.
+const s3WorkspaceKeyPrefix = "env:"
+
+// eventsStateObjectKey is the object the S3 backend keeps a workspace's state
+// in: the configured key for the default workspace, else
+// <workspace_key_prefix>/<workspace>/<key>. An uninitialised directory has no
+// .terraform/environment, so only TF_WORKSPACE can select a workspace there,
+// as it does for Terraform.
+func eventsStateObjectKey(stateFile, workspace string) string {
+	if workspace == "" || workspace == "default" {
+		return stateFile
+	}
+	return s3WorkspaceKeyPrefix + "/" + workspace + "/" + stateFile
+}
+
+// eventsAwsccStateFor reads envDir's state when needed says the render
+// depends on it (eventsStateRequired); otherwise nothing is read, so classic
+// generate stays offline. The read is `terraform state pull` when envDir is
+// initialised, otherwise the S3 backend directly. A read that fails comes back
+// with Tried set and Readable false, never as an empty state. A variable so
+// tests stub it.
 var eventsAwsccStateFor = func(envDir string, e Env, needed bool) eventsAwsccState {
-	lock, _ := os.ReadFile(filepath.Join(envDir, ".terraform.lock.hcl"))
-	if !needed && !bytes.Contains(lock, []byte(awsccLockProvider)) {
+	if !needed {
 		return eventsAwsccState{}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), eventsStatePullTimeout)
@@ -165,7 +184,7 @@ var eventsAwsccStateFor = func(envDir string, e Env, needed bool) eventsAwsccSta
 	if err != nil {
 		return eventsAwsccState{Tried: true, Err: eventsStateErrorLine(err)}
 	}
-	st, err := parseEventsAwsccState(out)
+	st, err := parseEventsAwsccState(out, e.Project+"-"+e.Env)
 	if err != nil {
 		return eventsAwsccState{Tried: true, Err: err.Error()}
 	}
@@ -228,10 +247,38 @@ func prepareEventStateProbe(envMap map[string]interface{}, env string) {
 		StateBucket: stringFromMap(envMap, "state_bucket"),
 		StateFile:   stringFromMap(envMap, "state_file"),
 	}
-	needed := eventsStateNeeded(envMap)
-	st := eventsAwsccStateFor(filepath.Join("env", env), e, needed)
+	envDir := filepath.Join("env", env)
+	_, rendered := envMap[eventPreviousKey].(eventPrevious)
+	needed := eventsStateRequired(eventsStateNeeded(envMap), rendered, lockNamesAwscc(envDir), e)
+	st := eventsAwsccStateFor(envDir, e, needed)
 	st.Needed = needed
+	st.NoRender = !rendered
 	envMap[eventsAwsccStateKey] = st
+}
+
+// eventsStateRequired decides whether a render that writes main.tf reads the
+// state. yamlOrMarkers is eventsStateNeeded. Besides that, the state decides
+// when this machine has no previous render to go by (no env/<env>/main.tf, or
+// none that can be read) and the env has an S3 backend, which is every fresh
+// checkout: env/<env>/ is build output, so another machine may have deployed
+// the enhanced bus from the same state. And it decides when the lock file
+// names awscc, which only an awscc render writes. Once this machine has
+// rendered the env, a main.tf without events markers is its record that the
+// last render had nothing of the enhanced bus, and generate stays offline.
+func eventsStateRequired(yamlOrMarkers, rendered, lockAwscc bool, e Env) bool {
+	switch {
+	case yamlOrMarkers, lockAwscc:
+		return true
+	case !rendered:
+		return e.StateBucket != "" && e.StateFile != ""
+	}
+	return false
+}
+
+// lockNamesAwscc reports whether envDir's lock file has the awscc provider.
+func lockNamesAwscc(envDir string) bool {
+	lock, err := os.ReadFile(filepath.Join(envDir, ".terraform.lock.hcl"))
+	return err == nil && bytes.Contains(lock, []byte(awsccLockProvider))
 }
 
 // errEventsStateUnreadable marks a generate refused because the events state
@@ -266,11 +313,14 @@ type tfStateDocument struct {
 }
 
 // parseEventsAwsccState reads the events addresses from a state document.
-// Empty output is an empty state. A subscriber counts as meroku's only at the
-// address env/main.hbs renders (module.event_subscriber_<c>_<k> or
-// module.event_fifo_subscriber_<c>), and, while the project bus is in state,
-// only on that bus: a custom awscc subscriber is none of meroku's business.
-func parseEventsAwsccState(out []byte) (eventsAwsccState, error) {
+// Empty output is an empty state. busName is the project bus's name,
+// <project>-<env>. A subscriber counts as meroku's only with two pieces of
+// evidence: its module address is one env/main.hbs can render
+// (parseEventSubscriberModule), and its event_bus_arn is the project bus's,
+// the one in state or, when the state holds none, an EventBridge V2 bus named
+// busName. A custom awscc subscriber is none of meroku's business, whatever
+// its module is called.
+func parseEventsAwsccState(out []byte, busName string) (eventsAwsccState, error) {
 	st := eventsAwsccState{Readable: true, Pulled: true, Subscribers: map[string]string{}}
 	if len(bytes.TrimSpace(out)) == 0 {
 		return st, nil
@@ -283,7 +333,7 @@ func parseEventsAwsccState(out []byte) (eventsAwsccState, error) {
 		return eventsAwsccState{}, fmt.Errorf("state format version %d is not 4", doc.Version)
 	}
 	busARN := ""
-	subscriberBus := map[string]string{}
+	subscriberBus, subscriberName := map[string]string{}, map[string]string{}
 	for _, r := range doc.Resources {
 		if r.Mode != "managed" || len(r.Instances) == 0 {
 			continue
@@ -294,13 +344,19 @@ func parseEventsAwsccState(out []byte) (eventsAwsccState, error) {
 			busARN, _ = r.Instances[0].Attributes["event_bus_arn"].(string)
 		case r.Module == "module.events" && r.Type == "aws_cloudwatch_event_bus" && r.Name == "project":
 			st.ClassicBus = true
-		case r.Module == "module.event_bus_enhanced" && r.Type == "terraform_data" && r.Name == "revoke":
+		case r.Module == "module.event_bus_enhanced" && r.Type == "terraform_data" && (r.Name == "revoke" || r.Name == "revoke_record"):
 			inst := r.Instances[0]
 			input := terraformDataInput(inst.Attributes["input"])
-			st.Revoke = &eventsRevokeRecord{
+			rec := &eventsRevokeRecord{
 				Granted: stringsOf(input["granted"]),
 				Lost:    stringsOf(input["lost"]),
+				Round:   intOf(input["round"]),
 				Tainted: inst.Status == "tainted",
+			}
+			if r.Name == "revoke" {
+				st.Revoke = rec
+			} else {
+				st.RevokeRecord = rec
 			}
 		case r.Module == "module.event_bus_enhanced" && r.Type == "terraform_data" && r.Name == "bus_guard":
 			st.Guard = true
@@ -318,8 +374,7 @@ func parseEventsAwsccState(out []byte) (eventsAwsccState, error) {
 			if _, _, _, ours := parseEventSubscriberModule(module); !ours {
 				continue
 			}
-			name, _ := r.Instances[0].Attributes["name"].(string)
-			st.Subscribers[module] = name
+			subscriberName[module], _ = r.Instances[0].Attributes["name"].(string)
 			subscriberBus[module], _ = r.Instances[0].Attributes["event_bus_arn"].(string)
 		case r.Module == "module.events" && r.Type == "aws_sqs_queue" && (r.Name == "fifo_main" || r.Name == "main"):
 			for _, inst := range r.Instances {
@@ -335,17 +390,48 @@ func parseEventsAwsccState(out []byte) (eventsAwsccState, error) {
 			}
 		}
 	}
-	if busARN != "" {
-		for module, arn := range subscriberBus {
-			if arn != "" && arn != busARN {
-				delete(st.Subscribers, module)
-			}
+	for module, arn := range subscriberBus {
+		if onProjectBus(arn, busARN, busName) {
+			st.Subscribers[module] = subscriberName[module]
 		}
 	}
 	sort.Strings(st.RamPrincipals)
 	sort.Strings(st.FifoQueues)
 	sort.Strings(st.Consumers)
 	return st, nil
+}
+
+// onProjectBus reports whether a subscriber's event_bus_arn is the project
+// bus: busARN when the state holds the bus, else a bus named busName.
+func onProjectBus(arn, busARN, busName string) bool {
+	switch {
+	case arn == "":
+		return false
+	case busARN != "":
+		return arn == busARN
+	}
+	name, ok := eventBusV2Name(arn)
+	return ok && busName != "" && name == busName
+}
+
+// eventBusV2Name is the bus name of an EventBridge V2 bus ARN,
+// arn:<partition>:events:<region>:<account>:event-busv2/<name>/<id>.
+func eventBusV2Name(arn string) (string, bool) {
+	parts := strings.SplitN(arn, ":", 6)
+	if len(parts) != 6 || parts[0] != "arn" || parts[2] != "events" {
+		return "", false
+	}
+	resource := strings.Split(parts[5], "/")
+	if len(resource) != 3 || resource[0] != "event-busv2" || resource[1] == "" {
+		return "", false
+	}
+	return resource[1], true
+}
+
+// intOf reads a state number (JSON float64); anything else is 0.
+func intOf(raw interface{}) int {
+	f, _ := raw.(float64)
+	return int(f)
 }
 
 // terraformDataInput unwraps terraform_data's input attribute, which the
