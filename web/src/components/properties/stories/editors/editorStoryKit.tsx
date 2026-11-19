@@ -63,7 +63,13 @@ export function configWith(
 export function deployedEvents(
 	answer: Partial<DeployedEvents> = {},
 ): DeployedEvents {
-	return { known: true, fifoConsumers: [], sharedPrincipals: [], ...answer };
+	return {
+		known: true,
+		fifoConsumers: [],
+		sharedPrincipals: [],
+		subscribePrincipals: [],
+		...answer,
+	};
 }
 
 /** The answer when the deployed state could not be read. */
@@ -71,6 +77,7 @@ export const deployedUnknown: DeployedEvents = {
 	known: false,
 	fifoConsumers: [],
 	sharedPrincipals: [],
+	subscribePrincipals: [],
 };
 
 /** A canvas node, as the Sidebar hands one to a workload panel. */

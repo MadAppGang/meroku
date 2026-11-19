@@ -1770,6 +1770,7 @@ export const infrastructureApi = {
 			known: body.known === true,
 			fifoConsumers: strings(body.fifoConsumers),
 			sharedPrincipals: strings(body.sharedPrincipals),
+			subscribePrincipals: strings(body.subscribePrincipals),
 		};
 	},
 

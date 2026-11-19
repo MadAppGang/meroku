@@ -146,6 +146,8 @@ export interface DeployedEvents {
 	 * `account:<id>`, `ou:<id>` or `organization`.
 	 */
 	sharedPrincipals: string[];
+	/** The part of `sharedPrincipals` whose deployed access can subscribe. */
+	subscribePrincipals: string[];
 }
 
 /**
@@ -666,6 +668,25 @@ export function sharePrincipalLabel(
 	return env
 		? `environment ${env} (account ${principal})`
 		: `account ${principal}`;
+}
+
+/**
+ * Whether share entry `entry` names a principal the deployed bus lets
+ * subscribe while its access in the YAML no longer can: its subscribers are
+ * revoked at the next deploy. False while the state or the entry's principal
+ * is unknown.
+ */
+export function shareSubscribeDowngraded(
+	entry: EventBusShare,
+	deployed: DeployedEvents | undefined,
+	targets: ShareTargetInfo[] | undefined,
+): boolean {
+	if (!deployed?.known || isSubscribeCapable(entry.access)) return false;
+	const principal = sharePrincipal(entry, targets);
+	if (principal === null) return false;
+	return deployed.subscribePrincipals.some(
+		(raw) => deployedSharePrincipal(raw) === principal,
+	);
 }
 
 /**

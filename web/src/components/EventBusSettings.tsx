@@ -26,6 +26,7 @@ import {
 	shareEntryKind,
 	shareEntryLabel,
 	sharePrincipalLabel,
+	shareSubscribeDowngraded,
 	shareTargetProblem,
 	shareValueError,
 } from "../utils/workloadEvents";
@@ -124,6 +125,9 @@ const ACCESS_LABELS: Record<EventBusShareAccess, string> = {
 
 const REMOVED_SHARE_NOTICE =
 	"The share ends at the next deploy. If it could subscribe, every subscriber it created on the bus is revoked then. Revoked subscribers stop for good; they must create new ones if you share again.";
+
+const DOWNGRADED_SHARE_NOTICE =
+	"At the next deploy, every subscriber this account created on the bus is revoked. Revoked subscribers stop for good; they must create new ones if you share again.";
 
 /**
  * Why a share entry is not saved or added yet: it may name the account of
@@ -359,6 +363,8 @@ interface ShareRowProps {
 	entry: EventBusShare;
 	index: number;
 	share: EventBusShare[];
+	/** What is deployed; undefined while unknown. */
+	deployed: DeployedEvents | undefined;
 	config: YamlInfrastructureConfig;
 	targets: ShareTargetInfo[] | undefined;
 	targetsError: string | null;
@@ -375,6 +381,7 @@ function ShareRow({
 	entry,
 	index,
 	share,
+	deployed,
 	config,
 	targets,
 	targetsError,
@@ -382,6 +389,8 @@ function ShareRow({
 	onChange,
 	onRemove,
 }: ShareRowProps) {
+	// Deployed with subscribe access, and now only allowed to send.
+	const downgraded = shareSubscribeDowngraded(entry, deployed, targets);
 	const savedKind = shareEntryKind(entry);
 	const savedValue = shareEntryValue(entry);
 	const [kind, setKind] = useState(savedKind);
@@ -474,6 +483,9 @@ function ShareRow({
 					targetsError={targetsError}
 					onRetry={onRetryTargets}
 				/>
+			)}
+			{downgraded && (
+				<StatusNote tone="warning">{DOWNGRADED_SHARE_NOTICE}</StatusNote>
 			)}
 		</Card>
 	);
@@ -610,10 +622,11 @@ export function EventBusSettings({
 	const leaving =
 		pendingLeave !== null ? clearOrdering(config, deployed) : null;
 	// Principals the deployed bus is shared with that this YAML no longer
-	// names. A changed access is told by the event_share_revoke warning,
-	// since the deployed state does not say what each principal could do.
+	// names; a downgraded entry shows its notice on its own row.
 	const removedShares = deployedSharesRemoved(deployed, share, targets);
-	const sharedForSubscribe = share.some((e) => isSubscribeCapable(e.access));
+	const sharedForSubscribe =
+		share.some((e) => isSubscribeCapable(e.access)) ||
+		(deployed?.known === true && deployed.subscribePrincipals.length > 0);
 
 	const leaveEnhanced = (target: "standard" | "off") => {
 		const { updates } = clearOrdering(config, deployed);
@@ -791,6 +804,7 @@ export function EventBusSettings({
 								entry={entry}
 								index={index}
 								share={share}
+								deployed={deployed}
 								config={config}
 								targets={targets}
 								targetsError={targetsError}

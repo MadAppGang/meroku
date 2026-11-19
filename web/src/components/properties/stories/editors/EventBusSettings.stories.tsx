@@ -465,6 +465,44 @@ export const ShareRemovedBeforeOpening: Story = {
 	},
 };
 
+export const ShareDowngradeNotice: Story = {
+	name: "A deployed subscribe share now only sends: the revocation notice",
+	render: () => (
+		<Editor
+			initial={enhancedConfig({
+				event_bus: {
+					enabled: true,
+					type: "enhanced",
+					share: [
+						{ env: "staging", access: "publish" },
+						{ account: "222222222222", access: "publish" },
+					],
+				},
+			})}
+			deployed={deployedEvents({
+				sharedPrincipals: ["account:111111111111", "account:222222222222"],
+				subscribePrincipals: ["account:111111111111"],
+			})}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		// staging is account 111111111111, deployed with subscribe access.
+		await waitFor(() =>
+			expect(
+				within(canvas.getByTestId("share-row-0")).getByText(
+					/every subscriber this account created on the bus is revoked/,
+				),
+			).toBeVisible(),
+		);
+		// 222222222222 was deployed for sending only: nothing to revoke.
+		await expect(
+			within(canvas.getByTestId("share-row-1")).queryByText(/is revoked/),
+		).toBeNull();
+		await expect(canvas.queryByText(/No longer shared/)).toBeNull();
+	},
+};
+
 export const ShareStateUnknown: Story = {
 	name: "Deployed state unreadable: no revocation notice",
 	render: () => (

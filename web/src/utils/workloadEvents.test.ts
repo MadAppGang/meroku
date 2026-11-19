@@ -18,6 +18,7 @@ import {
 	shareComparisonUnknown,
 	shareDuplicateError,
 	sharePrincipalLabel,
+	shareSubscribeDowngraded,
 	subscriptionErrors,
 	subscriptionEventTypeDisplay,
 	subscriptionFilterSummary,
@@ -265,6 +266,7 @@ describe("deployed share principals", () => {
 		known,
 		fifoConsumers: [],
 		sharedPrincipals,
+		subscribePrincipals: [],
 	});
 	test("a deployed principal no entry names is removed, whatever the access", () => {
 		const share = [
@@ -292,6 +294,44 @@ describe("deployed share principals", () => {
 		expect(deployedSharesRemoved(shared, [], undefined)).toEqual([
 			"111111111111",
 		]);
+	});
+	test("a deployed subscriber whose entry may now only send is downgraded", () => {
+		const state = {
+			known: true,
+			fifoConsumers: [],
+			sharedPrincipals: ["account:111111111111", "account:222222222222"],
+			subscribePrincipals: ["account:111111111111"],
+		};
+		const publish = (e: object) => ({ ...e, access: "publish" as const });
+		expect(
+			shareSubscribeDowngraded(publish({ account: "111111111111" }), state, []),
+		).toBe(true);
+		// Deployed for sending only: nothing to revoke.
+		expect(
+			shareSubscribeDowngraded(publish({ account: "222222222222" }), state, []),
+		).toBe(false);
+		// Still allowed to subscribe.
+		expect(
+			shareSubscribeDowngraded(
+				{ account: "111111111111", access: "full" },
+				state,
+				[],
+			),
+		).toBe(false);
+		// An env resolves through the targets, and is unknown before them.
+		expect(
+			shareSubscribeDowngraded(publish({ env: "staging" }), state, [staging]),
+		).toBe(true);
+		expect(
+			shareSubscribeDowngraded(publish({ env: "staging" }), state, undefined),
+		).toBe(false);
+		expect(
+			shareSubscribeDowngraded(
+				publish({ account: "111111111111" }),
+				{ ...state, known: false },
+				[],
+			),
+		).toBe(false);
 	});
 	test("unknown state reports nothing", () => {
 		expect(
@@ -333,6 +373,7 @@ describe("ordered queue retirement", () => {
 			known,
 			fifoConsumers,
 			sharedPrincipals: [],
+			subscribePrincipals: [],
 		});
 		expect(orderedQueueMayBeDeployed(deployed([]), "backend")).toBe(false);
 		expect(orderedQueueMayBeDeployed(deployed(["backend"]), "backend")).toBe(
@@ -352,6 +393,7 @@ describe("ordered queue retirement", () => {
 			known: true,
 			fifoConsumers: [],
 			sharedPrincipals: [],
+			subscribePrincipals: [],
 		});
 		expect(never.affected).toEqual(["backend"]);
 		expect(never.kept).toEqual([]);
