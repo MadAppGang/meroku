@@ -277,6 +277,22 @@ event_processor_tasks: <list>
 
 event_bus:
   enabled: <boolean>                         # true creates <project>-<env>; EVENT_BUS_NAME names it
+  type: <classic|enhanced>                   # Optional; absent = classic. enhanced = EventBridge V2
+                                             #   bus: needs enabled: true and a supported region;
+                                             #   every workload gets EVENT_BUS_ARN
+  share:                                     # Optional; enhanced only. AWS RAM shares
+    - organization: true                     # Exactly one of organization, ou, account, env
+      ou: <string>                           #   ou-ab12-cd34ef56
+      account: <string>                      #   12 digits, quoted
+      env: <string>                          #   a sibling env of the same project; its account_id
+      access: <publish|subscribe|full>       # Removing or downgrading a subscribe-capable entry
+                                             #   revokes that account's subscribers (permanent)
+
+# Per consumer (workload.events, services[].events), enhanced bus only:
+#   subscribes[].ordered: <boolean>          # Deliver to the FIFO queue (EVENT_FIFO_QUEUE_URL),
+#                                            #   in order per EventGroupId; project bus only
+#   queue.fifo_retired: <boolean>            # Keep the deployed FIFO queues with no ordered
+#                                            #   subscription; remove it to delete them
 
 # ===================================
 # GRAPHQL API CONFIGURATION

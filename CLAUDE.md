@@ -464,7 +464,11 @@ entries and event-task rules without `bus` use it. A workload's `events.subscrib
 gives it its own SQS queue (`EVENT_QUEUE_URL`; it may receive from and send to it and its
 application DLQ, `EVENT_DLQ_URL`), two DLQs and alarms to
 `<project>-<env>-alerts`; `events.produces` is the only source of `events:PutEvents`.
-Normalised in `app/events.go`, built by `modules/events`.
+`event_bus.type: enhanced` makes it an EventBridge V2 bus (`EVENT_BUS_ARN`, one subscriber per
+subscription, `ordered: true` into a FIFO queue with `queue.fifo_retired` to remove it in two
+deploys, `share` through RAM with revocation of an account's subscribers on removal), built by
+`modules/event_bus_enhanced` and `modules/event_subscriber` (awscc).
+Normalised in `app/events.go` and `app/events_enhanced.go`, built by `modules/events`.
 [Events](./ai_docs/EVENTS.md).
 
 ## KMS signing and HMAC keys

@@ -1,6 +1,7 @@
 import type { EgressAdvice, EgressStrategy } from "../hooks/use-pricing";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import { Card } from "./ui/card";
 
 /**
  * Visual advisor for the ECS egress strategy.
@@ -67,7 +68,7 @@ export function EgressAdvisor({
 	const progress = Math.min(1, footprint.Services / Math.max(1, threshold));
 
 	return (
-		<div className="rounded-lg border bg-card text-card-foreground">
+		<Card size="flush">
 			<div className="flex items-start justify-between gap-3 border-b p-4">
 				<div>
 					<h3 className="text-sm font-semibold">Task internet access</h3>
@@ -188,6 +189,6 @@ export function EgressAdvisor({
 					</div>
 				)}
 			</div>
-		</div>
+		</Card>
 	);
 }

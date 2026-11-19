@@ -5,8 +5,16 @@ import {
 	type TestEventRequest,
 	type TestEventResponse,
 } from "../api/infrastructure";
-import type { YamlInfrastructureConfig } from "../types/yamlConfig";
-import { isEventBusEnabled, projectBusName } from "../utils/workloadEvents";
+import type {
+	EventBusChoice,
+	YamlInfrastructureConfig,
+} from "../types/yamlConfig";
+import {
+	eventGroupIdError,
+	isEnhancedBus,
+	isEventBusEnabled,
+	projectBusName,
+} from "../utils/workloadEvents";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
 import {
@@ -16,8 +24,10 @@ import {
 	CardHeader,
 	CardTitle,
 } from "./ui/card";
+import { CodeBlock } from "./ui/code-block";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import { KeyValue, KeyValueList } from "./ui/recipes/key-value-list";
 import {
 	Select,
 	SelectContent,
@@ -25,20 +35,83 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "./ui/select";
+import { NoteCode, NoteDetail, StatusNote } from "./ui/status-note";
 import { Textarea } from "./ui/textarea";
+
+/** Example event details, stamped with the current time. */
+function exampleEvents(env: string): { title: string; detail: object }[] {
+	const timestamp = new Date().toISOString();
+	return [
+		{
+			title: "Basic Test Event",
+			detail: {
+				test: true,
+				timestamp,
+				message: "This is a test event from EventBridge",
+			},
+		},
+		{
+			title: "Application Event",
+			detail: {
+				eventType: "user.created",
+				userId: "user-123",
+				email: "user@example.com",
+				timestamp,
+				source: "user-service",
+			},
+		},
+		{
+			title: "System Event",
+			detail: {
+				eventType: "deployment.completed",
+				serviceName: "backend",
+				version: "v1.2.3",
+				environment: env,
+				status: "success",
+				timestamp,
+			},
+		},
+		{
+			title: "Business Event",
+			detail: {
+				eventType: "order.processed",
+				orderId: "ORD-123456",
+				customerId: "CUST-789",
+				amount: 99.99,
+				currency: "USD",
+				status: "completed",
+				timestamp,
+			},
+		},
+	];
+}
 
 interface EventBridgeTestEventProps {
 	config: YamlInfrastructureConfig;
+	/** Sends the event; the server API by default, replaced in stories. */
+	sendTestEvent?: (event: TestEventRequest) => Promise<TestEventResponse>;
 }
 
-export function EventBridgeTestEvent({ config }: EventBridgeTestEventProps) {
+export function EventBridgeTestEvent({
+	config,
+	sendTestEvent = infrastructureApi.sendTestEvent,
+}: EventBridgeTestEventProps) {
 	const uid = useId();
 	const busEnabled = isEventBusEnabled(config);
+	const enhanced = isEnhancedBus(config);
 	const projectBus = projectBusName(config);
+	// Which bus, not its name, so the choice stays right for the env shown.
+	const [busChoice, setBusChoice] = useState<EventBusChoice>(
+		busEnabled ? "project" : "default",
+	);
+	const bus: EventBusChoice =
+		busChoice === "project" && busEnabled ? "project" : "default";
+	const eventBusName = bus === "project" ? projectBus : "default";
 	// Test event state - default source to 'meroku.test'
-	const [testEvent, setTestEvent] = useState<TestEventRequest>({
+	const [testEvent, setTestEvent] = useState<
+		Omit<TestEventRequest, "eventBusName">
+	>({
 		env: config.env,
-		eventBusName: busEnabled ? projectBus : "default",
 		source: "meroku.test",
 		detailType: "Test Event",
 		detail: {},
@@ -53,6 +126,11 @@ export function EventBridgeTestEvent({ config }: EventBridgeTestEventProps) {
 		null,
 	);
 	const [jsonError, setJsonError] = useState<string | null>(null);
+	const [eventGroupId, setEventGroupId] = useState("");
+	// An event group orders events for ordered subscribers, which only the
+	// enhanced project bus has.
+	const showEventGroup = enhanced && bus === "project";
+	const groupError = showEventGroup ? eventGroupIdError(eventGroupId) : null;
 
 	const handleDetailJsonChange = (value: string) => {
 		setDetailJson(value);
@@ -78,9 +156,11 @@ export function EventBridgeTestEvent({ config }: EventBridgeTestEventProps) {
 		setEventResponse(null);
 
 		try {
-			const response = await infrastructureApi.sendTestEvent({
+			const response = await sendTestEvent({
 				...testEvent,
 				env: config.env,
+				eventBusName,
+				...(showEventGroup && eventGroupId !== "" ? { eventGroupId } : {}),
 			});
 			setEventResponse(response);
 		} catch (error) {
@@ -130,44 +210,70 @@ export function EventBridgeTestEvent({ config }: EventBridgeTestEventProps) {
 					<div className="space-y-2">
 						<Label htmlFor={`${uid}-test-bus`}>Bus</Label>
 						<Select
-							value={testEvent.eventBusName || "default"}
-							onValueChange={(value) =>
-								setTestEvent((prev) => ({ ...prev, eventBusName: value }))
-							}
+							value={bus}
+							onValueChange={(value) => setBusChoice(value as EventBusChoice)}
 						>
 							<SelectTrigger id={`${uid}-test-bus`} aria-label="Test event bus">
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>
 								<SelectItem value="default">Default bus</SelectItem>
-								<SelectItem value={projectBus} disabled={!busEnabled}>
-									Project bus ({projectBus})
+								<SelectItem value="project" disabled={!busEnabled}>
+									Project bus ({projectBus}){enhanced ? ", Enhanced" : ""}
 								</SelectItem>
 							</SelectContent>
 						</Select>
 					</div>
+
+					{showEventGroup && (
+						<div className="space-y-2">
+							<Label htmlFor={`${uid}-test-group`}>
+								Event group (optional)
+							</Label>
+							<Input
+								id={`${uid}-test-group`}
+								variant="code"
+								value={eventGroupId}
+								aria-invalid={groupError !== null}
+								aria-describedby={`${uid}-test-group-hint`}
+								onChange={(e) => setEventGroupId(e.target.value.trim())}
+								placeholder="e.g., order-1042"
+							/>
+							<div id={`${uid}-test-group-hint`} aria-live="polite">
+								{groupError ? (
+									<StatusNote tone="error">{groupError}</StatusNote>
+								) : (
+									<NoteDetail>
+										Ordered subscribers receive events of the same group in the
+										order they were sent. Leave it blank for an event without a
+										group.
+									</NoteDetail>
+								)}
+							</div>
+						</div>
+					)}
+
 					<div className="space-y-2">
 						<Label htmlFor={`${uid}-test-source`}>Event Source</Label>
 						<Input
 							id={`${uid}-test-source`}
+							variant="code"
 							value={testEvent.source}
 							onChange={(e) =>
 								setTestEvent((prev) => ({ ...prev, source: e.target.value }))
 							}
 							placeholder="e.g., meroku.test"
-							className="font-mono"
 						/>
 						{allConfiguredSources.length > 0 && (
 							<div className="space-y-1">
-								<p className="text-xs text-gray-500">
+								<NoteDetail>
 									Event processor sources: {allConfiguredSources.join(", ")}
-								</p>
+								</NoteDetail>
 								{!allConfiguredSources.includes(testEvent.source) &&
 									testEvent.source && (
-										<p className="text-xs text-yellow-500 flex items-center gap-1">
-											<Info className="w-3 h-3" />
+										<StatusNote tone="warning">
 											This source doesn't match any configured event processors
-										</p>
+										</StatusNote>
 									)}
 							</div>
 						)}
@@ -188,17 +294,16 @@ export function EventBridgeTestEvent({ config }: EventBridgeTestEventProps) {
 						/>
 						{allConfiguredDetailTypes.length > 0 && (
 							<div className="space-y-1">
-								<p className="text-xs text-gray-500">
+								<NoteDetail>
 									Event processor detail types:{" "}
 									{allConfiguredDetailTypes.join(", ")}
-								</p>
+								</NoteDetail>
 								{!allConfiguredDetailTypes.includes(testEvent.detailType) &&
 									testEvent.detailType && (
-										<p className="text-xs text-yellow-500 flex items-center gap-1">
-											<Info className="w-3 h-3" />
+										<StatusNote tone="warning">
 											This detail type doesn't match any configured event
 											processors
-										</p>
+										</StatusNote>
 									)}
 							</div>
 						)}
@@ -211,10 +316,11 @@ export function EventBridgeTestEvent({ config }: EventBridgeTestEventProps) {
 							value={detailJson}
 							onChange={(e) => handleDetailJsonChange(e.target.value)}
 							placeholder='{"test": true, "message": "EventBridge test event"}'
-							className="font-mono text-sm min-h-[200px]"
+							variant="code"
+							className="min-h-48"
 							rows={10}
 						/>
-						{jsonError && <p className="text-xs text-red-400">{jsonError}</p>}
+						{jsonError && <StatusNote tone="error">{jsonError}</StatusNote>}
 					</div>
 
 					<Button
@@ -222,6 +328,7 @@ export function EventBridgeTestEvent({ config }: EventBridgeTestEventProps) {
 						disabled={
 							sendingEvent ||
 							!!jsonError ||
+							groupError !== null ||
 							!testEvent.source ||
 							!testEvent.detailType
 						}
@@ -241,22 +348,14 @@ export function EventBridgeTestEvent({ config }: EventBridgeTestEventProps) {
 					</Button>
 
 					{eventResponse && (
-						<Alert
-							className={
-								eventResponse.success ? "border-green-600" : "border-red-600"
-							}
-						>
-							{eventResponse.success ? (
-								<CheckCircle className="h-4 w-4 text-green-600" />
-							) : (
-								<XCircle className="h-4 w-4 text-red-600" />
-							)}
+						<Alert variant={eventResponse.success ? "success" : "danger"}>
+							{eventResponse.success ? <CheckCircle /> : <XCircle />}
 							<AlertDescription>
 								{eventResponse.message}
 								{eventResponse.eventId && (
-									<div className="text-xs mt-1 font-mono">
-										Event ID: {eventResponse.eventId}
-									</div>
+									<NoteDetail>
+										Event ID: <NoteCode>{eventResponse.eventId}</NoteCode>
+									</NoteDetail>
 								)}
 							</AlertDescription>
 						</Alert>
@@ -276,30 +375,23 @@ export function EventBridgeTestEvent({ config }: EventBridgeTestEventProps) {
 							Event processor tasks that can be triggered by events
 						</CardDescription>
 					</CardHeader>
-					<CardContent>
-						<div className="space-y-3">
-							{configuredEventTasks.map((task, _index) => (
-								<div key={task.name} className="p-3 bg-gray-800 rounded-lg">
-									<h4 className="text-sm font-medium text-gray-200 mb-2">
-										{task.name}
-									</h4>
-									<div className="space-y-1 text-xs text-gray-400">
-										<div>
-											<span className="text-blue-400">Sources:</span>{" "}
-											{task.sources?.join(", ") || "None"}
-										</div>
-										<div>
-											<span className="text-blue-400">Detail Types:</span>{" "}
-											{task.detail_types?.join(", ") || "None"}
-										</div>
-										<div>
-											<span className="text-blue-400">Rule:</span>{" "}
-											{task.rule_name}
-										</div>
-									</div>
-								</div>
-							))}
-						</div>
+					<CardContent className="space-y-3">
+						{configuredEventTasks.map((task) => (
+							<Card key={task.name} size="inset">
+								<CardTitle variant="item">{task.name}</CardTitle>
+								<KeyValueList size="compact">
+									<KeyValue label="Sources">
+										{task.sources?.join(", ") || "None"}
+									</KeyValue>
+									<KeyValue label="Detail types">
+										{task.detail_types?.join(", ") || "None"}
+									</KeyValue>
+									<KeyValue label="Rule" variant="code">
+										{task.rule_name}
+									</KeyValue>
+								</KeyValueList>
+							</Card>
+						))}
 					</CardContent>
 				</Card>
 			)}
@@ -316,60 +408,11 @@ export function EventBridgeTestEvent({ config }: EventBridgeTestEventProps) {
 					</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-4">
-					<div className="space-y-3">
-						<div className="p-3 bg-gray-800 rounded-lg">
-							<h4 className="text-sm font-medium text-gray-300 mb-2">
-								Basic Test Event
-							</h4>
-							<pre className="text-xs text-gray-400 overflow-x-auto">{`{
-  "test": true,
-  "timestamp": "${new Date().toISOString()}",
-  "message": "This is a test event from EventBridge"
-}`}</pre>
-						</div>
-
-						<div className="p-3 bg-gray-800 rounded-lg">
-							<h4 className="text-sm font-medium text-gray-300 mb-2">
-								Application Event
-							</h4>
-							<pre className="text-xs text-gray-400 overflow-x-auto">{`{
-  "eventType": "user.created",
-  "userId": "user-123",
-  "email": "user@example.com",
-  "timestamp": "${new Date().toISOString()}",
-  "source": "user-service"
-}`}</pre>
-						</div>
-
-						<div className="p-3 bg-gray-800 rounded-lg">
-							<h4 className="text-sm font-medium text-gray-300 mb-2">
-								System Event
-							</h4>
-							<pre className="text-xs text-gray-400 overflow-x-auto">{`{
-  "eventType": "deployment.completed",
-  "serviceName": "backend",
-  "version": "v1.2.3",
-  "environment": "${config.env}",
-  "status": "success",
-  "timestamp": "${new Date().toISOString()}"
-}`}</pre>
-						</div>
-
-						<div className="p-3 bg-gray-800 rounded-lg">
-							<h4 className="text-sm font-medium text-gray-300 mb-2">
-								Business Event
-							</h4>
-							<pre className="text-xs text-gray-400 overflow-x-auto">{`{
-  "eventType": "order.processed",
-  "orderId": "ORD-123456",
-  "customerId": "CUST-789",
-  "amount": 99.99,
-  "currency": "USD",
-  "status": "completed",
-  "timestamp": "${new Date().toISOString()}"
-}`}</pre>
-						</div>
-					</div>
+					{exampleEvents(config.env).map((example) => (
+						<CodeBlock key={example.title} title={example.title}>
+							{JSON.stringify(example.detail, null, 2)}
+						</CodeBlock>
+					))}
 				</CardContent>
 			</Card>
 
@@ -381,53 +424,30 @@ export function EventBridgeTestEvent({ config }: EventBridgeTestEventProps) {
 						Best practices for testing EventBridge
 					</CardDescription>
 				</CardHeader>
-				<CardContent>
-					<ul className="text-sm text-gray-300 space-y-2">
-						<li className="flex items-start gap-2">
-							<span className="text-blue-400">•</span>
-							<span>
-								Use <code className="text-blue-400 text-xs">meroku.test</code>{" "}
-								as the source for test events to easily identify them
-							</span>
-						</li>
-						<li className="flex items-start gap-2">
-							<span className="text-blue-400">•</span>
-							<span>
-								Include a{" "}
-								<code className="text-blue-400 text-xs">test: true</code> field
-								in your event detail for easy filtering
-							</span>
-						</li>
-						<li className="flex items-start gap-2">
-							<span className="text-blue-400">•</span>
-							<span>
-								Always include timestamps in your test events for debugging
-							</span>
-						</li>
-						<li className="flex items-start gap-2">
-							<span className="text-blue-400">•</span>
-							<span>
-								Check CloudWatch Logs for event processor tasks to see if they
-								were triggered
-							</span>
-						</li>
-						<li className="flex items-start gap-2">
-							<span className="text-blue-400">•</span>
-							<span>
-								Events are published to your custom event bus:{" "}
-								<code className="text-blue-400 text-xs">
-									{config.project}_{config.env}_eventbus
-								</code>
-							</span>
-						</li>
-						<li className="flex items-start gap-2">
-							<span className="text-blue-400">•</span>
-							<span>
-								Use EventBridge console to monitor event delivery and rule
-								matches
-							</span>
-						</li>
-					</ul>
+				<CardContent className="space-y-2">
+					<StatusNote>
+						Use <NoteCode>meroku.test</NoteCode> as the source for test events
+						to easily identify them
+					</StatusNote>
+					<StatusNote>
+						Include a <NoteCode>test: true</NoteCode> field in your event detail
+						for easy filtering
+					</StatusNote>
+					<StatusNote>
+						Always include timestamps in your test events for debugging
+					</StatusNote>
+					<StatusNote>
+						Check CloudWatch Logs for event processor tasks to see if they were
+						triggered
+					</StatusNote>
+					<StatusNote>
+						This environment's project bus is <NoteCode>{projectBus}</NoteCode>
+						{enhanced ? " (Enhanced)" : ""}; AWS services publish to the default
+						bus
+					</StatusNote>
+					<StatusNote>
+						Use EventBridge console to monitor event delivery and rule matches
+					</StatusNote>
 				</CardContent>
 			</Card>
 		</div>

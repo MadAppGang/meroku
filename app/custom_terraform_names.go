@@ -38,23 +38,40 @@ func customTerraformFiles(env string) []string {
 	return files
 }
 
+// Module names reserved only while the env renders the awscc provider (an
+// enhanced project bus, or one being cleaned up), so a classic env that
+// already uses one of them keeps generating.
+var reservedAwsccRootModuleNames = []string{"event_bus_enhanced"}
+var reservedAwsccRootModulePrefixes = []string{eventSubscriberModulePrefix, eventFifoSubscriberModulePrefix}
+
 // validateCustomTerraformRootNames refuses a custom .tf file that declares a
-// module or a local with a name meroku's template uses.
+// module or a local with a name meroku's template uses on a classic env.
 func validateCustomTerraformRootNames(env string) error {
+	return validateCustomTerraformRootNamesFor(env, false)
+}
+
+// validateCustomTerraformRootNamesFor is validateCustomTerraformRootNames
+// with the awscc module names reserved too when awscc is true.
+func validateCustomTerraformRootNamesFor(env string, awscc bool) error {
 	var problems []string
 	for _, file := range customTerraformFiles(env) {
 		data, err := os.ReadFile(file)
 		if err != nil {
 			continue
 		}
-		problems = append(problems, reservedRootNameUses(file, data)...)
+		problems = append(problems, reservedRootNameUsesFor(file, data, awscc)...)
 	}
 	if len(problems) == 0 {
 		return nil
 	}
+	modules := strings.Join(reservedRootModuleNames, ", ")
+	if awscc {
+		modules += fmt.Sprintf("; while this env uses the enhanced event bus also %s and every name starting %s",
+			strings.Join(reservedAwsccRootModuleNames, ", "), strings.Join(reservedAwsccRootModulePrefixes, " or "))
+	}
 	return fmt.Errorf(
 		"custom terraform declares names meroku's generated main.tf uses (modules %s; locals %s). Rename yours, or delete it if meroku's feature replaces it:\n  %s",
-		strings.Join(reservedRootModuleNames, ", "), strings.Join(reservedRootLocalNames, ", "),
+		modules, strings.Join(reservedRootLocalNames, ", "),
 		strings.Join(problems, "\n  "))
 }
 
@@ -62,6 +79,12 @@ func validateCustomTerraformRootNames(env string) error {
 // locals attribute whose name is reserved, as "<file>:<line>: ...". A file that
 // does not parse is left to validateGeneratedHCL, which reports it in context.
 func reservedRootNameUses(filename string, data []byte) []string {
+	return reservedRootNameUsesFor(filename, data, false)
+}
+
+// reservedRootNameUsesFor is reservedRootNameUses with the awscc module names
+// reserved too when awscc is true.
+func reservedRootNameUsesFor(filename string, data []byte, awscc bool) []string {
 	file, _ := hclsyntax.ParseConfig(data, filename, hcl.InitialPos)
 	if file == nil {
 		return nil
@@ -73,12 +96,30 @@ func reservedRootNameUses(filename string, data []byte) []string {
 
 	modules := toSet(reservedRootModuleNames)
 	locals := toSet(reservedRootLocalNames)
+	var prefixes []string
+	if awscc {
+		for _, n := range reservedAwsccRootModuleNames {
+			modules[n] = true
+		}
+		prefixes = reservedAwsccRootModulePrefixes
+	}
+	reservedModule := func(name string) bool {
+		if modules[name] {
+			return true
+		}
+		for _, p := range prefixes {
+			if strings.HasPrefix(name, p) {
+				return true
+			}
+		}
+		return false
+	}
 
 	var out []string
 	for _, block := range body.Blocks {
 		switch block.Type {
 		case "module":
-			if len(block.Labels) > 0 && modules[block.Labels[0]] {
+			if len(block.Labels) > 0 && reservedModule(block.Labels[0]) {
 				out = append(out, fmt.Sprintf("%s:%d: module %q", filename, block.DefRange().Start.Line, block.Labels[0]))
 			}
 		case "locals":

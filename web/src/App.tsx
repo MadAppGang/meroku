@@ -1,7 +1,8 @@
 import * as yaml from "js-yaml";
 import { AlertCircle, CheckCircle, Loader2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ReactFlowProvider } from "reactflow";
+import { toast } from "sonner";
 import { type AccountInfo, infrastructureApi } from "./api/infrastructure";
 import { AddAmplifyDialog } from "./components/AddAmplifyDialog";
 import { AddCloudFrontDialog } from "./components/AddCloudFrontDialog";
@@ -16,6 +17,7 @@ import { StatusLine } from "./components/StatusLine";
 import { Toaster } from "./components/ui/sonner";
 import { PricingProvider } from "./contexts/PricingContext";
 import { useConfigWarnings } from "./hooks/use-config-warnings";
+import { useDeployedEvents } from "./hooks/use-deployed-events";
 import { usePricing } from "./hooks/use-pricing";
 import type { ComponentNode } from "./types";
 import type { ConfigWarning } from "./types/configWarnings";
@@ -23,6 +25,12 @@ import type { YamlInfrastructureConfig } from "./types/yamlConfig";
 import { mergeConfigUpdates } from "./utils/configMerge";
 import { warningsForNode } from "./utils/configWarnings";
 import { pruneUndefined } from "./utils/pruneUndefined";
+import {
+	applyConfigUpdate,
+	type ConfigUpdate,
+	type ConfigUpdateResult,
+	type HeldConfig,
+} from "./utils/workloadEvents";
 import { removeWorkloadReferences } from "./utils/workloadReferences";
 
 const NO_WARNINGS: readonly ConfigWarning[] = [];
@@ -30,12 +38,35 @@ const NO_WARNINGS: readonly ConfigWarning[] = [];
 export default function App() {
 	const [selectedNode, setSelectedNode] = useState<ComponentNode | null>(null);
 	const [sidebarOpen, setSidebarOpen] = useState(false);
-	const [selectedEnvironment, setSelectedEnvironment] = useState<string | null>(
-		null,
-	);
+	const [selectedEnvironment, setSelectedEnvironmentState] = useState<
+		string | null
+	>(null);
 	const [viewMode, setViewMode] = useState<"visual" | "code">("visual");
 	const [showEnvSelector, setShowEnvSelector] = useState(false);
-	const [config, setConfig] = useState<YamlInfrastructureConfig | null>(null);
+	const [config, setConfigState] = useState<YamlInfrastructureConfig | null>(
+		null,
+	);
+	// The environment file open now, and the config held with the file it was
+	// loaded from, kept in step with the state as each is set. Edits are
+	// computed from these and saved once, outside any state updater: React
+	// may run an updater twice (always under StrictMode), and a save inside
+	// one would be sent twice.
+	const selectedEnvironmentRef = useRef<string | null>(null);
+	const heldConfigRef = useRef<HeldConfig>({ file: null, config: null });
+	const setSelectedEnvironment = useCallback((environment: string | null) => {
+		selectedEnvironmentRef.current = environment;
+		setSelectedEnvironmentState(environment);
+	}, []);
+	const setConfig = useCallback(
+		(next: YamlInfrastructureConfig | null, file?: string | null) => {
+			heldConfigRef.current = {
+				file: file === undefined ? heldConfigRef.current.file : file,
+				config: next,
+			};
+			setConfigState(next);
+		},
+		[],
+	);
 	const [accountInfo, setAccountInfo] = useState<AccountInfo | null>(null);
 	const [showAddServiceDialog, setShowAddServiceDialog] = useState(false);
 	const [showAddScheduledTaskDialog, setShowAddScheduledTaskDialog] =
@@ -66,6 +97,9 @@ export default function App() {
 		warningsRefreshKey,
 	);
 	const configWarnings = warningsReport?.warnings ?? NO_WARNINGS;
+	// What is deployed for the env's events, re-read after each save too.
+	const { deployed: deployedEvents, reread: rereadDeployedEvents } =
+		useDeployedEvents(selectedEnvironment, warningsRefreshKey);
 	const selectedNodeWarnings = useMemo(
 		() =>
 			selectedNode ? warningsForNode(configWarnings, selectedNode.id) : [],
@@ -77,22 +111,27 @@ export default function App() {
 		setSidebarOpen(!!node);
 	}, []);
 
-	const handleEnvironmentSelect = useCallback(async (environment: string) => {
-		setSelectedEnvironment(environment);
-		setShowEnvSelector(false);
+	const handleEnvironmentSelect = useCallback(
+		async (environment: string) => {
+			setSelectedEnvironment(environment);
+			setShowEnvSelector(false);
 
-		// Fetch the updated environment info to get profile and account ID
-		try {
-			const environments = await infrastructureApi.getEnvironments();
-			const selectedEnv = environments.find((env) => env.name === environment);
-			if (selectedEnv) {
-				setActiveEnvironmentProfile(selectedEnv.profile || null);
-				setActiveEnvironmentAccountId(selectedEnv.accountId || null);
+			// Fetch the updated environment info to get profile and account ID
+			try {
+				const environments = await infrastructureApi.getEnvironments();
+				const selectedEnv = environments.find(
+					(env) => env.name === environment,
+				);
+				if (selectedEnv) {
+					setActiveEnvironmentProfile(selectedEnv.profile || null);
+					setActiveEnvironmentAccountId(selectedEnv.accountId || null);
+				}
+			} catch (error) {
+				console.error("Failed to fetch environment details:", error);
 			}
-		} catch (error) {
-			console.error("Failed to fetch environment details:", error);
-		}
-	}, []);
+		},
+		[setSelectedEnvironment],
+	);
 
 	// Check for active environment on mount
 	useEffect(() => {
@@ -135,17 +174,23 @@ export default function App() {
 		};
 
 		checkActiveEnvironment();
-	}, []);
+	}, [setSelectedEnvironment]);
 
-	const loadConfiguration = useCallback(async (envName: string) => {
-		try {
-			const content = await infrastructureApi.getEnvironmentConfig(envName);
-			const parsed = yaml.load(content) as YamlInfrastructureConfig;
-			setConfig(parsed);
-		} catch (error) {
-			console.error("Failed to load configuration:", error);
-		}
-	}, []);
+	const loadConfiguration = useCallback(
+		async (envName: string) => {
+			try {
+				const content = await infrastructureApi.getEnvironmentConfig(envName);
+				// A load answered after another environment was opened is not
+				// that environment's config.
+				if (selectedEnvironmentRef.current !== envName) return;
+				const parsed = yaml.load(content) as YamlInfrastructureConfig;
+				setConfig(parsed, envName);
+			} catch (error) {
+				console.error("Failed to load configuration:", error);
+			}
+		},
+		[setConfig],
+	);
 
 	const loadAccountInfo = useCallback(async () => {
 		try {
@@ -164,9 +209,13 @@ export default function App() {
 		}
 	}, [selectedEnvironment, loadAccountInfo, loadConfiguration]);
 
+	// Writes a config to the environment file it was loaded from.
 	const saveConfigToBackend = useCallback(
-		async (updatedConfig: YamlInfrastructureConfig) => {
-			if (!selectedEnvironment) return;
+		async (
+			updatedConfig: YamlInfrastructureConfig,
+			file: string | null = heldConfigRef.current.file,
+		) => {
+			if (!file) return;
 
 			setSaveStatus("saving");
 
@@ -179,10 +228,7 @@ export default function App() {
 					noRefs: true,
 					sortKeys: false,
 				});
-				await infrastructureApi.updateEnvironmentConfig(
-					selectedEnvironment,
-					yamlContent,
-				);
+				await infrastructureApi.updateEnvironmentConfig(file, yamlContent);
 				console.log("Configuration saved successfully");
 				setSaveStatus("success");
 
@@ -197,32 +243,54 @@ export default function App() {
 				setSaveStatus("error");
 				// Reset status after 3 seconds
 				setTimeout(() => setSaveStatus("idle"), 3000);
-			} finally {
 			}
 		},
-		[selectedEnvironment],
+		[],
 	);
 
 	const handleConfigChange = useCallback(
 		async (updates: Partial<YamlInfrastructureConfig>) => {
-			setConfig((prevConfig) => {
-				if (!prevConfig) return prevConfig;
+			const prevConfig = heldConfigRef.current.config;
+			if (!prevConfig) return;
 
-				// Deep merge nested objects to prevent stale closure overwrites, and to
-				// preserve fields no editor panel surfaces (e.g. pubsub_appsync.jwks_uri).
-				const updatedConfig = mergeConfigUpdates(prevConfig, updates);
+			// Deep merge nested objects to prevent stale closure overwrites, and to
+			// preserve fields no editor panel surfaces (e.g. pubsub_appsync.jwks_uri).
+			const updatedConfig = mergeConfigUpdates(prevConfig, updates);
 
-				// Same reference means nothing changed - skip re-render and save
-				if (updatedConfig === prevConfig) {
-					return prevConfig;
-				}
+			// Same reference means nothing changed - skip re-render and save
+			if (updatedConfig === prevConfig) return;
 
-				// Call saveConfigToBackend asynchronously (don't await here to avoid blocking)
-				saveConfigToBackend(updatedConfig);
-				return updatedConfig;
-			});
+			setConfig(updatedConfig);
+			// Not awaited, so the editor is not blocked by the request.
+			saveConfigToBackend(updatedConfig);
 		},
-		[saveConfigToBackend],
+		[saveConfigToBackend, setConfig],
+	);
+
+	// A change decided after a wait in the environment file `file`: applied to
+	// the config held when it runs, only while that config is the one loaded
+	// from `file` and `file` is still open, and saved once when it changed.
+	const handleConfigUpdate = useCallback(
+		(file: string, update: ConfigUpdate): ConfigUpdateResult => {
+			const held = heldConfigRef.current;
+			const { result, config: updatedConfig } = applyConfigUpdate(
+				selectedEnvironmentRef.current === held.file
+					? held
+					: { file: null, config: held.config },
+				file,
+				update,
+			);
+			if (result === "environment-changed") {
+				toast.warning("A change was not saved", {
+					description: `It was made in the ${file} environment, and another environment is open now. Open ${file} and make the change again.`,
+				});
+			}
+			if (result !== "applied" || !updatedConfig) return result;
+			setConfig(updatedConfig);
+			saveConfigToBackend(updatedConfig, file);
+			return result;
+		},
+		[saveConfigToBackend, setConfig],
 	);
 
 	const handleAddService = async (
@@ -614,6 +682,10 @@ export default function App() {
 											setSelectedNode(null);
 										}}
 										config={config || undefined}
+										deployedEvents={deployedEvents}
+										rereadDeployedEvents={rereadDeployedEvents}
+										environment={selectedEnvironment || undefined}
+										onConfigUpdate={handleConfigUpdate}
 										onConfigChange={handleConfigChange}
 										accountInfo={accountInfo || undefined}
 										onDeleteNode={handleDeleteNode}

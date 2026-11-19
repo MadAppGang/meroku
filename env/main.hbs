@@ -31,6 +31,12 @@ terraform {
       version = "~> 3.6"
     }
 {{/if}}
+{{#if _awscc_render}}
+    awscc = {
+      source  = "hashicorp/awscc"
+      version = "~> 1.110"
+    }
+{{/if}}
   }
 {{!-- Neon needs Terraform 1.14 (ephemeral variables, write-only arguments); an environment without Neon keeps its floor. --}}
   required_version = "{{#if neon_render}}>= 1.14.0{{else}}>= 1.10.0{{/if}}"
@@ -84,6 +90,16 @@ provider "aws" {
     }
   }
 }
+{{#if _awscc_render}}
+
+# The enhanced project bus and its subscribers exist only in the AWS Cloud
+# Control provider. Same region as provider "aws", pinned for the same reason;
+# credentials come from the same shell (AWS_PROFILE). awscc has no
+# default_tags, so the modules tag each resource.
+provider "awscc" {
+  region = "{{region}}"
+}
+{{/if}}
 
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
@@ -852,6 +868,9 @@ module "workloads" {
   extra_secrets = local.workload_extra_secrets
   # EVENT_BUS_NAME: the project bus when event_bus.enabled, otherwise "default".
   event_bus_name = module.events.bus_name
+{{#if _event_bus_enhanced}}
+  event_bus_arn  = module.event_bus_enhanced.bus_arn
+{{/if}}
 }
 {{#if neon_render}}
 
@@ -1025,6 +1044,9 @@ module "schedule_task_{{name}}" {
   extra_env     = local.workload_extra_env["{{name}}"]
   extra_secrets = local.workload_extra_secrets["{{name}}"]
   event_bus_name = module.events.bus_name
+{{#if @root._event_bus_enhanced}}
+  event_bus_arn  = module.event_bus_enhanced.bus_arn
+{{/if}}
 }
 {{/each}}
 {{#each event_processor_tasks}}
@@ -1093,6 +1115,9 @@ module "event_bus_task_{{name}}" {
   extra_env     = local.workload_extra_env["{{name}}"]
   extra_secrets = local.workload_extra_secrets["{{name}}"]
   event_bus_name = module.events.bus_name
+{{#if @root._event_bus_enhanced}}
+  event_bus_arn  = module.event_bus_enhanced.bus_arn
+{{/if}}
 }
 {{/each}}
 
@@ -1185,6 +1210,29 @@ module "kms_keys" {
   keys        = {{{hclJSON _kms_keys}}}
   connections = {{{hclArray _kms_connections}}}
 }
+{{#if _awscc_render}}
+
+# The enhanced project bus (event_bus.type: enhanced), its RAM shares, and the
+# revoke steps for other accounts' subscribers. enabled = false deletes the
+# bus: the environment has left the enhanced bus.
+module "event_bus_enhanced" {
+  source  = "{{modules}}/event_bus_enhanced"
+  project = "{{project}}"
+  env     = "{{env}}"
+
+  enabled = {{#if _event_bus_enhanced}}true{{else}}false{{/if}}
+  share   = {{{hclArray _event_bus_share}}}
+  revoke  = {{{hclJSON _event_bus_revoke}}}
+  guard   = {{#if _event_bus_guard}}true{{else}}false{{/if}}
+}
+{{/if}}
+{{#if _event_markers}}
+
+{{!-- Read back by the next generate (app/events_enhanced.go parseEventMarkers) when state cannot answer. --}}
+{{#each _event_markers}}
+{{this}}
+{{/each}}
+{{/if}}
 
 # Events: the project bus (event_bus.enabled), a queue per workload that
 # subscribes, and PutEvents for each events.produces entry. Without an entry a
@@ -1195,11 +1243,48 @@ module "events" {
   env     = "{{env}}"
 
   bus_enabled = {{#if event_bus.enabled}}true{{else}}false{{/if}}
+{{#if _event_bus_enhanced}}
+  bus_type         = "enhanced"
+  enhanced_bus_arn = module.event_bus_enhanced.bus_arn
+{{/if}}
   workloads   = local.workload_roles
   {{!-- Normalised by app/events.go: buses resolved, subscription keys derived. --}}
   consumers   = {{{hclArray _event_consumers}}}
   producers   = {{{hclArray _event_producers}}}
 }
+{{#if _event_subscriber_chain}}
+
+# Subscribers of the enhanced project bus, one module each, in a chain: each
+# depends on the one before, so the bus sees one subscriber create or delete
+# at a time. Tombstones (enabled = false) delete a subscriber that is no longer
+# wanted; they come first, new subscribers next, existing ones last, so every
+# new subscriber exists before an old one is deleted. See ai_docs/EVENTS.md.
+{{/if}}
+{{#each _event_subscriber_chain}}
+
+{{#if enabled}}
+module "{{module}}" {
+  source       = "{{@root.modules}}/event_subscriber"
+  kind         = "{{kind}}"
+  project      = "{{@root.project}}"
+  env          = "{{@root.env}}"
+  bus_arn      = module.event_bus_enhanced.bus_arn
+  subscription = module.events.{{#if (eq kind "fifo")}}fifo_subscribers{{else}}subscribers{{/if}}[{{{hclString key}}}]
+{{else}}
+module "{{module}}" {
+  source  = "{{@root.modules}}/event_subscriber"
+  enabled = false
+  kind    = "{{kind}}"
+  project = "{{@root.project}}"
+  env     = "{{@root.env}}"
+  bus_arn = module.event_bus_enhanced.bus_arn
+{{/if}}
+{{#if after}}
+
+  depends_on = [module.{{after}}]
+{{/if}}
+}
+{{/each}}
 
 
 # Email domain configuration (Schema v17: Multi-domain support)

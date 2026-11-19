@@ -69,6 +69,9 @@ func mainRouter() http.Handler {
 	// Configuration warnings: what generate would warn about, per env
 	mux.HandleFunc("/api/config-warnings", getConfigWarnings)
 
+	// Events: the FIFO queue sets and bus shares the last deploy left
+	mux.HandleFunc("/api/events/deployed", getEventsDeployed)
+
 	// Neon: live choices for the Neon panels. The handlers repeat the
 	// router-wide access check (web_access.go) themselves.
 	mux.HandleFunc("/api/neon/lookup", getNeonLookup)
@@ -152,6 +155,7 @@ func mainRouter() http.Handler {
 	// EventBridge
 	mux.HandleFunc("/api/eventbridge/send-test-event", sendTestEvent)
 	mux.HandleFunc("/api/eventbridge/event-tasks", getEventTaskInfo)
+	mux.HandleFunc("/api/event-bus/share-targets", getEventBusShareTargets)
 
 	// GitHub OAuth
 	mux.HandleFunc("/api/github/oauth/device", initiateGitHubDeviceFlow)

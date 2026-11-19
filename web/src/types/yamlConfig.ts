@@ -790,8 +790,35 @@ export interface KmsKeyConnection {
 /** The bus an events entry or event-task rule is on. Absent follows `event_bus.enabled`. */
 export type EventBusChoice = "project" | "default";
 
+/** The kind of project bus. Absent is `classic`. */
+export type EventBusType = "classic" | "enhanced";
+
+/**
+ * What a principal an enhanced bus is shared with may do: `publish` sends
+ * events, `subscribe` creates its own subscribers (and so reads every event
+ * on the bus), `full` does both.
+ */
+export type EventBusShareAccess = "publish" | "subscribe" | "full";
+
+/**
+ * One `event_bus.share` entry. Exactly one of `organization`, `ou`, `account`
+ * and `env` is set; `env` names a sibling environment of the same project,
+ * whose `account_id` meroku uses.
+ */
+export interface EventBusShare {
+	organization?: boolean;
+	ou?: string;
+	account?: string;
+	env?: string;
+	access: EventBusShareAccess;
+}
+
 export interface EventBusConfig {
 	enabled?: boolean;
+	/** `enhanced` needs `enabled: true` and a region that offers it. */
+	type?: EventBusType;
+	/** Enhanced only. Other accounts the bus is shared with through AWS RAM. */
+	share?: EventBusShare[];
 }
 
 /**
@@ -817,12 +844,22 @@ export interface EventSubscription {
 	source?: string;
 	filters?: EventSubscriptionFilter[];
 	bus?: EventBusChoice;
+	/**
+	 * Deliver in order, per event group, through the consumer's ordered (FIFO)
+	 * queue. The enhanced project bus only.
+	 */
+	ordered?: boolean;
 }
 
 /** A consumer's queue settings. */
 export interface EventQueueSettings {
 	visibility_timeout?: number;
 	max_receive_count?: number;
+	/**
+	 * Keeps a deployed ordered queue after its last ordered subscription is
+	 * gone, so the events still in it can be read. Removing it deletes the queue.
+	 */
+	fifo_retired?: boolean;
 }
 
 /**

@@ -92,6 +92,18 @@ export default {
 					foreground: "hsl(var(--card-foreground))",
 				},
 			},
+			// Named column templates for editors whose rows must line up.
+			gridTemplateColumns: {
+				// Label column and value column of a definition list.
+				"label-value": "6rem minmax(0, 1fr)",
+				// A subscription row: event type, filter button, key and remove.
+				"subscription-row": "minmax(0, 1fr) 9.5rem 11rem",
+				// A produces row: event types, bus and source.
+				"produces-row": "minmax(0, 1fr) 11rem 11rem",
+				// The event flow: four boxes joined by three arrows.
+				"event-flow":
+					"minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1.6fr) auto minmax(0, 1fr)",
+			},
 			borderRadius: {
 				lg: "var(--radius)",
 				md: "calc(var(--radius) - 2px)",

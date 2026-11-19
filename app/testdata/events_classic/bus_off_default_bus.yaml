@@ -1,0 +1,27 @@
+schema_version: 33
+project: myapp
+env: dev
+region: ap-southeast-2
+account_id: "000000000000"
+aws_profile: none
+use_default_vpc: false
+workload:
+  backend_image_port: 8080
+  events:
+    subscribes:
+      - { detail_type: order.created }
+      - { detail_type_prefix: "user." }
+      - { detail_type: "job.*", source: example.jobs }
+    produces:
+      - { detail_types: [order.created] }
+services:
+  - name: orders
+    container_port: 3000
+    events:
+      subscribes:
+        - detail_type: payment.completed
+          source: example.payments
+          filters:
+            - { field: detail.status, values: [done, failed] }
+      produces:
+        - { any: true }

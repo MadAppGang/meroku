@@ -65,21 +65,39 @@ locals {
   ] }
 
   # SendMessage on the main queue lets a consumer put a message back with a
-  # delay (DelaySeconds) to retry it later.
-  consume_statements = { for name in keys(local.consumers) : name => [
-    {
-      Sid      = "EventQueue"
-      Effect   = "Allow"
-      Action   = local.consumer_actions
-      Resource = aws_sqs_queue.main[name].arn
-    },
-    {
-      Sid      = "EventDeadLetterQueue"
-      Effect   = "Allow"
-      Action   = local.dead_letter_actions
-      Resource = aws_sqs_queue.dlq[name].arn
-    },
-  ] }
+  # delay (DelaySeconds) to retry it later. On the FIFO queue it lets a consumer
+  # re-send with a MessageGroupId; a FIFO queue has no per-message delay. A
+  # retired FIFO set keeps its two statements until the set is deleted.
+  consume_statements = { for name in keys(local.consumers) : name => concat(
+    [
+      {
+        Sid      = "EventQueue"
+        Effect   = "Allow"
+        Action   = local.consumer_actions
+        Resource = aws_sqs_queue.main[name].arn
+      },
+      {
+        Sid      = "EventDeadLetterQueue"
+        Effect   = "Allow"
+        Action   = local.dead_letter_actions
+        Resource = aws_sqs_queue.dlq[name].arn
+      },
+    ],
+    contains(local.fifo_consumers, name) ? [
+      {
+        Sid      = "EventFifoQueue"
+        Effect   = "Allow"
+        Action   = local.consumer_actions
+        Resource = aws_sqs_queue.fifo_main[name].arn
+      },
+      {
+        Sid      = "EventFifoDeadLetterQueue"
+        Effect   = "Allow"
+        Action   = local.dead_letter_actions
+        Resource = aws_sqs_queue.fifo_dlq[name].arn
+      },
+    ] : [],
+  ) }
 
   policy_workloads = setunion(keys(local.consumers), keys(local.producers))
 }

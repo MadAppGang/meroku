@@ -80,6 +80,7 @@ workload:
     - detail_type: order.created
     queue:
       visibility_timeout: 60
+      fifo_retired: true
     produces:
     - detail_types:
       - user.created
@@ -272,6 +273,9 @@ services:
     - name: users
       detail_type_prefix: user.
       bus: default
+    - name: ledger
+      detail_type_prefix: ledger.
+      ordered: true
     queue:
       visibility_timeout: 30
       max_receive_count: 5
@@ -321,6 +325,16 @@ vaults:
   secrets: []
 event_bus:
   enabled: true
+  type: enhanced
+  share:
+  - organization: true
+    access: publish
+  - ou: ou-ab12-cd34ef56
+    access: subscribe
+  - account: "000000000000"
+    access: full
+  - env: staging
+    access: publish
 valkey:
   enabled: true
   engine_version: "8"

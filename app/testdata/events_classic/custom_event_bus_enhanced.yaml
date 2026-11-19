@@ -1,0 +1,13 @@
+schema_version: 33
+project: myapp
+env: dev
+region: ap-southeast-2
+account_id: "000000000000"
+aws_profile: none
+use_default_vpc: false
+event_bus: { enabled: true }
+workload:
+  backend_image_port: 8080
+  events:
+    subscribes:
+      - { detail_type: order.created }

@@ -77,6 +77,11 @@ const (
 	warnCodeEventProducesAny             = "event_produces_any"
 	warnCodeEventQueueUnused             = "event_queue_unused"
 	warnCodeEventBusToggle               = "event_bus_toggle"
+	warnCodeEventBusTypeChange           = "event_bus_type_change"
+	warnCodeEventSubscriptionOrderChange = "event_subscription_order_change"
+	warnCodeEventFifoRetiredUnused       = "event_fifo_retired_unused"
+	warnCodeEventQueueDeleted            = "event_queue_deleted"
+	warnCodeEventShareRevoke             = "event_share_revoke"
 	warnCodeOwnBackendBucketEnv          = "own_backend_bucket_env"
 	warnCodeDataBucketDisabledWorkload   = "data_bucket_disabled_workload"
 	warnCodeValkeyAccessDisabledWorkload = "valkey_access_disabled_workload"
@@ -320,9 +325,9 @@ func collectEnvConfigWarnings(env string, in warningInputs) (report ConfigWarnin
 
 	envLevel := envLevelWarnings(envMap, in)
 
-	if previous, ok := previousEventBusState(env); ok {
-		envMap[eventBusPreviousKey] = previous
-	}
+	// Markers only: this path never runs Terraform, so its answers about what
+	// was deployed are advisory; generate decides from state.
+	prepareEventInputs(envMap, env, envFile)
 
 	if err := preprocessEnvMap(envMap); err != nil {
 		report.Warnings = normalizeConfigWarnings(envLevel)
@@ -332,7 +337,7 @@ func collectEnvConfigWarnings(env string, in warningInputs) (report ConfigWarnin
 
 	report.Warnings = configWarnings(envMap, envLevel)
 
-	if err := validateCustomTerraformRootNames(env); err != nil {
+	if err := validateCustomTerraformRootNamesFor(env, envMap[awsccRenderKey] == true); err != nil {
 		report.ConfigError = err.Error()
 	}
 	return report

@@ -161,8 +161,8 @@ export async function addSubscription(
       .click();
     await page
       .getByRole("textbox", {
-        name: `Name for new subscription on ${busLabel}`,
-        exact: true,
+        // "Rule key name …", or "Subscription key name …" on an enhanced bus.
+        name: new RegExp(`^(Rule|Subscription) key name for new subscription on ${busLabel}$`),
       })
       .fill(opts.name);
   }

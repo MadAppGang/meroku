@@ -30,6 +30,16 @@ locals {
       kind     = "delivery"
       name     = aws_sqs_queue.delivery_dlq[c].name
     } },
+    { for c in local.fifo_consumers : "${c}/fifo-dlq" => {
+      consumer = c
+      kind     = "ordered application"
+      name     = aws_sqs_queue.fifo_dlq[c].name
+    } },
+    { for c in local.fifo_consumers : "${c}/fifo-delivery-dlq" => {
+      consumer = c
+      kind     = "ordered delivery"
+      name     = aws_sqs_queue.fifo_delivery_dlq[c].name
+    } },
   )
 }
 

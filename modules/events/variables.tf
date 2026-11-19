@@ -12,6 +12,28 @@ variable "bus_enabled" {
   default     = false
 }
 
+variable "bus_type" {
+  description = "classic: the project bus is aws_cloudwatch_event_bus. enhanced: the bus is created by modules/event_bus_enhanced and passed in as enhanced_bus_arn; project-bus subscriptions are delivered by subscribers, not rules."
+  type        = string
+  default     = "classic"
+
+  validation {
+    condition     = contains(["classic", "enhanced"], var.bus_type)
+    error_message = "bus_type is classic or enhanced."
+  }
+}
+
+variable "enhanced_bus_arn" {
+  description = "The enhanced bus's ARN (event-busv2/<name>/<id>); \"\" on classic."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = !(var.bus_enabled && var.bus_type == "enhanced") || var.enhanced_bus_arn != ""
+    error_message = "An enhanced project bus needs its ARN in enhanced_bus_arn."
+  }
+}
+
 variable "workloads" {
   description = "Every workload of the environment, keyed by name, as the workload contract describes it. Only the task role name and the event source are read here. The backend is the entry keyed \"backend\"."
   type = map(object({
@@ -29,22 +51,30 @@ variable "consumers" {
     detail_type is EventBridge's wildcard. filters match fields of the event's
     detail: field is a path such as detail.order.type, values an exact-match
     list (any of).
+
+    On an enhanced bus a project-bus subscription may be ordered: it is then
+    delivered to the consumer's FIFO queue by its one FIFO subscriber. fifo is
+    true for a consumer with an ordered subscription or with fifo_retired, which
+    keeps a FIFO queue set that no subscriber delivers to any more.
   EOT
   type = list(object({
     name               = string
     visibility_timeout = optional(number, 30)
     max_receive_count  = optional(number, 5)
-    subscriptions = list(object({
+    fifo               = optional(bool, false)
+    fifo_retired       = optional(bool, false)
+    subscriptions = optional(list(object({
       key                = string
       detail_type        = optional(string, "")
       detail_type_prefix = optional(string, "")
       source             = optional(string, "")
       bus                = string
+      ordered            = optional(bool, false)
       filters = optional(list(object({
         field  = string
         values = list(string)
       })), [])
-    }))
+    })), [])
   }))
   default = []
 
@@ -54,8 +84,41 @@ variable "consumers" {
   }
 
   validation {
-    condition     = alltrue([for c in var.consumers : length(c.subscriptions) > 0])
-    error_message = "A consumer subscribes to at least one event."
+    condition     = alltrue([for c in var.consumers : length(c.subscriptions) > 0 || c.fifo_retired])
+    error_message = "A consumer subscribes to at least one event, or keeps a retired ordered queue (fifo_retired)."
+  }
+
+  validation {
+    condition = alltrue(flatten([for c in var.consumers : [
+      for s in c.subscriptions : !s.ordered || (s.bus == "project" && var.bus_enabled && var.bus_type == "enhanced")
+    ]]))
+    error_message = "Only a subscription on an enhanced project bus may be ordered."
+  }
+
+  # An enhanced bus's subscribers have no wildcard operator: a single * at the
+  # end becomes a prefix and a single * at the start a suffix. Anything else
+  # with a * cannot be expressed there.
+  validation {
+    condition = alltrue(flatten([for c in var.consumers : [
+      for s in c.subscriptions : !(var.bus_enabled && var.bus_type == "enhanced" && s.bus == "project") || !strcontains(s.detail_type, "*") || (
+        length(s.detail_type) > 1 && length(split("*", s.detail_type)) == 2 && (startswith(s.detail_type, "*") || endswith(s.detail_type, "*"))
+      )
+    ]]))
+    error_message = "On an enhanced project bus a detail_type holds at most one *, at its start or its end, beside other text."
+  }
+
+  validation {
+    condition = alltrue([for c in var.consumers :
+      !c.fifo_retired || !anytrue([for s in c.subscriptions : s.ordered])
+    ])
+    error_message = "A consumer with fifo_retired has no ordered subscription."
+  }
+
+  validation {
+    condition = alltrue([for c in var.consumers :
+      c.fifo == (anytrue([for s in c.subscriptions : s.ordered]) || c.fifo_retired)
+    ])
+    error_message = "fifo is true exactly when the consumer has an ordered subscription or fifo_retired."
   }
 
   validation {

@@ -35,9 +35,19 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { AccountInfo } from "../api/infrastructure";
+import type { RereadDeployedEvents } from "../hooks/use-deployed-events";
 import type { ComponentNode } from "../types";
 import type { ConfigWarning } from "../types/configWarnings";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
+import {
+	type ConfigUpdate,
+	type ConfigUpdateResult,
+	type DeployedEvents,
+	orderedQueueMayBeDeployed,
+	orderedQueueRereader,
+	updateWorkloadEvents,
+	type WorkloadEventsUpdate,
+} from "../utils/workloadEvents";
 import { ALBNodeProperties } from "./ALBNodeProperties";
 import { ALBRoutingRules } from "./ALBRoutingRules";
 import { ALBStatus } from "./ALBStatus";
@@ -122,6 +132,18 @@ interface SidebarProps {
 	onClose: () => void;
 	config?: YamlInfrastructureConfig;
 	onConfigChange?: (config: Partial<YamlInfrastructureConfig>) => void;
+	/** What is deployed for the env's events; undefined while unknown. */
+	deployedEvents?: DeployedEvents;
+	/** Reads the deployed events state again, now. */
+	rereadDeployedEvents?: RereadDeployedEvents;
+	/** The environment file `config` was loaded from and is saved to. */
+	environment?: string;
+	/**
+	 * Applies `update` to the config the owner holds when it is called, only
+	 * while that is the config of the environment file `file` and `file` is
+	 * still open; saves it when it changed.
+	 */
+	onConfigUpdate?: (file: string, update: ConfigUpdate) => ConfigUpdateResult;
 	accountInfo?: AccountInfo;
 	onDeleteNode?: (nodeId: string, nodeType: string, name?: string) => void;
 	/** Configuration warnings about the selected node, shown above every tab. */
@@ -136,10 +158,24 @@ export function Sidebar({
 	onClose,
 	config,
 	onConfigChange,
+	deployedEvents,
+	rereadDeployedEvents,
+	environment,
+	onConfigUpdate,
 	accountInfo,
 	onDeleteNode,
 	warnings = NO_WARNINGS,
 }: SidebarProps) {
+	// An updater of one workload's events, bound to the environment file open
+	// at this render: a caller that keeps it across a wait writes into that
+	// file's config as it is when it runs, or nowhere if another is open.
+	const workloadEventsUpdater = (workload: string) => {
+		if (!onConfigUpdate || !environment) return undefined;
+		return (update: WorkloadEventsUpdate) =>
+			onConfigUpdate(environment, (current) =>
+				updateWorkloadEvents(current, workload, update),
+			);
+	};
 	const uid = useId();
 	const [activeTab, setActiveTab] = useState("settings");
 	const [showLeftScroll, setShowLeftScroll] = useState(false);
@@ -1723,7 +1759,7 @@ jobs:
 
 				{activeTab === "test" &&
 					selectedNode.type === "eventbridge" &&
-					config && <EventBridgeTestEvent config={config} />}
+					config && <EventBridgeTestEvent key={panelKey} config={config} />}
 
 				{activeTab === "bus" &&
 					selectedNode.type === "eventbridge" &&
@@ -1733,6 +1769,8 @@ jobs:
 							key={panelKey}
 							config={config}
 							onConfigChange={onConfigChange}
+							deployed={deployedEvents}
+							rereadDeployed={rereadDeployedEvents}
 						/>
 					)}
 
@@ -1748,6 +1786,15 @@ jobs:
 							workloadName="backend"
 							kind="backend"
 							events={config.workload?.events}
+							orderedQueueMayExist={orderedQueueMayBeDeployed(
+								deployedEvents,
+								"backend",
+							)}
+							rereadOrderedQueueMayExist={orderedQueueRereader(
+								rereadDeployedEvents,
+								"backend",
+							)}
+							onEventsUpdate={workloadEventsUpdater("backend")}
 							onEventsChange={(events) =>
 								onConfigChange({
 									workload: { events } as YamlInfrastructureConfig["workload"],
@@ -1771,6 +1818,15 @@ jobs:
 								workloadName={name}
 								kind="service"
 								events={service.events}
+								orderedQueueMayExist={orderedQueueMayBeDeployed(
+									deployedEvents,
+									name,
+								)}
+								rereadOrderedQueueMayExist={orderedQueueRereader(
+									rereadDeployedEvents,
+									name,
+								)}
+								onEventsUpdate={workloadEventsUpdater(name)}
 								onEventsChange={(events) =>
 									onConfigChange({
 										services: (config.services || []).map((s) =>

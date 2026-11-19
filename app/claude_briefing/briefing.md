@@ -41,6 +41,10 @@ Use the profile from the env YAML, not whatever your shell has: prefix AWS and
 Terraform commands with `AWS_PROFILE={{.ProfileArg}}`. meroku exports that profile
 itself before it runs Terraform; this pane may not have inherited it.
 
+An AccessDenied on an `events:`, `ram:`, `cloudformation:` or `organizations:` action during
+an enhanced event bus deploy: compare the deployer's permissions with the "Deployer
+permissions" table in meroku's `ai_docs/EVENTS.md`.
+
 ### Allowed fixes, in this order
 
 (a) **The cause is a meroku bug** — a template, module, migration or the meroku

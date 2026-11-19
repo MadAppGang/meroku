@@ -3,14 +3,33 @@ import type * as React from "react";
 
 import { cn } from "./utils";
 
-function Card({ className, ...props }: React.ComponentProps<"div">) {
+const cardVariants = cva("bg-card text-card-foreground flex flex-col border", {
+	variants: {
+		size: {
+			// A section of a panel, laid out with CardHeader and CardContent.
+			default: "gap-6 rounded-xl",
+			// One entry of a list inside a section: a share, a subscription.
+			compact: "gap-2 rounded-lg p-3 shadow-sm",
+			// A box whose own sections supply the padding and the dividers.
+			flush: "gap-0 rounded-lg",
+			// A recessed panel inside a section, such as a summary or an example.
+			inset: "gap-2 rounded-lg border-transparent bg-muted p-3",
+		},
+	},
+	defaultVariants: {
+		size: "default",
+	},
+});
+
+function Card({
+	className,
+	size,
+	...props
+}: React.ComponentProps<"div"> & VariantProps<typeof cardVariants>) {
 	return (
 		<div
 			data-slot="card"
-			className={cn(
-				"bg-card text-card-foreground flex flex-col gap-6 rounded-xl border",
-				className,
-			)}
+			className={cn(cardVariants({ size }), className)}
 			{...props}
 		/>
 	);
@@ -35,6 +54,8 @@ const cardTitleVariants = cva("leading-none", {
 			default: "",
 			// A title that is a path or a name as written, such as a folder.
 			code: "font-mono text-sm",
+			// The title of a compact or inset card, one entry among several.
+			item: "text-sm font-medium",
 		},
 	},
 	defaultVariants: {

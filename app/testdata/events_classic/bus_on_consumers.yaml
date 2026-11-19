@@ -1,0 +1,34 @@
+schema_version: 33
+project: myapp
+env: dev
+region: ap-southeast-2
+account_id: "000000000000"
+aws_profile: none
+use_default_vpc: false
+event_bus: { enabled: true }
+workload:
+  backend_image_port: 8080
+  events:
+    subscribes:
+      - { detail_type: order.created }
+      - { name: ecs-changes, detail_type: ECS Task State Change, source: aws.ecs, bus: default }
+services:
+  - name: orders
+    container_port: 3000
+    events:
+      subscribes:
+        - { detail_type: payment.completed, source: example.payments }
+        - detail_type: "job.*"
+          source: example.jobs
+          filters:
+            - { field: detail.status, values: [done, failed] }
+            - { field: detail.order.type, values: [retail] }
+        - { name: users, detail_type_prefix: "user.", bus: default }
+        - { name: everything, detail_type: "*" }
+        - { detail_type: invoice.paid, bus: project }
+      queue: { visibility_timeout: 120, max_receive_count: 3 }
+  - name: billing
+    container_port: 3001
+    events:
+      subscribes:
+        - { detail_type_prefix: "invoice." }

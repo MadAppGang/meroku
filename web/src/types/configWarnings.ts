@@ -24,6 +24,22 @@ export type WarningKind =
 	| "data_bucket"
 	| "event_bus";
 
+/**
+ * The codes of the events warnings (`app/config_warnings.go`). `code` stays a
+ * plain string because other rules add codes; these are the ones the events
+ * UI keys on.
+ */
+export type EventWarningCode =
+	| "event_subscription_all_types"
+	| "event_produces_any"
+	| "event_queue_unused"
+	| "event_bus_toggle"
+	| "event_bus_type_change"
+	| "event_subscription_order_change"
+	| "event_fifo_retired_unused"
+	| "event_queue_deleted"
+	| "event_share_revoke";
+
 export interface WarningItem {
 	kind: WarningKind;
 	name: string;

@@ -1,16 +1,25 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 // biome-ignore lint/correctness/noUnusedImports: Storybook's browser-test transform requires React in scope for JSX.
 import React from "react";
-import { expect, userEvent, within } from "storybook/test";
+import { expect, userEvent, waitFor, within } from "storybook/test";
 import type {
 	WorkloadEvents,
 	YamlInfrastructureConfig,
 } from "../../../../types/yamlConfig";
+import {
+	type DeployedEvents,
+	orderedQueueMayBeDeployed,
+	orderedQueueRereader,
+	updateWorkloadEvents,
+} from "../../../../utils/workloadEvents";
 import { ServiceEventsTab } from "../../../ServiceEventsTab";
+import { Button } from "../../../ui/button";
 import {
 	baseConfig,
 	ConfigHarness,
 	configWith,
+	controlledReads,
+	deployedEvents,
 	editorDecorator,
 	editorParameters,
 } from "./editorStoryKit";
@@ -25,27 +34,106 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-function ServiceEditor({ initial }: { initial: YamlInfrastructureConfig }) {
+function ServiceEditor({
+	initial,
+	deployed,
+	reread,
+	onSave,
+	serviceAdder = false,
+	producesAdder = false,
+}: {
+	initial: YamlInfrastructureConfig;
+	/** GET /api/events/deployed's answer; absent means not known yet. */
+	deployed?: DeployedEvents;
+	/** A fresh read, answered by the story. Absent: no re-read. */
+	reread?: () => Promise<DeployedEvents>;
+	/** Sees every config the app would save. */
+	onSave?: (config: YamlInfrastructureConfig) => void;
+	/** Shows an "Add service" button and the service names, as another panel would edit them. */
+	serviceAdder?: boolean;
+	/** Shows a button that adds a produces entry to orders, as another panel would. */
+	producesAdder?: boolean;
+}) {
 	return (
-		<ConfigHarness initial={initial}>
-			{(config, onChange) => (
-				<ServiceEventsTab
-					config={config}
-					workloadName="orders"
-					kind="service"
-					events={config.services?.find((s) => s.name === "orders")?.events}
-					onEventsChange={(events) =>
-						onChange({
-							services: (config.services || []).map((s) =>
-								s.name === "orders" ? { ...s, events } : s,
-							),
-						})
-					}
-				/>
+		<ConfigHarness initial={initial} onSave={onSave}>
+			{(config, onChange, onUpdate) => (
+				<>
+					{producesAdder && (
+						<Button
+							onClick={() =>
+								onChange({
+									services: (config.services || []).map((s) =>
+										s.name === "orders"
+											? {
+													...s,
+													events: {
+														...s.events,
+														produces: [{ detail_types: ["order.created"] }],
+													},
+												}
+											: s,
+									),
+								})
+							}
+						>
+							Add a produces entry elsewhere
+						</Button>
+					)}
+					{serviceAdder && (
+						<>
+							<Button
+								onClick={() =>
+									onChange({
+										services: [...(config.services || []), { name: "billing" }],
+									})
+								}
+							>
+								Add service
+							</Button>
+							<p hidden data-testid="service-names">
+								{(config.services || []).map((s) => s.name).join(",")}
+							</p>
+						</>
+					)}
+					<ServiceEventsTab
+						orderedQueueMayExist={orderedQueueMayBeDeployed(deployed, "orders")}
+						rereadOrderedQueueMayExist={orderedQueueRereader(reread, "orders")}
+						onEventsUpdate={(update) =>
+							onUpdate(config.env, (current) =>
+								updateWorkloadEvents(current, "orders", update),
+							)
+						}
+						config={config}
+						workloadName="orders"
+						kind="service"
+						events={config.services?.find((s) => s.name === "orders")?.events}
+						onEventsChange={(events) =>
+							onChange({
+								services: (config.services || []).map((s) =>
+									s.name === "orders" ? { ...s, events } : s,
+								),
+							})
+						}
+					/>
+				</>
 			)}
 		</ConfigHarness>
 	);
 }
+
+/** The deployed-state reads of the FIFO decision stories. */
+const ledgerReads = controlledReads<DeployedEvents>();
+/** The configs the FIFO decision stories saved. */
+const ledgerSaves: YamlInfrastructureConfig[] = [];
+const recordLedgerSave = (config: YamlInfrastructureConfig) => {
+	ledgerSaves.push(config);
+};
+const resetLedger = () => {
+	ledgerReads.reset();
+	ledgerSaves.length = 0;
+};
+const ordersEvents = (config: YamlInfrastructureConfig | undefined) =>
+	config?.services?.find((s) => s.name === "orders")?.events;
 
 function withOrdersEvents(
 	events: WorkloadEvents,
@@ -262,6 +350,596 @@ export const QueueSettings: Story = {
 			})}
 		/>
 	),
+};
+
+/** An Enhanced project bus; the event task's rule sits on the default bus. */
+const enhancedBus: Partial<YamlInfrastructureConfig> = {
+	event_bus: { enabled: true, type: "enhanced" },
+	event_processor_tasks: [
+		{
+			name: "ingest",
+			rules: [
+				{
+					name: "order-created",
+					sources: ["demo.orders"],
+					detail_types: ["OrderCreated"],
+					bus: "default",
+				},
+			],
+		},
+	],
+};
+
+export const EnhancedOrderedSubscription: Story = {
+	name: "Enhanced: an ordered subscription",
+	render: () => (
+		<ServiceEditor
+			initial={withOrdersEvents(
+				{
+					subscribes: [
+						{ detail_type: "payment.completed" },
+						{ name: "ledger", detail_type_prefix: "ledger.", ordered: true },
+					],
+				},
+				enhancedBus,
+			)}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await expect(canvas.getByLabelText("Keep order for ledger")).toBeChecked();
+		await expect(
+			canvas.getByLabelText("Keep order for payment-completed"),
+		).not.toBeChecked();
+		await expect(canvas.getByText("EVENT_FIFO_QUEUE_URL")).toBeVisible();
+		await expect(canvas.getByText("EVENT_BUS_ARN")).toBeVisible();
+		await expect(canvas.getByTestId("event-flow-fifo")).toBeVisible();
+		await expect(
+			canvas.getByText(/ordered entries share one ordered subscriber/),
+		).toBeVisible();
+	},
+};
+
+export const EnhancedLastOrderedTurnedOff: Story = {
+	name: "Enhanced: turning the last ordered subscription off retires its queue",
+	render: () => (
+		<ServiceEditor
+			initial={withOrdersEvents(
+				{
+					subscribes: [
+						{ name: "ledger", detail_type_prefix: "ledger.", ordered: true },
+					],
+				},
+				enhancedBus,
+			)}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await userEvent.click(canvas.getByLabelText("Keep order for ledger"));
+		await expect(
+			canvas.getByText(
+				/The ordered queue is kept, with any events still in it/,
+			),
+		).toBeVisible();
+		await expect(canvas.getByTestId("fifo-retired")).toBeVisible();
+		await userEvent.click(canvas.getByLabelText("Keep order for ledger"));
+		await expect(canvas.queryByTestId("fifo-retired")).toBeNull();
+	},
+};
+
+export const EnhancedOrderedNeverDeployedTurnedOff: Story = {
+	name: "Enhanced: turning off an ordered subscription that was never deployed",
+	render: () => (
+		<ServiceEditor
+			deployed={deployedEvents()}
+			initial={withOrdersEvents(
+				{
+					subscribes: [
+						{ name: "ledger", detail_type_prefix: "ledger.", ordered: true },
+					],
+				},
+				enhancedBus,
+			)}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await userEvent.click(canvas.getByLabelText("Keep order for ledger"));
+		await expect(canvas.queryByTestId("fifo-retired")).toBeNull();
+		await expect(canvas.queryByText(/The ordered queue is kept/)).toBeNull();
+		await expect(canvas.queryByTestId("event-flow-fifo")).toBeNull();
+	},
+};
+
+const orderedLedger = (): YamlInfrastructureConfig =>
+	withOrdersEvents(
+		{
+			subscribes: [
+				{ name: "ledger", detail_type_prefix: "ledger.", ordered: true },
+			],
+		},
+		enhancedBus,
+	);
+
+/**
+ * Clicks the ledger's order switch off and checks that nothing is saved
+ * until the fresh read the edit started is answered.
+ */
+async function turnLedgerOrderOff(canvasElement: HTMLElement) {
+	const canvas = within(canvasElement);
+	await userEvent.click(canvas.getByLabelText("Keep order for ledger"));
+	await waitFor(() => expect(ledgerReads.waiting()).toBe(1));
+	await expect(
+		canvas.getByText(/Checking whether this service's ordered queue/),
+	).toBeVisible();
+	await expect(canvas.getByLabelText("Keep order for ledger")).toBeChecked();
+	await expect(ledgerSaves).toHaveLength(0);
+	return canvas;
+}
+
+/**
+ * The last read said the ordered queue was never deployed, and a deploy from
+ * the CLI has created it since. The edit waits for a fresh read, which says
+ * the queue is deployed, and is saved once, with fifo_retired.
+ */
+export const EnhancedOrderedDeployedSinceLastRead: Story = {
+	name: "Enhanced: an ordered queue deployed since the last read is kept",
+	beforeEach: resetLedger,
+	render: () => (
+		<ServiceEditor
+			deployed={deployedEvents()}
+			reread={ledgerReads.read}
+			onSave={recordLedgerSave}
+			initial={orderedLedger()}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = await turnLedgerOrderOff(canvasElement);
+		ledgerReads.resolve(deployedEvents({ fifoConsumers: ["orders"] }));
+		await waitFor(() =>
+			expect(canvas.getByTestId("fifo-retired")).toBeVisible(),
+		);
+		await expect(ledgerSaves).toHaveLength(1);
+		await expect(ordersEvents(ledgerSaves[0])?.queue?.fifo_retired).toBe(true);
+		await expect(
+			canvas.queryByText(/Checking whether this service's ordered queue/),
+		).toBeNull();
+	},
+};
+
+/**
+ * The fresh read confirms the queue was never deployed: one save, without
+ * fifo_retired.
+ */
+export const EnhancedOrderedNeverDeployedConfirmed: Story = {
+	name: "Enhanced: a fresh read confirms an ordered queue was never deployed",
+	beforeEach: resetLedger,
+	render: () => (
+		<ServiceEditor
+			deployed={deployedEvents()}
+			reread={ledgerReads.read}
+			onSave={recordLedgerSave}
+			initial={orderedLedger()}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = await turnLedgerOrderOff(canvasElement);
+		ledgerReads.resolve(deployedEvents());
+		await waitFor(() =>
+			expect(canvas.getByLabelText("Keep order for ledger")).not.toBeChecked(),
+		);
+		await expect(ledgerSaves).toHaveLength(1);
+		await expect(ordersEvents(ledgerSaves[0])?.queue).toBeUndefined();
+		await expect(canvas.queryByTestId("fifo-retired")).toBeNull();
+		await expect(canvas.queryByText(/The ordered queue is kept/)).toBeNull();
+	},
+};
+
+/** A fresh read that fails is unknown: one save, keeping the queue. */
+export const EnhancedOrderedRereadFailed: Story = {
+	name: "Enhanced: a failed fresh read keeps the ordered queue",
+	beforeEach: resetLedger,
+	render: () => (
+		<ServiceEditor
+			deployed={deployedEvents()}
+			reread={ledgerReads.read}
+			onSave={recordLedgerSave}
+			initial={orderedLedger()}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = await turnLedgerOrderOff(canvasElement);
+		ledgerReads.reject(new Error("the state could not be read"));
+		await waitFor(() =>
+			expect(canvas.getByTestId("fifo-retired")).toBeVisible(),
+		);
+		await expect(ledgerSaves).toHaveLength(1);
+		await expect(ordersEvents(ledgerSaves[0])?.queue?.fifo_retired).toBe(true);
+	},
+};
+
+/**
+ * A service is added while the read is pending. The decision lands on the
+ * config as it is then: the new service stays, in the editor and in the
+ * saved config, and the ledger's order is off.
+ */
+export const EnhancedOrderedServiceAddedWhileReading: Story = {
+	name: "Enhanced: a service added while the read is pending is kept",
+	beforeEach: resetLedger,
+	render: () => (
+		<ServiceEditor
+			deployed={deployedEvents({ fifoConsumers: ["orders"] })}
+			reread={ledgerReads.read}
+			onSave={recordLedgerSave}
+			serviceAdder
+			initial={orderedLedger()}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = await turnLedgerOrderOff(canvasElement);
+		await userEvent.click(canvas.getByRole("button", { name: "Add service" }));
+		await waitFor(() =>
+			expect(canvas.getByTestId("service-names")).toHaveTextContent(
+				"orders,worker,billing",
+			),
+		);
+		await expect(ledgerSaves).toHaveLength(1);
+		ledgerReads.resolve(deployedEvents());
+		await waitFor(() =>
+			expect(canvas.getByLabelText("Keep order for ledger")).not.toBeChecked(),
+		);
+		await expect(canvas.getByTestId("service-names")).toHaveTextContent(
+			"orders,worker,billing",
+		);
+		await expect(ledgerSaves).toHaveLength(2);
+		const last = ledgerSaves[1];
+		await expect(last.services?.map((s) => s.name)).toEqual([
+			"orders",
+			"worker",
+			"billing",
+		]);
+		await expect(ordersEvents(last)?.subscribes?.[0].ordered).toBeUndefined();
+		await expect(ordersEvents(last)?.queue).toBeUndefined();
+	},
+};
+
+/**
+ * While the read is pending, every events control of the tab is disabled,
+ * so no other edit of this service's events can make the decision stale.
+ * Once the read answers, the controls work again and the one save holds the
+ * ordering change.
+ */
+export const EnhancedOrderedEditsLockedWhileReading: Story = {
+	name: "Enhanced: events edits are locked while the read is pending",
+	beforeEach: resetLedger,
+	render: () => (
+		<ServiceEditor
+			deployed={deployedEvents({ fifoConsumers: ["orders"] })}
+			reread={ledgerReads.read}
+			onSave={recordLedgerSave}
+			initial={orderedLedger()}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = await turnLedgerOrderOff(canvasElement);
+		await expect(
+			canvas.getByText(/The events settings are locked until the check/),
+		).toBeVisible();
+		await expect(canvas.getByLabelText("Keep order for ledger")).toBeDisabled();
+		for (const filter of canvas.getAllByRole("button", {
+			name: /Filter new subscription on/,
+		}))
+			await expect(filter).toBeDisabled();
+		await expect(
+			canvas.getByRole("textbox", { name: "New entry" }),
+		).toBeDisabled();
+		await expect(
+			canvas.getByRole("button", { name: "Advanced queue settings" }),
+		).toBeDisabled();
+		ledgerReads.resolve(deployedEvents());
+		await waitFor(() =>
+			expect(canvas.getByLabelText("Keep order for ledger")).toBeEnabled(),
+		);
+		await expect(
+			canvas.getByLabelText("Keep order for ledger"),
+		).not.toBeChecked();
+		await expect(
+			canvas.getByRole("textbox", { name: "New entry" }),
+		).toBeEnabled();
+		await expect(ledgerSaves).toHaveLength(1);
+		await expect(ordersEvents(ledgerSaves[0])?.subscribes?.[0].ordered).toBe(
+			undefined,
+		);
+		await expect(
+			canvas.queryByText(/The events settings are locked/),
+		).toBeNull();
+	},
+};
+
+/**
+ * Another panel changes this service's events while the read is pending.
+ * The ordering change no longer describes them, so it is not saved, and the
+ * tab says so instead of dropping it silently.
+ */
+export const EnhancedOrderedEventsChangedElsewhereWhileReading: Story = {
+	name: "Enhanced: an events change elsewhere while reading is reported",
+	beforeEach: resetLedger,
+	render: () => (
+		<ServiceEditor
+			deployed={deployedEvents({ fifoConsumers: ["orders"] })}
+			reread={ledgerReads.read}
+			onSave={recordLedgerSave}
+			producesAdder
+			initial={orderedLedger()}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = await turnLedgerOrderOff(canvasElement);
+		await userEvent.click(
+			canvas.getByRole("button", { name: "Add a produces entry elsewhere" }),
+		);
+		await expect(ledgerSaves).toHaveLength(1);
+		ledgerReads.resolve(deployedEvents());
+		await waitFor(() =>
+			expect(canvas.getByText(/Ordered delivery is still on/)).toBeVisible(),
+		);
+		await expect(canvas.getByLabelText("Keep order for ledger")).toBeChecked();
+		await expect(canvas.getByLabelText("Keep order for ledger")).toBeEnabled();
+		await expect(ledgerSaves).toHaveLength(1);
+		await expect(ordersEvents(ledgerSaves[0])?.subscribes?.[0].ordered).toBe(
+			true,
+		);
+	},
+};
+
+export const EnhancedMixedBusFlow: Story = {
+	name: "Enhanced: the flow draws default-bus rules apart from subscribers",
+	render: () => (
+		<ServiceEditor
+			initial={withOrdersEvents(
+				{
+					subscribes: [
+						{ detail_type: "payment.completed" },
+						{ detail_type: "invoice.sent", bus: "default" },
+					],
+				},
+				enhancedBus,
+			)}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		const flow = within(canvas.getByTestId("event-flow"));
+		await expect(flow.getByText("Subscribers")).toBeVisible();
+		await expect(flow.getByText("Rules")).toBeVisible();
+		await expect(flow.getByText("default")).toBeVisible();
+		await expect(flow.getAllByText("1 subscription")).toHaveLength(2);
+	},
+};
+
+export const EnhancedWildcardMapped: Story = {
+	name: "Enhanced: wildcards mapped to a prefix and a suffix",
+	render: () => (
+		<ServiceEditor
+			initial={withOrdersEvents(
+				{
+					subscribes: [{ detail_type: "job.*" }, { detail_type: "*.created" }],
+				},
+				enhancedBus,
+			)}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await expect(
+			canvas.getByText("Matches detail types starting with job."),
+		).toBeVisible();
+		await expect(
+			canvas.getByText("Matches detail types ending with .created"),
+		).toBeVisible();
+	},
+};
+
+export const EnhancedWildcardError: Story = {
+	name: "Enhanced: a wildcard the bus cannot match",
+	render: () => (
+		<ServiceEditor
+			initial={withOrdersEvents(
+				{ subscribes: [{ detail_type: "job.*.done" }] },
+				enhancedBus,
+			)}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await expect(
+			canvas.getByText(/uses \* in a way the enhanced bus cannot match/),
+		).toBeVisible();
+		const envSection = within(canvas.getByTestId("subscribes-section-project"));
+		await userEvent.type(
+			envSection.getByLabelText("Event type for project bus"),
+			"a*b",
+		);
+		await expect(
+			envSection.getByRole("button", {
+				name: "Add subscription to project bus",
+			}),
+		).toBeDisabled();
+	},
+};
+
+export const OrderedOnClassic: Story = {
+	name: "Ordered on a Standard bus: the switch stays to turn it off",
+	render: () => (
+		<ServiceEditor
+			initial={withOrdersEvents(
+				{
+					subscribes: [
+						{ detail_type: "payment.completed" },
+						{ name: "ledger", detail_type_prefix: "ledger.", ordered: true },
+					],
+				},
+				{ event_bus: { enabled: true } },
+			)}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await expect(
+			canvas.queryByLabelText("Keep order for payment-completed"),
+		).toBeNull();
+		await expect(canvas.getByLabelText("Keep order for ledger")).toBeChecked();
+		await expect(
+			canvas.getByText(/Keep order needs the Enhanced project bus/),
+		).toBeVisible();
+	},
+};
+
+export const FifoRetired: Story = {
+	name: "Retired ordered queue",
+	render: () => (
+		<ServiceEditor
+			initial={withOrdersEvents(
+				{
+					subscribes: [{ detail_type: "payment.completed" }],
+					queue: { fifo_retired: true, visibility_timeout: 60 },
+				},
+				enhancedBus,
+			)}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		const retired = within(canvas.getByTestId("fifo-retired"));
+		await expect(retired.getByText("Ordered queue (retired)")).toBeVisible();
+		await expect(
+			retired.getByText("demo-events-orders-dev.fifo"),
+		).toBeVisible();
+		await userEvent.click(
+			retired.getByRole("button", { name: "Delete the ordered queue" }),
+		);
+		const dialog = within(canvasElement.ownerDocument.body);
+		// The dialog fades in; wait until it is shown.
+		await waitFor(() =>
+			expect(
+				dialog.getByText(/Deleting it also deletes any events still in it/),
+			).toBeVisible(),
+		);
+		await expect(
+			dialog.queryByText(/its standard queue is deleted as well/),
+		).toBeNull();
+	},
+};
+
+export const FifoRetiredNoSubscriptions: Story = {
+	name: "Retired ordered queue, no subscriptions left",
+	render: () => (
+		<ServiceEditor
+			initial={withOrdersEvents({ queue: { fifo_retired: true } }, enhancedBus)}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await expect(
+			canvas.getByText(/Subscribes to nothing\. Its queues stay/),
+		).toBeVisible();
+		await userEvent.click(
+			canvas.getByRole("button", { name: "Delete the ordered queue" }),
+		);
+		const dialog = within(canvasElement.ownerDocument.body);
+		await waitFor(() =>
+			expect(
+				dialog.getByText(/its standard queue is deleted as well/),
+			).toBeVisible(),
+		);
+		await userEvent.click(
+			dialog.getByRole("button", { name: "Delete the ordered queue" }),
+		);
+		await expect(
+			await canvas.findByText("Subscribes to nothing, so it has no queue."),
+		).toBeVisible();
+	},
+};
+
+/**
+ * fifo_retired on a consumer whose ordered queue was never deployed: written
+ * by hand, or by an edit made while the deployed state could not be read (the
+ * editor then keeps the queue to be safe). Generate warns
+ * event_fifo_retired_unused; the editor shows the same retired card.
+ */
+export const FifoRetiredUnused: Story = {
+	name: "Retired ordered queue on a never-deployed environment",
+	render: () => (
+		<ServiceEditor
+			initial={withOrdersEvents(
+				{
+					subscribes: [{ name: "ledger", detail_type_prefix: "ledger." }],
+					queue: { fifo_retired: true },
+				},
+				enhancedBus,
+			)}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await expect(canvas.getByTestId("fifo-retired")).toBeVisible();
+		await expect(
+			canvas.getByLabelText("Keep order for ledger"),
+		).not.toBeChecked();
+	},
+};
+
+export const EnhancedSummaryRetiredQueue: Story = {
+	name: "Enhanced summary with a retired ordered queue",
+	render: () => (
+		<ServiceEditor
+			deployed={deployedEvents({ fifoConsumers: ["orders"] })}
+			initial={withOrdersEvents(
+				{
+					subscribes: [{ detail_type: "payment.completed" }],
+					queue: { fifo_retired: true },
+				},
+				enhancedBus,
+			)}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await expect(canvas.getByText("Bus")).toBeVisible();
+		await expect(canvas.getByText("Enhanced")).toBeVisible();
+		await expect(canvas.getByText("EVENT_BUS_ARN")).toBeVisible();
+		await expect(canvas.getByText("EVENT_FIFO_QUEUE_URL")).toBeVisible();
+		await expect(canvas.getByText("EVENT_FIFO_DLQ_URL")).toBeVisible();
+		await expect(
+			canvas.getByText(
+				/The ordered queue is kept, with any events still in it/,
+			),
+		).toBeVisible();
+		await expect(canvas.getByTestId("fifo-retired")).toBeVisible();
+	},
+};
+
+export const EnhancedDeployedOrderedTurnedOff: Story = {
+	name: "Enhanced: turning off an ordered subscription that is deployed",
+	render: () => (
+		<ServiceEditor
+			deployed={deployedEvents({ fifoConsumers: ["orders"] })}
+			initial={withOrdersEvents(
+				{
+					subscribes: [
+						{ name: "ledger", detail_type_prefix: "ledger.", ordered: true },
+					],
+				},
+				enhancedBus,
+			)}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await userEvent.click(canvas.getByLabelText("Keep order for ledger"));
+		await expect(canvas.getByTestId("fifo-retired")).toBeVisible();
+	},
 };
 
 export const Backend: Story = {

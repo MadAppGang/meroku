@@ -729,6 +729,11 @@ See [CONFIG_WARNINGS.md](./CONFIG_WARNINGS.md).
 | `event_produces_any` | events | A workload may publish any detail-type |
 | `event_queue_unused` | events | `events.queue` on a workload that subscribes to nothing |
 | `event_bus_toggle` | event_bus | `event_bus.enabled` changed since the last generate |
+| `event_bus_type_change` | event_bus | `event_bus.type` differs from the deployed bus kind; the bus is replaced |
+| `event_subscription_order_change` | events | A subscription's `ordered` changed; its events move to the other queue |
+| `event_fifo_retired_unused` | events | `queue.fifo_retired` with no ordered subscription and no deployed FIFO set |
+| `event_queue_deleted` | events | Enhanced bus: a former consumer's deployed queues are deleted |
+| `event_share_revoke` | event_bus | A shared account loses subscribe access, or a shared enhanced bus is left; its subscribers are revoked |
 | `amplify_rule_disabled_workload` | amplify_apps | A rewrite rule points at a switched-off workload |
 | `amplify_rule_unreachable` | amplify_apps | A rewrite rule after the catch-all |
 | `data_bucket_disabled_workload` | data_bucket | A shared folder lists a switched-off workload |

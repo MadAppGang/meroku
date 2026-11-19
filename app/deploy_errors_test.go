@@ -178,6 +178,42 @@ func TestRunCommandToDeployReturnsPreflightError(t *testing.T) {
 	}
 }
 
+// A render refused only because the events state could not be read runs the
+// pre-flight, which refreshes an expired SSO session, and generates once
+// more; a second refusal stops the deploy at generate.
+func TestRunCommandToDeployRetriesAnUnreadableEventsStateAfterPreflight(t *testing.T) {
+	template, err := os.ReadFile(filepath.Join("..", "env", "main.hbs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	deployFixture(t, string(template), chainStepYAML(chainEnhancedPublishOnly, `
+  - name: orders
+    container_port: 3000
+    events:
+      subscribes:
+        - { name: a, detail_type: a.x }
+`))
+	calls := stubPreflight(t, nil)
+	probes := 0
+	stubEventsState(t, func() eventsAwsccState {
+		probes++
+		return unreadableEventsState()
+	})
+
+	captureOutput(t, func() { err = runCommandToDeploy("dev") })
+
+	var se *deployStepError
+	if !errors.As(err, &se) || se.Step != "generate" {
+		t.Fatalf("want a generate step error, got %T: %v", err, err)
+	}
+	if !errors.Is(err, errEventsStateUnreadable) {
+		t.Errorf("the refusal does not carry errEventsStateUnreadable: %v", err)
+	}
+	if *calls != 1 || probes != 2 {
+		t.Errorf("pre-flight ran %d times and the state was probed %d times, want 1 and 2", *calls, probes)
+	}
+}
+
 func TestReportDeployFailureOffersHandoffOnA(t *testing.T) {
 	target := handoffTarget{
 		ProjectRoot: "/fake/project",

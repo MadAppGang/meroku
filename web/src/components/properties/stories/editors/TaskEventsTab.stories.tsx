@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 // biome-ignore lint/correctness/noUnusedImports: Storybook's browser-test transform requires React in scope for JSX.
 import React from "react";
+import { expect, within } from "storybook/test";
 import type { YamlInfrastructureConfig } from "../../../../types/yamlConfig";
 import { TaskEventsTab } from "../../../TaskEventsTab";
 import {
@@ -64,4 +65,32 @@ export const Produces: Story = {
 			})}
 		/>
 	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await expect(canvas.queryByTestId("task-events-bus-arn")).toBeNull();
+	},
+};
+
+export const ProducesOnEnhancedBus: Story = {
+	name: "Produces, on an Enhanced bus",
+	render: () => (
+		<Editor
+			initial={configWith({
+				event_bus: { enabled: true, type: "enhanced" },
+				scheduled_tasks: [
+					{
+						name: "nightly",
+						schedule: "rate(1 day)",
+						events: { produces: [{ detail_types: ["ReportReady"] }] },
+					},
+				],
+			})}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		const vars = within(canvas.getByTestId("task-events-bus-arn"));
+		await expect(vars.getByText("EVENT_BUS_ARN")).toBeVisible();
+		await expect(vars.getByText("EVENT_BUS_NAME=demo-dev")).toBeVisible();
+	},
 };
