@@ -68,10 +68,8 @@ export default function App() {
 	);
 	const configWarnings = warningsReport?.warnings ?? NO_WARNINGS;
 	// What is deployed for the env's events, re-read after each save too.
-	const deployedEvents = useDeployedEvents(
-		selectedEnvironment,
-		warningsRefreshKey,
-	);
+	const { deployed: deployedEvents, reread: rereadDeployedEvents } =
+		useDeployedEvents(selectedEnvironment, warningsRefreshKey);
 	const selectedNodeWarnings = useMemo(
 		() =>
 			selectedNode ? warningsForNode(configWarnings, selectedNode.id) : [],
@@ -621,6 +619,7 @@ export default function App() {
 										}}
 										config={config || undefined}
 										deployedEvents={deployedEvents}
+										rereadDeployedEvents={rereadDeployedEvents}
 										onConfigChange={handleConfigChange}
 										accountInfo={accountInfo || undefined}
 										onDeleteNode={handleDeleteNode}

@@ -8,7 +8,7 @@ import {
 	Trash2,
 	X,
 } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type {
 	EventBusChoice,
 	EventProduce,
@@ -98,6 +98,15 @@ interface ServiceEventsTabProps {
 	 * Defaults to true when the owner cannot tell.
 	 */
 	orderedQueueMayExist?: boolean;
+	/**
+	 * Answers `orderedQueueMayExist` from a fresh read of what is deployed
+	 * (a failed read answers true). When `orderedQueueMayExist` says no and
+	 * an edit turns the last ordered subscription off, the queue is kept with
+	 * fifo_retired first, and fifo_retired is lifted only if this confirms
+	 * that the queue was never deployed: a deploy from the CLI since the last
+	 * read would otherwise lose it.
+	 */
+	rereadOrderedQueueMayExist?: () => Promise<boolean>;
 }
 
 const VISIBILITY_MAX = 43200;
@@ -1001,6 +1010,7 @@ export function ServiceEventsTab({
 	events,
 	onEventsChange,
 	orderedQueueMayExist = true,
+	rereadOrderedQueueMayExist,
 }: ServiceEventsTabProps) {
 	const uid = useId();
 	const busEnabled = isEventBusEnabled(config);
@@ -1020,13 +1030,51 @@ export function ServiceEventsTab({
 	const workloadNoun = kind === "backend" ? "backend" : "service";
 	const [confirmFifoDelete, setConfirmFifoDelete] = useState(false);
 
+	// The events block as last given, for a write that follows a read.
+	const latestEvents = useRef(events);
+	latestEvents.current = events;
+	const mounted = useRef(true);
+	useEffect(() => {
+		mounted.current = true;
+		return () => {
+			mounted.current = false;
+		};
+	}, []);
+
 	// Every edit goes through withOrderingCleared, so none leaves an ordered
 	// queue that may be deployed without fifo_retired, or fifo_retired beside
-	// an ordered entry.
-	const save = (next: WorkloadEvents) =>
-		onEventsChange(
-			compactEvents(withOrderingCleared(events, next, orderedQueueMayExist)),
-		);
+	// an ordered entry. An earlier answer that the queue was never deployed
+	// is not trusted for the retirement: the edit keeps the queue, and a
+	// fresh read decides whether fifo_retired can go.
+	const save = (next: WorkloadEvents) => {
+		const retires =
+			eventsHaveOrdered(events) &&
+			!eventsHaveOrdered(next) &&
+			!orderedQueueMayExist;
+		if (!retires || !rereadOrderedQueueMayExist) {
+			onEventsChange(
+				compactEvents(withOrderingCleared(events, next, orderedQueueMayExist)),
+			);
+			return;
+		}
+		onEventsChange(compactEvents(withOrderingCleared(events, next, true)));
+		void rereadOrderedQueueMayExist().then((mayExist) => {
+			const current = latestEvents.current;
+			if (
+				mayExist ||
+				!mounted.current ||
+				current?.queue?.fifo_retired !== true ||
+				eventsHaveOrdered(current)
+			)
+				return;
+			onEventsChange(
+				compactEvents({
+					...current,
+					queue: { ...current.queue, fifo_retired: undefined },
+				}),
+			);
+		});
+	};
 
 	// Writes go through index + patch against the current subscribes list.
 	const handleAddSubscription = (entry: EventSubscription) => {

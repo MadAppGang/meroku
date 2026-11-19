@@ -164,6 +164,22 @@ export function orderedQueueMayBeDeployed(
 }
 
 /**
+ * `orderedQueueMayBeDeployed` from a fresh read: `reread` reads the deployed
+ * state again. A failed read counts as yes. Undefined without `reread`.
+ */
+export function orderedQueueRereader(
+	reread: (() => Promise<DeployedEvents | undefined>) | undefined,
+	workload: string,
+): (() => Promise<boolean>) | undefined {
+	if (!reread) return undefined;
+	return () =>
+		reread().then(
+			(deployed) => orderedQueueMayBeDeployed(deployed, workload),
+			() => true,
+		);
+}
+
+/**
  * The one rule every subscription edit goes through, so no edit leaves YAML
  * that generate refuses. When the edit leaves the consumer with no ordered
  * subscription and it had one before, an ordered queue that may be deployed

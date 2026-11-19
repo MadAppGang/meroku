@@ -65,12 +65,15 @@ function Editor({
 	initial,
 	load = loadSiblings,
 	deployed,
+	reread,
 	onWrite,
 }: {
 	initial: YamlInfrastructureConfig;
 	load?: LoadShareTargets;
 	/** GET /api/events/deployed's answer; absent means not known yet. */
 	deployed?: DeployedEvents;
+	/** The answer of a fresh read. Absent: the panel does not re-read. */
+	reread?: DeployedEvents;
 	/** Sees every write the panel makes. */
 	onWrite?: (updates: Partial<YamlInfrastructureConfig>) => void;
 }) {
@@ -85,6 +88,9 @@ function Editor({
 					}}
 					loadShareTargets={load}
 					deployed={deployed}
+					rereadDeployed={
+						reread === undefined ? undefined : () => Promise.resolve(reread)
+					}
 				/>
 			)}
 		</ConfigHarness>
@@ -340,6 +346,37 @@ export const LeavingEnhancedDeployedOrdered: Story = {
 		);
 		await waitFor(() => expect(deployedOrderedWrites).toHaveBeenCalled());
 		const written = deployedOrderedWrites.mock.calls[0][0];
+		await expect(written.workload?.events?.queue?.fifo_retired).toBe(true);
+	},
+};
+
+const deployedSinceWrites = fn();
+
+/**
+ * The panel's last answer said no ordered queue was deployed; a deploy from
+ * the CLI has created the backend's since. Leaving decides from a fresh read
+ * and keeps it.
+ */
+export const LeavingEnhancedDeployedSinceLastRead: Story = {
+	name: "Leaving Enhanced: an ordered queue deployed since the last read is kept",
+	render: () => (
+		<Editor
+			initial={enhancedConfig({ workload: orderedBackend })}
+			deployed={deployedEvents()}
+			reread={deployedEvents({ fifoConsumers: ["backend"] })}
+			onWrite={deployedSinceWrites}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		deployedSinceWrites.mockClear();
+		const canvas = within(canvasElement);
+		await userEvent.click(canvas.getByLabelText("Standard"));
+		const dialog = within(canvasElement.ownerDocument.body);
+		await userEvent.click(
+			await dialog.findByRole("button", { name: "Use a Standard bus" }),
+		);
+		await waitFor(() => expect(deployedSinceWrites).toHaveBeenCalled());
+		const written = deployedSinceWrites.mock.calls[0][0];
 		await expect(written.workload?.events?.queue?.fifo_retired).toBe(true);
 	},
 };

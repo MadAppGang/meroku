@@ -35,12 +35,14 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { AccountInfo } from "../api/infrastructure";
+import type { RereadDeployedEvents } from "../hooks/use-deployed-events";
 import type { ComponentNode } from "../types";
 import type { ConfigWarning } from "../types/configWarnings";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import {
 	type DeployedEvents,
 	orderedQueueMayBeDeployed,
+	orderedQueueRereader,
 } from "../utils/workloadEvents";
 import { ALBNodeProperties } from "./ALBNodeProperties";
 import { ALBRoutingRules } from "./ALBRoutingRules";
@@ -128,6 +130,8 @@ interface SidebarProps {
 	onConfigChange?: (config: Partial<YamlInfrastructureConfig>) => void;
 	/** What is deployed for the env's events; undefined while unknown. */
 	deployedEvents?: DeployedEvents;
+	/** Reads the deployed events state again, now. */
+	rereadDeployedEvents?: RereadDeployedEvents;
 	accountInfo?: AccountInfo;
 	onDeleteNode?: (nodeId: string, nodeType: string, name?: string) => void;
 	/** Configuration warnings about the selected node, shown above every tab. */
@@ -143,6 +147,7 @@ export function Sidebar({
 	config,
 	onConfigChange,
 	deployedEvents,
+	rereadDeployedEvents,
 	accountInfo,
 	onDeleteNode,
 	warnings = NO_WARNINGS,
@@ -1741,6 +1746,7 @@ jobs:
 							config={config}
 							onConfigChange={onConfigChange}
 							deployed={deployedEvents}
+							rereadDeployed={rereadDeployedEvents}
 						/>
 					)}
 
@@ -1758,6 +1764,10 @@ jobs:
 							events={config.workload?.events}
 							orderedQueueMayExist={orderedQueueMayBeDeployed(
 								deployedEvents,
+								"backend",
+							)}
+							rereadOrderedQueueMayExist={orderedQueueRereader(
+								rereadDeployedEvents,
 								"backend",
 							)}
 							onEventsChange={(events) =>
@@ -1785,6 +1795,10 @@ jobs:
 								events={service.events}
 								orderedQueueMayExist={orderedQueueMayBeDeployed(
 									deployedEvents,
+									name,
+								)}
+								rereadOrderedQueueMayExist={orderedQueueRereader(
+									rereadDeployedEvents,
 									name,
 								)}
 								onEventsChange={(events) =>

@@ -12,6 +12,7 @@ import {
 	filterFieldsNest,
 	isCatchAllWildcard,
 	orderedQueueMayBeDeployed,
+	orderedQueueRereader,
 	parseFilterValues,
 	type ShareTargetInfo,
 	sameSharePrincipal,
@@ -386,6 +387,37 @@ describe("ordered queue retirement", () => {
 			true,
 		);
 		expect(orderedQueueMayBeDeployed(undefined, "backend")).toBe(true);
+	});
+	test("a fresh read decides; a failed or unknown read keeps the queue", async () => {
+		const answer =
+			(fifoConsumers: string[], known = true) =>
+			() =>
+				Promise.resolve({
+					known,
+					fifoConsumers,
+					sharedPrincipals: [],
+					subscribePrincipals: [],
+				});
+		expect(orderedQueueRereader(undefined, "backend")).toBeUndefined();
+		expect(await orderedQueueRereader(answer([]), "backend")?.()).toBe(false);
+		expect(await orderedQueueRereader(answer(["backend"]), "backend")?.()).toBe(
+			true,
+		);
+		expect(await orderedQueueRereader(answer([], false), "backend")?.()).toBe(
+			true,
+		);
+		expect(
+			await orderedQueueRereader(
+				() => Promise.resolve(undefined),
+				"backend",
+			)?.(),
+		).toBe(true);
+		expect(
+			await orderedQueueRereader(
+				() => Promise.reject(new Error("offline")),
+				"backend",
+			)?.(),
+		).toBe(true);
 	});
 	test("clearOrdering keeps only the queues that may be deployed", () => {
 		const config = enhancedConfig(ordered);

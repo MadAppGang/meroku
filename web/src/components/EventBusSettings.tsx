@@ -1,6 +1,7 @@
 import { Plus, Share2, Trash2, Workflow } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { infrastructureApi } from "../api/infrastructure";
+import type { RereadDeployedEvents } from "../hooks/use-deployed-events";
 import type {
 	EventBusShare,
 	EventBusShareAccess,
@@ -80,6 +81,12 @@ interface EventBusSettingsProps {
 	 * kept and no revocation notice is shown.
 	 */
 	deployed?: DeployedEvents;
+	/**
+	 * Reads the deployed state again, now. Leaving the Enhanced bus decides
+	 * which ordered queues to keep from it, and a share edit re-reads so its
+	 * revocation notice reflects what is deployed now.
+	 */
+	rereadDeployed?: RereadDeployedEvents;
 }
 
 const defaultLoadShareTargets: LoadShareTargets = (env, signal) =>
@@ -418,22 +425,29 @@ function ShareRow({
 			: null;
 	const label = `share ${index + 1}`;
 
+	// A committed draft held back while the comparison was unknown. Typing
+	// again drops the hold: only a draft the user committed is saved later.
+	const [held, setHeld] = useState(false);
+
 	const commit = (nextKind: EventBusShareKind, nextValue: string) => {
+		setHeld(false);
 		const next = shareEntryOf(nextKind, nextValue, entry.access);
 		if (shareValueError(next, config, targets) !== null) return;
 		if (shareDuplicateError(proposedWith(next), index, targets) !== null)
 			return;
 		if (nextKind === savedKind && nextValue === savedValue) return;
-		if (shareComparisonUnknown(proposedWith(next), index, targets) !== null)
+		if (shareComparisonUnknown(proposedWith(next), index, targets) !== null) {
+			setHeld(true);
 			return;
+		}
 		onChange(index, next);
 	};
 
-	// A draft held back while the comparison was unknown is saved once the
-	// other environments are listed, if it is still valid then.
+	// A held draft is saved once the other environments are listed, if it is
+	// still valid then.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: only the targets' arrival saves the draft.
 	useEffect(() => {
-		if (targets !== undefined && changed) commit(kind, value);
+		if (targets !== undefined && held) commit(kind, value);
 	}, [targets]);
 
 	return (
@@ -453,7 +467,10 @@ function ShareRow({
 							setValue("");
 							if (k === "organization") commit(k, "");
 						}}
-						onValueDraft={setValue}
+						onValueDraft={(v) => {
+							setHeld(false);
+							setValue(v);
+						}}
 						onValueCommit={(v) => {
 							setValue(v);
 							commit(kind, v);
@@ -584,6 +601,7 @@ export function EventBusSettings({
 	onConfigChange,
 	loadShareTargets = defaultLoadShareTargets,
 	deployed,
+	rereadDeployed,
 }: EventBusSettingsProps) {
 	const uid = useId();
 	const enabled = isEventBusEnabled(config);
@@ -628,8 +646,20 @@ export function EventBusSettings({
 		share.some((e) => isSubscribeCapable(e.access)) ||
 		(deployed?.known === true && deployed.subscribePrincipals.length > 0);
 
-	const leaveEnhanced = (target: "standard" | "off") => {
-		const { updates } = clearOrdering(config, deployed);
+	// The confirmation previews from a fresh read, and the commit reads once
+	// more: a deploy from the CLI since the last read may have created an
+	// ordered queue. A failed read keeps every ordered queue.
+	const asking = pendingLeave !== null;
+	// biome-ignore lint/correctness/useExhaustiveDependencies: only opening the confirmation reads.
+	useEffect(() => {
+		if (asking) void rereadDeployed?.();
+	}, [asking]);
+	const latestConfig = useRef(config);
+	latestConfig.current = config;
+
+	const leaveEnhanced = async (target: "standard" | "off") => {
+		const fresh = rereadDeployed ? await rereadDeployed() : deployed;
+		const { updates } = clearOrdering(latestConfig.current, fresh);
 		onConfigChange({
 			...updates,
 			event_bus: {
@@ -640,10 +670,12 @@ export function EventBusSettings({
 		});
 	};
 
-	const writeShare = (next: EventBusShare[]) =>
+	const writeShare = (next: EventBusShare[]) => {
 		onConfigChange({
 			event_bus: { share: next.length > 0 ? next : undefined },
 		});
+		void rereadDeployed?.();
+	};
 
 	return (
 		<div className="space-y-4">
@@ -882,7 +914,7 @@ export function EventBusSettings({
 							onClick={() => {
 								const target = pendingLeave;
 								setPendingLeave(null);
-								if (target !== null) leaveEnhanced(target);
+								if (target !== null) void leaveEnhanced(target);
 							}}
 						>
 							{pendingLeave === "off" ? "Turn it off" : "Use a Standard bus"}

@@ -9,6 +9,7 @@ import type {
 import {
 	type DeployedEvents,
 	orderedQueueMayBeDeployed,
+	orderedQueueRereader,
 } from "../../../../utils/workloadEvents";
 import { ServiceEventsTab } from "../../../ServiceEventsTab";
 import {
@@ -33,16 +34,27 @@ type Story = StoryObj<typeof meta>;
 function ServiceEditor({
 	initial,
 	deployed,
+	reread,
 }: {
 	initial: YamlInfrastructureConfig;
 	/** GET /api/events/deployed's answer; absent means not known yet. */
 	deployed?: DeployedEvents;
+	/** The answer of a fresh read; "fail" makes it fail. Absent: no re-read. */
+	reread?: DeployedEvents | "fail";
 }) {
+	const read =
+		reread === undefined
+			? undefined
+			: () =>
+					reread === "fail"
+						? Promise.reject(new Error("the state could not be read"))
+						: Promise.resolve(reread);
 	return (
 		<ConfigHarness initial={initial}>
 			{(config, onChange) => (
 				<ServiceEventsTab
 					orderedQueueMayExist={orderedQueueMayBeDeployed(deployed, "orders")}
+					rereadOrderedQueueMayExist={orderedQueueRereader(read, "orders")}
 					config={config}
 					workloadName="orders"
 					kind="service"
@@ -374,6 +386,77 @@ export const EnhancedOrderedNeverDeployedTurnedOff: Story = {
 		await expect(canvas.queryByTestId("fifo-retired")).toBeNull();
 		await expect(canvas.queryByText(/The ordered queue is kept/)).toBeNull();
 		await expect(canvas.queryByTestId("event-flow-fifo")).toBeNull();
+	},
+};
+
+const orderedLedger = (): YamlInfrastructureConfig =>
+	withOrdersEvents(
+		{
+			subscribes: [
+				{ name: "ledger", detail_type_prefix: "ledger.", ordered: true },
+			],
+		},
+		enhancedBus,
+	);
+
+/**
+ * The last read said the ordered queue was never deployed, and a deploy from
+ * the CLI has created it since. The edit keeps the queue with fifo_retired,
+ * and the fresh read confirms it is deployed.
+ */
+export const EnhancedOrderedDeployedSinceLastRead: Story = {
+	name: "Enhanced: an ordered queue deployed since the last read is kept",
+	render: () => (
+		<ServiceEditor
+			deployed={deployedEvents()}
+			reread={deployedEvents({ fifoConsumers: ["orders"] })}
+			initial={orderedLedger()}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await userEvent.click(canvas.getByLabelText("Keep order for ledger"));
+		await expect(canvas.getByTestId("fifo-retired")).toBeVisible();
+		await new Promise((resolve) => setTimeout(resolve, 100));
+		await expect(canvas.getByTestId("fifo-retired")).toBeVisible();
+	},
+};
+
+/** The fresh read confirms the queue was never deployed: fifo_retired goes. */
+export const EnhancedOrderedNeverDeployedConfirmed: Story = {
+	name: "Enhanced: a fresh read confirms an ordered queue was never deployed",
+	render: () => (
+		<ServiceEditor
+			deployed={deployedEvents()}
+			reread={deployedEvents()}
+			initial={orderedLedger()}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await userEvent.click(canvas.getByLabelText("Keep order for ledger"));
+		await waitFor(() =>
+			expect(canvas.queryByTestId("fifo-retired")).toBeNull(),
+		);
+		await expect(canvas.queryByText(/The ordered queue is kept/)).toBeNull();
+	},
+};
+
+/** A fresh read that fails is unknown: the queue is kept. */
+export const EnhancedOrderedRereadFailed: Story = {
+	name: "Enhanced: a failed fresh read keeps the ordered queue",
+	render: () => (
+		<ServiceEditor
+			deployed={deployedEvents()}
+			reread="fail"
+			initial={orderedLedger()}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await userEvent.click(canvas.getByLabelText("Keep order for ledger"));
+		await new Promise((resolve) => setTimeout(resolve, 100));
+		await expect(canvas.getByTestId("fifo-retired")).toBeVisible();
 	},
 };
 
