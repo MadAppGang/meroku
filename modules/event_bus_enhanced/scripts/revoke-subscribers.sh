@@ -38,6 +38,9 @@
 # could not be classified while a principal was lost.
 
 set -u
+# The space-separated inputs are split by unquoted expansion; globbing would
+# turn a malformed value into file names that then pass validation.
+set -f
 
 prog=revoke-subscribers
 
@@ -118,6 +121,16 @@ tab=$(printf '\t')
 
 # --- 2. list -----------------------------------------------------------------
 
+# revoked_so_far is what a failure says of this run's revocations, which are
+# permanent: a later listing can fail after subscribers were revoked.
+revoked_so_far() {
+	if [ "${revoked:-0}" -eq 0 ]; then
+		printf 'nothing was revoked'
+	else
+		printf '%s revoked before it (revocation is permanent; run the apply again to finish)' "$revoked"
+	fi
+}
+
 # list KIND OUT: KIND is subscribers or event-sources. Writes one line per
 # resource to OUT: arn TAB account TAB revoked TAB name. The CLI follows
 # NextToken itself. A bus that no longer exists ends the run: nothing is left
@@ -133,7 +146,7 @@ list() {
 			say "bus $bus not found; nothing to revoke"
 			exit 0
 		fi
-		die 5 "aws eventsv2 $3 failed on $bus; nothing was revoked: $(cat "$tmpdir/err")"
+		die 5 "aws eventsv2 $3 failed on $bus; $(revoked_so_far): $(cat "$tmpdir/err")"
 	fi
 	: >"$2"
 	while IFS="$tab" read -r arn acct rev name; do

@@ -124,5 +124,36 @@ expect "teardown revokes another account's subscriber and exits 0" 0 \
 	"revoked $(arn_of sub 000000000001 partner-audit) (account 000000000001)"
 expect_revoked "teardown leaves this account's subscriber alone" "$(arn_of sub 000000000001 partner-audit)"
 
+# --- a listing that fails after revocations ------------------------------------
+
+reset
+sub 000000000001 partner-audit
+printf 'AccessDeniedException\n' >"$FAKE_EBV2_DIR/event_sources_error"
+revoke EBV2_MODE=teardown
+expect "a failed event-source listing says the subscribers were already revoked" 5 \
+	"list-event-sources failed" "1 revoked before it"
+case "$log" in
+*"nothing was revoked"*) bad "a failed listing after a revocation does not say nothing was revoked" "log: $log" ;;
+*) ok "a failed listing after a revocation does not say nothing was revoked" ;;
+esac
+
+reset
+printf 'AccessDeniedException\n' >"$FAKE_EBV2_DIR/event_sources_error"
+revoke EBV2_MODE=teardown
+expect "a failed listing before any revocation says nothing was revoked" 5 "nothing was revoked"
+
+# --- inputs are never globbed --------------------------------------------------
+
+# Run where a file is named like an account, so an expanded 0000000000* would
+# pass validation as that account.
+reset
+sub 000000000009 stray
+mkdir "$work/glob"
+: >"$work/glob/000000000009"
+cd "$work/glob" || exit 1
+revoke EBV2_MODE=change EBV2_KEEP_ACCOUNTS='0000000000*' EBV2_LOST=account:000000000008
+cd "$here" || exit 1
+expect "a keep list with a glob character is refused, not expanded" 2 "EBV2_KEEP_ACCOUNTS holds '0000000000*'"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

@@ -21,7 +21,9 @@
 #   revoke_error      if present, its text is the error code every
 #                     revoke-resource call fails with (InvalidStateException,
 #                     ResourceNotFoundException, AccessDeniedException ...)
-#   calls.log         one line per call: the call name and its target
+#   event_sources_error  if present, its text is the error code
+#                     list-event-sources fails with, after the bus check
+#   calls.log        one line per call: the call name and its target
 #
 # A revoke-resource that succeeds sets the resource's revoked column to True.
 # FAKE_AWS_VERSION overrides the `aws --version` text (to test the v1 refusal).
@@ -100,6 +102,7 @@ case "$call" in
 	need_query 'EventSources[].[EventSourceArn,EventSourceAccountId,Revoked,Name]'
 	echo "list-event-sources $(opt --event-bus-arn)" >>"$d/calls.log"
 	need_bus ListEventSources
+	[ -f "$d/event_sources_error" ] && fail "$(cat "$d/event_sources_error")" ListEventSources "injected failure"
 	[ -f "$d/event-sources" ] && cat "$d/event-sources"
 	exit 0
 	;;
