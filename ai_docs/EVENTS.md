@@ -438,10 +438,10 @@ AWS limits each subscriber to 1,000 `$or` combinations and to 4,096 bytes of fil
 configuration. AWS measures the JSON text
 `{"Filters":[{"Pattern":"<DATA>","Scope":"DATA"},{"Pattern":"<SYSTEM_METADATA>","Scope":"SYSTEM_METADATA"}]}`,
 with every `"` and `\` inside a pattern escaped. A pattern without backslashes therefore
-has 3,960 bytes, minus one byte for each `"` it holds. Generate refuses a pattern whose own length
-plus the 48-byte SYSTEM_METADATA filter is over 4,096. That check does not count the wrapper
-or the escapes, so a pattern within about 130 bytes of the limit can pass generate and fail at
-apply with `InvalidInputException: FilterConfiguration exceeds maximum size of 4096 bytes`.
+has 3,960 bytes, minus one byte for each `"` it holds. Generate measures the same JSON text and
+refuses a subscriber whose filters are over 4,096 bytes; `modules/event_subscriber` checks it
+again at plan. Both escape `<`, `>` and `&` as `\u003c` and so on, which AWS does not, so a
+pattern holding those characters is refused a little before AWS would refuse it, never after.
 
 ### What the enhanced bus cannot do
 
@@ -840,7 +840,7 @@ Each is a `ConfigWarning` (`app/config_warnings.go`); generate prints it and car
 | `event_queue_unused` | the workload | `events.queue` on a workload that subscribes to nothing and keeps no FIFO set |
 | `event_bus_toggle` | `event_bus` | `event_bus.enabled` differs from the last generated main.tf; lists every entry and rule that moves |
 | `event_bus_type_change` | `event_bus` | The bus kind differs from the deployed one (state, else the last main.tf); the bus is replaced |
-| `event_subscription_order_change` | the workload | A subscription's `ordered` changed since the last render; its events move to the other queue |
+| `event_subscription_order_change` | the workload | A subscription's `ordered` changed since the last render; its events move to the other queue. It asks you to check the old queue's delivery DLQ alarm first, because events the old subscriber is still retrying are lost |
 | `event_fifo_retired_unused` | the workload | `fifo_retired: true` with no ordered subscription and no deployed FIFO set |
 | `event_queue_deleted` | the workload | Enhanced or cleanup: state holds a consumer's queues and the workload is no longer a consumer |
 | `event_share_revoke` | `event_bus` | A principal may no longer subscribe, or the environment leaves an enhanced bus that was shared; subscribers are revoked |
@@ -898,9 +898,9 @@ Ordering:
 Patterns and names on the enhanced bus:
 
 - A `detail_type` with a `*` that is not one leading or one trailing `*` beside other text.
-- A standard subscriber whose DATA pattern plus the 48-byte SYSTEM_METADATA filter is over
-  4,096 bytes; a consumer whose ordered subscriptions together are over 4,096 bytes or over
-  1,000 `$or` combinations.
+- A standard subscriber whose filters, measured as AWS measures them (above), are over 4,096
+  bytes; a consumer whose ordered subscriptions together make filters over 4,096 bytes or a
+  pattern over 1,000 `$or` combinations.
 - An event-task rule on the project bus; a legacy single-rule event task.
 - A consumer name outside `^[a-z0-9][a-z0-9-]*$` (also in cleanup).
 - Two subscribers, or two delivery roles, that resolve to the same AWS name.

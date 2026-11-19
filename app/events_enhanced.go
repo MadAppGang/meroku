@@ -112,7 +112,8 @@ var enhancedEventBusRegions = []string{
 	"eu-west-1", "us-east-1", "us-east-2", "us-west-2",
 }
 
-// Pattern limits of an enhanced-bus subscriber: all of its filters together.
+// Pattern limits of an enhanced-bus subscriber: the JSON of all its filters
+// together (enhancedPatternBytes), and the $or combinations of its pattern.
 const (
 	enhancedPatternMaxBytes        = 4096
 	enhancedPatternMaxCombinations = 1000
@@ -547,10 +548,26 @@ func enhancedFifoPattern(ordered []map[string]interface{}) string {
 	return string(data)
 }
 
-// enhancedPatternBytes is what a DATA pattern costs against the 4096 bytes of
-// all a subscriber's filters together.
+// enhancedFilter is one filter of a subscriber's FilterConfiguration, in the
+// shape AWS measures. The field order is the sorted order jsonencode writes.
+type enhancedFilter struct {
+	Pattern string `json:"Pattern"`
+	Scope   string `json:"Scope"`
+}
+
+// enhancedPatternBytes is the size AWS gives a subscriber's filters with this
+// DATA pattern: the JSON text of the whole FilterConfiguration, each pattern
+// escaped as a JSON string inside it, beside the SYSTEM_METADATA filter. It
+// mirrors modules/event_subscriber's filter_configuration_size: json.Marshal
+// escapes <, > and & as jsonencode does.
 func enhancedPatternBytes(pattern string) int {
-	return len(pattern) + len(enhancedPutEventsOnlyPattern)
+	data, _ := json.Marshal(struct {
+		Filters []enhancedFilter `json:"Filters"`
+	}{Filters: []enhancedFilter{
+		{Pattern: pattern, Scope: "DATA"},
+		{Pattern: enhancedPutEventsOnlyPattern, Scope: "SYSTEM_METADATA"},
+	}})
+	return len(data)
 }
 
 // eventPatternOrCombinations is AWS's count of a pattern's $or combinations:
@@ -1399,7 +1416,7 @@ func normalizeEnhancedEvents(envMap map[string]interface{}, bus eventBusSettings
 			n, m := enhancedPatternBytes(pattern), eventPatternOrCombinations(pattern)
 			if n > enhancedPatternMaxBytes || m > enhancedPatternMaxCombinations {
 				problems = append(problems, fmt.Sprintf(
-					"%s: the ordered subscriptions together make a %d-byte pattern with %d $or combinations; the enhanced bus allows %d bytes and %d combinations. Use fewer ordered subscriptions or shorter filter values",
+					"%s: the ordered subscriptions together make filters of %d bytes, as AWS counts them, and a pattern with %d $or combinations; the enhanced bus allows %d bytes and %d combinations. Use fewer ordered subscriptions or shorter filter values",
 					where, n, m, enhancedPatternMaxBytes, enhancedPatternMaxCombinations))
 			}
 			live = append(live, eventLiveSubscriber{
@@ -1649,8 +1666,8 @@ func eventOrderChangeWarnings(consumers []eventConsumerResult, d eventDeployed) 
 				from, to, oldVar = "standard", "ordered", "EVENT_QUEUE_URL"
 			}
 			out = append(out, eventWarning(c.w, warnCodeEventSubscriptionOrderChange, "Subscription ordering changed",
-				fmt.Sprintf("%s.ordered changed to %t: its events move from the %s queue to the %s queue. The new subscriber is created before the old one is deleted, so for a short time events arrive on both; dedupe on id. Read %s until it is empty before removing code that reads it.",
-					c.wheres[i], now, from, to, oldVar)))
+				fmt.Sprintf("%s.ordered changed to %t: its events move from the %s queue to the %s queue. The new subscriber is created before the old one is deleted, so for a short time events arrive on both; dedupe on id. Before you deploy, check that the %s delivery DLQ alarm of %s is OK: events the old subscriber is still retrying when it is deleted are lost. Read %s until it is empty before removing code that reads it.",
+					c.wheres[i], now, from, to, from, c.w.name, oldVar)))
 		}
 	}
 	return out
