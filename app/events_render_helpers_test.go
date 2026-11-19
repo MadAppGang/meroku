@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -47,7 +48,7 @@ func stubEventsState(t *testing.T, state func() eventsAwsccState) {
 	t.Helper()
 	saved := eventsAwsccStateFor
 	t.Cleanup(func() { eventsAwsccStateFor = saved })
-	eventsAwsccStateFor = func(string, Env, bool) eventsAwsccState { return state() }
+	eventsAwsccStateFor = func(context.Context, string, Env, bool) eventsAwsccState { return state() }
 }
 
 // render generates dev.yaml from yamlBody and returns the main.tf and

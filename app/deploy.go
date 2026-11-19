@@ -537,14 +537,17 @@ func applyTemplate(env string) error {
 	// same-project siblings a share entry can name, and what the Terraform
 	// state holds of the events resources: normalizeEvents decides from state
 	// where it can answer, so a generate that was never applied changes nothing.
+	// The subscribers other accounts hold on a shared enhanced bus decide
+	// whether this apply sweeps them.
 	prepareEventInputs(envMap, env, envFile)
-	prepareEventStateProbe(envMap, env)
+	prepareEventStateProbe(context.Background(), envMap, env)
+	prepareEventForeignSubscribers(context.Background(), envMap)
 
 	if err := preprocessEnvMap(envMap); err != nil {
 		printGenerateNotices(os.Stdout, generateNotices(envMap))
 		printConfigWarnings(os.Stdout, normalizeConfigWarnings(envLevel))
 		err = invalidConfigurationError(envFile, err)
-		if st, ok := envMap[eventsAwsccStateKey].(eventsAwsccState); ok && st.unknown() {
+		if eventsReadsUnknown(envMap) {
 			err = eventsStateUnreadableError{err: err}
 		}
 		return err

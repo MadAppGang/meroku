@@ -18,6 +18,7 @@ package main
 // not load. The lists are then empty and say nothing.
 
 import (
+	"context"
 	"net/http"
 )
 
@@ -54,11 +55,13 @@ func getEventsDeployed(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusNotFound, "unknown environment: "+envName)
 		return
 	}
-	writeJSON(w, http.StatusOK, deployedEventsReport(envName))
+	writeJSON(w, http.StatusOK, deployedEventsReport(r.Context(), envName))
 }
 
 // deployedEventsReport computes the report for env from its YAML on disk.
-func deployedEventsReport(env string) (report eventsDeployedReport) {
+// ctx is the request's, so a request the browser cancels stops its state
+// read.
+func deployedEventsReport(ctx context.Context, env string) (report eventsDeployedReport) {
 	unknown := eventsDeployedReport{FifoConsumers: []string{}, SharedPrincipals: []string{}, SubscribePrincipals: []string{}}
 	report = unknown
 	// The probe runs type assertions on a hand-edited YAML; a panic in one
@@ -74,7 +77,7 @@ func deployedEventsReport(env string) (report eventsDeployedReport) {
 		return unknown
 	}
 	prepareEventInputs(envMap, env, envFile)
-	prepareEventStateProbe(envMap, env)
+	prepareEventStateProbe(ctx, envMap, env)
 	d := readEventDeployed(envMap)
 	if !d.fromState() && (d.state.Needed || !d.hasPrevious) {
 		return unknown

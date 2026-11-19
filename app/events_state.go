@@ -37,6 +37,7 @@ type eventsAwsccState struct {
 	Tried         bool                // a read was attempted; with Readable false the state may hold anything
 	Err           string              // why the state could not be read
 	Bus           bool                // module.event_bus_enhanced.awscc_eventsv2_event_bus.project[0]
+	BusARN        string              // its event_bus_arn; "" when absent
 	ClassicBus    bool                // module.events.aws_cloudwatch_event_bus.project[0]
 	Revoke        *eventsRevokeRecord // module.event_bus_enhanced.terraform_data.revoke[0], the sweep; nil if absent
 	RevokeRecord  *eventsRevokeRecord // module.event_bus_enhanced.terraform_data.revoke_record[0]; nil if absent
@@ -160,12 +161,13 @@ func eventsStateObjectKey(stateFile, workspace string) string {
 // generate stays offline. The read is `terraform state pull` when envDir is
 // initialised, otherwise the S3 backend directly. A read that fails comes back
 // with Tried set and Readable false, never as an empty state. A variable so
-// tests stub it.
-var eventsAwsccStateFor = func(envDir string, e Env, needed bool) eventsAwsccState {
+// tests stub it. ctx is the caller's: a web request that is cancelled stops
+// its read.
+var eventsAwsccStateFor = func(ctx context.Context, envDir string, e Env, needed bool) eventsAwsccState {
 	if !needed {
 		return eventsAwsccState{}
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), eventsStatePullTimeout)
+	ctx, cancel := context.WithTimeout(ctx, eventsStatePullTimeout)
 	defer cancel()
 
 	var out []byte
@@ -184,7 +186,7 @@ var eventsAwsccStateFor = func(envDir string, e Env, needed bool) eventsAwsccSta
 	if err != nil {
 		return eventsAwsccState{Tried: true, Err: eventsStateErrorLine(err)}
 	}
-	st, err := parseEventsAwsccState(out, e.Project+"-"+e.Env)
+	st, err := parseEventsAwsccState(out, projectBusID{Name: e.Project + "-" + e.Env, Region: e.Region, Account: e.AccountID})
 	if err != nil {
 		return eventsAwsccState{Tried: true, Err: err.Error()}
 	}
@@ -237,12 +239,14 @@ func eventsStateNeeded(envMap map[string]interface{}) bool {
 }
 
 // prepareEventStateProbe reads the env's Terraform state for normalizeEvents.
-// Only a render that writes main.tf calls it, after prepareEventInputs.
-func prepareEventStateProbe(envMap map[string]interface{}, env string) {
+// Generate and the deployed-events endpoint call it, after
+// prepareEventInputs, with the context the read runs under.
+func prepareEventStateProbe(ctx context.Context, envMap map[string]interface{}, env string) {
 	e := Env{
 		Project:     stringFromMap(envMap, "project"),
 		Env:         stringFromMap(envMap, "env"),
 		Region:      stringFromMap(envMap, "region"),
+		AccountID:   stringFromMap(envMap, "account_id"),
 		AWSProfile:  stringFromMap(envMap, "aws_profile"),
 		StateBucket: stringFromMap(envMap, "state_bucket"),
 		StateFile:   stringFromMap(envMap, "state_file"),
@@ -250,7 +254,7 @@ func prepareEventStateProbe(envMap map[string]interface{}, env string) {
 	envDir := filepath.Join("env", env)
 	_, rendered := envMap[eventPreviousKey].(eventPrevious)
 	needed := eventsStateRequired(eventsStateNeeded(envMap), rendered, lockNamesAwscc(envDir), e)
-	st := eventsAwsccStateFor(envDir, e, needed)
+	st := eventsAwsccStateFor(ctx, envDir, e, needed)
 	st.Needed = needed
 	st.NoRender = !rendered
 	envMap[eventsAwsccStateKey] = st
@@ -312,15 +316,21 @@ type tfStateDocument struct {
 	} `json:"resources"`
 }
 
+// projectBusID is what the env YAML says of the project bus: its name,
+// <project>-<env>, and the region and account it lives in ("" when the YAML
+// sets none).
+type projectBusID struct {
+	Name, Region, Account string
+}
+
 // parseEventsAwsccState reads the events addresses from a state document.
-// Empty output is an empty state. busName is the project bus's name,
-// <project>-<env>. A subscriber counts as meroku's only with two pieces of
-// evidence: its module address is one env/main.hbs can render
+// Empty output is an empty state. A subscriber counts as meroku's only with
+// two pieces of evidence: its module address is one env/main.hbs can render
 // (parseEventSubscriberModule), and its event_bus_arn is the project bus's,
-// the one in state or, when the state holds none, an EventBridge V2 bus named
-// busName. A custom awscc subscriber is none of meroku's business, whatever
-// its module is called.
-func parseEventsAwsccState(out []byte, busName string) (eventsAwsccState, error) {
+// the one in state or, when the state holds none, an EventBridge V2 bus with
+// the project bus's name, region and account. A custom awscc subscriber is
+// none of meroku's business, whatever its module is called.
+func parseEventsAwsccState(out []byte, bus projectBusID) (eventsAwsccState, error) {
 	st := eventsAwsccState{Readable: true, Pulled: true, Subscribers: map[string]string{}}
 	if len(bytes.TrimSpace(out)) == 0 {
 		return st, nil
@@ -342,6 +352,7 @@ func parseEventsAwsccState(out []byte, busName string) (eventsAwsccState, error)
 		case r.Module == "module.event_bus_enhanced" && r.Type == "awscc_eventsv2_event_bus" && r.Name == "project":
 			st.Bus = true
 			busARN, _ = r.Instances[0].Attributes["event_bus_arn"].(string)
+			st.BusARN = busARN
 		case r.Module == "module.events" && r.Type == "aws_cloudwatch_event_bus" && r.Name == "project":
 			st.ClassicBus = true
 		case r.Module == "module.event_bus_enhanced" && r.Type == "terraform_data" && (r.Name == "revoke" || r.Name == "revoke_record"):
@@ -391,7 +402,7 @@ func parseEventsAwsccState(out []byte, busName string) (eventsAwsccState, error)
 		}
 	}
 	for module, arn := range subscriberBus {
-		if onProjectBus(arn, busARN, busName) {
+		if onProjectBus(arn, busARN, bus) {
 			st.Subscribers[module] = subscriberName[module]
 		}
 	}
@@ -402,8 +413,9 @@ func parseEventsAwsccState(out []byte, busName string) (eventsAwsccState, error)
 }
 
 // onProjectBus reports whether a subscriber's event_bus_arn is the project
-// bus: busARN when the state holds the bus, else a bus named busName.
-func onProjectBus(arn, busARN, busName string) bool {
+// bus: busARN when the state holds the bus, else a V2 bus with bus's name
+// and, where the YAML sets them, its region and account.
+func onProjectBus(arn, busARN string, bus projectBusID) bool {
 	switch {
 	case arn == "":
 		return false
@@ -411,7 +423,11 @@ func onProjectBus(arn, busARN, busName string) bool {
 		return arn == busARN
 	}
 	name, ok := eventBusV2Name(arn)
-	return ok && busName != "" && name == busName
+	if !ok || bus.Name == "" || name != bus.Name {
+		return false
+	}
+	parts := strings.SplitN(arn, ":", 6)
+	return (bus.Region == "" || parts[3] == bus.Region) && (bus.Account == "" || parts[4] == bus.Account)
 }
 
 // eventBusV2Name is the bus name of an EventBridge V2 bus ARN,

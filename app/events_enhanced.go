@@ -782,6 +782,7 @@ type eventDeployed struct {
 	previous    eventPrevious
 	renderPath  bool
 	state       eventsAwsccState
+	foreign     eventForeignSubscribers
 }
 
 func readEventDeployed(envMap map[string]interface{}) eventDeployed {
@@ -791,6 +792,7 @@ func readEventDeployed(envMap map[string]interface{}) eventDeployed {
 		d.previous.Fifo = map[string]bool{}
 	}
 	d.state, d.renderPath = envMap[eventsAwsccStateKey].(eventsAwsccState)
+	d.foreign, _ = envMap[eventForeignKey].(eventForeignSubscribers)
 	return d
 }
 
@@ -1101,7 +1103,19 @@ func eventSubscriberTransitionClashes(live []eventLiveSubscriber, deployed map[s
 // else is a new round: round is a trigger of the sweep, so the script runs
 // even when granted and lost read as before. owed is returned for the
 // warning and the lost= markers.
-func eventBusRevokeInputs(share []eventShareEntry, d eventDeployed) (revoke map[string]interface{}, owed []string) {
+//
+// The accounting above is only as complete as the applies that wrote it: an
+// apply that associates a principal and stops before its sweep, then one
+// that disassociates it and stops before its sweep, leave a principal none
+// of them names. So the listing of the bus's subscribers (d.foreign) adds F:
+// account:<id> for every account with a subscriber that is not revoked and
+// that no account entry names. F joins owed, and a bus is settled only when
+// the last finished round already owed all of F. A sweep revokes every
+// subscriber of an account no entry entitles; one it kept (an organization
+// or OU entry covers the account) stays in the record's lost and is not owed
+// again; one Organizations cannot classify stops the apply, because lost is
+// not empty. foreign is the part of owed only F shows, for the warning.
+func eventBusRevokeInputs(share []eventShareEntry, d eventDeployed) (revoke map[string]interface{}, owed, foreign []string) {
 	var granted, keepAccounts, keepOUs []string
 	keepOrg := false
 	for _, e := range share {
@@ -1143,13 +1157,20 @@ func eventBusRevokeInputs(share []eventShareEntry, d eventDeployed) (revoke map[
 		baseline = subscribeCapableFromMarkers(d.previous.Share)
 		carry = d.previous.Lost
 	}
-	owed = principalsNotIn(append(append([]string(nil), carry...), baseline...), granted)
+	for _, a := range d.foreign.accounts() {
+		if !containsString(keepAccounts, a) {
+			foreign = append(foreign, eventShareKindAccount+":"+a)
+		}
+	}
+	accounted := principalsNotIn(append(append([]string(nil), carry...), baseline...), granted)
+	owed = principalsNotIn(append(append([]string(nil), accounted...), foreign...), granted)
+	foreign = principalsNotIn(foreign, accounted)
 	lost := owed
 	settled := d.fromState() && rec != nil && sweep != nil && !sweep.Tainted && sweep.Round == rec.Round &&
 		sameStrings(rec.Granted, granted) && sameStrings(sweep.Granted, granted) &&
 		len(principalsNotIn(ram, granted)) == 0 && len(principalsNotIn(owed, rec.Lost)) == 0
 	if settled {
-		lost, owed = sortedStrings(rec.Lost), nil
+		lost, owed, foreign = sortedStrings(rec.Lost), nil, nil
 	} else if d.fromState() {
 		round++
 	}
@@ -1163,7 +1184,7 @@ func eventBusRevokeInputs(share []eventShareEntry, d eventDeployed) (revoke map[
 		"keep_ous":      toInterfaces(keepOUs),
 		"lost":          toInterfaces(lost),
 		"round":         round,
-	}, owed
+	}, owed, foreign
 }
 
 // sameStrings reports whether a and b hold the same strings, in any order.
@@ -1215,12 +1236,30 @@ func toInterfaces(items []string) []interface{} {
 	return out
 }
 
-// eventShareRevokeDetail is the event_share_revoke warning text.
-func eventShareRevokeDetail(project, env string, lost, granted []string) string {
+// eventShareRevokeDetail is the event_share_revoke warning text. foreign is
+// the part of lost that only the subscriber listing shows.
+func eventShareRevokeDetail(project, env string, lost, foreign, granted []string) string {
 	bus := project + "-" + env
 	lines := make([]string, 0, len(lost)+1)
 	orgLoss := false
+	coveredByGroup := false
+	for _, g := range granted {
+		if !strings.HasPrefix(g, eventShareKindAccount+":") {
+			coveredByGroup = true
+		}
+	}
 	for _, p := range lost {
+		if containsString(foreign, p) {
+			how := "The next deploy revokes them."
+			if coveredByGroup {
+				how = "The next deploy revokes them unless a remaining organization or OU entry covers the account; if it cannot tell, it stops."
+				orgLoss = true
+			}
+			lines = append(lines, fmt.Sprintf(
+				"%s has subscribers on %s and no account entry names it. %s Revocation is permanent: they must create new subscribers if you share again.",
+				eventSharePrincipalLabel(p), bus, how))
+			continue
+		}
 		lines = append(lines, fmt.Sprintf(
 			"%s may no longer subscribe to %s. The next deploy revokes every subscriber that account created on the bus (or, for an organization or OU, every subscriber of an account no remaining entry covers). Revocation is permanent: they must create new subscribers if you share again.",
 			eventSharePrincipalLabel(p), bus))
@@ -1287,6 +1326,9 @@ func normalizeEnhancedEvents(envMap map[string]interface{}, bus eventBusSettings
 	// the previous main.tf records a render, not an apply.
 	if d.renderPath && d.state.unknown() {
 		problems = append(problems, eventsStateUnreadableProblem(envMap, env, d.state))
+	}
+	if mode == awsccModeLive && d.foreign.unknown() {
+		problems = append(problems, eventForeignUnreadableProblem(envMap, env, d.foreign))
 	}
 
 	previousType := d.previousType()
@@ -1476,7 +1518,8 @@ func eventBusShareStage(project, env, mode string, share []eventShareEntry, d ev
 		for _, e := range share {
 			out.share = append(out.share, map[string]interface{}{"kind": e.Kind, "id": e.ID, "access": e.Access})
 		}
-		out.revoke, out.owed = eventBusRevokeInputs(share, d)
+		var foreign []string
+		out.revoke, out.owed, foreign = eventBusRevokeInputs(share, d)
 		out.guard = len(share) > 0
 		if d.fromState() {
 			out.guard = out.guard || d.state.Revoke != nil || d.state.RevokeRecord != nil || d.state.Guard
@@ -1489,7 +1532,7 @@ func eventBusShareStage(project, env, mode string, share []eventShareEntry, d ev
 			for _, g := range granted {
 				grantedStrings = append(grantedStrings, g.(string))
 			}
-			out.warnings = append(out.warnings, eventShareRevokeWarning(eventShareRevokeDetail(project, env, out.owed, grantedStrings)))
+			out.warnings = append(out.warnings, eventShareRevokeWarning(eventShareRevokeDetail(project, env, out.owed, foreign, grantedStrings)))
 		}
 	case awsccModeCleanup:
 		leaving := false

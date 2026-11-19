@@ -26,6 +26,9 @@ func readEventsEnhancedFixture(t *testing.T, name string) string {
 	return string(data)
 }
 
+// fakeBusARN is the synthetic ARN of the project bus in a stubbed state.
+const fakeBusARN = "arn:aws:events:ap-southeast-2:000000000000:event-busv2/myapp-dev/fake0001"
+
 // emptyEventsState is a readable state with nothing of the events modules in it.
 func emptyEventsState() eventsAwsccState {
 	return eventsAwsccState{Readable: true, Pulled: true, Tried: true, Subscribers: map[string]string{}}
@@ -173,6 +176,7 @@ func TestEnhancedEventsRenderChainGroups(t *testing.T) {
 	stubEventsState(t, func() eventsAwsccState {
 		s := emptyEventsState()
 		s.Bus = true
+		s.BusARN = fakeBusARN
 		s.Subscribers = map[string]string{
 			"event_subscriber_backend_user-created": eventSubscriberName("myapp", "dev", "backend", "user-created"),
 			"event_subscriber_orders_s":             eventSubscriberName("myapp", "dev", "orders", "s"),
@@ -205,6 +209,7 @@ func TestEnhancedEventsReverseTransitionRender(t *testing.T) {
 	deployed := func() eventsAwsccState {
 		s := emptyEventsState()
 		s.Bus = true
+		s.BusARN = fakeBusARN
 		s.Guard = true
 		s.FifoQueues = []string{"orders"}
 		s.Consumers = []string{"backend", "billing", "orders"}
@@ -354,6 +359,7 @@ func TestEventMarkersRoundTrip(t *testing.T) {
 			state: func() eventsAwsccState {
 				s := emptyEventsState()
 				s.Bus = true
+				s.BusARN = fakeBusARN
 				s.FifoQueues = []string{"orders"}
 				s.Subscribers = map[string]string{"event_subscriber_billing_t": eventSubscriberName("myapp", "dev", "billing", "t")}
 				return s

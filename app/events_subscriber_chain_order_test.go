@@ -376,6 +376,7 @@ func (h *chainHarness) readState() eventsAwsccState {
 			switch {
 			case module == "event_bus_enhanced" && r.Name == "bus":
 				s.Bus = true
+				s.BusARN = fakeBusARN
 			case module == "event_bus_enhanced" && r.Name == "bus_guard":
 				s.Guard = true
 			case module == "event_bus_enhanced" && r.Name == "principal":

@@ -721,6 +721,19 @@ The debt survives an apply that stops half way:
   principals, and RAM associates no principal outside them. Anything else starts a new round, so
   a principal that was revoked once, shared again by an apply that stopped before its sweep, and
   then removed again, is revoked again although `granted` and `lost` read as before.
+- The accounting above is only as complete as the applies that wrote it. A grant that
+  associates an account in RAM and stops before its sweep, then a rollback that removes the
+  association and stops before its sweep, leave RAM, the sweep and the record all reading as the
+  last settled round, and none of them names the account. So generate also lists the bus's
+  subscribers (`eventsv2 ListSubscribers` on the bus ARN in state, with the env YAML's profile
+  and region; `app/events_foreign.go`), whenever the YAML keeps the enhanced bus and the bus is
+  or was shared (a share entry, the guard, a RAM association or a revoke step in state). Every
+  account with a subscriber that is not revoked, is not this account and has no `account` entry
+  that may subscribe is owed (`account:<id>` in `lost`). The bus is settled only when the last
+  finished round already owed all of them, so: a subscriber the sweep revoked drops out of the
+  listing; one a remaining `organization` or `ou` entry covers stays in the record's `lost` and
+  is not owed again; one Organizations cannot classify stops the apply (below), because `lost` is
+  not empty. A listing that fails refuses the render, as an unreadable state does.
 
 - An `account` entry still present keeps that account.
 - A remaining `organization` or `ou` entry keeps an account only if Organizations says it is
@@ -739,8 +752,13 @@ Not covered:
   account attached under `full` stay attached after that entry is removed or downgraded.
   Revoke one with `aws eventsv2 revoke-resource --arn <event source arn>`.
 - An account that leaves the organization or an OU while an org/OU entry remains keeps its
-  subscribers: the YAML does not change, so the step does not run. Revoke them by hand with the
+  subscribers once a round has judged them: the YAML does not change, and an account already in
+  the record's `lost` is not owed again, so the step does not run. Revoke them by hand with the
   same command.
+- With an `organization` or `ou` entry and a deployer that cannot call Organizations, the first
+  apply after any account without an `account` entry creates a subscriber stops (exit 6), even
+  when the account is inside: nothing tells it apart from an account that only a removed entry
+  entitled. Add an `account` entry for it, or deploy with Organizations access.
 
 Script exit codes: 0 done or nothing to do, 2 bad input (including a bus ARN of another
 account), 3 AWS CLI missing or not v2, 5 any other AWS error, 6 undecided after a loss.
@@ -820,7 +838,7 @@ statement with a tag condition:
 | Actions | Resource |
 |---|---|
 | `cloudformation:CreateResource`, `GetResource`, `UpdateResource`, `DeleteResource`, `GetResourceRequestStatus`, `ListResources`, `ListResourceRequests` (Cloud Control, used by awscc) | `*` |
-| `events:ListEventBuses`, `ListSubscribers`, `ListEventSources` | `*` |
+| `events:ListEventBuses`, `ListSubscribers`, `ListEventSources` | `*` (`ListSubscribers` also at `meroku generate`, for an environment that shares or once shared) |
 | `events:CreateEventBus`, `DescribeEventBus`, `UpdateEventBus`, `DeleteEventBus` | `<bus>` |
 | `events:CreateSubscriber` | `<bus>`, `<subs2>`, `<subs3>` create-time |
 | `events:UpdateSubscriber` | `<bus>`, `<subs2>`, `<subs3>` existing |
@@ -913,6 +931,9 @@ The bus kind and sharing:
   (below). meroku cannot tell which subscribers, ordered queues and shares are deployed, so it
   refuses to render. A deploy runs its AWS pre-flight, which refreshes an expired SSO session,
   and generates once more before it gives up.
+- An enhanced bus that is or was shared whose subscribers cannot be listed
+  (`eventsv2 ListSubscribers`), so meroku cannot tell whether another account still holds a
+  subscriber that must be revoked. Retried after the pre-flight in the same way.
 
 ### What was deployed
 
