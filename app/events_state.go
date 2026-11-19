@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -71,7 +72,10 @@ const awsccLockProvider = `"registry.terraform.io/hashicorp/awscc"`
 
 // eventsStatePuller runs `terraform state pull` in dir. A variable so tests
 // stub Terraform.
-var eventsStatePuller = func(ctx context.Context, dir, profile, region string) ([]byte, error) {
+var eventsStatePuller = pullTerraformState
+
+// pullTerraformState is the real eventsStatePuller.
+func pullTerraformState(ctx context.Context, dir, profile, region string) ([]byte, error) {
 	cmd, err := eventsStatePullCmd(ctx, dir, profile, region)
 	if err != nil {
 		return nil, err
@@ -80,7 +84,9 @@ var eventsStatePuller = func(ctx context.Context, dir, profile, region string) (
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		if tail := strings.TrimSpace(lastLines(stderr.String(), 8)); tail != "" {
+		// Enough lines to keep the "Error:" line of a diagnostic with its
+		// source excerpt and detail.
+		if tail := strings.TrimSpace(lastLines(stderr.String(), 20)); tail != "" {
 			return nil, fmt.Errorf("terraform state pull: %w\n%s", err, redactSecrets(tail))
 		}
 		return nil, fmt.Errorf("terraform state pull: %w", err)
@@ -92,7 +98,7 @@ var eventsStatePuller = func(ctx context.Context, dir, profile, region string) (
 // region set explicitly: `meroku generate` runs in a shell whose AWS_PROFILE
 // may name another account, and the S3 backend reads with it.
 func eventsStatePullCmd(ctx context.Context, dir, profile, region string) (*exec.Cmd, error) {
-	cmd, err := newTerraformCmd(ctx, tfState, dir, "state", "pull")
+	cmd, err := newTerraformCmd(ctx, tfState, dir, "state", "pull", "-no-color")
 	if err != nil {
 		return nil, err
 	}
@@ -195,17 +201,44 @@ var eventsAwsccStateFor = func(ctx context.Context, envDir string, e Env, needed
 	return st
 }
 
+// ansiEscapePattern matches the colour and style sequences Terraform writes
+// when -no-color is not in effect.
+var ansiEscapePattern = regexp.MustCompile(`\x1b\[[0-9;]*[A-Za-z]`)
+
 // eventsStateErrorLine is a failed read's error on one line: the error, and
-// the first line of what Terraform printed, which names the cause (expired
-// SSO, access denied, backend not initialised).
+// the line of what Terraform printed that names the cause (expired SSO,
+// access denied, module not installed): its "Error:" line, or else its first
+// line with text. Colour codes and the diagnostic box are removed.
 func eventsStateErrorLine(err error) string {
 	first, rest, _ := strings.Cut(err.Error(), "\n")
-	for _, line := range strings.Split(rest, "\n") {
-		if line = strings.TrimSpace(strings.Trim(strings.TrimSpace(line), "│╷╵")); line != "" {
-			return first + ": " + line
+	cause := ""
+	for _, line := range strings.Split(ansiEscapePattern.ReplaceAllString(rest, ""), "\n") {
+		line = strings.TrimSpace(strings.Trim(strings.TrimSpace(line), "│╷╵"))
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "Error:") {
+			cause = line
+			break
+		}
+		if cause == "" {
+			cause = line
 		}
 	}
-	return first
+	if cause == "" {
+		return first
+	}
+	return first + ": " + cause
+}
+
+// terraformInitCausePattern matches the Terraform errors of a working
+// directory that terraform init has not prepared for its configuration.
+var terraformInitCausePattern = regexp.MustCompile(`Module not installed|Backend initialization required|Required plugins are not installed|Inconsistent dependency lock file|Plugin reinitialization required|Module source has changed|Module version requirements have changed|Backend configuration changed|terraform init`)
+
+// eventsStateNeedsInit reports whether a failed read failed because the env
+// directory is not initialised for its current main.tf.
+func eventsStateNeedsInit(cause string) bool {
+	return terraformInitCausePattern.MatchString(cause)
 }
 
 // eventsStateNeeded reports whether this render depends on what the state

@@ -969,6 +969,10 @@ How it reads:
 - A read that fails refuses the render, whatever made it needed. The markers record the last
   render, not the last apply, so they never stand in for the state there. Only the offline
   `/api/config-warnings` preview reads markers.
+- The refusal quotes Terraform's `Error:` line. When that line says the directory is not
+  initialised for its main.tf (a generate added a subscriber module, and `terraform init` has not
+  run since), it says to run `terraform -chdir=env/<env> init`; otherwise it names the profile,
+  region and state object, and `aws sso login` for an expired session.
 
 Once this machine has rendered the environment, a main.tf with no events marker is its record
 that the last render had nothing of the enhanced bus; a classic environment then generates

@@ -1616,6 +1616,12 @@ func eventsStateUnreadableProblem(envMap map[string]interface{}, env string, st 
 	if cause == "" {
 		cause = "it was not read"
 	}
+	if eventsStateNeedsInit(cause) {
+		dir := filepath.Join("env", env)
+		return fmt.Sprintf(
+			"event_bus: the Terraform state of %s could not be read (%s): %s is not initialised for its current main.tf (a generate can add a module after the last terraform init). Run terraform -chdir=%s init and run it again; meroku cannot tell which enhanced-bus subscribers, ordered queues and shares are deployed without the state",
+			env, cause, dir, dir)
+	}
 	profile := stringFromMap(envMap, "aws_profile")
 	where := []string{"AWS_PROFILE " + profile, "region " + stringFromMap(envMap, "region")}
 	if bucket, key := stringFromMap(envMap, "state_bucket"), stringFromMap(envMap, "state_file"); bucket != "" && key != "" {
