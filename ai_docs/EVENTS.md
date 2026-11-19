@@ -1012,7 +1012,7 @@ Patterns and names on the enhanced bus:
 | `event_bus_name` | the project bus name | `""` when the bus is off |
 | `event_bus_arn` | the project bus ARN, classic or enhanced | `""` |
 | `event_queue_urls` | map, consumer name → queue URL | `{}` when there are no consumers |
-| `event_fifo_queue_urls` | map, consumer name → FIFO queue URL | the key is absent unless an environment has a FIFO set, is enhanced or is in cleanup |
+| `event_fifo_queue_urls` | map, consumer name → FIFO queue URL | the key is absent unless an environment has a FIFO set or is enhanced. Leaving enhanced drops it in the generate that deletes the bus, so the generate after that apply plans empty |
 | `alerts_topic_arn` | the alerts topic ARN | `""` when there are no consumers |
 
 Read the FIFO map as `try(local.bridge.event_fifo_queue_urls, {})`, so `_shared` custom

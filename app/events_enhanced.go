@@ -1375,7 +1375,10 @@ func normalizeEnhancedEvents(envMap map[string]interface{}, bus eventBusSettings
 	envMap[eventBusGuardKey] = sh.guard
 	envMap[eventSubscriberChainKey] = chain
 	envMap[eventMarkersKey] = toInterfaces(markers)
-	envMap[eventBridgeFifoKey] = mode != awsccModeOff || anyFifo
+	// Not in cleanup: the key leaves the bridge output in the apply that
+	// deletes the bus, so the generate after it, which only drops the cleanup
+	// block, leaves the output as it is and plans empty.
+	envMap[eventBridgeFifoKey] = mode == awsccModeLive || anyFifo
 	return problems, warnings
 }
 

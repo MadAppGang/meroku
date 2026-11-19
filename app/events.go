@@ -1122,7 +1122,7 @@ func previousEventBusState(env string) (enabled bool, ok bool) {
 // the project bus, the consumers' queue URLs and the alerts topic. A value whose
 // resource does not exist is "" (or {} for the map), so custom Terraform that
 // reads it still validates. event_fifo_queue_urls is present only when the
-// environment is enhanced, in cleanup, or keeps a FIFO set.
+// environment is enhanced or keeps a FIFO set.
 func eventsBridgeBlock(envMap map[string]interface{}) string {
 	busEnabled, _ := eventBusEnabled(envMap)
 	consumers, _ := envMap[eventConsumersKey].([]interface{})
