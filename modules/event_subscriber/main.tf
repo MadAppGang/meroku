@@ -2,9 +2,11 @@
 # One subscriber of the enhanced project bus, delivering to a consumer's queue.
 #
 # Every subscriber gets two filters, which an event must both match: the
-# subscription's pattern on the event (DATA), and a SYSTEM_METADATA filter that
-# admits only PutEvents entries, so a PutRawEvents payload never reaches a
-# consumer queue. A JSONata transformer writes the classic EventBridge
+# subscription's pattern on the event (DATA), and a SYSTEM_METADATA filter on
+# the content type every PutEvents entry carries, so a PutRawEvents payload
+# with any other content type (application/json, for one) reaches no consumer
+# queue. A raw payload that declares the PutEvents content type itself is not
+# excluded by this filter. A JSONata transformer writes the classic EventBridge
 # envelope, with the PutEvents EventId as its id, so a consumer reads the same
 # body from either bus kind.
 #
@@ -31,7 +33,7 @@ locals {
   # event-id branch only guards an empty value.
   message_group_expression = "{% $exists($events.SystemMetadata.EventGroupId) and $events.SystemMetadata.EventGroupId != \"\" ? $events.Data.account & \":\" & $events.SystemMetadata.EventGroupId : $events.SystemMetadata.\"aws:EventId\" %}"
 
-  # Only PutEvents entries carry this content type.
+  # The content type of every PutEvents entry. PutRawEvents sets its own.
   put_events_only_pattern = jsonencode({ ContentType = ["application/eventbridge+json"] })
 
   # The classic envelope: the same nine keys in the same order.
@@ -40,12 +42,18 @@ locals {
   # AWS limits the JSON text of the whole FilterConfiguration, each pattern
   # escaped as a JSON string inside it, to 4096 bytes. jsonencode also escapes
   # <, > and &, so this is never more lenient than AWS.
-  filter_configuration_size = var.subscription == null ? 0 : length(jsonencode({
+  filter_configuration_json = var.subscription == null ? "" : jsonencode({
     Filters = [
       { Pattern = var.subscription.pattern, Scope = "DATA" },
       { Pattern = local.put_events_only_pattern, Scope = "SYSTEM_METADATA" },
     ]
-  }))
+  })
+
+  # length() counts characters, and a non-ASCII character is 2 to 4 bytes.
+  # The UTF-8 byte count is recovered from the base64 text of those bytes:
+  # 3 bytes per 4 characters, less one per padding "=".
+  filter_configuration_base64 = base64encode(local.filter_configuration_json)
+  filter_configuration_size   = length(local.filter_configuration_base64) / 4 * 3 - length(regexall("=", local.filter_configuration_base64))
 }
 
 resource "awscc_eventsv2_subscriber" "this" {
