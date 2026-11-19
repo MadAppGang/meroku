@@ -63,7 +63,7 @@ func getEventBusShareTargets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	targets, err := eventBusShareTargets(filepath.Dir(file), envName, own.Project, own.AccountID)
+	targets, err := eventBusShareTargets(filepath.Dir(file), envName, own.Env, own.Project, own.AccountID)
 	if err != nil {
 		writeShareTargetsJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return

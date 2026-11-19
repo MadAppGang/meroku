@@ -96,8 +96,7 @@ Rules every report follows:
 
 The TypeScript mirror is `web/src/types/configWarnings.ts`. The `WarningKind` union there must
 list the same ten kinds as `warningKinds` in `app/config_warnings.go`. Its `EventWarningCode`
-union lists every `event_*` code, including `event_ordered_shared_publishers`, which the Go side
-defines but does not emit (`eventGroupsCarryPublisherAccount` is `true`).
+union lists the `event_*` codes the events UI keys on.
 
 ### Warning codes
 

@@ -41,12 +41,13 @@ func (r *eventsRenderRoot) write(t *testing.T, rel string, data []byte) {
 }
 
 // stubEventsState makes the state probe answer with state for the rest of
-// the test. A nil state stands for an env directory without a lock file.
+// the test. The probe sets Needed itself, so a stub returns what was read:
+// eventsAwsccState{} is a state that was not read.
 func stubEventsState(t *testing.T, state func() eventsAwsccState) {
 	t.Helper()
 	saved := eventsAwsccStateFor
 	t.Cleanup(func() { eventsAwsccStateFor = saved })
-	eventsAwsccStateFor = func(string, Env) eventsAwsccState { return state() }
+	eventsAwsccStateFor = func(string, Env, bool) eventsAwsccState { return state() }
 }
 
 // render generates dev.yaml from yamlBody and returns the main.tf and

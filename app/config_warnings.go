@@ -82,8 +82,6 @@ const (
 	warnCodeEventFifoRetiredUnused       = "event_fifo_retired_unused"
 	warnCodeEventQueueDeleted            = "event_queue_deleted"
 	warnCodeEventShareRevoke             = "event_share_revoke"
-	// Emitted only when eventGroupsCarryPublisherAccount is false.
-	warnCodeEventOrderedSharedPublishers = "event_ordered_shared_publishers"
 	warnCodeOwnBackendBucketEnv          = "own_backend_bucket_env"
 	warnCodeDataBucketDisabledWorkload   = "data_bucket_disabled_workload"
 	warnCodeValkeyAccessDisabledWorkload = "valkey_access_disabled_workload"

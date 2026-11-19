@@ -389,6 +389,8 @@ func (h *chainHarness) readState() eventsAwsccState {
 				s.Revoke = &eventsRevokeRecord{Granted: in.Granted, Lost: in.Lost}
 			case module == "events" && r.Name == "queue":
 				s.Consumers = append(s.Consumers, key)
+			case module == "events" && r.Name == "fifo_queue":
+				s.FifoQueues = append(s.FifoQueues, key)
 			case r.Name == "sub":
 				if name, ok := eventModuleSubscriberName("myapp", "dev", module); ok {
 					s.Subscribers[module] = name
@@ -398,6 +400,7 @@ func (h *chainHarness) readState() eventsAwsccState {
 	}
 	sort.Strings(s.RamPrincipals)
 	sort.Strings(s.Consumers)
+	sort.Strings(s.FifoQueues)
 	return s
 }
 
@@ -573,9 +576,14 @@ func TestEventSubscriberChainOrder(t *testing.T) {
 	log.mustBefore(t, "step 6", "end create "+sub("zeta", "q2"), "start delete "+sub("zeta", "q"))
 	log.mustHave(t, "step 6", "end delete "+sub("billing", "t2"))
 
+	if !containsString(h.state.FifoQueues, "orders") {
+		t.Fatalf("step 6: the fake state holds no FIFO queue of orders: %+v", h.state)
+	}
+
 	// 7. Back to classic: cleanup deletes every subscriber and the bus. orders
-	// keeps its ordered queue (D-F's first step).
-	log, _ = h.step(chainStepYAML("event_bus: { enabled: true }", `
+	// keeps its ordered queue with fifo_retired, the first of the two deploys
+	// that delete a FIFO set.
+	log, mainTf := h.step(chainStepYAML("event_bus: { enabled: true }", `
   - name: orders
     container_port: 3000
     events:
@@ -595,9 +603,13 @@ func TestEventSubscriberChainOrder(t *testing.T) {
 	if h.state.Bus || len(h.state.Subscribers) > 0 {
 		t.Errorf("step 7: state still holds the bus or subscribers: %+v", h.state)
 	}
+	assertContains(t, "step 7 main.tf", mainTf, "# meroku:events fifo=orders retired\n")
+	if !containsString(h.state.FifoQueues, "orders") {
+		t.Errorf("step 7: fifo_retired did not keep the FIFO queue of orders: %+v", h.state)
+	}
 
 	// 8. Enhanced again with a share, then terraform destroy.
-	log, mainTf := h.step(chainStepYAML(chainEnhancedShared, `
+	log, mainTf = h.step(chainStepYAML(chainEnhancedShared, `
   - name: orders
     container_port: 3000
     events:

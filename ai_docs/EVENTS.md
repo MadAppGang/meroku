@@ -401,8 +401,11 @@ it back into one consumer and one key, so no two subscriptions share a name.
 Each subscriber has:
 
 - two filters: a `DATA` filter built from the entry (below) and the `SYSTEM_METADATA` filter
-  `{"ContentType":["application/eventbridge+json"]}`. Only `PutEvents` entries match.
-  A `PutRawEvents` payload reaches no meroku queue;
+  `{"ContentType":["application/eventbridge+json"]}`, the content type of every `PutEvents`
+  entry. A `PutRawEvents` payload sent with another content type reaches no meroku queue (a live
+  check with `application/json` was dropped). `PutRawEvents` takes the content type from the
+  caller, and a raw payload that declares `application/eventbridge+json` itself was not tested:
+  do not count on the filter to keep such a payload out;
 - a JSONATA transformer that writes the classic envelope, with
   `id = $events.SystemMetadata."aws:EventId"`, the `EventId` PutEvents returned. The
   other eight keys are copied from `$events.Data`;
@@ -449,7 +452,8 @@ pattern holding those characters is refused a little before AWS would refuse it,
   `bus: default` on it, or subscribe a service instead. The legacy single-rule form follows
   the project bus, so it is refused too.
 - Match a `*` in the middle of a detail type, or a lone `*`.
-- Deliver `PutRawEvents` payloads to meroku queues.
+- Deliver `PutRawEvents` payloads to meroku queues, except a raw payload that declares the
+  `PutEvents` content type itself (see the filters above).
 - Accept the classic `eventbridge` client. A producer publishes with `eventbridgev2`.
 - Order events across event groups, or events without an `EventGroupId`.
 
@@ -684,7 +688,8 @@ Security notes:
 - A `subscribe` or `full` account can create a subscriber that matches everything.
 - CreateSubscriber accepts a role or target that does not exist. A wrong grant shows only at
   delivery, through the delivery DLQ alarm.
-- A shared account's `PutRawEvents` payloads match no meroku subscriber.
+- A shared account's `PutRawEvents` payloads match no meroku subscriber unless they declare
+  `application/eventbridge+json` as their content type, which was not tested.
 
 ### Revoking shared subscribers
 
@@ -733,8 +738,8 @@ Only environments that share or once shared run them: at apply, when leaving enh
 ### Leaving the enhanced bus (cleanup)
 
 Setting `type: classic` (or removing `type`, or turning the bus off) on a deployed enhanced
-environment puts it in cleanup mode. meroku reads Terraform state with `terraform state pull`
-(the env YAML's `aws_profile` and `region`). While state holds the enhanced bus or a
+environment puts it in cleanup mode. meroku reads Terraform state on every generate and deploy
+(see "What was deployed" below). While state holds the enhanced bus or a
 subscriber, main.tf still renders the awscc provider, `module "event_bus_enhanced"` with
 `enabled = false`, and every subscriber module as a tombstone. That apply deletes the
 subscribers one at a time, then the bus, in the YAML's region.
@@ -845,8 +850,11 @@ Each is a `ConfigWarning` (`app/config_warnings.go`); generate prints it and car
 | `event_queue_deleted` | the workload | Enhanced or cleanup: state holds a consumer's queues and the workload is no longer a consumer |
 | `event_share_revoke` | `event_bus` | A principal may no longer subscribe, or the environment leaves an enhanced bus that was shared; subscribers are revoked |
 
-`event_ordered_shared_publishers` exists in code behind `eventGroupsCarryPublisherAccount`,
-which is `true`, so it is never emitted.
+Two checks the design kept in reserve are not in the code, because live checks in
+ap-southeast-2 settled them: a classic and an enhanced bus of the same name exist at once, so a
+type switch is one deploy (warned with `event_bus_type_change`, never refused); and a FIFO
+subscriber's message group carries the publishing account, so two accounts that send the same
+`EventGroupId` keep separate groups and no shared-publisher warning is needed.
 
 ## Generate-time errors
 
@@ -884,8 +892,33 @@ The bus kind and sharing:
 - An entry naming this environment's own account; an `env` that no same-project sibling with an
   `account_id` declares; an `env` two sibling files declare; an `env` entry when the sibling
   files could not be read; the same principal twice.
-- An environment that shares, or shared, whose Terraform state cannot be read while it has a
-  lock file. meroku cannot tell which accounts lose access, so it refuses to render.
+- An environment whose render depends on the Terraform state and whose state cannot be read
+  (below). meroku cannot tell which subscribers, ordered queues and shares are deployed, so it
+  refuses to render. A deploy runs its AWS pre-flight, which refreshes an expired SSO session,
+  and generates once more before it gives up.
+
+### What was deployed
+
+The state in the S3 backend is shared; `env/<env>/.terraform` and `.terraform.lock.hcl` are
+per machine and say nothing about what another machine deployed. A render that writes main.tf
+reads the state itself when it depends on it: the YAML sets `type: enhanced`, the previous
+main.tf has a `# meroku:events` marker (it was enhanced, in cleanup, shared, or kept a FIFO set),
+or a workload sets `fifo_retired`. A lock file that names awscc also makes it read, without
+refusing when the read fails.
+
+- With `env/<env>/.terraform`: `terraform state pull`, with the env YAML's `aws_profile` and
+  `region`.
+- Without it (a fresh checkout, a first deploy): the state object `s3://<state_bucket>/<state_file>`
+  directly, with the same profile. A missing bucket or object is a verified empty state.
+- A read that fails refuses the render. The markers record the last render, not the last apply,
+  so they never stand in for the state there. Only the offline `/api/config-warnings` preview
+  reads markers.
+
+A classic environment with none of the above is not read, so its generate stays offline.
+
+Subscribers in state count as meroku's only at the module addresses meroku renders and, while
+the bus is in state, only on that bus; a custom `awscc_eventsv2_subscriber` elsewhere in the
+root changes nothing.
 
 Ordering:
 

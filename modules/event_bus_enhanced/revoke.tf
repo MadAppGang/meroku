@@ -18,16 +18,20 @@
 resource "terraform_data" "revoke" {
   count = var.enabled && var.revoke.enabled ? 1 : 0
 
-  # A change of who may subscribe replaces the instance, and the create runs
-  # the script.
+  # A change of who may subscribe, or of what is owed, replaces the instance,
+  # and the create runs the script. lost changes without granted when a
+  # principal is associated in RAM that no applied step recorded (an apply
+  # interrupted between the two); generate keeps lost as recorded once a run
+  # has revoked it, so a settled bus plans no replacement.
   triggers_replace = {
     bus_arn = awscc_eventsv2_event_bus.project[0].event_bus_arn
     granted = join(" ", var.revoke.granted)
+    lost    = join(" ", var.revoke.lost)
   }
 
   # Read back by the next generate: what this step was applied with, and what
-  # it still owed. lost is not a trigger: a failed run taints the instance, and
-  # the next apply replaces it with the lost list computed from that record.
+  # it still owed. A failed run taints the instance, and the next apply
+  # replaces it with the lost list computed from that record.
   input = {
     granted = var.revoke.granted
     lost    = var.revoke.lost

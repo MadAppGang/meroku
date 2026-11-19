@@ -1,17 +1,13 @@
 package main
 
 import (
-	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
-	"time"
 )
 
 // The enhanced project bus (event_bus.type: enhanced).
@@ -83,23 +79,11 @@ const (
 	eventBusSiblingScanErrorKey = "_event_bus_sibling_scan_error"
 )
 
-// eventBusTypeFlipNeedsTwoDeploys turns on the refusal of a classic/enhanced
-// switch in one deploy. It is needed only if AWS cannot hold a classic and an
-// enhanced bus of the same name at once; in ap-southeast-2 both existed side
-// by side, so the switch is a replacement in one deploy.
-const eventBusTypeFlipNeedsTwoDeploys = false
-
 // eventFifoDeliveryDLQIsFifo says whether a FIFO subscriber's delivery DLQ is
 // a .fifo queue. A FIFO subscriber dead-lettered into a .fifo queue in
 // ap-southeast-2. Must equal the fifo_delivery_dlq request of
 // modules/events/naming.tf.
 const eventFifoDeliveryDLQIsFifo = true
-
-// eventGroupsCarryPublisherAccount says whether a FIFO subscriber's
-// MessageGroupId includes the publishing account. When false, two accounts
-// that publish the same EventGroupId share one SQS group, and generate warns
-// an ordered consumer of a bus shared with publishers.
-const eventGroupsCarryPublisherAccount = true
 
 // enhancedEventBusRegions are the Regions where EventBridge offers the enhanced
 // custom event bus. Source:
@@ -120,7 +104,8 @@ const (
 )
 
 // enhancedPutEventsOnlyPattern is the SYSTEM_METADATA filter every meroku
-// subscriber carries, so a PutRawEvents payload never reaches a queue. It
+// subscriber carries: the content type of every PutEvents entry, so a
+// PutRawEvents payload with any other content type reaches no queue. It
 // counts against enhancedPatternMaxBytes. Must equal
 // modules/event_subscriber's put_events_only_pattern.
 const enhancedPutEventsOnlyPattern = `{"ContentType":["application/eventbridge+json"]}`
@@ -132,7 +117,7 @@ const (
 )
 
 // eventSubscriberConsumerPattern is a consumer name a subscriber module and
-// name can carry (E21).
+// its AWS name can carry.
 var eventSubscriberConsumerPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
 var (
@@ -161,8 +146,9 @@ type eventBusSettings struct {
 }
 
 // readEventBus reads event_bus.enabled and event_bus.type. A malformed
-// block or enabled value is an error; the type rules (E1-E3) are problems,
-// reported with every other events problem.
+// block or enabled value is an error; the type rules (a known type, enabled,
+// a region that offers the enhanced bus) are problems, reported with every
+// other events problem.
 func readEventBus(envMap map[string]interface{}) (eventBusSettings, []string, error) {
 	enabled, err := eventBusEnabled(envMap)
 	if err != nil {
@@ -245,7 +231,7 @@ func (e eventShareEntry) marker() string {
 	return e.Kind + ":" + id + ":" + e.Access
 }
 
-// normalizeEventBusShare validates event_bus.share (E4-E13) and resolves env
+// normalizeEventBusShare validates event_bus.share and resolves env
 // entries against the share targets the caller recorded. The result is sorted
 // by access, then id.
 func normalizeEventBusShare(envMap map[string]interface{}, bus eventBusSettings) ([]eventShareEntry, []string) {
@@ -360,8 +346,9 @@ func normalizeEventBusShare(envMap map[string]interface{}, bus eventBusSettings)
 	return out, nil
 }
 
-// resolveShareEnv turns a share entry's env into the sibling's account
-// (E10, E11, E11a, E11b).
+// resolveShareEnv turns a share entry's env into the sibling's account, or
+// says why it cannot: the siblings could not be read, no sibling has that
+// name and an account_id, two files declare it, or it is this account.
 func resolveShareEnv(at, name string, raw interface{}, project, selfEnv string, targets []shareTarget, scanErr string) (string, string) {
 	shown := formatYAMLValue(raw)
 	if scanErr != "" {
@@ -401,7 +388,7 @@ func eventSharePrincipalLabel(principal string) string {
 	return "account " + id
 }
 
-// Share target statuses (GET /api/event-bus/share-targets and E10/E11/E11a).
+// Share target statuses (GET /api/event-bus/share-targets and resolveShareEnv).
 const (
 	shareTargetOK         = "ok"
 	shareTargetAmbiguous  = "ambiguous"
@@ -422,21 +409,25 @@ type shareTarget struct {
 // eventBusShareTargets lists every sibling environment of project in dir,
 // grouped by the env each file declares, then classified: two or more files
 // ambiguous, no account_id no_account, this env's account own_account,
-// otherwise ok. self is this env's file stem; the env it declares is skipped
-// too. Sorted by env. Generate (E10, E11, E11a) and the share-targets endpoint
-// both use it.
-func eventBusShareTargets(dir, self, project, ownAccount string) ([]shareTarget, error) {
-	probes, err := scanSiblingProbes(dir, self)
+// otherwise ok. selfStem is this env's file stem, whose file is not read;
+// selfEnv is the env that file declares, which is skipped as well, so a file
+// whose stem differs from its env: is never offered as its own sibling.
+// Sorted by env. Generate and the share-targets endpoint both use it.
+func eventBusShareTargets(dir, selfStem, selfEnv, project, ownAccount string) ([]shareTarget, error) {
+	probes, err := scanSiblingProbes(dir, selfStem)
 	if err != nil {
 		return nil, err
 	}
-	return classifyShareTargets(probes, self, project, ownAccount), nil
+	return classifyShareTargets(probes, selfStem, selfEnv, project, ownAccount), nil
 }
 
-func classifyShareTargets(probes []siblingProbe, self, project, ownAccount string) []shareTarget {
+func classifyShareTargets(probes []siblingProbe, selfStem, selfEnv, project, ownAccount string) []shareTarget {
+	if selfEnv == "" {
+		selfEnv = selfStem
+	}
 	byEnv := map[string][]siblingProbe{}
 	for _, p := range probes {
-		if p.Probe.Project != project || p.Probe.Env == self {
+		if p.Probe.Project != project || p.Probe.Env == selfStem || p.Probe.Env == selfEnv {
 			continue
 		}
 		byEnv[p.Probe.Env] = append(byEnv[p.Probe.Env], p)
@@ -574,6 +565,12 @@ func enhancedPatternBytes(pattern string) int {
 // the product, over every $or array at any depth, of its argument count. A
 // pattern without $or counts 1; value lists do not count. A pattern that is
 // not JSON counts 1.
+//
+// Exact for the patterns meroku generates, which have one top-level $or. For
+// a $or nested inside a branch of another, the product counts every branch
+// with every other, where AWS adds the alternatives of different branches,
+// so it over-counts: a nested pattern may be refused that AWS would accept,
+// never the reverse.
 func eventPatternOrCombinations(pattern string) int {
 	var v interface{}
 	if err := json.Unmarshal([]byte(pattern), &v); err != nil {
@@ -681,6 +678,14 @@ type eventPrevious struct {
 	Ordered     []string        // "<c>/<k>"
 	Fifo        map[string]bool // consumer -> retired
 	Share       []string        // "<kind>:<id|->:<access>"
+	Guard       bool            // guard=true: the bus has been shared, so leaving it revokes
+	Lost        []string        // lost=<principal>: what the next apply still has to revoke
+}
+
+// any reports whether the previous main.tf has any events marker.
+func (p eventPrevious) any() bool {
+	return p.Mode != "" || p.Guard || len(p.Subscribers) > 0 || len(p.Tombstones) > 0 ||
+		len(p.Ordered) > 0 || len(p.Fifo) > 0 || len(p.Share) > 0 || len(p.Lost) > 0
 }
 
 // parseEventMarkers reads the marker lines of a rendered main.tf.
@@ -701,6 +706,10 @@ func parseEventMarkers(content []byte) eventPrevious {
 			prev.Fifo[value] = len(m[3]) > 0
 		case "share":
 			prev.Share = append(prev.Share, value)
+		case "guard":
+			prev.Guard = value == "true"
+		case "lost":
+			prev.Lost = append(prev.Lost, value)
 		}
 	}
 	return prev
@@ -734,228 +743,6 @@ func subscribeCapableFromMarkers(share []string) []string {
 	return out
 }
 
-// --- State probe ----------------------------------------------------------
-
-// eventsAwsccState is what the env's Terraform state holds of the events
-// resources. Nothing else of the state is kept.
-type eventsAwsccState struct {
-	Readable      bool                // the state could be read (an empty or missing state is readable)
-	Pulled        bool                // `terraform state pull` ran and its output was parsed
-	LockFile      bool                // the env dir has a .terraform.lock.hcl
-	Err           string              // why the state could not be read
-	Bus           bool                // module.event_bus_enhanced.awscc_eventsv2_event_bus.project[0]
-	ClassicBus    bool                // module.events.aws_cloudwatch_event_bus.project[0]
-	Revoke        *eventsRevokeRecord // module.event_bus_enhanced.terraform_data.revoke[0]; nil if absent
-	Guard         bool                // module.event_bus_enhanced.terraform_data.bus_guard[0]
-	RamPrincipals []string            // keys of aws_ram_principal_association.bus: "<access>/<kind>/<id>"
-	Subscribers   map[string]string   // module name -> attributes.name of its awscc_eventsv2_subscriber.this[0]
-	FifoQueues    []string            // consumers with module.events.aws_sqs_queue.fifo_main["<c>"]
-	Consumers     []string            // consumers with module.events.aws_sqs_queue.main["<c>"]
-}
-
-// eventsRevokeRecord is the applied revoke step.
-type eventsRevokeRecord struct {
-	Granted []string // input.granted: the subscribe-capable principals it was applied with
-	Lost    []string // input.lost: what it had to revoke
-	Tainted bool     // its script failed
-}
-
-// eventsStatePullTimeout bounds the state read.
-const eventsStatePullTimeout = 2 * time.Minute
-
-// awsccLockProvider is the lock-file entry of the awscc provider.
-const awsccLockProvider = `"registry.terraform.io/hashicorp/awscc"`
-
-// eventsStatePuller runs `terraform state pull` in dir. A variable so tests
-// stub Terraform.
-var eventsStatePuller = func(ctx context.Context, dir, profile, region string) ([]byte, error) {
-	cmd, err := eventsStatePullCmd(ctx, dir, profile, region)
-	if err != nil {
-		return nil, err
-	}
-	var stderr strings.Builder
-	cmd.Stderr = &stderr
-	out, err := cmd.Output()
-	if err != nil {
-		if tail := strings.TrimSpace(lastLines(stderr.String(), 8)); tail != "" {
-			return nil, fmt.Errorf("terraform state pull: %w\n%s", err, redactSecrets(tail))
-		}
-		return nil, fmt.Errorf("terraform state pull: %w", err)
-	}
-	return out, nil
-}
-
-// eventsStatePullCmd builds the state read with the env YAML's profile and
-// region set explicitly: `meroku generate` runs in a shell whose AWS_PROFILE
-// may name another account, and the S3 backend reads with it.
-func eventsStatePullCmd(ctx context.Context, dir, profile, region string) (*exec.Cmd, error) {
-	cmd, err := newTerraformCmd(ctx, tfState, dir, "state", "pull")
-	if err != nil {
-		return nil, err
-	}
-	if profile != "" {
-		cmd.Env = append(cmd.Env, "AWS_PROFILE="+profile)
-	}
-	if region != "" {
-		cmd.Env = append(cmd.Env, "AWS_REGION="+region)
-	}
-	return cmd, nil
-}
-
-// eventsAwsccStateFor reads envDir's state. The lock file is the cheap
-// pre-check: no lock means nothing was initialised, so nothing is readable
-// and nothing is deployed; a lock without awscc means no awscc resource and no
-// FIFO set can be in state (a FIFO set needs an enhanced bus first), so
-// Terraform is not run. A variable so tests stub it.
-var eventsAwsccStateFor = func(envDir string, e Env) eventsAwsccState {
-	lock, err := os.ReadFile(filepath.Join(envDir, ".terraform.lock.hcl"))
-	if err != nil {
-		return eventsAwsccState{}
-	}
-	if !bytes.Contains(lock, []byte(awsccLockProvider)) {
-		return eventsAwsccState{Readable: true, LockFile: true}
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), eventsStatePullTimeout)
-	defer cancel()
-	out, err := eventsStatePuller(ctx, envDir, e.AWSProfile, e.Region)
-	if isNoStateFileError(err) {
-		return eventsAwsccState{Readable: true, LockFile: true, Pulled: true}
-	}
-	if err != nil {
-		first, _, _ := strings.Cut(err.Error(), "\n")
-		return eventsAwsccState{LockFile: true, Err: first}
-	}
-	st, err := parseEventsAwsccState(out)
-	if err != nil {
-		return eventsAwsccState{LockFile: true, Err: err.Error()}
-	}
-	st.LockFile = true
-	return st
-}
-
-// tfStateDocument is the part of a version-4 state document the probe reads.
-type tfStateDocument struct {
-	Version   int `json:"version"`
-	Resources []struct {
-		Module    string `json:"module"`
-		Mode      string `json:"mode"`
-		Type      string `json:"type"`
-		Name      string `json:"name"`
-		Instances []struct {
-			IndexKey   interface{}            `json:"index_key"`
-			Status     string                 `json:"status"`
-			Attributes map[string]interface{} `json:"attributes"`
-		} `json:"instances"`
-	} `json:"resources"`
-}
-
-// parseEventsAwsccState reads the events addresses from `terraform state
-// pull` output. Empty output is an empty state.
-func parseEventsAwsccState(out []byte) (eventsAwsccState, error) {
-	st := eventsAwsccState{Readable: true, Pulled: true, Subscribers: map[string]string{}}
-	if len(bytes.TrimSpace(out)) == 0 {
-		return st, nil
-	}
-	var doc tfStateDocument
-	if err := json.Unmarshal(out, &doc); err != nil {
-		return eventsAwsccState{}, fmt.Errorf("the state is not a Terraform state document: %w", err)
-	}
-	if doc.Version != 4 {
-		return eventsAwsccState{}, fmt.Errorf("state format version %d is not 4", doc.Version)
-	}
-	for _, r := range doc.Resources {
-		if r.Mode != "managed" || len(r.Instances) == 0 {
-			continue
-		}
-		switch {
-		case r.Module == "module.event_bus_enhanced" && r.Type == "awscc_eventsv2_event_bus" && r.Name == "project":
-			st.Bus = true
-		case r.Module == "module.events" && r.Type == "aws_cloudwatch_event_bus" && r.Name == "project":
-			st.ClassicBus = true
-		case r.Module == "module.event_bus_enhanced" && r.Type == "terraform_data" && r.Name == "revoke":
-			inst := r.Instances[0]
-			input := terraformDataInput(inst.Attributes["input"])
-			st.Revoke = &eventsRevokeRecord{
-				Granted: stringsOf(input["granted"]),
-				Lost:    stringsOf(input["lost"]),
-				Tainted: inst.Status == "tainted",
-			}
-		case r.Module == "module.event_bus_enhanced" && r.Type == "terraform_data" && r.Name == "bus_guard":
-			st.Guard = true
-		case r.Module == "module.event_bus_enhanced" && r.Type == "aws_ram_principal_association" && r.Name == "bus":
-			for _, inst := range r.Instances {
-				if k, ok := inst.IndexKey.(string); ok {
-					st.RamPrincipals = append(st.RamPrincipals, k)
-				}
-			}
-		case r.Type == "awscc_eventsv2_subscriber" && r.Name == "this":
-			module, ok := strings.CutPrefix(r.Module, "module.")
-			if !ok || strings.Contains(module, ".") {
-				continue
-			}
-			name, _ := r.Instances[0].Attributes["name"].(string)
-			st.Subscribers[module] = name
-		case r.Module == "module.events" && r.Type == "aws_sqs_queue" && (r.Name == "fifo_main" || r.Name == "main"):
-			for _, inst := range r.Instances {
-				k, ok := inst.IndexKey.(string)
-				if !ok {
-					continue
-				}
-				if r.Name == "fifo_main" {
-					st.FifoQueues = append(st.FifoQueues, k)
-				} else {
-					st.Consumers = append(st.Consumers, k)
-				}
-			}
-		}
-	}
-	sort.Strings(st.RamPrincipals)
-	sort.Strings(st.FifoQueues)
-	sort.Strings(st.Consumers)
-	return st, nil
-}
-
-// terraformDataInput unwraps terraform_data's input attribute, which the
-// state stores as a dynamic value {value, type}.
-func terraformDataInput(raw interface{}) map[string]interface{} {
-	m, _ := raw.(map[string]interface{})
-	if v, ok := m["value"].(map[string]interface{}); ok {
-		if _, typed := m["type"]; typed {
-			return v
-		}
-	}
-	return m
-}
-
-func stringsOf(raw interface{}) []string {
-	items, _ := raw.([]interface{})
-	out := make([]string, 0, len(items))
-	for _, item := range items {
-		if s, ok := item.(string); ok {
-			out = append(out, s)
-		}
-	}
-	return out
-}
-
-// subscribeCapableFromRAM returns the subscribe-capable principals of
-// aws_ram_principal_association keys "<access>/<kind>/<id>".
-func subscribeCapableFromRAM(keys []string) []string {
-	var out []string
-	for _, k := range keys {
-		parts := strings.SplitN(k, "/", 3)
-		if len(parts) != 3 || !subscribeCapable(parts[0]) {
-			continue
-		}
-		if parts[1] == eventShareKindOrganization {
-			out = append(out, eventShareKindOrganization)
-		} else {
-			out = append(out, parts[1]+":"+parts[2])
-		}
-	}
-	return out
-}
-
 // --- Inputs ---------------------------------------------------------------
 
 // prepareEventInputs records, before preprocessEnvMap, what normalizeEvents
@@ -969,25 +756,13 @@ func prepareEventInputs(envMap map[string]interface{}, env, envFile string) {
 	if markers, ok := previousEventMarkers(env); ok {
 		envMap[eventPreviousKey] = markers
 	}
-	targets, err := eventBusShareTargets(filepath.Dir(envFile), env,
+	targets, err := eventBusShareTargets(filepath.Dir(envFile), env, stringFromMap(envMap, "env"),
 		stringFromMap(envMap, "project"), stringFromMap(envMap, "account_id"))
 	if err != nil {
 		envMap[eventBusSiblingScanErrorKey] = err.Error()
 		return
 	}
 	envMap[eventBusSiblingAccountsKey] = targets
-}
-
-// prepareEventStateProbe reads the env's Terraform state for normalizeEvents.
-// Only a render that writes main.tf calls it.
-func prepareEventStateProbe(envMap map[string]interface{}, env string) {
-	e := Env{
-		Project:    stringFromMap(envMap, "project"),
-		Env:        stringFromMap(envMap, "env"),
-		Region:     stringFromMap(envMap, "region"),
-		AWSProfile: stringFromMap(envMap, "aws_profile"),
-	}
-	envMap[eventsAwsccStateKey] = eventsAwsccStateFor(filepath.Join("env", env), e)
 }
 
 // eventDeployed is what is known of the last deploy: state where a render
@@ -1094,7 +869,9 @@ func (d eventDeployed) previousType() string {
 	return eventBusTypeClassic
 }
 
-// awsccMode is the mode of this render (D12).
+// awsccMode is the mode of this render: live while the YAML is enhanced,
+// cleanup while the state (or, offline, the markers) still holds the bus or a
+// subscriber, else off.
 func (d eventDeployed) awsccMode(bus eventBusSettings) string {
 	switch {
 	case bus.Enhanced:
@@ -1213,7 +990,7 @@ func eventSubscriberNameClashes(project, env string, live []eventLiveSubscriber)
 }
 
 // eventSubscriberTransitionClashes refuses a live subscriber whose name is the
-// name of a deployed subscriber of another module (E28): every deployed
+// name of a deployed subscriber of another module: every deployed
 // subscriber still exists while the creates run.
 func eventSubscriberTransitionClashes(live []eventLiveSubscriber, deployed map[string]string) []string {
 	var problems []string
@@ -1236,11 +1013,24 @@ func eventSubscriberTransitionClashes(live []eventLiveSubscriber, deployed map[s
 
 // --- Revoke ---------------------------------------------------------------
 
-// eventBusRevokeInputs computes module.event_bus_enhanced's revoke input
-// (D-R). lost = (C ∪ (B − granted)) − granted, where B is what the last
-// revoke step was applied with (or the RAM principals in state, or offline
-// the share= markers) and C what a failed step still owes.
-func eventBusRevokeInputs(share []eventShareEntry, d eventDeployed) (revoke map[string]interface{}, lost []string) {
+// eventBusRevokeInputs computes module.event_bus_enhanced's revoke input.
+// Whoever may no longer subscribe is revoked in the same apply:
+//
+//	owed = (C + B) - granted
+//
+// B is everyone who may still hold a grant: the principals the last revoke
+// step was applied with, and every subscribe-capable RAM association in
+// state, because an apply interrupted after it associated a principal, but
+// before it recorded the revoke step, leaves that principal only in RAM.
+// Offline, B is the previous share= markers. C is what a failed (tainted)
+// step still owes; offline, the previous lost= markers.
+//
+// lost, the module input, is owed, except when nothing changed since the
+// recorded step ran and it already revoked everything owed: then lost stays
+// what the record holds, so the plan after the apply is empty. lost is a
+// trigger of the step, so any new debt runs the script even when granted is
+// unchanged. owed is returned for the warning and the lost= markers.
+func eventBusRevokeInputs(share []eventShareEntry, d eventDeployed) (revoke map[string]interface{}, owed []string) {
 	var granted, keepAccounts, keepOUs []string
 	keepOrg := false
 	for _, e := range share {
@@ -1262,30 +1052,28 @@ func eventBusRevokeInputs(share []eventShareEntry, d eventDeployed) (revoke map[
 	sort.Strings(keepOUs)
 
 	var baseline, carry []string
+	rec := d.state.Revoke
 	if d.fromState() {
-		if d.state.Revoke != nil {
-			baseline = d.state.Revoke.Granted
-			if d.state.Revoke.Tainted {
-				carry = d.state.Revoke.Lost
+		baseline = subscribeCapableFromRAM(d.state.RamPrincipals)
+		if rec != nil {
+			baseline = append(baseline, rec.Granted...)
+			if rec.Tainted {
+				carry = rec.Lost
 			}
-		} else {
-			baseline = subscribeCapableFromRAM(d.state.RamPrincipals)
 		}
 	} else {
 		baseline = subscribeCapableFromMarkers(d.previous.Share)
+		carry = d.previous.Lost
 	}
-	lostSet := map[string]bool{}
-	for _, p := range append(append([]string(nil), carry...), baseline...) {
-		if !containsString(granted, p) {
-			lostSet[p] = true
-		}
+	owed = principalsNotIn(append(append([]string(nil), carry...), baseline...), granted)
+	lost := owed
+	if d.fromState() && rec != nil && !rec.Tainted &&
+		strings.Join(sortedStrings(rec.Granted), " ") == strings.Join(granted, " ") &&
+		len(principalsNotIn(owed, rec.Lost)) == 0 {
+		lost, owed = sortedStrings(rec.Lost), nil
 	}
-	for p := range lostSet {
-		lost = append(lost, p)
-	}
-	sort.Strings(lost)
 
-	enabled := len(share) > 0 || (d.fromState() && d.state.Revoke != nil) || len(lost) > 0
+	enabled := len(share) > 0 || (d.fromState() && rec != nil) || len(lost) > 0
 	return map[string]interface{}{
 		"enabled":       enabled,
 		"granted":       toInterfaces(granted),
@@ -1293,7 +1081,30 @@ func eventBusRevokeInputs(share []eventShareEntry, d eventDeployed) (revoke map[
 		"keep_org":      keepOrg,
 		"keep_ous":      toInterfaces(keepOUs),
 		"lost":          toInterfaces(lost),
-	}, lost
+	}, owed
+}
+
+// principalsNotIn is the sorted, de-duplicated set of items that are not in
+// exclude.
+func principalsNotIn(items, exclude []string) []string {
+	set := map[string]bool{}
+	for _, p := range items {
+		if !containsString(exclude, p) {
+			set[p] = true
+		}
+	}
+	out := make([]string, 0, len(set))
+	for p := range set {
+		out = append(out, p)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func sortedStrings(items []string) []string {
+	out := append([]string{}, items...)
+	sort.Strings(out)
+	return out
 }
 
 // disabledEventBusRevoke is the revoke input of an env that is not live.
@@ -1371,216 +1182,257 @@ func normalizeEnhancedEvents(envMap map[string]interface{}, bus eventBusSettings
 	var problems []string
 	var warnings []ConfigWarning
 
-	// E21: names a subscriber module and AWS name can carry.
 	if mode != awsccModeOff {
-		for _, c := range consumers {
-			if !eventSubscriberConsumerPattern.MatchString(c.w.name) {
-				problems = append(problems, fmt.Sprintf(
-					"%s: workload name %s cannot name an enhanced-bus subscriber; use lower-case letters, digits and hyphens", c.w.field, c.w.name))
-			}
-		}
+		problems = append(problems, eventSubscriberConsumerNameProblems(consumers)...)
 	}
 
-	// The live subscribers.
-	var live []eventLiveSubscriber
-	var orderedKeys []string
-	projectSubs := 0
+	var subs eventLiveSubscribers
 	if mode == awsccModeLive {
-		for _, c := range consumers {
-			var ordered []map[string]interface{}
-			for i, raw := range c.subs {
-				sub, _ := raw.(map[string]interface{})
-				if stringFromMap(sub, "bus") != eventBusProject {
-					continue
-				}
-				projectSubs++
-				key := stringFromMap(sub, "key")
-				if isOrdered(sub) {
-					ordered = append(ordered, sub)
-					orderedKeys = append(orderedKeys, c.w.name+"/"+key)
-					continue
-				}
-				live = append(live, eventLiveSubscriber{
-					module: eventSubscriberModule(c.w.name, key),
-					kind:   "standard",
-					key:    c.w.name + "/" + key,
-					name:   eventSubscriberName(project, env, c.w.name, key),
-					where:  c.wheres[i],
-				})
-			}
-			if len(ordered) == 0 {
-				continue
-			}
-			where := c.w.field + ".subscribes"
-			pattern := enhancedFifoPattern(ordered)
-			n, m := enhancedPatternBytes(pattern), eventPatternOrCombinations(pattern)
-			if n > enhancedPatternMaxBytes || m > enhancedPatternMaxCombinations {
-				problems = append(problems, fmt.Sprintf(
-					"%s: the ordered subscriptions together make filters of %d bytes, as AWS counts them, and a pattern with %d $or combinations; the enhanced bus allows %d bytes and %d combinations. Use fewer ordered subscriptions or shorter filter values",
-					where, n, m, enhancedPatternMaxBytes, enhancedPatternMaxCombinations))
-			}
-			live = append(live, eventLiveSubscriber{
-				module: eventFifoSubscriberModule(c.w.name),
-				kind:   "fifo",
-				key:    c.w.name,
-				name:   eventFifoSubscriberName(project, env, c.w.name),
-				where:  where,
-			})
-		}
-		problems = append(problems, eventSubscriberNameClashes(project, env, live)...)
-		problems = append(problems, eventSubscriberTransitionClashes(live, d.deployedSubscribers(project, env))...)
+		subs = liveEventSubscribers(project, env, consumers)
+		problems = append(problems, subs.problems...)
+		problems = append(problems, eventSubscriberNameClashes(project, env, subs.live)...)
+		problems = append(problems, eventSubscriberTransitionClashes(subs.live, d.deployedSubscribers(project, env))...)
 	}
 
-	// E27: a sharing env whose state cannot be read.
-	if d.renderPath && d.state.LockFile && !d.state.Readable && (len(share) > 0 || len(d.previous.Share) > 0) {
-		problems = append(problems, fmt.Sprintf(
-			"event_bus.share: the Terraform state of %s could not be read (%s), so meroku cannot tell which shared accounts lose access to the bus. Fix access to the state (AWS_PROFILE %s, region %s) and run it again",
-			env, d.state.Err, stringFromMap(envMap, "aws_profile"), stringFromMap(envMap, "region")))
+	// A render that writes main.tf decides from the state or not at all:
+	// FIFO retirement, tombstones, name reuse and revocation all read it, and
+	// the previous main.tf records a render, not an apply.
+	if d.renderPath && d.state.unknown() {
+		problems = append(problems, eventsStateUnreadableProblem(envMap, env, d.state.Err))
 	}
 
-	// Type change (E26 behind its switch, and the warning).
 	previousType := d.previousType()
 	envMap[eventBusPreviousTypeKey] = previousType
-	compared := previousType
-	if compared == awsccModeCleanup {
-		compared = eventBusTypeClassic
-	}
-	previousEnabled := compared == eventBusTypeEnhanced
-	if compared == eventBusTypeClassic {
-		if d.renderPath && d.state.Pulled {
-			previousEnabled = true
-		} else {
-			previousEnabled, _ = envMap[eventBusPreviousKey].(bool)
-		}
-	}
-	current := eventBusType(bus)
-	if previousEnabled && bus.Enabled && compared != current {
-		if eventBusTypeFlipNeedsTwoDeploys {
-			problems = append(problems, fmt.Sprintf(
-				"event_bus.type changes from %s to %s in one deploy, but AWS cannot hold both buses named %s-%s at once. Turn the project bus off (event_bus.enabled: false) and deploy, then set type: %s and deploy again",
-				compared, current, project, env, current))
-		}
-		client := "the classic EventBridge client and EVENT_BUS_NAME"
-		if bus.Enhanced {
-			client = "the EventBridge V2 client and EVENT_BUS_ARN"
-		}
-		if !bus.Enhanced {
-			projectSubs = countProjectSubscriptions(consumers)
-		}
-		warnings = append(warnings, ConfigWarning{
-			Code:  warnCodeEventBusTypeChange,
-			Item:  workloadItem(WarningKindEventBus, ""),
-			Title: "event_bus.type changed: the project bus is replaced",
-			Detail: fmt.Sprintf(
-				"The project bus %s-%s is deleted and created again as a %s bus. Every project-bus subscription is recreated (%d of them), and events published during the deploy are not delivered. Producers must publish with %s. Event-task rules on the project bus are refused on an enhanced bus.",
-				project, env, current, projectSubs, client),
-			Docs: docsLink("ai_docs/EVENTS.md"),
-		})
-	}
+	previousEnabled, _ := envMap[eventBusPreviousKey].(bool)
+	warnings = append(warnings, eventBusTypeChangeWarnings(project, env, bus, previousType, previousEnabled, consumers, d)...)
 
 	// Ordering changes, from the previous markers.
 	if mode == awsccModeLive && d.hasPrevious {
 		warnings = append(warnings, eventOrderChangeWarnings(consumers, d)...)
 	}
-
-	// Queues of a workload that is no longer a consumer.
 	if mode != awsccModeOff && d.fromState() {
-		now := map[string]bool{}
-		for _, c := range consumers {
-			now[c.w.name] = true
+		warnings = append(warnings, eventQueueDeletedWarnings(project, env, consumers, d)...)
+	}
+
+	sh := eventBusShareStage(project, env, mode, share, d)
+	warnings = append(warnings, sh.warnings...)
+
+	chain := []interface{}{}
+	var tombstones []string
+	if mode != awsccModeOff {
+		chain, tombstones = eventSubscriberChain(subs.live, d)
+	}
+	markers, anyFifo := eventMarkers(mode, subs, tombstones, consumers, share, sh)
+
+	envMap[awsccModeKey] = mode
+	envMap[eventBusEnhancedKey] = mode == awsccModeLive
+	envMap[awsccRenderKey] = mode != awsccModeOff
+	envMap[eventBusShareKey] = sh.share
+	envMap[eventBusRevokeKey] = sh.revoke
+	envMap[eventBusGuardKey] = sh.guard
+	envMap[eventSubscriberChainKey] = chain
+	envMap[eventMarkersKey] = toInterfaces(markers)
+	envMap[eventBridgeFifoKey] = mode != awsccModeOff || anyFifo
+	return problems, warnings
+}
+
+// eventSubscriberConsumerNameProblems refuses a workload name a subscriber
+// module and its AWS name cannot carry.
+func eventSubscriberConsumerNameProblems(consumers []eventConsumerResult) []string {
+	var problems []string
+	for _, c := range consumers {
+		if !eventSubscriberConsumerPattern.MatchString(c.w.name) {
+			problems = append(problems, fmt.Sprintf(
+				"%s: workload name %s cannot name an enhanced-bus subscriber; use lower-case letters, digits and hyphens", c.w.field, c.w.name))
 		}
-		for _, c := range d.state.Consumers {
-			if now[c] {
+	}
+	return problems
+}
+
+// eventLiveSubscribers is what a live render wants on the project bus.
+type eventLiveSubscribers struct {
+	live        []eventLiveSubscriber
+	orderedKeys []string // "<c>/<k>" of every ordered subscription
+	problems    []string // ordered filters over AWS's limits
+}
+
+// liveEventSubscribers builds one standard subscriber per unordered
+// project-bus subscription and one FIFO subscriber per consumer with ordered
+// ones, and refuses a FIFO subscriber whose filters exceed AWS's limits.
+func liveEventSubscribers(project, env string, consumers []eventConsumerResult) eventLiveSubscribers {
+	var out eventLiveSubscribers
+	for _, c := range consumers {
+		var ordered []map[string]interface{}
+		for i, raw := range c.subs {
+			sub, _ := raw.(map[string]interface{})
+			if stringFromMap(sub, "bus") != eventBusProject {
 				continue
 			}
-			names := eventQueueNames(project, env, c, false)
-			warnings = append(warnings, ConfigWarning{
-				Code:  warnCodeEventQueueDeleted,
-				Item:  eventWorkloadItem(c),
-				Title: fmt.Sprintf("%s's event queues are deleted", c),
-				Detail: fmt.Sprintf(
-					"%s has no subscription left, so this deploy deletes its queues %s, %s and %s, with any messages still in them. Keep one subscription until the queue is empty if those messages matter.",
-					c, names[0], names[1], names[2]),
-				Docs: docsLink("ai_docs/EVENTS.md"),
+			key := stringFromMap(sub, "key")
+			if isOrdered(sub) {
+				ordered = append(ordered, sub)
+				out.orderedKeys = append(out.orderedKeys, c.w.name+"/"+key)
+				continue
+			}
+			out.live = append(out.live, eventLiveSubscriber{
+				module: eventSubscriberModule(c.w.name, key),
+				kind:   "standard",
+				key:    c.w.name + "/" + key,
+				name:   eventSubscriberName(project, env, c.w.name, key),
+				where:  c.wheres[i],
 			})
 		}
-	}
-
-	// Ordered consumers of a bus shared with publishers, when groups do not
-	// carry the publishing account.
-	if !eventGroupsCarryPublisherAccount && mode == awsccModeLive {
-		publishers := false
-		for _, e := range share {
-			if e.Access == eventShareAccessPublish || e.Access == eventShareAccessFull {
-				publishers = true
-			}
+		if len(ordered) == 0 {
+			continue
 		}
-		if publishers {
-			for _, c := range consumers {
-				if c.fifo && !c.retired {
-					warnings = append(warnings, eventWarning(c.w, warnCodeEventOrderedSharedPublishers, "Ordered events from shared accounts share groups",
-						fmt.Sprintf("%s has ordered subscriptions on a bus other accounts publish to. Two accounts that use the same EventGroupId share one queue group: each account's events keep their order, the two are interleaved, and a stuck event of one holds up the other.", c.w.field)))
-				}
-			}
+		where := c.w.field + ".subscribes"
+		pattern := enhancedFifoPattern(ordered)
+		n, m := enhancedPatternBytes(pattern), eventPatternOrCombinations(pattern)
+		if n > enhancedPatternMaxBytes || m > enhancedPatternMaxCombinations {
+			out.problems = append(out.problems, fmt.Sprintf(
+				"%s: the ordered subscriptions together make filters of %d bytes, as AWS counts them, and a pattern with %d $or combinations; the enhanced bus allows %d bytes and %d combinations. Use fewer ordered subscriptions or shorter filter values",
+				where, n, m, enhancedPatternMaxBytes, enhancedPatternMaxCombinations))
 		}
+		out.live = append(out.live, eventLiveSubscriber{
+			module: eventFifoSubscriberModule(c.w.name),
+			kind:   "fifo",
+			key:    c.w.name,
+			name:   eventFifoSubscriberName(project, env, c.w.name),
+			where:  where,
+		})
 	}
+	return out
+}
 
-	// Share, revoke, guard.
-	shareOut := []interface{}{}
-	revoke := disabledEventBusRevoke()
-	guard := false
-	var lost []string
+// eventBusTypeChangeWarnings warns a bus kind that differs from the deployed
+// one. A classic and an enhanced bus of the same name can exist at once, so
+// the switch is a replacement in one deploy, and only warned. previousType is
+// d.previousType(); previousEnabled is the previous main.tf's bus switch,
+// which decides for a classic previous type that did not come from state.
+func eventBusTypeChangeWarnings(project, env string, bus eventBusSettings, previousType string, previousEnabled bool, consumers []eventConsumerResult, d eventDeployed) []ConfigWarning {
+	compared := previousType
+	if compared == awsccModeCleanup {
+		compared = eventBusTypeClassic
+	}
+	switch {
+	case compared == eventBusTypeEnhanced:
+		previousEnabled = true
+	case compared == eventBusTypeClassic && d.renderPath && d.state.Pulled:
+		previousEnabled = true
+	case compared != eventBusTypeClassic:
+		previousEnabled = false
+	}
+	current := eventBusType(bus)
+	if !previousEnabled || !bus.Enabled || compared == current {
+		return nil
+	}
+	client := "the classic EventBridge client and EVENT_BUS_NAME"
+	if bus.Enhanced {
+		client = "the EventBridge V2 client and EVENT_BUS_ARN"
+	}
+	return []ConfigWarning{{
+		Code:  warnCodeEventBusTypeChange,
+		Item:  workloadItem(WarningKindEventBus, ""),
+		Title: "event_bus.type changed: the project bus is replaced",
+		Detail: fmt.Sprintf(
+			"The project bus %s-%s is deleted and created again as a %s bus. Every project-bus subscription is recreated (%d of them), and events published during the deploy are not delivered. Producers must publish with %s. Event-task rules on the project bus are refused on an enhanced bus.",
+			project, env, current, countProjectSubscriptions(consumers), client),
+		Docs: docsLink("ai_docs/EVENTS.md"),
+	}}
+}
+
+// eventQueueDeletedWarnings warns each consumer in state that is no longer a
+// consumer: its queues are deleted with whatever they hold.
+func eventQueueDeletedWarnings(project, env string, consumers []eventConsumerResult, d eventDeployed) []ConfigWarning {
+	now := map[string]bool{}
+	for _, c := range consumers {
+		now[c.w.name] = true
+	}
+	var out []ConfigWarning
+	for _, c := range d.state.Consumers {
+		if now[c] {
+			continue
+		}
+		names := eventQueueNames(project, env, c, false)
+		out = append(out, ConfigWarning{
+			Code:  warnCodeEventQueueDeleted,
+			Item:  eventWorkloadItem(c),
+			Title: fmt.Sprintf("%s's event queues are deleted", c),
+			Detail: fmt.Sprintf(
+				"%s has no subscription left, so this deploy deletes its queues %s, %s and %s, with any messages still in them. Keep one subscription until the queue is empty if those messages matter.",
+				c, names[0], names[1], names[2]),
+			Docs: docsLink("ai_docs/EVENTS.md"),
+		})
+	}
+	return out
+}
+
+// eventBusShare is the share, revoke and guard input of module
+// event_bus_enhanced, with what is owed and the warnings.
+type eventBusShare struct {
+	share    []interface{}
+	revoke   map[string]interface{}
+	guard    bool
+	owed     []string
+	warnings []ConfigWarning
+}
+
+// eventBusShareStage computes the share inputs. Live: the share entries, the
+// revoke step, and the guard, which stays once the bus has been shared.
+// Cleanup: nothing is shared, and a bus that was shared warns that leaving
+// it revokes every foreign subscriber.
+func eventBusShareStage(project, env, mode string, share []eventShareEntry, d eventDeployed) eventBusShare {
+	out := eventBusShare{share: []interface{}{}, revoke: disabledEventBusRevoke()}
 	switch mode {
 	case awsccModeLive:
 		for _, e := range share {
-			shareOut = append(shareOut, map[string]interface{}{"kind": e.Kind, "id": e.ID, "access": e.Access})
+			out.share = append(out.share, map[string]interface{}{"kind": e.Kind, "id": e.ID, "access": e.Access})
 		}
-		revoke, lost = eventBusRevokeInputs(share, d)
-		guard = len(share) > 0
+		out.revoke, out.owed = eventBusRevokeInputs(share, d)
+		out.guard = len(share) > 0
 		if d.fromState() {
-			guard = guard || d.state.Revoke != nil || d.state.Guard
+			out.guard = out.guard || d.state.Revoke != nil || d.state.Guard
 		} else {
-			guard = guard || len(d.previous.Share) > 0
+			out.guard = out.guard || len(d.previous.Share) > 0 || d.previous.Guard
 		}
-		if len(lost) > 0 {
-			granted, _ := revoke["granted"].([]interface{})
+		if len(out.owed) > 0 {
+			granted, _ := out.revoke["granted"].([]interface{})
 			grantedStrings := make([]string, 0, len(granted))
 			for _, g := range granted {
 				grantedStrings = append(grantedStrings, g.(string))
 			}
-			warnings = append(warnings, eventShareRevokeWarning(eventShareRevokeDetail(project, env, lost, grantedStrings)))
+			out.warnings = append(out.warnings, eventShareRevokeWarning(eventShareRevokeDetail(project, env, out.owed, grantedStrings)))
 		}
 	case awsccModeCleanup:
 		leaving := false
 		if d.fromState() {
 			leaving = d.state.Guard
 		} else {
-			leaving = len(subscribeCapableFromMarkers(d.previous.Share)) > 0
+			leaving = len(subscribeCapableFromMarkers(d.previous.Share)) > 0 || d.previous.Guard
 		}
 		if leaving {
-			warnings = append(warnings, eventShareRevokeWarning(fmt.Sprintf(
+			out.warnings = append(out.warnings, eventShareRevokeWarning(fmt.Sprintf(
 				"%s-%s leaves the enhanced bus, so this deploy revokes every subscriber and event source other accounts created on it before the bus is deleted. Revocation is permanent: they must create new subscribers if you share again.",
 				project, env)))
 		}
 	}
+	return out
+}
 
-	// Chain and markers.
-	chain := []interface{}{}
-	var tombstones []string
-	if mode != awsccModeOff {
-		chain, tombstones = eventSubscriberChain(live, d)
-	}
+// eventMarkers is the sorted marker lines of this render, and whether any
+// consumer keeps a FIFO set.
+func eventMarkers(mode string, subs eventLiveSubscribers, tombstones []string, consumers []eventConsumerResult, share []eventShareEntry, sh eventBusShare) ([]string, bool) {
 	var markers []string
 	if mode != awsccModeOff {
 		markers = append(markers, eventMarkerPrefix+"awscc="+mode)
 	}
-	for _, l := range live {
+	for _, l := range subs.live {
 		markers = append(markers, eventMarkerPrefix+"subscriber="+l.module)
 	}
 	for _, t := range tombstones {
 		markers = append(markers, eventMarkerPrefix+"tombstone="+t)
 	}
-	for _, k := range orderedKeys {
+	for _, k := range subs.orderedKeys {
 		markers = append(markers, eventMarkerPrefix+"ordered="+k)
 	}
 	anyFifo := false
@@ -1599,19 +1451,35 @@ func normalizeEnhancedEvents(envMap map[string]interface{}, bus eventBusSettings
 		for _, e := range share {
 			markers = append(markers, eventMarkerPrefix+"share="+e.marker())
 		}
+		for _, p := range sh.owed {
+			markers = append(markers, eventMarkerPrefix+"lost="+p)
+		}
+		if sh.guard {
+			markers = append(markers, eventMarkerPrefix+"guard=true")
+		}
 	}
 	sort.Strings(markers)
+	return markers, anyFifo
+}
 
-	envMap[awsccModeKey] = mode
-	envMap[eventBusEnhancedKey] = mode == awsccModeLive
-	envMap[awsccRenderKey] = mode != awsccModeOff
-	envMap[eventBusShareKey] = shareOut
-	envMap[eventBusRevokeKey] = revoke
-	envMap[eventBusGuardKey] = guard
-	envMap[eventSubscriberChainKey] = chain
-	envMap[eventMarkersKey] = toInterfaces(markers)
-	envMap[eventBridgeFifoKey] = mode != awsccModeOff || anyFifo
-	return problems, warnings
+// eventsStateUnreadableProblem is the refusal of a render that depends on
+// the events state and could not read it.
+func eventsStateUnreadableProblem(envMap map[string]interface{}, env, cause string) string {
+	if cause == "" {
+		cause = "it was not read"
+	}
+	profile := stringFromMap(envMap, "aws_profile")
+	where := []string{"AWS_PROFILE " + profile, "region " + stringFromMap(envMap, "region")}
+	if bucket, key := stringFromMap(envMap, "state_bucket"), stringFromMap(envMap, "state_file"); bucket != "" && key != "" {
+		where = append(where, "s3://"+bucket+"/"+key)
+	}
+	login := "aws sso login"
+	if profile != "" {
+		login += " --profile " + profile
+	}
+	return fmt.Sprintf(
+		"event_bus: the Terraform state of %s could not be read (%s), so meroku cannot tell which enhanced-bus subscribers, ordered queues and shares are deployed, and a guess could delete queued events or keep a removed account subscribed. Make the state readable (%s; for an expired session run %s) and run it again",
+		env, cause, strings.Join(where, ", "), login)
 }
 
 func isOrdered(sub map[string]interface{}) bool {
@@ -1702,10 +1570,11 @@ func eventWorkloadField(envMap map[string]interface{}, name string) (string, eve
 	return "", eventWorkload{}, false
 }
 
-// eventFifoRetirementProblems is E23: a deployed active FIFO subscriber whose
-// workload is still in the YAML, has no ordered subscription now, and does
-// not set fifo_retired. It walks the deployed FIFO consumers, so a workload
-// whose events block was removed is still checked.
+// eventFifoRetirementProblems refuses dropping a deployed FIFO set in one
+// deploy: a deployed active FIFO subscriber whose workload is still in the
+// YAML, has no ordered subscription now, and does not set fifo_retired. It
+// walks the deployed FIFO consumers, so a workload whose events block was
+// removed is still checked.
 func eventFifoRetirementProblems(envMap map[string]interface{}, consumers []eventConsumerResult, retiredBy map[string]bool, d eventDeployed) []string {
 	project := stringFromMap(envMap, "project")
 	env := stringFromMap(envMap, "env")

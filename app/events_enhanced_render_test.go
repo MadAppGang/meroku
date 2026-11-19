@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -27,11 +28,17 @@ func readEventsEnhancedFixture(t *testing.T, name string) string {
 
 // emptyEventsState is a readable state with nothing of the events modules in it.
 func emptyEventsState() eventsAwsccState {
-	return eventsAwsccState{Readable: true, Pulled: true, LockFile: true, Subscribers: map[string]string{}}
+	return eventsAwsccState{Readable: true, Pulled: true, Tried: true, Subscribers: map[string]string{}}
 }
 
-// noLockEventsState is an env directory that was never initialised.
+// noLockEventsState is a state the probe did not read: a classic env with
+// nothing of events in its markers or YAML, and no awscc in its lock file.
 func noLockEventsState() eventsAwsccState { return eventsAwsccState{} }
+
+// unreadableEventsState is a read that failed.
+func unreadableEventsState() eventsAwsccState {
+	return eventsAwsccState{Tried: true, Err: "terraform state pull: exit status 1: Error: SSO session expired"}
+}
 
 func assertContains(t *testing.T, label, text string, wants ...string) {
 	t.Helper()
@@ -252,18 +259,25 @@ func TestEnhancedEventsReverseTransitionRender(t *testing.T) {
 		assertContains(t, "main.tf", mainTf, "  bus_enabled = false\n")
 	})
 
-	t.Run("unreadable state with awscc markers stays in cleanup", func(t *testing.T) {
+	// The markers record a render, not an apply, so they never stand in for
+	// the state on a render that writes main.tf.
+	t.Run("unreadable state with awscc markers is refused", func(t *testing.T) {
 		root := newEventsRenderRoot(t)
 		stubEventsState(t, emptyEventsState)
-		root.mustRender(t, readEventsEnhancedFixture(t, "live"))
-		stubEventsState(t, noLockEventsState)
-		mainTf, _ := root.mustRender(t, classic)
-		assertCleanup(t, mainTf, []string{
-			"event_fifo_subscriber_orders",
-			"event_subscriber_backend_user-created",
-			"event_subscriber_billing_t",
-			"event_subscriber_orders_s",
-		})
+		first, _ := root.mustRender(t, readEventsEnhancedFixture(t, "live"))
+		stubEventsState(t, unreadableEventsState)
+		_, _, _, err := root.render(t, classic)
+		if err == nil {
+			t.Fatal("generate wrote main.tf from markers while the state could not be read")
+		}
+		if !errors.Is(err, errEventsStateUnreadable) {
+			t.Errorf("the refusal does not carry errEventsStateUnreadable: %v", err)
+		}
+		assertContains(t, "error", err.Error(), "could not be read (terraform state pull: exit status 1: Error: SSO session expired)", "aws sso login --profile")
+		kept, readErr := os.ReadFile(filepath.Join(root.dir, "env", "dev", "main.tf"))
+		if readErr != nil || string(kept) != first {
+			t.Error("the refused render changed main.tf")
+		}
 	})
 
 	// With nothing of awscc left, a classic env renders as if it had never
@@ -331,6 +345,7 @@ func TestEventMarkersRoundTrip(t *testing.T) {
 				Ordered: []string{"orders/a", "orders/b"},
 				Fifo:    map[string]bool{"orders": false},
 				Share:   []string{"account:000000000001:subscribe", "account:000000000002:publish"},
+				Guard:   true,
 			},
 		},
 		{

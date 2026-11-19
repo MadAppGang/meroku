@@ -108,6 +108,7 @@ resource "terraform_data" "revoke" {
   triggers_replace = {
     bus_arn = terraform_data.bus[0].id
     granted = join(" ", var.revoke.granted)
+    lost    = join(" ", var.revoke.lost)
   }
 
   input = {

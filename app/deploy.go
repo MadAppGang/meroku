@@ -86,8 +86,33 @@ func runCommandToDeploy(env string) error {
 	if err := createFolderIfNotExists(filepath.Join("env", env)); err != nil {
 		return stepErr("setup", fmt.Errorf("creating env/%s: %w", env, err))
 	}
+	// One context for the whole of this deploy's AWS work, hoisted above the
+	// pre-flight rather than created after it: the EC2 compute pool checks in
+	// step 8 spend up to 45 seconds on sequential dry runs, and they belong to
+	// the same cancellation as the DNS pre-flight and the state reconnect
+	// below.
+	ctx := context.Background()
+
+	// The render reads the events state with the YAML's profile. A session
+	// that expired is refreshed by the pre-flight, so a render refused only
+	// for an unreadable state is retried once after it.
+	preflightDone := false
 	if err := applyTemplate(env); err != nil {
-		return stepErr("generate", err)
+		if !errors.Is(err, errEventsStateUnreadable) {
+			return stepErr("generate", err)
+		}
+		fmt.Printf("\n⚠️  %v\n\n   Running the AWS pre-flight, which refreshes an expired session, then generating again.\n", err)
+		e, loadErr := loadEnv(env)
+		if loadErr != nil {
+			return stepErr("migration", fmt.Errorf("loading environment %s: %w", env, loadErr))
+		}
+		if err := deployPreflight(ctx, e); err != nil {
+			return stepErr("preflight", err)
+		}
+		preflightDone = true
+		if err := applyTemplate(env); err != nil {
+			return stepErr("generate", err)
+		}
 	}
 
 	// The CI Lambda is built by terraform itself (modules/workloads/lambda.tf:
@@ -101,18 +126,13 @@ func runCommandToDeploy(env string) error {
 		return stepErr("migration", fmt.Errorf("loading environment %s: %w", env, err))
 	}
 
-	// One context for the whole of this deploy's AWS work, hoisted above the
-	// pre-flight rather than created after it: the EC2 compute pool checks in
-	// step 8 spend up to 45 seconds on sequential dry runs, and they belong to
-	// the same cancellation as the DNS pre-flight and the state reconnect
-	// below.
-	ctx := context.Background()
-
 	// Run comprehensive AWS pre-flight checks BEFORE changing directory
 	// This validates credentials, checks/creates S3 bucket, and handles SSO refresh
 	fmt.Printf("\n🚀 Starting deployment for environment: %s\n", env)
-	if err := deployPreflight(ctx, e); err != nil {
-		return stepErr("preflight", err)
+	if !preflightDone {
+		if err := deployPreflight(ctx, e); err != nil {
+			return stepErr("preflight", err)
+		}
 	}
 
 	// Neon objects released earlier stay listed until they are deleted or
@@ -523,7 +543,11 @@ func applyTemplate(env string) error {
 	if err := preprocessEnvMap(envMap); err != nil {
 		printGenerateNotices(os.Stdout, generateNotices(envMap))
 		printConfigWarnings(os.Stdout, normalizeConfigWarnings(envLevel))
-		return invalidConfigurationError(envFile, err)
+		err = invalidConfigurationError(envFile, err)
+		if st, ok := envMap[eventsAwsccStateKey].(eventsAwsccState); ok && st.unknown() {
+			err = eventsStateUnreadableError{err: err}
+		}
+		return err
 	}
 
 	// Printed here, not in preprocessEnvMap, which render tests and the
