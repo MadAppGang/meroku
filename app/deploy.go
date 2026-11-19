@@ -513,11 +513,12 @@ func applyTemplate(env string) error {
 	// Everything that happens to envMap between loading and rendering: the
 	// disabled-item filter, the zero-config pool, and the compute refusals that
 	// have to see the result of both.
-	// The bus state main.tf was last generated with, so normalizeEvents can say
-	// what a change of event_bus.enabled moves.
-	if previous, ok := previousEventBusState(env); ok {
-		envMap[eventBusPreviousKey] = previous
-	}
+	// The bus state and event markers main.tf was last generated with, the
+	// same-project siblings a share entry can name, and what the Terraform
+	// state holds of the events resources: normalizeEvents decides from state
+	// where it can answer, so a generate that was never applied changes nothing.
+	prepareEventInputs(envMap, env, envFile)
+	prepareEventStateProbe(envMap, env)
 
 	if err := preprocessEnvMap(envMap); err != nil {
 		printGenerateNotices(os.Stdout, generateNotices(envMap))
@@ -532,7 +533,7 @@ func applyTemplate(env string) error {
 
 	// Custom files share main.tf's root namespace; refuse one that redeclares a
 	// name the template uses before rendering anything.
-	if err := validateCustomTerraformRootNames(env); err != nil {
+	if err := validateCustomTerraformRootNamesFor(env, envMap[awsccRenderKey] == true); err != nil {
 		return err
 	}
 

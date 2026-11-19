@@ -160,9 +160,26 @@ type VaultConnection struct {
 	Prefix string `yaml:"prefix,omitempty"`
 }
 
-// EventBus is the optional event_bus block.
+// EventBus is the optional event_bus block. Type is classic (the default when
+// empty) or enhanced, the EventBridge enhanced custom bus; Share lists the
+// other accounts an enhanced bus is shared with through AWS RAM.
 type EventBus struct {
-	Enabled *bool `yaml:"enabled,omitempty"`
+	Enabled *bool           `yaml:"enabled,omitempty"`
+	Type    string          `yaml:"type,omitempty"`
+	Share   []EventBusShare `yaml:"share,omitempty"`
+}
+
+// EventBusShare is one event_bus.share entry: exactly one of Organization
+// (the whole AWS Organization this account belongs to), OU (an organizational
+// unit id), Account (a 12-digit account id) or Env (a sibling environment of
+// the same project, resolved to its account_id), and Access: publish,
+// subscribe or full.
+type EventBusShare struct {
+	Organization bool   `yaml:"organization,omitempty"`
+	OU           string `yaml:"ou,omitempty"`
+	Account      string `yaml:"account,omitempty"`
+	Env          string `yaml:"env,omitempty"`
+	Access       string `yaml:"access,omitempty"`
 }
 
 // WorkloadEvents is a workload's events block: what it subscribes to (backend
@@ -185,6 +202,9 @@ type EventSubscription struct {
 	Source           string        `yaml:"source,omitempty"`
 	Filters          []EventFilter `yaml:"filters,omitempty"`
 	Bus              string        `yaml:"bus,omitempty"`
+	// Ordered delivers the entry through the consumer's FIFO queue, in the
+	// order the enhanced project bus accepted each event group's events.
+	Ordered bool `yaml:"ordered,omitempty"`
 }
 
 // EventFilter matches one field of an event's detail: Field is a path such as
@@ -194,10 +214,13 @@ type EventFilter struct {
 	Values []string `yaml:"values"`
 }
 
-// EventQueue holds the two settings a consumer's queue exposes.
+// EventQueue holds the settings a consumer's queue exposes. FifoRetired keeps a
+// deployed ordered (FIFO) queue set that no subscription fills any more, so it
+// can be drained before a later deploy deletes it.
 type EventQueue struct {
 	VisibilityTimeout *int `yaml:"visibility_timeout,omitempty"`
 	MaxReceiveCount   *int `yaml:"max_receive_count,omitempty"`
+	FifoRetired       bool `yaml:"fifo_retired,omitempty"`
 }
 
 // EventProduce is one events.produces entry: a detail-type list or Any, whether

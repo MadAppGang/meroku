@@ -56,6 +56,9 @@ var reservedWorkloadEnvTable = []reservedWorkloadEnv{
 	{name: "DATA_BUCKET_SHARED_", prefix: true, setBy: "the data bucket's shared folders", appliesTo: everyWorkload},
 	{name: "EVENT_QUEUE_URL", setBy: "the workload's event queue", appliesTo: isEventConsumer},
 	{name: "EVENT_DLQ_URL", setBy: "the workload's event dead-letter queue", appliesTo: isEventConsumer},
+	{name: "EVENT_FIFO_QUEUE_URL", setBy: "the workload's ordered event queue", appliesTo: isEventFifoConsumer},
+	{name: "EVENT_FIFO_DLQ_URL", setBy: "the workload's ordered event dead-letter queue", appliesTo: isEventFifoConsumer},
+	{name: "EVENT_BUS_ARN", setBy: "the enhanced project bus", appliesTo: hasEnhancedEventBus},
 	{name: "VALKEY_URL", setBy: "valkey.access", appliesTo: hasValkeyAccess},
 	{name: "VALKEY_HOST", setBy: "valkey.access", appliesTo: hasValkeyAccess},
 	{name: "VALKEY_PORT", setBy: "valkey.access", appliesTo: hasValkeyAccess},
@@ -110,6 +113,27 @@ func isEventConsumer(ctx workloadEnvContext) bool {
 		}
 	}
 	return false
+}
+
+// isEventFifoConsumer reports whether the workload is an event consumer with a
+// FIFO queue set (an ordered subscription, or a retired set it keeps).
+func isEventFifoConsumer(ctx workloadEnvContext) bool {
+	consumers, _ := ctx.envMap[eventConsumersKey].([]interface{})
+	for _, raw := range consumers {
+		if m, ok := computeNodeMap(raw); ok && stringFromMap(m, "name") == ctx.name {
+			fifo, _ := m["fifo"].(bool)
+			return fifo
+		}
+	}
+	return false
+}
+
+// hasEnhancedEventBus reports whether the env's project bus is enhanced; every
+// workload then gets EVENT_BUS_ARN. Not reserved on a classic env, where a
+// YAML EVENT_BUS_ARN is the application's own.
+func hasEnhancedEventBus(ctx workloadEnvContext) bool {
+	enhanced, _ := ctx.envMap[eventBusEnhancedKey].(bool)
+	return enhanced
 }
 
 // hasValkeyAccess reports whether the workload is in valkey.access of an enabled

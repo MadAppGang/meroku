@@ -300,41 +300,80 @@ func normalizeEvents(envMap map[string]interface{}) error {
 	envMap[eventConsumersKey] = []interface{}{}
 	envMap[eventProducersKey] = []interface{}{}
 
-	busEnabled, err := eventBusEnabled(envMap)
+	bus, problems, err := readEventBus(envMap)
 	if err != nil {
 		return err
 	}
+	busEnabled := bus.Enabled
+	share, shareProblems := normalizeEventBusShare(envMap, bus)
+	problems = append(problems, shareProblems...)
+	deployed := readEventDeployed(envMap)
 
-	workloads, problems := eventWorkloads(envMap)
+	workloads, workloadProblems := eventWorkloads(envMap)
+	problems = append(problems, workloadProblems...)
 	var warnings []ConfigWarning
 	var moves []eventMove
 	var consumers, producers []interface{}
+	var results []eventConsumerResult
+	retiredBy := map[string]bool{}
 
 	for _, w := range workloads {
 		problems = append(problems, checkEventKeys(w.events, []string{"subscribes", "queue", "produces"}, w.field)...)
 
-		subs, subProblems, subWarnings, subMoves := normalizeEventSubscriptions(w, busEnabled)
-		problems = append(problems, subProblems...)
-		warnings = append(warnings, subWarnings...)
-		moves = append(moves, subMoves...)
+		subRes := normalizeEventSubscriptions(w, bus)
+		subs := subRes.subs
+		problems = append(problems, subRes.problems...)
+		warnings = append(warnings, subRes.warnings...)
+		moves = append(moves, subRes.moves...)
 
 		queue, queueProblems := normalizeEventQueue(w)
 		problems = append(problems, queueProblems...)
+		qwhere := w.field + ".queue"
+		ordered := subRes.orderedWhere != ""
+		keepsFifo := false
+		if queue.fifoRetired {
+			retiredBy[w.name] = true
+			switch {
+			case ordered:
+				problems = append(problems, fmt.Sprintf(
+					"%s.fifo_retired is true, but %s.ordered is true; fifo_retired keeps a queue that no subscription fills. Remove fifo_retired, or turn ordered off",
+					qwhere, subRes.orderedWhere))
+			case deployed.fifoSetDeployed(w.name):
+				keepsFifo = true
+			default:
+				warnings = append(warnings, eventWarning(w, warnCodeEventFifoRetiredUnused, "fifo_retired has nothing to keep",
+					fmt.Sprintf("%s.fifo_retired keeps a deployed ordered queue, and %s has none. Remove it.", qwhere, w.name)))
+			}
+		}
 		if q, has := w.events["queue"]; has && q != nil {
 			switch {
 			case w.kind == eventKindScheduledTask || w.kind == eventKindEventTask:
 				problems = append(problems, fmt.Sprintf("%s.queue: tasks have no event queue; remove it", w.field))
-			case len(subs) == 0:
+			case len(subs) == 0 && !keepsFifo:
 				warnings = append(warnings, eventWarning(w, warnCodeEventQueueUnused, "events.queue has no effect",
 					fmt.Sprintf("%s.queue has no effect: the workload subscribes to nothing, so it has no queue", w.field)))
 			}
 		}
-		if len(subs) > 0 {
-			consumers = append(consumers, map[string]interface{}{
+		if len(subs) > 0 || keepsFifo {
+			consumer := map[string]interface{}{
 				"name":               w.name,
 				"visibility_timeout": queue.visibilityTimeout,
 				"max_receive_count":  queue.maxReceiveCount,
 				"subscriptions":      subs,
+			}
+			if subs == nil {
+				consumer["subscriptions"] = []interface{}{}
+			}
+			// Only when true, so a classic consumer renders the same object.
+			if ordered || keepsFifo {
+				consumer["fifo"] = true
+			}
+			if keepsFifo {
+				consumer["fifo_retired"] = true
+			}
+			consumers = append(consumers, consumer)
+			results = append(results, eventConsumerResult{
+				w: w, subs: subs, wheres: subRes.wheres, fifo: ordered || keepsFifo, retired: keepsFifo,
 			})
 		}
 
@@ -351,7 +390,7 @@ func normalizeEvents(envMap map[string]interface{}) error {
 		}
 	}
 
-	ruleProblems, ruleMoves := normalizeEventTaskRules(envMap, project, env, busEnabled)
+	ruleProblems, ruleMoves := normalizeEventTaskRules(envMap, project, env, bus)
 	problems = append(problems, ruleProblems...)
 	moves = append(moves, ruleMoves...)
 
@@ -359,6 +398,11 @@ func normalizeEvents(envMap map[string]interface{}) error {
 	if len(consumers) > 0 {
 		problems = append(problems, eventAlertsTopicClashes(envMap, project, env)...)
 	}
+
+	problems = append(problems, eventFifoRetirementProblems(envMap, results, retiredBy, deployed)...)
+	enhancedProblems, enhancedWarnings := normalizeEnhancedEvents(envMap, bus, share, results, deployed)
+	problems = append(problems, enhancedProblems...)
+	warnings = append(warnings, enhancedWarnings...)
 
 	if len(problems) > 0 {
 		sort.Strings(problems)
@@ -394,27 +438,31 @@ func normalizeEvents(envMap map[string]interface{}) error {
 // the subscriptions modules/events renders. A detail_type with * is matched
 // with EventBridge's wildcard operator by the module; filters, when set, are
 // passed on as [{field, values}].
-func normalizeEventSubscriptions(w eventWorkload, busEnabled bool) ([]interface{}, []string, []ConfigWarning, []eventMove) {
+func normalizeEventSubscriptions(w eventWorkload, bus eventBusSettings) eventSubscriptionsResult {
+	busEnabled := bus.Enabled
+	enhanced := bus.Enhanced
 	raw, present := w.events["subscribes"]
 	if !present || raw == nil {
-		return nil, nil, nil, nil
+		return eventSubscriptionsResult{}
 	}
 	items, ok := raw.([]interface{})
 	if !ok {
-		return nil, []string{fmt.Sprintf("%s.subscribes must be a list", w.field)}, nil, nil
+		return eventSubscriptionsResult{problems: []string{fmt.Sprintf("%s.subscribes must be a list", w.field)}}
 	}
 	if len(items) == 0 {
-		return nil, nil, nil, nil
+		return eventSubscriptionsResult{}
 	}
 	if w.kind == eventKindScheduledTask || w.kind == eventKindEventTask {
-		return nil, []string{fmt.Sprintf(
-			"%s.subscribes: tasks cannot subscribe; an event task runs from its rules, and a service or the backend subscribes with its own queue", w.field)}, nil, nil
+		return eventSubscriptionsResult{problems: []string{fmt.Sprintf(
+			"%s.subscribes: tasks cannot subscribe; an event task runs from its rules, and a service or the backend subscribes with its own queue", w.field)}}
 	}
 
 	var problems []string
 	var warnings []ConfigWarning
 	var moves []eventMove
 	var out []interface{}
+	var wheres []string
+	orderedWhere := ""
 	keys := map[string]int{}
 
 	for i, itemRaw := range items {
@@ -424,7 +472,17 @@ func normalizeEventSubscriptions(w eventWorkload, busEnabled bool) ([]interface{
 			problems = append(problems, fmt.Sprintf("%s must be a mapping with detail_type or detail_type_prefix", where))
 			continue
 		}
-		problems = append(problems, checkEventKeys(item, []string{"name", "detail_type", "detail_type_prefix", "source", "filters", "bus"}, where)...)
+		problems = append(problems, checkEventKeys(item, []string{"name", "detail_type", "detail_type_prefix", "source", "filters", "bus", "ordered"}, where)...)
+
+		ordered := false
+		if o, has := item["ordered"]; has && o != nil {
+			b, isBool := o.(bool)
+			if !isBool {
+				problems = append(problems, fmt.Sprintf("%s.ordered must be true or false", where))
+				continue
+			}
+			ordered = b
+		}
 
 		detailType, _ := item["detail_type"].(string)
 		prefix, _ := item["detail_type_prefix"].(string)
@@ -458,6 +516,23 @@ func normalizeEventSubscriptions(w eventWorkload, busEnabled bool) ([]interface{
 		}
 		if !explicit {
 			moves = append(moves, eventMove{where: where})
+		}
+		if ordered {
+			switch {
+			case !enhanced:
+				problems = append(problems, fmt.Sprintf(
+					"%s.ordered needs the enhanced project bus (event_bus.type: enhanced); a classic bus cannot keep order. Turn ordered off; set events.queue.fifo_retired: true to keep its deployed ordered queue", where))
+				continue
+			case bus == eventBusDefault:
+				problems = append(problems, fmt.Sprintf(
+					"%s.ordered is on the default bus, which cannot keep order; ordered subscriptions use the project bus", where))
+				continue
+			}
+		}
+		if enhanced && bus == eventBusProject && strings.Contains(detailType, "*") && !enhancedWildcardMappable(detailType) {
+			problems = append(problems, fmt.Sprintf(
+				"%s.detail_type %q uses * in a way the enhanced bus cannot match: it matches a fixed start (job.*) or a fixed end (*.created) only. List the exact detail types as separate entries, use detail_type_prefix, or keep the classic bus (event_bus.type: classic)", where, detailType))
+			continue
 		}
 		if detailType != "" && strings.Trim(detailType, "*") == "" {
 			warnings = append(warnings, eventWarning(w, warnCodeEventSubscriptionAllTypes, "Subscription receives every event on the bus",
@@ -499,9 +574,32 @@ func normalizeEventSubscriptions(w eventWorkload, busEnabled bool) ([]interface{
 		if len(filters) > 0 {
 			sub["filters"] = filters
 		}
+		if ordered {
+			sub["ordered"] = true
+			if orderedWhere == "" {
+				orderedWhere = where
+			}
+		} else if enhanced && bus == eventBusProject {
+			if n := enhancedPatternBytes(enhancedSubscriptionPattern(sub)); n > enhancedPatternMaxBytes {
+				problems = append(problems, fmt.Sprintf(
+					"%s: its event pattern is %d bytes, over the enhanced bus's %d; use fewer or shorter filter values", where, n, enhancedPatternMaxBytes))
+				continue
+			}
+		}
 		out = append(out, sub)
+		wheres = append(wheres, where)
 	}
-	return out, problems, warnings, moves
+	return eventSubscriptionsResult{subs: out, wheres: wheres, orderedWhere: orderedWhere, problems: problems, warnings: warnings, moves: moves}
+}
+
+// eventSubscriptionsResult is one workload's normalised subscribes list.
+type eventSubscriptionsResult struct {
+	subs         []interface{}
+	wheres       []string // the YAML path of each of subs
+	orderedWhere string   // the first ordered entry's path; "" when none
+	problems     []string
+	warnings     []ConfigWarning
+	moves        []eventMove
 }
 
 // normalizeEventFilters validates a subscription's optional filters list:
@@ -581,6 +679,8 @@ func normalizeEventFilters(raw interface{}, where string) ([]interface{}, []stri
 type eventQueueSettings struct {
 	visibilityTimeout int
 	maxReceiveCount   int
+	// fifoRetired keeps a deployed FIFO queue set with no ordered subscription.
+	fifoRetired bool
 }
 
 func normalizeEventQueue(w eventWorkload) (eventQueueSettings, []string) {
@@ -594,7 +694,14 @@ func normalizeEventQueue(w eventWorkload) (eventQueueSettings, []string) {
 	if !ok {
 		return settings, []string{fmt.Sprintf("%s must be a mapping with visibility_timeout and max_receive_count", where)}
 	}
-	problems := checkEventKeys(queue, []string{"visibility_timeout", "max_receive_count"}, where)
+	problems := checkEventKeys(queue, []string{"visibility_timeout", "max_receive_count", "fifo_retired"}, where)
+	if v, has := queue["fifo_retired"]; has && v != nil {
+		if b, ok := v.(bool); ok {
+			settings.fifoRetired = b
+		} else {
+			problems = append(problems, fmt.Sprintf("%s.fifo_retired must be true or false", where))
+		}
+	}
 	if v, has := queue["visibility_timeout"]; has && v != nil {
 		n, ok := eventInt(v)
 		if !ok || n < 0 || n > eventQueueVisibilityMax {
@@ -717,7 +824,9 @@ func eventTaskRuleName(project, env, key string) string {
 // normalizeEventTaskRules resolves each event-task rule's bus into `_bus` and
 // refuses two rules with the same AWS name on the same bus. The legacy single-rule
 // form has no bus field and follows the environment's bus.
-func normalizeEventTaskRules(envMap map[string]interface{}, project, env string, busEnabled bool) ([]string, []eventMove) {
+func normalizeEventTaskRules(envMap map[string]interface{}, project, env string, bus eventBusSettings) ([]string, []eventMove) {
+	busEnabled := bus.Enabled
+	enhanced := bus.Enhanced
 	var problems []string
 	var moves []eventMove
 
@@ -754,6 +863,11 @@ func normalizeEventTaskRules(envMap map[string]interface{}, project, env string,
 			if key := stringFromMap(task, "rule_name"); key != "" {
 				where := taskWhere + ".rule_name"
 				moves = append(moves, eventMove{where: where})
+				if enhanced {
+					problems = append(problems, fmt.Sprintf(
+						"%s follows the project bus, which is enhanced; an enhanced bus cannot start ECS tasks. Use the rules format with bus: default", taskWhere))
+					continue
+				}
 				claim(envBus, key, where, taskName)
 			}
 			continue
@@ -768,6 +882,11 @@ func normalizeEventTaskRules(envMap map[string]interface{}, project, env string,
 			if !explicit {
 				moves = append(moves, eventMove{where: where})
 			}
+			if bus == eventBusProject && enhanced {
+				problems = append(problems, fmt.Sprintf(
+					"%s rule %s is on the project bus, which is enhanced; an enhanced bus cannot start ECS tasks. Set bus: default on the rule, or subscribe a service instead", taskWhere, ruleLabel(rawRule, j)))
+				continue
+			}
 			setRuleField(rawRule, "_bus", bus)
 			if key := stringFromRule(rawRule, "name"); key != "" {
 				claim(bus, key, fmt.Sprintf("%s ('%s')", where, key), taskName)
@@ -775,6 +894,14 @@ func normalizeEventTaskRules(envMap map[string]interface{}, project, env string,
 		}
 	}
 	return problems, moves
+}
+
+// ruleLabel names an event-task rule in a message: its name, else its index.
+func ruleLabel(raw interface{}, index int) string {
+	if name := stringFromRule(raw, "name"); name != "" {
+		return name
+	}
+	return fmt.Sprintf("rules[%d]", index)
 }
 
 func ruleField(raw interface{}, key string) interface{} {
@@ -804,14 +931,27 @@ func setRuleField(raw interface{}, key string, value interface{}) {
 }
 
 // eventQueueNames returns the three queue names modules/events gives a consumer
-// (its naming.tf): main, application DLQ, delivery DLQ.
-func eventQueueNames(project, env, consumer string) []string {
+// (its naming.tf): main, application DLQ, delivery DLQ, and with fifo the
+// same three of its FIFO set.
+func eventQueueNames(project, env, consumer string, fifo bool) []string {
 	limit := awsNameLimits["sqs_queue"]
-	return []string{
+	names := []string{
 		awsName(project, env, []string{"events", consumer}, limit, "-", "", ""),
 		awsName(project, env, []string{"events", consumer, "dlq"}, limit, "-", "", ""),
 		awsName(project, env, []string{"events", consumer, "delivery-dlq"}, limit, "-", "", ""),
 	}
+	if !fifo {
+		return names
+	}
+	deliverySuffix := ""
+	if eventFifoDeliveryDLQIsFifo {
+		deliverySuffix = ".fifo"
+	}
+	return append(names,
+		awsName(project, env, []string{"events", consumer}, limit, "-", ".fifo", ""),
+		awsName(project, env, []string{"events", consumer, "dlq"}, limit, "-", ".fifo", ""),
+		awsName(project, env, []string{"events", consumer, "delivery-dlq"}, limit, "-", deliverySuffix, ""),
+	)
 }
 
 // extensionQueueNames returns the names env/main.hbs gives an
@@ -846,7 +986,8 @@ func eventQueueNameClashes(envMap map[string]interface{}, project, env string, c
 	for _, raw := range consumers {
 		c, _ := raw.(map[string]interface{})
 		name := stringFromMap(c, "name")
-		for _, q := range eventQueueNames(project, env, name) {
+		fifo, _ := c["fifo"].(bool)
+		for _, q := range eventQueueNames(project, env, name, fifo) {
 			owned[q] = name
 		}
 	}
