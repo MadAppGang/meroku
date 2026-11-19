@@ -16,6 +16,7 @@ import { StatusLine } from "./components/StatusLine";
 import { Toaster } from "./components/ui/sonner";
 import { PricingProvider } from "./contexts/PricingContext";
 import { useConfigWarnings } from "./hooks/use-config-warnings";
+import { useDeployedEvents } from "./hooks/use-deployed-events";
 import { usePricing } from "./hooks/use-pricing";
 import type { ComponentNode } from "./types";
 import type { ConfigWarning } from "./types/configWarnings";
@@ -36,9 +37,6 @@ export default function App() {
 	const [viewMode, setViewMode] = useState<"visual" | "code">("visual");
 	const [showEnvSelector, setShowEnvSelector] = useState(false);
 	const [config, setConfig] = useState<YamlInfrastructureConfig | null>(null);
-	// The env YAML as last read from disk, before any edit in this page.
-	const [loadedConfig, setLoadedConfig] =
-		useState<YamlInfrastructureConfig | null>(null);
 	const [accountInfo, setAccountInfo] = useState<AccountInfo | null>(null);
 	const [showAddServiceDialog, setShowAddServiceDialog] = useState(false);
 	const [showAddScheduledTaskDialog, setShowAddScheduledTaskDialog] =
@@ -69,6 +67,11 @@ export default function App() {
 		warningsRefreshKey,
 	);
 	const configWarnings = warningsReport?.warnings ?? NO_WARNINGS;
+	// What is deployed for the env's events, re-read after each save too.
+	const deployedEvents = useDeployedEvents(
+		selectedEnvironment,
+		warningsRefreshKey,
+	);
 	const selectedNodeWarnings = useMemo(
 		() =>
 			selectedNode ? warningsForNode(configWarnings, selectedNode.id) : [],
@@ -145,7 +148,6 @@ export default function App() {
 			const content = await infrastructureApi.getEnvironmentConfig(envName);
 			const parsed = yaml.load(content) as YamlInfrastructureConfig;
 			setConfig(parsed);
-			setLoadedConfig(parsed);
 		} catch (error) {
 			console.error("Failed to load configuration:", error);
 		}
@@ -618,7 +620,7 @@ export default function App() {
 											setSelectedNode(null);
 										}}
 										config={config || undefined}
-										loadedConfig={loadedConfig || undefined}
+										deployedEvents={deployedEvents}
 										onConfigChange={handleConfigChange}
 										accountInfo={accountInfo || undefined}
 										onDeleteNode={handleDeleteNode}

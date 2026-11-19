@@ -9,6 +9,8 @@ import type {
 import {
 	clearExplicitProjectBus,
 	clearOrdering,
+	type DeployedEvents,
+	deployedSharesRemoved,
 	ENHANCED_EVENT_BUS_REGIONS,
 	type EventBusShareKind,
 	enhancedBusAvailableIn,
@@ -19,11 +21,11 @@ import {
 	isSubscribeCapable,
 	projectBusName,
 	type ShareTargetInfo,
+	shareComparisonUnknown,
 	shareDuplicateError,
 	shareEntryKind,
 	shareEntryLabel,
-	sharePrincipalKey,
-	shareSubscribersLost,
+	sharePrincipalLabel,
 	shareTargetProblem,
 	shareValueError,
 } from "../utils/workloadEvents";
@@ -72,10 +74,11 @@ interface EventBusSettingsProps {
 	/** The share-targets API by default; stories pass a fixed list. */
 	loadShareTargets?: LoadShareTargets;
 	/**
-	 * The env YAML as loaded from disk, which tells an ordered queue that may
-	 * be deployed from one added since. Absent: every one may be deployed.
+	 * What is deployed for the env's events: which ordered queues exist and
+	 * who the bus is shared with. Absent: unknown, so every ordered queue is
+	 * kept and no revocation notice is shown.
 	 */
-	loadedConfig?: YamlInfrastructureConfig;
+	deployed?: DeployedEvents;
 }
 
 const defaultLoadShareTargets: LoadShareTargets = (env, signal) =>
@@ -119,8 +122,48 @@ const ACCESS_LABELS: Record<EventBusShareAccess, string> = {
 	full: "Send and subscribe",
 };
 
-const REVOKE_NOTICE =
-	"At the next deploy, every subscriber this account created on the bus is revoked. Revoked subscribers stop for good; they must create new ones if you share again.";
+const REMOVED_SHARE_NOTICE =
+	"The share ends at the next deploy. If it could subscribe, every subscriber it created on the bus is revoked then. Revoked subscribers stop for good; they must create new ones if you share again.";
+
+/**
+ * Why a share entry is not saved or added yet: it may name the account of
+ * `other`, an environment whose account is not known until the other
+ * environments are listed.
+ */
+function ShareUnresolvedNote({
+	other,
+	action,
+	targetsError,
+	onRetry,
+}: {
+	other: EventBusShare;
+	action: "save" | "add";
+	targetsError: string | null;
+	onRetry: () => void;
+}) {
+	const label = shareEntryLabel(other);
+	if (targetsError === null) {
+		return (
+			<StatusNote tone="pending">
+				{action === "save"
+					? `Not saved yet: checking whether this is the same account as ${label}. It is saved as soon as that is known.`
+					: `Checking whether this is the same account as ${label}. You can add it in a moment.`}
+			</StatusNote>
+		);
+	}
+	return (
+		<div className="space-y-2">
+			<StatusNote tone="error">
+				{action === "save" ? "Not saved: " : "Cannot add it yet: "}
+				the other environments could not be listed, so this cannot be compared
+				with {label}.
+			</StatusNote>
+			<Button type="button" variant="outline" size="sm" onClick={onRetry}>
+				Try again
+			</Button>
+		</div>
+	);
+}
 
 /** A share entry of `kind` naming `value`. */
 function shareEntryOf(
@@ -316,10 +359,10 @@ interface ShareRowProps {
 	entry: EventBusShare;
 	index: number;
 	share: EventBusShare[];
-	initialShare: EventBusShare[];
 	config: YamlInfrastructureConfig;
 	targets: ShareTargetInfo[] | undefined;
 	targetsError: string | null;
+	onRetryTargets: () => void;
 	onChange: (index: number, entry: EventBusShare) => void;
 	onRemove: (index: number) => void;
 }
@@ -332,10 +375,10 @@ function ShareRow({
 	entry,
 	index,
 	share,
-	initialShare,
 	config,
 	targets,
 	targetsError,
+	onRetryTargets,
 	onChange,
 	onRemove,
 }: ShareRowProps) {
@@ -357,15 +400,14 @@ function ShareRow({
 		valueError === null
 			? shareDuplicateError(proposedWith(draft), index, targets)
 			: null;
+	const changed = kind !== savedKind || value !== savedValue;
+	// A changed principal that cannot be compared with an environment entry
+	// until the other environments are listed.
+	const unresolvedWith =
+		changed && valueError === null && duplicate === null
+			? shareComparisonUnknown(proposedWith(draft), index, targets)
+			: null;
 	const label = `share ${index + 1}`;
-	// Shared for subscribing when the panel opened, and now only for sending.
-	const downgraded =
-		!isSubscribeCapable(entry.access) &&
-		initialShare.some(
-			(old) =>
-				isSubscribeCapable(old.access) &&
-				sharePrincipalKey(old, targets) === sharePrincipalKey(entry, targets),
-		);
 
 	const commit = (nextKind: EventBusShareKind, nextValue: string) => {
 		const next = shareEntryOf(nextKind, nextValue, entry.access);
@@ -373,11 +415,20 @@ function ShareRow({
 		if (shareDuplicateError(proposedWith(next), index, targets) !== null)
 			return;
 		if (nextKind === savedKind && nextValue === savedValue) return;
+		if (shareComparisonUnknown(proposedWith(next), index, targets) !== null)
+			return;
 		onChange(index, next);
 	};
 
+	// A draft held back while the comparison was unknown is saved once the
+	// other environments are listed, if it is still valid then.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: only the targets' arrival saves the draft.
+	useEffect(() => {
+		if (targets !== undefined && changed) commit(kind, value);
+	}, [targets]);
+
 	return (
-		<Card size="compact" className="gap-3" data-testid={`share-row-${index}`}>
+		<Card size="compact" data-testid={`share-row-${index}`}>
 			<div className="flex items-start justify-between gap-2">
 				<div className="min-w-0 flex-1">
 					<ShareWhoFields
@@ -416,7 +467,14 @@ function ShareRow({
 				onChange={(access) => onChange(index, { ...entry, access })}
 			/>
 			{duplicate !== null && <StatusNote tone="error">{duplicate}</StatusNote>}
-			{downgraded && <StatusNote tone="warning">{REVOKE_NOTICE}</StatusNote>}
+			{unresolvedWith !== null && (
+				<ShareUnresolvedNote
+					other={unresolvedWith}
+					action="save"
+					targetsError={targetsError}
+					onRetry={onRetryTargets}
+				/>
+			)}
 		</Card>
 	);
 }
@@ -426,6 +484,7 @@ interface ShareAddFormProps {
 	config: YamlInfrastructureConfig;
 	targets: ShareTargetInfo[] | undefined;
 	targetsError: string | null;
+	onRetryTargets: () => void;
 	onAdd: (entry: EventBusShare) => void;
 }
 
@@ -435,6 +494,7 @@ function ShareAddForm({
 	config,
 	targets,
 	targetsError,
+	onRetryTargets,
 	onAdd,
 }: ShareAddFormProps) {
 	const [kind, setKind] = useState<EventBusShareKind>("env");
@@ -446,9 +506,14 @@ function ShareAddForm({
 	const duplicate = touched
 		? shareDuplicateError([...share, draft], share.length, targets)
 		: null;
+	const unresolvedWith =
+		touched && valueError === null && duplicate === null
+			? shareComparisonUnknown([...share, draft], share.length, targets)
+			: null;
 	const canAdd =
 		shareValueError(draft, config, targets) === null &&
 		duplicate === null &&
+		unresolvedWith === null &&
 		(kind !== "env" || targets !== undefined);
 
 	return (
@@ -471,6 +536,14 @@ function ShareAddForm({
 			/>
 			<AccessSelect label="the new share" value={access} onChange={setAccess} />
 			{duplicate !== null && <StatusNote tone="error">{duplicate}</StatusNote>}
+			{unresolvedWith !== null && (
+				<ShareUnresolvedNote
+					other={unresolvedWith}
+					action="add"
+					targetsError={targetsError}
+					onRetry={onRetryTargets}
+				/>
+			)}
 			<Button
 				type="button"
 				variant="outline"
@@ -498,7 +571,7 @@ export function EventBusSettings({
 	config,
 	onConfigChange,
 	loadShareTargets = defaultLoadShareTargets,
-	loadedConfig,
+	deployed,
 }: EventBusSettingsProps) {
 	const uid = useId();
 	const enabled = isEventBusEnabled(config);
@@ -511,20 +584,18 @@ export function EventBusSettings({
 	const taskConflicts = enhanced ? eventTaskRulesOnProjectBus(config) : [];
 	const share = config.event_bus?.share ?? [];
 
-	// The shares this panel opened with, to tell which accounts lose their
-	// subscribers when a row is removed or downgraded.
-	const [initialShare] = useState<EventBusShare[]>(
-		() => config.event_bus?.share ?? [],
-	);
 	const [targets, setTargets] = useState<ShareTargetInfo[] | undefined>();
 	const [targetsError, setTargetsError] = useState<string | null>(null);
+	const [targetsAttempt, setTargetsAttempt] = useState(0);
 	const [pendingLeave, setPendingLeave] = useState<"standard" | "off" | null>(
 		null,
 	);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: targetsAttempt only asks again.
 	useEffect(() => {
 		if (!enhanced) return;
 		const controller = new AbortController();
+		setTargets(undefined);
 		setTargetsError(null);
 		loadShareTargets(config.env, controller.signal)
 			.then((list) => setTargets(list))
@@ -533,27 +604,19 @@ export function EventBusSettings({
 				setTargetsError(err instanceof Error ? err.message : String(err));
 			});
 		return () => controller.abort();
-	}, [enhanced, config.env, loadShareTargets]);
+	}, [enhanced, config.env, loadShareTargets, targetsAttempt]);
+	const retryTargets = () => setTargetsAttempt((n) => n + 1);
 
 	const leaving =
-		pendingLeave !== null ? clearOrdering(config, loadedConfig) : null;
+		pendingLeave !== null ? clearOrdering(config, deployed) : null;
+	// Principals the deployed bus is shared with that this YAML no longer
+	// names. A changed access is told by the event_share_revoke warning,
+	// since the deployed state does not say what each principal could do.
+	const removedShares = deployedSharesRemoved(deployed, share, targets);
 	const sharedForSubscribe = share.some((e) => isSubscribeCapable(e.access));
-	// Subscribe-capable entries removed since the panel opened; a downgraded
-	// entry shows its notice on its own row.
-	const removedSubscribers = shareSubscribersLost(
-		initialShare,
-		share,
-		targets,
-	).filter(
-		(old) =>
-			!share.some(
-				(e) =>
-					sharePrincipalKey(e, targets) === sharePrincipalKey(old, targets),
-			),
-	);
 
 	const leaveEnhanced = (target: "standard" | "off") => {
-		const { updates } = clearOrdering(config, loadedConfig);
+		const { updates } = clearOrdering(config, deployed);
 		onConfigChange({
 			...updates,
 			event_bus: {
@@ -728,23 +791,26 @@ export function EventBusSettings({
 								entry={entry}
 								index={index}
 								share={share}
-								initialShare={initialShare}
 								config={config}
 								targets={targets}
 								targetsError={targetsError}
+								onRetryTargets={retryTargets}
 								onChange={(i, next) =>
 									writeShare(share.map((e, j) => (j === i ? next : e)))
 								}
 								onRemove={(i) => writeShare(share.filter((_, j) => j !== i))}
 							/>
 						))}
-						{removedSubscribers.length > 0 && (
+						{removedShares.length > 0 && (
 							<StatusNote tone="warning">
 								<p>
-									No longer shared for subscribing:{" "}
-									{removedSubscribers.map(shareEntryLabel).join(", ")}.
+									No longer shared:{" "}
+									{removedShares
+										.map((p) => sharePrincipalLabel(p, targets))
+										.join(", ")}
+									.
 								</p>
-								<NoteDetail>{REVOKE_NOTICE}</NoteDetail>
+								<NoteDetail>{REMOVED_SHARE_NOTICE}</NoteDetail>
 							</StatusNote>
 						)}
 						<Separator />
@@ -753,6 +819,7 @@ export function EventBusSettings({
 							config={config}
 							targets={targets}
 							targetsError={targetsError}
+							onRetryTargets={retryTargets}
 							onAdd={(entry) => writeShare([...share, entry])}
 						/>
 					</CardContent>

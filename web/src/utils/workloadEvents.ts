@@ -133,20 +133,32 @@ export function consumerHasOrdered(
 }
 
 /**
- * Whether the consumer's ordered queue may already be deployed. Only a deploy
- * creates it, and the web UI never deploys, so it can exist only when the
- * YAML as loaded from disk (`loaded`) had an ordered subscription or
- * `fifo_retired` for the consumer. Without a loaded YAML of the same env the
- * answer is unknown, and counts as yes.
+ * What the environment's deployed state says about its events
+ * (`GET /api/events/deployed`). `known` is false when the state could not be
+ * read or holds nothing yet; then neither list can be trusted.
+ */
+export interface DeployedEvents {
+	known: boolean;
+	/** Workloads whose ordered (FIFO) queue is deployed. */
+	fifoConsumers: string[];
+	/**
+	 * Principals the deployed bus is shared with, whatever the access:
+	 * `account:<id>`, `ou:<id>` or `organization`.
+	 */
+	sharedPrincipals: string[];
+}
+
+/**
+ * Whether the consumer's ordered queue may already be deployed. Unknown
+ * (`deployed` not loaded, or the state could not be read) counts as yes, so
+ * the queue is kept rather than deleted.
  */
 export function orderedQueueMayBeDeployed(
-	loaded: YamlInfrastructureConfig | undefined,
-	env: string,
+	deployed: DeployedEvents | undefined,
 	workload: string,
 ): boolean {
-	if (!loaded || loaded.env !== env) return true;
-	const events = consumerEvents(loaded, workload);
-	return eventsHaveOrdered(events) || events?.queue?.fifo_retired === true;
+	if (!deployed || !deployed.known) return true;
+	return deployed.fifoConsumers.includes(workload);
 }
 
 /**
@@ -191,13 +203,13 @@ function eventsWithoutOrdering(
 /**
  * Removes every `ordered` from the backend and the services, keeping each
  * ordered queue that may be deployed with `fifo_retired` (see
- * `orderedQueueMayBeDeployed`; `loaded` is the YAML as loaded from disk).
+ * `orderedQueueMayBeDeployed`).
  * Used when the bus stops being enhanced. `updates` holds only the sections
  * that change; `affected` names the workloads that lose ordered delivery.
  */
 export function clearOrdering(
 	config: YamlInfrastructureConfig,
-	loaded?: YamlInfrastructureConfig,
+	deployed?: DeployedEvents,
 ): {
 	updates: Partial<YamlInfrastructureConfig>;
 	affected: string[];
@@ -209,7 +221,7 @@ export function clearOrdering(
 	const kept: string[] = [];
 	const cleared = (name: string, events: WorkloadEvents | undefined) => {
 		affected.push(name);
-		const mayExist = orderedQueueMayBeDeployed(loaded, config.env, name);
+		const mayExist = orderedQueueMayBeDeployed(deployed, name);
 		if (mayExist) kept.push(name);
 		return eventsWithoutOrdering(events, mayExist);
 	};
@@ -562,6 +574,37 @@ export function shareValueError(
 }
 
 /**
+ * Whether two share entries name the same principal: `true`, `false`, or
+ * `"unknown"` while the share targets are not loaded (pending or failed) and
+ * one of them is an environment, whose account may be the one the other
+ * names. Two `env` entries for the same environment always match.
+ */
+export function sameSharePrincipal(
+	a: EventBusShare,
+	b: EventBusShare,
+	targets: ShareTargetInfo[] | undefined,
+): boolean | "unknown" {
+	const pa = sharePrincipal(a, targets);
+	const pb = sharePrincipal(b, targets);
+	if (pa !== null && pb !== null) return pa === pb;
+	const ka = shareEntryKind(a);
+	const kb = shareEntryKind(b);
+	if (ka === "env" && kb === "env" && a.env && a.env === b.env) return true;
+	if (targets !== undefined) return false;
+	const accountLike = (kind: EventBusShareKind, e: EventBusShare) =>
+		(kind === "account" && Boolean(e.account)) ||
+		(kind === "env" && Boolean(e.env));
+	const envUnresolved = (kind: EventBusShareKind, e: EventBusShare) =>
+		kind === "env" && Boolean(e.env);
+	if (
+		(envUnresolved(ka, a) && accountLike(kb, b)) ||
+		(envUnresolved(kb, b) && accountLike(ka, a))
+	)
+		return "unknown";
+	return false;
+}
+
+/**
  * The error for share entry `index` naming a principal any other entry of
  * the list also names, before or after it, or null. Two `env` entries for
  * the same environment match before the share targets have loaded.
@@ -571,44 +614,87 @@ export function shareDuplicateError(
 	index: number,
 	targets: ShareTargetInfo[] | undefined,
 ): string | null {
-	const identity = (e: EventBusShare): string | null => {
-		const principal = sharePrincipal(e, targets);
-		if (principal !== null) return `principal:${principal}`;
-		return shareEntryKind(e) === "env" && e.env ? `env:${e.env}` : null;
-	};
-	const own = identity(share[index]);
-	if (own === null) return null;
-	const first = share.findIndex((e, i) => i !== index && identity(e) === own);
+	const own = share[index];
+	const first = share.findIndex(
+		(e, i) => i !== index && sameSharePrincipal(own, e, targets) === true,
+	);
 	if (first === -1) return null;
 	return `Shared again: entry ${first + 1} already shares with ${shareEntryLabel(share[first])}. Give it one entry; Send and subscribe covers both.`;
 }
 
 /**
- * Entries of `before` that could subscribe and, in `after`, are gone or may
- * only send events. Their subscribers are revoked at the next deploy.
+ * The first other entry that share entry `index` cannot be told apart from
+ * until the share targets load (see `sameSharePrincipal`), or null.
  */
-export function shareSubscribersLost(
-	before: EventBusShare[],
-	after: EventBusShare[],
+export function shareComparisonUnknown(
+	share: EventBusShare[],
+	index: number,
 	targets: ShareTargetInfo[] | undefined,
-): EventBusShare[] {
-	const key = (e: EventBusShare) => sharePrincipalKey(e, targets);
-	return before.filter(
-		(old) =>
-			isSubscribeCapable(old.access) &&
-			!after.some((e) => isSubscribeCapable(e.access) && key(e) === key(old)),
+): EventBusShare | null {
+	const own = share[index];
+	return (
+		share.find(
+			(e, i) =>
+				i !== index && sameSharePrincipal(own, e, targets) === "unknown",
+		) ?? null
 	);
 }
 
 /**
- * What tells two share entries apart: the resolved principal, or the entry's
- * label while an `env` entry cannot be resolved yet.
+ * A principal of `sharedPrincipals` (`account:<id>`, `ou:<id>` or
+ * `organization`) as `sharePrincipal` returns it: `organization`, the OU id
+ * or the account id. Null for anything else.
  */
-export function sharePrincipalKey(
-	entry: EventBusShare,
+export function deployedSharePrincipal(raw: string): string | null {
+	if (raw === "organization") return "organization";
+	const [kind, id] = raw.split(":", 2);
+	if (kind === "account" && SHARE_ACCOUNT_PATTERN.test(id ?? "")) return id;
+	if (kind === "ou" && SHARE_OU_PATTERN.test(id ?? "")) return id;
+	return null;
+}
+
+/** A readable name for a principal `sharePrincipal` returned. */
+export function sharePrincipalLabel(
+	principal: string,
 	targets: ShareTargetInfo[] | undefined,
 ): string {
-	return sharePrincipal(entry, targets) ?? shareEntryLabel(entry);
+	if (principal === "organization") return "the whole organization";
+	if (principal.startsWith("ou-")) return `organizational unit ${principal}`;
+	const env = targets?.find(
+		(t) => t.status === "ok" && t.accountId === principal,
+	)?.env;
+	return env
+		? `environment ${env} (account ${principal})`
+		: `account ${principal}`;
+}
+
+/**
+ * The principals the deployed bus is shared with that no share entry names
+ * any more: their share is removed at the next deploy. A principal an
+ * unresolved `env` entry may still name is left out until the share targets
+ * load, and an unknown deployed state reports none.
+ */
+export function deployedSharesRemoved(
+	deployed: DeployedEvents | undefined,
+	share: EventBusShare[],
+	targets: ShareTargetInfo[] | undefined,
+): string[] {
+	if (!deployed?.known) return [];
+	const principals = new Set(
+		deployed.sharedPrincipals
+			.map(deployedSharePrincipal)
+			.filter((p): p is string => p !== null),
+	);
+	const unresolvedEnv = share.some(
+		(e) => shareEntryKind(e) === "env" && sharePrincipal(e, targets) === null,
+	);
+	const removed: string[] = [];
+	for (const principal of principals) {
+		if (share.some((e) => sharePrincipal(e, targets) === principal)) continue;
+		if (unresolvedEnv && SHARE_ACCOUNT_PATTERN.test(principal)) continue;
+		removed.push(principal);
+	}
+	return removed.sort();
 }
 
 /**

@@ -6,11 +6,16 @@ import type {
 	WorkloadEvents,
 	YamlInfrastructureConfig,
 } from "../../../../types/yamlConfig";
+import {
+	type DeployedEvents,
+	orderedQueueMayBeDeployed,
+} from "../../../../utils/workloadEvents";
 import { ServiceEventsTab } from "../../../ServiceEventsTab";
 import {
 	baseConfig,
 	ConfigHarness,
 	configWith,
+	deployedEvents,
 	editorDecorator,
 	editorParameters,
 } from "./editorStoryKit";
@@ -27,16 +32,17 @@ type Story = StoryObj<typeof meta>;
 
 function ServiceEditor({
 	initial,
-	orderedQueueMayExist,
+	deployed,
 }: {
 	initial: YamlInfrastructureConfig;
-	orderedQueueMayExist?: boolean;
+	/** GET /api/events/deployed's answer; absent means not known yet. */
+	deployed?: DeployedEvents;
 }) {
 	return (
 		<ConfigHarness initial={initial}>
 			{(config, onChange) => (
 				<ServiceEventsTab
-					orderedQueueMayExist={orderedQueueMayExist}
+					orderedQueueMayExist={orderedQueueMayBeDeployed(deployed, "orders")}
 					config={config}
 					workloadName="orders"
 					kind="service"
@@ -351,7 +357,7 @@ export const EnhancedOrderedNeverDeployedTurnedOff: Story = {
 	name: "Enhanced: turning off an ordered subscription that was never deployed",
 	render: () => (
 		<ServiceEditor
-			orderedQueueMayExist={false}
+			deployed={deployedEvents()}
 			initial={withOrdersEvents(
 				{
 					subscribes: [
@@ -541,9 +547,10 @@ export const FifoRetiredNoSubscriptions: Story = {
 };
 
 /**
- * Turning a row ordered and back sets fifo_retired even when no ordered queue
- * was ever deployed. Generate then warns event_fifo_retired_unused; the editor
- * cannot tell what is deployed, so it shows the same retired card.
+ * fifo_retired on a consumer whose ordered queue was never deployed: written
+ * by hand, or by an edit made while the deployed state could not be read (the
+ * editor then keeps the queue to be safe). Generate warns
+ * event_fifo_retired_unused; the editor shows the same retired card.
  */
 export const FifoRetiredUnused: Story = {
 	name: "Retired ordered queue on a never-deployed environment",
@@ -564,6 +571,58 @@ export const FifoRetiredUnused: Story = {
 		await expect(
 			canvas.getByLabelText("Keep order for ledger"),
 		).not.toBeChecked();
+	},
+};
+
+export const EnhancedSummaryRetiredQueue: Story = {
+	name: "Enhanced summary with a retired ordered queue",
+	render: () => (
+		<ServiceEditor
+			deployed={deployedEvents({ fifoConsumers: ["orders"] })}
+			initial={withOrdersEvents(
+				{
+					subscribes: [{ detail_type: "payment.completed" }],
+					queue: { fifo_retired: true },
+				},
+				enhancedBus,
+			)}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await expect(canvas.getByText("Bus")).toBeVisible();
+		await expect(canvas.getByText("Enhanced")).toBeVisible();
+		await expect(canvas.getByText("EVENT_BUS_ARN")).toBeVisible();
+		await expect(canvas.getByText("EVENT_FIFO_QUEUE_URL")).toBeVisible();
+		await expect(canvas.getByText("EVENT_FIFO_DLQ_URL")).toBeVisible();
+		await expect(
+			canvas.getByText(
+				/The ordered queue is kept, with any events still in it/,
+			),
+		).toBeVisible();
+		await expect(canvas.getByTestId("fifo-retired")).toBeVisible();
+	},
+};
+
+export const EnhancedDeployedOrderedTurnedOff: Story = {
+	name: "Enhanced: turning off an ordered subscription that is deployed",
+	render: () => (
+		<ServiceEditor
+			deployed={deployedEvents({ fifoConsumers: ["orders"] })}
+			initial={withOrdersEvents(
+				{
+					subscribes: [
+						{ name: "ledger", detail_type_prefix: "ledger.", ordered: true },
+					],
+				},
+				enhancedBus,
+			)}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await userEvent.click(canvas.getByLabelText("Keep order for ledger"));
+		await expect(canvas.getByTestId("fifo-retired")).toBeVisible();
 	},
 };
 

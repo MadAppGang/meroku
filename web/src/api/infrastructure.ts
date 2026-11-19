@@ -8,7 +8,7 @@ import type {
 	NeonSchemasResponse,
 } from "../types/neon";
 import { fetchWithTokenRetry } from "../utils/fetchWithRetry";
-import type { ShareTargetInfo } from "../utils/workloadEvents";
+import type { DeployedEvents, ShareTargetInfo } from "../utils/workloadEvents";
 
 export interface Environment {
 	name: string;
@@ -495,6 +495,7 @@ export interface TestEventRequest {
  * set for those only.
  */
 export type EventBusShareTarget = ShareTargetInfo;
+export type { DeployedEvents };
 
 export interface TestEventResponse {
 	success: boolean;
@@ -1731,10 +1732,45 @@ export const infrastructureApi = {
 			},
 		);
 		if (!response.ok) {
-			const error: ErrorResponse = await response.json();
-			throw new Error(error.error || "Failed to send test event");
+			// The server answers { success: false, message }; older errors use { error }.
+			const body: Partial<TestEventResponse & ErrorResponse> = await response
+				.json()
+				.catch(() => ({}));
+			throw new Error(
+				body.message || body.error || "Failed to send test event",
+			);
 		}
 		return response.json();
+	},
+
+	/** What the environment's deployed state says about its events. */
+	async getDeployedEvents(
+		env: string,
+		opts: { signal?: AbortSignal } = {},
+	): Promise<DeployedEvents> {
+		const params = new URLSearchParams({ env });
+		const response = await fetch(
+			`${API_BASE_URL}/api/events/deployed?${params}`,
+			{ signal: opts.signal },
+		);
+		if (!response.ok) {
+			const error: Partial<ErrorResponse> = await response
+				.json()
+				.catch(() => ({}));
+			throw new Error(
+				error.error || "Failed to read what is deployed for this environment",
+			);
+		}
+		const body: Partial<DeployedEvents> = await response.json();
+		const strings = (v: unknown): string[] =>
+			Array.isArray(v)
+				? v.filter((x): x is string => typeof x === "string")
+				: [];
+		return {
+			known: body.known === true,
+			fifoConsumers: strings(body.fifoConsumers),
+			sharedPrincipals: strings(body.sharedPrincipals),
+		};
 	},
 
 	/** The other environments of this project the enhanced bus can be shared with. */

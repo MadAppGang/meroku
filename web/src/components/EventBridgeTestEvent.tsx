@@ -24,8 +24,10 @@ import {
 	CardHeader,
 	CardTitle,
 } from "./ui/card";
+import { CodeBlock } from "./ui/code-block";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import { KeyValue, KeyValueList } from "./ui/recipes/key-value-list";
 import {
 	Select,
 	SelectContent,
@@ -33,8 +35,56 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "./ui/select";
-import { NoteDetail, StatusNote } from "./ui/status-note";
+import { NoteCode, NoteDetail, StatusNote } from "./ui/status-note";
 import { Textarea } from "./ui/textarea";
+
+/** Example event details, stamped with the current time. */
+function exampleEvents(env: string): { title: string; detail: object }[] {
+	const timestamp = new Date().toISOString();
+	return [
+		{
+			title: "Basic Test Event",
+			detail: {
+				test: true,
+				timestamp,
+				message: "This is a test event from EventBridge",
+			},
+		},
+		{
+			title: "Application Event",
+			detail: {
+				eventType: "user.created",
+				userId: "user-123",
+				email: "user@example.com",
+				timestamp,
+				source: "user-service",
+			},
+		},
+		{
+			title: "System Event",
+			detail: {
+				eventType: "deployment.completed",
+				serviceName: "backend",
+				version: "v1.2.3",
+				environment: env,
+				status: "success",
+				timestamp,
+			},
+		},
+		{
+			title: "Business Event",
+			detail: {
+				eventType: "order.processed",
+				orderId: "ORD-123456",
+				customerId: "CUST-789",
+				amount: 99.99,
+				currency: "USD",
+				status: "completed",
+				timestamp,
+			},
+		},
+	];
+}
 
 interface EventBridgeTestEventProps {
 	config: YamlInfrastructureConfig;
@@ -303,9 +353,9 @@ export function EventBridgeTestEvent({
 							<AlertDescription>
 								{eventResponse.message}
 								{eventResponse.eventId && (
-									<div className="text-xs mt-1 font-mono">
-										Event ID: {eventResponse.eventId}
-									</div>
+									<NoteDetail>
+										Event ID: <NoteCode>{eventResponse.eventId}</NoteCode>
+									</NoteDetail>
 								)}
 							</AlertDescription>
 						</Alert>
@@ -325,30 +375,23 @@ export function EventBridgeTestEvent({
 							Event processor tasks that can be triggered by events
 						</CardDescription>
 					</CardHeader>
-					<CardContent>
-						<div className="space-y-3">
-							{configuredEventTasks.map((task) => (
-								<div key={task.name} className="p-3 bg-muted rounded-lg">
-									<h4 className="text-sm font-medium text-foreground mb-2">
-										{task.name}
-									</h4>
-									<div className="space-y-1 text-xs text-muted-foreground">
-										<div>
-											<span className="text-primary">Sources:</span>{" "}
-											{task.sources?.join(", ") || "None"}
-										</div>
-										<div>
-											<span className="text-primary">Detail Types:</span>{" "}
-											{task.detail_types?.join(", ") || "None"}
-										</div>
-										<div>
-											<span className="text-primary">Rule:</span>{" "}
-											{task.rule_name}
-										</div>
-									</div>
-								</div>
-							))}
-						</div>
+					<CardContent className="space-y-3">
+						{configuredEventTasks.map((task) => (
+							<Card key={task.name} size="inset">
+								<CardTitle variant="item">{task.name}</CardTitle>
+								<KeyValueList size="compact">
+									<KeyValue label="Sources">
+										{task.sources?.join(", ") || "None"}
+									</KeyValue>
+									<KeyValue label="Detail types">
+										{task.detail_types?.join(", ") || "None"}
+									</KeyValue>
+									<KeyValue label="Rule" variant="code">
+										{task.rule_name}
+									</KeyValue>
+								</KeyValueList>
+							</Card>
+						))}
 					</CardContent>
 				</Card>
 			)}
@@ -365,60 +408,11 @@ export function EventBridgeTestEvent({
 					</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-4">
-					<div className="space-y-3">
-						<div className="p-3 bg-muted rounded-lg">
-							<h4 className="text-sm font-medium text-foreground mb-2">
-								Basic Test Event
-							</h4>
-							<pre className="text-xs text-muted-foreground overflow-x-auto">{`{
-  "test": true,
-  "timestamp": "${new Date().toISOString()}",
-  "message": "This is a test event from EventBridge"
-}`}</pre>
-						</div>
-
-						<div className="p-3 bg-muted rounded-lg">
-							<h4 className="text-sm font-medium text-foreground mb-2">
-								Application Event
-							</h4>
-							<pre className="text-xs text-muted-foreground overflow-x-auto">{`{
-  "eventType": "user.created",
-  "userId": "user-123",
-  "email": "user@example.com",
-  "timestamp": "${new Date().toISOString()}",
-  "source": "user-service"
-}`}</pre>
-						</div>
-
-						<div className="p-3 bg-muted rounded-lg">
-							<h4 className="text-sm font-medium text-foreground mb-2">
-								System Event
-							</h4>
-							<pre className="text-xs text-muted-foreground overflow-x-auto">{`{
-  "eventType": "deployment.completed",
-  "serviceName": "backend",
-  "version": "v1.2.3",
-  "environment": "${config.env}",
-  "status": "success",
-  "timestamp": "${new Date().toISOString()}"
-}`}</pre>
-						</div>
-
-						<div className="p-3 bg-muted rounded-lg">
-							<h4 className="text-sm font-medium text-foreground mb-2">
-								Business Event
-							</h4>
-							<pre className="text-xs text-muted-foreground overflow-x-auto">{`{
-  "eventType": "order.processed",
-  "orderId": "ORD-123456",
-  "customerId": "CUST-789",
-  "amount": 99.99,
-  "currency": "USD",
-  "status": "completed",
-  "timestamp": "${new Date().toISOString()}"
-}`}</pre>
-						</div>
-					</div>
+					{exampleEvents(config.env).map((example) => (
+						<CodeBlock key={example.title} title={example.title}>
+							{JSON.stringify(example.detail, null, 2)}
+						</CodeBlock>
+					))}
 				</CardContent>
 			</Card>
 
@@ -430,53 +424,30 @@ export function EventBridgeTestEvent({
 						Best practices for testing EventBridge
 					</CardDescription>
 				</CardHeader>
-				<CardContent>
-					<ul className="text-sm text-foreground space-y-2">
-						<li className="flex items-start gap-2">
-							<span className="text-primary">•</span>
-							<span>
-								Use <code className="text-primary text-xs">meroku.test</code> as
-								the source for test events to easily identify them
-							</span>
-						</li>
-						<li className="flex items-start gap-2">
-							<span className="text-primary">•</span>
-							<span>
-								Include a{" "}
-								<code className="text-primary text-xs">test: true</code> field
-								in your event detail for easy filtering
-							</span>
-						</li>
-						<li className="flex items-start gap-2">
-							<span className="text-primary">•</span>
-							<span>
-								Always include timestamps in your test events for debugging
-							</span>
-						</li>
-						<li className="flex items-start gap-2">
-							<span className="text-primary">•</span>
-							<span>
-								Check CloudWatch Logs for event processor tasks to see if they
-								were triggered
-							</span>
-						</li>
-						<li className="flex items-start gap-2">
-							<span className="text-primary">•</span>
-							<span>
-								This environment's project bus is{" "}
-								<code className="text-primary text-xs">{projectBus}</code>
-								{enhanced ? " (Enhanced)" : ""}; AWS services publish to the
-								default bus
-							</span>
-						</li>
-						<li className="flex items-start gap-2">
-							<span className="text-primary">•</span>
-							<span>
-								Use EventBridge console to monitor event delivery and rule
-								matches
-							</span>
-						</li>
-					</ul>
+				<CardContent className="space-y-2">
+					<StatusNote>
+						Use <NoteCode>meroku.test</NoteCode> as the source for test events
+						to easily identify them
+					</StatusNote>
+					<StatusNote>
+						Include a <NoteCode>test: true</NoteCode> field in your event detail
+						for easy filtering
+					</StatusNote>
+					<StatusNote>
+						Always include timestamps in your test events for debugging
+					</StatusNote>
+					<StatusNote>
+						Check CloudWatch Logs for event processor tasks to see if they were
+						triggered
+					</StatusNote>
+					<StatusNote>
+						This environment's project bus is <NoteCode>{projectBus}</NoteCode>
+						{enhanced ? " (Enhanced)" : ""}; AWS services publish to the default
+						bus
+					</StatusNote>
+					<StatusNote>
+						Use EventBridge console to monitor event delivery and rule matches
+					</StatusNote>
 				</CardContent>
 			</Card>
 		</div>

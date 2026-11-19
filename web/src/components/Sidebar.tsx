@@ -38,7 +38,10 @@ import type { AccountInfo } from "../api/infrastructure";
 import type { ComponentNode } from "../types";
 import type { ConfigWarning } from "../types/configWarnings";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
-import { orderedQueueMayBeDeployed } from "../utils/workloadEvents";
+import {
+	type DeployedEvents,
+	orderedQueueMayBeDeployed,
+} from "../utils/workloadEvents";
 import { ALBNodeProperties } from "./ALBNodeProperties";
 import { ALBRoutingRules } from "./ALBRoutingRules";
 import { ALBStatus } from "./ALBStatus";
@@ -123,8 +126,8 @@ interface SidebarProps {
 	onClose: () => void;
 	config?: YamlInfrastructureConfig;
 	onConfigChange?: (config: Partial<YamlInfrastructureConfig>) => void;
-	/** The env YAML as loaded from disk, before the edits made since. */
-	loadedConfig?: YamlInfrastructureConfig;
+	/** What is deployed for the env's events; undefined while unknown. */
+	deployedEvents?: DeployedEvents;
 	accountInfo?: AccountInfo;
 	onDeleteNode?: (nodeId: string, nodeType: string, name?: string) => void;
 	/** Configuration warnings about the selected node, shown above every tab. */
@@ -139,7 +142,7 @@ export function Sidebar({
 	onClose,
 	config,
 	onConfigChange,
-	loadedConfig,
+	deployedEvents,
 	accountInfo,
 	onDeleteNode,
 	warnings = NO_WARNINGS,
@@ -1737,7 +1740,7 @@ jobs:
 							key={panelKey}
 							config={config}
 							onConfigChange={onConfigChange}
-							loadedConfig={loadedConfig}
+							deployed={deployedEvents}
 						/>
 					)}
 
@@ -1754,8 +1757,7 @@ jobs:
 							kind="backend"
 							events={config.workload?.events}
 							orderedQueueMayExist={orderedQueueMayBeDeployed(
-								loadedConfig,
-								config.env,
+								deployedEvents,
 								"backend",
 							)}
 							onEventsChange={(events) =>
@@ -1782,8 +1784,7 @@ jobs:
 								kind="service"
 								events={service.events}
 								orderedQueueMayExist={orderedQueueMayBeDeployed(
-									loadedConfig,
-									config.env,
+									deployedEvents,
 									name,
 								)}
 								onEventsChange={(events) =>

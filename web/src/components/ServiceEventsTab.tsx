@@ -73,7 +73,8 @@ import {
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { EventFlow } from "./ui/recipes/event-flow";
-import { NoteDetail, StatusNote } from "./ui/status-note";
+import { KeyValue, KeyValueList } from "./ui/recipes/key-value-list";
+import { NoteCode, NoteDetail, StatusNote } from "./ui/status-note";
 import { Switch } from "./ui/switch";
 
 /** One column layout for subscription rows and the add form, so they line up. */
@@ -1136,20 +1137,12 @@ export function ServiceEventsTab({
 					</CardDescription>
 				</CardHeader>
 				<CardContent>
-					<dl className="grid grid-cols-label-value items-center gap-x-3 gap-y-2 text-sm">
-						<dt className="text-muted-foreground">Bus</dt>
-						<dd>
-							<code className="font-mono">
-								{busEnabled ? busName : "default"}
-							</code>
-							{enhanced && (
-								<Badge variant="outline" className="ml-2">
-									Enhanced
-								</Badge>
-							)}
-						</dd>
-						<dt className="text-muted-foreground">Env vars</dt>
-						<dd className="flex flex-wrap gap-2">
+					<KeyValueList>
+						<KeyValue label="Bus" variant="tags">
+							<Badge variant="code">{busEnabled ? busName : "default"}</Badge>
+							{enhanced && <Badge variant="outline">Enhanced</Badge>}
+						</KeyValue>
+						<KeyValue label="Env vars" variant="tags">
 							<Badge variant="code">EVENT_SOURCE={source}</Badge>
 							<Badge variant="code">
 								EVENT_BUS_NAME={busEnabled ? busName : "default"}
@@ -1167,8 +1160,8 @@ export function ServiceEventsTab({
 									<Badge variant="code">EVENT_FIFO_DLQ_URL</Badge>
 								</>
 							)}
-						</dd>
-					</dl>
+						</KeyValue>
+					</KeyValueList>
 					{isConsumer && (
 						<div className="mt-4 space-y-4">
 							{eventFlows(config, workloadName, events).map((flow) => (
@@ -1193,20 +1186,20 @@ export function ServiceEventsTab({
 				</CardHeader>
 				<CardContent className="space-y-4">
 					{subscribes.length === 0 && !fifoRetired && (
-						<p className="text-sm text-muted-foreground">
-							Subscribes to nothing, so it has no queue.
-						</p>
-					)}
-					{subscribes.length === 0 && fifoRetired && (
-						<p className="text-sm text-muted-foreground">
-							Subscribes to nothing. Its queues stay until you delete the
-							retired ordered queue in Queue settings.
-						</p>
+						<NoteDetail>Subscribes to nothing, so it has no queue.</NoteDetail>
 					)}
 					{fifoRetired && !hasOrdered && (
 						<StatusNote tone="warning">
-							The ordered queue is kept, with any events still in it. Delete it
-							in Queue settings once your {workloadNoun} has read them.
+							<p>
+								The ordered queue is kept, with any events still in it. Delete
+								it in Queue settings once your {workloadNoun} has read them.
+							</p>
+							{subscribes.length === 0 && (
+								<NoteDetail>
+									Subscribes to nothing. Its queues stay until you delete the
+									retired ordered queue in Queue settings.
+								</NoteDetail>
+							)}
 						</StatusNote>
 					)}
 
@@ -1275,10 +1268,10 @@ export function ServiceEventsTab({
 							<CardTitle>Ordered queue (retired)</CardTitle>
 							<CardDescription>
 								No subscription delivers to{" "}
-								<code className="font-mono">
+								<NoteCode>
 									{eventQueueName(config, workloadName, "queue", true) ??
 										"the ordered queue"}
-								</code>{" "}
+								</NoteCode>{" "}
 								any more. It is kept, with its dead-letter queues, so your{" "}
 								{workloadNoun} can read what is still in it through
 								EVENT_FIFO_QUEUE_URL.

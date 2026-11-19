@@ -3,6 +3,7 @@ import { type ReactNode, useState } from "react";
 import type { ComponentNode } from "../../../../types";
 import type { YamlInfrastructureConfig } from "../../../../types/yamlConfig";
 import { mergeConfigUpdates } from "../../../../utils/configMerge";
+import type { DeployedEvents } from "../../../../utils/workloadEvents";
 
 /**
  * Synthetic environment the capability editors render against: placeholder
@@ -54,6 +55,23 @@ export function configWith(
 ): YamlInfrastructureConfig {
 	return { ...baseConfig, ...overrides };
 }
+
+/**
+ * An answer of GET /api/events/deployed, as the app passes it to the event
+ * editors. Synthetic: placeholder account ids only.
+ */
+export function deployedEvents(
+	answer: Partial<DeployedEvents> = {},
+): DeployedEvents {
+	return { known: true, fifoConsumers: [], sharedPrincipals: [], ...answer };
+}
+
+/** The answer when the deployed state could not be read. */
+export const deployedUnknown: DeployedEvents = {
+	known: false,
+	fifoConsumers: [],
+	sharedPrincipals: [],
+};
 
 /** A canvas node, as the Sidebar hands one to a workload panel. */
 export function storyNode(

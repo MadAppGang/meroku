@@ -2,9 +2,10 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 // biome-ignore lint/correctness/noUnusedImports: Storybook's browser-test transform requires React in scope for JSX.
 import React, { useState } from "react";
 import { expect, userEvent, within } from "storybook/test";
-import type {
-	TestEventRequest,
-	TestEventResponse,
+import {
+	infrastructureApi,
+	type TestEventRequest,
+	type TestEventResponse,
 } from "../../../../api/infrastructure";
 import type { YamlInfrastructureConfig } from "../../../../types/yamlConfig";
 import { EventBridgeTestEvent } from "../../../EventBridgeTestEvent";
@@ -36,10 +37,32 @@ const sendSynthetic = async (
 	}`,
 });
 
-const sendFailing = async (): Promise<TestEventResponse> => ({
-	success: false,
-	message: "Event failed: InternalFailure: synthetic failure",
-});
+/**
+ * The real client against a server that refuses the event, as
+ * app/api_eventbridge.go answers a 409: `{ success: false, message }`.
+ */
+const sendThroughClient = (event: TestEventRequest) =>
+	infrastructureApi.sendTestEvent(event);
+
+function refuseTestEvents(): () => void {
+	const realFetch = globalThis.fetch;
+	globalThis.fetch = async (input, init) => {
+		const url = typeof input === "string" ? input : input.toString();
+		if (!url.includes("/api/eventbridge/send-test-event"))
+			return realFetch(input, init);
+		return new Response(
+			JSON.stringify({
+				success: false,
+				message:
+					"The project bus demo-dev is not deployed yet. Deploy this environment first.",
+			}),
+			{ status: 409, headers: { "Content-Type": "application/json" } },
+		);
+	};
+	return () => {
+		globalThis.fetch = realFetch;
+	};
+}
 
 function Editor({
 	config,
@@ -106,11 +129,12 @@ export const EventGroupTooLong: Story = {
 };
 
 export const SendFailed: Story = {
-	name: "Send failed",
+	name: "Send failed: the server's reason is shown",
+	beforeEach: refuseTestEvents,
 	render: () => (
 		<Editor
 			config={configWith({ event_bus: { enabled: true } })}
-			send={sendFailing}
+			send={sendThroughClient}
 		/>
 	),
 	play: async ({ canvasElement }) => {
@@ -118,7 +142,38 @@ export const SendFailed: Story = {
 		await userEvent.click(
 			canvas.getByRole("button", { name: /Send Test Event/ }),
 		);
-		await expect(await canvas.findByText(/synthetic failure/)).toBeVisible();
+		await expect(
+			await canvas.findByText(
+				"The project bus demo-dev is not deployed yet. Deploy this environment first.",
+			),
+		).toBeVisible();
+	},
+};
+
+export const WithEventProcessors: Story = {
+	name: "Configured event processors and examples",
+	render: () => (
+		<Editor
+			config={configWith({
+				event_bus: { enabled: true },
+				event_processor_tasks: [
+					{
+						name: "ingest",
+						rule_name: "demo-ingest-dev",
+						sources: ["demo.orders"],
+						detail_types: ["OrderCreated", "OrderPaid"],
+					},
+				],
+			})}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await expect(canvas.getByText("ingest")).toBeVisible();
+		await expect(canvas.getByText("demo-ingest-dev")).toBeVisible();
+		await expect(canvas.getByText("OrderCreated, OrderPaid")).toBeVisible();
+		await expect(canvas.getByText("Business Event")).toBeVisible();
+		await expect(canvas.getByText(/"orderId": "ORD-123456"/)).toBeVisible();
 	},
 };
 

@@ -5,13 +5,19 @@ import type {
 } from "../types/yamlConfig";
 import {
 	clearOrdering,
+	deployedSharePrincipal,
+	deployedSharesRemoved,
 	describeProduceEntry,
 	eventFlows,
 	filterFieldsNest,
 	isCatchAllWildcard,
 	orderedQueueMayBeDeployed,
 	parseFilterValues,
+	type ShareTargetInfo,
+	sameSharePrincipal,
+	shareComparisonUnknown,
 	shareDuplicateError,
+	sharePrincipalLabel,
 	subscriptionErrors,
 	subscriptionEventTypeDisplay,
 	subscriptionFilterSummary,
@@ -188,6 +194,124 @@ describe("shareDuplicateError", () => {
 	});
 });
 
+const staging: ShareTargetInfo = {
+	env: "staging",
+	status: "ok",
+	accountId: "111111111111",
+	region: "us-east-1",
+	files: ["staging.yaml"],
+};
+
+describe("share comparisons while targets are unresolved", () => {
+	const envEntry = { env: "staging", access: "publish" as const };
+	const account = (id: string) => ({ account: id, access: "publish" as const });
+
+	test("env against account is unknown while targets are pending or failed", () => {
+		expect(
+			sameSharePrincipal(envEntry, account("111111111111"), undefined),
+		).toBe("unknown");
+		const share = [envEntry, account("111111111111")];
+		expect(shareComparisonUnknown(share, 1, undefined)).toEqual(envEntry);
+		expect(shareComparisonUnknown(share, 0, undefined)).toEqual(
+			account("111111111111"),
+		);
+		expect(shareDuplicateError(share, 1, undefined)).toBe(null);
+	});
+	test("two different environments are unknown before targets load", () => {
+		const share = [envEntry, { env: "qa", access: "publish" as const }];
+		expect(shareComparisonUnknown(share, 1, undefined)).toEqual(envEntry);
+	});
+	test("the same environment is a duplicate, not unknown", () => {
+		const share = [envEntry, { ...envEntry, access: "full" as const }];
+		expect(sameSharePrincipal(share[0], share[1], undefined)).toBe(true);
+		expect(shareComparisonUnknown(share, 1, undefined)).toBe(null);
+	});
+	test("organization and OU never wait for targets", () => {
+		const share = [
+			envEntry,
+			{ organization: true, access: "publish" as const },
+			{ ou: "ou-ab12-cd34ef56", access: "publish" as const },
+		];
+		expect(shareComparisonUnknown(share, 1, undefined)).toBe(null);
+		expect(shareComparisonUnknown(share, 2, undefined)).toBe(null);
+	});
+	test("loaded targets resolve the comparison", () => {
+		const share = [envEntry, account("111111111111")];
+		expect(shareComparisonUnknown(share, 1, [staging])).toBe(null);
+		expect(shareDuplicateError(share, 1, [staging])).toContain(
+			"environment staging",
+		);
+		expect(
+			shareDuplicateError([envEntry, account("222222222222")], 1, [staging]),
+		).toBe(null);
+	});
+	test("accounts compare without targets", () => {
+		const share = [account("222222222222"), account("333333333333")];
+		expect(shareComparisonUnknown(share, 1, undefined)).toBe(null);
+	});
+});
+
+describe("deployed share principals", () => {
+	test("reads account:<id>, ou:<id> and organization", () => {
+		expect(deployedSharePrincipal("account:222222222222")).toBe("222222222222");
+		expect(deployedSharePrincipal("ou:ou-ab12-cd34ef56")).toBe(
+			"ou-ab12-cd34ef56",
+		);
+		expect(deployedSharePrincipal("organization")).toBe("organization");
+		expect(deployedSharePrincipal("account:12345")).toBe(null);
+		expect(deployedSharePrincipal("nonsense")).toBe(null);
+	});
+	const deployed = (sharedPrincipals: string[], known = true) => ({
+		known,
+		fifoConsumers: [],
+		sharedPrincipals,
+	});
+	test("a deployed principal no entry names is removed, whatever the access", () => {
+		const share = [
+			{ account: "222222222222", access: "publish" as const },
+			{ organization: true, access: "full" as const },
+		];
+		expect(
+			deployedSharesRemoved(
+				deployed([
+					"account:222222222222",
+					"organization",
+					"ou:ou-ab12-cd34ef56",
+				]),
+				share,
+				[],
+			),
+		).toEqual(["ou-ab12-cd34ef56"]);
+	});
+	test("an env entry resolves through the targets", () => {
+		const share = [{ env: "staging", access: "subscribe" as const }];
+		const shared = deployed(["account:111111111111"]);
+		expect(deployedSharesRemoved(shared, share, [staging])).toEqual([]);
+		// Before the targets load, the env may still name the account.
+		expect(deployedSharesRemoved(shared, share, undefined)).toEqual([]);
+		expect(deployedSharesRemoved(shared, [], undefined)).toEqual([
+			"111111111111",
+		]);
+	});
+	test("unknown state reports nothing", () => {
+		expect(
+			deployedSharesRemoved(deployed(["account:222222222222"], false), [], []),
+		).toEqual([]);
+		expect(deployedSharesRemoved(undefined, [], [])).toEqual([]);
+	});
+	test("labels name the environment of an account when known", () => {
+		expect(sharePrincipalLabel("111111111111", [staging])).toBe(
+			"environment staging (account 111111111111)",
+		);
+		expect(sharePrincipalLabel("222222222222", [staging])).toBe(
+			"account 222222222222",
+		);
+		expect(sharePrincipalLabel("organization", undefined)).toBe(
+			"the whole organization",
+		);
+	});
+});
+
 describe("ordered queue retirement", () => {
 	const ordered = {
 		subscribes: [{ detail_type: "ledger.posted", ordered: true }],
@@ -204,25 +328,31 @@ describe("ordered queue retirement", () => {
 			withOrderingCleared(ordered, turnedOff, false)?.queue?.fifo_retired,
 		).toBeUndefined();
 	});
-	test("only the loaded YAML of the same env tells", () => {
-		const loaded = enhancedConfig(turnedOff);
-		expect(orderedQueueMayBeDeployed(loaded, "dev", "backend")).toBe(false);
-		expect(orderedQueueMayBeDeployed(loaded, "prod", "backend")).toBe(true);
-		expect(orderedQueueMayBeDeployed(undefined, "dev", "backend")).toBe(true);
-		expect(
-			orderedQueueMayBeDeployed(enhancedConfig(ordered), "dev", "backend"),
-		).toBe(true);
-		expect(
-			orderedQueueMayBeDeployed(
-				enhancedConfig({ queue: { fifo_retired: true } }),
-				"dev",
-				"backend",
-			),
-		).toBe(true);
+	test("the deployed state tells; unknown keeps the queue", () => {
+		const deployed = (fifoConsumers: string[], known = true) => ({
+			known,
+			fifoConsumers,
+			sharedPrincipals: [],
+		});
+		expect(orderedQueueMayBeDeployed(deployed([]), "backend")).toBe(false);
+		expect(orderedQueueMayBeDeployed(deployed(["backend"]), "backend")).toBe(
+			true,
+		);
+		expect(orderedQueueMayBeDeployed(deployed(["orders"]), "backend")).toBe(
+			false,
+		);
+		expect(orderedQueueMayBeDeployed(deployed([], false), "backend")).toBe(
+			true,
+		);
+		expect(orderedQueueMayBeDeployed(undefined, "backend")).toBe(true);
 	});
 	test("clearOrdering keeps only the queues that may be deployed", () => {
 		const config = enhancedConfig(ordered);
-		const never = clearOrdering(config, enhancedConfig(undefined));
+		const never = clearOrdering(config, {
+			known: true,
+			fifoConsumers: [],
+			sharedPrincipals: [],
+		});
 		expect(never.affected).toEqual(["backend"]);
 		expect(never.kept).toEqual([]);
 		expect(never.updates.workload?.events?.queue?.fifo_retired).toBeUndefined();

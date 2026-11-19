@@ -3,7 +3,10 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import React from "react";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 import type { YamlInfrastructureConfig } from "../../../../types/yamlConfig";
-import type { ShareTargetInfo } from "../../../../utils/workloadEvents";
+import type {
+	DeployedEvents,
+	ShareTargetInfo,
+} from "../../../../utils/workloadEvents";
 import {
 	EventBusSettings,
 	type LoadShareTargets,
@@ -12,6 +15,8 @@ import {
 	baseConfig,
 	ConfigHarness,
 	configWith,
+	deployedEvents,
+	deployedUnknown,
 	editorDecorator,
 	editorParameters,
 } from "./editorStoryKit";
@@ -42,17 +47,30 @@ const siblingTargets: ShareTargetInfo[] = [
 
 const loadSiblings: LoadShareTargets = async () => siblingTargets;
 const loadNone: LoadShareTargets = async () => [];
+/** The share-targets request never answers while the story runs. */
+const loadPending: LoadShareTargets = (_env, signal) =>
+	new Promise((_, reject) => {
+		signal.addEventListener("abort", () =>
+			reject(new DOMException("Aborted", "AbortError")),
+		);
+	});
+/** Fails until a story's play turns `failing` off, then lists the siblings. */
+const failingTargets = { failing: true };
+const loadFailing: LoadShareTargets = async () => {
+	if (failingTargets.failing) throw new Error("the server did not answer");
+	return siblingTargets;
+};
 
 function Editor({
 	initial,
 	load = loadSiblings,
-	loaded,
+	deployed,
 	onWrite,
 }: {
 	initial: YamlInfrastructureConfig;
 	load?: LoadShareTargets;
-	/** The YAML as loaded from disk; absent means unknown. */
-	loaded?: YamlInfrastructureConfig;
+	/** GET /api/events/deployed's answer; absent means not known yet. */
+	deployed?: DeployedEvents;
 	/** Sees every write the panel makes. */
 	onWrite?: (updates: Partial<YamlInfrastructureConfig>) => void;
 }) {
@@ -66,7 +84,7 @@ function Editor({
 						onChange(updates);
 					}}
 					loadShareTargets={load}
-					loadedConfig={loaded}
+					deployed={deployed}
 				/>
 			)}
 		</ConfigHarness>
@@ -268,11 +286,11 @@ export const LeavingEnhancedAlert: Story = {
 const neverDeployedWrites = fn();
 
 export const LeavingEnhancedNeverDeployedOrdered: Story = {
-	name: "Leaving Enhanced: an ordered queue added since the YAML was loaded",
+	name: "Leaving Enhanced: an ordered queue that was never deployed",
 	render: () => (
 		<Editor
 			initial={enhancedConfig({ workload: orderedBackend })}
-			loaded={enhancedConfig()}
+			deployed={deployedEvents()}
 			onWrite={neverDeployedWrites}
 		/>
 	),
@@ -293,6 +311,66 @@ export const LeavingEnhancedNeverDeployedOrdered: Story = {
 		await waitFor(() => expect(neverDeployedWrites).toHaveBeenCalled());
 		const written = neverDeployedWrites.mock.calls[0][0];
 		await expect(written.workload?.events?.queue?.fifo_retired).toBeUndefined();
+	},
+};
+
+const deployedOrderedWrites = fn();
+
+export const LeavingEnhancedDeployedOrdered: Story = {
+	name: "Leaving Enhanced: a deployed ordered queue is kept",
+	render: () => (
+		<Editor
+			initial={enhancedConfig({ workload: orderedBackend })}
+			deployed={deployedEvents({ fifoConsumers: ["backend"] })}
+			onWrite={deployedOrderedWrites}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		deployedOrderedWrites.mockClear();
+		const canvas = within(canvasElement);
+		await userEvent.click(canvas.getByLabelText("Standard"));
+		const dialog = within(canvasElement.ownerDocument.body);
+		await waitFor(() =>
+			expect(
+				dialog.getByText(/Their ordered queues are kept until you delete them/),
+			).toBeVisible(),
+		);
+		await userEvent.click(
+			dialog.getByRole("button", { name: "Use a Standard bus" }),
+		);
+		await waitFor(() => expect(deployedOrderedWrites).toHaveBeenCalled());
+		const written = deployedOrderedWrites.mock.calls[0][0];
+		await expect(written.workload?.events?.queue?.fifo_retired).toBe(true);
+	},
+};
+
+const unknownStateWrites = fn();
+
+export const LeavingEnhancedStateUnknown: Story = {
+	name: "Leaving Enhanced: deployed state unreadable, the queue is kept",
+	render: () => (
+		<Editor
+			initial={enhancedConfig({ workload: orderedBackend })}
+			deployed={deployedUnknown}
+			onWrite={unknownStateWrites}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		unknownStateWrites.mockClear();
+		const canvas = within(canvasElement);
+		await userEvent.click(canvas.getByLabelText("Standard"));
+		const dialog = within(canvasElement.ownerDocument.body);
+		await waitFor(() =>
+			expect(
+				dialog.getByText(/Their ordered queues are kept until you delete them/),
+			).toBeVisible(),
+		);
+		await userEvent.click(
+			dialog.getByRole("button", { name: "Use a Standard bus" }),
+		);
+		await waitFor(() => expect(unknownStateWrites).toHaveBeenCalled());
+		const written = unknownStateWrites.mock.calls[0][0];
+		await expect(written.workload?.events?.queue?.fifo_retired).toBe(true);
 	},
 };
 
@@ -325,7 +403,7 @@ export const LeavingEnhancedAlertWithShare: Story = {
 };
 
 export const ShareRemovalNotice: Story = {
-	name: "Removing a subscribe share: the revocation notice",
+	name: "Removing a deployed share: the revocation notice",
 	render: () => (
 		<Editor
 			initial={enhancedConfig({
@@ -338,26 +416,162 @@ export const ShareRemovalNotice: Story = {
 					],
 				},
 			})}
+			deployed={deployedEvents({ sharedPrincipals: ["account:222222222222"] })}
 		/>
 	),
 	play: async ({ canvasElement }) => {
 		const canvas = within(canvasElement);
-		await expect(
-			canvas.queryByText(/No longer shared for subscribing/),
-		).toBeNull();
+		await expect(canvas.queryByText(/No longer shared/)).toBeNull();
 		await userEvent.click(
 			canvas.getByRole("button", { name: "Remove share 1" }),
 		);
 		await expect(
-			canvas.getByText(
-				"No longer shared for subscribing: account 222222222222.",
-			),
+			canvas.getByText("No longer shared: account 222222222222."),
 		).toBeVisible();
 		await expect(
-			canvas.getByText(
-				/every subscriber this account created on the bus is revoked/,
+			canvas.getByText(/every subscriber it created on the bus is revoked/),
+		).toBeVisible();
+	},
+};
+
+export const ShareRemovedBeforeOpening: Story = {
+	name: "Deployed shares already gone from the YAML",
+	render: () => (
+		<Editor
+			initial={enhancedConfig({
+				event_bus: {
+					enabled: true,
+					type: "enhanced",
+					share: [{ env: "staging", access: "publish" }],
+				},
+			})}
+			deployed={deployedEvents({
+				sharedPrincipals: [
+					"account:111111111111",
+					"ou:ou-ab12-cd34ef56",
+					"organization",
+				],
+			})}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		// staging is account 111111111111, still named, so it is not listed.
+		await expect(
+			await canvas.findByText(
+				"No longer shared: the whole organization, organizational unit ou-ab12-cd34ef56.",
 			),
 		).toBeVisible();
+	},
+};
+
+export const ShareStateUnknown: Story = {
+	name: "Deployed state unreadable: no revocation notice",
+	render: () => (
+		<Editor
+			initial={enhancedConfig({
+				event_bus: {
+					enabled: true,
+					type: "enhanced",
+					share: [{ account: "222222222222", access: "publish" }],
+				},
+			})}
+			deployed={deployedUnknown}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await expect(canvas.queryByText(/No longer shared/)).toBeNull();
+		await expect(canvas.queryByText(/is revoked/)).toBeNull();
+	},
+};
+
+const pendingTargetsWrites = fn();
+
+export const ShareEditWhileTargetsPending: Story = {
+	name: "Editing an account while the environments are still listed",
+	render: () => (
+		<Editor
+			initial={enhancedConfig({
+				event_bus: {
+					enabled: true,
+					type: "enhanced",
+					share: [
+						{ env: "staging", access: "publish" },
+						{ account: "222222222222", access: "publish" },
+					],
+				},
+			})}
+			load={loadPending}
+			onWrite={pendingTargetsWrites}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		pendingTargetsWrites.mockClear();
+		const canvas = within(canvasElement);
+		const account = canvas.getByLabelText("Account id for share 2");
+		await userEvent.clear(account);
+		await userEvent.type(account, "111111111111");
+		await userEvent.tab();
+		await expect(
+			canvas.getByText(
+				/Not saved yet: checking whether this is the same account as environment staging/,
+			),
+		).toBeVisible();
+		await expect(pendingTargetsWrites).not.toHaveBeenCalled();
+		// Removing an entry needs no comparison and still works.
+		await userEvent.click(
+			canvas.getByRole("button", { name: "Remove share 1" }),
+		);
+		await waitFor(() => expect(pendingTargetsWrites).toHaveBeenCalled());
+	},
+};
+
+const failedTargetsWrites = fn();
+
+export const ShareEditWhileTargetsFailed: Story = {
+	name: "Editing an account when the environments could not be listed",
+	render: () => {
+		failingTargets.failing = true;
+		return (
+			<Editor
+				initial={enhancedConfig({
+					event_bus: {
+						enabled: true,
+						type: "enhanced",
+						share: [
+							{ env: "staging", access: "publish" },
+							{ account: "222222222222", access: "publish" },
+						],
+					},
+				})}
+				load={loadFailing}
+				onWrite={failedTargetsWrites}
+			/>
+		);
+	},
+	play: async ({ canvasElement }) => {
+		failedTargetsWrites.mockClear();
+		const canvas = within(canvasElement);
+		const account = canvas.getByLabelText("Account id for share 2");
+		await userEvent.clear(account);
+		await userEvent.type(account, "111111111111");
+		await userEvent.tab();
+		await expect(
+			await canvas.findByText(
+				/Not saved: the other environments could not be listed, so this cannot be compared with environment staging/,
+			),
+		).toBeVisible();
+		await expect(failedTargetsWrites).not.toHaveBeenCalled();
+		// Once listed, the held-back draft is checked: it is staging's account.
+		failingTargets.failing = false;
+		await userEvent.click(canvas.getByRole("button", { name: "Try again" }));
+		await expect(
+			await canvas.findByText(
+				/Shared again: entry 1 already shares with environment staging/,
+			),
+		).toBeVisible();
+		await expect(failedTargetsWrites).not.toHaveBeenCalled();
 	},
 };
 

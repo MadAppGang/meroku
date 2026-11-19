@@ -86,3 +86,34 @@ export const Flush: Story = {
 		</Card>
 	),
 };
+
+export const Inset: Story = {
+	name: "Inset: a recessed panel inside a section",
+	render: () => (
+		<Card>
+			<CardHeader>
+				<CardTitle>Configured event processors</CardTitle>
+			</CardHeader>
+			<CardContent className="space-y-3">
+				<Card size="inset">
+					<CardTitle variant="item">order-processor</CardTitle>
+					<CardDescription>Runs when an order is paid.</CardDescription>
+				</Card>
+				<Card size="inset">
+					<CardTitle variant="item">refund-processor</CardTitle>
+					<CardDescription>Runs when a refund is requested.</CardDescription>
+				</Card>
+			</CardContent>
+		</Card>
+	),
+};
+
+export const ItemTitle: Story = {
+	name: "Item title in a compact card",
+	render: () => (
+		<Card size="compact">
+			<CardTitle variant="item">Shared with environment staging</CardTitle>
+			<CardDescription>Send events only</CardDescription>
+		</Card>
+	),
+};

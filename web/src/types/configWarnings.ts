@@ -27,8 +27,7 @@ export type WarningKind =
 /**
  * The codes of the events warnings (`app/config_warnings.go`). `code` stays a
  * plain string because other rules add codes; these are the ones the events
- * UI keys on. `event_ordered_shared_publishers` is emitted only when ordered
- * groups cannot carry the publishing account.
+ * UI keys on.
  */
 export type EventWarningCode =
 	| "event_subscription_all_types"
@@ -39,8 +38,7 @@ export type EventWarningCode =
 	| "event_subscription_order_change"
 	| "event_fifo_retired_unused"
 	| "event_queue_deleted"
-	| "event_share_revoke"
-	| "event_ordered_shared_publishers";
+	| "event_share_revoke";
 
 export interface WarningItem {
 	kind: WarningKind;
