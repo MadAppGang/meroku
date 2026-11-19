@@ -31,6 +31,7 @@ import {
 	isEventBusEnabled,
 	nestedFilterFieldError,
 	orderedSubscriptionError,
+	orderingDecisionUpdate,
 	parseFilterValues,
 	projectBusName,
 	resolveBus,
@@ -42,6 +43,7 @@ import {
 	subscriptionEventTypeDisplay,
 	subscriptionFilterSummary,
 	subscriptionKey,
+	type WorkloadEventsUpdate,
 	withOrderingCleared,
 } from "../utils/workloadEvents";
 import { EventProducesEditor } from "./EventProducesEditor";
@@ -100,13 +102,20 @@ interface ServiceEventsTabProps {
 	orderedQueueMayExist?: boolean;
 	/**
 	 * Answers `orderedQueueMayExist` from a fresh read of what is deployed
-	 * (a failed read answers true). When `orderedQueueMayExist` says no and
-	 * an edit turns the last ordered subscription off, the queue is kept with
-	 * fifo_retired first, and fifo_retired is lifted only if this confirms
-	 * that the queue was never deployed: a deploy from the CLI since the last
-	 * read would otherwise lose it.
+	 * (a failed or cancelled read answers true). An edit that turns the last
+	 * ordered subscription off waits for it and is then saved once, through
+	 * `onEventsUpdate`, keeping the queue with fifo_retired unless the read
+	 * says it was never deployed: a deploy from the CLI since the last read
+	 * would otherwise lose it.
 	 */
 	rereadOrderedQueueMayExist?: () => Promise<boolean>;
+	/**
+	 * Applies `update` to this workload's events in the config the owner
+	 * holds when it is called, for this environment only; every other key and
+	 * service stays as it is then. Used for a change decided after a read, so
+	 * nothing captured before the wait is written back.
+	 */
+	onEventsUpdate?: (update: WorkloadEventsUpdate) => void;
 }
 
 const VISIBILITY_MAX = 43200;
@@ -1011,6 +1020,7 @@ export function ServiceEventsTab({
 	onEventsChange,
 	orderedQueueMayExist = true,
 	rereadOrderedQueueMayExist,
+	onEventsUpdate,
 }: ServiceEventsTabProps) {
 	const uid = useId();
 	const busEnabled = isEventBusEnabled(config);
@@ -1030,9 +1040,9 @@ export function ServiceEventsTab({
 	const workloadNoun = kind === "backend" ? "backend" : "service";
 	const [confirmFifoDelete, setConfirmFifoDelete] = useState(false);
 
-	// The events block as last given, for a write that follows a read.
-	const latestEvents = useRef(events);
-	latestEvents.current = events;
+	// The owner's updater as last given, for a write that follows a read.
+	const latestOnEventsUpdate = useRef(onEventsUpdate);
+	latestOnEventsUpdate.current = onEventsUpdate;
 	const mounted = useRef(true);
 	useEffect(() => {
 		mounted.current = true;
@@ -1040,40 +1050,31 @@ export function ServiceEventsTab({
 			mounted.current = false;
 		};
 	}, []);
+	const [checkingDeployed, setCheckingDeployed] = useState(false);
 
 	// Every edit goes through withOrderingCleared, so none leaves an ordered
 	// queue that may be deployed without fifo_retired, or fifo_retired beside
-	// an ordered entry. An earlier answer that the queue was never deployed
-	// is not trusted for the retirement: the edit keeps the queue, and a
-	// fresh read decides whether fifo_retired can go.
+	// an ordered entry. An edit that turns the last ordered subscription off
+	// does not trust an earlier answer: it waits for a fresh read and is then
+	// saved once, on the events the workload has by then.
 	const save = (next: WorkloadEvents) => {
-		const retires =
-			eventsHaveOrdered(events) &&
-			!eventsHaveOrdered(next) &&
-			!orderedQueueMayExist;
-		if (!retires || !rereadOrderedQueueMayExist) {
+		const retires = eventsHaveOrdered(events) && !eventsHaveOrdered(next);
+		if (!retires || !rereadOrderedQueueMayExist || !onEventsUpdate) {
 			onEventsChange(
 				compactEvents(withOrderingCleared(events, next, orderedQueueMayExist)),
 			);
 			return;
 		}
-		onEventsChange(compactEvents(withOrderingCleared(events, next, true)));
-		void rereadOrderedQueueMayExist().then((mayExist) => {
-			const current = latestEvents.current;
-			if (
-				mayExist ||
-				!mounted.current ||
-				current?.queue?.fifo_retired !== true ||
-				eventsHaveOrdered(current)
-			)
-				return;
-			onEventsChange(
-				compactEvents({
-					...current,
-					queue: { ...current.queue, fifo_retired: undefined },
-				}),
-			);
-		});
+		const before = events;
+		setCheckingDeployed(true);
+		void rereadOrderedQueueMayExist()
+			.catch(() => true)
+			.then((mayExist) => {
+				if (mounted.current) setCheckingDeployed(false);
+				latestOnEventsUpdate.current?.(
+					orderingDecisionUpdate(before, next, mayExist),
+				);
+			});
 	};
 
 	// Writes go through index + patch against the current subscribes list.
@@ -1233,6 +1234,12 @@ export function ServiceEventsTab({
 					</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-4">
+					{checkingDeployed && (
+						<StatusNote tone="pending">
+							Checking whether this {workloadNoun}'s ordered queue was deployed
+							before turning ordered delivery off.
+						</StatusNote>
+					)}
 					{subscribes.length === 0 && !fifoRetired && (
 						<NoteDetail>Subscribes to nothing, so it has no queue.</NoteDetail>
 					)}

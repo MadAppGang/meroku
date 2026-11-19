@@ -1,9 +1,13 @@
 import type { Decorator } from "@storybook/react-vite";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { ComponentNode } from "../../../../types";
 import type { YamlInfrastructureConfig } from "../../../../types/yamlConfig";
 import { mergeConfigUpdates } from "../../../../utils/configMerge";
-import type { DeployedEvents } from "../../../../utils/workloadEvents";
+import {
+	type ConfigUpdate,
+	type DeployedEvents,
+	updateConfigOfEnv,
+} from "../../../../utils/workloadEvents";
 
 /**
  * Synthetic environment the capability editors render against: placeholder
@@ -91,28 +95,70 @@ export function storyNode(
 
 type OnConfigChange = (updates: Partial<YamlInfrastructureConfig>) => void;
 
+type OnConfigUpdate = (env: string, update: ConfigUpdate) => void;
+
 /**
  * Holds a config in state and merges every update the way App does, so a
  * story is interactive: adding, editing and removing work as in the app.
+ * `onUpdate` applies an updater to the config held when it runs, for that
+ * env only, as App's handleConfigUpdate does. `onSave` sees every config
+ * that changed, as App would write it.
  */
 export function ConfigHarness({
 	initial,
 	children,
+	onSave,
 }: {
 	initial: YamlInfrastructureConfig;
 	children: (
 		config: YamlInfrastructureConfig,
 		onChange: OnConfigChange,
+		onUpdate: OnConfigUpdate,
 	) => ReactNode;
+	onSave?: (config: YamlInfrastructureConfig) => void;
 }) {
 	const [config, setConfig] = useState(initial);
+	const saved = useRef(initial);
+	useEffect(() => {
+		if (config === saved.current) return;
+		saved.current = config;
+		onSave?.(config);
+	}, [config, onSave]);
 	return (
 		<>
-			{children(config, (updates) =>
-				setConfig((prev) => mergeConfigUpdates(prev, updates)),
+			{children(
+				config,
+				(updates) => setConfig((prev) => mergeConfigUpdates(prev, updates)),
+				(env, update) =>
+					setConfig((prev) => updateConfigOfEnv(prev, env, update)),
 			)}
 		</>
 	);
+}
+
+/**
+ * Reads whose answers a story hands out, so a play function decides when a
+ * read finishes instead of waiting a fixed time. Call `reset` in the story's
+ * beforeEach.
+ */
+export function controlledReads<T>() {
+	let pending: { resolve: (value: T) => void; reject: (err: Error) => void }[] =
+		[];
+	return {
+		read: () =>
+			new Promise<T>((resolve, reject) => {
+				pending.push({ resolve, reject });
+			}),
+		/** How many reads are still waiting for an answer. */
+		waiting: () => pending.length,
+		/** Answers the oldest waiting read. */
+		resolve: (value: T) => pending.shift()?.resolve(value),
+		/** Fails the oldest waiting read. */
+		reject: (err: Error) => pending.shift()?.reject(err),
+		reset: () => {
+			pending = [];
+		},
+	};
 }
 
 /** The shipped sidebar's surface: dark theme tokens, panel width. */

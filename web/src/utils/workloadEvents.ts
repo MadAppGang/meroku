@@ -203,6 +203,106 @@ export function withOrderingCleared(
 	return next;
 }
 
+/** Changes one workload's events block, from the events it has now. */
+export type WorkloadEventsUpdate = (
+	current: WorkloadEvents | undefined,
+) => WorkloadEvents | undefined;
+
+/** Changes a whole config, from the config it is now. */
+export type ConfigUpdate = (
+	current: YamlInfrastructureConfig,
+) => YamlInfrastructureConfig;
+
+/**
+ * `config` with the events block of the backend or of the named service
+ * replaced by `update`'s answer. Every other key, and every other service, is
+ * the current one. The same object when `update` changes nothing or the
+ * service no longer exists.
+ */
+export function updateWorkloadEvents(
+	config: YamlInfrastructureConfig,
+	workload: string,
+	update: WorkloadEventsUpdate,
+): YamlInfrastructureConfig {
+	if (workload === "backend") {
+		const current = config.workload?.events;
+		const next = update(current);
+		if (next === current) return config;
+		return {
+			...config,
+			workload: {
+				...config.workload,
+				events: next,
+			} as YamlInfrastructureConfig["workload"],
+		};
+	}
+	const services = config.services ?? [];
+	const index = services.findIndex((s) => s.name === workload);
+	if (index < 0) return config;
+	const current = services[index].events;
+	const next = update(current);
+	if (next === current) return config;
+	return {
+		...config,
+		services: services.map((s, i) =>
+			i === index ? { ...s, events: next } : s,
+		),
+	};
+}
+
+/**
+ * `update` applied to `config` only while it is the config of `env`; any
+ * other config comes back as it is. A change decided after a wait is applied
+ * through this, so it lands on the config shown now and never on another
+ * environment's.
+ */
+export function updateConfigOfEnv(
+	config: YamlInfrastructureConfig,
+	env: string,
+	update: ConfigUpdate,
+): YamlInfrastructureConfig {
+	if (config.env !== env) return config;
+	return update(config);
+}
+
+function sameEvents(
+	a: WorkloadEvents | undefined,
+	b: WorkloadEvents | undefined,
+): boolean {
+	return (
+		a === b ||
+		JSON.stringify(compactEvents(a) ?? null) ===
+			JSON.stringify(compactEvents(b) ?? null)
+	);
+}
+
+/**
+ * The edit `next`, made on `before`, that turns off the consumer's last
+ * ordered subscription, applied once a fresh read answered
+ * `orderedQueueMayExist`: the queue is kept with fifo_retired unless the read
+ * says it was never deployed. The condition is checked again on the events
+ * the workload has when it is applied: if they are no longer `before` (an
+ * edit or a reload landed meanwhile), the edit no longer describes them and
+ * nothing changes.
+ */
+export function orderingDecisionUpdate(
+	before: WorkloadEvents | undefined,
+	next: WorkloadEvents | undefined,
+	orderedQueueMayExist: boolean,
+): WorkloadEventsUpdate {
+	return (current) => {
+		if (
+			!sameEvents(current, before) ||
+			!eventsHaveOrdered(current) ||
+			eventsHaveOrdered(next)
+		)
+			return current;
+		return compactEvents(
+			withOrderingCleared(current, next, orderedQueueMayExist),
+		);
+	};
+}
+
 /** The block with every `ordered` removed, through `withOrderingCleared`. */
 function eventsWithoutOrdering(
 	events: WorkloadEvents | undefined,

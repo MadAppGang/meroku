@@ -24,6 +24,7 @@ import type { YamlInfrastructureConfig } from "./types/yamlConfig";
 import { mergeConfigUpdates } from "./utils/configMerge";
 import { warningsForNode } from "./utils/configWarnings";
 import { pruneUndefined } from "./utils/pruneUndefined";
+import { type ConfigUpdate, updateConfigOfEnv } from "./utils/workloadEvents";
 import { removeWorkloadReferences } from "./utils/workloadReferences";
 
 const NO_WARNINGS: readonly ConfigWarning[] = [];
@@ -222,6 +223,21 @@ export default function App() {
 				}
 
 				// Call saveConfigToBackend asynchronously (don't await here to avoid blocking)
+				saveConfigToBackend(updatedConfig);
+				return updatedConfig;
+			});
+		},
+		[saveConfigToBackend],
+	);
+
+	// A change decided after a wait: applied to the config held when it runs,
+	// only while that is the config of env, and saved when it changed.
+	const handleConfigUpdate = useCallback(
+		(env: string, update: ConfigUpdate) => {
+			setConfig((prevConfig) => {
+				if (!prevConfig) return prevConfig;
+				const updatedConfig = updateConfigOfEnv(prevConfig, env, update);
+				if (updatedConfig === prevConfig) return prevConfig;
 				saveConfigToBackend(updatedConfig);
 				return updatedConfig;
 			});
@@ -620,6 +636,7 @@ export default function App() {
 										config={config || undefined}
 										deployedEvents={deployedEvents}
 										rereadDeployedEvents={rereadDeployedEvents}
+										onConfigUpdate={handleConfigUpdate}
 										onConfigChange={handleConfigChange}
 										accountInfo={accountInfo || undefined}
 										onDeleteNode={handleDeleteNode}

@@ -40,9 +40,12 @@ import type { ComponentNode } from "../types";
 import type { ConfigWarning } from "../types/configWarnings";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import {
+	type ConfigUpdate,
 	type DeployedEvents,
 	orderedQueueMayBeDeployed,
 	orderedQueueRereader,
+	updateWorkloadEvents,
+	type WorkloadEventsUpdate,
 } from "../utils/workloadEvents";
 import { ALBNodeProperties } from "./ALBNodeProperties";
 import { ALBRoutingRules } from "./ALBRoutingRules";
@@ -132,6 +135,11 @@ interface SidebarProps {
 	deployedEvents?: DeployedEvents;
 	/** Reads the deployed events state again, now. */
 	rereadDeployedEvents?: RereadDeployedEvents;
+	/**
+	 * Applies `update` to the config the owner holds when it is called, only
+	 * while that is the config of `env`; saves it when it changed.
+	 */
+	onConfigUpdate?: (env: string, update: ConfigUpdate) => void;
 	accountInfo?: AccountInfo;
 	onDeleteNode?: (nodeId: string, nodeType: string, name?: string) => void;
 	/** Configuration warnings about the selected node, shown above every tab. */
@@ -148,10 +156,21 @@ export function Sidebar({
 	onConfigChange,
 	deployedEvents,
 	rereadDeployedEvents,
+	onConfigUpdate,
 	accountInfo,
 	onDeleteNode,
 	warnings = NO_WARNINGS,
 }: SidebarProps) {
+	// An updater of one workload's events in the config of the env shown now,
+	// applied to whatever that config is when it runs.
+	const workloadEventsUpdater = (workload: string) => {
+		const env = config?.env;
+		if (!onConfigUpdate || !env) return undefined;
+		return (update: WorkloadEventsUpdate) =>
+			onConfigUpdate(env, (current) =>
+				updateWorkloadEvents(current, workload, update),
+			);
+	};
 	const uid = useId();
 	const [activeTab, setActiveTab] = useState("settings");
 	const [showLeftScroll, setShowLeftScroll] = useState(false);
@@ -1770,6 +1789,7 @@ jobs:
 								rereadDeployedEvents,
 								"backend",
 							)}
+							onEventsUpdate={workloadEventsUpdater("backend")}
 							onEventsChange={(events) =>
 								onConfigChange({
 									workload: { events } as YamlInfrastructureConfig["workload"],
@@ -1801,6 +1821,7 @@ jobs:
 									rereadDeployedEvents,
 									name,
 								)}
+								onEventsUpdate={workloadEventsUpdater(name)}
 								onEventsChange={(events) =>
 									onConfigChange({
 										services: (config.services || []).map((s) =>

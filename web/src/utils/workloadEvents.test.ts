@@ -13,6 +13,7 @@ import {
 	isCatchAllWildcard,
 	orderedQueueMayBeDeployed,
 	orderedQueueRereader,
+	orderingDecisionUpdate,
 	parseFilterValues,
 	type ShareTargetInfo,
 	sameSharePrincipal,
@@ -24,6 +25,8 @@ import {
 	subscriptionEventTypeDisplay,
 	subscriptionFilterSummary,
 	subscriptionKey,
+	updateConfigOfEnv,
+	updateWorkloadEvents,
 	withOrderingCleared,
 } from "./workloadEvents";
 
@@ -473,5 +476,99 @@ describe("eventFlows", () => {
 	});
 	test("a workload that subscribes to nothing has no flow", () => {
 		expect(eventFlows(enhancedConfig({}), "backend", undefined)).toEqual([]);
+	});
+});
+
+describe("orderingDecisionUpdate through updateWorkloadEvents", () => {
+	const ordered: WorkloadEvents = {
+		subscribes: [{ name: "ledger", detail_type: "ledger.x", ordered: true }],
+	};
+	const turnedOff: WorkloadEvents = {
+		subscribes: [{ name: "ledger", detail_type: "ledger.x" }],
+	};
+	const config = (
+		services: YamlInfrastructureConfig["services"],
+	): YamlInfrastructureConfig =>
+		({ project: "myapp", env: "dev", services }) as YamlInfrastructureConfig;
+
+	// The decision was made on the config at the edit; a service was added
+	// while the read was pending. The update lands on the config of then.
+	test("a services-array edit made while the read was pending is kept", () => {
+		const atEdit = config([{ name: "orders", events: ordered }]);
+		const decide = orderingDecisionUpdate(ordered, turnedOff, false);
+		const meanwhile: YamlInfrastructureConfig = {
+			...atEdit,
+			services: [...(atEdit.services ?? []), { name: "billing" }],
+		} as YamlInfrastructureConfig;
+		const after = updateConfigOfEnv(meanwhile, "dev", (c) =>
+			updateWorkloadEvents(c, "orders", decide),
+		);
+		expect(after.services?.map((s) => s.name)).toEqual(["orders", "billing"]);
+		expect(after.services?.[0].events).toEqual(turnedOff);
+	});
+
+	test("the queue is kept with fifo_retired unless the read says never deployed", () => {
+		const atEdit = config([{ name: "orders", events: ordered }]);
+		const after = updateWorkloadEvents(
+			atEdit,
+			"orders",
+			orderingDecisionUpdate(ordered, turnedOff, true),
+		);
+		expect(after.services?.[0].events?.queue?.fifo_retired).toBe(true);
+	});
+
+	test("events changed meanwhile: the decision no longer applies", () => {
+		const changed: WorkloadEvents = {
+			subscribes: [
+				...(ordered.subscribes ?? []),
+				{ name: "audit", detail_type: "audit.x" },
+			],
+		};
+		const meanwhile = config([{ name: "orders", events: changed }]);
+		const after = updateWorkloadEvents(
+			meanwhile,
+			"orders",
+			orderingDecisionUpdate(ordered, turnedOff, false),
+		);
+		expect(after).toBe(meanwhile);
+	});
+
+	test("another environment's config is left alone", () => {
+		const prod = {
+			...config([{ name: "orders", events: ordered }]),
+			env: "prod",
+		} as YamlInfrastructureConfig;
+		const after = updateConfigOfEnv(prod, "dev", (c) =>
+			updateWorkloadEvents(
+				c,
+				"orders",
+				orderingDecisionUpdate(ordered, turnedOff, false),
+			),
+		);
+		expect(after).toBe(prod);
+	});
+
+	test("a removed service is left alone, and the backend is updated in place", () => {
+		const none = config([
+			{ name: "billing" },
+		] as YamlInfrastructureConfig["services"]);
+		expect(
+			updateWorkloadEvents(
+				none,
+				"orders",
+				orderingDecisionUpdate(ordered, turnedOff, false),
+			),
+		).toBe(none);
+		const backend = {
+			...config([]),
+			workload: { events: ordered },
+		} as YamlInfrastructureConfig;
+		const after = updateWorkloadEvents(
+			backend,
+			"backend",
+			orderingDecisionUpdate(ordered, turnedOff, true),
+		);
+		expect(after.workload?.events?.queue?.fifo_retired).toBe(true);
+		expect(after.services).toEqual([]);
 	});
 });

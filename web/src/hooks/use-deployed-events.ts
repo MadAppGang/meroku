@@ -1,17 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { infrastructureApi } from "../api/infrastructure";
+import {
+	deployedEventsReads,
+	type LoadDeployedEvents,
+} from "../utils/deployedEventsReads";
 import type { DeployedEvents } from "../utils/workloadEvents";
 import { CONFIG_WARNINGS_DEBOUNCE_MS } from "./use-config-warnings";
 
-export type LoadDeployedEvents = (
-	env: string,
-	signal: AbortSignal,
-) => Promise<DeployedEvents>;
+export type { LoadDeployedEvents } from "../utils/deployedEventsReads";
 
 /**
- * Reads the deployed events state again, now. Resolves undefined when the
- * read fails or the env changed meanwhile: unknown, so the caller keeps
- * ordered queues.
+ * Reads the deployed events state again, now, and resolves with that read's
+ * own answer, even when a newer read started meanwhile. Resolves undefined
+ * when the read fails, or when it was cancelled because the env changed or
+ * the owner unmounted: unknown, so the caller keeps ordered queues.
  */
 export type RereadDeployedEvents = () => Promise<DeployedEvents | undefined>;
 
@@ -39,7 +41,9 @@ const defaultLoad: LoadDeployedEvents = (env, signal) =>
  * - A `refreshKey` change (bumped after each successful save) reads again
  *   `CONFIG_WARNINGS_DEBOUNCE_MS` later; the answer kept meanwhile is the
  *   previous one for the same env.
- * - `reread` reads at once. Only the latest read started writes the answer.
+ * - `reread` reads at once. Only the latest read started publishes the
+ *   answer, but every read answers its own caller (deployedEventsReads).
+ *   An env change or unmount cancels the rereads still running.
  */
 export function useDeployedEvents(
 	env: string | null,
@@ -51,35 +55,17 @@ export function useDeployedEvents(
 		value: DeployedEvents;
 	} | null>(null);
 	const answeredEnv = state?.env ?? null;
-	const latestRead = useRef(0);
 	const currentEnv = useRef(env);
 	currentEnv.current = env;
+	const rereads = useRef(new Set<AbortController>());
 
-	// read starts a read of env and settles the answer if it is still the
-	// latest read of the env shown. undefined is a failed or superseded read.
-	const read = useCallback(
-		async (
-			forEnv: string,
-			signal: AbortSignal,
-		): Promise<DeployedEvents | undefined> => {
-			latestRead.current += 1;
-			const id = latestRead.current;
-			const current = () =>
-				!signal.aborted &&
-				id === latestRead.current &&
-				currentEnv.current === forEnv;
-			try {
-				const value = await load(forEnv, signal);
-				if (!current()) return undefined;
-				setState({ env: forEnv, value });
-				return value;
-			} catch (err: unknown) {
-				if (!current()) return undefined;
-				console.error("Failed to read the deployed events state:", err);
-				setState(null);
-				return undefined;
-			}
-		},
+	const read = useMemo(
+		() =>
+			deployedEventsReads(
+				load,
+				() => currentEnv.current,
+				(forEnv, value) => setState(value ? { env: forEnv, value } : null),
+			),
 		[load],
 	);
 
@@ -99,9 +85,22 @@ export function useDeployedEvents(
 		};
 	}, [env, refreshKey, read]);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: env only marks when the rereads of the previous env are cancelled.
+	useEffect(() => {
+		const running = rereads.current;
+		return () => {
+			for (const controller of running) controller.abort();
+			running.clear();
+		};
+	}, [env]);
+
 	const reread = useCallback<RereadDeployedEvents>(() => {
 		if (!env) return Promise.resolve(undefined);
-		return read(env, new AbortController().signal);
+		const controller = new AbortController();
+		rereads.current.add(controller);
+		return read(env, controller.signal).finally(() => {
+			rereads.current.delete(controller);
+		});
 	}, [env, read]);
 
 	return {

@@ -10,12 +10,15 @@ import {
 	type DeployedEvents,
 	orderedQueueMayBeDeployed,
 	orderedQueueRereader,
+	updateWorkloadEvents,
 } from "../../../../utils/workloadEvents";
 import { ServiceEventsTab } from "../../../ServiceEventsTab";
+import { Button } from "../../../ui/button";
 import {
 	baseConfig,
 	ConfigHarness,
 	configWith,
+	controlledReads,
 	deployedEvents,
 	editorDecorator,
 	editorParameters,
@@ -35,42 +38,78 @@ function ServiceEditor({
 	initial,
 	deployed,
 	reread,
+	onSave,
+	serviceAdder = false,
 }: {
 	initial: YamlInfrastructureConfig;
 	/** GET /api/events/deployed's answer; absent means not known yet. */
 	deployed?: DeployedEvents;
-	/** The answer of a fresh read; "fail" makes it fail. Absent: no re-read. */
-	reread?: DeployedEvents | "fail";
+	/** A fresh read, answered by the story. Absent: no re-read. */
+	reread?: () => Promise<DeployedEvents>;
+	/** Sees every config the app would save. */
+	onSave?: (config: YamlInfrastructureConfig) => void;
+	/** Shows an "Add service" button and the service names, as another panel would edit them. */
+	serviceAdder?: boolean;
 }) {
-	const read =
-		reread === undefined
-			? undefined
-			: () =>
-					reread === "fail"
-						? Promise.reject(new Error("the state could not be read"))
-						: Promise.resolve(reread);
 	return (
-		<ConfigHarness initial={initial}>
-			{(config, onChange) => (
-				<ServiceEventsTab
-					orderedQueueMayExist={orderedQueueMayBeDeployed(deployed, "orders")}
-					rereadOrderedQueueMayExist={orderedQueueRereader(read, "orders")}
-					config={config}
-					workloadName="orders"
-					kind="service"
-					events={config.services?.find((s) => s.name === "orders")?.events}
-					onEventsChange={(events) =>
-						onChange({
-							services: (config.services || []).map((s) =>
-								s.name === "orders" ? { ...s, events } : s,
-							),
-						})
-					}
-				/>
+		<ConfigHarness initial={initial} onSave={onSave}>
+			{(config, onChange, onUpdate) => (
+				<>
+					{serviceAdder && (
+						<>
+							<Button
+								onClick={() =>
+									onChange({
+										services: [...(config.services || []), { name: "billing" }],
+									})
+								}
+							>
+								Add service
+							</Button>
+							<p hidden data-testid="service-names">
+								{(config.services || []).map((s) => s.name).join(",")}
+							</p>
+						</>
+					)}
+					<ServiceEventsTab
+						orderedQueueMayExist={orderedQueueMayBeDeployed(deployed, "orders")}
+						rereadOrderedQueueMayExist={orderedQueueRereader(reread, "orders")}
+						onEventsUpdate={(update) =>
+							onUpdate(config.env, (current) =>
+								updateWorkloadEvents(current, "orders", update),
+							)
+						}
+						config={config}
+						workloadName="orders"
+						kind="service"
+						events={config.services?.find((s) => s.name === "orders")?.events}
+						onEventsChange={(events) =>
+							onChange({
+								services: (config.services || []).map((s) =>
+									s.name === "orders" ? { ...s, events } : s,
+								),
+							})
+						}
+					/>
+				</>
 			)}
 		</ConfigHarness>
 	);
 }
+
+/** The deployed-state reads of the FIFO decision stories. */
+const ledgerReads = controlledReads<DeployedEvents>();
+/** The configs the FIFO decision stories saved. */
+const ledgerSaves: YamlInfrastructureConfig[] = [];
+const recordLedgerSave = (config: YamlInfrastructureConfig) => {
+	ledgerSaves.push(config);
+};
+const resetLedger = () => {
+	ledgerReads.reset();
+	ledgerSaves.length = 0;
+};
+const ordersEvents = (config: YamlInfrastructureConfig | undefined) =>
+	config?.services?.find((s) => s.name === "orders")?.events;
 
 function withOrdersEvents(
 	events: WorkloadEvents,
@@ -400,63 +439,144 @@ const orderedLedger = (): YamlInfrastructureConfig =>
 	);
 
 /**
+ * Clicks the ledger's order switch off and checks that nothing is saved
+ * until the fresh read the edit started is answered.
+ */
+async function turnLedgerOrderOff(canvasElement: HTMLElement) {
+	const canvas = within(canvasElement);
+	await userEvent.click(canvas.getByLabelText("Keep order for ledger"));
+	await waitFor(() => expect(ledgerReads.waiting()).toBe(1));
+	await expect(
+		canvas.getByText(/Checking whether this service's ordered queue/),
+	).toBeVisible();
+	await expect(canvas.getByLabelText("Keep order for ledger")).toBeChecked();
+	await expect(ledgerSaves).toHaveLength(0);
+	return canvas;
+}
+
+/**
  * The last read said the ordered queue was never deployed, and a deploy from
- * the CLI has created it since. The edit keeps the queue with fifo_retired,
- * and the fresh read confirms it is deployed.
+ * the CLI has created it since. The edit waits for a fresh read, which says
+ * the queue is deployed, and is saved once, with fifo_retired.
  */
 export const EnhancedOrderedDeployedSinceLastRead: Story = {
 	name: "Enhanced: an ordered queue deployed since the last read is kept",
+	beforeEach: resetLedger,
 	render: () => (
 		<ServiceEditor
 			deployed={deployedEvents()}
-			reread={deployedEvents({ fifoConsumers: ["orders"] })}
+			reread={ledgerReads.read}
+			onSave={recordLedgerSave}
 			initial={orderedLedger()}
 		/>
 	),
 	play: async ({ canvasElement }) => {
-		const canvas = within(canvasElement);
-		await userEvent.click(canvas.getByLabelText("Keep order for ledger"));
-		await expect(canvas.getByTestId("fifo-retired")).toBeVisible();
-		await new Promise((resolve) => setTimeout(resolve, 100));
-		await expect(canvas.getByTestId("fifo-retired")).toBeVisible();
+		const canvas = await turnLedgerOrderOff(canvasElement);
+		ledgerReads.resolve(deployedEvents({ fifoConsumers: ["orders"] }));
+		await waitFor(() =>
+			expect(canvas.getByTestId("fifo-retired")).toBeVisible(),
+		);
+		await expect(ledgerSaves).toHaveLength(1);
+		await expect(ordersEvents(ledgerSaves[0])?.queue?.fifo_retired).toBe(true);
+		await expect(
+			canvas.queryByText(/Checking whether this service's ordered queue/),
+		).toBeNull();
 	},
 };
 
-/** The fresh read confirms the queue was never deployed: fifo_retired goes. */
+/**
+ * The fresh read confirms the queue was never deployed: one save, without
+ * fifo_retired.
+ */
 export const EnhancedOrderedNeverDeployedConfirmed: Story = {
 	name: "Enhanced: a fresh read confirms an ordered queue was never deployed",
+	beforeEach: resetLedger,
 	render: () => (
 		<ServiceEditor
 			deployed={deployedEvents()}
-			reread={deployedEvents()}
+			reread={ledgerReads.read}
+			onSave={recordLedgerSave}
 			initial={orderedLedger()}
 		/>
 	),
 	play: async ({ canvasElement }) => {
-		const canvas = within(canvasElement);
-		await userEvent.click(canvas.getByLabelText("Keep order for ledger"));
+		const canvas = await turnLedgerOrderOff(canvasElement);
+		ledgerReads.resolve(deployedEvents());
 		await waitFor(() =>
-			expect(canvas.queryByTestId("fifo-retired")).toBeNull(),
+			expect(canvas.getByLabelText("Keep order for ledger")).not.toBeChecked(),
 		);
+		await expect(ledgerSaves).toHaveLength(1);
+		await expect(ordersEvents(ledgerSaves[0])?.queue).toBeUndefined();
+		await expect(canvas.queryByTestId("fifo-retired")).toBeNull();
 		await expect(canvas.queryByText(/The ordered queue is kept/)).toBeNull();
 	},
 };
 
-/** A fresh read that fails is unknown: the queue is kept. */
+/** A fresh read that fails is unknown: one save, keeping the queue. */
 export const EnhancedOrderedRereadFailed: Story = {
 	name: "Enhanced: a failed fresh read keeps the ordered queue",
+	beforeEach: resetLedger,
 	render: () => (
 		<ServiceEditor
 			deployed={deployedEvents()}
-			reread="fail"
+			reread={ledgerReads.read}
+			onSave={recordLedgerSave}
 			initial={orderedLedger()}
 		/>
 	),
 	play: async ({ canvasElement }) => {
-		const canvas = within(canvasElement);
-		await userEvent.click(canvas.getByLabelText("Keep order for ledger"));
-		await new Promise((resolve) => setTimeout(resolve, 100));
-		await expect(canvas.getByTestId("fifo-retired")).toBeVisible();
+		const canvas = await turnLedgerOrderOff(canvasElement);
+		ledgerReads.reject(new Error("the state could not be read"));
+		await waitFor(() =>
+			expect(canvas.getByTestId("fifo-retired")).toBeVisible(),
+		);
+		await expect(ledgerSaves).toHaveLength(1);
+		await expect(ordersEvents(ledgerSaves[0])?.queue?.fifo_retired).toBe(true);
+	},
+};
+
+/**
+ * A service is added while the read is pending. The decision lands on the
+ * config as it is then: the new service stays, in the editor and in the
+ * saved config, and the ledger's order is off.
+ */
+export const EnhancedOrderedServiceAddedWhileReading: Story = {
+	name: "Enhanced: a service added while the read is pending is kept",
+	beforeEach: resetLedger,
+	render: () => (
+		<ServiceEditor
+			deployed={deployedEvents({ fifoConsumers: ["orders"] })}
+			reread={ledgerReads.read}
+			onSave={recordLedgerSave}
+			serviceAdder
+			initial={orderedLedger()}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = await turnLedgerOrderOff(canvasElement);
+		await userEvent.click(canvas.getByRole("button", { name: "Add service" }));
+		await waitFor(() =>
+			expect(canvas.getByTestId("service-names")).toHaveTextContent(
+				"orders,worker,billing",
+			),
+		);
+		await expect(ledgerSaves).toHaveLength(1);
+		ledgerReads.resolve(deployedEvents());
+		await waitFor(() =>
+			expect(canvas.getByLabelText("Keep order for ledger")).not.toBeChecked(),
+		);
+		await expect(canvas.getByTestId("service-names")).toHaveTextContent(
+			"orders,worker,billing",
+		);
+		await expect(ledgerSaves).toHaveLength(2);
+		const last = ledgerSaves[1];
+		await expect(last.services?.map((s) => s.name)).toEqual([
+			"orders",
+			"worker",
+			"billing",
+		]);
+		await expect(ordersEvents(last)?.subscribes?.[0].ordered).toBeUndefined();
+		await expect(ordersEvents(last)?.queue).toBeUndefined();
 	},
 };
 
