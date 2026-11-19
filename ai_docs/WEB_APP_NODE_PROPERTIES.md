@@ -369,8 +369,12 @@ One node per additional service.
 | `events.subscribes[].source` | string | optional | TF | |
 | `events.subscribes[].name` | string | optional; derived when unset | TF-REPLACE | The rule's key. Changing it replaces the rule. |
 | `events.subscribes[].bus` | `"project"` \| `"default"` | absent follows `event_bus.enabled` | TF-REPLACE | A rule's bus is ForceNew. |
+| `events.subscribes[].ordered` | boolean | enhanced bus, project-bus row; also shown whenever set | TF-REPLACE | "Keep order". Moves the entry between the standard subscriber and the consumer's FIFO subscriber; the new one is created before the old is deleted. Turning off the last ordered row sets `queue.fifo_retired: true`. |
 | `events.queue.visibility_timeout` | number | 0–43200, default 30 | TF | In place. |
 | `events.queue.max_receive_count` | number | 1–1000, default 5 | TF | In place. |
+| `events.queue.fifo_retired` | boolean | set by the UI when ordering is cleared | TF | Keeps the FIFO queue set. "Delete the ordered queue" removes it, and the next deploy deletes the FIFO queues with their messages. |
+| `EVENT_FIFO_QUEUE_URL`, `EVENT_FIFO_DLQ_URL` | string | consumers with an ordered row or `fifo_retired` | RO | FIFO queue and FIFO application DLQ URLs. |
+| `EVENT_BUS_ARN` | string | every workload on an enhanced bus | RO | Publish with the `eventbridgev2` client. |
 | `events.produces[].detail_types` | string[] | exactly one of this and `any` | TF | PutEvents grant on the task role. |
 | `events.produces[].any` | boolean | — | TF | Generate warns. |
 | `events.produces[].own_source_only` | boolean | default `true` | TF | |
@@ -463,14 +467,18 @@ task definition in plaintext.
 
 ## 12. `eventbridge`
 
-The routing fabric for event tasks and for the workloads' event queues. Its one stored
-property is the project bus switch, on the **Settings** tab. See [EVENTS.md](./EVENTS.md).
+The routing fabric for event tasks and for the workloads' event queues. Its stored
+properties are the project bus switch, the kind of bus and the share list, on the
+**Settings** tab. See [EVENTS.md](./EVENTS.md).
 
 | Property | Type | Conditional | Class | Notes |
 |---|---|---|---|---|
-| `event_bus.enabled` | boolean | default `false` | TF-REPLACE | Creates `<project>-<env>`; every `EVENT_BUS_NAME` names it; entries and rules without `bus` move to it, rules by replacement. |
+| `event_bus.enabled` | boolean | default `false` | TF-REPLACE | Creates `<project>-<env>`; every `EVENT_BUS_NAME` names it; entries and rules without `bus` move to it, rules by replacement. Turning it off is blocked while an entry names `bus: project`; one button removes those `bus` fields. |
+| `event_bus.type` | `"classic"` \| `"enhanced"` | shown when the bus is on; Enhanced disabled outside the supported regions | TF-REPLACE | "Kind of bus": Standard / Enhanced. Changing it replaces the bus and recreates every project-bus subscription. Leaving Enhanced also removes `share` and every `ordered`, and sets `fifo_retired: true` on consumers that had ordered rows. |
+| `event_bus.share[]` | `{ organization \| ou \| account \| env, access }[]` | enhanced only | TF | "Share with other accounts". The env dropdown comes from `GET /api/event-bus/share-targets?env=`; only `ok` siblings can be chosen. Removing a subscribe-capable row, or changing it to Send events, revokes that account's subscribers at the next deploy. |
 | Bus name | string | — | RO | `<project>-<env>` when on, otherwise the default bus. |
-| Test event bus | `"default"` \| `<project>-<env>` | the project bus only when on and applied | RUNTIME | Action input. The server checks the bus exists before publishing. |
+| Test event bus | `"default"` \| `<project>-<env>` | the project bus only when on and applied | RUNTIME | Action input. Classic: the server checks the bus exists before publishing. Enhanced: it finds the bus by name and owner account and publishes with `eventbridgev2`. |
+| Test event `eventGroupId` | string | enhanced project bus only | RUNTIME | Action input. Sets `SystemMetadata.EventGroupId`; refused (400) on any other bus. |
 | Rule list | object[] | derived from event tasks | TF | |
 | Test event `source` | string | — | RUNTIME | Action input, not persisted. |
 | Test event `detailType` | string | — | RUNTIME | Action input. |

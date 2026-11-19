@@ -95,7 +95,9 @@ Rules every report follows:
   carries no version to pin a link to.
 
 The TypeScript mirror is `web/src/types/configWarnings.ts`. The `WarningKind` union there must
-list the same ten kinds as `warningKinds` in `app/config_warnings.go`.
+list the same ten kinds as `warningKinds` in `app/config_warnings.go`. Its `EventWarningCode`
+union lists every `event_*` code, including `event_ordered_shared_publishers`, which the Go side
+defines but does not emit (`eventGroupsCarryPublisherAccount` is `true`).
 
 ### Warning codes
 
@@ -110,6 +112,11 @@ list the same ten kinds as `warningKinds` in `app/config_warnings.go`.
 | `event_produces_any` | `backend`, `service`, `scheduled_task`, `event_task` | `app/events.go` | Yes |
 | `event_queue_unused` | `backend`, `service` | `app/events.go` | Yes |
 | `event_bus_toggle` | `event_bus` | `app/events.go` | Yes |
+| `event_bus_type_change` | `event_bus` | `app/events_enhanced.go` | Yes; the previous kind comes from the last main.tf's markers, because the report never reads state |
+| `event_subscription_order_change` | `backend`, `service` | `app/events_enhanced.go` | Yes |
+| `event_fifo_retired_unused` | `backend`, `service` | `app/events.go` | Yes |
+| `event_queue_deleted` | `backend`, `service` | `app/events_enhanced.go` | No: needs Terraform state, which only generate and deploy read |
+| `event_share_revoke` | `event_bus` | `app/events_enhanced.go` | Yes; the loss comes from the last main.tf's `share=` markers |
 | `amplify_rule_disabled_workload` | `amplify_app` | `app/amplify_rewrites.go` | Yes |
 | `amplify_rule_unreachable` | `amplify_app` | `app/amplify_rewrites.go` | Yes |
 | `data_bucket_disabled_workload` | `data_bucket` | `app/data_bucket.go` | Yes |
