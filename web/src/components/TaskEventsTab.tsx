@@ -7,10 +7,12 @@ import type {
 import {
 	compactEvents,
 	eventSourceOf,
+	isEnhancedBus,
 	isEventBusEnabled,
 	projectBusName,
 } from "../utils/workloadEvents";
 import { EventProducesEditor } from "./EventProducesEditor";
+import { Badge } from "./ui/badge";
 import {
 	Card,
 	CardContent,
@@ -18,6 +20,7 @@ import {
 	CardHeader,
 	CardTitle,
 } from "./ui/card";
+import { NoteDetail } from "./ui/status-note";
 
 interface TaskEventsTabProps {
 	config: YamlInfrastructureConfig;
@@ -55,7 +58,21 @@ export function TaskEventsTab({
 					one the task cannot publish.
 				</CardDescription>
 			</CardHeader>
-			<CardContent>
+			<CardContent className="space-y-4">
+				{isEnhancedBus(config) && (
+					<div className="space-y-1" data-testid="task-events-bus-arn">
+						<div className="flex flex-wrap gap-2">
+							<Badge variant="code">
+								EVENT_BUS_NAME={projectBusName(config)}
+							</Badge>
+							<Badge variant="code">EVENT_BUS_ARN</Badge>
+						</div>
+						<NoteDetail>
+							The project bus is Enhanced: publish to it with the EventBridge V2
+							client and EVENT_BUS_ARN.
+						</NoteDetail>
+					</div>
+				)}
 				<EventProducesEditor
 					produces={produces}
 					busEnabled={isEventBusEnabled(config)}

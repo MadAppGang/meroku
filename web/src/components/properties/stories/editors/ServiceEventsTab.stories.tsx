@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 // biome-ignore lint/correctness/noUnusedImports: Storybook's browser-test transform requires React in scope for JSX.
 import React from "react";
-import { expect, userEvent, within } from "storybook/test";
+import { expect, userEvent, waitFor, within } from "storybook/test";
 import type {
 	WorkloadEvents,
 	YamlInfrastructureConfig,
@@ -262,6 +262,253 @@ export const QueueSettings: Story = {
 			})}
 		/>
 	),
+};
+
+/** An Enhanced project bus; the event task's rule sits on the default bus. */
+const enhancedBus: Partial<YamlInfrastructureConfig> = {
+	event_bus: { enabled: true, type: "enhanced" },
+	event_processor_tasks: [
+		{
+			name: "ingest",
+			rules: [
+				{
+					name: "order-created",
+					sources: ["demo.orders"],
+					detail_types: ["OrderCreated"],
+					bus: "default",
+				},
+			],
+		},
+	],
+};
+
+export const EnhancedOrderedSubscription: Story = {
+	name: "Enhanced: an ordered subscription",
+	render: () => (
+		<ServiceEditor
+			initial={withOrdersEvents(
+				{
+					subscribes: [
+						{ detail_type: "payment.completed" },
+						{ name: "ledger", detail_type_prefix: "ledger.", ordered: true },
+					],
+				},
+				enhancedBus,
+			)}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await expect(canvas.getByLabelText("Keep order for ledger")).toBeChecked();
+		await expect(
+			canvas.getByLabelText("Keep order for payment-completed"),
+		).not.toBeChecked();
+		await expect(canvas.getByText("EVENT_FIFO_QUEUE_URL")).toBeVisible();
+		await expect(canvas.getByText("EVENT_BUS_ARN")).toBeVisible();
+		await expect(canvas.getByTestId("event-flow-fifo")).toBeVisible();
+		await expect(
+			canvas.getByText(/ordered entries share one ordered subscriber/),
+		).toBeVisible();
+	},
+};
+
+export const EnhancedLastOrderedTurnedOff: Story = {
+	name: "Enhanced: turning the last ordered subscription off retires its queue",
+	render: () => (
+		<ServiceEditor
+			initial={withOrdersEvents(
+				{
+					subscribes: [
+						{ name: "ledger", detail_type_prefix: "ledger.", ordered: true },
+					],
+				},
+				enhancedBus,
+			)}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await userEvent.click(canvas.getByLabelText("Keep order for ledger"));
+		await expect(
+			canvas.getByText(
+				/The ordered queue is kept, with any events still in it/,
+			),
+		).toBeVisible();
+		await expect(canvas.getByTestId("fifo-retired")).toBeVisible();
+		await userEvent.click(canvas.getByLabelText("Keep order for ledger"));
+		await expect(canvas.queryByTestId("fifo-retired")).toBeNull();
+	},
+};
+
+export const EnhancedWildcardMapped: Story = {
+	name: "Enhanced: wildcards mapped to a prefix and a suffix",
+	render: () => (
+		<ServiceEditor
+			initial={withOrdersEvents(
+				{
+					subscribes: [{ detail_type: "job.*" }, { detail_type: "*.created" }],
+				},
+				enhancedBus,
+			)}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await expect(
+			canvas.getByText("Matches detail types starting with job."),
+		).toBeVisible();
+		await expect(
+			canvas.getByText("Matches detail types ending with .created"),
+		).toBeVisible();
+	},
+};
+
+export const EnhancedWildcardError: Story = {
+	name: "Enhanced: a wildcard the bus cannot match",
+	render: () => (
+		<ServiceEditor
+			initial={withOrdersEvents(
+				{ subscribes: [{ detail_type: "job.*.done" }] },
+				enhancedBus,
+			)}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await expect(
+			canvas.getByText(/uses \* in a way the enhanced bus cannot match/),
+		).toBeVisible();
+		const envSection = within(canvas.getByTestId("subscribes-section-project"));
+		await userEvent.type(
+			envSection.getByLabelText("Event type for project bus"),
+			"a*b",
+		);
+		await expect(
+			envSection.getByRole("button", {
+				name: "Add subscription to project bus",
+			}),
+		).toBeDisabled();
+	},
+};
+
+export const OrderedOnClassic: Story = {
+	name: "Ordered on a Standard bus: the switch stays to turn it off",
+	render: () => (
+		<ServiceEditor
+			initial={withOrdersEvents(
+				{
+					subscribes: [
+						{ detail_type: "payment.completed" },
+						{ name: "ledger", detail_type_prefix: "ledger.", ordered: true },
+					],
+				},
+				{ event_bus: { enabled: true } },
+			)}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await expect(
+			canvas.queryByLabelText("Keep order for payment-completed"),
+		).toBeNull();
+		await expect(canvas.getByLabelText("Keep order for ledger")).toBeChecked();
+		await expect(
+			canvas.getByText(/Keep order needs the Enhanced project bus/),
+		).toBeVisible();
+	},
+};
+
+export const FifoRetired: Story = {
+	name: "Retired ordered queue",
+	render: () => (
+		<ServiceEditor
+			initial={withOrdersEvents(
+				{
+					subscribes: [{ detail_type: "payment.completed" }],
+					queue: { fifo_retired: true, visibility_timeout: 60 },
+				},
+				enhancedBus,
+			)}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		const retired = within(canvas.getByTestId("fifo-retired"));
+		await expect(retired.getByText("Ordered queue (retired)")).toBeVisible();
+		await expect(
+			retired.getByText("demo-events-orders-dev.fifo"),
+		).toBeVisible();
+		await userEvent.click(
+			retired.getByRole("button", { name: "Delete the ordered queue" }),
+		);
+		const dialog = within(canvasElement.ownerDocument.body);
+		// The dialog fades in; wait until it is shown.
+		await waitFor(() =>
+			expect(
+				dialog.getByText(/Deleting it also deletes any events still in it/),
+			).toBeVisible(),
+		);
+		await expect(
+			dialog.queryByText(/its standard queue is deleted as well/),
+		).toBeNull();
+	},
+};
+
+export const FifoRetiredNoSubscriptions: Story = {
+	name: "Retired ordered queue, no subscriptions left",
+	render: () => (
+		<ServiceEditor
+			initial={withOrdersEvents({ queue: { fifo_retired: true } }, enhancedBus)}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await expect(
+			canvas.getByText(/Subscribes to nothing\. Its queues stay/),
+		).toBeVisible();
+		await userEvent.click(
+			canvas.getByRole("button", { name: "Delete the ordered queue" }),
+		);
+		const dialog = within(canvasElement.ownerDocument.body);
+		await waitFor(() =>
+			expect(
+				dialog.getByText(/its standard queue is deleted as well/),
+			).toBeVisible(),
+		);
+		await userEvent.click(
+			dialog.getByRole("button", { name: "Delete the ordered queue" }),
+		);
+		await expect(
+			await canvas.findByText("Subscribes to nothing, so it has no queue."),
+		).toBeVisible();
+	},
+};
+
+/**
+ * Turning a row ordered and back sets fifo_retired even when no ordered queue
+ * was ever deployed. Generate then warns event_fifo_retired_unused; the editor
+ * cannot tell what is deployed, so it shows the same retired card.
+ */
+export const FifoRetiredUnused: Story = {
+	name: "Retired ordered queue on a never-deployed environment",
+	render: () => (
+		<ServiceEditor
+			initial={withOrdersEvents(
+				{
+					subscribes: [{ name: "ledger", detail_type_prefix: "ledger." }],
+					queue: { fifo_retired: true },
+				},
+				enhancedBus,
+			)}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await expect(canvas.getByTestId("fifo-retired")).toBeVisible();
+		await expect(
+			canvas.getByLabelText("Keep order for ledger"),
+		).not.toBeChecked();
+	},
 };
 
 export const Backend: Story = {

@@ -7,8 +7,15 @@ interface EventFlowDiagramProps {
 	config: YamlInfrastructureConfig;
 	workload: string;
 	busName: string;
+	/** Subscriptions delivered to the standard queue. */
 	ruleCount: number;
 	maxReceiveCount: number;
+	/** The bus is the enhanced kind: subscribers instead of rules. */
+	enhanced?: boolean;
+	/** The consumer has an ordered (FIFO) queue set, active or retired. */
+	fifo?: boolean;
+	/** Ordered subscriptions; 0 with `fifo` means the ordered queue is retired. */
+	orderedCount?: number;
 }
 
 /** One box of the diagram: what it is, and its AWS name. */
@@ -52,38 +59,48 @@ const right = (
 	/>
 );
 
-/**
- * How events reach a consumer: the bus, its rules, the queue and the
- * workload, with the two dead-letter queues modules/events builds. A delivery
- * EventBridge gives up on lands in the delivery DLQ; a message the workload
- * fails max_receive_count times lands in the DLQ. Both alarm to the alerts topic.
- */
-export function EventFlowDiagram({
+function plural(n: number, word: string): string {
+	return `${n} ${word}${n === 1 ? "" : "s"}`;
+}
+
+/** One queue set: bus, delivery, queue and app, with both dead-letter queues. */
+function QueueFlow({
 	config,
 	workload,
 	busName,
-	ruleCount,
+	deliveryKind,
+	deliveryName,
+	queueKind,
+	fifo,
 	maxReceiveCount,
-}: EventFlowDiagramProps) {
+	testId,
+}: {
+	config: YamlInfrastructureConfig;
+	workload: string;
+	busName: string;
+	deliveryKind: string;
+	deliveryName: string;
+	queueKind: string;
+	fifo: boolean;
+	maxReceiveCount: number;
+	testId: string;
+}) {
 	const named = (kind: "queue" | "dlq" | "delivery-dlq") =>
-		eventQueueName(config, workload, kind) ?? "named at apply";
-	const queue = eventQueueName(config, workload);
+		eventQueueName(config, workload, kind, fifo) ?? "named at apply";
+	const queue = eventQueueName(config, workload, "queue", fifo);
 	const queueArn = queue ? eventQueueArn(config, queue) : null;
 	return (
 		<figure
-			aria-label={`How events reach ${workload}`}
-			data-testid="event-flow"
-			className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1.6fr)_auto_minmax(0,1fr)] items-center gap-x-2 text-sm"
+			aria-label={`How ${fifo ? "ordered " : ""}events reach ${workload}`}
+			data-testid={testId}
+			className="grid grid-cols-event-flow items-center gap-x-2 text-sm"
 		>
 			<Node kind="EventBridge bus" name={busName} />
 			{right}
-			<Node
-				kind="Rules"
-				name={`${ruleCount} subscription${ruleCount === 1 ? "" : "s"}`}
-			/>
+			<Node kind={deliveryKind} name={deliveryName} />
 			{right}
 			<Node
-				kind="SQS queue"
+				kind={queueKind}
 				name={named("queue")}
 				title={queueArn ?? undefined}
 			/>
@@ -100,14 +117,76 @@ export function EventFlowDiagram({
 
 			<div />
 			<div />
-			<Node kind="Delivery DLQ" name={named("delivery-dlq")} tone="danger" />
+			<Node
+				kind={fifo ? "Ordered delivery DLQ" : "Delivery DLQ"}
+				name={named("delivery-dlq")}
+				tone="danger"
+			/>
 			<div />
-			<Node kind="DLQ" name={named("dlq")} tone="danger" />
+			<Node
+				kind={fifo ? "Ordered DLQ" : "DLQ"}
+				name={named("dlq")}
+				tone="danger"
+			/>
 			{right}
 			<Node
 				kind="Both DLQs alarm"
 				name={`${config.project}-${config.env}-alerts`}
 			/>
 		</figure>
+	);
+}
+
+/**
+ * How events reach a consumer: the bus, its rules (subscribers on the
+ * enhanced bus), the queue and the workload, with the two dead-letter queues
+ * modules/events builds. A delivery EventBridge gives up on lands in the
+ * delivery DLQ; a message the workload fails max_receive_count times lands in
+ * the DLQ. Both alarm to the alerts topic. A consumer with an ordered queue
+ * has a second, ordered (FIFO) set, fed by one ordered subscriber.
+ */
+export function EventFlowDiagram({
+	config,
+	workload,
+	busName,
+	ruleCount,
+	maxReceiveCount,
+	enhanced = false,
+	fifo = false,
+	orderedCount = 0,
+}: EventFlowDiagramProps) {
+	const standard = (
+		<QueueFlow
+			config={config}
+			workload={workload}
+			busName={busName}
+			deliveryKind={enhanced ? "Subscribers" : "Rules"}
+			deliveryName={plural(ruleCount, "subscription")}
+			queueKind="SQS queue"
+			fifo={false}
+			maxReceiveCount={maxReceiveCount}
+			testId="event-flow"
+		/>
+	);
+	if (!fifo) return standard;
+	return (
+		<div className="space-y-4">
+			{standard}
+			<QueueFlow
+				config={config}
+				workload={workload}
+				busName={busName}
+				deliveryKind="Ordered subscriber"
+				deliveryName={
+					orderedCount > 0
+						? plural(orderedCount, "ordered subscription")
+						: "retired, delivers nothing"
+				}
+				queueKind="Ordered SQS queue"
+				fifo
+				maxReceiveCount={maxReceiveCount}
+				testId="event-flow-fifo"
+			/>
+		</div>
 	);
 }

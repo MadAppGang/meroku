@@ -6,7 +6,12 @@ import {
 	type TestEventResponse,
 } from "../api/infrastructure";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
-import { isEventBusEnabled, projectBusName } from "../utils/workloadEvents";
+import {
+	eventGroupIdError,
+	isEnhancedBus,
+	isEventBusEnabled,
+	projectBusName,
+} from "../utils/workloadEvents";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
 import {
@@ -25,15 +30,22 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "./ui/select";
+import { NoteDetail, StatusNote } from "./ui/status-note";
 import { Textarea } from "./ui/textarea";
 
 interface EventBridgeTestEventProps {
 	config: YamlInfrastructureConfig;
+	/** Sends the event; the server API by default, replaced in stories. */
+	sendTestEvent?: (event: TestEventRequest) => Promise<TestEventResponse>;
 }
 
-export function EventBridgeTestEvent({ config }: EventBridgeTestEventProps) {
+export function EventBridgeTestEvent({
+	config,
+	sendTestEvent = infrastructureApi.sendTestEvent,
+}: EventBridgeTestEventProps) {
 	const uid = useId();
 	const busEnabled = isEventBusEnabled(config);
+	const enhanced = isEnhancedBus(config);
 	const projectBus = projectBusName(config);
 	// Test event state - default source to 'meroku.test'
 	const [testEvent, setTestEvent] = useState<TestEventRequest>({
@@ -53,6 +65,11 @@ export function EventBridgeTestEvent({ config }: EventBridgeTestEventProps) {
 		null,
 	);
 	const [jsonError, setJsonError] = useState<string | null>(null);
+	const [eventGroupId, setEventGroupId] = useState("");
+	// An event group orders events for ordered subscribers, which only the
+	// enhanced project bus has.
+	const showEventGroup = enhanced && testEvent.eventBusName === projectBus;
+	const groupError = showEventGroup ? eventGroupIdError(eventGroupId) : null;
 
 	const handleDetailJsonChange = (value: string) => {
 		setDetailJson(value);
@@ -78,9 +95,10 @@ export function EventBridgeTestEvent({ config }: EventBridgeTestEventProps) {
 		setEventResponse(null);
 
 		try {
-			const response = await infrastructureApi.sendTestEvent({
+			const response = await sendTestEvent({
 				...testEvent,
 				env: config.env,
+				...(showEventGroup && eventGroupId !== "" ? { eventGroupId } : {}),
 			});
 			setEventResponse(response);
 		} catch (error) {
@@ -141,33 +159,61 @@ export function EventBridgeTestEvent({ config }: EventBridgeTestEventProps) {
 							<SelectContent>
 								<SelectItem value="default">Default bus</SelectItem>
 								<SelectItem value={projectBus} disabled={!busEnabled}>
-									Project bus ({projectBus})
+									Project bus ({projectBus}){enhanced ? ", Enhanced" : ""}
 								</SelectItem>
 							</SelectContent>
 						</Select>
 					</div>
+
+					{showEventGroup && (
+						<div className="space-y-2">
+							<Label htmlFor={`${uid}-test-group`}>
+								Event group (optional)
+							</Label>
+							<Input
+								id={`${uid}-test-group`}
+								variant="code"
+								value={eventGroupId}
+								aria-invalid={groupError !== null}
+								aria-describedby={`${uid}-test-group-hint`}
+								onChange={(e) => setEventGroupId(e.target.value.trim())}
+								placeholder="e.g., order-1042"
+							/>
+							<div id={`${uid}-test-group-hint`} aria-live="polite">
+								{groupError ? (
+									<StatusNote tone="error">{groupError}</StatusNote>
+								) : (
+									<NoteDetail>
+										Ordered subscribers receive events of the same group in the
+										order they were sent. Leave it blank for an event without a
+										group.
+									</NoteDetail>
+								)}
+							</div>
+						</div>
+					)}
+
 					<div className="space-y-2">
 						<Label htmlFor={`${uid}-test-source`}>Event Source</Label>
 						<Input
 							id={`${uid}-test-source`}
+							variant="code"
 							value={testEvent.source}
 							onChange={(e) =>
 								setTestEvent((prev) => ({ ...prev, source: e.target.value }))
 							}
 							placeholder="e.g., meroku.test"
-							className="font-mono"
 						/>
 						{allConfiguredSources.length > 0 && (
 							<div className="space-y-1">
-								<p className="text-xs text-gray-500">
+								<NoteDetail>
 									Event processor sources: {allConfiguredSources.join(", ")}
-								</p>
+								</NoteDetail>
 								{!allConfiguredSources.includes(testEvent.source) &&
 									testEvent.source && (
-										<p className="text-xs text-yellow-500 flex items-center gap-1">
-											<Info className="w-3 h-3" />
+										<StatusNote tone="warning">
 											This source doesn't match any configured event processors
-										</p>
+										</StatusNote>
 									)}
 							</div>
 						)}
@@ -188,17 +234,16 @@ export function EventBridgeTestEvent({ config }: EventBridgeTestEventProps) {
 						/>
 						{allConfiguredDetailTypes.length > 0 && (
 							<div className="space-y-1">
-								<p className="text-xs text-gray-500">
+								<NoteDetail>
 									Event processor detail types:{" "}
 									{allConfiguredDetailTypes.join(", ")}
-								</p>
+								</NoteDetail>
 								{!allConfiguredDetailTypes.includes(testEvent.detailType) &&
 									testEvent.detailType && (
-										<p className="text-xs text-yellow-500 flex items-center gap-1">
-											<Info className="w-3 h-3" />
+										<StatusNote tone="warning">
 											This detail type doesn't match any configured event
 											processors
-										</p>
+										</StatusNote>
 									)}
 							</div>
 						)}
@@ -211,10 +256,10 @@ export function EventBridgeTestEvent({ config }: EventBridgeTestEventProps) {
 							value={detailJson}
 							onChange={(e) => handleDetailJsonChange(e.target.value)}
 							placeholder='{"test": true, "message": "EventBridge test event"}'
-							className="font-mono text-sm min-h-[200px]"
+							className="font-mono text-sm min-h-48"
 							rows={10}
 						/>
-						{jsonError && <p className="text-xs text-red-400">{jsonError}</p>}
+						{jsonError && <StatusNote tone="error">{jsonError}</StatusNote>}
 					</div>
 
 					<Button
@@ -222,6 +267,7 @@ export function EventBridgeTestEvent({ config }: EventBridgeTestEventProps) {
 						disabled={
 							sendingEvent ||
 							!!jsonError ||
+							groupError !== null ||
 							!testEvent.source ||
 							!testEvent.detailType
 						}
@@ -241,16 +287,8 @@ export function EventBridgeTestEvent({ config }: EventBridgeTestEventProps) {
 					</Button>
 
 					{eventResponse && (
-						<Alert
-							className={
-								eventResponse.success ? "border-green-600" : "border-red-600"
-							}
-						>
-							{eventResponse.success ? (
-								<CheckCircle className="h-4 w-4 text-green-600" />
-							) : (
-								<XCircle className="h-4 w-4 text-red-600" />
-							)}
+						<Alert variant={eventResponse.success ? "success" : "danger"}>
+							{eventResponse.success ? <CheckCircle /> : <XCircle />}
 							<AlertDescription>
 								{eventResponse.message}
 								{eventResponse.eventId && (
@@ -278,22 +316,22 @@ export function EventBridgeTestEvent({ config }: EventBridgeTestEventProps) {
 					</CardHeader>
 					<CardContent>
 						<div className="space-y-3">
-							{configuredEventTasks.map((task, _index) => (
-								<div key={task.name} className="p-3 bg-gray-800 rounded-lg">
-									<h4 className="text-sm font-medium text-gray-200 mb-2">
+							{configuredEventTasks.map((task) => (
+								<div key={task.name} className="p-3 bg-muted rounded-lg">
+									<h4 className="text-sm font-medium text-foreground mb-2">
 										{task.name}
 									</h4>
-									<div className="space-y-1 text-xs text-gray-400">
+									<div className="space-y-1 text-xs text-muted-foreground">
 										<div>
-											<span className="text-blue-400">Sources:</span>{" "}
+											<span className="text-primary">Sources:</span>{" "}
 											{task.sources?.join(", ") || "None"}
 										</div>
 										<div>
-											<span className="text-blue-400">Detail Types:</span>{" "}
+											<span className="text-primary">Detail Types:</span>{" "}
 											{task.detail_types?.join(", ") || "None"}
 										</div>
 										<div>
-											<span className="text-blue-400">Rule:</span>{" "}
+											<span className="text-primary">Rule:</span>{" "}
 											{task.rule_name}
 										</div>
 									</div>
@@ -317,22 +355,22 @@ export function EventBridgeTestEvent({ config }: EventBridgeTestEventProps) {
 				</CardHeader>
 				<CardContent className="space-y-4">
 					<div className="space-y-3">
-						<div className="p-3 bg-gray-800 rounded-lg">
-							<h4 className="text-sm font-medium text-gray-300 mb-2">
+						<div className="p-3 bg-muted rounded-lg">
+							<h4 className="text-sm font-medium text-foreground mb-2">
 								Basic Test Event
 							</h4>
-							<pre className="text-xs text-gray-400 overflow-x-auto">{`{
+							<pre className="text-xs text-muted-foreground overflow-x-auto">{`{
   "test": true,
   "timestamp": "${new Date().toISOString()}",
   "message": "This is a test event from EventBridge"
 }`}</pre>
 						</div>
 
-						<div className="p-3 bg-gray-800 rounded-lg">
-							<h4 className="text-sm font-medium text-gray-300 mb-2">
+						<div className="p-3 bg-muted rounded-lg">
+							<h4 className="text-sm font-medium text-foreground mb-2">
 								Application Event
 							</h4>
-							<pre className="text-xs text-gray-400 overflow-x-auto">{`{
+							<pre className="text-xs text-muted-foreground overflow-x-auto">{`{
   "eventType": "user.created",
   "userId": "user-123",
   "email": "user@example.com",
@@ -341,11 +379,11 @@ export function EventBridgeTestEvent({ config }: EventBridgeTestEventProps) {
 }`}</pre>
 						</div>
 
-						<div className="p-3 bg-gray-800 rounded-lg">
-							<h4 className="text-sm font-medium text-gray-300 mb-2">
+						<div className="p-3 bg-muted rounded-lg">
+							<h4 className="text-sm font-medium text-foreground mb-2">
 								System Event
 							</h4>
-							<pre className="text-xs text-gray-400 overflow-x-auto">{`{
+							<pre className="text-xs text-muted-foreground overflow-x-auto">{`{
   "eventType": "deployment.completed",
   "serviceName": "backend",
   "version": "v1.2.3",
@@ -355,11 +393,11 @@ export function EventBridgeTestEvent({ config }: EventBridgeTestEventProps) {
 }`}</pre>
 						</div>
 
-						<div className="p-3 bg-gray-800 rounded-lg">
-							<h4 className="text-sm font-medium text-gray-300 mb-2">
+						<div className="p-3 bg-muted rounded-lg">
+							<h4 className="text-sm font-medium text-foreground mb-2">
 								Business Event
 							</h4>
-							<pre className="text-xs text-gray-400 overflow-x-auto">{`{
+							<pre className="text-xs text-muted-foreground overflow-x-auto">{`{
   "eventType": "order.processed",
   "orderId": "ORD-123456",
   "customerId": "CUST-789",
@@ -382,46 +420,46 @@ export function EventBridgeTestEvent({ config }: EventBridgeTestEventProps) {
 					</CardDescription>
 				</CardHeader>
 				<CardContent>
-					<ul className="text-sm text-gray-300 space-y-2">
+					<ul className="text-sm text-foreground space-y-2">
 						<li className="flex items-start gap-2">
-							<span className="text-blue-400">•</span>
+							<span className="text-primary">•</span>
 							<span>
-								Use <code className="text-blue-400 text-xs">meroku.test</code>{" "}
-								as the source for test events to easily identify them
+								Use <code className="text-primary text-xs">meroku.test</code> as
+								the source for test events to easily identify them
 							</span>
 						</li>
 						<li className="flex items-start gap-2">
-							<span className="text-blue-400">•</span>
+							<span className="text-primary">•</span>
 							<span>
 								Include a{" "}
-								<code className="text-blue-400 text-xs">test: true</code> field
+								<code className="text-primary text-xs">test: true</code> field
 								in your event detail for easy filtering
 							</span>
 						</li>
 						<li className="flex items-start gap-2">
-							<span className="text-blue-400">•</span>
+							<span className="text-primary">•</span>
 							<span>
 								Always include timestamps in your test events for debugging
 							</span>
 						</li>
 						<li className="flex items-start gap-2">
-							<span className="text-blue-400">•</span>
+							<span className="text-primary">•</span>
 							<span>
 								Check CloudWatch Logs for event processor tasks to see if they
 								were triggered
 							</span>
 						</li>
 						<li className="flex items-start gap-2">
-							<span className="text-blue-400">•</span>
+							<span className="text-primary">•</span>
 							<span>
-								Events are published to your custom event bus:{" "}
-								<code className="text-blue-400 text-xs">
-									{config.project}_{config.env}_eventbus
-								</code>
+								This environment's project bus is{" "}
+								<code className="text-primary text-xs">{projectBus}</code>
+								{enhanced ? " (Enhanced)" : ""}; AWS services publish to the
+								default bus
 							</span>
 						</li>
 						<li className="flex items-start gap-2">
-							<span className="text-blue-400">•</span>
+							<span className="text-primary">•</span>
 							<span>
 								Use EventBridge console to monitor event delivery and rule
 								matches

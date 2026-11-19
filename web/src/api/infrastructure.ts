@@ -8,6 +8,7 @@ import type {
 	NeonSchemasResponse,
 } from "../types/neon";
 import { fetchWithTokenRetry } from "../utils/fetchWithRetry";
+import type { ShareTargetInfo } from "../utils/workloadEvents";
 
 export interface Environment {
 	name: string;
@@ -481,7 +482,19 @@ export interface TestEventRequest {
 	source: string;
 	detailType: string;
 	detail?: Record<string, unknown>;
+	/**
+	 * The event group, for ordered subscriptions. Only for the enhanced
+	 * project bus; the server refuses it on any other bus.
+	 */
+	eventGroupId?: string;
 }
+
+/**
+ * GET /api/event-bus/share-targets: one sibling environment of the same
+ * project. Only `ok` entries can be shared with; `accountId` and `region` are
+ * set for those only.
+ */
+export type EventBusShareTarget = ShareTargetInfo;
 
 export interface TestEventResponse {
 	success: boolean;
@@ -1722,6 +1735,26 @@ export const infrastructureApi = {
 			throw new Error(error.error || "Failed to send test event");
 		}
 		return response.json();
+	},
+
+	/** The other environments of this project the enhanced bus can be shared with. */
+	async getEventBusShareTargets(
+		env: string,
+		opts: { signal?: AbortSignal } = {},
+	): Promise<EventBusShareTarget[]> {
+		const params = new URLSearchParams({ env });
+		const response = await fetch(
+			`${API_BASE_URL}/api/event-bus/share-targets?${params}`,
+			{ signal: opts.signal },
+		);
+		if (!response.ok) {
+			const error: Partial<ErrorResponse> = await response
+				.json()
+				.catch(() => ({}));
+			throw new Error(error.error || "Failed to list the other environments");
+		}
+		const body: EventBusShareTarget[] | null = await response.json();
+		return Array.isArray(body) ? body : [];
 	},
 
 	async getEventTasks(env: string): Promise<EventTaskInfo[]> {

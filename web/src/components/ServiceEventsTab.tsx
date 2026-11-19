@@ -19,11 +19,17 @@ import type {
 } from "../types/yamlConfig";
 import {
 	compactEvents,
+	enhancedDetailTypeError,
+	enhancedDetailTypeNote,
+	eventQueueName,
 	eventSourceOf,
+	eventsHaveOrdered,
 	filterFieldsNest,
 	isCatchAllWildcard,
+	isEnhancedBus,
 	isEventBusEnabled,
 	nestedFilterFieldError,
+	orderedSubscriptionError,
 	parseFilterValues,
 	projectBusName,
 	resolveBus,
@@ -35,10 +41,21 @@ import {
 	subscriptionEventTypeDisplay,
 	subscriptionFilterSummary,
 	subscriptionKey,
+	withOrderingCleared,
 } from "../utils/workloadEvents";
 import { EventFlowDiagram } from "./EventFlowDiagram";
 import { EventProducesEditor } from "./EventProducesEditor";
 import { Alert, AlertDescription } from "./ui/alert";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "./ui/alert-dialog";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import {
@@ -56,10 +73,10 @@ import {
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { NoteDetail, StatusNote } from "./ui/status-note";
+import { Switch } from "./ui/switch";
 
 /** One column layout for subscription rows and the add form, so they line up. */
-const SUBSCRIPTION_GRID =
-	"grid grid-cols-[minmax(0,1fr)_9.5rem_11rem] items-center gap-2";
+const SUBSCRIPTION_GRID = "grid grid-cols-subscription-row items-center gap-2";
 
 interface ServiceEventsTabProps {
 	config: YamlInfrastructureConfig;
@@ -82,6 +99,7 @@ interface SubscriptionRowEditorProps {
 	sub: EventSubscription;
 	index: number;
 	allSubscribes: EventSubscription[];
+	config: YamlInfrastructureConfig;
 	busEnabled: boolean;
 	onUpdate: (index: number, patch: Partial<EventSubscription>) => void;
 	onRemove: (index: number) => void;
@@ -90,12 +108,14 @@ interface SubscriptionRowEditorProps {
 /**
  * One saved subscription entry inside its bus section: event type (detail-type,
  * with `*` wildcard support), a collapsed-by-default filter (source + detail.*
- * field conditions), and a secondary Advanced toggle for the rule key name.
+ * field conditions), a secondary Advanced toggle for the rule key name, and,
+ * on the enhanced project bus, the Keep order switch.
  */
 function SubscriptionRowEditor({
 	sub,
 	index,
 	allSubscribes,
+	config,
 	busEnabled,
 	onUpdate,
 	onRemove,
@@ -103,7 +123,16 @@ function SubscriptionRowEditor({
 	const uid = useId();
 	const key = subscriptionKey(sub, busEnabled);
 	const displayType = subscriptionEventTypeDisplay(sub);
-	const errors = subscriptionErrors(sub, index, allSubscribes, busEnabled);
+	const enhancedProject =
+		isEnhancedBus(config) && resolveBus(sub.bus, busEnabled) === "project";
+	// Shown whenever ordered is set, so an entry that cannot keep order can
+	// always be turned back.
+	const showKeepOrder = enhancedProject || sub.ordered === true;
+	const orderedError = orderedSubscriptionError(sub, config);
+	const errors = [
+		...subscriptionErrors(sub, index, allSubscribes, busEnabled),
+		...(orderedError ? [orderedError] : []),
+	];
 	const hasFilterError = errors.some(
 		(e) => e.includes("detail.") || e.includes("filter") || e.includes("Field"),
 	);
@@ -231,6 +260,10 @@ function SubscriptionRowEditor({
 
 	const summary = subscriptionFilterSummary(sub);
 	const rowLabel = key || displayType || `subscription-${index + 1}`;
+	const trimmedTypeDraft = typeDraft.trim();
+	const enhancedTypeNote = enhancedDetailTypeNote(trimmedTypeDraft);
+	const enhancedTypeError =
+		trimmedTypeDraft === "" ? null : enhancedDetailTypeError(trimmedTypeDraft);
 
 	return (
 		<div
@@ -312,11 +345,18 @@ function SubscriptionRowEditor({
 				</div>
 			)}
 
-			{isCatchAllWildcard(typeDraft) && (
+			{isCatchAllWildcard(typeDraft) && !enhancedProject && (
 				<StatusNote tone="warning">
 					Subscribes to every event on this bus. Narrow it with a prefix like
 					job.* or add a filter unless this workload handles all events.
 				</StatusNote>
+			)}
+
+			{enhancedProject && enhancedTypeNote && (
+				<NoteDetail>{enhancedTypeNote}</NoteDetail>
+			)}
+			{enhancedProject && enhancedTypeError && (
+				<StatusNote tone="error">{enhancedTypeError}</StatusNote>
 			)}
 
 			{errors.map((err) => (
@@ -324,6 +364,29 @@ function SubscriptionRowEditor({
 					{err}
 				</StatusNote>
 			))}
+
+			{showKeepOrder && (
+				<div
+					className="flex items-start justify-between gap-4"
+					data-testid={`subscription-ordered-${key || index}`}
+				>
+					<div className="space-y-1">
+						<Label htmlFor={`${uid}-ordered`}>Keep order</Label>
+						<NoteDetail>
+							Deliver events with the same group in the order they were sent.
+							They go to a separate ordered queue, EVENT_FIFO_QUEUE_URL.
+						</NoteDetail>
+					</div>
+					<Switch
+						id={`${uid}-ordered`}
+						aria-label={`Keep order for ${rowLabel}`}
+						checked={sub.ordered === true}
+						onCheckedChange={(checked) =>
+							onUpdate(index, { ordered: checked ? true : undefined })
+						}
+					/>
+				</div>
+			)}
 
 			{(filterOpen || hasFilterError) && (
 				<div
@@ -395,7 +458,7 @@ function SubscriptionRowEditor({
 						)}
 
 						<div className="flex flex-wrap items-start gap-2">
-							<div className="flex-1 min-w-[160px]">
+							<div className="flex-1 min-w-40">
 								<Input
 									aria-label={`Field path for ${rowLabel}`}
 									variant="code"
@@ -411,7 +474,7 @@ function SubscriptionRowEditor({
 									}}
 								/>
 							</div>
-							<div className="flex-1 min-w-[160px]">
+							<div className="flex-1 min-w-40">
 								<Input
 									aria-label={`Field values for ${rowLabel}`}
 									variant="code"
@@ -455,7 +518,11 @@ function SubscriptionRowEditor({
 					className="rounded-md border bg-muted/30 p-3 space-y-1"
 					data-testid={`subscription-advanced-${key || index}`}
 				>
-					<Label htmlFor={`${uid}-name`}>Rule key name (optional)</Label>
+					<Label htmlFor={`${uid}-name`}>
+						{enhancedProject
+							? "Subscription key name (optional)"
+							: "Rule key name (optional)"}
+					</Label>
 					<Input
 						id={`${uid}-name`}
 						aria-label={`Rule key name for ${rowLabel}`}
@@ -473,8 +540,9 @@ function SubscriptionRowEditor({
 						<StatusNote tone="error">{nameInlineError}</StatusNote>
 					)}
 					<NoteDetail>
-						Identifies this subscription's EventBridge rule. Leave blank to
-						derive it from the event type ({key || "none"}).
+						Identifies this subscription's EventBridge{" "}
+						{enhancedProject ? "subscriber" : "rule"}. Leave blank to derive it
+						from the event type ({key || "none"}).
 					</NoteDetail>
 				</div>
 			)}
@@ -487,6 +555,7 @@ interface BusSubscriptionsSectionProps {
 	description: string;
 	testId: string;
 	targetBus: EventBusChoice;
+	config: YamlInfrastructureConfig;
 	busEnabled: boolean;
 	allSubscribes: EventSubscription[];
 	/** False hides the add form, leaving existing entries editable. */
@@ -506,6 +575,7 @@ function BusSubscriptionsSection({
 	description,
 	testId,
 	targetBus,
+	config,
 	busEnabled,
 	allSubscribes,
 	allowAdd = true,
@@ -514,6 +584,8 @@ function BusSubscriptionsSection({
 	onRemove,
 }: BusSubscriptionsSectionProps) {
 	const uid = useId();
+	// Subscriber filters of an enhanced bus match a fixed start or end only.
+	const enhancedProject = targetBus === "project" && isEnhancedBus(config);
 	const items = allSubscribes
 		.map((sub, index) => ({ sub, index }))
 		.filter(({ sub }) => resolveBus(sub.bus, busEnabled) === targetBus);
@@ -599,6 +671,8 @@ function BusSubscriptionsSection({
 			"A name is 1 to 32 lower-case letters, digits and hyphens, starting with a letter or a digit.";
 	} else if (pendingFilterError) {
 		draftError = pendingFilterError;
+	} else if (enhancedProject && enhancedDetailTypeError(trimmedType)) {
+		draftError = enhancedDetailTypeError(trimmedType);
 	} else if (trimmedType && draftKey === "") {
 		draftError =
 			"No key can be derived from this event type; open Advanced and give it a name.";
@@ -671,6 +745,7 @@ function BusSubscriptionsSection({
 							sub={sub}
 							index={index}
 							allSubscribes={allSubscribes}
+							config={config}
 							busEnabled={busEnabled}
 							onUpdate={onUpdate}
 							onRemove={onRemove}
@@ -734,7 +809,9 @@ function BusSubscriptionsSection({
 					</div>
 					<div className="flex items-center justify-between gap-2">
 						<NoteDetail>
-							Use * as a wildcard: job.* matches every job event.
+							{enhancedProject
+								? "Use * at the start or the end: job.* matches every job event, *.created every created event."
+								: "Use * as a wildcard: job.* matches every job event."}
 						</NoteDetail>
 						<Button
 							type="button"
@@ -749,7 +826,7 @@ function BusSubscriptionsSection({
 						</Button>
 					</div>
 
-					{isCatchAllWildcard(newType) && (
+					{isCatchAllWildcard(newType) && !enhancedProject && (
 						<StatusNote tone="warning">
 							Subscribes to every event on this bus. Narrow it with a prefix
 							like job.* or add a filter unless this workload handles all
@@ -819,7 +896,7 @@ function BusSubscriptionsSection({
 									</div>
 								)}
 								<div className="flex flex-wrap items-start gap-2">
-									<div className="flex-1 min-w-[160px]">
+									<div className="flex-1 min-w-40">
 										<Input
 											aria-label={`Filter field for new subscription on ${sectionLabel}`}
 											variant="code"
@@ -835,7 +912,7 @@ function BusSubscriptionsSection({
 											}}
 										/>
 									</div>
-									<div className="flex-1 min-w-[160px]">
+									<div className="flex-1 min-w-40">
 										<Input
 											aria-label={`Filter values for new subscription on ${sectionLabel}`}
 											variant="code"
@@ -893,6 +970,9 @@ function BusSubscriptionsSection({
 						</div>
 					)}
 
+					{enhancedProject && enhancedDetailTypeNote(trimmedType) && (
+						<NoteDetail>{enhancedDetailTypeNote(trimmedType)}</NoteDetail>
+					)}
 					{draftError && <StatusNote tone="error">{draftError}</StatusNote>}
 				</div>
 			)}
@@ -921,8 +1001,20 @@ export function ServiceEventsTab({
 	// Entries naming the project bus while it is off must stay visible to be fixed.
 	const hasStrandedProjectEntries =
 		!busEnabled && subscribes.some((sub) => sub.bus === "project");
+	const enhanced = isEnhancedBus(config);
+	const hasOrdered = eventsHaveOrdered(events);
+	const fifoRetired = events?.queue?.fifo_retired === true;
+	// A retired ordered queue keeps the workload a consumer with its queues.
+	const isConsumer = subscribes.length > 0 || fifoRetired;
+	const hasFifo = hasOrdered || fifoRetired;
+	const orderedCount = subscribes.filter((s) => s.ordered === true).length;
+	const workloadNoun = kind === "backend" ? "backend" : "service";
+	const [confirmFifoDelete, setConfirmFifoDelete] = useState(false);
 
-	const save = (next: WorkloadEvents) => onEventsChange(compactEvents(next));
+	// Every edit goes through withOrderingCleared, so none leaves an ordered
+	// queue without fifo_retired or fifo_retired beside an ordered entry.
+	const save = (next: WorkloadEvents) =>
+		onEventsChange(compactEvents(withOrderingCleared(events, next)));
 
 	// Writes go through index + patch against the current subscribes list.
 	const handleAddSubscription = (entry: EventSubscription) => {
@@ -953,6 +1045,7 @@ export function ServiceEventsTab({
 				if (merged.filters !== undefined && merged.filters.length > 0)
 					cleaned.filters = merged.filters;
 				if (merged.bus !== undefined) cleaned.bus = merged.bus;
+				if (merged.ordered === true) cleaned.ordered = true;
 				return cleaned;
 			}),
 		});
@@ -1000,7 +1093,9 @@ export function ServiceEventsTab({
 
 	const commitQueue = () => {
 		if (visibilityError || maxReceiveError) return;
+		// Only the two fields this card edits; fifo_retired is kept as it is.
 		const next = {
+			...queue,
 			visibility_timeout: visibility === "" ? undefined : Number(visibility),
 			max_receive_count: maxReceive === "" ? undefined : Number(maxReceive),
 		};
@@ -1011,6 +1106,9 @@ export function ServiceEventsTab({
 			return;
 		save({ ...events, queue: next });
 	};
+
+	const deleteRetiredFifo = () =>
+		save({ ...events, queue: { ...queue, fifo_retired: undefined } });
 
 	return (
 		<div className="space-y-4" data-testid={`events-tab-${workloadName}`}>
@@ -1027,12 +1125,17 @@ export function ServiceEventsTab({
 					</CardDescription>
 				</CardHeader>
 				<CardContent>
-					<dl className="grid grid-cols-[6rem_minmax(0,1fr)] items-center gap-x-3 gap-y-2 text-sm">
+					<dl className="grid grid-cols-label-value items-center gap-x-3 gap-y-2 text-sm">
 						<dt className="text-muted-foreground">Bus</dt>
 						<dd>
 							<code className="font-mono">
 								{busEnabled ? busName : "default"}
 							</code>
+							{enhanced && (
+								<Badge variant="outline" className="ml-2">
+									Enhanced
+								</Badge>
+							)}
 						</dd>
 						<dt className="text-muted-foreground">Env vars</dt>
 						<dd className="flex flex-wrap gap-2">
@@ -1040,22 +1143,32 @@ export function ServiceEventsTab({
 							<Badge variant="code">
 								EVENT_BUS_NAME={busEnabled ? busName : "default"}
 							</Badge>
-							{subscribes.length > 0 && (
+							{enhanced && <Badge variant="code">EVENT_BUS_ARN</Badge>}
+							{isConsumer && (
 								<>
 									<Badge variant="code">EVENT_QUEUE_URL</Badge>
 									<Badge variant="code">EVENT_DLQ_URL</Badge>
 								</>
 							)}
+							{hasFifo && (
+								<>
+									<Badge variant="code">EVENT_FIFO_QUEUE_URL</Badge>
+									<Badge variant="code">EVENT_FIFO_DLQ_URL</Badge>
+								</>
+							)}
 						</dd>
 					</dl>
-					{subscribes.length > 0 && (
+					{isConsumer && (
 						<div className="mt-4">
 							<EventFlowDiagram
 								config={config}
 								workload={workloadName}
 								busName={busEnabled ? busName : "default"}
-								ruleCount={subscribes.length}
+								ruleCount={subscribes.length - orderedCount}
 								maxReceiveCount={events?.queue?.max_receive_count ?? 5}
+								enhanced={enhanced}
+								fifo={hasFifo}
+								orderedCount={orderedCount}
 							/>
 						</div>
 					)}
@@ -1069,15 +1182,28 @@ export function ServiceEventsTab({
 						Subscribes
 					</CardTitle>
 					<CardDescription>
-						One rule per entry, delivering matching events to this workload's
-						queue.
+						{enhanced
+							? `Each entry gets its own subscriber; this ${workloadNoun}'s ordered entries share one ordered subscriber. Default-bus entries get one rule each.`
+							: "One rule per entry, delivering matching events to this workload's queue."}
 					</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-4">
-					{subscribes.length === 0 && (
+					{subscribes.length === 0 && !fifoRetired && (
 						<p className="text-sm text-muted-foreground">
 							Subscribes to nothing, so it has no queue.
 						</p>
+					)}
+					{subscribes.length === 0 && fifoRetired && (
+						<p className="text-sm text-muted-foreground">
+							Subscribes to nothing. Its queues stay until you delete the
+							retired ordered queue in Queue settings.
+						</p>
+					)}
+					{fifoRetired && !hasOrdered && (
+						<StatusNote tone="warning">
+							The ordered queue is kept, with any events still in it. Delete it
+							in Queue settings once your {workloadNoun} has read them.
+						</StatusNote>
 					)}
 
 					{(busEnabled || hasStrandedProjectEntries) && (
@@ -1090,6 +1216,7 @@ export function ServiceEventsTab({
 							}
 							testId="subscribes-section-project"
 							targetBus="project"
+							config={config}
 							busEnabled={busEnabled}
 							allSubscribes={subscribes}
 							allowAdd={busEnabled}
@@ -1104,6 +1231,7 @@ export function ServiceEventsTab({
 						description="AWS services (such as ECS, ECR and S3) and CI events publish only to the default bus."
 						testId="subscribes-section-default"
 						targetBus="default"
+						config={config}
 						busEnabled={busEnabled}
 						allSubscribes={subscribes}
 						onAdd={handleAddSubscription}
@@ -1136,8 +1264,34 @@ export function ServiceEventsTab({
 				</CardContent>
 			</Card>
 
-			{subscribes.length > 0 && (
-				<Card>
+			{isConsumer && (
+				<Card data-testid="queue-settings">
+					{fifoRetired && (
+						<CardHeader data-testid="fifo-retired">
+							<CardTitle>Ordered queue (retired)</CardTitle>
+							<CardDescription>
+								No subscription delivers to{" "}
+								<code className="font-mono">
+									{eventQueueName(config, workloadName, "queue", true) ??
+										"the ordered queue"}
+								</code>{" "}
+								any more. It is kept, with its dead-letter queues, so your{" "}
+								{workloadNoun} can read what is still in it through
+								EVENT_FIFO_QUEUE_URL.
+							</CardDescription>
+							<div>
+								<Button
+									type="button"
+									variant="destructive"
+									size="sm"
+									onClick={() => setConfirmFifoDelete(true)}
+								>
+									<Trash2 className="w-4 h-4" />
+									Delete the ordered queue
+								</Button>
+							</div>
+						</CardHeader>
+					)}
 					<Collapsible>
 						<CardHeader>
 							<CollapsibleTrigger asChild>
@@ -1195,7 +1349,7 @@ export function ServiceEventsTab({
 				</Card>
 			)}
 
-			{subscribes.length > 0 && (
+			{isConsumer && (
 				<Alert>
 					<AlertDescription>
 						Messages that fail go to a dead-letter queue, and an alarm publishes
@@ -1205,6 +1359,36 @@ export function ServiceEventsTab({
 					</AlertDescription>
 				</Alert>
 			)}
+
+			<AlertDialog open={confirmFifoDelete} onOpenChange={setConfirmFifoDelete}>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>Delete the ordered queue?</AlertDialogTitle>
+						<AlertDialogDescription>
+							The next deploy deletes the ordered queue and its dead-letter
+							queues. Deleting it also deletes any events still in it.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					{subscribes.length === 0 && (
+						<StatusNote tone="warning">
+							This {workloadNoun} has no subscriptions left, so its standard
+							queue is deleted as well.
+						</StatusNote>
+					)}
+					<AlertDialogFooter>
+						<AlertDialogCancel>Cancel</AlertDialogCancel>
+						<AlertDialogAction
+							variant="destructive"
+							onClick={() => {
+								setConfirmFifoDelete(false);
+								deleteRetiredFifo();
+							}}
+						>
+							Delete the ordered queue
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 		</div>
 	);
 }
