@@ -3,6 +3,7 @@ import { useId, useState } from "react";
 import type { EventBusChoice, EventProduce } from "../types/yamlConfig";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import { Card } from "./ui/card";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import {
@@ -15,8 +16,7 @@ import {
 import { Switch } from "./ui/switch";
 
 /** One column layout for produces rows and the add form, so they line up. */
-const PRODUCES_GRID =
-	"grid grid-cols-[minmax(0,1fr)_11rem_11rem] items-center gap-2";
+const PRODUCES_GRID = "grid grid-cols-produces-row items-center gap-2";
 
 /** The bus an entry or rule is on, as the select shows it. */
 export type EventBusSelectValue = "follow" | EventBusChoice;
@@ -271,11 +271,12 @@ export function EventProducesEditor({
 						<span>Source</span>
 					</div>
 					{produces.map((entry, index) => (
-						<div
+						<Card
 							// biome-ignore lint/suspicious/noArrayIndexKey: entries have no identity of their own
 							key={index}
+							size="compact"
 							data-testid={`produces-row-${index}`}
-							className={`${PRODUCES_GRID} rounded-lg border bg-card p-3 shadow-sm`}
+							className={PRODUCES_GRID}
 						>
 							<ProducesTypes
 								entry={entry}
@@ -311,7 +312,7 @@ export function EventProducesEditor({
 									<Trash2 className="w-4 h-4" />
 								</Button>
 							</div>
-						</div>
+						</Card>
 					))}
 				</div>
 			)}

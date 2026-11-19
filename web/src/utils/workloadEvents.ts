@@ -1,4 +1,8 @@
 import type {
+	EventFlowPath,
+	EventFlowProps,
+} from "../components/ui/recipes/event-flow";
+import type {
 	EventBridgeRule,
 	EventBusChoice,
 	EventBusShare,
@@ -111,33 +115,59 @@ export function eventsHaveOrdered(events: WorkloadEvents | undefined): boolean {
 	return (events?.subscribes ?? []).some((sub) => sub.ordered === true);
 }
 
+/** The events block of the backend or of the named service. */
+function consumerEvents(
+	config: YamlInfrastructureConfig,
+	workload: string,
+): WorkloadEvents | undefined {
+	if (workload === "backend") return config.workload?.events;
+	return (config.services ?? []).find((s) => s.name === workload)?.events;
+}
+
 /** True when the backend or the named service has an ordered subscription. */
 export function consumerHasOrdered(
 	config: YamlInfrastructureConfig,
 	workload: string,
 ): boolean {
-	if (workload === "backend") return eventsHaveOrdered(config.workload?.events);
-	const service = (config.services ?? []).find((s) => s.name === workload);
-	return eventsHaveOrdered(service?.events);
+	return eventsHaveOrdered(consumerEvents(config, workload));
+}
+
+/**
+ * Whether the consumer's ordered queue may already be deployed. Only a deploy
+ * creates it, and the web UI never deploys, so it can exist only when the
+ * YAML as loaded from disk (`loaded`) had an ordered subscription or
+ * `fifo_retired` for the consumer. Without a loaded YAML of the same env the
+ * answer is unknown, and counts as yes.
+ */
+export function orderedQueueMayBeDeployed(
+	loaded: YamlInfrastructureConfig | undefined,
+	env: string,
+	workload: string,
+): boolean {
+	if (!loaded || loaded.env !== env) return true;
+	const events = consumerEvents(loaded, workload);
+	return eventsHaveOrdered(events) || events?.queue?.fifo_retired === true;
 }
 
 /**
  * The one rule every subscription edit goes through, so no edit leaves YAML
  * that generate refuses. When the edit leaves the consumer with no ordered
- * subscription and it had one before, the deployed ordered queue is kept with
- * `queue.fifo_retired: true`. When the result has an ordered subscription,
- * `fifo_retired` is removed (the two together are refused).
+ * subscription and it had one before, an ordered queue that may be deployed
+ * (`orderedQueueMayExist`) is kept with `queue.fifo_retired: true`; one that
+ * was never deployed needs nothing kept. When the result has an ordered
+ * subscription, `fifo_retired` is removed (the two together are refused).
  */
 export function withOrderingCleared(
 	previous: WorkloadEvents | undefined,
 	next: WorkloadEvents | undefined,
+	orderedQueueMayExist = true,
 ): WorkloadEvents | undefined {
 	const had = eventsHaveOrdered(previous);
 	const has = eventsHaveOrdered(next);
 	if (has && next?.queue?.fifo_retired !== undefined) {
 		return { ...next, queue: { ...next.queue, fifo_retired: undefined } };
 	}
-	if (had && !has) {
+	if (had && !has && orderedQueueMayExist) {
 		return { ...next, queue: { ...next?.queue, fifo_retired: true } };
 	}
 	return next;
@@ -146,6 +176,7 @@ export function withOrderingCleared(
 /** The block with every `ordered` removed, through `withOrderingCleared`. */
 function eventsWithoutOrdering(
 	events: WorkloadEvents | undefined,
+	orderedQueueMayExist: boolean,
 ): WorkloadEvents | undefined {
 	if (!eventsHaveOrdered(events)) return events;
 	const next: WorkloadEvents = {
@@ -154,36 +185,48 @@ function eventsWithoutOrdering(
 			sub.ordered === undefined ? sub : { ...sub, ordered: undefined },
 		),
 	};
-	return withOrderingCleared(events, next);
+	return withOrderingCleared(events, next, orderedQueueMayExist);
 }
 
 /**
  * Removes every `ordered` from the backend and the services, keeping each
- * deployed ordered queue with `fifo_retired`. Used when the bus stops being
- * enhanced. `updates` holds only the sections that change; `affected` names
- * the workloads that lose ordered delivery.
+ * ordered queue that may be deployed with `fifo_retired` (see
+ * `orderedQueueMayBeDeployed`; `loaded` is the YAML as loaded from disk).
+ * Used when the bus stops being enhanced. `updates` holds only the sections
+ * that change; `affected` names the workloads that lose ordered delivery.
  */
-export function clearOrdering(config: YamlInfrastructureConfig): {
+export function clearOrdering(
+	config: YamlInfrastructureConfig,
+	loaded?: YamlInfrastructureConfig,
+): {
 	updates: Partial<YamlInfrastructureConfig>;
 	affected: string[];
+	/** The affected workloads whose ordered queue is kept with fifo_retired. */
+	kept: string[];
 } {
 	const updates: Partial<YamlInfrastructureConfig> = {};
 	const affected: string[] = [];
+	const kept: string[] = [];
+	const cleared = (name: string, events: WorkloadEvents | undefined) => {
+		affected.push(name);
+		const mayExist = orderedQueueMayBeDeployed(loaded, config.env, name);
+		if (mayExist) kept.push(name);
+		return eventsWithoutOrdering(events, mayExist);
+	};
 	if (eventsHaveOrdered(config.workload?.events)) {
-		affected.push("backend");
 		updates.workload = {
-			events: eventsWithoutOrdering(config.workload?.events),
+			events: cleared("backend", config.workload?.events),
 		} as YamlInfrastructureConfig["workload"];
 	}
 	const services = config.services ?? [];
 	if (services.some((s) => eventsHaveOrdered(s.events))) {
-		updates.services = services.map((s) => {
-			if (!eventsHaveOrdered(s.events)) return s;
-			affected.push(s.name);
-			return { ...s, events: eventsWithoutOrdering(s.events) };
-		});
+		updates.services = services.map((s) =>
+			eventsHaveOrdered(s.events)
+				? { ...s, events: cleared(s.name, s.events) }
+				: s,
+		);
 	}
-	return { updates, affected };
+	return { updates, affected, kept };
 }
 
 /** An entry that names the project bus with `bus: project`. */
@@ -519,19 +562,23 @@ export function shareValueError(
 }
 
 /**
- * The error for share entry `index` naming a principal an earlier entry
- * already names, or null.
+ * The error for share entry `index` naming a principal any other entry of
+ * the list also names, before or after it, or null. Two `env` entries for
+ * the same environment match before the share targets have loaded.
  */
 export function shareDuplicateError(
 	share: EventBusShare[],
 	index: number,
 	targets: ShareTargetInfo[] | undefined,
 ): string | null {
-	const principal = sharePrincipal(share[index], targets);
-	if (principal === null) return null;
-	const first = share.findIndex(
-		(e, i) => i < index && sharePrincipal(e, targets) === principal,
-	);
+	const identity = (e: EventBusShare): string | null => {
+		const principal = sharePrincipal(e, targets);
+		if (principal !== null) return `principal:${principal}`;
+		return shareEntryKind(e) === "env" && e.env ? `env:${e.env}` : null;
+	};
+	const own = identity(share[index]);
+	if (own === null) return null;
+	const first = share.findIndex((e, i) => i !== index && identity(e) === own);
 	if (first === -1) return null;
 	return `Shared again: entry ${first + 1} already shares with ${shareEntryLabel(share[first])}. Give it one entry; Send and subscribe covers both.`;
 }
@@ -774,4 +821,98 @@ export function compactEvents(
 	if (events.produces && events.produces.length > 0)
 		out.produces = events.produces;
 	return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function countOf(n: number, word: string): string {
+	return `${n} ${word}${n === 1 ? "" : "s"}`;
+}
+
+/**
+ * The queue sets of a consumer as the event-flow diagram draws them, from the
+ * resources modules/events builds: the standard set, and the ordered (FIFO)
+ * set while the consumer has an ordered subscription or `fifo_retired`. Each
+ * subscription is drawn on the bus it resolves to: the enhanced project bus
+ * delivers through subscribers, a standard project bus and the default bus
+ * through rules. Empty for a workload that is not a consumer.
+ */
+export function eventFlows(
+	config: YamlInfrastructureConfig,
+	workload: string,
+	events: WorkloadEvents | undefined,
+): EventFlowProps[] {
+	const subscribes = events?.subscribes ?? [];
+	const fifoRetired = events?.queue?.fifo_retired === true;
+	if (subscribes.length === 0 && !fifoRetired) return [];
+
+	const busEnabled = isEventBusEnabled(config);
+	const projectBus = projectBusName(config);
+	const ordered = subscribes.filter((s) => s.ordered === true).length;
+	const standard = subscribes.filter((s) => s.ordered !== true);
+	const onProject = standard.filter(
+		(s) => resolveBus(s.bus, busEnabled) === "project",
+	).length;
+	const onDefault = standard.length - onProject;
+
+	const queueSet = (fifo: boolean) => {
+		const named = (kind: "queue" | "dlq" | "delivery-dlq") =>
+			eventQueueName(config, workload, kind, fifo) ?? "named at apply";
+		const queueName = eventQueueName(config, workload, "queue", fifo);
+		return {
+			queue: {
+				kind: fifo ? "Ordered SQS queue" : "SQS queue",
+				name: named("queue"),
+				title: (queueName && eventQueueArn(config, queueName)) || undefined,
+			},
+			app: workload,
+			deliveryDlq: {
+				kind: fifo ? "Ordered delivery DLQ" : "Delivery DLQ",
+				name: named("delivery-dlq"),
+			},
+			dlq: { kind: fifo ? "Ordered DLQ" : "DLQ", name: named("dlq") },
+			maxReceiveCount: events?.queue?.max_receive_count ?? 5,
+			alerts: `${config.project}-${config.env}-alerts`,
+		};
+	};
+
+	const standardPaths: EventFlowPath[] = [];
+	if (onProject > 0)
+		standardPaths.push({
+			bus: projectBus,
+			delivery: isEnhancedBus(config) ? "Subscribers" : "Rules",
+			summary: countOf(onProject, "subscription"),
+		});
+	if (onDefault > 0)
+		standardPaths.push({
+			bus: "default",
+			delivery: "Rules",
+			summary: countOf(onDefault, "subscription"),
+		});
+	const flows: EventFlowProps[] = [
+		{
+			label: `How events reach ${workload}`,
+			"data-testid": "event-flow",
+			paths: standardPaths,
+			idle: { kind: "Subscriptions", name: "none deliver here" },
+			...queueSet(false),
+		},
+	];
+
+	if (ordered > 0 || fifoRetired)
+		flows.push({
+			label: `How ordered events reach ${workload}`,
+			"data-testid": "event-flow-fifo",
+			paths:
+				ordered > 0
+					? [
+							{
+								bus: projectBus,
+								delivery: "Ordered subscriber",
+								summary: countOf(ordered, "ordered subscription"),
+							},
+						]
+					: [],
+			idle: { kind: "Ordered subscriber", name: "retired, delivers nothing" },
+			...queueSet(true),
+		});
+	return flows;
 }

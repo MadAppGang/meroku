@@ -1,13 +1,22 @@
 import { describe, expect, test } from "bun:test";
+import type {
+	WorkloadEvents,
+	YamlInfrastructureConfig,
+} from "../types/yamlConfig";
 import {
+	clearOrdering,
 	describeProduceEntry,
+	eventFlows,
 	filterFieldsNest,
 	isCatchAllWildcard,
+	orderedQueueMayBeDeployed,
 	parseFilterValues,
+	shareDuplicateError,
 	subscriptionErrors,
 	subscriptionEventTypeDisplay,
 	subscriptionFilterSummary,
 	subscriptionKey,
+	withOrderingCleared,
 } from "./workloadEvents";
 
 describe("describeProduceEntry", () => {
@@ -139,5 +148,126 @@ describe("filterFieldsNest", () => {
 		};
 		const errors = subscriptionErrors(sub, 0, [sub], true);
 		expect(errors.some((e) => e.includes("overlap"))).toBe(true);
+	});
+});
+
+const enhancedConfig = (
+	events: WorkloadEvents | undefined,
+): YamlInfrastructureConfig =>
+	({
+		project: "demo",
+		env: "dev",
+		region: "us-east-1",
+		account_id: "000000000000",
+		event_bus: { enabled: true, type: "enhanced" },
+		workload: { events },
+	}) as YamlInfrastructureConfig;
+
+describe("shareDuplicateError", () => {
+	test("finds a duplicate after the entry as well as before it", () => {
+		const share = [
+			{ account: "333333333333", access: "publish" as const },
+			{ account: "333333333333", access: "full" as const },
+		];
+		expect(shareDuplicateError(share, 0, [])).toContain("entry 2");
+		expect(shareDuplicateError(share, 1, [])).toContain("entry 1");
+	});
+	test("two env entries for one environment match before targets load", () => {
+		const share = [
+			{ env: "staging", access: "publish" as const },
+			{ env: "staging", access: "subscribe" as const },
+		];
+		expect(shareDuplicateError(share, 0, undefined)).toContain("entry 2");
+	});
+	test("distinct principals are not duplicates", () => {
+		const share = [
+			{ account: "222222222222", access: "publish" as const },
+			{ account: "333333333333", access: "publish" as const },
+		];
+		expect(shareDuplicateError(share, 0, [])).toBe(null);
+	});
+});
+
+describe("ordered queue retirement", () => {
+	const ordered = {
+		subscribes: [{ detail_type: "ledger.posted", ordered: true }],
+	};
+	const turnedOff = { subscribes: [{ detail_type: "ledger.posted" }] };
+
+	test("a queue that may be deployed is kept with fifo_retired", () => {
+		expect(withOrderingCleared(ordered, turnedOff)?.queue?.fifo_retired).toBe(
+			true,
+		);
+	});
+	test("a queue never deployed gets no fifo_retired", () => {
+		expect(
+			withOrderingCleared(ordered, turnedOff, false)?.queue?.fifo_retired,
+		).toBeUndefined();
+	});
+	test("only the loaded YAML of the same env tells", () => {
+		const loaded = enhancedConfig(turnedOff);
+		expect(orderedQueueMayBeDeployed(loaded, "dev", "backend")).toBe(false);
+		expect(orderedQueueMayBeDeployed(loaded, "prod", "backend")).toBe(true);
+		expect(orderedQueueMayBeDeployed(undefined, "dev", "backend")).toBe(true);
+		expect(
+			orderedQueueMayBeDeployed(enhancedConfig(ordered), "dev", "backend"),
+		).toBe(true);
+		expect(
+			orderedQueueMayBeDeployed(
+				enhancedConfig({ queue: { fifo_retired: true } }),
+				"dev",
+				"backend",
+			),
+		).toBe(true);
+	});
+	test("clearOrdering keeps only the queues that may be deployed", () => {
+		const config = enhancedConfig(ordered);
+		const never = clearOrdering(config, enhancedConfig(undefined));
+		expect(never.affected).toEqual(["backend"]);
+		expect(never.kept).toEqual([]);
+		expect(never.updates.workload?.events?.queue?.fifo_retired).toBeUndefined();
+		const maybe = clearOrdering(config);
+		expect(maybe.kept).toEqual(["backend"]);
+		expect(maybe.updates.workload?.events?.queue?.fifo_retired).toBe(true);
+	});
+});
+
+describe("eventFlows", () => {
+	test("draws default-bus rules apart from enhanced-bus subscribers", () => {
+		const flows = eventFlows(enhancedConfig({}), "backend", {
+			subscribes: [
+				{ detail_type: "a.b" },
+				{ detail_type: "c.d" },
+				{ detail_type: "e.f", bus: "default" },
+			],
+		});
+		expect(flows.length).toBe(1);
+		expect(flows[0].paths).toEqual([
+			{ bus: "demo-dev", delivery: "Subscribers", summary: "2 subscriptions" },
+			{ bus: "default", delivery: "Rules", summary: "1 subscription" },
+		]);
+	});
+	test("an active ordered set has one ordered subscriber path", () => {
+		const flows = eventFlows(enhancedConfig({}), "backend", {
+			subscribes: [{ detail_type: "a.b", ordered: true }],
+		});
+		expect(flows.map((f) => f["data-testid"])).toEqual([
+			"event-flow",
+			"event-flow-fifo",
+		]);
+		expect(flows[0].paths).toEqual([]);
+		expect(flows[1].paths[0].delivery).toBe("Ordered subscriber");
+		expect(flows[1].queue.name).toBe("demo-events-backend-dev.fifo");
+	});
+	test("a retired ordered set has no active path", () => {
+		const flows = eventFlows(enhancedConfig({}), "backend", {
+			subscribes: [{ detail_type: "a.b" }],
+			queue: { fifo_retired: true },
+		});
+		expect(flows[1].paths).toEqual([]);
+		expect(flows[1].idle?.name).toBe("retired, delivers nothing");
+	});
+	test("a workload that subscribes to nothing has no flow", () => {
+		expect(eventFlows(enhancedConfig({}), "backend", undefined)).toEqual([]);
 	});
 });

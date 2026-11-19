@@ -21,6 +21,7 @@ import {
 	compactEvents,
 	enhancedDetailTypeError,
 	enhancedDetailTypeNote,
+	eventFlows,
 	eventQueueName,
 	eventSourceOf,
 	eventsHaveOrdered,
@@ -43,7 +44,6 @@ import {
 	subscriptionKey,
 	withOrderingCleared,
 } from "../utils/workloadEvents";
-import { EventFlowDiagram } from "./EventFlowDiagram";
 import { EventProducesEditor } from "./EventProducesEditor";
 import { Alert, AlertDescription } from "./ui/alert";
 import {
@@ -72,6 +72,7 @@ import {
 } from "./ui/collapsible";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import { EventFlow } from "./ui/recipes/event-flow";
 import { NoteDetail, StatusNote } from "./ui/status-note";
 import { Switch } from "./ui/switch";
 
@@ -90,6 +91,12 @@ interface ServiceEventsTabProps {
 	 * service's entry for a service.
 	 */
 	onEventsChange: (events: WorkloadEvents | undefined) => void;
+	/**
+	 * Whether this workload's ordered queue may already be deployed, so that
+	 * turning its last ordered subscription off keeps it with fifo_retired.
+	 * Defaults to true when the owner cannot tell.
+	 */
+	orderedQueueMayExist?: boolean;
 }
 
 const VISIBILITY_MAX = 43200;
@@ -266,10 +273,7 @@ function SubscriptionRowEditor({
 		trimmedTypeDraft === "" ? null : enhancedDetailTypeError(trimmedTypeDraft);
 
 	return (
-		<div
-			className="rounded-lg border bg-card p-3 space-y-2 shadow-sm"
-			data-testid={`subscription-${key || index}`}
-		>
+		<Card size="compact" data-testid={`subscription-${key || index}`}>
 			<div className={SUBSCRIPTION_GRID}>
 				<div className="flex min-w-0 items-center gap-2">
 					<Input
@@ -525,7 +529,7 @@ function SubscriptionRowEditor({
 					</Label>
 					<Input
 						id={`${uid}-name`}
-						aria-label={`Rule key name for ${rowLabel}`}
+						aria-label={`${enhancedProject ? "Subscription" : "Rule"} key name for ${rowLabel}`}
 						variant="code"
 						placeholder={key || "custom-key"}
 						value={nameDraft}
@@ -546,7 +550,7 @@ function SubscriptionRowEditor({
 					</NoteDetail>
 				</div>
 			)}
-		</div>
+		</Card>
 	);
 }
 
@@ -954,10 +958,14 @@ function BusSubscriptionsSection({
 							className="rounded-md border bg-muted/30 p-3 space-y-1"
 							data-testid={`new-advanced-${targetBus}`}
 						>
-							<Label htmlFor={`${uid}-name`}>Rule key name (optional)</Label>
+							<Label htmlFor={`${uid}-name`}>
+								{enhancedProject
+									? "Subscription key name (optional)"
+									: "Rule key name (optional)"}
+							</Label>
 							<Input
 								id={`${uid}-name`}
-								aria-label={`Name for new subscription on ${sectionLabel}`}
+								aria-label={`${enhancedProject ? "Subscription" : "Rule"} key name for new subscription on ${sectionLabel}`}
 								variant="code"
 								placeholder={draftKey ? `Derived: ${draftKey}` : "custom-key"}
 								value={newName}
@@ -991,6 +999,7 @@ export function ServiceEventsTab({
 	kind,
 	events,
 	onEventsChange,
+	orderedQueueMayExist = true,
 }: ServiceEventsTabProps) {
 	const uid = useId();
 	const busEnabled = isEventBusEnabled(config);
@@ -1007,14 +1016,16 @@ export function ServiceEventsTab({
 	// A retired ordered queue keeps the workload a consumer with its queues.
 	const isConsumer = subscribes.length > 0 || fifoRetired;
 	const hasFifo = hasOrdered || fifoRetired;
-	const orderedCount = subscribes.filter((s) => s.ordered === true).length;
 	const workloadNoun = kind === "backend" ? "backend" : "service";
 	const [confirmFifoDelete, setConfirmFifoDelete] = useState(false);
 
 	// Every edit goes through withOrderingCleared, so none leaves an ordered
-	// queue without fifo_retired or fifo_retired beside an ordered entry.
+	// queue that may be deployed without fifo_retired, or fifo_retired beside
+	// an ordered entry.
 	const save = (next: WorkloadEvents) =>
-		onEventsChange(compactEvents(withOrderingCleared(events, next)));
+		onEventsChange(
+			compactEvents(withOrderingCleared(events, next, orderedQueueMayExist)),
+		);
 
 	// Writes go through index + patch against the current subscribes list.
 	const handleAddSubscription = (entry: EventSubscription) => {
@@ -1159,17 +1170,10 @@ export function ServiceEventsTab({
 						</dd>
 					</dl>
 					{isConsumer && (
-						<div className="mt-4">
-							<EventFlowDiagram
-								config={config}
-								workload={workloadName}
-								busName={busEnabled ? busName : "default"}
-								ruleCount={subscribes.length - orderedCount}
-								maxReceiveCount={events?.queue?.max_receive_count ?? 5}
-								enhanced={enhanced}
-								fifo={hasFifo}
-								orderedCount={orderedCount}
-							/>
+						<div className="mt-4 space-y-4">
+							{eventFlows(config, workloadName, events).map((flow) => (
+								<EventFlow key={flow["data-testid"]} {...flow} />
+							))}
 						</div>
 					)}
 				</CardContent>

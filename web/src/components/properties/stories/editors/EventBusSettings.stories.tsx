@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 // biome-ignore lint/correctness/noUnusedImports: Storybook's browser-test transform requires React in scope for JSX.
 import React from "react";
-import { expect, userEvent, waitFor, within } from "storybook/test";
+import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 import type { YamlInfrastructureConfig } from "../../../../types/yamlConfig";
 import type { ShareTargetInfo } from "../../../../utils/workloadEvents";
 import {
@@ -46,17 +46,27 @@ const loadNone: LoadShareTargets = async () => [];
 function Editor({
 	initial,
 	load = loadSiblings,
+	loaded,
+	onWrite,
 }: {
 	initial: YamlInfrastructureConfig;
 	load?: LoadShareTargets;
+	/** The YAML as loaded from disk; absent means unknown. */
+	loaded?: YamlInfrastructureConfig;
+	/** Sees every write the panel makes. */
+	onWrite?: (updates: Partial<YamlInfrastructureConfig>) => void;
 }) {
 	return (
 		<ConfigHarness initial={initial}>
 			{(config, onChange) => (
 				<EventBusSettings
 					config={config}
-					onConfigChange={onChange}
+					onConfigChange={(updates) => {
+						onWrite?.(updates);
+						onChange(updates);
+					}}
 					loadShareTargets={load}
+					loadedConfig={loaded}
 				/>
 			)}
 		</ConfigHarness>
@@ -247,8 +257,42 @@ export const LeavingEnhancedAlert: Story = {
 			dialog.getByText(/These services lose ordered delivery/),
 		).toBeVisible();
 		await expect(
+			dialog.getByText(/Their ordered queues are kept until you delete them/),
+		).toBeVisible();
+		await expect(
 			dialog.queryByText(/lose their subscribers for good/),
 		).toBeNull();
+	},
+};
+
+const neverDeployedWrites = fn();
+
+export const LeavingEnhancedNeverDeployedOrdered: Story = {
+	name: "Leaving Enhanced: an ordered queue added since the YAML was loaded",
+	render: () => (
+		<Editor
+			initial={enhancedConfig({ workload: orderedBackend })}
+			loaded={enhancedConfig()}
+			onWrite={neverDeployedWrites}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		neverDeployedWrites.mockClear();
+		const canvas = within(canvasElement);
+		await userEvent.click(canvas.getByLabelText("Standard"));
+		const dialog = within(canvasElement.ownerDocument.body);
+		await waitFor(() =>
+			expect(
+				dialog.getByText(/These services lose ordered delivery: backend./),
+			).toBeVisible(),
+		);
+		await expect(dialog.queryByText(/ordered queues are kept/)).toBeNull();
+		await userEvent.click(
+			dialog.getByRole("button", { name: "Use a Standard bus" }),
+		);
+		await waitFor(() => expect(neverDeployedWrites).toHaveBeenCalled());
+		const written = neverDeployedWrites.mock.calls[0][0];
+		await expect(written.workload?.events?.queue?.fifo_retired).toBeUndefined();
 	},
 };
 
@@ -314,6 +358,41 @@ export const ShareRemovalNotice: Story = {
 				/every subscriber this account created on the bus is revoked/,
 			),
 		).toBeVisible();
+	},
+};
+
+const duplicateEditWrites = fn();
+
+export const EditingShareIntoDuplicate: Story = {
+	name: "Editing a share to name another entry's account",
+	render: () => (
+		<Editor
+			initial={enhancedConfig({
+				event_bus: {
+					enabled: true,
+					type: "enhanced",
+					share: [
+						{ account: "222222222222", access: "publish" },
+						{ account: "333333333333", access: "full" },
+					],
+				},
+			})}
+			onWrite={duplicateEditWrites}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		duplicateEditWrites.mockClear();
+		const canvas = within(canvasElement);
+		const first = canvas.getByLabelText("Account id for share 1");
+		await userEvent.clear(first);
+		await userEvent.type(first, "333333333333");
+		await userEvent.tab();
+		await expect(
+			canvas.getByText(
+				/Shared again: entry 2 already shares with account 333333333333/,
+			),
+		).toBeVisible();
+		await expect(duplicateEditWrites).not.toHaveBeenCalled();
 	},
 };
 

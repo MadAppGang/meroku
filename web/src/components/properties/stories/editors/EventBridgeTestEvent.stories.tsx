@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 // biome-ignore lint/correctness/noUnusedImports: Storybook's browser-test transform requires React in scope for JSX.
-import React from "react";
+import React, { useState } from "react";
 import { expect, userEvent, within } from "storybook/test";
 import type {
 	TestEventRequest,
@@ -8,6 +8,7 @@ import type {
 } from "../../../../api/infrastructure";
 import type { YamlInfrastructureConfig } from "../../../../types/yamlConfig";
 import { EventBridgeTestEvent } from "../../../EventBridgeTestEvent";
+import { Button } from "../../../ui/button";
 import {
 	configWith,
 	editorDecorator,
@@ -118,5 +119,40 @@ export const SendFailed: Story = {
 			canvas.getByRole("button", { name: /Send Test Event/ }),
 		);
 		await expect(await canvas.findByText(/synthetic failure/)).toBeVisible();
+	},
+};
+
+/** Shows dev, then prod after the button, without remounting the panel. */
+function EnvSwitcher() {
+	const [env, setEnv] = useState("dev");
+	return (
+		<div className="space-y-4">
+			<Button type="button" variant="outline" onClick={() => setEnv("prod")}>
+				Show prod
+			</Button>
+			<EventBridgeTestEvent
+				config={configWith({
+					env,
+					event_bus: { enabled: true, type: "enhanced" },
+				})}
+				sendTestEvent={sendSynthetic}
+			/>
+		</div>
+	);
+}
+
+export const EnvironmentSwitched: Story = {
+	name: "Switching environment: the project bus follows it",
+	render: () => <EnvSwitcher />,
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await userEvent.click(canvas.getByRole("button", { name: "Show prod" }));
+		await expect(canvas.getByLabelText("Event group (optional)")).toBeVisible();
+		await userEvent.click(
+			canvas.getByRole("button", { name: /Send Test Event/ }),
+		);
+		await expect(
+			await canvas.findByText("Event sent to demo-prod"),
+		).toBeVisible();
 	},
 };

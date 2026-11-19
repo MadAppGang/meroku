@@ -25,11 +25,18 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-function ServiceEditor({ initial }: { initial: YamlInfrastructureConfig }) {
+function ServiceEditor({
+	initial,
+	orderedQueueMayExist,
+}: {
+	initial: YamlInfrastructureConfig;
+	orderedQueueMayExist?: boolean;
+}) {
 	return (
 		<ConfigHarness initial={initial}>
 			{(config, onChange) => (
 				<ServiceEventsTab
+					orderedQueueMayExist={orderedQueueMayExist}
 					config={config}
 					workloadName="orders"
 					kind="service"
@@ -337,6 +344,55 @@ export const EnhancedLastOrderedTurnedOff: Story = {
 		await expect(canvas.getByTestId("fifo-retired")).toBeVisible();
 		await userEvent.click(canvas.getByLabelText("Keep order for ledger"));
 		await expect(canvas.queryByTestId("fifo-retired")).toBeNull();
+	},
+};
+
+export const EnhancedOrderedNeverDeployedTurnedOff: Story = {
+	name: "Enhanced: turning off an ordered subscription that was never deployed",
+	render: () => (
+		<ServiceEditor
+			orderedQueueMayExist={false}
+			initial={withOrdersEvents(
+				{
+					subscribes: [
+						{ name: "ledger", detail_type_prefix: "ledger.", ordered: true },
+					],
+				},
+				enhancedBus,
+			)}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await userEvent.click(canvas.getByLabelText("Keep order for ledger"));
+		await expect(canvas.queryByTestId("fifo-retired")).toBeNull();
+		await expect(canvas.queryByText(/The ordered queue is kept/)).toBeNull();
+		await expect(canvas.queryByTestId("event-flow-fifo")).toBeNull();
+	},
+};
+
+export const EnhancedMixedBusFlow: Story = {
+	name: "Enhanced: the flow draws default-bus rules apart from subscribers",
+	render: () => (
+		<ServiceEditor
+			initial={withOrdersEvents(
+				{
+					subscribes: [
+						{ detail_type: "payment.completed" },
+						{ detail_type: "invoice.sent", bus: "default" },
+					],
+				},
+				enhancedBus,
+			)}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		const flow = within(canvas.getByTestId("event-flow"));
+		await expect(flow.getByText("Subscribers")).toBeVisible();
+		await expect(flow.getByText("Rules")).toBeVisible();
+		await expect(flow.getByText("default")).toBeVisible();
+		await expect(flow.getAllByText("1 subscription")).toHaveLength(2);
 	},
 };
 

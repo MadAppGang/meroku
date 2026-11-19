@@ -38,6 +38,7 @@ import type { AccountInfo } from "../api/infrastructure";
 import type { ComponentNode } from "../types";
 import type { ConfigWarning } from "../types/configWarnings";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
+import { orderedQueueMayBeDeployed } from "../utils/workloadEvents";
 import { ALBNodeProperties } from "./ALBNodeProperties";
 import { ALBRoutingRules } from "./ALBRoutingRules";
 import { ALBStatus } from "./ALBStatus";
@@ -122,6 +123,8 @@ interface SidebarProps {
 	onClose: () => void;
 	config?: YamlInfrastructureConfig;
 	onConfigChange?: (config: Partial<YamlInfrastructureConfig>) => void;
+	/** The env YAML as loaded from disk, before the edits made since. */
+	loadedConfig?: YamlInfrastructureConfig;
 	accountInfo?: AccountInfo;
 	onDeleteNode?: (nodeId: string, nodeType: string, name?: string) => void;
 	/** Configuration warnings about the selected node, shown above every tab. */
@@ -136,6 +139,7 @@ export function Sidebar({
 	onClose,
 	config,
 	onConfigChange,
+	loadedConfig,
 	accountInfo,
 	onDeleteNode,
 	warnings = NO_WARNINGS,
@@ -1723,7 +1727,7 @@ jobs:
 
 				{activeTab === "test" &&
 					selectedNode.type === "eventbridge" &&
-					config && <EventBridgeTestEvent config={config} />}
+					config && <EventBridgeTestEvent key={panelKey} config={config} />}
 
 				{activeTab === "bus" &&
 					selectedNode.type === "eventbridge" &&
@@ -1733,6 +1737,7 @@ jobs:
 							key={panelKey}
 							config={config}
 							onConfigChange={onConfigChange}
+							loadedConfig={loadedConfig}
 						/>
 					)}
 
@@ -1748,6 +1753,11 @@ jobs:
 							workloadName="backend"
 							kind="backend"
 							events={config.workload?.events}
+							orderedQueueMayExist={orderedQueueMayBeDeployed(
+								loadedConfig,
+								config.env,
+								"backend",
+							)}
 							onEventsChange={(events) =>
 								onConfigChange({
 									workload: { events } as YamlInfrastructureConfig["workload"],
@@ -1771,6 +1781,11 @@ jobs:
 								workloadName={name}
 								kind="service"
 								events={service.events}
+								orderedQueueMayExist={orderedQueueMayBeDeployed(
+									loadedConfig,
+									config.env,
+									name,
+								)}
 								onEventsChange={(events) =>
 									onConfigChange({
 										services: (config.services || []).map((s) =>

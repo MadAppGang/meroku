@@ -36,6 +36,9 @@ export default function App() {
 	const [viewMode, setViewMode] = useState<"visual" | "code">("visual");
 	const [showEnvSelector, setShowEnvSelector] = useState(false);
 	const [config, setConfig] = useState<YamlInfrastructureConfig | null>(null);
+	// The env YAML as last read from disk, before any edit in this page.
+	const [loadedConfig, setLoadedConfig] =
+		useState<YamlInfrastructureConfig | null>(null);
 	const [accountInfo, setAccountInfo] = useState<AccountInfo | null>(null);
 	const [showAddServiceDialog, setShowAddServiceDialog] = useState(false);
 	const [showAddScheduledTaskDialog, setShowAddScheduledTaskDialog] =
@@ -142,6 +145,7 @@ export default function App() {
 			const content = await infrastructureApi.getEnvironmentConfig(envName);
 			const parsed = yaml.load(content) as YamlInfrastructureConfig;
 			setConfig(parsed);
+			setLoadedConfig(parsed);
 		} catch (error) {
 			console.error("Failed to load configuration:", error);
 		}
@@ -614,6 +618,7 @@ export default function App() {
 											setSelectedNode(null);
 										}}
 										config={config || undefined}
+										loadedConfig={loadedConfig || undefined}
 										onConfigChange={handleConfigChange}
 										accountInfo={accountInfo || undefined}
 										onDeleteNode={handleDeleteNode}

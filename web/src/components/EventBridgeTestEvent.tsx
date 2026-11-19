@@ -5,7 +5,10 @@ import {
 	type TestEventRequest,
 	type TestEventResponse,
 } from "../api/infrastructure";
-import type { YamlInfrastructureConfig } from "../types/yamlConfig";
+import type {
+	EventBusChoice,
+	YamlInfrastructureConfig,
+} from "../types/yamlConfig";
 import {
 	eventGroupIdError,
 	isEnhancedBus,
@@ -47,10 +50,18 @@ export function EventBridgeTestEvent({
 	const busEnabled = isEventBusEnabled(config);
 	const enhanced = isEnhancedBus(config);
 	const projectBus = projectBusName(config);
+	// Which bus, not its name, so the choice stays right for the env shown.
+	const [busChoice, setBusChoice] = useState<EventBusChoice>(
+		busEnabled ? "project" : "default",
+	);
+	const bus: EventBusChoice =
+		busChoice === "project" && busEnabled ? "project" : "default";
+	const eventBusName = bus === "project" ? projectBus : "default";
 	// Test event state - default source to 'meroku.test'
-	const [testEvent, setTestEvent] = useState<TestEventRequest>({
+	const [testEvent, setTestEvent] = useState<
+		Omit<TestEventRequest, "eventBusName">
+	>({
 		env: config.env,
-		eventBusName: busEnabled ? projectBus : "default",
 		source: "meroku.test",
 		detailType: "Test Event",
 		detail: {},
@@ -68,7 +79,7 @@ export function EventBridgeTestEvent({
 	const [eventGroupId, setEventGroupId] = useState("");
 	// An event group orders events for ordered subscribers, which only the
 	// enhanced project bus has.
-	const showEventGroup = enhanced && testEvent.eventBusName === projectBus;
+	const showEventGroup = enhanced && bus === "project";
 	const groupError = showEventGroup ? eventGroupIdError(eventGroupId) : null;
 
 	const handleDetailJsonChange = (value: string) => {
@@ -98,6 +109,7 @@ export function EventBridgeTestEvent({
 			const response = await sendTestEvent({
 				...testEvent,
 				env: config.env,
+				eventBusName,
 				...(showEventGroup && eventGroupId !== "" ? { eventGroupId } : {}),
 			});
 			setEventResponse(response);
@@ -148,17 +160,15 @@ export function EventBridgeTestEvent({
 					<div className="space-y-2">
 						<Label htmlFor={`${uid}-test-bus`}>Bus</Label>
 						<Select
-							value={testEvent.eventBusName || "default"}
-							onValueChange={(value) =>
-								setTestEvent((prev) => ({ ...prev, eventBusName: value }))
-							}
+							value={bus}
+							onValueChange={(value) => setBusChoice(value as EventBusChoice)}
 						>
 							<SelectTrigger id={`${uid}-test-bus`} aria-label="Test event bus">
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>
 								<SelectItem value="default">Default bus</SelectItem>
-								<SelectItem value={projectBus} disabled={!busEnabled}>
+								<SelectItem value="project" disabled={!busEnabled}>
 									Project bus ({projectBus}){enhanced ? ", Enhanced" : ""}
 								</SelectItem>
 							</SelectContent>
@@ -256,7 +266,8 @@ export function EventBridgeTestEvent({
 							value={detailJson}
 							onChange={(e) => handleDetailJsonChange(e.target.value)}
 							placeholder='{"test": true, "message": "EventBridge test event"}'
-							className="font-mono text-sm min-h-48"
+							variant="code"
+							className="min-h-48"
 							rows={10}
 						/>
 						{jsonError && <StatusNote tone="error">{jsonError}</StatusNote>}

@@ -58,3 +58,31 @@ export const StandaloneContent: Story = {
 		</Card>
 	),
 };
+
+export const Compact: Story = {
+	name: "Compact: one entry of a list",
+	render: () => (
+		<div className="space-y-2">
+			<Card size="compact">
+				<p className="text-sm">Shared with environment staging</p>
+				<p className="text-sm text-muted-foreground">Send events only</p>
+			</Card>
+			<Card size="compact">
+				<p className="text-sm">Shared with account 000000000000</p>
+				<p className="text-sm text-muted-foreground">Send and subscribe</p>
+			</Card>
+		</div>
+	),
+};
+
+export const Flush: Story = {
+	name: "Flush: sections bring their own padding",
+	render: () => (
+		<Card size="flush">
+			<div className="border-b p-4 text-sm">A heading section</div>
+			<div className="p-4 text-sm text-muted-foreground">
+				A body section below the divider.
+			</div>
+		</Card>
+	),
+};

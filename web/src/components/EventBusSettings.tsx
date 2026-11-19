@@ -56,6 +56,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "./ui/select";
+import { Separator } from "./ui/separator";
 import { NoteDetail, StatusNote } from "./ui/status-note";
 import { Switch } from "./ui/switch";
 
@@ -70,6 +71,11 @@ interface EventBusSettingsProps {
 	onConfigChange: (config: Partial<YamlInfrastructureConfig>) => void;
 	/** The share-targets API by default; stories pass a fixed list. */
 	loadShareTargets?: LoadShareTargets;
+	/**
+	 * The env YAML as loaded from disk, which tells an ordered queue that may
+	 * be deployed from one added since. Absent: every one may be deployed.
+	 */
+	loadedConfig?: YamlInfrastructureConfig;
 }
 
 const defaultLoadShareTargets: LoadShareTargets = (env, signal) =>
@@ -344,9 +350,12 @@ function ShareRow({
 
 	const draft = shareEntryOf(kind, value, entry.access);
 	const valueError = shareValueError(draft, config, targets);
+	// The list as it would be saved with this row's draft in place.
+	const proposedWith = (next: EventBusShare) =>
+		share.map((e, i) => (i === index ? next : e));
 	const duplicate =
-		kind === savedKind && value === savedValue
-			? shareDuplicateError(share, index, targets)
+		valueError === null
+			? shareDuplicateError(proposedWith(draft), index, targets)
 			: null;
 	const label = `share ${index + 1}`;
 	// Shared for subscribing when the panel opened, and now only for sending.
@@ -361,15 +370,14 @@ function ShareRow({
 	const commit = (nextKind: EventBusShareKind, nextValue: string) => {
 		const next = shareEntryOf(nextKind, nextValue, entry.access);
 		if (shareValueError(next, config, targets) !== null) return;
+		if (shareDuplicateError(proposedWith(next), index, targets) !== null)
+			return;
 		if (nextKind === savedKind && nextValue === savedValue) return;
 		onChange(index, next);
 	};
 
 	return (
-		<div
-			className="rounded-lg border bg-card p-3 space-y-3"
-			data-testid={`share-row-${index}`}
-		>
+		<Card size="compact" className="gap-3" data-testid={`share-row-${index}`}>
 			<div className="flex items-start justify-between gap-2">
 				<div className="min-w-0 flex-1">
 					<ShareWhoFields
@@ -409,7 +417,7 @@ function ShareRow({
 			/>
 			{duplicate !== null && <StatusNote tone="error">{duplicate}</StatusNote>}
 			{downgraded && <StatusNote tone="warning">{REVOKE_NOTICE}</StatusNote>}
-		</div>
+		</Card>
 	);
 }
 
@@ -444,7 +452,7 @@ function ShareAddForm({
 		(kind !== "env" || targets !== undefined);
 
 	return (
-		<div className="space-y-3 border-t pt-4" data-testid="share-add">
+		<div className="space-y-3" data-testid="share-add">
 			<Label>Share with</Label>
 			<ShareWhoFields
 				label="the new share"
@@ -490,6 +498,7 @@ export function EventBusSettings({
 	config,
 	onConfigChange,
 	loadShareTargets = defaultLoadShareTargets,
+	loadedConfig,
 }: EventBusSettingsProps) {
 	const uid = useId();
 	const enabled = isEventBusEnabled(config);
@@ -526,7 +535,8 @@ export function EventBusSettings({
 		return () => controller.abort();
 	}, [enhanced, config.env, loadShareTargets]);
 
-	const leaving = pendingLeave !== null ? clearOrdering(config) : null;
+	const leaving =
+		pendingLeave !== null ? clearOrdering(config, loadedConfig) : null;
 	const sharedForSubscribe = share.some((e) => isSubscribeCapable(e.access));
 	// Subscribe-capable entries removed since the panel opened; a downgraded
 	// entry shows its notice on its own row.
@@ -543,7 +553,7 @@ export function EventBusSettings({
 	);
 
 	const leaveEnhanced = (target: "standard" | "off") => {
-		const { updates } = clearOrdering(config);
+		const { updates } = clearOrdering(config, loadedConfig);
 		onConfigChange({
 			...updates,
 			event_bus: {
@@ -737,6 +747,7 @@ export function EventBusSettings({
 								<NoteDetail>{REVOKE_NOTICE}</NoteDetail>
 							</StatusNote>
 						)}
+						<Separator />
 						<ShareAddForm
 							share={share}
 							config={config}
@@ -770,9 +781,12 @@ export function EventBusSettings({
 					</AlertDialogHeader>
 					{leaving !== null && leaving.affected.length > 0 && (
 						<StatusNote tone="warning">
-							These services lose ordered delivery; their ordered queues are
-							kept until you delete them in each service's Events tab:{" "}
+							These services lose ordered delivery:{" "}
 							{leaving.affected.join(", ")}.
+							{leaving.kept.length > 0 &&
+								(leaving.kept.length === leaving.affected.length
+									? " Their ordered queues are kept until you delete them in each service's Events tab."
+									: ` The ordered queues of ${leaving.kept.join(", ")} are kept until you delete them in each service's Events tab.`)}
 						</StatusNote>
 					)}
 					{sharedForSubscribe && (
