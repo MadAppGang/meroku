@@ -40,6 +40,7 @@ function ServiceEditor({
 	reread,
 	onSave,
 	serviceAdder = false,
+	producesAdder = false,
 }: {
 	initial: YamlInfrastructureConfig;
 	/** GET /api/events/deployed's answer; absent means not known yet. */
@@ -50,11 +51,34 @@ function ServiceEditor({
 	onSave?: (config: YamlInfrastructureConfig) => void;
 	/** Shows an "Add service" button and the service names, as another panel would edit them. */
 	serviceAdder?: boolean;
+	/** Shows a button that adds a produces entry to orders, as another panel would. */
+	producesAdder?: boolean;
 }) {
 	return (
 		<ConfigHarness initial={initial} onSave={onSave}>
 			{(config, onChange, onUpdate) => (
 				<>
+					{producesAdder && (
+						<Button
+							onClick={() =>
+								onChange({
+									services: (config.services || []).map((s) =>
+										s.name === "orders"
+											? {
+													...s,
+													events: {
+														...s.events,
+														produces: [{ detail_types: ["order.created"] }],
+													},
+												}
+											: s,
+									),
+								})
+							}
+						>
+							Add a produces entry elsewhere
+						</Button>
+					)}
 					{serviceAdder && (
 						<>
 							<Button
@@ -577,6 +601,95 @@ export const EnhancedOrderedServiceAddedWhileReading: Story = {
 		]);
 		await expect(ordersEvents(last)?.subscribes?.[0].ordered).toBeUndefined();
 		await expect(ordersEvents(last)?.queue).toBeUndefined();
+	},
+};
+
+/**
+ * While the read is pending, every events control of the tab is disabled,
+ * so no other edit of this service's events can make the decision stale.
+ * Once the read answers, the controls work again and the one save holds the
+ * ordering change.
+ */
+export const EnhancedOrderedEditsLockedWhileReading: Story = {
+	name: "Enhanced: events edits are locked while the read is pending",
+	beforeEach: resetLedger,
+	render: () => (
+		<ServiceEditor
+			deployed={deployedEvents({ fifoConsumers: ["orders"] })}
+			reread={ledgerReads.read}
+			onSave={recordLedgerSave}
+			initial={orderedLedger()}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = await turnLedgerOrderOff(canvasElement);
+		await expect(
+			canvas.getByText(/The events settings are locked until the check/),
+		).toBeVisible();
+		await expect(canvas.getByLabelText("Keep order for ledger")).toBeDisabled();
+		for (const filter of canvas.getAllByRole("button", {
+			name: /Filter new subscription on/,
+		}))
+			await expect(filter).toBeDisabled();
+		await expect(
+			canvas.getByRole("textbox", { name: "New entry" }),
+		).toBeDisabled();
+		await expect(
+			canvas.getByRole("button", { name: "Advanced queue settings" }),
+		).toBeDisabled();
+		ledgerReads.resolve(deployedEvents());
+		await waitFor(() =>
+			expect(canvas.getByLabelText("Keep order for ledger")).toBeEnabled(),
+		);
+		await expect(
+			canvas.getByLabelText("Keep order for ledger"),
+		).not.toBeChecked();
+		await expect(
+			canvas.getByRole("textbox", { name: "New entry" }),
+		).toBeEnabled();
+		await expect(ledgerSaves).toHaveLength(1);
+		await expect(ordersEvents(ledgerSaves[0])?.subscribes?.[0].ordered).toBe(
+			undefined,
+		);
+		await expect(
+			canvas.queryByText(/The events settings are locked/),
+		).toBeNull();
+	},
+};
+
+/**
+ * Another panel changes this service's events while the read is pending.
+ * The ordering change no longer describes them, so it is not saved, and the
+ * tab says so instead of dropping it silently.
+ */
+export const EnhancedOrderedEventsChangedElsewhereWhileReading: Story = {
+	name: "Enhanced: an events change elsewhere while reading is reported",
+	beforeEach: resetLedger,
+	render: () => (
+		<ServiceEditor
+			deployed={deployedEvents({ fifoConsumers: ["orders"] })}
+			reread={ledgerReads.read}
+			onSave={recordLedgerSave}
+			producesAdder
+			initial={orderedLedger()}
+		/>
+	),
+	play: async ({ canvasElement }) => {
+		const canvas = await turnLedgerOrderOff(canvasElement);
+		await userEvent.click(
+			canvas.getByRole("button", { name: "Add a produces entry elsewhere" }),
+		);
+		await expect(ledgerSaves).toHaveLength(1);
+		ledgerReads.resolve(deployedEvents());
+		await waitFor(() =>
+			expect(canvas.getByText(/Ordered delivery is still on/)).toBeVisible(),
+		);
+		await expect(canvas.getByLabelText("Keep order for ledger")).toBeChecked();
+		await expect(canvas.getByLabelText("Keep order for ledger")).toBeEnabled();
+		await expect(ledgerSaves).toHaveLength(1);
+		await expect(ordersEvents(ledgerSaves[0])?.subscribes?.[0].ordered).toBe(
+			true,
+		);
 	},
 };
 

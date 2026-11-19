@@ -4,6 +4,7 @@ import type {
 	YamlInfrastructureConfig,
 } from "../types/yamlConfig";
 import {
+	applyConfigUpdate,
 	clearOrdering,
 	deployedSharePrincipal,
 	deployedSharesRemoved,
@@ -25,7 +26,6 @@ import {
 	subscriptionEventTypeDisplay,
 	subscriptionFilterSummary,
 	subscriptionKey,
-	updateConfigOfEnv,
 	updateWorkloadEvents,
 	withOrderingCleared,
 } from "./workloadEvents";
@@ -500,11 +500,14 @@ describe("orderingDecisionUpdate through updateWorkloadEvents", () => {
 			...atEdit,
 			services: [...(atEdit.services ?? []), { name: "billing" }],
 		} as YamlInfrastructureConfig;
-		const after = updateConfigOfEnv(meanwhile, "dev", (c) =>
-			updateWorkloadEvents(c, "orders", decide),
+		const { result, config: after } = applyConfigUpdate(
+			{ file: "dev", config: meanwhile },
+			"dev",
+			(c) => updateWorkloadEvents(c, "orders", decide),
 		);
-		expect(after.services?.map((s) => s.name)).toEqual(["orders", "billing"]);
-		expect(after.services?.[0].events).toEqual(turnedOff);
+		expect(result).toBe("applied");
+		expect(after?.services?.map((s) => s.name)).toEqual(["orders", "billing"]);
+		expect(after?.services?.[0].events).toEqual(turnedOff);
 	});
 
 	test("the queue is kept with fifo_retired unless the read says never deployed", () => {
@@ -533,19 +536,61 @@ describe("orderingDecisionUpdate through updateWorkloadEvents", () => {
 		expect(after).toBe(meanwhile);
 	});
 
-	test("another environment's config is left alone", () => {
-		const prod = {
-			...config([{ name: "orders", events: ordered }]),
-			env: "prod",
-		} as YamlInfrastructureConfig;
-		const after = updateConfigOfEnv(prod, "dev", (c) =>
-			updateWorkloadEvents(
-				c,
-				"orders",
-				orderingDecisionUpdate(ordered, turnedOff, false),
-			),
+	test("events changed meanwhile: applyConfigUpdate reports unchanged", () => {
+		const changed = config([
+			{
+				name: "orders",
+				events: {
+					...ordered,
+					produces: [{ detail_types: ["order.created"] }],
+				},
+			},
+		]);
+		const { result, config: after } = applyConfigUpdate(
+			{ file: "dev", config: changed },
+			"dev",
+			(c) =>
+				updateWorkloadEvents(
+					c,
+					"orders",
+					orderingDecisionUpdate(ordered, turnedOff, false),
+				),
 		);
-		expect(after).toBe(prod);
+		expect(result).toBe("unchanged");
+		expect(after).toBe(changed);
+	});
+
+	// The decision was made with dev.yaml open; prod.yaml is open now. The
+	// held config's own env field says nothing about which file it came
+	// from, so it is not what is compared.
+	test("another environment file open now: dropped, whatever the YAML env says", () => {
+		const held = config([{ name: "orders", events: ordered }]);
+		let ran = false;
+		const { result, config: after } = applyConfigUpdate(
+			{ file: "prod", config: held },
+			"dev",
+			(c) => {
+				ran = true;
+				return updateWorkloadEvents(
+					c,
+					"orders",
+					orderingDecisionUpdate(ordered, turnedOff, false),
+				);
+			},
+		);
+		expect(result).toBe("environment-changed");
+		expect(ran).toBe(false);
+		expect(after).toBe(held);
+	});
+
+	test("no config held yet: dropped", () => {
+		const { result, config: after } = applyConfigUpdate(
+			{ file: "dev", config: null },
+			"dev",
+			(c) => c,
+		);
+		expect(result).toBe("environment-changed");
+		expect(after).toBe(null);
 	});
 
 	test("a removed service is left alone, and the backend is updated in place", () => {

@@ -1,12 +1,13 @@
 import type { Decorator } from "@storybook/react-vite";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import type { ComponentNode } from "../../../../types";
 import type { YamlInfrastructureConfig } from "../../../../types/yamlConfig";
 import { mergeConfigUpdates } from "../../../../utils/configMerge";
 import {
+	applyConfigUpdate,
 	type ConfigUpdate,
+	type ConfigUpdateResult,
 	type DeployedEvents,
-	updateConfigOfEnv,
 } from "../../../../utils/workloadEvents";
 
 /**
@@ -95,14 +96,17 @@ export function storyNode(
 
 type OnConfigChange = (updates: Partial<YamlInfrastructureConfig>) => void;
 
-type OnConfigUpdate = (env: string, update: ConfigUpdate) => void;
+type OnConfigUpdate = (
+	file: string,
+	update: ConfigUpdate,
+) => ConfigUpdateResult;
 
 /**
- * Holds a config in state and merges every update the way App does, so a
- * story is interactive: adding, editing and removing work as in the app.
- * `onUpdate` applies an updater to the config held when it runs, for that
- * env only, as App's handleConfigUpdate does. `onSave` sees every config
- * that changed, as App would write it.
+ * Holds a config, loaded from the environment file `initial.env`, and merges
+ * every update the way App does, so a story is interactive: adding, editing
+ * and removing work as in the app. `onUpdate` applies an updater to the
+ * config held when it runs, for that file only, as App's handleConfigUpdate
+ * does. `onSave` sees every config that changed, once, as App would write it.
  */
 export function ConfigHarness({
 	initial,
@@ -118,19 +122,27 @@ export function ConfigHarness({
 	onSave?: (config: YamlInfrastructureConfig) => void;
 }) {
 	const [config, setConfig] = useState(initial);
-	const saved = useRef(initial);
-	useEffect(() => {
-		if (config === saved.current) return;
-		saved.current = config;
-		onSave?.(config);
-	}, [config, onSave]);
+	const held = useRef(initial);
+	const commit = (next: YamlInfrastructureConfig) => {
+		if (next === held.current) return;
+		held.current = next;
+		setConfig(next);
+		onSave?.(next);
+	};
 	return (
 		<>
 			{children(
 				config,
-				(updates) => setConfig((prev) => mergeConfigUpdates(prev, updates)),
-				(env, update) =>
-					setConfig((prev) => updateConfigOfEnv(prev, env, update)),
+				(updates) => commit(mergeConfigUpdates(held.current, updates)),
+				(file, update) => {
+					const { result, config: next } = applyConfigUpdate(
+						{ file: initial.env, config: held.current },
+						file,
+						update,
+					);
+					if (result === "applied" && next) commit(next);
+					return result;
+				},
 			)}
 		</>
 	);

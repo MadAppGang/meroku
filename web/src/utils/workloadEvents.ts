@@ -251,18 +251,39 @@ export function updateWorkloadEvents(
 }
 
 /**
- * `update` applied to `config` only while it is the config of `env`; any
- * other config comes back as it is. A change decided after a wait is applied
- * through this, so it lands on the config shown now and never on another
- * environment's.
+ * What happened to a change decided after a wait: `applied` changed the
+ * config, `unchanged` left it as it was (the change no longer described it),
+ * `environment-changed` dropped it because another environment file is open
+ * now.
  */
-export function updateConfigOfEnv(
-	config: YamlInfrastructureConfig,
-	env: string,
+export type ConfigUpdateResult =
+	| "applied"
+	| "unchanged"
+	| "environment-changed";
+
+/** A config and the environment file it was loaded from (null: none yet). */
+export interface HeldConfig {
+	file: string | null;
+	config: YamlInfrastructureConfig | null;
+}
+
+/**
+ * `update` applied to the config held now, only while it is the config of
+ * `file`, the environment file the change was decided in. A change decided
+ * after a wait goes through this, so it lands on the config shown now and is
+ * never written into another environment's file. `config` is the held one
+ * unless the result is `applied`.
+ */
+export function applyConfigUpdate(
+	held: HeldConfig,
+	file: string,
 	update: ConfigUpdate,
-): YamlInfrastructureConfig {
-	if (config.env !== env) return config;
-	return update(config);
+): { result: ConfigUpdateResult; config: YamlInfrastructureConfig | null } {
+	if (held.file !== file || !held.config)
+		return { result: "environment-changed", config: held.config };
+	const next = update(held.config);
+	if (next === held.config) return { result: "unchanged", config: held.config };
+	return { result: "applied", config: next };
 }
 
 function sameEvents(

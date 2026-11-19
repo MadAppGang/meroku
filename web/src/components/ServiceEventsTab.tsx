@@ -18,6 +18,7 @@ import type {
 	YamlInfrastructureConfig,
 } from "../types/yamlConfig";
 import {
+	type ConfigUpdateResult,
 	compactEvents,
 	enhancedDetailTypeError,
 	enhancedDetailTypeNote,
@@ -111,11 +112,12 @@ interface ServiceEventsTabProps {
 	rereadOrderedQueueMayExist?: () => Promise<boolean>;
 	/**
 	 * Applies `update` to this workload's events in the config the owner
-	 * holds when it is called, for this environment only; every other key and
-	 * service stays as it is then. Used for a change decided after a read, so
-	 * nothing captured before the wait is written back.
+	 * holds when it is called, for the environment file open when this
+	 * callback was given only; every other key and service stays as it is
+	 * then. Used for a change decided after a read, so nothing captured
+	 * before the wait is written back. Answers what happened to the change.
 	 */
-	onEventsUpdate?: (update: WorkloadEventsUpdate) => void;
+	onEventsUpdate?: (update: WorkloadEventsUpdate) => ConfigUpdateResult;
 }
 
 const VISIBILITY_MAX = 43200;
@@ -1040,9 +1042,6 @@ export function ServiceEventsTab({
 	const workloadNoun = kind === "backend" ? "backend" : "service";
 	const [confirmFifoDelete, setConfirmFifoDelete] = useState(false);
 
-	// The owner's updater as last given, for a write that follows a read.
-	const latestOnEventsUpdate = useRef(onEventsUpdate);
-	latestOnEventsUpdate.current = onEventsUpdate;
 	const mounted = useRef(true);
 	useEffect(() => {
 		mounted.current = true;
@@ -1051,13 +1050,20 @@ export function ServiceEventsTab({
 		};
 	}, []);
 	const [checkingDeployed, setCheckingDeployed] = useState(false);
+	// Turning ordered delivery off was not saved: the events changed while
+	// the check ran, so the edit no longer described them.
+	const [orderingNotSaved, setOrderingNotSaved] = useState(false);
 
 	// Every edit goes through withOrderingCleared, so none leaves an ordered
 	// queue that may be deployed without fifo_retired, or fifo_retired beside
 	// an ordered entry. An edit that turns the last ordered subscription off
 	// does not trust an earlier answer: it waits for a fresh read and is then
-	// saved once, on the events the workload has by then.
+	// saved once, on the events the workload has by then. While it waits,
+	// every events control of this tab is disabled, so no other edit of this
+	// workload's events can make the decision stale.
 	const save = (next: WorkloadEvents) => {
+		if (checkingDeployed) return;
+		setOrderingNotSaved(false);
 		const retires = eventsHaveOrdered(events) && !eventsHaveOrdered(next);
 		if (!retires || !rereadOrderedQueueMayExist || !onEventsUpdate) {
 			onEventsChange(
@@ -1066,14 +1072,17 @@ export function ServiceEventsTab({
 			return;
 		}
 		const before = events;
+		// Bound to the environment file open now: if another one is open when
+		// the read answers, the change is dropped, not written into it.
+		const decide = onEventsUpdate;
 		setCheckingDeployed(true);
 		void rereadOrderedQueueMayExist()
 			.catch(() => true)
 			.then((mayExist) => {
-				if (mounted.current) setCheckingDeployed(false);
-				latestOnEventsUpdate.current?.(
-					orderingDecisionUpdate(before, next, mayExist),
-				);
+				const result = decide(orderingDecisionUpdate(before, next, mayExist));
+				if (!mounted.current) return;
+				setCheckingDeployed(false);
+				if (result === "unchanged") setOrderingNotSaved(true);
 			});
 	};
 
@@ -1221,185 +1230,202 @@ export function ServiceEventsTab({
 				</CardContent>
 			</Card>
 
-			<Card>
-				<CardHeader>
-					<CardTitle className="flex items-center gap-2">
-						<Inbox className="w-5 h-5" />
-						Subscribes
-					</CardTitle>
-					<CardDescription>
-						{enhanced
-							? `Each entry gets its own subscriber; this ${workloadNoun}'s ordered entries share one ordered subscriber. Default-bus entries get one rule each.`
-							: "One rule per entry, delivering matching events to this workload's queue."}
-					</CardDescription>
-				</CardHeader>
-				<CardContent className="space-y-4">
-					{checkingDeployed && (
-						<StatusNote tone="pending">
-							Checking whether this {workloadNoun}'s ordered queue was deployed
-							before turning ordered delivery off.
-						</StatusNote>
-					)}
-					{subscribes.length === 0 && !fifoRetired && (
-						<NoteDetail>Subscribes to nothing, so it has no queue.</NoteDetail>
-					)}
-					{fifoRetired && !hasOrdered && (
-						<StatusNote tone="warning">
-							<p>
-								The ordered queue is kept, with any events still in it. Delete
-								it in Queue settings once your {workloadNoun} has read them.
-							</p>
-							{subscribes.length === 0 && (
-								<NoteDetail>
-									Subscribes to nothing. Its queues stay until you delete the
-									retired ordered queue in Queue settings.
-								</NoteDetail>
-							)}
-						</StatusNote>
-					)}
+			<fieldset
+				disabled={checkingDeployed}
+				aria-busy={checkingDeployed}
+				className="min-w-0 space-y-4"
+				data-testid="events-controls"
+			>
+				<Card>
+					<CardHeader>
+						<CardTitle className="flex items-center gap-2">
+							<Inbox className="w-5 h-5" />
+							Subscribes
+						</CardTitle>
+						<CardDescription>
+							{enhanced
+								? `Each entry gets its own subscriber; this ${workloadNoun}'s ordered entries share one ordered subscriber. Default-bus entries get one rule each.`
+								: "One rule per entry, delivering matching events to this workload's queue."}
+						</CardDescription>
+					</CardHeader>
+					<CardContent className="space-y-4">
+						{checkingDeployed && (
+							<StatusNote tone="pending">
+								Checking whether this {workloadNoun}'s ordered queue was
+								deployed before turning ordered delivery off. The events
+								settings are locked until the check is done.
+							</StatusNote>
+						)}
+						{orderingNotSaved && (
+							<StatusNote tone="warning">
+								Ordered delivery is still on: this {workloadNoun}'s events
+								changed while the check ran, so turning it off was not saved.
+								Turn it off again if you still want to.
+							</StatusNote>
+						)}
+						{subscribes.length === 0 && !fifoRetired && (
+							<NoteDetail>
+								Subscribes to nothing, so it has no queue.
+							</NoteDetail>
+						)}
+						{fifoRetired && !hasOrdered && (
+							<StatusNote tone="warning">
+								<p>
+									The ordered queue is kept, with any events still in it. Delete
+									it in Queue settings once your {workloadNoun} has read them.
+								</p>
+								{subscribes.length === 0 && (
+									<NoteDetail>
+										Subscribes to nothing. Its queues stay until you delete the
+										retired ordered queue in Queue settings.
+									</NoteDetail>
+								)}
+							</StatusNote>
+						)}
 
-					{(busEnabled || hasStrandedProjectEntries) && (
+						{(busEnabled || hasStrandedProjectEntries) && (
+							<BusSubscriptionsSection
+								title={`Project bus (${busName})`}
+								description={
+									busEnabled
+										? "Events published by your backend, services and tasks in this environment."
+										: "The project bus is off, so these subscriptions cannot be deployed. Turn the bus on in the EventBridge node, or remove them."
+								}
+								testId="subscribes-section-project"
+								targetBus="project"
+								config={config}
+								busEnabled={busEnabled}
+								allSubscribes={subscribes}
+								allowAdd={busEnabled}
+								onAdd={handleAddSubscription}
+								onUpdate={handleUpdateSubscription}
+								onRemove={handleRemoveSubscription}
+							/>
+						)}
+
 						<BusSubscriptionsSection
-							title={`Project bus (${busName})`}
-							description={
-								busEnabled
-									? "Events published by your backend, services and tasks in this environment."
-									: "The project bus is off, so these subscriptions cannot be deployed. Turn the bus on in the EventBridge node, or remove them."
-							}
-							testId="subscribes-section-project"
-							targetBus="project"
+							title="Default bus (AWS services, CI)"
+							description="AWS services (such as ECS, ECR and S3) and CI events publish only to the default bus."
+							testId="subscribes-section-default"
+							targetBus="default"
 							config={config}
 							busEnabled={busEnabled}
 							allSubscribes={subscribes}
-							allowAdd={busEnabled}
 							onAdd={handleAddSubscription}
 							onUpdate={handleUpdateSubscription}
 							onRemove={handleRemoveSubscription}
 						/>
-					)}
-
-					<BusSubscriptionsSection
-						title="Default bus (AWS services, CI)"
-						description="AWS services (such as ECS, ECR and S3) and CI events publish only to the default bus."
-						testId="subscribes-section-default"
-						targetBus="default"
-						config={config}
-						busEnabled={busEnabled}
-						allSubscribes={subscribes}
-						onAdd={handleAddSubscription}
-						onUpdate={handleUpdateSubscription}
-						onRemove={handleRemoveSubscription}
-					/>
-				</CardContent>
-			</Card>
-
-			<Card>
-				<CardHeader>
-					<CardTitle className="flex items-center gap-2">
-						<Send className="w-5 h-5" />
-						Produces
-					</CardTitle>
-					<CardDescription>
-						Each entry allows PutEvents for its detail-types on one bus.
-					</CardDescription>
-				</CardHeader>
-				<CardContent>
-					<EventProducesEditor
-						produces={produces}
-						busEnabled={busEnabled}
-						projectBusName={busName}
-						eventSource={source}
-						onEntryChange={handleProduceChange}
-						onEntryAdd={handleProduceAdd}
-						onEntryRemove={handleProduceRemove}
-					/>
-				</CardContent>
-			</Card>
-
-			{isConsumer && (
-				<Card data-testid="queue-settings">
-					{fifoRetired && (
-						<CardHeader data-testid="fifo-retired">
-							<CardTitle>Ordered queue (retired)</CardTitle>
-							<CardDescription>
-								No subscription delivers to{" "}
-								<NoteCode>
-									{eventQueueName(config, workloadName, "queue", true) ??
-										"the ordered queue"}
-								</NoteCode>{" "}
-								any more. It is kept, with its dead-letter queues, so your{" "}
-								{workloadNoun} can read what is still in it through
-								EVENT_FIFO_QUEUE_URL.
-							</CardDescription>
-							<div>
-								<Button
-									type="button"
-									variant="destructive"
-									size="sm"
-									onClick={() => setConfirmFifoDelete(true)}
-								>
-									<Trash2 className="w-4 h-4" />
-									Delete the ordered queue
-								</Button>
-							</div>
-						</CardHeader>
-					)}
-					<Collapsible>
-						<CardHeader>
-							<CollapsibleTrigger asChild>
-								<Button variant="ghost" className="justify-between w-full">
-									Advanced queue settings
-									<ChevronDown className="w-4 h-4" />
-								</Button>
-							</CollapsibleTrigger>
-						</CardHeader>
-						<CollapsibleContent>
-							<CardContent className="space-y-4">
-								<div className="grid grid-cols-2 gap-4">
-									<div className="space-y-1">
-										<Label htmlFor={`${uid}-visibility`}>
-											Visibility timeout (seconds)
-										</Label>
-										<Input
-											id={`${uid}-visibility`}
-											inputMode="numeric"
-											placeholder="30"
-											value={visibility}
-											aria-invalid={visibilityError !== null}
-											onChange={(e) => setVisibility(e.target.value.trim())}
-											onBlur={commitQueue}
-										/>
-										{visibilityError && (
-											<p className="text-sm text-danger">{visibilityError}</p>
-										)}
-									</div>
-									<div className="space-y-1">
-										<Label htmlFor={`${uid}-receives`}>
-											Receives before the dead-letter queue
-										</Label>
-										<Input
-											id={`${uid}-receives`}
-											inputMode="numeric"
-											placeholder="5"
-											value={maxReceive}
-											aria-invalid={maxReceiveError !== null}
-											onChange={(e) => setMaxReceive(e.target.value.trim())}
-											onBlur={commitQueue}
-										/>
-										{maxReceiveError && (
-											<p className="text-sm text-danger">{maxReceiveError}</p>
-										)}
-									</div>
-								</div>
-								<p className="text-xs text-muted-foreground">
-									Set the visibility timeout above the longest time one message
-									takes to handle.
-								</p>
-							</CardContent>
-						</CollapsibleContent>
-					</Collapsible>
+					</CardContent>
 				</Card>
-			)}
+
+				<Card>
+					<CardHeader>
+						<CardTitle className="flex items-center gap-2">
+							<Send className="w-5 h-5" />
+							Produces
+						</CardTitle>
+						<CardDescription>
+							Each entry allows PutEvents for its detail-types on one bus.
+						</CardDescription>
+					</CardHeader>
+					<CardContent>
+						<EventProducesEditor
+							produces={produces}
+							busEnabled={busEnabled}
+							projectBusName={busName}
+							eventSource={source}
+							onEntryChange={handleProduceChange}
+							onEntryAdd={handleProduceAdd}
+							onEntryRemove={handleProduceRemove}
+						/>
+					</CardContent>
+				</Card>
+
+				{isConsumer && (
+					<Card data-testid="queue-settings">
+						{fifoRetired && (
+							<CardHeader data-testid="fifo-retired">
+								<CardTitle>Ordered queue (retired)</CardTitle>
+								<CardDescription>
+									No subscription delivers to{" "}
+									<NoteCode>
+										{eventQueueName(config, workloadName, "queue", true) ??
+											"the ordered queue"}
+									</NoteCode>{" "}
+									any more. It is kept, with its dead-letter queues, so your{" "}
+									{workloadNoun} can read what is still in it through
+									EVENT_FIFO_QUEUE_URL.
+								</CardDescription>
+								<div>
+									<Button
+										type="button"
+										variant="destructive"
+										size="sm"
+										onClick={() => setConfirmFifoDelete(true)}
+									>
+										<Trash2 className="w-4 h-4" />
+										Delete the ordered queue
+									</Button>
+								</div>
+							</CardHeader>
+						)}
+						<Collapsible>
+							<CardHeader>
+								<CollapsibleTrigger asChild>
+									<Button variant="ghost" className="justify-between w-full">
+										Advanced queue settings
+										<ChevronDown className="w-4 h-4" />
+									</Button>
+								</CollapsibleTrigger>
+							</CardHeader>
+							<CollapsibleContent>
+								<CardContent className="space-y-4">
+									<div className="grid grid-cols-2 gap-4">
+										<div className="space-y-1">
+											<Label htmlFor={`${uid}-visibility`}>
+												Visibility timeout (seconds)
+											</Label>
+											<Input
+												id={`${uid}-visibility`}
+												inputMode="numeric"
+												placeholder="30"
+												value={visibility}
+												aria-invalid={visibilityError !== null}
+												onChange={(e) => setVisibility(e.target.value.trim())}
+												onBlur={commitQueue}
+											/>
+											{visibilityError && (
+												<p className="text-sm text-danger">{visibilityError}</p>
+											)}
+										</div>
+										<div className="space-y-1">
+											<Label htmlFor={`${uid}-receives`}>
+												Receives before the dead-letter queue
+											</Label>
+											<Input
+												id={`${uid}-receives`}
+												inputMode="numeric"
+												placeholder="5"
+												value={maxReceive}
+												aria-invalid={maxReceiveError !== null}
+												onChange={(e) => setMaxReceive(e.target.value.trim())}
+												onBlur={commitQueue}
+											/>
+											{maxReceiveError && (
+												<p className="text-sm text-danger">{maxReceiveError}</p>
+											)}
+										</div>
+									</div>
+									<p className="text-xs text-muted-foreground">
+										Set the visibility timeout above the longest time one
+										message takes to handle.
+									</p>
+								</CardContent>
+							</CollapsibleContent>
+						</Collapsible>
+					</Card>
+				)}
+			</fieldset>
 
 			{isConsumer && (
 				<Alert>

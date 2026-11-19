@@ -41,6 +41,7 @@ import type { ConfigWarning } from "../types/configWarnings";
 import type { YamlInfrastructureConfig } from "../types/yamlConfig";
 import {
 	type ConfigUpdate,
+	type ConfigUpdateResult,
 	type DeployedEvents,
 	orderedQueueMayBeDeployed,
 	orderedQueueRereader,
@@ -135,11 +136,14 @@ interface SidebarProps {
 	deployedEvents?: DeployedEvents;
 	/** Reads the deployed events state again, now. */
 	rereadDeployedEvents?: RereadDeployedEvents;
+	/** The environment file `config` was loaded from and is saved to. */
+	environment?: string;
 	/**
 	 * Applies `update` to the config the owner holds when it is called, only
-	 * while that is the config of `env`; saves it when it changed.
+	 * while that is the config of the environment file `file` and `file` is
+	 * still open; saves it when it changed.
 	 */
-	onConfigUpdate?: (env: string, update: ConfigUpdate) => void;
+	onConfigUpdate?: (file: string, update: ConfigUpdate) => ConfigUpdateResult;
 	accountInfo?: AccountInfo;
 	onDeleteNode?: (nodeId: string, nodeType: string, name?: string) => void;
 	/** Configuration warnings about the selected node, shown above every tab. */
@@ -156,18 +160,19 @@ export function Sidebar({
 	onConfigChange,
 	deployedEvents,
 	rereadDeployedEvents,
+	environment,
 	onConfigUpdate,
 	accountInfo,
 	onDeleteNode,
 	warnings = NO_WARNINGS,
 }: SidebarProps) {
-	// An updater of one workload's events in the config of the env shown now,
-	// applied to whatever that config is when it runs.
+	// An updater of one workload's events, bound to the environment file open
+	// at this render: a caller that keeps it across a wait writes into that
+	// file's config as it is when it runs, or nowhere if another is open.
 	const workloadEventsUpdater = (workload: string) => {
-		const env = config?.env;
-		if (!onConfigUpdate || !env) return undefined;
+		if (!onConfigUpdate || !environment) return undefined;
 		return (update: WorkloadEventsUpdate) =>
-			onConfigUpdate(env, (current) =>
+			onConfigUpdate(environment, (current) =>
 				updateWorkloadEvents(current, workload, update),
 			);
 	};

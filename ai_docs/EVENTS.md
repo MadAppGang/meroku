@@ -1050,10 +1050,17 @@ writes nothing. An unknown env is 404 `{"error": ...}`.
   first reads `GET /api/events/deployed` again (the tab shows "Checking whether this …'s ordered
   queue was deployed"), then saves once: with `fifo_retired: true` unless that read is known
   and lists no FIFO set for the workload. A failed or cancelled read keeps the queue. The save
-  is applied to the config as it is when the read answers, for that environment and workload
-  only, so an edit elsewhere made meanwhile (a service added) is kept; if the workload's events
-  changed meanwhile, the turned-off edit is dropped. A read for the decision answers its caller
-  even when a routine refresh started after it; an environment change cancels it. The queue
-  settings card then offers **Delete the ordered queue**, which removes it.
+  is applied to the config as it is when the read answers, for that workload only, so an edit
+  elsewhere made meanwhile (a service added) is kept. While the read is pending every events
+  control of the tab is disabled (the note adds "The events settings are locked until the check
+  is done"). If the workload's events changed meanwhile anyway (from another panel), the edit is
+  not saved and the tab says "Ordered delivery is still on …". The save targets the environment
+  file open when the edit was made (`selectedEnvironment`, not the YAML `env` field); if another
+  file is open when the read answers, the edit is dropped with a toast. App computes each edit
+  from the config it holds and sends it once, outside any React state updater (StrictMode runs
+  updaters twice); `tests/e2e/events-ordering-save.spec.ts` counts the save requests. A read for
+  the decision answers its caller even when a routine refresh started after it; an environment
+  change cancels it. The queue settings card then offers **Delete the ordered queue**, which
+  removes it.
 - Scheduled and event tasks: a **Produces** editor on the Events tab; event-task rules have a
   bus picker.
