@@ -10,6 +10,13 @@
 #     the main queue.
 #
 # All three use SSE-SQS, the encryption SQS manages itself; no KMS key.
+#
+# On a classic bus every subscription is a rule (this file). On an enhanced bus
+# the project bus is made by modules/event_bus_enhanced and passed in; each
+# project-bus subscription is delivered by a subscriber the caller creates from
+# the subscribers and fifo_subscribers outputs, through the consumer's delivery
+# role (delivery.tf). Ordered subscriptions go to a FIFO queue set (fifo.tf).
+# Default-bus subscriptions stay rules on both.
 
 data "aws_region" "current" {}
 data "aws_caller_identity" "current" {}
@@ -23,6 +30,8 @@ locals {
   }
 
   consumers = { for c in var.consumers : c.name => c }
+
+  enhanced = var.bus_enabled && var.bus_type == "enhanced"
 
   # One entry per subscription, keyed "<consumer>/<key>". The key is stable under
   # reordering, so moving an entry in the YAML changes no rule.
@@ -87,15 +96,61 @@ locals {
     length(s.filters) > 0 ? { detail = jsondecode(local.subscription_filter_json[k]) } : {},
   )) }
 
+  # Delivered by a rule: everything on classic, default-bus entries on enhanced.
+  rule_subscriptions = { for k, s in local.subscriptions : k => s if !(local.enhanced && s.bus == "project") }
+  # Delivered by one standard enhanced-bus subscriber each.
+  subscriber_subscriptions = { for k, s in local.subscriptions : k => s if local.enhanced && s.bus == "project" && !s.ordered }
+  # Delivered by the consumer's single FIFO subscriber.
+  ordered_subscriptions = { for k, s in local.subscriptions : k => s if local.enhanced && s.bus == "project" && s.ordered }
+
+  # Consumers with a FIFO queue set: those with ordered subscriptions, and
+  # those keeping a retired set.
+  fifo_consumers     = toset([for c, v in local.consumers : c if v.fifo])
+  ordered_consumers  = toset(distinct([for s in values(local.ordered_subscriptions) : s.consumer]))
+  rule_consumers     = toset(distinct([for s in values(local.rule_subscriptions) : s.consumer]))
+  delivery_consumers = setunion(toset(distinct([for s in values(local.subscriber_subscriptions) : s.consumer])), local.ordered_consumers)
+
+  # The detail-type of a subscriber's pattern, as JSON text. A subscriber has
+  # no wildcard operator, so a * at the end is a prefix and a * at the start a
+  # suffix; variables.tf refuses every other *.
+  enhanced_detail_type_json = { for k, s in merge(local.subscriber_subscriptions, local.ordered_subscriptions) : k => (
+    s.detail_type == "" ? jsonencode([{ prefix = s.detail_type_prefix }]) :
+    !strcontains(s.detail_type, "*") ? jsonencode([s.detail_type]) :
+    endswith(s.detail_type, "*") ? jsonencode([{ prefix = trimsuffix(s.detail_type, "*") }]) :
+    jsonencode([{ suffix = trimprefix(s.detail_type, "*") }])
+  ) }
+
+  # One pattern branch per subscriber-delivered subscription, as JSON text: the
+  # fields of the rule pattern without replay-name, since an enhanced bus has
+  # no archive to replay from.
+  enhanced_branch_json = { for k, s in merge(local.subscriber_subscriptions, local.ordered_subscriptions) : k => jsonencode(merge(
+    { "detail-type" = jsondecode(local.enhanced_detail_type_json[k]) },
+    s.source != "" ? { source = [s.source] } : {},
+    length(s.filters) > 0 ? { detail = jsondecode(local.subscription_filter_json[k]) } : {},
+  )) }
+
+  subscriber_patterns = { for k, s in local.subscriber_subscriptions : k => local.enhanced_branch_json[k] }
+
+  # A FIFO subscriber matches every ordered subscription of its consumer: the
+  # one branch, or a root $or of all of them, sorted by key.
+  fifo_branch_keys = { for c in local.ordered_consumers : c => [
+    for k in sort(keys(local.ordered_subscriptions)) : k if local.ordered_subscriptions[k].consumer == c
+  ] }
+  fifo_patterns = { for c, ks in local.fifo_branch_keys : c => (
+    length(ks) == 1
+    ? local.enhanced_branch_json[ks[0]]
+    : jsonencode({ "$or" = [for k in ks : jsondecode(local.enhanced_branch_json[k])] })
+  ) }
+
   default_bus_arn = "arn:aws:events:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:event-bus/default"
 
   bus_names = {
     default = "default"
-    project = var.bus_enabled ? aws_cloudwatch_event_bus.project[0].name : ""
+    project = !var.bus_enabled ? "" : local.enhanced ? "${var.project}-${var.env}" : aws_cloudwatch_event_bus.project[0].name
   }
   bus_arns = {
     default = local.default_bus_arn
-    project = var.bus_enabled ? aws_cloudwatch_event_bus.project[0].arn : ""
+    project = !var.bus_enabled ? "" : local.enhanced ? var.enhanced_bus_arn : aws_cloudwatch_event_bus.project[0].arn
   }
 
   # Fixed queue settings: 4 days of retention on the main queue, 14 on the DLQs,
@@ -106,7 +161,7 @@ locals {
 }
 
 resource "aws_cloudwatch_event_bus" "project" {
-  count = var.bus_enabled ? 1 : 0
+  count = var.bus_enabled && !local.enhanced ? 1 : 0
 
   name = "${var.project}-${var.env}"
   tags = merge(local.tags, { Name = "${var.project}-${var.env}" })
@@ -147,10 +202,19 @@ resource "aws_sqs_queue" "main" {
   })
 
   tags = merge(local.tags, { Name = module.naming.names["queue/${each.key}"] })
+
+  lifecycle {
+    # Every consumer has a main queue, so this checks an enhanced environment
+    # that has no rules too.
+    precondition {
+      condition     = length(module.naming.collisions) == 0
+      error_message = "Two event queues or rules resolved to the same AWS name: ${join(", ", module.naming.collisions)}. Rename a workload or give a subscription a distinct name."
+    }
+  }
 }
 
 resource "aws_cloudwatch_event_rule" "subscription" {
-  for_each = local.subscriptions
+  for_each = local.rule_subscriptions
 
   name           = module.naming.names["rule/${each.key}"]
   event_bus_name = local.bus_names[each.value.bus]
@@ -168,7 +232,7 @@ resource "aws_cloudwatch_event_rule" "subscription" {
 }
 
 resource "aws_cloudwatch_event_target" "subscription" {
-  for_each = local.subscriptions
+  for_each = local.rule_subscriptions
 
   rule           = aws_cloudwatch_event_rule.subscription[each.key].name
   event_bus_name = aws_cloudwatch_event_rule.subscription[each.key].event_bus_name
