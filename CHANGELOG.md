@@ -1,5 +1,33 @@
 # Changelog
 
+## v6.8.0
+
+### Optional enhanced EventBridge bus: ordering, deduplication and sharing
+- New `event_bus.type: classic | enhanced`. Without the key, or with `classic`, nothing changes:
+  existing environments render the same Terraform and plan with no changes.
+- `enhanced` creates an EventBridge V2 bus `<project>-<env>` (awscc provider) with one subscriber
+  per subscription. A changed subscription is created before the old one is deleted, so a
+  replacement has no gap; a consumer may see an event twice and dedups on the event `id`.
+- `ordered: true` on a subscription delivers into a FIFO queue set. Events with the same
+  `EventGroupId` arrive in order, and the dedup id is the event id. Removing a consumer's last
+  ordered subscription takes two deploys: set `queue.fifo_retired: true` first. Standard queues
+  are always kept.
+- `share` gives other accounts, an OU or the organization publish and/or subscribe access through
+  RAM. Removing or downgrading an entry revokes that account's subscribers in the same apply.
+- Wildcard `detail_type` patterns become `prefix` (`job.*`) or `suffix` (`*.created`) on the
+  enhanced bus; other `*` forms are refused at generate, because AWS subscriber filters have no
+  wildcard.
+- `meroku generate` decides from the deployed Terraform state. On a fresh checkout with a state
+  bucket, the first generate of any env, classic included, reads the remote state and refuses if it
+  cannot (log in once per machine).
+- Web UI: choose the bus type, ordering and sharing per subscription, and send a Test Event with an
+  event group.
+- Org sharing has not been tested against a real organization (RAM sharing with the organization
+  must be enabled). Details: `ai_docs/EVENTS.md`.
+
+### Also
+- CI takes each job's Go version from its module's `go.mod`.
+
 ## v6.7.2
 
 ### The local web server is hardened
