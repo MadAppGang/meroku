@@ -1,5 +1,22 @@
 # Changelog
 
+## v6.9.0
+
+### Scheduled tasks: `dlq: true` creates the dead-letter queue
+- `dlq: true` on a scheduled task creates `<project>-task-<name>-dlq-<env>` (SSE, 14-day
+  retention), makes it the schedule's dead-letter target and lets the scheduler role send to
+  that queue only. A launch the scheduler gives up on lands there with its error code.
+- `dlq_arn` still works and now prints the `scheduled_task_dlq_arn` warning at generate.
+  Setting both, or a blank `dlq_arn`, is refused. Configs without either render unchanged.
+
+### Fixed
+- An event task with `container_command` no longer fails with `Unsupported argument`:
+  `modules/event_bridge_task` now accepts it and sets the container's `command`.
+- A Go test now fails when `env/main.hbs` passes an argument its module does not declare.
+
+### Also
+- `task ci` runs every Terraform check `ci.yml` runs.
+
 ## v6.8.0
 
 ### Optional enhanced EventBridge bus: ordering, deduplication and sharing
