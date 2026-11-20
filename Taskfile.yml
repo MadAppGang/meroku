@@ -199,9 +199,9 @@ tasks:
     internal: true
     cmds:
       # ci.yml formats `.`; a checkout here can also hold other worktrees under
-      # .claude/worktrees and untracked renders, so check exactly the tracked
-      # files CI sees.
-      - git ls-files -z '*.tf' '*.tfvars' '*.tftest.hcl' | xargs -0 terraform fmt -check -diff
+      # .claude/worktrees and env renders, both git-ignored, so check the files
+      # git would commit: tracked ones and new ones not yet added.
+      - git ls-files -z -co --exclude-standard '*.tf' '*.tfvars' '*.tftest.hcl' | xargs -0 terraform fmt -check -diff
       - terraform -chdir=modules/workloads init -backend=false -input=false
       - terraform -chdir=modules/workloads validate
       - terraform -chdir=modules/workloads test

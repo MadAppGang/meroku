@@ -38,7 +38,14 @@ func validateScheduledTaskDLQConfigMap(envMap map[string]interface{}) error {
 			}
 			dlq = b
 		}
-		arn := strings.TrimSpace(computeStringField(task, "dlq_arn"))
+		arn := computeStringField(task, "dlq_arn")
+		if raw, _ := task["dlq_arn"].(string); raw != "" && arn == "" {
+			// The template renders any non-empty dlq_arn, so a blank one would
+			// reach Terraform as the dead-letter target.
+			problems = append(problems, fmt.Sprintf(
+				"scheduled task '%s': dlq_arn is blank; remove it, or use dlq: true", name))
+			continue
+		}
 
 		switch {
 		case dlq && arn != "":

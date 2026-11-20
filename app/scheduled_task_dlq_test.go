@@ -81,6 +81,13 @@ func TestScheduledTaskDLQ_Refused(t *testing.T) {
 			want: []string{"cleanup", "dlq", "dlq_arn"},
 		},
 		{
+			// The template's {{#if dlq_arn}} renders any non-empty string, so
+			// a blank one would reach Terraform as dlq_arn = " ".
+			name:  "dlq_arn that is only spaces",
+			extra: map[string]interface{}{"dlq_arn": "  "},
+			want:  []string{"cleanup", "dlq_arn", "blank"},
+		},
+		{
 			name:  "dlq that is not a boolean",
 			extra: map[string]interface{}{"dlq": "yes"},
 			want:  []string{"cleanup", "dlq", "true or false"},

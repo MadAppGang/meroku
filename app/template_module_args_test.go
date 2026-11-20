@@ -22,7 +22,8 @@ var (
 	stringPattern       = regexp.MustCompile(`"(?:[^"\\]|\\.)*"`)
 	moduleOpenPattern   = regexp.MustCompile(`^\s*module\s+"[^"]*"\s*\{`)
 	moduleSourcePattern = regexp.MustCompile(`^\s*source\s*=\s*"\{\{\s*(?:@root\.)?modules\s*\}\}/([^"]+)"`)
-	argumentPattern     = regexp.MustCompile(`^\s*([A-Za-z_][A-Za-z0-9_-]*)\s*=`)
+	anySourcePattern    = regexp.MustCompile(`^\s*source\s*=`)
+	argumentPattern     = regexp.MustCompile(`^\s*([A-Za-z_][A-Za-z0-9_-]*)\s*=(?:[^=]|$)`)
 	heredocPattern      = regexp.MustCompile(`<<-?([A-Za-z_][A-Za-z0-9_]*)\s*$`)
 	variablePattern     = regexp.MustCompile(`(?m)^\s*variable\s+"([^"]+)"`)
 )
@@ -39,7 +40,8 @@ var moduleMetaArguments = map[string]bool{
 
 type moduleCall struct {
 	line      int
-	source    string
+	source    string         // the directory under modules/, "" when not a meroku module
+	rawSource string         // the source line as written, for the blocks source is "" for
 	arguments map[string]int // argument name -> template line
 }
 
@@ -59,6 +61,13 @@ func TestMainHBSModuleArgumentsAreDeclared(t *testing.T) {
 	for _, call := range calls {
 		if call.source == "" {
 			// A custom module the project supplies; its variables are not ours.
+			// Any other source spelling would drop a meroku module from this
+			// check without a word, so it fails instead.
+			if !strings.Contains(call.rawSource, "custom_modules") {
+				t.Errorf("env/main.hbs:%d: module block's source %q is neither {{modules}}/<dir> nor a custom module.\n"+
+					"    This check cannot tell which module's variables to compare against; spell it \"{{modules}}/<dir>\".",
+					call.line, strings.TrimSpace(call.rawSource))
+			}
 			continue
 		}
 		vars, ok := declared[call.source]
@@ -137,8 +146,11 @@ func scanModuleCalls(t *testing.T, template string) []moduleCall {
 		}
 
 		if depth == 1 {
-			if match := moduleSourcePattern.FindStringSubmatch(line); match != nil {
-				current.source = match[1]
+			if anySourcePattern.MatchString(line) {
+				current.rawSource = line
+				if match := moduleSourcePattern.FindStringSubmatch(line); match != nil {
+					current.source = match[1]
+				}
 			}
 			if match := argumentPattern.FindStringSubmatch(code); match != nil {
 				if _, seen := current.arguments[match[1]]; !seen {
