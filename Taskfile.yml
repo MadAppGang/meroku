@@ -192,22 +192,45 @@ tasks:
       - test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
       - go test -race ./... -count=1
 
+  # The Terraform checks of .github/workflows/ci.yml, in its order: the
+  # `terraform`, `terraform-neon` and `boundary-golden` jobs. A step added
+  # there is added here too, or `task ci` stops meaning "what CI runs".
   ci:terraform:
     internal: true
     cmds:
-      - terraform fmt -check -recursive -diff modules/workloads
+      # ci.yml formats `.`; a checkout here can also hold other worktrees under
+      # .claude/worktrees and untracked renders, so check exactly the tracked
+      # files CI sees.
+      - git ls-files -z '*.tf' '*.tfvars' '*.tftest.hcl' | xargs -0 terraform fmt -check -diff
       - terraform -chdir=modules/workloads init -backend=false -input=false
       - terraform -chdir=modules/workloads validate
-      # The enhanced event bus modules: the only ones that need awscc.
-      - terraform fmt -check -recursive -diff modules/event_bus_enhanced modules/event_subscriber
-      - terraform -chdir=modules/event_bus_enhanced init -backend=false -input=false
-      - terraform -chdir=modules/event_bus_enhanced validate
-      - terraform -chdir=modules/event_bus_enhanced test
-      - terraform -chdir=modules/event_subscriber init -backend=false -input=false
-      - terraform -chdir=modules/event_subscriber validate
-      - terraform -chdir=modules/event_subscriber test
+      - terraform -chdir=modules/workloads test
+      - shellcheck --shell=sh modules/workloads/scripts/asg-capacity-wait.sh modules/workloads/scripts/test/run.sh modules/workloads/scripts/test/fakebin/aws
+      - sh modules/workloads/scripts/test/run.sh
+      - for: [naming, vpc, ses]
+        cmd: terraform -chdir=modules/{{.ITEM}} init -backend=false -input=false && terraform -chdir=modules/{{.ITEM}} test
+      - shellcheck --shell=sh modules/ses/scripts/route53-txt.sh modules/ses/scripts/test/run.sh modules/ses/tests/lifecycle/run.sh
+      - sh modules/ses/scripts/test/run.sh
+      - cd modules/ses && sh tests/lifecycle/run.sh
+      - for: [github_policy, compute_pool_check, env_secret_check, event_bridge_task, ecs_task, github_runners, data_bucket]
+        cmd: terraform -chdir=modules/{{.ITEM}} init -backend=false -input=false && terraform -chdir=modules/{{.ITEM}} test
+      - for: [vaults, kms_keys]
+        cmd: terraform -chdir=modules/{{.ITEM}} init -backend=false -input=false && terraform -chdir=modules/{{.ITEM}} validate && terraform -chdir=modules/{{.ITEM}} test
+      - terraform -chdir=modules/events init -backend=false -input=false && terraform -chdir=modules/events test
+      - terraform -chdir=modules/event_bus_enhanced init -backend=false -input=false && terraform -chdir=modules/event_bus_enhanced validate && terraform -chdir=modules/event_bus_enhanced test
       - shellcheck --shell=sh modules/event_bus_enhanced/scripts/revoke-subscribers.sh modules/event_bus_enhanced/scripts/test/run.sh modules/event_bus_enhanced/scripts/test/fakebin/aws
       - sh modules/event_bus_enhanced/scripts/test/run.sh
+      - terraform -chdir=modules/event_subscriber init -backend=false -input=false && terraform -chdir=modules/event_subscriber validate && terraform -chdir=modules/event_subscriber test
+      - terraform -chdir=modules/valkey init -backend=false -input=false && terraform -chdir=modules/valkey test
+      # The naming consumers.
+      - for: [alb, s3, postgres, sqs, ecs_task, event_bridge_task, appsync, dns-root, github_runners, data_bucket, events, valkey]
+        cmd: terraform -chdir=modules/{{.ITEM}} init -backend=false -input=false && terraform -chdir=modules/{{.ITEM}} validate
+      # The Neon modules need Terraform 1.14 or later.
+      - terraform fmt -check -recursive -diff modules/neon modules/neon_access modules/neon_ssm
+      - for: [neon, neon_access, neon_ssm]
+        cmd: terraform -chdir=modules/{{.ITEM}} init -backend=false -input=false && terraform -chdir=modules/{{.ITEM}} validate
+      # The CI Lambda's golden capture against terraform.
+      - cd {{.LAMBDA_DIR}} && go test -tags tfgolden ./internal/boundary/ -count=1
 
   # ─── Release ────────────────────────────────────────────
   version:
