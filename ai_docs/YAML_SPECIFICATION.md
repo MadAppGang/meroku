@@ -233,6 +233,13 @@ scheduled_tasks: <list>
     docker_image: <string>                   # Docker image (optional, uses backend if empty)
     container_command: <string>              # Command in JSON array format: '["cmd", "arg1"]' (uses image default if not set)
     allow_public_access: <boolean>           # Assign public IP to task
+    max_retry_attempts: <int>                # Optional; scheduler retries of a failed launch.
+                                             #   Absent keeps AWS's default (185); 0 never retries
+    dlq: <boolean>                           # Optional; true creates an SQS dead-letter queue for
+                                             #   this task, <project>-task-<name>-dlq-<env>, which
+                                             #   receives every launch the scheduler gives up on
+    dlq_arn: <string>                        # Deprecated: an existing queue's ARN. Still works,
+                                             #   with a config warning; use dlq: true. Not both
     policy: <list>                           # Extra IAM statements for the task role; same shape
                                              #   as workload.policy (ai_docs/WORKLOAD_IAM.md)
     events:                                  # Optional; a task may only produce
@@ -576,6 +583,31 @@ services:
     - Scale-out is faster (60s cooldown) than scale-in (300s cooldown) to handle traffic spikes
     - If ALB is enabled, an additional request-based scaling policy is created
     - Ensure min/max capacity aligns with your application's requirements and budget
+
+## Scheduled task dead-letter queue
+
+EventBridge Scheduler retries a task launch that fails (an image that cannot be pulled, no
+capacity, a bad task definition) up to `max_retry_attempts` times, 185 when it is not set.
+Without a dead-letter queue, the launch is then dropped and nothing records it.
+
+```yaml
+scheduled_tasks:
+  - name: cleanup
+    schedule: rate(1 hour)
+    max_retry_attempts: 3
+    dlq: true
+```
+
+`dlq: true` creates an encrypted SQS queue, `<project>-task-<name>-dlq-<env>` (shortened by
+`modules/naming` when that is too long), that keeps messages for 14 days. It is the schedule's
+dead-letter target, and the scheduler role may send to that queue and to nothing else. It
+catches failed launches, not a task that started and then exited with an error: that is in the
+task's CloudWatch logs.
+
+`dlq_arn: <ARN>` names an existing queue instead. It still works, and `meroku generate` shows
+the `scheduled_task_dlq_arn` warning. To switch, replace it with `dlq: true`. The new queue
+starts empty, so read or move what is left in the old one before deleting it. Setting both is
+an error.
 
 ## Template Processing
 

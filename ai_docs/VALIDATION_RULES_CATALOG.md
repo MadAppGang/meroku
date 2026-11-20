@@ -743,6 +743,10 @@ See [CONFIG_WARNINGS.md](./CONFIG_WARNINGS.md).
 | `compute_pool_spot_without_base` | compute.pools | Spot-only pool with no on-demand base behind the ALB |
 | `compute_pool_bridge_srv` | compute.pools | Bridge-mode pool reached through Cloud Map SRV records (no ALB) |
 | `backend_external_image_not_pushable` | workload | CI cannot push `backend_external_docker_image` |
+| `scheduled_task_dlq_arn` | scheduled_tasks | `dlq_arn` names a queue by ARN; `dlq: true` lets meroku create and wire it |
+
+A scheduled task that sets both `dlq: true` and `dlq_arn` is an error at generate: the schedule
+has one dead-letter target.
 
 A check that must stop generate is an error, not a warning. It goes in
 `validateConfigBeforePreprocess` (`app/deploy.go`) or returns an error from a validator inside

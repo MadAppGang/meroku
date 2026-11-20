@@ -894,8 +894,11 @@ type ScheduledTask struct {
 	// differ: absent leaves AWS's own default of 185 in place, while 0 means
 	// do not retry at all.
 	MaxRetryAttempts *int `yaml:"max_retry_attempts,omitempty"`
-	// SQS queue ARN for failed invocations. Empty disables the DLQ and the
-	// scoped sqs:SendMessage grant that comes with it.
+	// DLQ creates an SQS queue for launches the scheduler gives up on, makes
+	// it the schedule's dead-letter target and lets the scheduler send to it.
+	DLQ bool `yaml:"dlq,omitempty"`
+	// An existing SQS queue's ARN as the dead-letter target. Superseded by
+	// DLQ: still rendered, with a configuration warning; not both.
 	DLQArn string `yaml:"dlq_arn,omitempty"`
 	// Policy is the user's own `policy` block: statements meroku adds to this
 	// task's role on top of the grants it builds itself.

@@ -42,6 +42,12 @@ variable "docker_image" {
   default = ""
 }
 
+variable "container_command" {
+  description = "Overrides the image's CMD. Empty (the default) runs the image's own CMD."
+  type        = list(string)
+  default     = []
+}
+
 variable "subnet_ids" {
   type = list(string)
 }

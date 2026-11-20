@@ -38,7 +38,7 @@ resource "aws_scheduler_schedule" "scheduler" {
     }
 
     dynamic "dead_letter_config" {
-      for_each = var.dlq_arn != "" ? [var.dlq_arn] : []
+      for_each = local.dlq_enabled ? [local.dlq_arn] : []
       content {
         arn = dead_letter_config.value
       }

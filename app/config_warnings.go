@@ -90,6 +90,7 @@ const (
 	warnCodeComputePoolSpotWithoutBase   = "compute_pool_spot_without_base"
 	warnCodeComputePoolBridgeSRV         = "compute_pool_bridge_srv"
 	warnCodeBackendExternalImage         = "backend_external_image_not_pushable"
+	warnCodeScheduledTaskDLQArn          = "scheduled_task_dlq_arn"
 )
 
 // ConfigWarningReport is what GET /api/config-warnings returns and the TUI

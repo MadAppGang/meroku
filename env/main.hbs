@@ -1010,6 +1010,11 @@ module "schedule_task_{{name}}" {
   {{#if (exists max_retry_attempts)}}
   max_retry_attempts = {{max_retry_attempts}}
   {{/if}}
+{{!-- Column 0 on purpose: an indented block that renders nothing leaves its
+      indent on the next line, and existing renders must stay byte-identical. --}}
+{{#if dlq}}
+  create_dlq = true
+{{/if}}
   {{#if dlq_arn}}
   dlq_arn = "{{dlq_arn}}"
   {{/if}}

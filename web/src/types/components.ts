@@ -34,7 +34,9 @@ export interface ScheduledTask {
 	 * when writing the config.
 	 */
 	max_retry_attempts?: number;
-	/** SQS queue ARN for failed invocations. Absent disables the DLQ. */
+	/** Creates a dead-letter queue for launches the scheduler gives up on. */
+	dlq?: boolean;
+	/** An existing queue's ARN. Superseded by dlq; generate warns. Not both. */
 	dlq_arn?: string;
 }
 
