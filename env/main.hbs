@@ -1010,6 +1010,9 @@ module "schedule_task_{{name}}" {
   {{#if (exists max_retry_attempts)}}
   max_retry_attempts = {{max_retry_attempts}}
   {{/if}}
+{{#if dlq}}
+  create_dlq = true
+{{/if}}
   {{#if dlq_arn}}
   dlq_arn = "{{dlq_arn}}"
   {{/if}}

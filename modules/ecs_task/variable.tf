@@ -80,10 +80,21 @@ variable "max_retry_attempts" {
   }
 }
 
+variable "create_dlq" {
+  description = "Create an SQS queue for this task and make it the schedule's dead-letter target, with the scheduler role allowed to send to it."
+  type        = bool
+  default     = false
+}
+
 variable "dlq_arn" {
-  description = "SQS queue ARN used as the schedule target's dead-letter destination. Empty (the default) disables the DLQ and the IAM grant that goes with it."
+  description = "An existing SQS queue's ARN used as the schedule's dead-letter target. Empty (the default) and create_dlq false means no DLQ and no IAM grant."
   type        = string
   default     = ""
+
+  validation {
+    condition     = !(var.create_dlq && var.dlq_arn != "")
+    error_message = "Set create_dlq or dlq_arn, not both: a schedule has one dead-letter target."
+  }
 }
 
 variable "subnet_ids" {

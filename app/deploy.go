@@ -702,6 +702,9 @@ func preprocessEnvMap(envMap map[string]interface{}) error {
 	if err := validateGitHubRunnersConfigMap(envMap); err != nil {
 		return err
 	}
+	if err := validateScheduledTaskDLQConfigMap(envMap); err != nil {
+		return err
+	}
 	// Names first: the validators after it resolve references against them.
 	if err := validateWorkloadNamesConfigMap(envMap); err != nil {
 		return err

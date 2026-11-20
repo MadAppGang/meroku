@@ -43,5 +43,9 @@ module "naming" {
       parts  = ["scheduler", var.task]
       limit  = 64
     }
+    dlq = {
+      parts = ["task", var.task, "dlq"]
+      limit = 80
+    }
   }
 }

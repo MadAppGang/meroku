@@ -224,7 +224,7 @@ resource "aws_iam_role_policy_attachment" "task_eventbridge" {
 # and created only when a DLQ is configured, so a task without one carries no
 # sqs:SendMessage at all.
 resource "aws_iam_role_policy" "scheduler_dlq_send" {
-  count = var.dlq_arn != "" ? 1 : 0
+  count = local.dlq_enabled ? 1 : 0
   name  = "SchedulerDLQSend_${var.project}_task_${var.task}_${var.env}"
   role  = aws_iam_role.scheduler_role.id
 
@@ -234,7 +234,7 @@ resource "aws_iam_role_policy" "scheduler_dlq_send" {
       {
         Effect   = "Allow"
         Action   = ["sqs:SendMessage"]
-        Resource = [var.dlq_arn]
+        Resource = [local.dlq_arn]
       }
     ]
   })

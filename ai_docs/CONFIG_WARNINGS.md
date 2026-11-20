@@ -125,6 +125,7 @@ union lists the `event_*` codes the events UI keys on.
 | `compute_pool_spot_without_base` | `compute_pool` | `app/compute_validation.go` | Yes |
 | `compute_pool_bridge_srv` | `compute_pool` | `app/compute_validation.go` | Yes |
 | `backend_external_image_not_pushable` | `backend` | `app/github_external_image.go` | Yes |
+| `scheduled_task_dlq_arn` | `scheduled_task` | `app/scheduled_task_dlq.go` | Yes |
 
 The codes are constants (`warnCode*`) in `app/config_warnings.go`. Tests and the web UI key on
 them, so a code never changes once released. Every compute pool title names the pool, because
