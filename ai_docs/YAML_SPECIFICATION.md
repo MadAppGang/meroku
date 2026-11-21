@@ -583,6 +583,11 @@ services:
     - Scale-out is faster (60s cooldown) than scale-in (300s cooldown) to handle traffic spikes
     - If ALB is enabled, an additional request-based scaling policy is created
     - Ensure min/max capacity aligns with your application's requirements and budget
+    - With autoscaling on, `backend_desired_count` is only the size the service starts at. An
+      apply never changes the running count; Application Auto Scaling sets it within min/max
+    - With autoscaling off, a changed `backend_desired_count` is applied by
+      `aws ecs update-service` during the apply, so the AWS CLI must be available where
+      terraform runs. A count changed outside Terraform stays until the configured count changes
 
 ## Scheduled task dead-letter queue
 

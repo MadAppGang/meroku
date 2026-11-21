@@ -238,7 +238,7 @@ The largest property surface in the app.
 |---|---|---|---|---|
 | `workload.backend_cpu` | string | Fargate-valid pairs only | TF-DEPLOY | `"256"` … `"16384"`. String, not number. |
 | `workload.backend_memory` | string | must pair with CPU | TF-DEPLOY | |
-| `workload.backend_desired_count` | number | default `1` | TF | Not ignored on redeploy. If autoscaling moved the count, the next redeploy resets it to this value. |
+| `workload.backend_desired_count` | number | default `1` | TF | With autoscaling on, the size the service starts at; an apply never changes the running count. With autoscaling off, a changed count is applied during apply by `aws ecs update-service`. |
 | `workload.backend_autoscaling_enabled` | boolean | default `false` | TF | Creates the scaling target and policies. |
 | `workload.backend_autoscaling_min_capacity` | number | only when autoscaling enabled | TF | |
 | `workload.backend_autoscaling_max_capacity` | number | only when autoscaling enabled | TF | |
@@ -334,7 +334,7 @@ One node per additional service.
 | `host_port` | number | optional | TF-DEPLOY | Must equal `container_port` under awsvpc networking. |
 | `cpu` | number | Fargate-valid pairs | TF-DEPLOY | Number here, unlike the backend's string. |
 | `memory` | number | must pair with CPU | TF-DEPLOY | |
-| `desired_count` | number | — | TF | Same autoscaling-drift caveat as the backend. |
+| `desired_count` | number | — | TF | Not ignored on redeploy. A count changed outside meroku is set back to this value by the next apply. |
 | `remote_access` | boolean | default `false` | TF-DEPLOY | |
 | `xray_enabled` | boolean | default `false` | TF-DEPLOY | |
 | `essential` | boolean | default `true` | TF-DEPLOY | Container-level essential flag. |
@@ -859,8 +859,10 @@ env-wide panel. `region_drift` never reaches the web UI. The web UI has no deplo
 ## Cross-cutting notes
 
 **Desired count drift.** Task definitions are ignored on redeploy, so CI/CD image pushes survive.
-`desired_count` is not ignored. If autoscaling moved a service to 5 and the model says 1, the next
-redeploy scales it back to 1.
+With backend autoscaling on, `backend_desired_count` is only the starting size and an apply never
+changes the backend's running count. With it off, a changed count is applied during apply by
+`aws ecs update-service`. A named service's `desired_count` is not ignored: if its count was moved
+to 5 outside meroku and the model says 1, the next apply scales it back to 1.
 
 **Type inconsistency across node families.** `workload.backend_cpu` and `backend_memory` are strings;
 `services[].cpu`, `scheduled_tasks[].cpu` and `event_processor_tasks[].cpu` are numbers.

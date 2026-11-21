@@ -132,6 +132,11 @@ mock_provider "random" {}
 
 # The smallest input set modules/workloads accepts. Every value is synthetic.
 variables {
+  # With autoscaling off, terraform_data.backend_desired_count runs the AWS CLI
+  # in a local-exec, and terraform test runs provisioners even for a resource an
+  # override_resource block targets. With it on, that resource has no instance.
+  backend_autoscaling_enabled = true
+
   # project and env travel verbatim into the invocation payload, where manual.go
   # compares them against the Lambda's own config and IGNORES an event whose
   # project or env does not match. They are asserted, so they are stated.

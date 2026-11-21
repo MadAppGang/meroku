@@ -67,9 +67,14 @@ variables {
   vpc_id           = "vpc-00000000000000000"
   subnet_ids       = ["subnet-00000000000000001", "subnet-00000000000000002"]
   private_dns_name = "myapp.internal"
-  api_domain       = "api.example.com"
-  github_subjects  = ["repo:myapp/app:ref:refs/heads/main"]
-  docker_image     = "example.com/myapp/backend:synthetic"
+  # With autoscaling off, terraform_data.backend_desired_count runs the AWS CLI
+  # in a local-exec, and terraform test runs provisioners even for a resource an
+  # override_resource block targets. With it on, that resource has no instance.
+  backend_autoscaling_enabled = true
+
+  api_domain      = "api.example.com"
+  github_subjects = ["repo:myapp/app:ref:refs/heads/main"]
+  docker_image    = "example.com/myapp/backend:synthetic"
   services = [
     for v in jsondecode(file("../../app/testdata/event_source_vectors.json")).vectors : {
       name         = v.workload

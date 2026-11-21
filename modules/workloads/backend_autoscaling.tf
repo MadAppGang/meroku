@@ -54,3 +54,46 @@ resource "aws_appautoscaling_policy" "backend_memory" {
     disable_scale_in   = false
   }
 }
+
+# Applies backend_desired_count to the running service while autoscaling is
+# off. aws_ecs_service.backend ignores desired_count after create (see its
+# lifecycle block), so this is what carries a changed count to the service.
+# With autoscaling on there is no instance and Application Auto Scaling owns
+# the count.
+#
+# It runs when it is created (a new environment, autoscaling turned off, the
+# first apply after this resource was added) and when it is replaced (the
+# count, cluster or service changed). It is keyed on the configured count, not
+# the live one, so with autoscaling off a count changed outside Terraform is
+# not reverted until the configured count changes.
+#
+# When autoscaling is turned off, the scalable target is deregistered in the
+# same apply with no ordering against this step, so a scale action in those
+# few seconds could overwrite the configured count.
+#
+# Only the task count changes, so no new deployment starts, and the CLI returns
+# as soon as ECS accepts the request. Needs /bin/sh and the AWS CLI. Credentials
+# are inherited from the terraform process, as in modules/ses/main.tf: no
+# --profile is passed, so the CLI resolves the credentials the AWS provider
+# does. Names go in through the environment, so the shell never parses them.
+resource "terraform_data" "backend_desired_count" {
+  count = var.backend_autoscaling_enabled ? 0 : 1
+
+  triggers_replace = {
+    desired_count = var.backend_desired_count
+    cluster       = aws_ecs_cluster.main.name
+    service       = aws_ecs_service.backend.name
+  }
+
+  provisioner "local-exec" {
+    interpreter = ["env", "-u", "NEON_API_KEY", "-u", "TF_VAR_neon_pg_credentials", "/bin/sh", "-c"]
+    command     = "aws ecs update-service --cluster \"$ECS_CLUSTER\" --service \"$ECS_SERVICE\" --desired-count \"$DESIRED_COUNT\" --query service.desiredCount --output text"
+    environment = {
+      ECS_CLUSTER   = aws_ecs_cluster.main.name
+      ECS_SERVICE   = aws_ecs_service.backend.name
+      DESIRED_COUNT = tostring(var.backend_desired_count)
+      AWS_REGION    = data.aws_region.current.region
+      AWS_PAGER     = ""
+    }
+  }
+}
