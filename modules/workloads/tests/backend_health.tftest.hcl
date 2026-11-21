@@ -85,7 +85,11 @@ variables {
 run "absent_variables_add_no_health_check_and_no_circuit_breaker" {
   command = apply
 
-  # An overridden resource is never created, so its provisioner never runs.
+  # override_resource does not stop a provisioner under terraform test, as
+  # modules/ses/tests/lifecycle/lifecycle.tftest.hcl says for terraform_data. In
+  # a run that applies, the local build in lambda.tf's ci_lambda_build_command
+  # really runs: the Go toolchain check, mkdir .build/<env>, go build and
+  # go run ./tools/mkzip. It makes no AWS call. A plan never runs provisioners.
   override_resource {
     target = null_resource.build_ci_lambda
   }

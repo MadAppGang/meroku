@@ -358,12 +358,11 @@ run "the_payload_is_the_one_the_lambda_decodes" {
     }
   }
 
-  # An override, not a mock, and the difference is the point: an overridden
-  # resource is never created, so its PROVISIONER never runs.
-  # null_resource.build_ci_lambda shells out to `go build` (lambda.tf). A plan
-  # would never reach it — provisioners do not run at plan — but an apply would,
-  # putting a Go toolchain and a cross-compile on the critical path of a test
-  # that is about a jsonencode.
+  # override_resource does not stop a provisioner under terraform test, as
+  # modules/ses/tests/lifecycle/lifecycle.tftest.hcl says for terraform_data. In
+  # a run that applies, the local build in lambda.tf's ci_lambda_build_command
+  # really runs: the Go toolchain check, mkdir .build/<env>, go build and
+  # go run ./tools/mkzip. It makes no AWS call. A plan never runs provisioners.
   override_resource {
     target = null_resource.build_ci_lambda
   }

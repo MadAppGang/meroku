@@ -67,6 +67,11 @@ variables {
 run "a_trusted_account_with_the_flag_gets_a_forwarding_rule" {
   command = apply
 
+  # override_resource does not stop a provisioner under terraform test, as
+  # modules/ses/tests/lifecycle/lifecycle.tftest.hcl says for terraform_data. In
+  # a run that applies, the local build in lambda.tf's ci_lambda_build_command
+  # really runs: the Go toolchain check, mkdir .build/<env>, go build and
+  # go run ./tools/mkzip. It makes no AWS call. A plan never runs provisioners.
   override_resource {
     target = null_resource.build_ci_lambda
   }

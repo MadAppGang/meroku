@@ -112,6 +112,8 @@ run "statement_with_empty_actions_is_refused" {
     ]
   }
 
+  # This file only plans, and a plan never runs provisioners, so the local Go
+  # build in lambda.tf's ci_lambda_build_command never runs here.
   override_resource {
     target = null_resource.build_ci_lambda
   }
