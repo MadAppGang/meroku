@@ -1,6 +1,17 @@
 # Changelog
 
-## v6.9.0
+## v6.9.1
+
+### Fixed
+- An apply no longer resets an autoscaled backend's running task count. With backend
+  autoscaling on, `backend_desired_count` is now only the size the service starts at:
+  Application Auto Scaling owns the count after that, and an untargeted apply plans no
+  change to it. Before, an apply put a scaled-up service back to the YAML count, and it
+  dropped requests until autoscaling caught up.
+- With autoscaling off, a changed `backend_desired_count` is still applied, now by
+  `aws ecs update-service` during apply, so the AWS CLI must be available where
+  terraform runs. A count changed by hand outside meroku is no longer set back until the
+  YAML count changes. Turning autoscaling on or off never replaces the ECS service.
 
 ### Scheduled tasks: `dlq: true` creates the dead-letter queue
 - `dlq: true` on a scheduled task creates `<project>-task-<name>-dlq-<env>` (SSE, 14-day
