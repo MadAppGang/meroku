@@ -24,7 +24,8 @@ none: one stage. Pushing a `v*` tag is the release.
 1. `go vet ./...` and `go test ./...` in `app/` pass, and `gofmt -l .` prints nothing.
 2. One commit bumps `version.txt` and adds the `CHANGELOG.md` section.
 3. It reaches `main`: through a PR when the work came from a branch, merged once
-   `ci.yml` is green on it. Recent v5.x releases were pushed straight to `main`.
+   `ci.yml` is green on it. Every release from v6.8.0 on is a `chore(release): vX.Y.Z`
+   PR merged on green, then the tag on main; the session merges its own PRs (Jack, 2026-11-21).
 4. Annotated tag `vX.Y.Z` on the commit on `main`, pushed as an explicit ref.
 5. `release.yml` (triggered by the tag) builds the web app and the binaries,
    creates the GitHub Release and updates `MadAppGang/homebrew-tap`.
@@ -47,8 +48,6 @@ none
 
 ## Unknown
 
-- Whether every release goes through a PR or straight to `main` is not settled
-  (v4.x used PRs, v5.x did not). TODO: Jack to say which.
 - `CHANGELOG.md` has no sections for v5.0.0–v5.3.5. TODO: whether to backfill.
 
-verified: unverified
+verified: 2026-11-21 @ c4d8776
