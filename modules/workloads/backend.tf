@@ -189,6 +189,13 @@ resource "aws_ecs_service" "backend" {
   # Ownership is therefore stated once, here: Terraform owns the service's shape,
   # CI owns the revision running in it.
   #
+  # The task count is ignored for the same reason. desired_count above is the
+  # size the service starts at when it is created. After that, Application Auto
+  # Scaling owns the count when backend autoscaling is on, and
+  # terraform_data.backend_desired_count (backend_autoscaling.tf) applies the
+  # configured count when it is off. The list is static, so turning autoscaling
+  # on or off never changes the service itself.
+  #
   # The precondition lives inside this block because a resource may carry only
   # one lifecycle block. Every pool read in ec2_capacity.tf is total (lookup/try)
   # precisely so that a compute_pool naming a pool that does not exist, or one
@@ -197,7 +204,7 @@ resource "aws_ecs_service" "backend" {
   # `Error: Invalid index` pointing at a port mapping. Meta-argument: no state,
   # no diff. Needs Terraform >= 1.2, which versions.tf requires.
   lifecycle {
-    ignore_changes = [task_definition]
+    ignore_changes = [task_definition, desired_count]
 
     precondition {
       condition     = module.backend_pool_check.valid["backend"]
@@ -459,8 +466,9 @@ resource "aws_ecs_task_definition" "backend" {
 # Why an invocation and not an event: CloudTrail would need RegisterTaskDefinition
 # delivered as "AWS API Call via CloudTrail", which requires a logging trail in
 # every account and region — an unacceptable dependency for a module that must
-# work in a bare account. local-exec with the AWS CLI would add a binary
-# dependency this module deliberately has none of.
+# work in a bare account. The invocation goes through the AWS provider, so this
+# step works without the AWS CLI, although other steps of this module's apply
+# (env files, pool capacity, the backend task count) do need it.
 #
 # WHAT A GREEN APPLY DOES AND DOES NOT MEAN. Read this before treating one as
 # proof that a deployment worked, because it is not.

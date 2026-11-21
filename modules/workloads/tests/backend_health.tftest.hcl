@@ -65,6 +65,11 @@ mock_provider "null" {}
 mock_provider "random" {}
 
 variables {
+  # With autoscaling off, terraform_data.backend_desired_count runs the AWS CLI
+  # in a local-exec, and terraform test runs provisioners even for a resource an
+  # override_resource block targets. With it on, that resource has no instance.
+  backend_autoscaling_enabled = true
+
   project          = "acme"
   env              = "dev"
   vpc_id           = "vpc-00000000000000000"
@@ -80,7 +85,11 @@ variables {
 run "absent_variables_add_no_health_check_and_no_circuit_breaker" {
   command = apply
 
-  # An overridden resource is never created, so its provisioner never runs.
+  # override_resource does not stop a provisioner under terraform test, as
+  # modules/ses/tests/lifecycle/lifecycle.tftest.hcl says for terraform_data. In
+  # a run that applies, the local build in lambda.tf's ci_lambda_build_command
+  # really runs: the Go toolchain check, mkdir .build/<env>, go build and
+  # go run ./tools/mkzip. It makes no AWS call. A plan never runs provisioners.
   override_resource {
     target = null_resource.build_ci_lambda
   }

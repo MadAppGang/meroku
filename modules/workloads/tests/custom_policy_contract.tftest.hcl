@@ -46,7 +46,8 @@ mock_provider "aws" {
 mock_provider "null" {}
 mock_provider "random" {}
 
-# Suppress the CI Lambda build provisioner; no shell build belongs in a module test.
+# This file only plans, and a plan never runs provisioners, so the local Go
+# build in lambda.tf's ci_lambda_build_command never runs here.
 override_resource {
   target = null_resource.build_ci_lambda
 }
