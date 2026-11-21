@@ -94,8 +94,9 @@ Two exclusions ride on top:
 
 ### Why Terraform invokes the Lambda directly
 
-`aws_ecs_service` carries `ignore_changes = [task_definition]`: Terraform owns
-the service's shape, CI owns which revision runs in it. That split has a hole,
+Every `aws_ecs_service` has `task_definition` in its `ignore_changes` (the
+backend's list also holds `desired_count`): Terraform owns the service's shape,
+CI owns which revision runs in it. That split has a hole,
 and `aws_lambda_invocation.backend_revision` / `.services_revision` are what
 close it.
 

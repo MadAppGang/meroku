@@ -495,14 +495,18 @@ func TestECRRuleExcludesUntaggedPushes(t *testing.T) {
 	}
 }
 
+// ignoresTaskDefinition matches an ignore_changes list that includes
+// task_definition, whatever else the list holds.
+var ignoresTaskDefinition = regexp.MustCompile(`ignore_changes\s*=\s*\[[^\]]*\btask_definition\b[^\]]*\]`)
+
 // TestEveryAutoDeployableServiceNotifiesOnANewRevision pins the edge that was
 // missing entirely, and the defect it pins is an ABSENCE — so only a structural
 // test over the Terraform can express it.
 //
-// Every ECS service here carries ignore_changes = [task_definition]: Terraform
-// owns the service's shape, CI owns which revision runs in it. That is right for
-// an image push and it left NOBODY owning a configuration change. Adding an SSM
-// parameter changes the `secrets` LIST, which lives in the task definition, and
+// Every ECS service here carries an ignore_changes that includes
+// task_definition: Terraform owns the service's shape, CI owns which revision
+// runs in it. That is right for an image push and it left NOBODY owning a
+// configuration change. Adding an SSM parameter changes the `secrets` LIST, which lives in the task definition, and
 // only Terraform can register a revision that lists it — the Lambda's
 // RegisterRevisionWithImage clones the latest ACTIVE revision and copies
 // container_definitions wholesale, carrying the old list forward. So Terraform
@@ -531,7 +535,7 @@ func TestEveryAutoDeployableServiceNotifiesOnANewRevision(t *testing.T) {
 			checked := 0
 			for _, name := range sortedNames(services) {
 				body := services[name]
-				if !strings.Contains(body, "ignore_changes = [task_definition]") {
+				if !ignoresTaskDefinition.MatchString(body) {
 					continue
 				}
 				checked++
@@ -549,7 +553,7 @@ func TestEveryAutoDeployableServiceNotifiesOnANewRevision(t *testing.T) {
 			}
 
 			require.NotZerof(t, checked,
-				"%s has no aws_ecs_service carrying ignore_changes = [task_definition]; either the "+
+				"%s has no aws_ecs_service carrying an ignore_changes that includes task_definition; either the "+
 					"ownership split changed or this test has stopped finding the resources it "+
 					"reasons about", file)
 		})
