@@ -7,9 +7,11 @@ terraform {
     use_lockfile = true  # Native S3 state locking (Terraform 1.10+)
   }
   required_providers {
+{{!-- 6.47 is the first release with aws_xray_trace_segment_destination and
+      aws_xray_indexing_rule, which modules/workloads creates for X-Ray. --}}
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 6.0"
+      version = "~> 6.47"
     }
     {{#if github_runners.token_secret}}
     github = {
@@ -656,6 +658,7 @@ module "workloads" {
   backend_health_check_grace_period = {{workload.backend_health_check_grace_period}}
 {{/if}}
   xray_enabled = {{default workload.xray_enabled false}}
+  xray_indexing_percentage = {{default xray.indexing_percentage 1}}
   pgadmin_enabled = {{default workload.install_pg_admin false}}
   pgadmin_email = "{{workload.pg_admin_email}}"
   # Backend environment variables merged from:

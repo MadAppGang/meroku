@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -572,6 +573,44 @@ func validateEgressStrategyMap(envMap map[string]interface{}) error {
 			strategy)
 	}
 
+	return nil
+}
+
+// validateXRayMap validates the top-level xray block: optional, a map whose
+// only key is indexing_percentage, a number from 0 to 100. The value renders
+// into the account and region's X-Ray indexing rule, so a typo in the key
+// would otherwise fall back to 1 without a word, and an out-of-range number
+// would only fail inside terraform.
+func validateXRayMap(envMap map[string]interface{}) error {
+	raw, present := envMap["xray"]
+	if !present || raw == nil {
+		return nil
+	}
+	xray, ok := yamlSubMap(envMap, "xray")
+	if !ok {
+		return fmt.Errorf("xray must be a map with indexing_percentage, got %T.\n\n"+
+			"  xray:\n    indexing_percentage: 1\n\nSee %s.", raw, xrayDocsPath)
+	}
+	for key := range xray {
+		if key != "indexing_percentage" {
+			return fmt.Errorf("xray.%s is not a known setting; the only one is xray.indexing_percentage.\n\nSee %s.",
+				key, xrayDocsPath)
+		}
+	}
+	value, present := xray["indexing_percentage"]
+	if !present || value == nil {
+		return nil
+	}
+	n, isNumber := xrayNumber(value)
+	if !isNumber {
+		return fmt.Errorf("xray.indexing_percentage must be a number from 0 to 100, got %q (%T).\n\n"+
+			"Write it unquoted, e.g. indexing_percentage: 1. See %s.", fmt.Sprint(value), value, xrayDocsPath)
+	}
+	if n < 0 || n > 100 {
+		return fmt.Errorf("xray.indexing_percentage is %s; it must be from 0 to 100.\n\n"+
+			"It is the percentage of X-Ray spans indexed as trace summaries; 1 is indexed free.\n"+
+			"See %s.", strconv.FormatFloat(n, 'g', -1, 64), xrayDocsPath)
+	}
 	return nil
 }
 

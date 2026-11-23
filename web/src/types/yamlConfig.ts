@@ -719,6 +719,14 @@ export interface YamlInfrastructureConfig {
 	event_bus?: EventBusConfig;
 	// Serverless Valkey, reachable by the workloads in `access`.
 	valkey?: ValkeyConfig;
+	// X-Ray Transaction Search for the account and region, used when X-Ray is on.
+	xray?: XRayConfig;
+}
+
+/** The top-level `xray` block. `indexing_percentage` absent means 1. */
+export interface XRayConfig {
+	/** Percentage of spans indexed as trace summaries, 0 to 100. 1 is indexed free. */
+	indexing_percentage?: number;
 }
 
 /** One shared SSM vault, `/<env>/<project>/vault/<name>/`. */

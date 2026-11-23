@@ -302,6 +302,19 @@ event_bus:
 #                                            #   subscription; remove it to delete them
 
 # ===================================
+# X-RAY TRANSACTION SEARCH
+# ===================================
+# Optional. No schema migration. Used only when workload.xray_enabled or a
+# services[].xray_enabled is true; that turns Transaction Search on for the
+# whole AWS account and region. Full guide: ai_docs/XRAY_TRANSACTION_SEARCH.md
+
+xray:
+  indexing_percentage: <number>              # 0-100, default 1 (the share indexed free).
+                                             #   One rule per account and region: siblings in the
+                                             #   same account should set the same value
+                                             #   (warning xray_indexing_conflict). Only key allowed
+
+# ===================================
 # GRAPHQL API CONFIGURATION
 # ===================================
 

@@ -102,6 +102,16 @@ type Env struct {
 	// that workloads connect to through their own kms_keys key. See
 	// ai_docs/KMS_KEYS.md.
 	KMSKeys []KMSKey `yaml:"kms_keys,omitempty"`
+	// XRay is the account and region's X-Ray Transaction Search setting for an
+	// environment that uses X-Ray. A pointer so an environment without the
+	// block saves without one. See ai_docs/XRAY_TRANSACTION_SEARCH.md.
+	XRay *XRay `yaml:"xray,omitempty"`
+}
+
+// XRay is the optional top-level xray block. IndexingPercentage nil means 1,
+// the share X-Ray indexes free.
+type XRay struct {
+	IndexingPercentage *float64 `yaml:"indexing_percentage,omitempty"`
 }
 
 // KMSKey is one entry of the top-level kms_keys list: an asymmetric

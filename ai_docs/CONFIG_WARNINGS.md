@@ -104,6 +104,7 @@ union lists the `event_*` codes the events UI keys on.
 |---|---|---|---|
 | `region_drift` | `env` | `app/region_drift.go` | No: CLI and TUI only |
 | `vpc_cidr_overlap` | `env` | `app/vpc_cidr_service.go` | Yes |
+| `xray_indexing_conflict` | `env` | `app/xray_transaction_search.go` | Yes |
 | `service_no_health_check` | `service` | `app/network_access.go` | Yes |
 | `policy_wildcard_action` | `backend`, `service`, `scheduled_task`, `event_task` | `app/workload_policy.go` | Yes |
 | `own_backend_bucket_env` | `service`, `scheduled_task`, `event_task` | `app/workload_env_reserved.go` | Yes |
@@ -137,7 +138,7 @@ all pools share one canvas node.
 flowchart TD
     load["Load env YAML<br/>(generate: loadEnvToMap · collector: loadEnvMapReadOnly)"]
     refuse1["validateConfigBeforePreprocess<br/>AppSync, ALB cert, egress, VPC CIDR"]
-    envlevel["envLevelWarnings<br/>region_drift, vpc_cidr_overlap"]
+    envlevel["envLevelWarnings<br/>region_drift, vpc_cidr_overlap,<br/>xray_indexing_conflict"]
     pre["preprocessEnvMap<br/>validators call addGenerateWarning"]
     post["configWarnings<br/>+ githubExternalImageWarnings<br/>+ amplifyRewriteWarnings"]
     refuse2["validateCustomTerraformRootNames"]
