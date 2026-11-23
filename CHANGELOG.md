@@ -1,5 +1,20 @@
 # Changelog
 
+## v6.10.0
+
+### Changed
+- Tasks on an EC2 compute pool now spread across Availability Zones before they are
+  bin-packed. The backend and every pool service place tasks with
+  `spread` on `attribute:ecs.availability-zone` first, then `binpack` on `memory` within
+  each zone. Before, `binpack` alone could put two tasks of one service on one instance in
+  one AZ while the other AZ stood empty. This is the default for every project.
+- AZ rebalancing is now `ENABLED` on pool workloads (was `DISABLED`). ECS allows it once AZ
+  spread is the first placement strategy; on EC2 it is best effort and never launches
+  instances.
+- On a deployed pool workload the plan shows an in-place update of `aws_ecs_service`, not a
+  replacement, and no new deployment starts: running tasks move at the next deployment or
+  through rebalancing. Fargate workloads are unchanged.
+
 ## v6.9.1
 
 ### Fixed
