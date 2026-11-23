@@ -48,6 +48,17 @@ variable "xray_enabled" {
   default     = false
 }
 
+variable "xray_indexing_percentage" {
+  description = "Percentage of spans X-Ray Transaction Search indexes as trace summaries (the account and region's Default indexing rule). 1 is the share indexed free. Used only when the backend or a service has xray_enabled."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.xray_indexing_percentage >= 0 && var.xray_indexing_percentage <= 100
+    error_message = "xray_indexing_percentage must be between 0 and 100."
+  }
+}
+
 variable "slack_deployment_webhook" {
   default = ""
 }

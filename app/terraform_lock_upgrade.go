@@ -13,43 +13,91 @@ import (
 	"strings"
 )
 
-// An environment initialised under one major of hashicorp/aws keeps that major
-// in .terraform.lock.hcl. When the generated main.tf asks for a newer major,
-// `terraform plan` fails with "locked provider ... does not match configured
-// version constraint", and plain `terraform init` does not help: only
-// `init -upgrade` may select a version outside the lock. terraformInitIfNeeded
-// skips init entirely when .terraform exists, so it checks this first.
+// An environment initialised under one version of hashicorp/aws keeps that
+// version in .terraform.lock.hcl. When the generated main.tf asks for a newer
+// major, or a newer minor through a floor such as "~> 6.47", `terraform plan`
+// fails with "locked provider ... does not match configured version
+// constraint", and plain `terraform init` does not help: only `init -upgrade`
+// may select a version outside the lock. terraformInitIfNeeded skips init
+// entirely when .terraform exists, so it checks this first.
 
 var (
-	lockAWSVersion = regexp.MustCompile(`(?s)provider "registry\.terraform\.io/hashicorp/aws" \{\s*version\s*=\s*"(\d+)\.`)
+	lockAWSVersion = regexp.MustCompile(`(?s)provider "registry\.terraform\.io/hashicorp/aws" \{\s*version\s*=\s*"(\d+)\.(\d+)`)
 	// The aws entry of required_providers: source first, then version, which
-	// is how env/main.hbs writes it.
-	mainTFAWSConstraint = regexp.MustCompile(`(?s)source\s*=\s*"hashicorp/aws"\s*version\s*=\s*"[~>=< ]*(\d+)\.`)
+	// is how env/main.hbs writes it. The minor is optional: "~> 6" has none.
+	mainTFAWSConstraint = regexp.MustCompile(`(?s)source\s*=\s*"hashicorp/aws"\s*version\s*=\s*"[~>=< ]*(\d+)(?:\.(\d+))?`)
 )
 
+// providerVersion is the major.minor of a provider version or constraint
+// floor. HasMinor is false for a constraint that names only a major.
+type providerVersion struct {
+	Major, Minor int
+	HasMinor     bool
+}
+
+func (v providerVersion) String() string {
+	if !v.HasMinor {
+		return fmt.Sprintf("%d.x", v.Major)
+	}
+	return fmt.Sprintf("%d.%d", v.Major, v.Minor)
+}
+
+// behind reports whether locked is below the floor wanted names: a lower
+// major, or the same major and a lower minor when wanted carries one.
+func (locked providerVersion) behind(wanted providerVersion) bool {
+	if locked.Major != wanted.Major {
+		return locked.Major < wanted.Major
+	}
+	return wanted.HasMinor && locked.Minor < wanted.Minor
+}
+
+// parseProviderVersion turns regex groups into a providerVersion. minor is
+// nil when the match carried no minor.
+func parseProviderVersion(major, minor []byte) (providerVersion, bool) {
+	maj, err := strconv.Atoi(string(major))
+	if err != nil {
+		return providerVersion{}, false
+	}
+	v := providerVersion{Major: maj}
+	if minor != nil {
+		mnr, err := strconv.Atoi(string(minor))
+		if err != nil {
+			return providerVersion{}, false
+		}
+		v.Minor, v.HasMinor = mnr, true
+	}
+	return v, true
+}
+
 // lockedProviderMajorBehind reports whether the lock file pins hashicorp/aws
-// to a lower major than main.tf requires. Any file it cannot read or parse
-// counts as "not behind": the caller then does what it did before.
-func lockedProviderMajorBehind(lockPath, mainTFPath string) (behind bool, locked, wanted int) {
+// below the version main.tf requires: a lower major, or a lower minor of the
+// same major when the constraint names a minor ("~> 6.47" against a 6.30.0
+// lock is behind; "~> 6.0" against it is not). locked and wanted are
+// major.minor for messages. Any file it cannot read or parse counts as "not
+// behind": the caller then does what it did before.
+func lockedProviderMajorBehind(lockPath, mainTFPath string) (behind bool, locked, wanted providerVersion) {
 	lock, err := os.ReadFile(lockPath)
 	if err != nil {
-		return false, 0, 0
+		return false, providerVersion{}, providerVersion{}
 	}
 	mainTF, err := os.ReadFile(mainTFPath)
 	if err != nil {
-		return false, 0, 0
+		return false, providerVersion{}, providerVersion{}
 	}
 	lm := lockAWSVersion.FindSubmatch(lock)
 	cm := mainTFAWSConstraint.FindSubmatch(mainTF)
 	if lm == nil || cm == nil {
-		return false, 0, 0
+		return false, providerVersion{}, providerVersion{}
 	}
-	locked, _ = strconv.Atoi(string(lm[1]))
-	wanted, _ = strconv.Atoi(string(cm[1]))
-	return locked < wanted, locked, wanted
+	locked, okLocked := parseProviderVersion(lm[1], lm[2])
+	wanted, okWanted := parseProviderVersion(cm[1], cm[2])
+	if !okLocked || !okWanted {
+		return false, providerVersion{}, providerVersion{}
+	}
+	return locked.behind(wanted), locked, wanted
 }
 
-// lockUpgradeInit is the init run when the lock is a major behind. A variable
+// lockUpgradeInit is the init run when the lock is behind main.tf. A variable
 // so tests can replace it.
 var lockUpgradeInit = func() error {
 	_, err := terraformInit("-upgrade", "-input=false")
@@ -78,7 +126,8 @@ var lockInit = func() error {
 
 // upgradeLockedProviderIfBehind runs `terraform init` in the current directory
 // when the lock file is missing or selects no aws version, and
-// `terraform init -upgrade` when it is a provider major behind main.tf.
+// `terraform init -upgrade` when it is on a lower provider major, or a lower
+// minor than main.tf's floor.
 func upgradeLockedProviderIfBehind() error {
 	if !lockSelectsAWS(".terraform.lock.hcl") {
 		fmt.Println("🔄 .terraform.lock.hcl is missing or selects no AWS provider version.")
@@ -93,7 +142,7 @@ func upgradeLockedProviderIfBehind() error {
 		}
 		return nil
 	}
-	fmt.Printf("🔄 The AWS provider lock is on version %d.x and this meroku generates for %d.x.\n", locked, wanted)
+	fmt.Printf("🔄 The AWS provider lock is on version %s and this meroku generates for version %s or newer.\n", locked, wanted)
 	fmt.Println("   Running terraform init -upgrade to move the lock to the new version.")
 	return lockUpgradeInit()
 }

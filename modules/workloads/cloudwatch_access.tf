@@ -15,6 +15,13 @@
 # instead of the collector, and the daemon sends traces with the task role's
 # credentials.
 #
+# X-Ray writes: the backend's task role carries AWSXrayWriteOnlyAccess
+# (backend.tf) and a service's gets the XRayWrite statement below. Neither
+# allows xray:PutSpans, which the OTLP endpoint
+# (https://xray.<region>.amazonaws.com/v1/traces) requires, so every role with
+# xray_enabled also gets XRaySpans. The endpoint accepts spans only once
+# Transaction Search is on (xray_transaction_search.tf).
+#
 # The execution roles keep their attachments: ECS assumes them to pull images,
 # resolve secrets and write the awslogs streams, and a container never sees
 # their credentials.
@@ -83,6 +90,19 @@ locals {
     ]
     Resource = "*"
   }
+
+  # The calls a service makes when it sends OTLP traces to the X-Ray
+  # endpoint. Granted on "*", as XRayWrite is.
+  xray_spans_statement = {
+    Sid    = "XRaySpans"
+    Effect = "Allow"
+    Action = [
+      "xray:PutSpans",
+      "xray:PutSpansForIndexing",
+      "xray:PutTraceSegments",
+    ]
+    Resource = "*"
+  }
 }
 
 resource "aws_iam_role_policy" "backend_task_cloudwatch" {
@@ -100,8 +120,10 @@ resource "aws_iam_role_policy" "backend_task_cloudwatch" {
           Resource = [aws_cloudwatch_log_group.backend.arn, "${aws_cloudwatch_log_group.backend.arn}:*"]
         },
       ],
-      # X-Ray writes come from AWSXrayWriteOnlyAccess (backend.tf).
+      # Segment and telemetry writes come from AWSXrayWriteOnlyAccess
+      # (backend.tf); OTLP spans need XRaySpans.
       var.xray_enabled ? [local.container_insights_statement, local.application_metrics_statement] : [],
+      var.xray_enabled ? [local.xray_spans_statement] : [],
     )
   })
 }
@@ -124,6 +146,7 @@ resource "aws_iam_role_policy" "services_task_cloudwatch" {
         },
       ],
       each.value.xray_enabled ? [local.xray_write_statement] : [],
+      each.value.xray_enabled ? [local.xray_spans_statement] : [],
     )
   })
 }

@@ -9,7 +9,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 6.0"
+      version = "~> 6.47"
     }
   }
   required_version = ">= 1.10.0"
@@ -263,6 +263,7 @@ module "workloads" {
   github_push_external_image = false
   github_subjects = []
   xray_enabled = false
+  xray_indexing_percentage = 1
   pgadmin_enabled = false
   pgadmin_email = ""
   # Backend environment variables merged from:

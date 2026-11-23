@@ -825,7 +825,9 @@ resource "aws_iam_role_policy_attachment" "backend_task_ses" {
   policy_arn = aws_iam_policy.send_emails.arn
 }
 
-// Add X-Ray permissions to the backend task role
+// X-Ray segment, telemetry and sampling calls for the backend task role.
+// OTLP spans (xray:PutSpans) are granted by the XRaySpans statement in
+// cloudwatch_access.tf, which this managed policy does not carry.
 resource "aws_iam_role_policy_attachment" "backend_task_xray" {
   role       = aws_iam_role.backend_task.name
   policy_arn = "arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess"

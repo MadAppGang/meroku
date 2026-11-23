@@ -442,6 +442,18 @@ service) are optional; absent keys render nothing. A breaker is turned off with
 `enable: false`, never by removing the key (provider 6.x suppresses that diff).
 [Backend Health Check](./ai_docs/BACKEND_HEALTH_CHECK.md).
 
+## X-Ray Transaction Search
+
+An env that uses X-Ray (`workload.xray_enabled` or any `services[].xray_enabled`) turns on
+Transaction Search in its account and region (`modules/workloads/xray_transaction_search.tf`: a
+per-env log resource policy, the segment destination `CloudWatchLogs`, the `Default` indexing
+rule), and its X-Ray task roles get `XRaySpans` (`xray:PutSpans` and friends) for the OTLP
+endpoint. Optional top-level `xray.indexing_percentage` (0–100, default 1, the free share;
+`validateXRayMap`). Both X-Ray settings are account-wide singletons: spans are then billed as
+CloudWatch Logs, destroy does not turn it off, and a sibling env in the same account with a
+different percentage gets the `xray_indexing_conflict` warning. Needs hashicorp/aws `~> 6.47`;
+meroku runs `init -upgrade` on an older lock. [X-Ray Transaction Search](./ai_docs/XRAY_TRANSACTION_SEARCH.md).
+
 ## Configuration warnings
 
 A configuration warning is something in the env YAML worth fixing that does not stop

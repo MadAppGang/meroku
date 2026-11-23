@@ -91,6 +91,7 @@ const (
 	warnCodeComputePoolBridgeSRV         = "compute_pool_bridge_srv"
 	warnCodeBackendExternalImage         = "backend_external_image_not_pushable"
 	warnCodeScheduledTaskDLQArn          = "scheduled_task_dlq_arn"
+	warnCodeXRayIndexingConflict         = "xray_indexing_conflict"
 )
 
 // ConfigWarningReport is what GET /api/config-warnings returns and the TUI
@@ -225,6 +226,9 @@ type warningInputs struct {
 	AmbientRegion func(profile string) (region, source string)
 	// Siblings lists the VPC ranges of the other environments in dir.
 	Siblings func(dir, self string) ([]vpcCIDRUse, error)
+	// XRaySiblings lists the other environments in dir that use X-Ray, for
+	// the xray_indexing_conflict check. nil skips it.
+	XRaySiblings func(dir, self string) ([]xrayIndexingUse, error)
 }
 
 // defaultWarningInputs is the inputs for the process that deploys: the shell's
@@ -239,6 +243,7 @@ func defaultWarningInputs(env string) warningInputs {
 		EnvFile:       envFile,
 		AmbientRegion: resolveAmbientRegion,
 		Siblings:      siblingVPCCIDRUses,
+		XRaySiblings:  siblingXRayIndexingUses,
 	}
 }
 
@@ -252,7 +257,8 @@ func webWarningInputs(env string) warningInputs {
 }
 
 // envLevelWarnings are the warnings computed from the raw env map before
-// preprocessing: region drift and VPC range overlap with a sibling. Reads
+// preprocessing: region drift, VPC range overlap with a sibling, and an X-Ray
+// indexing percentage a sibling in the same account sets differently. Reads
 // only the map and the inputs; prints nothing.
 func envLevelWarnings(envMap map[string]interface{}, in warningInputs) []ConfigWarning {
 	var out []ConfigWarning
@@ -264,14 +270,25 @@ func envLevelWarnings(envMap map[string]interface{}, in warningInputs) []ConfigW
 		}
 	}
 
-	if in.Siblings != nil && in.EnvFile != "" {
+	if in.EnvFile != "" {
 		self := in.EnvName
 		if self == "" {
 			self = strings.TrimSuffix(filepath.Base(in.EnvFile), filepath.Ext(in.EnvFile))
 		}
-		if siblings, err := in.Siblings(filepath.Dir(in.EnvFile), self); err == nil {
-			if w, ok := vpcCIDROverlapWarning(self, envMap, siblings); ok {
-				out = append(out, w)
+		dir := filepath.Dir(in.EnvFile)
+		if in.Siblings != nil {
+			if siblings, err := in.Siblings(dir, self); err == nil {
+				if w, ok := vpcCIDROverlapWarning(self, envMap, siblings); ok {
+					out = append(out, w)
+				}
+			}
+		}
+		// Only read the siblings when this environment uses X-Ray at all.
+		if in.XRaySiblings != nil && envUsesXRay(envMap) {
+			if siblings, err := in.XRaySiblings(dir, self); err == nil {
+				if w, ok := xrayIndexingConflictWarning(envMap, siblings); ok {
+					out = append(out, w)
+				}
 			}
 		}
 	}
