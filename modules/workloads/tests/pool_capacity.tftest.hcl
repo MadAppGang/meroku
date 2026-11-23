@@ -113,13 +113,13 @@ run "each_pool_with_a_minimum_gets_a_capacity_wait" {
   }
 }
 
-# ECS turns AZ rebalancing on for new services by default, and refuses
-# UpdateService on a service that has it with any placement strategy other than
-# spread by availability zone: "Availability Zone Rebalancing only supports
-# availability zone spread as task placement strategy". Pool workloads binpack
-# on memory, so they must turn it off explicitly — the backend and services
-# alike — or moving a deployed service onto a pool fails mid-apply.
-run "pool_workloads_turn_off_az_rebalancing" {
+# A workload on a pool places tasks with two ordered strategies: spread across
+# availability zones first, then binpack on memory within each zone. ECS applies
+# placement strategies in list order and allows AZ rebalancing only when AZ
+# spread is the first strategy, so the order matters, and with it in place
+# availability_zone_rebalancing is ENABLED. The backend and a named service
+# alike.
+run "pool_workloads_spread_across_azs_then_binpack" {
   command = plan
 
   variables {
@@ -132,18 +132,71 @@ run "pool_workloads_turn_off_az_rebalancing" {
   }
 
   assert {
-    condition     = aws_ecs_service.services["bridge"].availability_zone_rebalancing == "DISABLED"
-    error_message = "A service on a pool must set availability_zone_rebalancing = \"DISABLED\"; it binpacks, and ECS refuses AZ rebalancing with any strategy but AZ spread."
+    condition     = length(aws_ecs_service.backend.ordered_placement_strategy) == 2
+    error_message = "The backend on a pool must have exactly two ordered placement strategies (AZ spread, then binpack on memory). Got: ${jsonencode(aws_ecs_service.backend.ordered_placement_strategy)}"
   }
 
   assert {
-    condition     = aws_ecs_service.backend.availability_zone_rebalancing == "DISABLED"
-    error_message = "The backend on a pool must set availability_zone_rebalancing = \"DISABLED\" for the same reason."
+    condition     = aws_ecs_service.backend.ordered_placement_strategy[0].type == "spread" && aws_ecs_service.backend.ordered_placement_strategy[0].field == "attribute:ecs.availability-zone"
+    error_message = "The backend's first placement strategy must be spread on attribute:ecs.availability-zone; ECS applies strategies in order and allows AZ rebalancing only with AZ spread first."
   }
 
   assert {
-    condition     = one(aws_ecs_service.services["bridge"].ordered_placement_strategy).type == "binpack"
-    error_message = "Pool services still binpack on memory; only AZ rebalancing changes."
+    condition     = aws_ecs_service.backend.ordered_placement_strategy[1].type == "binpack" && aws_ecs_service.backend.ordered_placement_strategy[1].field == "memory"
+    error_message = "The backend's second placement strategy must be binpack on memory, so tasks pack onto instances within each zone."
+  }
+
+  assert {
+    condition     = aws_ecs_service.backend.availability_zone_rebalancing == "ENABLED"
+    error_message = "The backend on a pool must set availability_zone_rebalancing = \"ENABLED\" so ECS moves tasks back across zones when they become uneven. Got: ${jsonencode(aws_ecs_service.backend.availability_zone_rebalancing)}"
+  }
+
+  assert {
+    condition     = length(aws_ecs_service.services["bridge"].ordered_placement_strategy) == 2
+    error_message = "A service on a pool must have exactly two ordered placement strategies (AZ spread, then binpack on memory). Got: ${jsonencode(aws_ecs_service.services["bridge"].ordered_placement_strategy)}"
+  }
+
+  assert {
+    condition     = aws_ecs_service.services["bridge"].ordered_placement_strategy[0].type == "spread" && aws_ecs_service.services["bridge"].ordered_placement_strategy[0].field == "attribute:ecs.availability-zone"
+    error_message = "A pool service's first placement strategy must be spread on attribute:ecs.availability-zone; ECS applies strategies in order and allows AZ rebalancing only with AZ spread first."
+  }
+
+  assert {
+    condition     = aws_ecs_service.services["bridge"].ordered_placement_strategy[1].type == "binpack" && aws_ecs_service.services["bridge"].ordered_placement_strategy[1].field == "memory"
+    error_message = "A pool service's second placement strategy must be binpack on memory, so tasks pack onto instances within each zone."
+  }
+
+  assert {
+    condition     = aws_ecs_service.services["bridge"].availability_zone_rebalancing == "ENABLED"
+    error_message = "A service on a pool must set availability_zone_rebalancing = \"ENABLED\" so ECS moves tasks back across zones when they become uneven. Got: ${jsonencode(aws_ecs_service.services["bridge"].availability_zone_rebalancing)}"
+  }
+}
+
+# Fargate places tasks itself: a Fargate workload has no ordered placement
+# strategy and leaves availability_zone_rebalancing unset (null). The backend
+# defaults to Fargate, and a service without runtime or compute_pool runs on
+# Fargate.
+# availability_zone_rebalancing is not asserted: the attribute is Optional and
+# Computed, so an unset value is unknown at plan and cannot be compared.
+run "fargate_workloads_have_no_placement_strategy" {
+  command = plan
+
+  variables {
+    services = [{ name = "web", docker_image = "public.ecr.aws/nginx/nginx:stable" }]
+  }
+
+  override_resource {
+    target = null_resource.build_ci_lambda
+  }
+
+  assert {
+    condition     = length(aws_ecs_service.backend.ordered_placement_strategy) == 0
+    error_message = "The Fargate backend must have no ordered placement strategy. Got: ${jsonencode(aws_ecs_service.backend.ordered_placement_strategy)}"
+  }
+
+  assert {
+    condition     = length(aws_ecs_service.services["web"].ordered_placement_strategy) == 0
+    error_message = "A Fargate service must have no ordered placement strategy. Got: ${jsonencode(aws_ecs_service.services["web"].ordered_placement_strategy)}"
   }
 }
 

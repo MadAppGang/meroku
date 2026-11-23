@@ -205,12 +205,14 @@ gateway. Egress costs nothing extra and needs no VPC change.
 That last claim is the premise the whole default rests on, so it was tested rather than reasoned
 about. On the live deploy a bridge-mode task pulled its container image from a public registry and
 started; under `awsvpc` in this NAT-less VPC the same pull would have hung and the task would have
-died in `PROVISIONING`. The rest of the run matched:
+died in `PROVISIONING`. The rest of the run matched. The run predates the AZ spread (see
+[Placement](#placement-spread-across-azs-then-bin-pack)), so its two tasks were bin-packed on one
+instance:
 
 ```
 containerPort 80  ->  hostPort 32769      # from hostPort = 0
 target group      ->  type: instance, targets healthy on 32769 and 32768
-placement         ->  two tasks bin-packed on one instance
+placement         ->  two tasks bin-packed on one instance   # before the AZ spread
 service discovery ->  SRV-only registration for both services
 ```
 
@@ -284,14 +286,56 @@ Two related edits deserve the same caution:
 Read the plan before applying either. If `aws_ecs_service` shows `# forces replacement`, you are in
 the downtime case regardless of what any UI copy says.
 
-### AZ rebalancing is off on pool workloads
+### Placement: spread across AZs, then bin-pack
 
-ECS turns Availability Zone rebalancing on for new services by default, and allows it only with
-the placement strategy "spread by availability zone". Pool workloads bin-pack on memory, which
-fills as few instances as possible and is the point of paying per instance. So the backend and
-every service on a pool set `availability_zone_rebalancing = "DISABLED"`. Fargate workloads leave
-it to AWS, as before.
+The backend and every service on a pool get two placement strategies, in this order:
 
+```hcl
+ordered_placement_strategy {
+  type  = "spread"
+  field = "attribute:ecs.availability-zone"
+}
+ordered_placement_strategy {
+  type  = "binpack"
+  field = "memory"
+}
+availability_zone_rebalancing = "ENABLED"
+```
+
+ECS applies the strategies in list order. Two tasks of one service on one instance are in one
+Availability Zone, and an outage of that zone stops both, so running two tasks buys nothing. Spread
+by AZ comes first so the tasks land in different zones. Binpack on memory comes second and fills the
+instances inside each zone before using another, which keeps the instance count, and the hourly
+bill, down. This is the default for every pool workload; there is no setting to turn it off.
+
+On EC2 the spread is best effort. ECS places tasks only on instances that are already registered
+and never launches one to satisfy the spread. If the only instance with room is in a zone that
+already has a task, the task goes there; capacity provider managed scaling adds instances when
+tasks cannot be placed at all.
+
+AZ rebalancing is `ENABLED` on pool workloads. It moves tasks back into an even spread after a zone
+outage or a scale-in. The ECS developer guide
+([Balancing an Amazon ECS service across Availability Zones](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/service-rebalancing.html))
+states "A service is eligible when Availability Zone spread is the first task placement strategy",
+and its own example is spread on `attribute:ecs.availability-zone` followed by binpack on `memory`.
+It supports EC2 capacity providers, works best effort there, and cannot launch instances. The cases
+it does not support — daemon services, the `EXTERNAL` launch type, `maximumPercent` of 100, Classic
+Load Balancers, an AZ placement constraint — do not occur in meroku (`deployment_maximum_percent` is
+unset, so it is 200).
+
+Fargate workloads are unchanged: no placement strategy, and `availability_zone_rebalancing` is null,
+which leaves it to AWS.
+
+**Updating a deployed pool service.** Both changes are in-place updates of `aws_ecs_service`. The
+provider does not mark `ordered_placement_strategy` ForceNew and sends it in `UpdateService`
+([`aws_ecs_service`](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ecs_service):
+"Updates to this configuration will take effect next task deployment unless `force_new_deployment`
+is enabled"). [`UpdateService`](https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_UpdateService.html)
+documents that changing `placementStrategy` or `availabilityZoneRebalancing` does not start a new
+service deployment. Running tasks move at the next deployment, or when rebalancing moves them.
+
+**History.** When pool workloads bin-packed on memory alone, AZ rebalancing had to be `DISABLED`:
+ECS turns it on for new services by default and refuses it unless AZ spread is the first strategy.
 Before v5.4.3, moving a deployed service onto a pool failed at `UpdateService` with:
 
 ```
@@ -715,7 +759,8 @@ from watching them happen. Treat them as the places to keep an eye on:
    `aws_ecs_service` shows `# forces replacement`, treat it as the downtime case.
 
 Everything else — capacity provider registration, instance join, task placement, bridge port
-mapping, bridge egress, instance target groups, SRV service discovery, bin-packing, HTTPS ingress
+mapping, bridge egress, instance target groups, SRV service discovery, bin-packing (before the AZ
+spread was added), HTTPS ingress
 end to end, and the teardown procedure above — was observed on a live account.
 
 ---
