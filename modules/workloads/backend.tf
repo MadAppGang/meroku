@@ -144,9 +144,17 @@ resource "aws_ecs_service" "backend" {
   # value is null and the service keeps whatever AWS holds (0 by default).
   health_check_grace_period_seconds = var.enable_alb && var.backend_health_check_grace_period > 0 ? var.backend_health_check_grace_period : null
 
-  # EC2 only, so the Fargate plan is unchanged. AWS: "the binpack strategy is the
-  # most efficient strategy in terms of capacity" — which is the entire point of
-  # paying for instances by the hour instead of by the task.
+  # EC2 only, so the Fargate plan is unchanged. Spread across Availability Zones
+  # first, then binpack on memory within each zone, and AZ rebalancing on; the
+  # reasons and the update behaviour are in the same attributes in services.tf.
+  dynamic "ordered_placement_strategy" {
+    for_each = local.backend_pool == null ? [] : [1]
+    content {
+      type  = "spread"
+      field = "attribute:ecs.availability-zone"
+    }
+  }
+
   dynamic "ordered_placement_strategy" {
     for_each = local.backend_pool == null ? [] : [1]
     content {
@@ -155,9 +163,9 @@ resource "aws_ecs_service" "backend" {
     }
   }
 
-  # Binpack and AZ rebalancing cannot be combined; see the same attribute in
-  # services.tf. null on Fargate leaves it to AWS, as before.
-  availability_zone_rebalancing = local.backend_pool == null ? null : "DISABLED"
+  # Allowed because AZ spread is the first strategy above. null on Fargate
+  # leaves it to AWS, as before.
+  availability_zone_rebalancing = local.backend_pool == null ? null : "ENABLED"
 
   # Registered with Cloud Map in BOTH ingress modes. This is deliberately NOT gated on
   # enable_alb: AWS rejects removing service_registries from an existing service, so toggling

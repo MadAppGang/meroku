@@ -371,7 +371,23 @@ resource "aws_ecs_service" "services" {
     }
   }
 
-  # EC2 only, so the Fargate plan is unchanged.
+  # EC2 only, so the Fargate plan is unchanged. ECS applies the strategies in
+  # list order. Two tasks on one instance sit in one AZ, and losing that AZ
+  # loses both, so the first strategy spreads tasks across Availability Zones.
+  # The second binpacks on memory within each zone, which keeps the number of
+  # instances down. On EC2 the spread is best effort: ECS places tasks only on
+  # instances that already exist and never launches one to satisfy it.
+  # Changing the strategies is an in-place UpdateService call (the provider
+  # does not mark ordered_placement_strategy ForceNew) and does not start a new
+  # deployment; running tasks move at the next deployment.
+  dynamic "ordered_placement_strategy" {
+    for_each = local.service_pools[each.key] == null ? [] : [1]
+    content {
+      type  = "spread"
+      field = "attribute:ecs.availability-zone"
+    }
+  }
+
   dynamic "ordered_placement_strategy" {
     for_each = local.service_pools[each.key] == null ? [] : [1]
     content {
@@ -380,12 +396,14 @@ resource "aws_ecs_service" "services" {
     }
   }
 
-  # ECS turns AZ rebalancing on for new services by default and refuses it with
-  # any placement strategy but spread by availability zone ("Availability Zone
-  # Rebalancing only supports availability zone spread as task placement
-  # strategy"), so a pool service, which binpacks, turns it off. null on Fargate
-  # leaves the attribute to AWS, as before.
-  availability_zone_rebalancing = local.service_pools[each.key] == null ? null : "DISABLED"
+  # AZ rebalancing moves tasks back into an even spread after an AZ outage or a
+  # scale-in. ECS allows it only when AZ spread comes first ("A service is
+  # eligible when Availability Zone spread is the first task placement
+  # strategy"), which the strategies above satisfy. On EC2 it is best effort
+  # and never launches instances. Changing it is an in-place UpdateService
+  # call that does not start a new deployment. null on Fargate leaves the
+  # attribute to AWS, as before.
+  availability_zone_rebalancing = local.service_pools[each.key] == null ? null : "ENABLED"
 
   service_registries {
     registry_arn   = aws_service_discovery_service.services[each.key].arn
