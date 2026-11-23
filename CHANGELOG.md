@@ -1,5 +1,29 @@
 # Changelog
 
+## v6.11.0
+
+### Added
+- X-Ray Transaction Search is on for every environment that uses X-Ray
+  (`workload.xray_enabled` or any `services[].xray_enabled`). meroku creates a per-env
+  CloudWatch Logs resource policy for `xray.amazonaws.com` on `aws/spans` and
+  `/aws/application-signals/data`, sets the account and region's trace segment destination
+  to `CloudWatchLogs` and sets the `Default` indexing rule. The X-Ray OTLP endpoint
+  (`https://xray.<region>.amazonaws.com/v1/traces`) accepts spans only with it on.
+- Every task role with X-Ray on gets `xray:PutSpans`, `xray:PutSpansForIndexing` and
+  `xray:PutTraceSegments` (statement `XRaySpans`). The daemon and ADOT sidecars are unchanged.
+- Optional top-level `xray.indexing_percentage` (0–100, default 1, the share X-Ray indexes
+  free). `meroku generate` refuses an out-of-range value or an unknown key, and the
+  `xray_indexing_conflict` warning names another env in the same account and region that
+  sets a different value.
+
+### Changed
+- hashicorp/aws is now `~> 6.47`, the first release with `aws_xray_trace_segment_destination`
+  and `aws_xray_indexing_rule`. meroku runs `terraform init -upgrade` when an env's lock is
+  behind the constraint's minor, not only its major.
+- On the first apply with X-Ray on, the account and region store spans in CloudWatch Logs
+  (`aws/spans`) and bill them as log ingestion. Destroying the env does not switch it back;
+  see `ai_docs/XRAY_TRANSACTION_SEARCH.md`.
+
 ## v6.10.0
 
 ### Changed
