@@ -373,6 +373,15 @@ jobs:
           terraform test
         working-directory: modules/valkey
 
+      # Database placement, under mock_provider: the subnet group for each VPC
+      # shape and engine, and the refusal to move an existing database.
+      - name: Test the postgres module
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate
+          terraform test
+        working-directory: modules/postgres
+
       # Every module that consumes modules/naming. Validation was scoped to
       # modules/workloads when it was the only module with a module block; a
       # naming.tf that references a request key nothing declares is a plan-time

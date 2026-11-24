@@ -358,6 +358,11 @@ module "postgres" {
   env = "{{env}}"
   vpc_id     = local.vpc_id
   subnet_ids = local.subnet_ids
+  default_vpc = {{#if use_default_vpc}}true{{else}}false{{/if}}
+  {{#if postgres.private_subnets}}
+  private_subnets = true
+  private_subnet_ids = module.vpc.private_subnet_ids
+  {{/if}}
   db_name = "{{postgres.dbname}}"
   username = "{{postgres.username}}"
   public_access = {{ postgres.public_access }}

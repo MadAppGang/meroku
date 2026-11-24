@@ -11,6 +11,24 @@ variable "subnet_ids" {
   type = list(string)
 }
 
+variable "default_vpc" {
+  type        = bool
+  default     = false
+  description = "The environment runs in the AWS default VPC. A standard instance there uses the account's default subnet group."
+}
+
+variable "private_subnets" {
+  type        = bool
+  default     = false
+  description = "Place the database in private_subnet_ids. Fixed when the database is created; needs a NAT egress strategy."
+}
+
+variable "private_subnet_ids" {
+  type        = list(string)
+  default     = []
+  description = "The VPC's private subnets, used when private_subnets is true"
+}
+
 variable "project" {
   type = string
 }

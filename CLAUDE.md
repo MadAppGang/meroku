@@ -176,6 +176,12 @@ Key decisions:
   including every ECR image layer, off the NAT.
 - Anything AWS will not give a public IP (CodeBuild or Lambda attached to the VPC) has internet
   access only in a NAT environment, from the private subnets.
+- **Database placement** (`modules/postgres`): in an own VPC the database uses a subnet group in
+  the env's public subnets; in the default VPC a standard instance has no subnet group of its own.
+  `postgres.private_subnets: true` puts a new database in the private subnets and needs a NAT
+  `egress_strategy` and `public_access: false` (`validatePostgresPlacementMap`). Placement is fixed
+  at creation, because AWS cannot move a database between subnet groups in one VPC; the plan
+  refuses a change.
 
 Configuration options:
 - `use_default_vpc`: `true` (use AWS default VPC) or `false` (create custom VPC)

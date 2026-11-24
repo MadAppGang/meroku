@@ -576,6 +576,77 @@ func validateEgressStrategyMap(envMap map[string]interface{}) error {
 	return nil
 }
 
+// validatePostgresPlacementMap validates postgres.private_subnets, which places
+// a new database in the VPC's private subnets. Those exist only in an own VPC
+// with a NAT egress strategy, and a public address there is unreachable.
+// Ignored when postgres is not enabled.
+func validatePostgresPlacementMap(envMap map[string]interface{}) error {
+	postgres, ok := yamlSubMap(envMap, "postgres")
+	if !ok {
+		return nil
+	}
+	if enabled, _ := postgres["enabled"].(bool); !enabled {
+		return nil
+	}
+	raw, present := postgres["private_subnets"]
+	if !present || raw == nil {
+		return nil // absent means public subnets
+	}
+	private, ok := raw.(bool)
+	if !ok {
+		return fmt.Errorf("postgres.private_subnets must be true or false, got %v (%T).", raw, raw)
+	}
+	if !private {
+		return nil
+	}
+
+	const newDatabaseOnly = "\n\npostgres.private_subnets is for a database that is not created yet: an existing\n" +
+		"database stays in the subnets it was created in."
+
+	if yamlTrue(envMap["use_default_vpc"]) {
+		return fmt.Errorf("postgres.private_subnets is true but use_default_vpc is true.\n\n" +
+			"The AWS default VPC has no private subnets to put the database in.\n\n" +
+			"Either remove postgres.private_subnets, or set use_default_vpc: false and\n" +
+			"egress_strategy: nat_gateway in a new environment." + newDatabaseOnly)
+	}
+
+	strategy, _ := envMap["egress_strategy"].(string)
+	switch EgressStrategy(strategy) {
+	case EgressNATGateway, EgressNATGatewayHA:
+	default:
+		if strategy == "" {
+			strategy = string(EgressPublicIP)
+		}
+		return fmt.Errorf("postgres.private_subnets is true but egress_strategy is %q.\n\n"+
+			"Private subnets exist only with a NAT egress strategy.\n\n"+
+			"Either set egress_strategy: nat_gateway (or nat_gateway_ha), or remove\n"+
+			"postgres.private_subnets. If the database is already in private subnets, keep\n"+
+			"the NAT egress strategy."+newDatabaseOnly, strategy)
+	}
+
+	if yamlTrue(postgres["public_access"]) {
+		return fmt.Errorf("postgres.private_subnets is true but postgres.public_access is true.\n\n" +
+			"A database in a private subnet cannot be reached from the internet, even with a\n" +
+			"public address.\n\n" +
+			"Either set postgres.public_access: false, or remove postgres.private_subnets." + newDatabaseOnly)
+	}
+
+	return nil
+}
+
+// yamlTrue reports whether a YAML value is true, or a quoted "true", which the
+// template renders as true.
+func yamlTrue(value interface{}) bool {
+	switch v := value.(type) {
+	case bool:
+		return v
+	case string:
+		return strings.EqualFold(v, "true")
+	default:
+		return false
+	}
+}
+
 // validateXRayMap validates the top-level xray block: optional, a map whose
 // only key is indexing_percentage, a number from 0 to 100. The value renders
 // into the account and region's X-Ray indexing rule, so a typo in the key
