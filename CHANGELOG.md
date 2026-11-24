@@ -1,5 +1,29 @@
 # Changelog
 
+## v6.12.0
+
+### Added
+- Optional `postgres.private_subnets: true` puts a database that does not exist yet (standard
+  RDS or Aurora) in the VPC's private subnets. It needs `use_default_vpc: false`, a NAT
+  `egress_strategy` and `public_access: false`; `meroku generate` refuses it otherwise. There
+  is no web UI control yet: set it in the YAML. Without the key, placement does not depend on
+  `egress_strategy`.
+
+### Fixed
+- A standard (non-Aurora) RDS instance in an environment with its own VPC
+  (`use_default_vpc: false`) is created in that VPC, through the DB subnet group
+  `<project>-postgres-subnet-<env>`. Before, it had no subnet group, AWS placed it in the
+  account's default VPC, and the create failed because its security group is in the
+  environment's VPC.
+
+### Changed
+- A database's placement is fixed when it is created. The plan refuses a change of
+  `postgres.private_subnets` on an existing database, and a switch of an existing own-VPC
+  standard instance to `use_default_vpc: true`. A standard instance in the default VPC and an
+  Aurora cluster in the public subnets plan no change.
+- The postgres module's `password` output is now sensitive. Custom Terraform that re-exports
+  `module.postgres.password` as an output must mark that output `sensitive = true`.
+
 ## v6.11.0
 
 ### Added
