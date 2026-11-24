@@ -475,6 +475,12 @@ func validateConfigBeforePreprocess(env string, envMap map[string]interface{}) e
 		return err
 	}
 
+	// Checked before anything below reads use_default_vpc: a non-boolean value
+	// renders differently from how the Go checks read it.
+	if err := validateUseDefaultVPCMap(envMap); err != nil {
+		return err
+	}
+
 	// A NAT egress strategy on the default VPC generates a module call with an
 	// empty subnet list: it plans clean and fails during the apply.
 	if err := validateEgressStrategyMap(envMap); err != nil {

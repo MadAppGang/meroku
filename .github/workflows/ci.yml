@@ -85,8 +85,9 @@ jobs:
 
       # -count=1 defeats the test result cache; -race because the Lambda's
       # clients are built once at cold start and shared across invocations.
+      # The app package can take more than Go's default 10 minutes with -race.
       - name: Test
-        run: go test -race ./... -count=1
+        run: go test -race ./... -count=1 -timeout 30m
 
   terraform:
     name: Terraform (modules/workloads)
