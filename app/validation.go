@@ -519,6 +519,23 @@ func validateALBConfigMap(envMap map[string]interface{}) error {
 			"to serve this environment through API Gateway.")
 }
 
+// validateUseDefaultVPCMap refuses a use_default_vpc that is not a boolean.
+//
+// The template tests the raw value for truthiness, where any non-empty string
+// is true, so a quoted "false" renders the default VPC. The Go checks assert a
+// bool and would read the same value differently.
+func validateUseDefaultVPCMap(envMap map[string]interface{}) error {
+	raw, present := envMap["use_default_vpc"]
+	if !present || raw == nil {
+		return nil
+	}
+	if _, ok := raw.(bool); !ok {
+		return fmt.Errorf("use_default_vpc must be a boolean, got %#v (%T).\n\n"+
+			"Write true or false without quotes.", raw, raw)
+	}
+	return nil
+}
+
 // validateEgressStrategyMap validates egress_strategy on the raw map handed to
 // the template engine.
 //

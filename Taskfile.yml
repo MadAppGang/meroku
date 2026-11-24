@@ -190,7 +190,8 @@ tasks:
       - go build ./...
       - go vet ./...
       - test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
-      - go test -race ./... -count=1
+      # The app package can take more than Go's default 10 minutes with -race.
+      - go test -race ./... -count=1 -timeout 30m
 
   # The Terraform checks of .github/workflows/ci.yml, in its order: the
   # `terraform`, `terraform-neon` and `boundary-golden` jobs. A step added
