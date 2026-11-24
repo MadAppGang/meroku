@@ -726,6 +726,9 @@ type Postgres struct {
 	Aurora        bool    `yaml:"aurora"`
 	MinCapacity   float64 `yaml:"min_capacity"`
 	MaxCapacity   float64 `yaml:"max_capacity"`
+	// PrivateSubnets places a new database in the VPC's private subnets (NAT
+	// environments only). See validatePostgresPlacementMap.
+	PrivateSubnets bool `yaml:"private_subnets,omitempty"`
 	// RDS-specific fields (when aurora is false)
 	InstanceClass                    string `yaml:"instance_class"`
 	AllocatedStorage                 int    `yaml:"allocated_storage"`

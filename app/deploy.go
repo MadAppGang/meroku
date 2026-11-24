@@ -481,6 +481,11 @@ func validateConfigBeforePreprocess(env string, envMap map[string]interface{}) e
 		return err
 	}
 
+	// A database can be placed in private subnets only where they exist.
+	if err := validatePostgresPlacementMap(envMap); err != nil {
+		return err
+	}
+
 	// The X-Ray indexing percentage is one rule per account and region; a
 	// misspelt key or out-of-range value is refused rather than rendered.
 	if err := validateXRayMap(envMap); err != nil {

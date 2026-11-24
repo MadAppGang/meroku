@@ -164,6 +164,9 @@ postgres:
   username: <string>                         # Master username (default: "postgres")
   public_access: <boolean>                   # Allow public internet access
   engine_version: <string>                   # PostgreSQL version (e.g., "14", "15", "16.x")
+  private_subnets: <boolean>                 # Optional (default: false). Put a NEW database in private subnets.
+                                             # Needs use_default_vpc: false, a NAT egress_strategy and
+                                             # public_access: false. Fixed once the database is created.
 
 # ===================================
 # AUTHENTICATION CONFIGURATION

@@ -15,7 +15,8 @@ output "user" {
 }
 
 output "password" {
-  value = aws_ssm_parameter.postgres_password.value
+  value     = aws_ssm_parameter.postgres_password.value
+  sensitive = true
 }
 
 output "db_name" {

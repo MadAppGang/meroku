@@ -214,7 +214,7 @@ tasks:
       - cd modules/ses && sh tests/lifecycle/run.sh
       - for: [github_policy, compute_pool_check, env_secret_check, event_bridge_task, ecs_task, github_runners, data_bucket]
         cmd: terraform -chdir=modules/{{.ITEM}} init -backend=false -input=false && terraform -chdir=modules/{{.ITEM}} test
-      - for: [vaults, kms_keys]
+      - for: [vaults, kms_keys, postgres]
         cmd: terraform -chdir=modules/{{.ITEM}} init -backend=false -input=false && terraform -chdir=modules/{{.ITEM}} validate && terraform -chdir=modules/{{.ITEM}} test
       - terraform -chdir=modules/events init -backend=false -input=false && terraform -chdir=modules/events test
       - terraform -chdir=modules/event_bus_enhanced init -backend=false -input=false && terraform -chdir=modules/event_bus_enhanced validate && terraform -chdir=modules/event_bus_enhanced test
