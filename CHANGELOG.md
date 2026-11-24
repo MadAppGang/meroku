@@ -1,5 +1,18 @@
 # Changelog
 
+## v6.12.1
+
+### Fixed
+- `meroku generate` refuses a `use_default_vpc` that is not a boolean. A quoted `"false"`
+  generated without an error and rendered the default VPC. A quoted `"true"` is refused too:
+  write `true` or `false` without quotes.
+- `_bridge.tf` exposes the custom VPC outputs when `use_default_vpc` is absent or null. The
+  generated Terraform already builds the custom VPC in that case.
+
+### Removed
+- The postgres module's temporary `debug_username_*` outputs. Custom Terraform that reads them
+  must drop the reference.
+
 ## v6.12.0
 
 ### Added
