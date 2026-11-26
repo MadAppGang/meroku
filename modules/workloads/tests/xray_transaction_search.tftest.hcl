@@ -377,8 +377,7 @@ run "indexing_percentage_101_is_refused" {
 # Use fresh mock state so earlier task definitions cannot supply a case's containers.
 # REQ-1, REQ-2, REQ-3
 run "xray_spans_alone_turns_on_transaction_search" {
-  command   = apply
-  state_key = "xray_spans_alone_turns_on_transaction_search"
+  command = apply
 
   override_resource {
     target = null_resource.build_ci_lambda
@@ -467,8 +466,7 @@ run "xray_spans_alone_turns_on_transaction_search" {
 
 # REQ-1, REQ-2, REQ-3
 run "service_xray_spans_alone" {
-  command   = apply
-  state_key = "service_xray_spans_alone"
+  command = apply
 
   override_resource {
     target = null_resource.build_ci_lambda
@@ -522,8 +520,7 @@ run "service_xray_spans_alone" {
 
 # REQ-1, REQ-2, REQ-3
 run "backend_xray_spans_without_services" {
-  command   = apply
-  state_key = "backend_xray_spans_without_services"
+  command = apply
 
   override_resource {
     target = null_resource.build_ci_lambda
@@ -575,8 +572,7 @@ run "backend_xray_spans_without_services" {
 
 # REQ-1, REQ-2
 run "xray_spans_with_transaction_search_false" {
-  command   = apply
-  state_key = "xray_spans_with_transaction_search_false"
+  command = apply
 
   override_resource {
     target = null_resource.build_ci_lambda
@@ -624,8 +620,7 @@ run "xray_spans_with_transaction_search_false" {
 
 # REQ-1, REQ-2, REQ-3
 run "transaction_search_true_alone" {
-  command   = apply
-  state_key = "transaction_search_true_alone"
+  command = apply
 
   override_resource {
     target = null_resource.build_ci_lambda
@@ -677,8 +672,7 @@ run "transaction_search_true_alone" {
 
 # REQ-1, REQ-2
 run "transaction_search_false_alone" {
-  command   = apply
-  state_key = "transaction_search_false_alone"
+  command = apply
 
   override_resource {
     target = null_resource.build_ci_lambda
@@ -725,8 +719,7 @@ run "transaction_search_false_alone" {
 
 # REQ-1, REQ-2, REQ-3, REQ-5
 run "xray_enabled_wins_over_false" {
-  command   = apply
-  state_key = "xray_enabled_wins_over_false"
+  command = apply
 
   override_resource {
     target = null_resource.build_ci_lambda
@@ -767,8 +760,7 @@ run "xray_enabled_wins_over_false" {
 
 # REQ-1, REQ-2, REQ-3, REQ-5
 run "transaction_search_true_with_xray_enabled" {
-  command   = apply
-  state_key = "transaction_search_true_with_xray_enabled"
+  command = apply
 
   override_resource {
     target = null_resource.build_ci_lambda
@@ -809,8 +801,7 @@ run "transaction_search_true_with_xray_enabled" {
 
 # REQ-5
 run "legacy_sidecar_policy_order" {
-  command   = apply
-  state_key = "legacy_sidecar_policy_order"
+  command = apply
 
   override_resource {
     target = null_resource.build_ci_lambda
@@ -859,8 +850,7 @@ run "legacy_sidecar_policy_order" {
 
 # REQ-2, REQ-5
 run "xray_enabled_and_spans_one_statement" {
-  command   = apply
-  state_key = "xray_enabled_and_spans_one_statement"
+  command = apply
 
   override_resource {
     target = null_resource.build_ci_lambda
