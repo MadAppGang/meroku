@@ -1,4 +1,4 @@
-# X-Ray Transaction Search for every environment that uses X-Ray.
+# X-Ray Transaction Search for every environment that sends spans to X-Ray.
 #
 # Services that send OpenTelemetry traces over OTLP post them to
 # https://xray.<region>.amazonaws.com/v1/traces. That endpoint accepts spans
@@ -7,12 +7,30 @@
 # and /aws/application-signals/data log groups. Without it the endpoint rejects
 # every span, whatever the task role allows.
 #
+# What turns it on (local.transaction_search_on):
+#
+#   - xray_enabled on the backend or a service (the sidecar). Always: it has
+#     turned Transaction Search on since it was added, and
+#     var.xray_transaction_search = false does not override it.
+#   - xray_spans on the backend or a service (the grant without a sidecar),
+#     unless var.xray_transaction_search is false.
+#   - var.xray_transaction_search = true, with no workload asking: a task
+#     granted spans through its own policy, for example.
+#
+# var.xray_transaction_search = false is for an environment whose only X-Ray
+# use is xray_spans, when a sibling environment, the console or another stack
+# already owns Transaction Search in the account and region. This environment
+# then creates none of the three resources, its log resource policy included,
+# so the owner must keep a policy of its own. app/xray_transaction_search.go
+# holds the same rule as envUsesTransactionSearch.
+#
 # Both X-Ray settings are one per account and region, not per environment:
 #
 #   - aws_xray_trace_segment_destination and aws_xray_indexing_rule "Default"
 #     already exist in every account. Creating them updates the existing
 #     setting; deleting them changes nothing in AWS. Removing X-Ray from an
-#     environment, or destroying it, therefore leaves Transaction Search on.
+#     environment, setting var.xray_transaction_search = false, or destroying
+#     the environment therefore leaves Transaction Search on.
 #     Turning it off is a console or CLI change
 #     (`aws xray update-trace-segment-destination --destination XRay`).
 #   - Two environments in one account and region both hold these resources.
@@ -33,11 +51,18 @@
 # hashicorp/aws 6.47.0 (versions.tf).
 
 locals {
+  # The sidecar: the ADOT collector on the backend, the X-Ray daemon on a service.
   xray_in_use = var.xray_enabled || anytrue([for s in var.services : s.xray_enabled])
+  # The OTLP span grant without a sidecar.
+  xray_spans_in_use = var.backend_xray_spans || anytrue([for s in var.services : s.xray_spans])
+
+  transaction_search_on = local.xray_in_use || (
+    var.xray_transaction_search != null ? var.xray_transaction_search : local.xray_spans_in_use
+  )
 }
 
 resource "aws_cloudwatch_log_resource_policy" "xray_transaction_search" {
-  count = local.xray_in_use ? 1 : 0
+  count = local.transaction_search_on ? 1 : 0
 
   policy_name = "${var.project}-${var.env}-xray-transaction-search"
   policy_document = jsonencode({
@@ -66,7 +91,7 @@ resource "aws_cloudwatch_log_resource_policy" "xray_transaction_search" {
 }
 
 resource "aws_xray_trace_segment_destination" "transaction_search" {
-  count = local.xray_in_use ? 1 : 0
+  count = local.transaction_search_on ? 1 : 0
 
   destination = "CloudWatchLogs"
 
@@ -75,7 +100,7 @@ resource "aws_xray_trace_segment_destination" "transaction_search" {
 }
 
 resource "aws_xray_indexing_rule" "default" {
-  count = local.xray_in_use ? 1 : 0
+  count = local.transaction_search_on ? 1 : 0
 
   name = "Default"
 

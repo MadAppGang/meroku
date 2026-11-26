@@ -493,7 +493,9 @@ func validateConfigBeforePreprocess(env string, envMap map[string]interface{}) e
 	}
 
 	// The X-Ray indexing percentage is one rule per account and region; a
-	// misspelt key or out-of-range value is refused rather than rendered.
+	// misspelt key, an out-of-range value, a non-boolean xray_spans or
+	// transaction_search, or transaction_search: false beside xray_enabled is
+	// refused rather than rendered.
 	if err := validateXRayMap(envMap); err != nil {
 		return err
 	}

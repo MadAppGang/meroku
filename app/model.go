@@ -103,14 +103,22 @@ type Env struct {
 	// ai_docs/KMS_KEYS.md.
 	KMSKeys []KMSKey `yaml:"kms_keys,omitempty"`
 	// XRay is the account and region's X-Ray Transaction Search setting for an
-	// environment that uses X-Ray. A pointer so an environment without the
+	// environment that turns it on. A pointer so an environment without the
 	// block saves without one. See ai_docs/XRAY_TRANSACTION_SEARCH.md.
 	XRay *XRay `yaml:"xray,omitempty"`
 }
 
-// XRay is the optional top-level xray block. IndexingPercentage nil means 1,
-// the share X-Ray indexes free.
+// XRay is the optional top-level xray block.
+//
+// TransactionSearch nil derives it: on when a workload has xray_enabled or
+// xray_spans. true turns it on with no workload asking; false leaves it to
+// whoever owns it in the account and region, and is refused while a workload
+// has xray_enabled. A pointer because false and absent mean different things,
+// so an explicit false has to survive a save.
+//
+// IndexingPercentage nil means 1, the share X-Ray indexes free.
 type XRay struct {
+	TransactionSearch  *bool    `yaml:"transaction_search,omitempty"`
 	IndexingPercentage *float64 `yaml:"indexing_percentage,omitempty"`
 }
 
@@ -439,9 +447,14 @@ type Workload struct {
 	// policy it needs. A *bool because the template defaults an absent key to
 	// true: an operator's explicit false has to survive a save as false, or the
 	// next save silently re-enables shell access to the container.
-	BackendRemoteAccess *bool             `yaml:"backend_remote_access,omitempty"`
-	SetupFCNSNS         bool              `yaml:"setup_fcnsns"`
-	XrayEnabled         bool              `yaml:"xray_enabled"`
+	BackendRemoteAccess *bool `yaml:"backend_remote_access,omitempty"`
+	SetupFCNSNS         bool  `yaml:"setup_fcnsns"`
+	XrayEnabled         bool  `yaml:"xray_enabled"`
+	// XraySpans grants the backend task role XRaySpans (OTLP spans to the
+	// X-Ray endpoint) without the ADOT collector, and turns on Transaction
+	// Search unless xray.transaction_search is false. A pointer so an absent
+	// key saves without one.
+	XraySpans           *bool             `yaml:"xray_spans,omitempty"`
 	BackendEnvVariables map[string]string `yaml:"backend_env_variables"`
 	// Policies and BackendPolicies are not rendered. Generate refuses either
 	// when it holds anything (validateLegacyBackendPolicyKeysConfigMap), and
@@ -976,21 +989,24 @@ type Service struct {
 	// whether the service exists in AWS at all; `auto_deploy` decides whether
 	// an ECR push, an SSM change or an S3 env-file write may redeploy it on its
 	// own. nil/true keeps today's behaviour. A manual deploy always works.
-	AutoDeploy       *bool             `yaml:"auto_deploy,omitempty"`
-	DockerImage      string            `yaml:"docker_image"`
-	ContainerCommand []string          `yaml:"container_command"`
-	ContainerPort    int               `yaml:"container_port"`
-	HostPort         int               `yaml:"host_port"`
-	CPU              int               `yaml:"cpu"`
-	Memory           int               `yaml:"memory"`
-	DesiredCount     int               `yaml:"desired_count"`
-	RemoteAccess     bool              `yaml:"remote_access"`
-	XrayEnabled      bool              `yaml:"xray_enabled"`
-	Essential        bool              `yaml:"essential"`
-	EnvVars          map[string]string `yaml:"env_vars"`
-	EnvVariables     []EnvVariable     `yaml:"env_variables"`
-	EnvFilesS3       []S3EnvFile       `yaml:"env_files_s3"`
-	ECRConfig        *ECRConfig        `yaml:"ecr_config,omitempty"` // Schema v9
+	AutoDeploy       *bool    `yaml:"auto_deploy,omitempty"`
+	DockerImage      string   `yaml:"docker_image"`
+	ContainerCommand []string `yaml:"container_command"`
+	ContainerPort    int      `yaml:"container_port"`
+	HostPort         int      `yaml:"host_port"`
+	CPU              int      `yaml:"cpu"`
+	Memory           int      `yaml:"memory"`
+	DesiredCount     int      `yaml:"desired_count"`
+	RemoteAccess     bool     `yaml:"remote_access"`
+	XrayEnabled      bool     `yaml:"xray_enabled"`
+	// XraySpans is Workload.XraySpans for this service: XRaySpans on its task
+	// role without the X-Ray daemon.
+	XraySpans    *bool             `yaml:"xray_spans,omitempty"`
+	Essential    bool              `yaml:"essential"`
+	EnvVars      map[string]string `yaml:"env_vars"`
+	EnvVariables []EnvVariable     `yaml:"env_variables"`
+	EnvFilesS3   []S3EnvFile       `yaml:"env_files_s3"`
+	ECRConfig    *ECRConfig        `yaml:"ecr_config,omitempty"` // Schema v9
 
 	// Runtime (schema v26) is fargate | ec2; ComputePool names the pool and is
 	// required when Runtime is "ec2". An empty Runtime and "fargate" render

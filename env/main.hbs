@@ -664,6 +664,12 @@ module "workloads" {
 {{/if}}
   xray_enabled = {{default workload.xray_enabled false}}
   xray_indexing_percentage = {{default xray.indexing_percentage 1}}
+{{#if (exists xray.transaction_search)}}
+  xray_transaction_search = {{xray.transaction_search}}
+{{/if}}
+{{#if (exists workload.xray_spans)}}
+  backend_xray_spans = {{workload.xray_spans}}
+{{/if}}
   pgadmin_enabled = {{default workload.install_pg_admin false}}
   pgadmin_email = "{{workload.pg_admin_email}}"
   # Backend environment variables merged from:

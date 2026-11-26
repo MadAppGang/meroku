@@ -1,0 +1,122 @@
+{
+  "_comment": [
+    "Shared truth table for when an environment turns on X-Ray Transaction Search.",
+    "",
+    "Go half: envUsesTransactionSearch (app/xray_transaction_search.go), which the",
+    "config warnings read. Terraform half: local.transaction_search_on",
+    "(modules/workloads/xray_transaction_search.tf), which counts the resources.",
+    "",
+    "Each vector not marked go_only has a run of the same name in",
+    "modules/workloads/tests/xray_transaction_search.tftest.hcl. The tftest file",
+    "cannot read this JSON, so that run repeats the inputs and the expected",
+    "resource count by hand; the Go side checks only that a run with the name",
+    "exists, not that its inputs or assertion match.",
+    "",
+    "transaction_search is xray.transaction_search: null when absent.",
+    "A service with enabled false is never rendered into main.tf, so vectors",
+    "holding one are go_only. refused: validateXRayMap refuses the YAML, and the",
+    "module still keeps Transaction Search on (xray_enabled wins)."
+  ],
+
+  "vectors": [
+    {
+      "name": "no_xray_creates_nothing",
+      "backend_xray_enabled": false,
+      "backend_xray_spans": false,
+      "services": [{ "name": "orders" }, { "name": "billing", "xray_enabled": false }],
+      "transaction_search": null,
+      "want": false
+    },
+    {
+      "name": "backend_and_service_xray",
+      "backend_xray_enabled": true,
+      "backend_xray_spans": false,
+      "services": [{ "name": "orders" }, { "name": "traced", "xray_enabled": true }],
+      "transaction_search": null,
+      "want": true
+    },
+    {
+      "name": "service_only_xray",
+      "backend_xray_enabled": false,
+      "backend_xray_spans": false,
+      "services": [{ "name": "orders" }, { "name": "traced", "xray_enabled": true }],
+      "transaction_search": null,
+      "want": true
+    },
+    {
+      "name": "xray_spans_alone_turns_on_transaction_search",
+      "backend_xray_enabled": false,
+      "backend_xray_spans": true,
+      "services": [{ "name": "orders" }, { "name": "otlp", "xray_spans": true }],
+      "transaction_search": null,
+      "want": true
+    },
+    {
+      "name": "service_xray_spans_alone",
+      "backend_xray_enabled": false,
+      "backend_xray_spans": false,
+      "services": [{ "name": "orders" }, { "name": "otlp", "xray_spans": true }],
+      "transaction_search": null,
+      "want": true
+    },
+    {
+      "name": "xray_spans_with_transaction_search_false",
+      "backend_xray_enabled": false,
+      "backend_xray_spans": true,
+      "services": [{ "name": "otlp", "xray_spans": true }],
+      "transaction_search": false,
+      "want": false
+    },
+    {
+      "name": "transaction_search_true_alone",
+      "backend_xray_enabled": false,
+      "backend_xray_spans": false,
+      "services": [{ "name": "api" }],
+      "transaction_search": true,
+      "want": true
+    },
+    {
+      "name": "transaction_search_false_alone",
+      "backend_xray_enabled": false,
+      "backend_xray_spans": false,
+      "services": [],
+      "transaction_search": false,
+      "want": false
+    },
+    {
+      "name": "xray_enabled_wins_over_false",
+      "backend_xray_enabled": true,
+      "backend_xray_spans": false,
+      "services": [],
+      "transaction_search": false,
+      "want": true,
+      "refused": true
+    },
+    {
+      "name": "transaction_search_true_with_xray_enabled",
+      "backend_xray_enabled": true,
+      "backend_xray_spans": false,
+      "services": [],
+      "transaction_search": true,
+      "want": true
+    },
+    {
+      "name": "disabled_service_xray_spans_does_not_count",
+      "backend_xray_enabled": false,
+      "backend_xray_spans": false,
+      "services": [{ "name": "otlp", "xray_spans": true, "enabled": false }],
+      "transaction_search": null,
+      "want": false,
+      "go_only": true
+    },
+    {
+      "name": "disabled_service_xray_enabled_does_not_count",
+      "backend_xray_enabled": false,
+      "backend_xray_spans": false,
+      "services": [{ "name": "traced", "xray_enabled": true, "enabled": false }],
+      "transaction_search": null,
+      "want": false,
+      "go_only": true
+    }
+  ]
+}

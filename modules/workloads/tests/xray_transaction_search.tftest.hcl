@@ -373,3 +373,538 @@ run "indexing_percentage_101_is_refused" {
 
   expect_failures = [var.xray_indexing_percentage]
 }
+
+# Use fresh mock state so earlier task definitions cannot supply a case's containers.
+# REQ-1, REQ-2, REQ-3
+run "xray_spans_alone_turns_on_transaction_search" {
+  command   = apply
+  state_key = "xray_spans_alone_turns_on_transaction_search"
+
+  override_resource {
+    target = null_resource.build_ci_lambda
+  }
+
+  variables {
+    backend_xray_spans       = true
+    xray_indexing_percentage = 10
+    services = [
+      { name = "orders" },
+      { name = "otlp", xray_spans = true }
+    ]
+  }
+
+  assert {
+    condition = (
+      length(aws_cloudwatch_log_resource_policy.xray_transaction_search) == 1 &&
+      length(aws_xray_trace_segment_destination.transaction_search) == 1 &&
+      length(aws_xray_indexing_rule.default) == 1
+    )
+    error_message = "Expected 1 of each Transaction Search resource (logs policy, segment destination and indexing rule)."
+  }
+
+  assert {
+    condition     = one(aws_xray_indexing_rule.default[*].rule[0].probabilistic[0].desired_sampling_percentage) == 10
+    error_message = "The Default indexing rule must use 10 percent."
+  }
+
+  assert {
+    condition = sort(flatten([
+      for name, policy in merge(
+        { backend = aws_iam_role_policy.backend_task_cloudwatch.policy },
+        { for name, p in aws_iam_role_policy.services_task_cloudwatch : name => p.policy }
+        ) : [
+        for s in jsondecode(policy).Statement : name if s.Sid == "XRaySpans"
+      ]
+    ])) == sort(["backend", "otlp"])
+    error_message = "Only backend and otlp should have XRaySpans, exactly once each."
+  }
+
+  assert {
+    condition = alltrue(flatten([
+      for defs in concat(
+        [aws_ecs_task_definition.backend.container_definitions],
+        [for svc in aws_ecs_task_definition.services : svc.container_definitions]
+        ) : [
+        for c in jsondecode(defs) : !strcontains(c.name, "adot-collector") && !strcontains(c.name, "xray-daemon")
+      ]
+    ]))
+    error_message = "Without xray_enabled, neither the backend nor a named service should have an X-Ray sidecar."
+  }
+
+  assert {
+    condition = alltrue(flatten([
+      for policy in [
+        aws_iam_role_policy.backend_task_cloudwatch.policy,
+        aws_iam_role_policy.services_task_cloudwatch["otlp"].policy
+        ] : [
+        for s in jsondecode(policy).Statement :
+        s.Effect == "Allow" && toset(flatten([s.Resource])) == toset(["*"]) &&
+        toset(flatten([s.Action])) == toset(["xray:PutSpans", "xray:PutSpansForIndexing", "xray:PutTraceSegments"])
+        if s.Sid == "XRaySpans"
+      ]
+    ]))
+    error_message = "Each selected role must be allowed exactly the three span actions on *."
+  }
+
+  assert {
+    condition = (
+      aws_cloudwatch_log_resource_policy.xray_transaction_search[0].policy_name == "myapp-dev-xray-transaction-search" &&
+      aws_xray_indexing_rule.default[0].name == "Default" &&
+      aws_xray_trace_segment_destination.transaction_search[0].destination == "CloudWatchLogs"
+    )
+    error_message = "Sidecar-free ownership must configure the same policy, Default rule and CloudWatchLogs destination."
+  }
+
+  assert {
+    condition = (
+      length(aws_cloudwatch_log_group.adot_collector) == 0 &&
+      !contains([for s in jsondecode(aws_iam_role_policy.backend_task_cloudwatch.policy).Statement : s.Sid], "ContainerInsightsLogs") &&
+      !contains([for s in jsondecode(aws_iam_role_policy.services_task_cloudwatch["otlp"].policy).Statement : s.Sid], "XRayWrite")
+    )
+    error_message = "Span senders should not need collector log groups or sidecar-only task role permissions."
+  }
+}
+
+# REQ-1, REQ-2, REQ-3
+run "service_xray_spans_alone" {
+  command   = apply
+  state_key = "service_xray_spans_alone"
+
+  override_resource {
+    target = null_resource.build_ci_lambda
+  }
+
+  variables {
+    services = [
+      { name = "orders" },
+      { name = "otlp", xray_spans = true }
+    ]
+  }
+
+  assert {
+    condition = (
+      length(aws_cloudwatch_log_resource_policy.xray_transaction_search) == 1 &&
+      length(aws_xray_trace_segment_destination.transaction_search) == 1 &&
+      length(aws_xray_indexing_rule.default) == 1
+    )
+    error_message = "Expected 1 of each Transaction Search resource (logs policy, segment destination and indexing rule)."
+  }
+
+  assert {
+    condition     = one(aws_xray_indexing_rule.default[*].rule[0].probabilistic[0].desired_sampling_percentage) == 1
+    error_message = "The Default indexing rule must use 1 percent."
+  }
+
+  assert {
+    condition = sort(flatten([
+      for name, policy in merge(
+        { backend = aws_iam_role_policy.backend_task_cloudwatch.policy },
+        { for name, p in aws_iam_role_policy.services_task_cloudwatch : name => p.policy }
+        ) : [
+        for s in jsondecode(policy).Statement : name if s.Sid == "XRaySpans"
+      ]
+    ])) == sort(["otlp"])
+    error_message = "Only otlp should have XRaySpans, exactly once each."
+  }
+
+  assert {
+    condition = alltrue(flatten([
+      for defs in concat(
+        [aws_ecs_task_definition.backend.container_definitions],
+        [for svc in aws_ecs_task_definition.services : svc.container_definitions]
+        ) : [
+        for c in jsondecode(defs) : !strcontains(c.name, "adot-collector") && !strcontains(c.name, "xray-daemon")
+      ]
+    ]))
+    error_message = "Without xray_enabled, neither the backend nor a named service should have an X-Ray sidecar."
+  }
+}
+
+# REQ-1, REQ-2, REQ-3
+run "backend_xray_spans_without_services" {
+  command   = apply
+  state_key = "backend_xray_spans_without_services"
+
+  override_resource {
+    target = null_resource.build_ci_lambda
+  }
+
+  variables {
+    backend_xray_spans = true
+    services           = []
+  }
+
+  assert {
+    condition = (
+      length(aws_cloudwatch_log_resource_policy.xray_transaction_search) == 1 &&
+      length(aws_xray_trace_segment_destination.transaction_search) == 1 &&
+      length(aws_xray_indexing_rule.default) == 1
+    )
+    error_message = "Expected 1 of each Transaction Search resource (logs policy, segment destination and indexing rule)."
+  }
+
+  assert {
+    condition     = one(aws_xray_indexing_rule.default[*].rule[0].probabilistic[0].desired_sampling_percentage) == 1
+    error_message = "The Default indexing rule must use 1 percent."
+  }
+
+  assert {
+    condition = sort(flatten([
+      for name, policy in merge(
+        { backend = aws_iam_role_policy.backend_task_cloudwatch.policy },
+        { for name, p in aws_iam_role_policy.services_task_cloudwatch : name => p.policy }
+        ) : [
+        for s in jsondecode(policy).Statement : name if s.Sid == "XRaySpans"
+      ]
+    ])) == sort(["backend"])
+    error_message = "Only backend should have XRaySpans, exactly once each."
+  }
+
+  assert {
+    condition = alltrue(flatten([
+      for defs in concat(
+        [aws_ecs_task_definition.backend.container_definitions],
+        [for svc in aws_ecs_task_definition.services : svc.container_definitions]
+        ) : [
+        for c in jsondecode(defs) : !strcontains(c.name, "adot-collector") && !strcontains(c.name, "xray-daemon")
+      ]
+    ]))
+    error_message = "Without xray_enabled, neither the backend nor a named service should have an X-Ray sidecar."
+  }
+}
+
+# REQ-1, REQ-2
+run "xray_spans_with_transaction_search_false" {
+  command   = apply
+  state_key = "xray_spans_with_transaction_search_false"
+
+  override_resource {
+    target = null_resource.build_ci_lambda
+  }
+
+  variables {
+    backend_xray_spans      = true
+    xray_transaction_search = false
+    services                = [{ name = "otlp", xray_spans = true }]
+  }
+
+  assert {
+    condition = (
+      length(aws_cloudwatch_log_resource_policy.xray_transaction_search) == 0 &&
+      length(aws_xray_trace_segment_destination.transaction_search) == 0 &&
+      length(aws_xray_indexing_rule.default) == 0
+    )
+    error_message = "Expected 0 of each Transaction Search resource (logs policy, segment destination and indexing rule)."
+  }
+
+  assert {
+    condition = sort(flatten([
+      for name, policy in merge(
+        { backend = aws_iam_role_policy.backend_task_cloudwatch.policy },
+        { for name, p in aws_iam_role_policy.services_task_cloudwatch : name => p.policy }
+        ) : [
+        for s in jsondecode(policy).Statement : name if s.Sid == "XRaySpans"
+      ]
+    ])) == sort(["backend", "otlp"])
+    error_message = "Only backend and otlp should have XRaySpans, exactly once each."
+  }
+
+  assert {
+    condition = alltrue(flatten([
+      for defs in concat(
+        [aws_ecs_task_definition.backend.container_definitions],
+        [for svc in aws_ecs_task_definition.services : svc.container_definitions]
+        ) : [
+        for c in jsondecode(defs) : !strcontains(c.name, "adot-collector") && !strcontains(c.name, "xray-daemon")
+      ]
+    ]))
+    error_message = "Without xray_enabled, neither the backend nor a named service should have an X-Ray sidecar."
+  }
+}
+
+# REQ-1, REQ-2, REQ-3
+run "transaction_search_true_alone" {
+  command   = apply
+  state_key = "transaction_search_true_alone"
+
+  override_resource {
+    target = null_resource.build_ci_lambda
+  }
+
+  variables {
+    xray_transaction_search = true
+    services                = [{ name = "api" }]
+  }
+
+  assert {
+    condition = (
+      length(aws_cloudwatch_log_resource_policy.xray_transaction_search) == 1 &&
+      length(aws_xray_trace_segment_destination.transaction_search) == 1 &&
+      length(aws_xray_indexing_rule.default) == 1
+    )
+    error_message = "Expected 1 of each Transaction Search resource (logs policy, segment destination and indexing rule)."
+  }
+
+  assert {
+    condition     = one(aws_xray_indexing_rule.default[*].rule[0].probabilistic[0].desired_sampling_percentage) == 1
+    error_message = "The Default indexing rule must use 1 percent."
+  }
+
+  assert {
+    condition = sort(flatten([
+      for name, policy in merge(
+        { backend = aws_iam_role_policy.backend_task_cloudwatch.policy },
+        { for name, p in aws_iam_role_policy.services_task_cloudwatch : name => p.policy }
+        ) : [
+        for s in jsondecode(policy).Statement : name if s.Sid == "XRaySpans"
+      ]
+    ])) == sort([])
+    error_message = "No task role should have XRaySpans."
+  }
+
+  assert {
+    condition = alltrue(flatten([
+      for defs in concat(
+        [aws_ecs_task_definition.backend.container_definitions],
+        [for svc in aws_ecs_task_definition.services : svc.container_definitions]
+        ) : [
+        for c in jsondecode(defs) : !strcontains(c.name, "adot-collector") && !strcontains(c.name, "xray-daemon")
+      ]
+    ]))
+    error_message = "Without xray_enabled, neither the backend nor a named service should have an X-Ray sidecar."
+  }
+}
+
+# REQ-1, REQ-2
+run "transaction_search_false_alone" {
+  command   = apply
+  state_key = "transaction_search_false_alone"
+
+  override_resource {
+    target = null_resource.build_ci_lambda
+  }
+
+  variables {
+    xray_transaction_search = false
+    services                = []
+  }
+
+  assert {
+    condition = (
+      length(aws_cloudwatch_log_resource_policy.xray_transaction_search) == 0 &&
+      length(aws_xray_trace_segment_destination.transaction_search) == 0 &&
+      length(aws_xray_indexing_rule.default) == 0
+    )
+    error_message = "Expected 0 of each Transaction Search resource (logs policy, segment destination and indexing rule)."
+  }
+
+  assert {
+    condition = sort(flatten([
+      for name, policy in merge(
+        { backend = aws_iam_role_policy.backend_task_cloudwatch.policy },
+        { for name, p in aws_iam_role_policy.services_task_cloudwatch : name => p.policy }
+        ) : [
+        for s in jsondecode(policy).Statement : name if s.Sid == "XRaySpans"
+      ]
+    ])) == sort([])
+    error_message = "No task role should have XRaySpans."
+  }
+
+  assert {
+    condition = alltrue(flatten([
+      for defs in concat(
+        [aws_ecs_task_definition.backend.container_definitions],
+        [for svc in aws_ecs_task_definition.services : svc.container_definitions]
+        ) : [
+        for c in jsondecode(defs) : !strcontains(c.name, "adot-collector") && !strcontains(c.name, "xray-daemon")
+      ]
+    ]))
+    error_message = "Without xray_enabled, neither the backend nor a named service should have an X-Ray sidecar."
+  }
+}
+
+# REQ-1, REQ-2, REQ-3, REQ-5
+run "xray_enabled_wins_over_false" {
+  command   = apply
+  state_key = "xray_enabled_wins_over_false"
+
+  override_resource {
+    target = null_resource.build_ci_lambda
+  }
+
+  variables {
+    xray_enabled            = true
+    xray_transaction_search = false
+    services                = []
+  }
+
+  assert {
+    condition = (
+      length(aws_cloudwatch_log_resource_policy.xray_transaction_search) == 1 &&
+      length(aws_xray_trace_segment_destination.transaction_search) == 1 &&
+      length(aws_xray_indexing_rule.default) == 1
+    )
+    error_message = "Expected 1 of each Transaction Search resource (logs policy, segment destination and indexing rule)."
+  }
+
+  assert {
+    condition     = one(aws_xray_indexing_rule.default[*].rule[0].probabilistic[0].desired_sampling_percentage) == 1
+    error_message = "The Default indexing rule must use 1 percent."
+  }
+
+  assert {
+    condition = sort(flatten([
+      for name, policy in merge(
+        { backend = aws_iam_role_policy.backend_task_cloudwatch.policy },
+        { for name, p in aws_iam_role_policy.services_task_cloudwatch : name => p.policy }
+        ) : [
+        for s in jsondecode(policy).Statement : name if s.Sid == "XRaySpans"
+      ]
+    ])) == sort(["backend"])
+    error_message = "Only backend should have XRaySpans, exactly once each."
+  }
+}
+
+# REQ-1, REQ-2, REQ-3, REQ-5
+run "transaction_search_true_with_xray_enabled" {
+  command   = apply
+  state_key = "transaction_search_true_with_xray_enabled"
+
+  override_resource {
+    target = null_resource.build_ci_lambda
+  }
+
+  variables {
+    xray_enabled            = true
+    xray_transaction_search = true
+    services                = []
+  }
+
+  assert {
+    condition = (
+      length(aws_cloudwatch_log_resource_policy.xray_transaction_search) == 1 &&
+      length(aws_xray_trace_segment_destination.transaction_search) == 1 &&
+      length(aws_xray_indexing_rule.default) == 1
+    )
+    error_message = "Expected 1 of each Transaction Search resource (logs policy, segment destination and indexing rule)."
+  }
+
+  assert {
+    condition     = one(aws_xray_indexing_rule.default[*].rule[0].probabilistic[0].desired_sampling_percentage) == 1
+    error_message = "The Default indexing rule must use 1 percent."
+  }
+
+  assert {
+    condition = sort(flatten([
+      for name, policy in merge(
+        { backend = aws_iam_role_policy.backend_task_cloudwatch.policy },
+        { for name, p in aws_iam_role_policy.services_task_cloudwatch : name => p.policy }
+        ) : [
+        for s in jsondecode(policy).Statement : name if s.Sid == "XRaySpans"
+      ]
+    ])) == sort(["backend"])
+    error_message = "Only backend should have XRaySpans, exactly once each."
+  }
+}
+
+# REQ-5
+run "legacy_sidecar_policy_order" {
+  command   = apply
+  state_key = "legacy_sidecar_policy_order"
+
+  override_resource {
+    target = null_resource.build_ci_lambda
+  }
+
+  variables {
+    xray_enabled = true
+  }
+
+  assert {
+    condition = (
+      length(aws_cloudwatch_log_resource_policy.xray_transaction_search) == 1 &&
+      length(aws_xray_trace_segment_destination.transaction_search) == 1 &&
+      length(aws_xray_indexing_rule.default) == 1
+    )
+    error_message = "Expected 1 of each Transaction Search resource (logs policy, segment destination and indexing rule)."
+  }
+
+  assert {
+    condition     = one(aws_xray_indexing_rule.default[*].rule[0].probabilistic[0].desired_sampling_percentage) == 1
+    error_message = "The Default indexing rule must use 1 percent."
+  }
+
+  assert {
+    condition = sort(flatten([
+      for name, policy in merge(
+        { backend = aws_iam_role_policy.backend_task_cloudwatch.policy },
+        { for name, p in aws_iam_role_policy.services_task_cloudwatch : name => p.policy }
+        ) : [
+        for s in jsondecode(policy).Statement : name if s.Sid == "XRaySpans"
+      ]
+    ])) == sort(["backend", "traced"])
+    error_message = "Only backend and traced should have XRaySpans, exactly once each."
+  }
+
+  assert {
+    condition = (
+      [for s in jsondecode(aws_iam_role_policy.backend_task_cloudwatch.policy).Statement : s.Sid] ==
+      ["PutMetrics", "OwnLogs", "ContainerInsightsLogs", "ApplicationMetricsLogs", "XRaySpans"] &&
+      [for s in jsondecode(aws_iam_role_policy.services_task_cloudwatch["traced"].policy).Statement : s.Sid] ==
+      ["PutMetrics", "OwnLogs", "XRayWrite", "XRaySpans"]
+    )
+    error_message = "Existing sidecar roles must retain their statement order and exactly one XRaySpans grant."
+  }
+}
+
+# REQ-2, REQ-5
+run "xray_enabled_and_spans_one_statement" {
+  command   = apply
+  state_key = "xray_enabled_and_spans_one_statement"
+
+  override_resource {
+    target = null_resource.build_ci_lambda
+  }
+
+  variables {
+    xray_enabled       = true
+    backend_xray_spans = true
+    services           = [{ name = "both", xray_enabled = true, xray_spans = true }]
+  }
+
+  assert {
+    condition = (
+      length(aws_cloudwatch_log_resource_policy.xray_transaction_search) == 1 &&
+      length(aws_xray_trace_segment_destination.transaction_search) == 1 &&
+      length(aws_xray_indexing_rule.default) == 1
+    )
+    error_message = "Expected 1 of each Transaction Search resource (logs policy, segment destination and indexing rule)."
+  }
+
+  assert {
+    condition     = one(aws_xray_indexing_rule.default[*].rule[0].probabilistic[0].desired_sampling_percentage) == 1
+    error_message = "The Default indexing rule must use 1 percent."
+  }
+
+  assert {
+    condition = sort(flatten([
+      for name, policy in merge(
+        { backend = aws_iam_role_policy.backend_task_cloudwatch.policy },
+        { for name, p in aws_iam_role_policy.services_task_cloudwatch : name => p.policy }
+        ) : [
+        for s in jsondecode(policy).Statement : name if s.Sid == "XRaySpans"
+      ]
+    ])) == sort(["backend", "both"])
+    error_message = "Only backend and both should have XRaySpans, exactly once each."
+  }
+
+  assert {
+    condition = (
+      [for s in jsondecode(aws_iam_role_policy.backend_task_cloudwatch.policy).Statement : s.Sid] ==
+      ["PutMetrics", "OwnLogs", "ContainerInsightsLogs", "ApplicationMetricsLogs", "XRaySpans"] &&
+      [for s in jsondecode(aws_iam_role_policy.services_task_cloudwatch["both"].policy).Statement : s.Sid] ==
+      ["PutMetrics", "OwnLogs", "XRayWrite", "XRaySpans"]
+    )
+    error_message = "Existing sidecar roles must retain their statement order and exactly one XRaySpans grant."
+  }
+}

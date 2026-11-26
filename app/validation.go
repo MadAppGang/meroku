@@ -664,26 +664,43 @@ func yamlTrue(value interface{}) bool {
 	}
 }
 
-// validateXRayMap validates the top-level xray block: optional, a map whose
-// only key is indexing_percentage, a number from 0 to 100. The value renders
-// into the account and region's X-Ray indexing rule, so a typo in the key
-// would otherwise fall back to 1 without a word, and an out-of-range number
-// would only fail inside terraform.
+// validateXRayMap validates the X-Ray keys on the raw map handed to the
+// template engine.
+//
+// workload.xray_spans and every services[].xray_spans, a disabled service's
+// included, must be YAML booleans. They are checked before anything else,
+// whether or not the env has an xray block, because the template renders
+// workload.xray_spans as written and Terraform would only fail on it at plan.
+//
+// The top-level xray block is optional: a map with transaction_search, a YAML
+// boolean, and indexing_percentage, a number from 0 to 100. The percentage
+// renders into the account and region's X-Ray indexing rule, so a typo in a
+// key would otherwise fall back to the default without a word, and an
+// out-of-range number would only fail inside terraform. transaction_search:
+// false is refused while a workload has xray_enabled, which always turns
+// Transaction Search on.
 func validateXRayMap(envMap map[string]interface{}) error {
+	if err := validateXRaySpansKeys(envMap); err != nil {
+		return err
+	}
+
 	raw, present := envMap["xray"]
 	if !present || raw == nil {
 		return nil
 	}
 	xray, ok := yamlSubMap(envMap, "xray")
 	if !ok {
-		return fmt.Errorf("xray must be a map with indexing_percentage, got %T.\n\n"+
-			"  xray:\n    indexing_percentage: 1\n\nSee %s.", raw, xrayDocsPath)
+		return fmt.Errorf("xray must be a map with transaction_search or indexing_percentage, got %T.\n\n"+
+			"  xray:\n    transaction_search: true\n    indexing_percentage: 1\n\nSee %s.", raw, xrayDocsPath)
 	}
 	for key := range xray {
-		if key != "indexing_percentage" {
-			return fmt.Errorf("xray.%s is not a known setting; the only one is xray.indexing_percentage.\n\nSee %s.",
+		if key != "transaction_search" && key != "indexing_percentage" {
+			return fmt.Errorf("xray.%s is not a known setting; the known ones are xray.transaction_search and xray.indexing_percentage.\n\nSee %s.",
 				key, xrayDocsPath)
 		}
+	}
+	if err := validateXRayTransactionSearch(envMap, xray); err != nil {
+		return err
 	}
 	value, present := xray["indexing_percentage"]
 	if !present || value == nil {
@@ -698,6 +715,57 @@ func validateXRayMap(envMap map[string]interface{}) error {
 		return fmt.Errorf("xray.indexing_percentage is %s; it must be from 0 to 100.\n\n"+
 			"It is the percentage of X-Ray spans indexed as trace summaries; 1 is indexed free.\n"+
 			"See %s.", strconv.FormatFloat(n, 'g', -1, 64), xrayDocsPath)
+	}
+	return nil
+}
+
+// validateXRaySpansKeys refuses a workload.xray_spans or services[].xray_spans
+// that is present and not a YAML boolean.
+func validateXRaySpansKeys(envMap map[string]interface{}) error {
+	if workload, ok := yamlSubMap(envMap, "workload"); ok {
+		if err := xrayBoolKey("workload.xray_spans", workload["xray_spans"]); err != nil {
+			return err
+		}
+	}
+	for _, svc := range computeMapList(envMap, "services") {
+		key := fmt.Sprintf("services[%q].xray_spans", computeStringField(svc, "name"))
+		if err := xrayBoolKey(key, svc["xray_spans"]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// xrayBoolKey refuses a value that is present and not a YAML boolean. A quoted
+// "true" is refused rather than read: the template would render it as written.
+func xrayBoolKey(key string, value interface{}) error {
+	if value == nil {
+		return nil
+	}
+	if _, ok := value.(bool); !ok {
+		return fmt.Errorf("%s must be a boolean, got %#v (%T).\n\n"+
+			"Write true or false without quotes. See %s.", key, value, value, xrayDocsPath)
+	}
+	return nil
+}
+
+// validateXRayTransactionSearch checks xray.transaction_search: a YAML
+// boolean, and not false while a workload has xray_enabled.
+func validateXRayTransactionSearch(envMap, xray map[string]interface{}) error {
+	value := xray["transaction_search"]
+	if err := xrayBoolKey("xray.transaction_search", value); err != nil {
+		return err
+	}
+	if value != false {
+		return nil
+	}
+	if key, on := xrayEnabledKey(envMap); on {
+		return fmt.Errorf("xray.transaction_search is false, but %s is true.\n\n"+
+			"xray_enabled always turns on X-Ray Transaction Search in the account and region, so\n"+
+			"false would contradict the plan. Remove xray.transaction_search, or, if that workload\n"+
+			"does not need the X-Ray sidecar, replace xray_enabled with xray_spans: true, which\n"+
+			"grants OTLP spans without a sidecar and honours transaction_search: false.\n\n"+
+			"See %s.", key, xrayDocsPath)
 	}
 	return nil
 }

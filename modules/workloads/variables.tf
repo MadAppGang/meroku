@@ -49,7 +49,7 @@ variable "xray_enabled" {
 }
 
 variable "xray_indexing_percentage" {
-  description = "Percentage of spans X-Ray Transaction Search indexes as trace summaries (the account and region's Default indexing rule). 1 is the share indexed free. Used only when the backend or a service has xray_enabled."
+  description = "Percentage of spans X-Ray Transaction Search indexes as trace summaries (the account and region's Default indexing rule). 1 is the share indexed free. Used only when Transaction Search is on (local.transaction_search_on in xray_transaction_search.tf)."
   type        = number
   default     = 1
 
@@ -57,6 +57,19 @@ variable "xray_indexing_percentage" {
     condition     = var.xray_indexing_percentage >= 0 && var.xray_indexing_percentage <= 100
     error_message = "xray_indexing_percentage must be between 0 and 100."
   }
+}
+
+variable "xray_transaction_search" {
+  description = "X-Ray Transaction Search in this account and region. null derives it: on when the backend or a service has xray_enabled or xray_spans. true turns it on; false leaves it off for an env whose only X-Ray use is xray_spans. xray_enabled turns it on whatever this says."
+  type        = bool
+  default     = null
+  nullable    = true
+}
+
+variable "backend_xray_spans" {
+  description = "Grant the backend task role the XRaySpans statement (OTLP spans to the X-Ray endpoint) without the ADOT collector. Implied by xray_enabled."
+  type        = bool
+  default     = false
 }
 
 variable "slack_deployment_webhook" {
@@ -526,6 +539,7 @@ variable "services" {
     cpu               = optional(number, 256)
     memory            = optional(number, 512)
     xray_enabled      = optional(bool, false)
+    xray_spans        = optional(bool, false)
     docker_image      = optional(string, "")
     env_vars          = optional(map(string), { "name" : "SERVICE_TEST", "value" : "PASSED" })
     essential         = optional(bool, true)

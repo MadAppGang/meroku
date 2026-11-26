@@ -21,6 +21,7 @@ workload:
   backend_remote_access: false
   setup_fcnsns: false
   xray_enabled: false
+  xray_spans: true
   backend_env_variables:
     BACKEND_TEST: passed
   policies: []
@@ -230,6 +231,7 @@ services:
   desired_count: 3
   remote_access: true
   xray_enabled: false
+  xray_spans: true
   essential: false
   env_vars:
     SERVICE_TEST: PASSED
@@ -351,3 +353,6 @@ kms_keys:
   retired: true
 - name: requests
   key_spec: HMAC_256
+xray:
+  transaction_search: false
+  indexing_percentage: 5

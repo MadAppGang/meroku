@@ -84,7 +84,13 @@ workload:
       key: <string>                          # S3 object key (e.g., "config/app.env")
 
   # Monitoring and observability
-  xray_enabled: <boolean>                    # Enable AWS X-Ray distributed tracing
+  xray_enabled: <boolean>                    # Enable AWS X-Ray distributed tracing (ADOT collector
+                                             #   sidecar); turns on Transaction Search account-wide
+  xray_spans: <boolean>                      # Optional, default false. XRaySpans (OTLP spans to
+                                             #   https://xray.<region>.amazonaws.com/v1/traces) on the
+                                             #   task role, no sidecar. Turns on X-Ray Transaction
+                                             #   Search for the whole account and region unless
+                                             #   xray.transaction_search is false
 
   # Notifications
   setup_fcnsns: <boolean>                    # Setup Firebase Cloud Messaging/SNS for push notifications
@@ -307,15 +313,22 @@ event_bus:
 # ===================================
 # X-RAY TRANSACTION SEARCH
 # ===================================
-# Optional. No schema migration. Used only when workload.xray_enabled or a
-# services[].xray_enabled is true; that turns Transaction Search on for the
-# whole AWS account and region. Full guide: ai_docs/XRAY_TRANSACTION_SEARCH.md
+# Optional. No schema migration. Transaction Search is on for the whole AWS
+# account and region when a workload has xray_enabled or xray_spans, or when
+# xray.transaction_search is true. Full guide: ai_docs/XRAY_TRANSACTION_SEARCH.md
 
 xray:
-  indexing_percentage: <number>              # 0-100, default 1 (the share indexed free).
-                                             #   One rule per account and region: siblings in the
-                                             #   same account should set the same value
-                                             #   (warning xray_indexing_conflict). Only key allowed
+  transaction_search: <boolean>              # Optional. Absent: derive it from xray_enabled /
+                                             #   xray_spans. true: turn it on with no X-Ray workload.
+                                             #   false: owned elsewhere (sibling env, console, another
+                                             #   stack); refused while a workload has xray_enabled.
+                                             #   false removes this env's log resource policy: the
+                                             #   owner must keep its own, or spans are dropped
+  indexing_percentage: <number>              # 0-100, default 1 (the share indexed free). Used only
+                                             #   when Transaction Search is on here (warning
+                                             #   xray_indexing_unused otherwise). One rule per account
+                                             #   and region: siblings in the same account should set
+                                             #   the same value (warning xray_indexing_conflict)
 
 # ===================================
 # GRAPHQL API CONFIGURATION
@@ -385,7 +398,11 @@ services: <list>
 
     # Features
     remote_access: <boolean>                 # Enable ECS Exec for debugging
-    xray_enabled: <boolean>                  # Enable X-Ray tracing
+    xray_enabled: <boolean>                  # Enable X-Ray tracing (X-Ray daemon sidecar)
+    xray_spans: <boolean>                    # Optional. XRaySpans on this service's task role, no
+                                             #   sidecar; works on bridge pools. Turns on X-Ray
+                                             #   Transaction Search account-wide unless
+                                             #   xray.transaction_search is false
     essential: <boolean>                     # Mark as essential container
 
     # Environment configuration
