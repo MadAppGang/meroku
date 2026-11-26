@@ -28,6 +28,7 @@ export interface InfrastructureConfig {
 	backend_circuit_breaker?: BackendCircuitBreaker;
 	backend_image_port?: number;
 	xray_enabled?: boolean;
+	xray_spans?: boolean;
 	setup_FCM_SNS?: boolean;
 	backend_env?: Array<{
 		name: string;
@@ -43,6 +44,7 @@ export interface InfrastructureConfig {
 		cpu?: number;
 		memory?: number;
 		xray_enabled?: boolean;
+		xray_spans?: boolean;
 		env_vars?: {
 			name: string;
 			value: string;

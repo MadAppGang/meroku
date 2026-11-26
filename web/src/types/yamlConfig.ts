@@ -361,6 +361,8 @@ export interface YamlInfrastructureConfig {
 
 		// Monitoring and observability
 		xray_enabled?: boolean;
+		/** XRaySpans on the task role without a sidecar; turns on Transaction Search account-wide. */
+		xray_spans?: boolean;
 
 		// Notifications
 		setup_fcnsns?: boolean;
@@ -629,6 +631,8 @@ export interface YamlInfrastructureConfig {
 		desired_count?: number;
 		remote_access?: boolean;
 		xray_enabled?: boolean;
+		/** XRaySpans on the task role without a sidecar; turns on Transaction Search account-wide. */
+		xray_spans?: boolean;
 		essential?: boolean;
 		public_access?: boolean;
 		health_check_path?: string;
@@ -719,12 +723,18 @@ export interface YamlInfrastructureConfig {
 	event_bus?: EventBusConfig;
 	// Serverless Valkey, reachable by the workloads in `access`.
 	valkey?: ValkeyConfig;
-	// X-Ray Transaction Search for the account and region, used when X-Ray is on.
+	// X-Ray Transaction Search for the account and region: on when a workload has
+	// xray_enabled or xray_spans, or transaction_search is true.
 	xray?: XRayConfig;
 }
 
 /** The top-level `xray` block. `indexing_percentage` absent means 1. */
 export interface XRayConfig {
+	/**
+	 * Absent derives it from the workloads. true turns Transaction Search on;
+	 * false leaves it to another owner (refused while a workload has xray_enabled).
+	 */
+	transaction_search?: boolean;
 	/** Percentage of spans indexed as trace summaries, 0 to 100. 1 is indexed free. */
 	indexing_percentage?: number;
 }

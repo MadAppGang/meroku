@@ -1,0 +1,20 @@
+# Pins the main.tf an env with xray_enabled on the backend and on a service
+# renders, with an explicit xray.indexing_percentage. None of the keys that turn
+# on Transaction Search or span grants without a sidecar is set, so this render
+# must stay byte-identical as those keys are added to the template.
+schema_version: 33
+project: myapp
+env: dev
+region: ap-southeast-2
+account_id: "000000000000"
+aws_profile: none
+use_default_vpc: false
+xray:
+  indexing_percentage: 5
+workload:
+  backend_image_port: 8080
+  xray_enabled: true
+services:
+  - name: api
+    container_port: 3000
+    xray_enabled: true

@@ -2,10 +2,23 @@ package main
 
 // X-Ray Transaction Search is one setting per AWS account and region: the
 // trace segment destination and the Default indexing rule. modules/workloads
-// turns it on for every environment that uses X-Ray, with the env YAML's
-// xray.indexing_percentage (default 1). Two environments in one account and
-// region with different percentages overwrite each other's rule on every
-// apply; xrayIndexingConflictWarning says so before either is deployed.
+// turns it on, with the env YAML's xray.indexing_percentage (default 1), for
+// an environment where
+//
+//   - a rendered workload has xray_enabled (the sidecar), always;
+//   - a rendered workload has xray_spans (the span grant without a sidecar),
+//     unless xray.transaction_search is false;
+//   - xray.transaction_search is true, with no workload asking.
+//
+// xray.transaction_search: false leaves it to a sibling environment, the
+// console or another stack that already owns it; validateXRayMap refuses it
+// while a workload has xray_enabled. envUsesTransactionSearch is that rule.
+//
+// Two environments in one account and region with different percentages
+// overwrite each other's rule on every apply; xrayIndexingConflictWarning says
+// so before either is deployed. A percentage in an environment that does not
+// turn Transaction Search on renders into nothing;
+// xrayIndexingUnusedWarning says so.
 
 import (
 	"fmt"
@@ -44,25 +57,88 @@ func xrayNumber(v interface{}) (float64, bool) {
 	}
 }
 
-// envUsesXRay reports whether the backend or any service that renders has
-// xray_enabled: the same condition as local.xray_in_use in
-// modules/workloads/xray_transaction_search.tf. A service with enabled: false
-// is left out of main.tf, so it does not count.
-func envUsesXRay(envMap map[string]interface{}) bool {
-	if workload, ok := yamlSubMap(envMap, "workload"); ok {
-		if on, _ := computeBoolField(workload, "xray_enabled"); on {
-			return true
-		}
-	}
+// renderedServices is every service that reaches main.tf: one with enabled
+// present and not true is left out of it, so it counts for nothing the module
+// derives.
+func renderedServices(envMap map[string]interface{}) []map[string]interface{} {
+	var out []map[string]interface{}
 	for _, svc := range computeMapList(envMap, "services") {
 		if enabled, has := svc["enabled"]; has && enabled != true {
 			continue
 		}
+		out = append(out, svc)
+	}
+	return out
+}
+
+// xrayEnabledKey names the first YAML key that gives this environment the
+// X-Ray sidecar: workload.xray_enabled, or services["<name>"].xray_enabled of
+// a rendered service. ok is false when there is none.
+func xrayEnabledKey(envMap map[string]interface{}) (key string, ok bool) {
+	if workload, isMap := yamlSubMap(envMap, "workload"); isMap {
+		if on, _ := computeBoolField(workload, "xray_enabled"); on {
+			return "workload.xray_enabled", true
+		}
+	}
+	for _, svc := range renderedServices(envMap) {
 		if on, _ := computeBoolField(svc, "xray_enabled"); on {
+			return fmt.Sprintf("services[%q].xray_enabled", computeStringField(svc, "name")), true
+		}
+	}
+	return "", false
+}
+
+// envUsesXRay reports whether the backend or any service that renders has
+// xray_enabled, the sidecar: the same condition as local.xray_in_use in
+// modules/workloads/xray_transaction_search.tf.
+func envUsesXRay(envMap map[string]interface{}) bool {
+	_, ok := xrayEnabledKey(envMap)
+	return ok
+}
+
+// envUsesXRaySpans reports whether the backend or any service that renders
+// has xray_spans: the same condition as local.xray_spans_in_use in
+// modules/workloads/xray_transaction_search.tf. Values are read as
+// envUsesXRay reads them.
+func envUsesXRaySpans(envMap map[string]interface{}) bool {
+	if workload, ok := yamlSubMap(envMap, "workload"); ok {
+		if on, _ := computeBoolField(workload, "xray_spans"); on {
+			return true
+		}
+	}
+	for _, svc := range renderedServices(envMap) {
+		if on, _ := computeBoolField(svc, "xray_spans"); on {
 			return true
 		}
 	}
 	return false
+}
+
+// xrayTransactionSearchSetting reads xray.transaction_search. set is false
+// when the key, or the xray block, is absent: the module then derives it.
+func xrayTransactionSearchSetting(envMap map[string]interface{}) (value, set bool) {
+	xray, ok := yamlSubMap(envMap, "xray")
+	if !ok {
+		return false, false
+	}
+	return computeBoolField(xray, "transaction_search")
+}
+
+// envUsesTransactionSearch reports whether this environment renders the
+// Transaction Search resources. It is local.transaction_search_on in
+// modules/workloads/xray_transaction_search.tf, rule for rule. Both sides are
+// checked against testdata/xray_transaction_search_vectors.json: the Go side
+// by evaluating every vector, the Terraform side by a tftest run per vector
+// whose inputs and assertion are written by hand. The Go check on the tftest
+// file matches run names only.
+func envUsesTransactionSearch(envMap map[string]interface{}) bool {
+	if envUsesXRay(envMap) {
+		return true
+	}
+	if value, set := xrayTransactionSearchSetting(envMap); set {
+		return value
+	}
+	return envUsesXRaySpans(envMap)
 }
 
 // xrayIndexingPercentage is the percentage the environment's Default indexing
@@ -88,8 +164,8 @@ func xrayIndexingPercentage(envMap map[string]interface{}) (percentage float64, 
 	return n, true
 }
 
-// xrayIndexingUse is a sibling environment that uses X-Ray: where its
-// Transaction Search lands and the percentage it sets.
+// xrayIndexingUse is a sibling environment that turns on Transaction Search:
+// where it lands and the percentage it sets.
 type xrayIndexingUse struct {
 	Name        string // file stem
 	File        string
@@ -97,10 +173,11 @@ type xrayIndexingUse struct {
 	Percentage  float64
 }
 
-// siblingXRayIndexingUses lists every other environment YAML in dir that uses
-// X-Ray, with its account keys and effective indexing percentage. Files are
-// read raw and never written. A sibling whose percentage its own generate
-// would refuse is left out.
+// siblingXRayIndexingUses lists every other environment YAML in dir that
+// turns on Transaction Search (envUsesTransactionSearch), with its account
+// keys and effective indexing percentage. Files are read raw and never
+// written. A sibling whose percentage its own generate would refuse is left
+// out.
 func siblingXRayIndexingUses(dir, self string) ([]xrayIndexingUse, error) {
 	probes, err := scanSiblingProbes(dir, self)
 	if err != nil {
@@ -116,7 +193,7 @@ func siblingXRayIndexingUses(dir, self string) ([]xrayIndexingUse, error) {
 		if err := yaml.Unmarshal(data, &m); err != nil {
 			continue
 		}
-		if !envUsesXRay(m) {
+		if !envUsesTransactionSearch(m) {
 			continue
 		}
 		percentage, ok := xrayIndexingPercentage(m)
@@ -148,12 +225,13 @@ func accountIDFromMap(envMap map[string]interface{}) string {
 	return ""
 }
 
-// xrayIndexingConflictWarning is the warning for an environment that uses
-// X-Ray when a sibling in the same account and region also does, with a
-// different indexing percentage. Silent when this environment does not use
-// X-Ray or its percentage is invalid (validateXRayMap refuses that).
+// xrayIndexingConflictWarning is the warning for an environment that turns
+// on Transaction Search when a sibling in the same account and region also
+// does, with a different indexing percentage. Silent when this environment
+// does not turn it on or its percentage is invalid (validateXRayMap refuses
+// that).
 func xrayIndexingConflictWarning(envMap map[string]interface{}, siblings []xrayIndexingUse) (ConfigWarning, bool) {
-	if !envUsesXRay(envMap) {
+	if !envUsesTransactionSearch(envMap) {
 		return ConfigWarning{}, false
 	}
 	own, ok := xrayIndexingPercentage(envMap)
@@ -190,7 +268,8 @@ func xrayIndexingConflictWarning(envMap map[string]interface{}, siblings []xrayI
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "This environment indexes %s of X-Ray spans (xray.indexing_percentage), and these\n", formatPercentage(own))
-	fmt.Fprintf(&b, "environments in the same AWS account and region also use X-Ray with a different value:\n")
+	fmt.Fprintf(&b, "environments in the same AWS account and region also turn on X-Ray Transaction Search\n")
+	fmt.Fprintf(&b, "with a different value:\n")
 	for _, c := range conflicts {
 		fmt.Fprintf(&b, "  %s (%s): %s\n", c.Name, c.File, formatPercentage(c.Percentage))
 	}
@@ -201,6 +280,41 @@ func xrayIndexingConflictWarning(envMap map[string]interface{}, siblings []xrayI
 		Code:   warnCodeXRayIndexingConflict,
 		Item:   envItem(),
 		Title:  "X-Ray indexing percentage differs from another environment in the same AWS account",
+		Detail: b.String(),
+		Docs:   docsLink(xrayDocsPath),
+	}, true
+}
+
+// xrayIndexingUnusedWarning is the warning for an xray.indexing_percentage
+// that renders into no rule, because this environment does not turn on
+// Transaction Search. Silent when the key is absent or null.
+func xrayIndexingUnusedWarning(envMap map[string]interface{}) (ConfigWarning, bool) {
+	xray, ok := yamlSubMap(envMap, "xray")
+	if !ok {
+		return ConfigWarning{}, false
+	}
+	if value, present := xray["indexing_percentage"]; !present || value == nil {
+		return ConfigWarning{}, false
+	}
+	if envUsesTransactionSearch(envMap) {
+		return ConfigWarning{}, false
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "xray.indexing_percentage sets the share of spans X-Ray Transaction Search indexes,\n")
+	fmt.Fprintf(&b, "but this environment does not turn Transaction Search on, so no indexing rule is\n")
+	fmt.Fprintf(&b, "created from it.\n\n")
+	if value, set := xrayTransactionSearchSetting(envMap); set && !value {
+		fmt.Fprintf(&b, "xray.transaction_search is false: set the percentage in the environment or stack\n")
+		fmt.Fprintf(&b, "that owns Transaction Search in this account and region, and remove it here.")
+	} else {
+		fmt.Fprintf(&b, "Turn Transaction Search on (xray_spans or xray_enabled on a workload, or\n")
+		fmt.Fprintf(&b, "xray.transaction_search: true), or remove xray.indexing_percentage.")
+	}
+	return ConfigWarning{
+		Code:   warnCodeXRayIndexingUnused,
+		Item:   envItem(),
+		Title:  "xray.indexing_percentage is set but this environment does not turn on X-Ray Transaction Search",
 		Detail: b.String(),
 		Docs:   docsLink(xrayDocsPath),
 	}, true

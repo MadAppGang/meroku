@@ -16,11 +16,13 @@
 # credentials.
 #
 # X-Ray writes: the backend's task role carries AWSXrayWriteOnlyAccess
-# (backend.tf) and a service's gets the XRayWrite statement below. Neither
-# allows xray:PutSpans, which the OTLP endpoint
+# (backend.tf) and a service's with xray_enabled gets the XRayWrite statement
+# below. Neither allows xray:PutSpans, which the OTLP endpoint
 # (https://xray.<region>.amazonaws.com/v1/traces) requires, so every role with
-# xray_enabled also gets XRaySpans. The endpoint accepts spans only once
-# Transaction Search is on (xray_transaction_search.tf).
+# xray_enabled or xray_spans gets XRaySpans. xray_spans is that grant alone,
+# for an app that signs its OTLP requests itself and runs no sidecar. The
+# endpoint accepts spans only once Transaction Search is on
+# (xray_transaction_search.tf).
 #
 # The execution roles keep their attachments: ECS assumes them to pull images,
 # resolve secrets and write the awslogs streams, and a container never sees
@@ -92,7 +94,10 @@ locals {
   }
 
   # The calls a service makes when it sends OTLP traces to the X-Ray
-  # endpoint. Granted on "*", as XRayWrite is.
+  # endpoint. Granted on "*", as XRayWrite is. This is the one definition of
+  # the OTLP span grant: any role that sends spans references it rather than
+  # copying the actions, and should feed local.xray_spans_in_use
+  # (xray_transaction_search.tf) so Transaction Search follows it.
   xray_spans_statement = {
     Sid    = "XRaySpans"
     Effect = "Allow"
@@ -103,6 +108,11 @@ locals {
     ]
     Resource = "*"
   }
+
+  # Who gets xray_spans_statement: a workload with the sidecar, or with the
+  # grant alone. One condition, so one statement even when both are set.
+  backend_gets_xray_spans = var.xray_enabled || var.backend_xray_spans
+  service_gets_xray_spans = { for s in var.services : s.name => s.xray_enabled || s.xray_spans }
 }
 
 resource "aws_iam_role_policy" "backend_task_cloudwatch" {
@@ -123,7 +133,7 @@ resource "aws_iam_role_policy" "backend_task_cloudwatch" {
       # Segment and telemetry writes come from AWSXrayWriteOnlyAccess
       # (backend.tf); OTLP spans need XRaySpans.
       var.xray_enabled ? [local.container_insights_statement, local.application_metrics_statement] : [],
-      var.xray_enabled ? [local.xray_spans_statement] : [],
+      local.backend_gets_xray_spans ? [local.xray_spans_statement] : [],
     )
   })
 }
@@ -146,7 +156,7 @@ resource "aws_iam_role_policy" "services_task_cloudwatch" {
         },
       ],
       each.value.xray_enabled ? [local.xray_write_statement] : [],
-      each.value.xray_enabled ? [local.xray_spans_statement] : [],
+      local.service_gets_xray_spans[each.key] ? [local.xray_spans_statement] : [],
     )
   })
 }
