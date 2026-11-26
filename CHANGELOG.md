@@ -1,5 +1,25 @@
 # Changelog
 
+## v6.13.0
+
+### Added
+- `workload.xray_spans` and `services[].xray_spans` give the task role the `XRaySpans`
+  statement (`xray:PutSpans`, `xray:PutSpansForIndexing`, `xray:PutTraceSegments`) with no
+  sidecar, for an app that sends OTLP traces signed with SigV4 straight to the X-Ray endpoint.
+  They also turn on X-Ray Transaction Search in the account and region, as `xray_enabled` does,
+  because the endpoint rejects spans without it.
+- `xray.transaction_search`: `true` turns Transaction Search on when no workload asks for it;
+  `false` leaves it to another owner (a sibling env or the console) for an env whose only X-Ray
+  use is `xray_spans`, and removes this env's log resource policy. `false` is refused while any
+  workload has `xray_enabled`.
+- Warning `xray_indexing_unused`: `xray.indexing_percentage` is set but Transaction Search is
+  off, so the percentage has no effect.
+
+### Changed
+- `xray.indexing_percentage` applies whenever Transaction Search is on, not only with
+  `xray_enabled`. `xray_indexing_conflict` counts every env with Transaction Search on.
+- Envs without the new keys render the same `main.tf` as before.
+
 ## v6.12.1
 
 ### Fixed
